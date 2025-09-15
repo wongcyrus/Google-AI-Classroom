@@ -27,8 +27,9 @@
       enable = true;
       previews = {
         web = {
-          command = ["sh" "-c" "cd web-app && npm run dev"];
+          command = ["sh" "-c" "npm run dev -- --port $PORT --host 0.0.0.0"];
           manager = "web";
+          cwd = "web-app";
           env = {
             PORT = "$PORT";
           };
