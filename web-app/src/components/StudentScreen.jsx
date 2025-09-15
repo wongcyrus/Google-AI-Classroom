@@ -3,12 +3,14 @@ import { useState, useEffect } from 'react';
 import { ref, getDownloadURL, getMetadata } from 'firebase/storage';
 import { storage } from '../firebase-config';
 
-const StudentScreen = ({ student }) => {
+const StudentScreen = ({ student, classId }) => {
   const [screenshotUrl, setScreenshotUrl] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
-    const screenshotRef = ref(storage, `screenshots/${student.id}/screenshot.jpg`);
+    if (!classId) return;
+
+    const screenshotRef = ref(storage, `screenshots/${classId}/${student.id}/screenshot.jpg`);
 
     const updateScreenshot = () => {
       getMetadata(screenshotRef).then(metadata => {
@@ -32,7 +34,7 @@ const StudentScreen = ({ student }) => {
     updateScreenshot();
 
     return () => clearInterval(interval);
-  }, [student.id, lastUpdated]);
+  }, [student.id, classId, lastUpdated]);
 
   return (
     <div className="student-screen">

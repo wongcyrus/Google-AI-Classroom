@@ -1,59 +1,69 @@
 
-import { useRef, useState } from 'react';
-import { ref, uploadString } from 'firebase/storage';
-import { storage, auth } from '../firebase-config';
+import { useState, useEffect } from 'react';
+import { ref, uploadBytes } from 'firebase/storage';
+import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 const StudentView = ({ user }) => {
-  const videoRef = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
   const [stream, setStream] = useState(null);
-  const [screenshotInterval, setScreenshotInterval] = useState(null);
+  const [intervalId, setIntervalId] = useState(null);
+  const [userClasses, setUserClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState(null);
 
-  const handleScreenShare = async () => {
-    try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      videoRef.current.srcObject = screenStream;
-      setStream(screenStream);
-
-      const interval = setInterval(() => {
-        captureScreenshot(screenStream);
-      }, 5000); // Capture every 5 seconds
-      setScreenshotInterval(interval);
-    } catch (err) {
-      console.error("Error: " + err);
-    }
-  };
-
-  const stopScreenShare = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-      setStream(null);
-    }
-    if (screenshotInterval) {
-      clearInterval(screenshotInterval);
-      setScreenshotInterval(null);
-    }
-  };
-
-  const captureScreenshot = (screenStream) => {
-    const video = document.createElement('video');
-    video.srcObject = screenStream;
-    video.play();
-    video.onloadeddata = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg');
-      
-      const screenshotRef = ref(storage, `screenshots/${user.uid}/screenshot.jpg`);
-      uploadString(screenshotRef, dataUrl, 'data_url').then(() => {
-        console.log('Screenshot uploaded');
+  useEffect(() => {
+      if (!user) return;
+      const classesRef = collection(db, `students/${user.uid}/classes`);
+      const unsubscribe = onSnapshot(classesRef, (querySnapshot) => {
+          const classes = [];
+          querySnapshot.forEach(doc => {
+              classes.push(doc.id);
+          });
+          setUserClasses(classes);
+          if(classes.length === 1) {
+              setSelectedClass(classes[0]);
+          }
       });
-      video.remove();
-    };
+
+      return () => unsubscribe();
+
+  }, [user]);
+
+  const captureAndUpload = (videoElement, classId) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => {
+        if (!blob) return;
+        const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/screenshot.jpg`);
+        uploadBytes(screenshotRef, blob).catch(err => console.error(err));
+    }, 'image/jpeg');
+  }
+
+  const startSharing = async () => {
+    try {
+      const displayMedia = await navigator.mediaDevices.getDisplayMedia();
+      setStream(displayMedia);
+      setIsSharing(true);
+      const video = document.createElement('video');
+      video.srcObject = displayMedia;
+      video.play();
+      const id = setInterval(() => captureAndUpload(video, selectedClass), 5000);
+      setIntervalId(id);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const stopSharing = () => {
+    stream.getTracks().forEach(track => track.stop());
+    setIsSharing(false);
+    clearInterval(intervalId);
+    setIntervalId(null);
+    setStream(null);
   };
 
   const handleLogout = () => {
@@ -62,18 +72,25 @@ const StudentView = ({ user }) => {
 
   return (
     <div>
-      <h1>Welcome, {user.email}</h1>
-      <div className="card">
-        <video ref={videoRef} autoPlay style={{ width: '100%',
-        height: 'auto',
-        border: '1px solid black' }}></video>
-        <br/>
-        <button onClick={handleScreenShare}>Share Screen</button>
-        <button onClick={stopScreenShare}>Stop Sharing</button>
-      </div>
+      <h1>Student View</h1>
+      {userClasses.length > 1 && (
+          <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
+              <option value="" disabled>Select a class</option>
+              {userClasses.map(c => (
+                  <option key={c} value={c}>{c}</option>
+              ))}
+          </select>
+      )}
+      {selectedClass && (
+          isSharing ? (
+            <button onClick={stopSharing}>Stop Sharing</button>
+          ) : (
+            <button onClick={startSharing}>Start Sharing</button>
+          )
+      )}
       <button onClick={handleLogout}>Logout</button>
     </div>
-  )
-}
+  );
+};
 
 export default StudentView;

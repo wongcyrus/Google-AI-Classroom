@@ -55,7 +55,7 @@ function App() {
     <div className="App">
       {error && <p className="error">{error}</p>}
       {user ? (
-        role === 'teacher' ? <TeacherView /> : <StudentView user={user} />
+        role === 'teacher' ? <TeacherView user={user} /> : <StudentView user={user} />
       ) : (
         <AuthComponent unverifiedUser={unverifiedUser} />
       )}
