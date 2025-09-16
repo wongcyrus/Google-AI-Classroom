@@ -1,4 +1,4 @@
-
+import './MonitorView.css';
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
@@ -6,14 +6,67 @@ import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, a
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 
+// Modal component
+const Modal = ({ show, onClose, title, children }) => {
+  if (!show) {
+    return null;
+  }
+
+  const modalStyle = {
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: '#FFF',
+    padding: '20px',
+    zIndex: 1000,
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+  };
+
+  const overlayStyle = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 999
+  };
+
+  return (
+    <>
+      <div style={overlayStyle} onClick={onClose} />
+      <div style={modalStyle}>
+        <h2>{title}</h2>
+        <div>{children}</div>
+        <button onClick={onClose} style={{ marginTop: '10px' }}>Close</button>
+      </div>
+    </>
+  );
+};
+
 const MonitorView = () => {
   const { classId } = useParams();
   const [students, setStudents] = useState([]);
-  const [screenshots, setScreenshots] = useState({});
+  const [classList, setClassList] = useState([]);
+  const [studentStatuses, setStudentStatuses] = useState([]);
+  const [screenshots, setScreenshots] = useState({}); // Now stores { url, timestamp }
   const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [showNotSharingModal, setShowNotSharingModal] = useState(false);
+  const [now, setNow] = useState(new Date()); // State to trigger re-renders for time check
 
+  // Set up an interval to update the current time every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Effect to fetch class roster and live student statuses
   useEffect(() => {
     if (!classId) return;
 
@@ -21,15 +74,18 @@ const MonitorView = () => {
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
+            setClassList(data.students || []);
             setFrameRate(data.frameRate || 5);
             setIsCapturing(data.isCapturing || false);
+        } else {
+            setClassList([]);
         }
     });
 
     const statusQuery = query(collection(db, 'classes', classId, 'status'));
     const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
-      const studentList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setStudents(studentList);
+      const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setStudentStatuses(statuses);
     });
 
     return () => {
@@ -38,10 +94,27 @@ const MonitorView = () => {
     }
   }, [classId]);
 
+  // Effect to merge the class roster with live statuses
+  useEffect(() => {
+    const combinedStudents = classList.map(email => {
+        const status = studentStatuses.find(s => s.email === email);
+        return {
+            id: status?.id || email,
+            email: email,
+            isSharing: status?.isSharing || false,
+        };
+    });
+    setStudents(combinedStudents);
+  }, [classList, studentStatuses]);
+
+
+  // Effect to fetch the latest screenshot for each student
   useEffect(() => {
     if (students.length === 0) return;
 
     const unsubscribes = students.map(student => {
+      if (student.id === student.email) return () => {};
+
       const screenshotsQuery = query(
         collection(db, 'screenshots'),
         where('classId', '==', classId),
@@ -53,13 +126,27 @@ const MonitorView = () => {
       return onSnapshot(screenshotsQuery, async (snapshot) => {
         if (!snapshot.empty) {
           const doc = snapshot.docs[0];
-          const imagePath = doc.data().imagePath;
+          const screenshotData = doc.data();
           try {
-            const url = await getDownloadURL(ref(storage, imagePath));
-            setScreenshots(prev => ({ ...prev, [student.id]: url }));
+            const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
+            setScreenshots(prev => ({ 
+                ...prev, 
+                [student.id]: { url, timestamp: screenshotData.timestamp } 
+            }));
           } catch (error) {
             console.error("Error getting download URL: ", error);
+            setScreenshots(prev => {
+                const newState = { ...prev };
+                delete newState[student.id];
+                return newState;
+            });
           }
+        } else {
+            setScreenshots(prev => {
+                const newState = { ...prev };
+                delete newState[student.id];
+                return newState;
+            });
         }
       });
     });
@@ -98,16 +185,11 @@ const MonitorView = () => {
     setIsCapturing(newIsCapturing);
   };
 
+  const notSharingStudents = students.filter(s => !s.isSharing);
+
   return (
-    <div className="monitor-view">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1>Monitoring Class: {classId}</h1>
-        <Link to="/teacher">
-            <button>Back to Main View</button>
-        </Link>
-      </div>
-      
-      <div>
+    <div className="monitor-view monitor-layout">
+      <div className="monitor-sidebar">
         <h3>Class Controls</h3>
         <div>
           <input 
@@ -135,20 +217,62 @@ const MonitorView = () => {
             {isCapturing ? 'Stop Capture' : 'Start Capture'}
           </button>
         </div>
+        <div style={{ marginTop: '10px' }}>
+          <button onClick={() => setShowNotSharingModal(true)}>
+            Show Students Not Sharing ({notSharingStudents.length})
+          </button>
+        </div>
+        <div style={{ marginTop: 'auto' }}>
+            <Link to="/teacher">
+                <button>Back to Main View</button>
+            </Link>
+        </div>
       </div>
 
-      <hr />
+      <div className="monitor-main-content">
+        <h1>Monitoring Class: {classId}</h1>
+        <hr />
+        <div className="students-container">
+          {students.filter(student => student.isSharing).map(student => {
+            const screenshotData = screenshots[student.id];
+            let screenshotUrl = null;
 
-      <div className="students-container">
-        {students.map(student => (
-          <StudentScreen
-            key={student.id}
-            student={student}
-            isSharing={student.isSharing}
-            screenshotUrl={screenshots[student.id]}
-          />
-        ))}
+            if (screenshotData && screenshotData.timestamp) {
+              const screenshotTime = screenshotData.timestamp.toDate();
+              const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
+
+              if (secondsDiff <= frameRate) {
+                screenshotUrl = screenshotData.url;
+              }
+            }
+
+            return (
+              <StudentScreen
+                key={student.id}
+                student={student}
+                isSharing={student.isSharing}
+                screenshotUrl={screenshotUrl}
+              />
+            );
+          })}
+        </div>
       </div>
+
+      <Modal 
+        show={showNotSharingModal} 
+        onClose={() => setShowNotSharingModal(false)}
+        title="Students Not Sharing Screen"
+      >
+        {notSharingStudents.length > 0 ? (
+          <ul>
+            {notSharingStudents.map(student => (
+              <li key={student.id}>{student.email}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>All students are currently sharing their screen.</p>
+        )}
+      </Modal>
     </div>
   );
 };

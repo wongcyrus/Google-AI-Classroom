@@ -1,20 +1,14 @@
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, deleteDoc, writeBatch, updateDoc, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, deleteDoc, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
-import StudentScreen from './StudentScreen';
 import ClassManagement from './ClassManagement';
 import { Link, Navigate } from 'react-router-dom';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
-  const [classList, setClassList] = useState([]);
-  const [studentStatuses, setStudentStatuses] = useState([]);
-  const [message, setMessage] = useState('');
-  const [frameRate, setFrameRate] = useState(5);
-  const [isCapturing, setIsCapturing] = useState(false);
   const [role, setRole] = useState(null);
 
   useEffect(() => {
@@ -44,40 +38,6 @@ const TeacherView = ({ user }) => {
     return () => unsubscribe();
   }, [user]);
 
-  useEffect(() => {
-    if (!selectedClass) {
-      setClassList([]);
-      setStudentStatuses([]);
-      return;
-    }
-
-    const classRef = doc(db, "classes", selectedClass);
-    const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setClassList(data.students || []);
-        setFrameRate(data.frameRate || 5);
-        setIsCapturing(data.isCapturing || false);
-      } else {
-        setClassList([]);
-      }
-    });
-
-    const statusRef = collection(db, 'classes', selectedClass, 'status');
-    const unsubscribeStatus = onSnapshot(statusRef, (querySnapshot) => {
-        const statuses = [];
-        querySnapshot.forEach((doc) => {
-            statuses.push({ id: doc.id, ...doc.data() });
-        });
-        setStudentStatuses(statuses);
-    });
-
-    return () => {
-        unsubscribeClass();
-        unsubscribeStatus();
-    };
-  }, [selectedClass]);
-
   const handleLogout = () => {
     signOut(auth);
   };
@@ -106,40 +66,6 @@ const TeacherView = ({ user }) => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!selectedClass || !message.trim()) return;
-    const messagesRef = collection(db, 'classes', selectedClass, 'messages');
-    await addDoc(messagesRef, {
-      message,
-      timestamp: serverTimestamp(),
-    });
-    setMessage('');
-  };
-
-  const handleFrameRateChange = async (e) => {
-    const newRate = parseInt(e.target.value, 10);
-    setFrameRate(newRate);
-    if (selectedClass) {
-      const classRef = doc(db, 'classes', selectedClass);
-      await updateDoc(classRef, { frameRate: newRate });
-    }
-  };
-
-  const toggleCapture = async () => {
-    if (!selectedClass) return;
-    const classRef = doc(db, 'classes', selectedClass);
-    const newIsCapturing = !isCapturing;
-    await updateDoc(classRef, { 
-      isCapturing: newIsCapturing,
-      captureStartedAt: newIsCapturing ? serverTimestamp() : null 
-    });
-    setIsCapturing(newIsCapturing);
-  };
-
-  const getStudentStatus = (email) => {
-    return studentStatuses.find(s => s.email === email);
-  }
-
   // This is the added security check
   if (role && role !== 'teacher') {
     return <Navigate to="/login" />;
@@ -167,53 +93,7 @@ const TeacherView = ({ user }) => {
           </>
         )}
       </div>
-      {selectedClass && (
-        <div>
-          <hr />
-          <h3>Class Controls</h3>
-          <div>
-            <input 
-              type="text" 
-              value={message} 
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Broadcast a message"
-            />
-            <button onClick={handleSendMessage}>Send</button>
-          </div>
-          <div style={{ margin: '10px 0' }}>
-            <label>
-              Frame Rate (seconds): {frameRate}
-              <input 
-                type="range" 
-                min="1" 
-                max="60" 
-                value={frameRate} 
-                onChange={handleFrameRateChange} 
-              />
-            </label>
-          </div>
-          <div>
-            <button onClick={toggleCapture}>
-              {isCapturing ? 'Stop Capture' : 'Start Capture'}
-            </button>
-          </div>
-        </div>
-      )}
       <hr />
-      <div className="student-screens">
-        {selectedClass && classList.map(studentEmail => {
-            const student = { email: studentEmail, id: getStudentStatus(studentEmail)?.id || studentEmail };
-            const status = getStudentStatus(studentEmail);
-            return (
-                <StudentScreen 
-                    key={student.id} 
-                    student={student} 
-                    classId={selectedClass}
-                    isSharing={status?.isSharing || false}
-                />
-            );
-        })}
-      </div>
       <button onClick={handleLogout}>Logout</button>
     </div>
   );
