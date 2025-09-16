@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, query, where, getDocs, collection } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
 
@@ -40,14 +40,6 @@ const ClassManagement = () => {
             // The class exists, so we only add new students.
             await updateDoc(classRef, { students: arrayUnion(...studentEmailList) });
             console.log('Successfully added students to the class!');
-            for (const email of studentEmailList) {
-                const studentQuery = query(collection(db, 'students'), where('email', '==', email));
-                const studentSnap = await getDocs(studentQuery);
-                if (!studentSnap.empty) {
-                    const studentId = studentSnap.docs[0].id;
-                    await setDoc(doc(db, `students/${studentId}/classes`, classId), {});
-                }
-            }
         } else {
             // The class does not exist, so create it with the current user as the teacher.
             await setDoc(classRef, { 
@@ -55,14 +47,6 @@ const ClassManagement = () => {
                 students: studentEmailList 
             });
             console.log('Successfully created the class!');
-            for (const email of studentEmailList) {
-                const studentQuery = query(collection(db, 'students'), where('email', '==', email));
-                const studentSnap = await getDocs(studentQuery);
-                if (!studentSnap.empty) {
-                    const studentId = studentSnap.docs[0].id;
-                    await setDoc(doc(db, `students/${studentId}/classes`, classId), {});
-                }
-            }
         }
     } catch (error) {
         console.error("Error updating or creating class: ", error);

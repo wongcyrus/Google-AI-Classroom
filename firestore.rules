@@ -1,30 +1,45 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // More robust: check for document existence before reading from it.
     function isTeacher() {
-      return exists(/databases/$(database)/documents/students/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/students/$(request.auth.uid)).data.role == 'teacher';
+      return request.auth != null && request.auth.token.role == 'teacher';
+    }
+
+    function isStudentInClass(classId) {
+      // A student is in the class if their email is in the class's student list.
+      return request.auth.token.email in get(/databases/$(database)/documents/classes/$(classId)).data.students;
     }
 
     match /students/{studentId} {
-      allow get: if request.auth.uid == studentId || isTeacher();
+      allow get: if request.auth != null && (request.auth.uid == studentId || isTeacher());
       allow list: if isTeacher();
-      allow create, update: if request.auth.uid == studentId;
+      allow create, update: if request.auth != null && request.auth.uid == studentId;
 
+      // This subcollection is no longer needed for security checks, but might be used
+      // by the student client to list their classes. Write access is student-only.
       match /classes/{classId} {
-        allow write: if isTeacher();
-        allow read: if request.auth.uid == studentId;
+        allow read: if request.auth != null && (request.auth.uid == studentId || isTeacher());
+        allow create: if request.auth.uid == studentId;
       }
     }
 
     match /classes/{classId} {
-      // Allow get if the user is a teacher and either the document doesn't exist
-      // or the user is one of the teachers of the class.
-      allow get: if isTeacher() && (resource == null || request.auth.email in resource.data.teachers);
-      allow list: if isTeacher();
-      allow create: if isTeacher() && request.auth.email in request.resource.data.teachers && classId.size() >= 3;
-      allow update: if isTeacher() && request.auth.email in resource.data.teachers;
+      allow read: if isTeacher() || (request.auth.token.email in resource.data.students);
+      allow create: if isTeacher() &&
+                    (classId == 'demo' ||
+                     (request.resource.data.teachers is list &&
+                      request.auth.token.email in request.resource.data.teachers &&
+                      classId.size() >= 3));
+      allow update, delete: if isTeacher();
+
+      // Messages are now a subcollection of classes
+      match /messages/{messageId} {
+        // WRITE access: Only teachers can create messages.
+        allow create: if isTeacher();
+
+        // READ access: Only teachers or students enrolled in the class can read.
+        allow read: if isTeacher() || isStudentInClass(classId);
+      }
     }
   }
 }

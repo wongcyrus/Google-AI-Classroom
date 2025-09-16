@@ -1,66 +1,57 @@
 
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase-config';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
 import StudentView from './components/StudentView';
-import './App.css';
+import MonitorView from './components/MonitorView'; // Import MonitorView
+import Layout from './components/Layout';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-function App() {
+const App = () => {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
-  const [unverifiedUser, setUnverifiedUser] = useState(null);
-  const [error, setError] = useState('');
+  const [role, setRole] = useState(null); // 'teacher' or 'student'
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        if (currentUser.emailVerified) {
-          setUser(currentUser);
-          setUnverifiedUser(null);
-          setError('');
-          currentUser.getIdTokenResult().then((idTokenResult) => {
-            if (idTokenResult.claims.teacher) {
-              setRole('teacher');
-            } else {
-              setRole('student');
-            }
-          });
-          if (currentUser.email.endsWith('@stu.vtc.edu.hk') || currentUser.email.endsWith('@vtc.edu.hk')) {
-            const studentRef = doc(db, 'students', currentUser.uid);
-            getDoc(studentRef).then((docSnap) => {
-              if (!docSnap.exists()) {
-                setDoc(studentRef, { email: currentUser.email });
-              }
-            });
-          }
-        } else {
-          setUser(null);
-          setRole(null);
-          setUnverifiedUser(currentUser);
-          setError("Please verify your email before logging in.");
-        }
+        await currentUser.reload(); // Make sure custom claims are fresh
+        const idTokenResult = await currentUser.getIdTokenResult(true); // Force refresh
+        const userRole = idTokenResult.claims.role || 'student'; // Default to student
+        
+        setUser(currentUser);
+        setRole(userRole);
+
       } else {
         setUser(null);
         setRole(null);
-        setUnverifiedUser(null);
       }
+      setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
   return (
-    <div className="App">
-      {error && <p className="error">{error}</p>}
-      {user ? (
-        role === 'teacher' ? <TeacherView user={user} /> : <StudentView user={user} />
-      ) : (
-        <AuthComponent unverifiedUser={unverifiedUser} />
-      )}
-    </div>
+    <Router>
+      <Layout>
+        <Routes>
+            <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
+            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView /> : <Navigate to="/login" />} />
+            <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+      </Layout>
+    </Router>
   );
-}
+};
 
 export default App;

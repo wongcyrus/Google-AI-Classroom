@@ -1,10 +1,11 @@
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, deleteDoc, writeBatch, updateDoc, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import StudentScreen from './StudentScreen';
 import ClassManagement from './ClassManagement';
+import { Link } from 'react-router-dom';
 
 const TeacherView = ({ user }) => {
   const [allStudents, setAllStudents] = useState([]);
@@ -16,12 +17,12 @@ const TeacherView = ({ user }) => {
     if (!user) return;
 
     const classesRef = collection(db, "classes");
-    const unsubscribe = onSnapshot(classesRef, (querySnapshot) => {
+    const q = query(classesRef, where("teachers", "array-contains", user.email));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const classesData = [];
       querySnapshot.forEach((doc) => {
-        if (doc.data().teachers.includes(user.email)) {
-            classesData.push({ id: doc.id, ...doc.data() });
-        }
+        classesData.push({ id: doc.id, ...doc.data() });
       });
       setClasses(classesData);
     });
@@ -62,6 +63,41 @@ const TeacherView = ({ user }) => {
     signOut(auth);
   };
 
+  const handleDeleteClass = async () => {
+    if (!selectedClass) {
+      alert("Please select a class to delete.");
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to delete the class "${selectedClass}"? This action cannot be undone.`)) {
+      try {
+        const classRef = doc(db, "classes", selectedClass);
+        
+        // Also delete the class from the students' subcollection
+        const batch = writeBatch(db);
+        const studentsInClass = classList; // from state
+        
+        for (const studentEmail of studentsInClass) {
+            const student = allStudents.find(s => s.email === studentEmail);
+            if (student) {
+                const studentClassRef = doc(db, `students/${student.id}/classes`, selectedClass);
+                batch.delete(studentClassRef);
+            }
+        }
+        
+        batch.delete(classRef);
+        await batch.commit();
+
+        setSelectedClass(null); // Reset selection
+        console.log("Class deleted successfully.");
+
+      } catch (error) {
+        console.error("Error deleting class: ", error);
+        alert("Error deleting class: " + error.message);
+      }
+    }
+  };
+
   const displayedStudents = allStudents.filter(student => classList.includes(student.email));
 
   return (
@@ -77,6 +113,14 @@ const TeacherView = ({ user }) => {
             <option key={c.id} value={c.id}>{c.id}</option>
           ))}
         </select>
+        {selectedClass && (
+          <>
+            <button onClick={handleDeleteClass} style={{ marginLeft: '10px' }}>Delete Class</button>
+            <Link to={`/monitor/${selectedClass}`}>
+                <button style={{ marginLeft: '10px' }}>Monitor</button>
+            </Link>
+          </>
+        )}
       </div>
       <hr />
       <div className="student-screens">
