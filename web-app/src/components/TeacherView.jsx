@@ -1,17 +1,31 @@
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, deleteDoc, writeBatch, updateDoc, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, deleteDoc, writeBatch, updateDoc, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import StudentScreen from './StudentScreen';
 import ClassManagement from './ClassManagement';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 
 const TeacherView = ({ user }) => {
-  const [allStudents, setAllStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [classList, setClassList] = useState([]);
+  const [studentStatuses, setStudentStatuses] = useState([]);
+  const [message, setMessage] = useState('');
+  const [frameRate, setFrameRate] = useState(5);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    const checkRole = async () => {
+        if (user) {
+            const idTokenResult = await user.getIdTokenResult(true);
+            setRole(idTokenResult.claims.role);
+        }
+    };
+    checkRole();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -33,31 +47,36 @@ const TeacherView = ({ user }) => {
   useEffect(() => {
     if (!selectedClass) {
       setClassList([]);
+      setStudentStatuses([]);
       return;
     }
 
     const classRef = doc(db, "classes", selectedClass);
-    const unsubscribe = onSnapshot(classRef, (docSnap) => {
+    const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
-        setClassList(docSnap.data().students || []);
+        const data = docSnap.data();
+        setClassList(data.students || []);
+        setFrameRate(data.frameRate || 5);
+        setIsCapturing(data.isCapturing || false);
       } else {
         setClassList([]);
       }
     });
-    return () => unsubscribe();
-  }, [selectedClass]);
 
-  useEffect(() => {
-    const q = collection(db, 'students');
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const studentsData = [];
-      querySnapshot.forEach((doc) => {
-        studentsData.push({ id: doc.id, ...doc.data() });
-      });
-      setAllStudents(studentsData);
+    const statusRef = collection(db, 'classes', selectedClass, 'status');
+    const unsubscribeStatus = onSnapshot(statusRef, (querySnapshot) => {
+        const statuses = [];
+        querySnapshot.forEach((doc) => {
+            statuses.push({ id: doc.id, ...doc.data() });
+        });
+        setStudentStatuses(statuses);
     });
-    return () => unsubscribe();
-  }, []);
+
+    return () => {
+        unsubscribeClass();
+        unsubscribeStatus();
+    };
+  }, [selectedClass]);
 
   const handleLogout = () => {
     signOut(auth);
@@ -72,21 +91,10 @@ const TeacherView = ({ user }) => {
     if (window.confirm(`Are you sure you want to delete the class "${selectedClass}"? This action cannot be undone.`)) {
       try {
         const classRef = doc(db, "classes", selectedClass);
+        await deleteDoc(classRef);
         
-        // Also delete the class from the students' subcollection
-        const batch = writeBatch(db);
-        const studentsInClass = classList; // from state
-        
-        for (const studentEmail of studentsInClass) {
-            const student = allStudents.find(s => s.email === studentEmail);
-            if (student) {
-                const studentClassRef = doc(db, `students/${student.id}/classes`, selectedClass);
-                batch.delete(studentClassRef);
-            }
-        }
-        
-        batch.delete(classRef);
-        await batch.commit();
+        // Note: The cleanup of the student's class subcollection is removed for now
+        // to prevent crashes and will be addressed in a future update.
 
         setSelectedClass(null); // Reset selection
         console.log("Class deleted successfully.");
@@ -98,7 +106,44 @@ const TeacherView = ({ user }) => {
     }
   };
 
-  const displayedStudents = allStudents.filter(student => classList.includes(student.email));
+  const handleSendMessage = async () => {
+    if (!selectedClass || !message.trim()) return;
+    const messagesRef = collection(db, 'classes', selectedClass, 'messages');
+    await addDoc(messagesRef, {
+      message,
+      timestamp: serverTimestamp(),
+    });
+    setMessage('');
+  };
+
+  const handleFrameRateChange = async (e) => {
+    const newRate = parseInt(e.target.value, 10);
+    setFrameRate(newRate);
+    if (selectedClass) {
+      const classRef = doc(db, 'classes', selectedClass);
+      await updateDoc(classRef, { frameRate: newRate });
+    }
+  };
+
+  const toggleCapture = async () => {
+    if (!selectedClass) return;
+    const classRef = doc(db, 'classes', selectedClass);
+    const newIsCapturing = !isCapturing;
+    await updateDoc(classRef, { 
+      isCapturing: newIsCapturing,
+      captureStartedAt: newIsCapturing ? serverTimestamp() : null 
+    });
+    setIsCapturing(newIsCapturing);
+  };
+
+  const getStudentStatus = (email) => {
+    return studentStatuses.find(s => s.email === email);
+  }
+
+  // This is the added security check
+  if (role && role !== 'teacher') {
+    return <Navigate to="/login" />;
+  }
 
   return (
     <div>
@@ -122,11 +167,52 @@ const TeacherView = ({ user }) => {
           </>
         )}
       </div>
+      {selectedClass && (
+        <div>
+          <hr />
+          <h3>Class Controls</h3>
+          <div>
+            <input 
+              type="text" 
+              value={message} 
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Broadcast a message"
+            />
+            <button onClick={handleSendMessage}>Send</button>
+          </div>
+          <div style={{ margin: '10px 0' }}>
+            <label>
+              Frame Rate (seconds): {frameRate}
+              <input 
+                type="range" 
+                min="1" 
+                max="60" 
+                value={frameRate} 
+                onChange={handleFrameRateChange} 
+              />
+            </label>
+          </div>
+          <div>
+            <button onClick={toggleCapture}>
+              {isCapturing ? 'Stop Capture' : 'Start Capture'}
+            </button>
+          </div>
+        </div>
+      )}
       <hr />
       <div className="student-screens">
-        {selectedClass && displayedStudents.map(student => (
-          <StudentScreen key={student.id} student={student} classId={selectedClass} />
-        ))}
+        {selectedClass && classList.map(studentEmail => {
+            const student = { email: studentEmail, id: getStudentStatus(studentEmail)?.id || studentEmail };
+            const status = getStudentStatus(studentEmail);
+            return (
+                <StudentScreen 
+                    key={student.id} 
+                    student={student} 
+                    classId={selectedClass}
+                    isSharing={status?.isSharing || false}
+                />
+            );
+        })}
       </div>
       <button onClick={handleLogout}>Logout</button>
     </div>

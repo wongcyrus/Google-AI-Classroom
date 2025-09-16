@@ -1,9 +1,9 @@
 
 import { useState, useEffect, useRef } from 'react';
-import { ref, uploadBytes } from 'firebase/storage';
+import { ref, uploadString } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
-import { collection, onSnapshot, doc, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import Notification from './Notification';
 
 const StudentView = ({ user }) => {
@@ -12,10 +12,14 @@ const StudentView = ({ user }) => {
   const [userClasses, setUserClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [notification, setNotification] = useState('');
-  const [frameRate, setFrameRate] = useState(5); // Default framerate
+  const [frameRate, setFrameRate] = useState(5); 
   const intervalRef = useRef(null); 
   const videoRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
+
+  // State for capture control from teacher
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureStartedAt, setCaptureStartedAt] = useState(null);
 
   const handleCloseNotification = () => {
     setNotification('');
@@ -47,9 +51,9 @@ const StudentView = ({ user }) => {
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data.frameRate) {
-              setFrameRate(data.frameRate);
-          }
+          setFrameRate(data.frameRate || 5);
+          setIsCapturing(data.isCapturing || false);
+          setCaptureStartedAt(data.captureStartedAt || null);
       }
     });
 
@@ -81,18 +85,34 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [selectedClass]);
 
-  const captureAndUpload = (videoElement, classId) => {
+  const captureAndUpload = async (videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;
+    console.log("Capturing and uploading screenshot...");
     const canvas = document.createElement('canvas');
     canvas.width = videoElement.videoWidth;
     canvas.height = videoElement.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/screenshot.jpg`);
-      uploadBytes(screenshotRef, blob).catch(err => console.error(err));
-    }, 'image/jpeg');
+    const dataUrl = canvas.toDataURL('image/jpeg');
+
+    const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
+    try {
+      await uploadString(screenshotRef, dataUrl, 'data_url');
+      const screenshotsColRef = collection(db, 'screenshots');
+      await addDoc(screenshotsColRef, {
+          classId,
+          studentId: user.uid,
+          imagePath: screenshotRef.fullPath,
+          timestamp: serverTimestamp(),
+      });
+
+      const statusRef = doc(db, "classes", classId, "status", user.uid);
+      await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
+
+      console.log("Screenshot uploaded successfully.");
+    } catch(err) {
+      console.error("Error uploading screenshot: ", err);
+    }
   };
 
   useEffect(() => {
@@ -101,11 +121,21 @@ const StudentView = ({ user }) => {
       intervalRef.current = null;
     }
 
-    if (isSharing && videoRef.current && selectedClass) {
-      videoRef.current.onloadedmetadata = () => {
+    if (isSharing && isCapturing && videoRef.current && selectedClass) {
+      const now = Date.now();
+      const startTime = captureStartedAt ? captureStartedAt.toDate().getTime() : now;
+      const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
+
+      if (now - startTime < twoAndAHalfHours) {
+        console.log(`Setting up capture interval every ${frameRate} seconds.`);
         intervalRef.current = setInterval(() => {
           captureAndUpload(videoRef.current, selectedClass);
         }, frameRate * 1000);
+      } else {
+          if(isCapturing) {
+              const classRef = doc(db, "classes", selectedClass);
+              setDoc(classRef, { isCapturing: false }, { merge: true });
+          }
       }
     }
 
@@ -114,7 +144,21 @@ const StudentView = ({ user }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSharing, frameRate, selectedClass]);
+  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt]);
+
+  const updateSharingStatus = async (sharingStatus) => {
+      if(!selectedClass) return;
+      try {
+        const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+        await setDoc(statusRef, {
+            isSharing: sharingStatus,
+            email: user.email,
+            name: user.displayName || user.email
+        }, { merge: true });
+      } catch (error) {
+          console.error("Error updating sharing status: ", error);
+      }
+  }
 
   const startSharing = async () => {
     if (!selectedClass) {
@@ -130,6 +174,7 @@ const StudentView = ({ user }) => {
       }
 
       setIsSharing(true);
+      await updateSharingStatus(true);
 
       displayMedia.getVideoTracks()[0].onended = () => {
           stopSharing();
@@ -141,7 +186,7 @@ const StudentView = ({ user }) => {
     }
   };
 
-  const stopSharing = () => {
+  const stopSharing = async () => {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
     }
@@ -154,6 +199,7 @@ const StudentView = ({ user }) => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    await updateSharingStatus(false);
   };
 
   const handleLogout = () => {
@@ -172,17 +218,22 @@ const StudentView = ({ user }) => {
           <option value="" disabled>Select a class</option>
           {userClasses.map(c => (
             <option key={c} value={c}>{c}</option>
-          ))}
+          ))}\
         </select>
       )}
+
       {selectedClass && (
         isSharing ? (
           <button onClick={stopSharing}>Stop Sharing</button>
         ) : (
-          <button onClick={startSharing}>Start Sharing</button>
+          <button onClick={startSharing}>Share Screen</button>
         )
       )}
+
       <button onClick={handleLogout}>Logout</button>
+
+      {isCapturing && isSharing && <p style={{color: 'red'}}>Your screen is being recorded, and please don't do anything sensitives!</p>}
+      
       <video ref={videoRef} autoPlay muted style={{ width: '100%', maxWidth: '600px', display: isSharing ? 'block' : 'none', marginTop: '20px' }} />
     </div>
   );

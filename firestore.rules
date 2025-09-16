@@ -1,25 +1,25 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    
     function isTeacher() {
       return request.auth != null && request.auth.token.role == 'teacher';
     }
 
     function isStudentInClass(classId) {
-      // A student is in the class if their email is in the class's student list.
       return request.auth.token.email in get(/databases/$(database)/documents/classes/$(classId)).data.students;
     }
 
-    match /students/{studentId} {
-      allow get: if request.auth != null && (request.auth.uid == studentId || isTeacher());
-      allow list: if isTeacher();
-      allow create, update: if request.auth != null && request.auth.uid == studentId;
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
 
-      // This subcollection is no longer needed for security checks, but might be used
-      // by the student client to list their classes. Write access is student-only.
+    match /students/{studentId} {
+      allow read: if isTeacher();
+
       match /classes/{classId} {
-        allow read: if request.auth != null && (request.auth.uid == studentId || isTeacher());
-        allow create: if request.auth.uid == studentId;
+        allow delete: if isTeacher();
       }
     }
 
@@ -32,14 +32,21 @@ service cloud.firestore {
                       classId.size() >= 3));
       allow update, delete: if isTeacher();
 
-      // Messages are now a subcollection of classes
       match /messages/{messageId} {
-        // WRITE access: Only teachers can create messages.
         allow create: if isTeacher();
-
-        // READ access: Only teachers or students enrolled in the class can read.
         allow read: if isTeacher() || isStudentInClass(classId);
       }
+
+      match /status/{studentId} {
+        allow read: if isTeacher() || isStudentInClass(classId);
+        allow write: if isStudentInClass(classId) && request.auth.uid == studentId;
+      }
+    }
+
+    match /screenshots/{screenshotId} {
+        allow read: if isTeacher();
+        allow create: if request.auth.uid == request.resource.data.studentId && 
+                         isStudentInClass(request.resource.data.classId);
     }
   }
 }

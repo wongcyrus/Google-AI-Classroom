@@ -1,13 +1,16 @@
+
 [
   {
     "origin": [
-      "https://9000-firebase-ai-invigilator-1757825283554.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev",
+      "https://*.cloudworkstations.dev",
       "https://ai-invigilator-hkiit.web.app",
-      "http://localhost:3000",
-      "http://localhost:5173"
+      "https://9000-firebase-ai-invigilator-1757825283554.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev"
     ],
-    "method": ["GET", "HEAD", "POST", "PUT", "DELETE"],
-    "responseHeader": ["Content-Type", "Authorization"],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+    "responseHeader": [
+      "Content-Type",
+      "Access-Control-Allow-Origin"
+    ],
     "maxAgeSeconds": 3600
   }
 ]

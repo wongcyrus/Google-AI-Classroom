@@ -1,123 +1,152 @@
 
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { Link, useParams } from 'react-router-dom';
+import { db, storage } from '../firebase-config';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 
 const MonitorView = () => {
   const { classId } = useParams();
-  const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
-  const [fullStudents, setFullStudents] = useState([]);
-  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [screenshots, setScreenshots] = useState({});
+  const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
 
     const classRef = doc(db, "classes", classId);
-    const unsubscribe = onSnapshot(classRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setClassData(data);
-        setStudents(data.students || []);
-        setFrameRate(data.frameRate || 5);
-      } else {
-        console.log("No such document!");
-      }
+    const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            setFrameRate(data.frameRate || 5);
+            setIsCapturing(data.isCapturing || false);
+        }
     });
 
-    return () => unsubscribe();
+    const statusQuery = query(collection(db, 'classes', classId, 'status'));
+    const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
+      const studentList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setStudents(studentList);
+    });
+
+    return () => {
+        unsubscribeClass();
+        unsubscribeStatus();
+    }
   }, [classId]);
 
   useEffect(() => {
-    if (students.length === 0) {
-        setFullStudents([]);
-        return;
-    }
+    if (students.length === 0) return;
 
-    const fetchStudents = async () => {
-        const studentsRef = collection(db, 'students');
-        const q = query(studentsRef, where('email', 'in', students));
-        const querySnapshot = await getDocs(q);
-        const studentData = [];
-        querySnapshot.forEach((doc) => {
-            studentData.push({ id: doc.id, ...doc.data() });
-        });
-        setFullStudents(studentData);
-    };
+    const unsubscribes = students.map(student => {
+      const screenshotsQuery = query(
+        collection(db, 'screenshots'),
+        where('classId', '==', classId),
+        where('studentId', '==', student.id),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
 
-    fetchStudents();
-  }, [students]);
+      return onSnapshot(screenshotsQuery, async (snapshot) => {
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          const imagePath = doc.data().imagePath;
+          try {
+            const url = await getDownloadURL(ref(storage, imagePath));
+            setScreenshots(prev => ({ ...prev, [student.id]: url }));
+          } catch (error) {
+            console.error("Error getting download URL: ", error);
+          }
+        }
+      });
+    });
+
+    return () => unsubscribes.forEach(unsub => unsub());
+
+  }, [students, classId]);
 
   const handleSendMessage = async () => {
-    if (!classId || !broadcastMessage) {
-      alert("Please enter a message.");
-      return;
-    }
-    try {
-      const messagesRef = collection(db, 'classes', classId, 'messages');
-      await addDoc(messagesRef, {
-        message: broadcastMessage,
-        timestamp: serverTimestamp(),
-      });
-      setBroadcastMessage('');
-      console.log("Broadcast message sent.");
-    } catch (error) {
-      console.error("Error sending broadcast message: ", error);
-      alert("Error sending broadcast message: " + error.message);
-    }
+    if (!classId || !message.trim()) return;
+    const messagesRef = collection(db, 'classes', classId, 'messages');
+    await addDoc(messagesRef, {
+      message,
+      timestamp: serverTimestamp(),
+    });
+    setMessage('');
   };
 
   const handleFrameRateChange = async (e) => {
-    const newFrameRate = parseInt(e.target.value, 10);
-    setFrameRate(newFrameRate);
-    try {
-      const classRef = doc(db, "classes", classId);
-      await updateDoc(classRef, { frameRate: newFrameRate });
-    } catch (error) {
-      console.error("Error updating frame rate: ", error);
-      alert("Error updating frame rate: " + error.message);
+    const newRate = parseInt(e.target.value, 10);
+    setFrameRate(newRate);
+    if (classId) {
+      const classRef = doc(db, 'classes', classId);
+      await updateDoc(classRef, { frameRate: newRate });
     }
   };
 
+  const toggleCapture = async () => {
+    if (!classId) return;
+    const classRef = doc(db, 'classes', classId);
+    const newIsCapturing = !isCapturing;
+    await updateDoc(classRef, { 
+      isCapturing: newIsCapturing,
+      captureStartedAt: newIsCapturing ? serverTimestamp() : null 
+    });
+    setIsCapturing(newIsCapturing);
+  };
+
   return (
-    <div>
-      <Link to="/teacher">Back to Teacher View</Link>
-      <h1>Monitoring Class: {classId}</h1>
+    <div className="monitor-view">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h1>Monitoring Class: {classId}</h1>
+        <Link to="/teacher">
+            <button>Back to Main View</button>
+        </Link>
+      </div>
       
       <div>
-        <h3>Broadcast Message</h3>
-        <input 
-          type="text" 
-          value={broadcastMessage}
-          onChange={(e) => setBroadcastMessage(e.target.value)}
-          placeholder="Send a message to the whole class"
-        />
-        <button onClick={handleSendMessage}>Send</button>
+        <h3>Class Controls</h3>
+        <div>
+          <input 
+            type="text" 
+            value={message} 
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Broadcast a message"
+          />
+          <button onClick={handleSendMessage}>Send</button>
+        </div>
+        <div style={{ margin: '10px 0' }}>
+          <label>
+            Frame Rate (seconds): {frameRate}
+            <input 
+              type="range" 
+              min="1" 
+              max="60" 
+              value={frameRate} 
+              onChange={handleFrameRateChange} 
+            />
+          </label>
+        </div>
+        <div>
+          <button onClick={toggleCapture}>
+            {isCapturing ? 'Stop Capture' : 'Start Capture'}
+          </button>
+        </div>
       </div>
 
       <hr />
 
-      <div>
-        <h3>Screen Capture Framerate</h3>
-        <label>Delay (seconds): {frameRate}</label>
-        <input 
-          type="range" 
-          min="1" 
-          max="60" 
-          value={frameRate}
-          onChange={handleFrameRateChange}
-        />
-      </div>
-
-      <hr />
-
-      <h2>Student Screens</h2>
-      <div className="student-screens">
-        {fullStudents.map(student => (
-          <StudentScreen key={student.id} student={student} classId={classId} />
+      <div className="students-container">
+        {students.map(student => (
+          <StudentScreen
+            key={student.id}
+            student={student}
+            isSharing={student.isSharing}
+            screenshotUrl={screenshots[student.id]}
+          />
         ))}
       </div>
     </div>
