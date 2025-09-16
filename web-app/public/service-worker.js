@@ -12,11 +12,35 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'show-notification') {
     const { title, body } = event.data;
-    event.waitUntil(
-      self.registration.showNotification(title, {
-        body: body,
-        requireInteraction: true,
-      })
-    );
+    console.log('Service Worker received message to show notification:', { title, body });
+    const promiseChain = self.registration.showNotification(title, {
+      body: body,
+      requireInteraction: true,
+      tag: 'message' // Use a tag to prevent stacking notifications
+    }).then(() => {
+        console.log('Notification shown successfully by service worker.');
+    }).catch((error) => {
+        console.error('Service worker failed to show notification:', error);
+    });
+    event.waitUntil(promiseChain);
   }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('On notification click: ', event.notification.tag);
+  event.notification.close();
+
+  // This looks for an open window with the app and focuses it.
+  event.waitUntil(clients.matchAll({
+    type: "window"
+  }).then((clientList) => {
+    for (const client of clientList) {
+      if (client.url == '/' && 'focus' in client) {
+        return client.focus();
+      }
+    }
+    if (clients.openWindow) {
+      return clients.openWindow('/');
+    }
+  }));
 });
