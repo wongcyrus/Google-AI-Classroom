@@ -55,6 +55,7 @@ const MonitorView = () => {
   const [screenshots, setScreenshots] = useState({}); // Now stores { url, timestamp }
   const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
+  const [imageQuality, setImageQuality] = useState(0.5);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
   const [now, setNow] = useState(new Date()); // State to trigger re-renders for time check
@@ -62,6 +63,11 @@ const MonitorView = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+  const imageQualityOptions = [
+    { label: 'High', value: 1.0 },
+    { label: 'Medium', value: 0.5 },
+    { label: 'Low', value: 0.2 },
+  ];
 
   // Set up an interval to update the current time every second
   useEffect(() => {
@@ -81,6 +87,7 @@ const MonitorView = () => {
             const data = docSnap.data();
             setClassList(data.students || []);
             setFrameRate(data.frameRate || 5);
+            setImageQuality(data.imageQuality || 0.5);
             setIsCapturing(data.isCapturing || false);
         } else {
             setClassList([]);
@@ -179,6 +186,15 @@ const MonitorView = () => {
     }
   };
 
+  const handleImageQualityChange = async (e) => {
+    const newQuality = parseFloat(e.target.value);
+    setImageQuality(newQuality);
+    if (classId) {
+      const classRef = doc(db, 'classes', classId);
+      await updateDoc(classRef, { imageQuality: newQuality });
+    }
+  };
+
   const toggleCapture = async () => {
     if (!classId) return;
     const classRef = doc(db, 'classes', classId);
@@ -229,6 +245,16 @@ const MonitorView = () => {
               <select value={frameRate} onChange={handleFrameRateChange}>
                 {frameRateOptions.map(rate => (
                   <option key={rate} value={rate}>{rate}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div style={{ margin: '10px 0' }}>
+            <label>
+              Image Quality: 
+              <select value={imageQuality} onChange={handleImageQualityChange}>
+                {imageQualityOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </label>

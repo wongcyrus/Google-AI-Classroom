@@ -13,6 +13,7 @@ const StudentView = ({ user }) => {
   const [selectedClass, setSelectedClass] = useState(null);
   const [notification, setNotification] = useState('');
   const [frameRate, setFrameRate] = useState(5); 
+  const [imageQuality, setImageQuality] = useState(0.5);
   const intervalRef = useRef(null); 
   const videoRef = useRef(null);
   const lastClassMessageTimestampRef = useRef(null);
@@ -88,6 +89,7 @@ const StudentView = ({ user }) => {
       if (docSnap.exists()) {
           const data = docSnap.data();
           setFrameRate(data.frameRate || 5);
+          setImageQuality(data.imageQuality || 0.5);
           setIsCapturing(data.isCapturing || false);
           setCaptureStartedAt(data.captureStartedAt || null);
       }
@@ -158,7 +160,8 @@ const StudentView = ({ user }) => {
     canvas.height = videoElement.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg');
+    const dataUrl = canvas.toDataURL('image/jpeg', imageQuality);
+    console.log('Image size (MB):', dataUrl.length / (1024 * 1024));
 
     const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
     try {

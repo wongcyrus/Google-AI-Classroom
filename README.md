@@ -1,9 +1,29 @@
-# AI-invigilator
+# AI-Invigilator
+
 Use AI to monitor students' computer screens during computer-based tests.
+
+## Features
+
+### Student Features
+
+*   **Simple Registration & Login:** Students can easily register and log in with their student email address.
+*   **Real-time Screen Sharing:** Share your screen with the invigilator in real-time for proctoring.
+*   **User-Friendly Controls:** Easily start and stop screen sharing with the click of a button.
+
+### Teacher Features
+
+*   **Student Monitoring Dashboard:** View a gallery of all students who are actively sharing their screens.
+*   **Real-time Screen Updates:** Student screens refresh automatically, providing a live look at their activity.
+*   **Individual Student View:** Click on any student's screen to get a larger, more detailed view.
+
+### Admin Features
+
+*   **Secure Teacher Account Management:** Admins can securely create and manage teacher accounts.
+*   **Role-Based Access Control:** Grant teacher privileges using custom claims in Firebase.
 
 ## How to Use
 
-This application provides different functionalities for students and teachers.
+This application provides different functionalities for students, teachers, and admins.
 
 ### For Students
 
@@ -14,11 +34,11 @@ This application provides different functionalities for students and teachers.
 
 ### For Teachers
 
-1.  **Account Creation:** Teacher accounts must be created manually in the Firebase Console and assigned a 'teacher' role. See the technical details below.
-2.  **Login:** Log in with your teacher account credentials.
+1.  **Account Creation:** A system administrator must create your teacher account.
+2.  **Login:** Once your account is created, log in with your credentials.
 3.  **Monitor Students:** Upon logging in, you will be presented with the Teacher View, which displays the real-time screen captures of all students who are currently sharing their screens. The view automatically refreshes to show the latest screenshots.
 
-## Technical Details for Teacher Account Creation
+### For Admins: Creating Teacher Accounts
 
 To create a teacher account, you need to have `Editor` or `Owner` role in your Firebase project.
 
