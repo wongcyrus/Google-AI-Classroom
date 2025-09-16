@@ -5,6 +5,7 @@ import { db, storage } from '../firebase-config';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
+import IndividualStudentView from './IndividualStudentView';
 
 // Modal component
 const Modal = ({ show, onClose, title, children }) => {
@@ -57,6 +58,10 @@ const MonitorView = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
   const [now, setNow] = useState(new Date()); // State to trigger re-renders for time check
+  const [showControls, setShowControls] = useState(true);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
+  const frameRateOptions = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
 
   // Set up an interval to update the current time every second
   useEffect(() => {
@@ -185,53 +190,63 @@ const MonitorView = () => {
     setIsCapturing(newIsCapturing);
   };
 
+  const handleStudentClick = (student) => {
+    setSelectedStudent(student);
+  };
+
   const notSharingStudents = students.filter(s => !s.isSharing);
 
-  return (
-    <div className="monitor-view monitor-layout">
-      <div className="monitor-sidebar">
-        <h3>Class Controls</h3>
-        <div>
-          <input 
-            type="text" 
-            value={message} 
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Broadcast a message"
-          />
-          <button onClick={handleSendMessage}>Send</button>
-        </div>
-        <div style={{ margin: '10px 0' }}>
-          <label>
-            Frame Rate (seconds): {frameRate}
-            <input 
-              type="range" 
-              min="1" 
-              max="60" 
-              value={frameRate} 
-              onChange={handleFrameRateChange} 
-            />
-          </label>
-        </div>
-        <div>
-          <button onClick={toggleCapture}>
-            {isCapturing ? 'Stop Capture' : 'Start Capture'}
-          </button>
-        </div>
-        <div style={{ marginTop: '10px' }}>
-          <button onClick={() => setShowNotSharingModal(true)}>
-            Show Students Not Sharing ({notSharingStudents.length})
-          </button>
-        </div>
-        <div style={{ marginTop: 'auto' }}>
-            <Link to="/teacher">
-                <button>Back to Main View</button>
-            </Link>
-        </div>
-      </div>
+  const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
+
+  return (
+    <div className="monitor-view">
+      <div className="monitor-header">
+        <h1>
+          Monitoring Class: {classId}
+          <button onClick={() => setShowControls(!showControls)} style={{ marginLeft: '10px' }}>
+            {showControls ? 'Hide Controls' : 'Show Controls'}
+          </button>
+        </h1>
+        <Link to="/teacher">
+            <button>Back to Main View</button>
+        </Link>
+      </div>
+      {showControls && (
+        <div className="class-controls">
+          <div>
+            <input 
+              type="text" 
+              value={message} 
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Broadcast a message"
+            />
+            <button onClick={handleSendMessage}>Send</button>
+          </div>
+          <div style={{ margin: '10px 0' }}>
+            <label>
+              Frame Rate (seconds): 
+              <select value={frameRate} onChange={handleFrameRateChange}>
+                {frameRateOptions.map(rate => (
+                  <option key={rate} value={rate}>{rate}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div>
+            <button onClick={toggleCapture}>
+              {isCapturing ? 'Stop Capture' : 'Start Capture'}
+            </button>
+          </div>
+          <div style={{ marginTop: '10px' }}>
+            <button onClick={() => setShowNotSharingModal(true)}>
+              Show Students Not Sharing ({notSharingStudents.length})
+            </button>
+          </div>
+        </div>
+      )}
+      <hr />
       <div className="monitor-main-content">
-        <h1>Monitoring Class: {classId}</h1>
-        <hr />
         <div className="students-container">
           {students.filter(student => student.isSharing).map(student => {
             const screenshotData = screenshots[student.id];
@@ -252,6 +267,7 @@ const MonitorView = () => {
                 student={student}
                 isSharing={student.isSharing}
                 screenshotUrl={screenshotUrl}
+                onClick={() => handleStudentClick(student)}
               />
             );
           })}
@@ -273,6 +289,13 @@ const MonitorView = () => {
           <p>All students are currently sharing their screen.</p>
         )}
       </Modal>
+      {selectedStudent && (
+        <IndividualStudentView 
+            student={selectedStudent} 
+            screenshotUrl={selectedScreenshotUrl} 
+            onClose={() => setSelectedStudent(null)} 
+        />
+      )}
     </div>
   );
 };
