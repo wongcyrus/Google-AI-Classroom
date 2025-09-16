@@ -18,6 +18,8 @@
   width: 90vw;
   height: 90vh;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .individual-student-view-header {
@@ -27,6 +29,26 @@
   border-bottom: 1px solid #ccc;
   padding-bottom: 10px;
   margin-bottom: 20px;
+}
+
+.individual-student-view-header h2 {
+  white-space: nowrap;
+}
+
+.message-sender {
+  display: flex;
+  flex-grow: 1;
+  margin: 0 20px;
+}
+
+.message-sender input {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+.individual-student-view-body {
+  flex-grow: 1;
+  overflow-y: auto;
 }
 
 .individual-student-view-body img {

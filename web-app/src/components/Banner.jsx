@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const notificationStyle = {
+const bannerStyle = {
   position: 'fixed',
   top: '20px',
   left: '50%',
@@ -26,15 +26,15 @@ const closeButtonStyle = {
   cursor: 'pointer'
 };
 
-const Notification = ({ message, onClose }) => {
+const Banner = ({ message, onClose }) => {
   if (!message) return null;
 
   return (
-    <div style={notificationStyle}>
+    <div style={bannerStyle}>
       {message}
       <button onClick={onClose} style={closeButtonStyle}>&times;</button>
     </div>
   );
 };
 
-export default Notification;
+export default Banner;

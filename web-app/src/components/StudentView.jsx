@@ -4,7 +4,7 @@ import { ref, uploadString } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import Notification from './Notification';
+import Banner from './Banner';
 
 const StudentView = ({ user }) => {
   const [isSharing, setIsSharing] = useState(false);
@@ -15,14 +15,50 @@ const StudentView = ({ user }) => {
   const [frameRate, setFrameRate] = useState(5); 
   const intervalRef = useRef(null); 
   const videoRef = useRef(null);
-  const lastMessageTimestampRef = useRef(null);
+  const lastClassMessageTimestampRef = useRef(null);
+  const lastStudentMessageTimestampRef = useRef(null);
 
   // State for capture control from teacher
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
 
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then((registration) => {
+          console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
+    }
+  }, []);
+
   const handleCloseNotification = () => {
     setNotification('');
+  };
+
+  const showSystemNotification = (message) => {
+    console.log('Attempting to show system notification via Service Worker...');
+    if (!('serviceWorker' in navigator)) {
+      console.error('This browser does not support service workers.');
+      return;
+    }
+
+    if (window.Notification.permission === 'granted') {
+        navigator.serviceWorker.ready.then((registration) => {
+            registration.active.postMessage({
+                type: 'show-notification',
+                title: 'New Message',
+                body: message,
+            });
+            console.log('Message sent to service worker to show notification.');
+        }).catch(error => {
+            console.error('Service worker not ready:', error);
+        });
+    } else {
+      console.log(`Notification permission is ${window.Notification.permission}. Not showing notification.`);
+    }
   };
 
   useEffect(() => {
@@ -74,16 +110,45 @@ const StudentView = ({ user }) => {
       if (querySnapshot.empty) return;
       const messageDoc = querySnapshot.docs[0];
       const message = messageDoc.data();
+      if (!message.timestamp) return;
       const messageTimestamp = message.timestamp.toDate();
 
-      if (lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
+      if (lastClassMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
         setNotification(message.message);
-        lastMessageTimestampRef.current = messageTimestamp;
+        showSystemNotification(message.message);
+        lastClassMessageTimestampRef.current = messageTimestamp;
       }
     });
 
     return () => unsubscribe();
   }, [selectedClass]);
+
+  useEffect(() => {
+    if (!user || !user.email) return;
+
+    const studentMessagesRef = collection(db, 'students', user.email, 'messages');
+    const q = query(
+      studentMessagesRef,
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      if (querySnapshot.empty) return;
+      const messageDoc = querySnapshot.docs[0];
+      const message = messageDoc.data();
+      if (!message.timestamp) return;
+      const messageTimestamp = message.timestamp.toDate();
+
+      if (lastStudentMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
+        setNotification(message.message);
+        showSystemNotification(message.message);
+        lastStudentMessageTimestampRef.current = messageTimestamp;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const captureAndUpload = async (videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;
@@ -161,6 +226,21 @@ const StudentView = ({ user }) => {
   }
 
   const startSharing = async () => {
+    if ('Notification' in window && window.Notification.permission !== 'granted') {
+        try {
+            const permission = await window.Notification.requestPermission();
+            if (permission === 'granted') {
+                console.log('Notification permission granted.');
+                showSystemNotification('Notifications have been enabled!');
+            } else {
+                console.log('Notification permission was denied.');
+                alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
+            }
+        } catch (error) {
+            console.error('Error requesting notification permission:', error);
+        }
+    }
+
     if (!selectedClass) {
         alert("Please select a class before sharing.");
         return;
@@ -211,14 +291,14 @@ const StudentView = ({ user }) => {
 
   return (
     <div>
-      <Notification message={notification} onClose={handleCloseNotification} />
+      <Banner message={notification} onClose={handleCloseNotification} />
       <h1>Student View</h1>
       {userClasses.length > 1 && (
         <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>
           {userClasses.map(c => (
             <option key={c} value={c}>{c}</option>
-          ))}\
+          ))}
         </select>
       )}
 

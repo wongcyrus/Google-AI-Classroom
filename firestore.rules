@@ -21,6 +21,11 @@ service cloud.firestore {
       match /classes/{classId} {
         allow delete: if isTeacher();
       }
+
+      match /messages/{messageId} {
+        allow create: if isTeacher();
+        allow read: if request.auth.token.email == studentId;
+      }
     }
 
     match /classes/{classId} {
