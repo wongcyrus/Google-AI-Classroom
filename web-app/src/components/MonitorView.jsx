@@ -256,7 +256,7 @@ const MonitorView = ({ setTitle }) => {
       </div>
       {showControls && (
         <div className="class-controls">
-          <div>
+          <div className="control-group">
             <input 
               type="text" 
               value={message} 
@@ -265,7 +265,7 @@ const MonitorView = ({ setTitle }) => {
             />
             <button onClick={handleSendMessage}>Send</button>
           </div>
-          <div style={{ margin: '10px 0' }}>
+          <div className="control-group">
             <label>
               Frame Rate (seconds): 
               <select value={frameRate} onChange={handleFrameRateChange}>
@@ -274,8 +274,6 @@ const MonitorView = ({ setTitle }) => {
                 ))}
               </select>
             </label>
-          </div>
-          <div style={{ margin: '10px 0' }}>
             <label>
               Image Quality: 
               <select value={imageQuality} onChange={handleImageQualityChange}>
@@ -285,22 +283,18 @@ const MonitorView = ({ setTitle }) => {
               </select>
             </label>
           </div>
-          <div>
+          <div className="control-group">
             <button onClick={toggleCapture}>
               {isCapturing ? 'Stop Capture' : 'Start Capture'}
             </button>
-          </div>
-          <div style={{ marginTop: '10px' }}>
             <button onClick={() => setIsPaused(!isPaused)}>
               {isPaused ? 'Resume' : 'Pause'}
             </button>
           </div>
-          <div style={{ marginTop: '10px' }}>
+          <div className="control-group">
             <button onClick={() => setShowNotSharingModal(true)}>
               Show Students Not Sharing ({notSharingStudents.length})
             </button>
-          </div>
-          <div style={{ marginTop: '10px' }}>
             <button onClick={handleDownloadAttendance}>
               Download Attendance
             </button>
