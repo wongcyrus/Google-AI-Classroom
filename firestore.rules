@@ -52,6 +52,7 @@ service cloud.firestore {
         allow read: if isTeacher();
         allow create: if request.auth.uid == request.resource.data.studentId && 
                          isStudentInClass(request.resource.data.classId);
+        allow delete: if isTeacher();
     }
   }
 }

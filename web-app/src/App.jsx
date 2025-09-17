@@ -7,6 +7,8 @@ import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
 import StudentView from './components/StudentView';
 import MonitorView from './components/MonitorView'; // Import MonitorView
+import DataManagementView from './components/DataManagementView';
+import ClassManagementView from './components/ClassManagementView';
 import Layout from './components/Layout';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -47,6 +49,8 @@ const App = () => {
             <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
             <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
             <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView /> : <Navigate to="/login" />} />
+            <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView /> : <Navigate to="/login" />} />
+            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
             <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Layout>

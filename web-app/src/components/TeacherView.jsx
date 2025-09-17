@@ -1,9 +1,8 @@
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
-import ClassManagement from './ClassManagement';
 import { Link, Navigate } from 'react-router-dom';
 
 const TeacherView = ({ user }) => {
@@ -42,30 +41,6 @@ const TeacherView = ({ user }) => {
     signOut(auth);
   };
 
-  const handleDeleteClass = async () => {
-    if (!selectedClass) {
-      alert("Please select a class to delete.");
-      return;
-    }
-
-    if (window.confirm(`Are you sure you want to delete the class "${selectedClass}"? This action cannot be undone.`)) {
-      try {
-        const classRef = doc(db, "classes", selectedClass);
-        await deleteDoc(classRef);
-        
-        // Note: The cleanup of the student's class subcollection is removed for now
-        // to prevent crashes and will be addressed in a future update.
-
-        setSelectedClass(null); // Reset selection
-        console.log("Class deleted successfully.");
-
-      } catch (error) {
-        console.error("Error deleting class: ", error);
-        alert("Error deleting class: " + error.message);
-      }
-    }
-  };
-
   // This is the added security check
   if (role && role !== 'teacher') {
     return <Navigate to="/login" />;
@@ -74,8 +49,6 @@ const TeacherView = ({ user }) => {
   return (
     <div>
       <h1>Teacher View</h1>
-      <ClassManagement user={user} />
-      <hr />
       <div>
         <h3>Select a Class to View</h3>
         <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
@@ -86,13 +59,16 @@ const TeacherView = ({ user }) => {
         </select>
         {selectedClass && (
           <>
-            <button onClick={handleDeleteClass} style={{ marginLeft: '10px' }}>Delete Class</button>
             <Link to={`/monitor/${selectedClass}`}>
                 <button style={{ marginLeft: '10px' }}>Monitor</button>
             </Link>
           </>
         )}
       </div>
+      <hr />
+      <Link to="/class-management">
+        <button>Class Management</button>
+      </Link>
       <hr />
       <button onClick={handleLogout}>Logout</button>
     </div>
