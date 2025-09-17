@@ -3,7 +3,7 @@ import React from 'react';
 
 const Layout = ({ children, banner, title }) => {
   return (
-    <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+    <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header style={{
         backgroundColor: 'white',
         padding: '1rem 2rem',
@@ -27,10 +27,19 @@ const Layout = ({ children, banner, title }) => {
         maxWidth: '1280px',
         margin: '0 auto',
         padding: '2rem',
-        textAlign: 'left'
+        textAlign: 'left',
+        flex: 1
       }}>
         {children}
       </main>
+      <footer style={{
+        backgroundColor: 'white',
+        padding: '1rem 2rem',
+        borderTop: '1px solid #dee2e6',
+        textAlign: 'center'
+      }}>
+        <p>Developed by <a href="https://hkiit.edu.hk/en/programmes/it114115-higher-diploma-in-cloud-and-data-centre-administration/index.html" target="_blank" rel="noopener noreferrer">Higher Diploma in Cloud and Data Centre Administration</a></p>
+      </footer>
     </div>
   );
 };
