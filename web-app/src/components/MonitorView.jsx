@@ -1,5 +1,5 @@
 import './MonitorView.css';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -55,12 +55,14 @@ const MonitorView = ({ setTitle }) => {
   const [screenshots, setScreenshots] = useState({}); // Now stores { url, timestamp }
   const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
-  const [imageQuality, setImageQuality] = useState(0.5);
+  const [imageQuality, setImageQuality] = useState(0.2);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
   const [now, setNow] = useState(new Date()); // State to trigger re-renders for time check
   const [showControls, setShowControls] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const pausedRef = useRef(isPaused);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
   const imageQualityOptions = [
@@ -73,6 +75,10 @@ const MonitorView = ({ setTitle }) => {
   useEffect(() => {
     setTitle(`Monitoring Class: ${classId}`);
   }, [classId, setTitle]);
+
+  useEffect(() => {
+    pausedRef.current = isPaused;
+  }, [isPaused]);
 
   // Set up an interval to update the current time every second
   useEffect(() => {
@@ -92,7 +98,7 @@ const MonitorView = ({ setTitle }) => {
             const data = docSnap.data();
             setClassList(data.students || []);
             setFrameRate(data.frameRate || 5);
-            setImageQuality(data.imageQuality || 0.5);
+            setImageQuality(data.imageQuality || 0.2);
             setIsCapturing(data.isCapturing || false);
         } else {
             setClassList([]);
@@ -127,7 +133,7 @@ const MonitorView = ({ setTitle }) => {
 
   // Effect to fetch the latest screenshot for each student
   useEffect(() => {
-    if (students.length === 0) return;
+    if (students.length === 0 || pausedRef.current) return;
 
     const unsubscribes = students.map(student => {
       if (student.id === student.email) return () => {};
@@ -170,7 +176,7 @@ const MonitorView = ({ setTitle }) => {
 
     return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [students, classId]);
+  }, [students, classId, isPaused]);
 
   const handleSendMessage = async () => {
     if (!classId || !message.trim()) return;
@@ -180,6 +186,22 @@ const MonitorView = ({ setTitle }) => {
       timestamp: serverTimestamp(),
     });
     setMessage('');
+  };
+
+  const handleDownloadAttendance = () => {
+    const csvContent = "data:text/csv;charset=utf-8,"
+        + "Email,Sharing Screen\n"
+        + students.map(s => `${s.email},${s.isSharing}`).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const now = new Date();
+    const timeString = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
+    link.setAttribute("download", `${classId}_${timeString}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleFrameRateChange = async (e) => {
@@ -269,8 +291,18 @@ const MonitorView = ({ setTitle }) => {
             </button>
           </div>
           <div style={{ marginTop: '10px' }}>
+            <button onClick={() => setIsPaused(!isPaused)}>
+              {isPaused ? 'Resume' : 'Pause'}
+            </button>
+          </div>
+          <div style={{ marginTop: '10px' }}>
             <button onClick={() => setShowNotSharingModal(true)}>
               Show Students Not Sharing ({notSharingStudents.length})
+            </button>
+          </div>
+          <div style={{ marginTop: '10px' }}>
+            <button onClick={handleDownloadAttendance}>
+              Download Attendance
             </button>
           </div>
         </div>
@@ -286,7 +318,7 @@ const MonitorView = ({ setTitle }) => {
               const screenshotTime = screenshotData.timestamp.toDate();
               const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
 
-              if (secondsDiff <= frameRate) {
+              if (isPaused || secondsDiff <= frameRate) {
                 screenshotUrl = screenshotData.url;
               }
             }
