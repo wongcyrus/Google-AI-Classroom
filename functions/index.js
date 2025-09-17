@@ -1,4 +1,5 @@
 const functions = require("firebase-functions");
+const { analyzeImages } = require("./gemini.js");
 
 // The v1 SDK does not have a direct equivalent for blocking on sign-in.
 // This uses the `onCreate` trigger, which will only check for a verified
@@ -15,3 +16,5 @@ exports.beforeSignIn = functions.auth.user().onCreate((user) => {
   }
   return null; // Return a value for successful execution
 });
+
+exports.analyzeImages = analyzeImages;

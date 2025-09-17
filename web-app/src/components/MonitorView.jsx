@@ -2,6 +2,7 @@ import './MonitorView.css';
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
@@ -63,6 +64,12 @@ const MonitorView = ({ setTitle }) => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
   const pausedRef = useRef(isPaused);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [analysisResults, setAnalysisResults] = useState({});
+  const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
+
+  const functions = getFunctions();
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
   const imageQualityOptions = [
@@ -241,6 +248,32 @@ const MonitorView = ({ setTitle }) => {
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
+  const handleRunAnalysis = async () => {
+    if (!prompt.trim()) {
+        alert('Please enter a prompt.');
+        return;
+    }
+
+    const screenshotsToAnalyze = {};
+    for (const student of students) {
+        if (student.isSharing && screenshots[student.id]) {
+            screenshotsToAnalyze[student.email] = screenshots[student.id].url;
+        }
+    }
+
+    const analyzeImages = httpsCallable(functions, 'analyzeImages');
+    try {
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt });
+        setAnalysisResults(result.data);
+    } catch (error) {
+        console.error("Error calling analyzeImages function: ", error);
+        alert("Error analyzing images: " + error.message);
+    }
+
+    setShowPromptModal(false);
+    setShowAnalysisResultsModal(true);
+  };
+
 
   return (
     <div className="monitor-view">
@@ -289,6 +322,9 @@ const MonitorView = ({ setTitle }) => {
             </button>
             <button onClick={() => setIsPaused(!isPaused)}>
               {isPaused ? 'Resume' : 'Pause'}
+            </button>
+            <button onClick={() => setShowPromptModal(true)}>
+              Prompt
             </button>
           </div>
           <div className="control-group">
@@ -352,6 +388,34 @@ const MonitorView = ({ setTitle }) => {
             onClose={() => setSelectedStudent(null)} 
         />
       )}
+      <Modal
+          show={showPromptModal}
+          onClose={() => setShowPromptModal(false)}
+          title="Analyze Student Screens"
+      >
+          <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Enter your prompt for Gemini"
+              style={{ width: '100%', minHeight: '100px' }}
+          />
+          <button onClick={handleRunAnalysis} style={{ marginTop: '10px' }}>Run</button>
+      </Modal>
+      <Modal
+          show={showAnalysisResultsModal}
+          onClose={() => setShowAnalysisResultsModal(false)}
+          title="Analysis Results"
+      >
+          {Object.keys(analysisResults).length > 0 ? (
+              <ul>
+                  {Object.entries(analysisResults).map(([email, result]) => (
+                      <li key={email}><strong>{email}:</strong> {result}</li>
+                  ))}
+              </ul>
+          ) : (
+              <p>No analysis has been run yet.</p>
+          )}
+      </Modal>
     </div>
   );
 };
