@@ -11,6 +11,7 @@ import DataManagementView from './components/DataManagementView';
 import ClassManagementView from './components/ClassManagementView';
 import Layout from './components/Layout';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import banner from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -43,7 +44,7 @@ const App = () => {
 
   return (
     <Router>
-      <Layout>
+      <Layout banner={banner}>
         <Routes>
             <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
             <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
