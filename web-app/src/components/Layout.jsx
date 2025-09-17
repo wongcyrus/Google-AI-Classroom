@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const Layout = ({ children, banner }) => {
+const Layout = ({ children, banner, title }) => {
   return (
     <div style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
       <header style={{
@@ -16,7 +16,10 @@ const Layout = ({ children, banner }) => {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          {banner && <img src={banner} alt="Banner" style={{ height: '50px' }} />}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {banner && <img src={banner} alt="Banner" style={{ height: '40px', marginRight: '1rem' }} />}
+            {title && <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '500', color: '#212529' }}>{title}</h2>}
+          </div>
           <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#212529' }}>AI Invigilator</h1>
         </div>
       </header>
@@ -24,7 +27,7 @@ const Layout = ({ children, banner }) => {
         maxWidth: '1280px',
         margin: '0 auto',
         padding: '2rem',
-        textAlign: 'center'
+        textAlign: 'left'
       }}>
         {children}
       </main>

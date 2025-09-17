@@ -5,10 +5,14 @@ import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import { Link, Navigate } from 'react-router-dom';
 
-const TeacherView = ({ user }) => {
+const TeacherView = ({ user, setTitle }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    setTitle('Teacher Dashboard');
+  }, [setTitle]);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -48,9 +52,7 @@ const TeacherView = ({ user }) => {
 
   return (
     <div>
-      <h1>Teacher View</h1>
       <div>
-        <h3>Select a Class to View</h3>
         <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>
           {classes.map(c => (

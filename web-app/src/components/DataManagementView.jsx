@@ -1,14 +1,18 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { db, storage } from '../firebase-config';
 import { collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { useParams, Link } from 'react-router-dom';
 
-const DataManagementView = () => {
+const DataManagementView = ({ setTitle }) => {
   const { classId } = useParams();
   const [deleteStartDate, setDeleteStartDate] = useState('');
   const [deleteEndDate, setDeleteEndDate] = useState('');
+
+  useEffect(() => {
+    setTitle(`Data Management: ${classId}`);
+  }, [classId, setTitle]);
 
   const handleDeleteData = async () => {
     if (!deleteStartDate || !deleteEndDate) {
@@ -59,8 +63,6 @@ const DataManagementView = () => {
 
   return (
     <div>
-      <h2>Data Management for {classId}</h2>
-      
       <div>
         <h3>Delete Screenshots by Date Range</h3>
         <input type="date" value={deleteStartDate} onChange={e => setDeleteStartDate(e.target.value)} />

@@ -6,7 +6,7 @@ import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import Banner from './Banner';
 
-const StudentView = ({ user }) => {
+const StudentView = ({ user, setTitle }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [stream, setStream] = useState(null);
   const [userClasses, setUserClasses] = useState([]);
@@ -22,6 +22,10 @@ const StudentView = ({ user }) => {
   // State for capture control from teacher
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
+
+  useEffect(() => {
+    setTitle('Student Dashboard');
+  }, [setTitle]);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -295,7 +299,6 @@ const StudentView = ({ user }) => {
   return (
     <div>
       <Banner message={notification} onClose={handleCloseNotification} />
-      <h1>Student View</h1>
       {userClasses.length > 1 && (
         <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>

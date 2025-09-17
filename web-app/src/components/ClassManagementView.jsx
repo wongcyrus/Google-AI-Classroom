@@ -1,7 +1,12 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ClassManagement from './ClassManagement';
 
-const ClassManagementView = ({ user }) => {
+const ClassManagementView = ({ user, setTitle }) => {
+  useEffect(() => {
+    setTitle('Class Management');
+  }, [setTitle]);
+
   return (
     <div>
       <Link to="/teacher">

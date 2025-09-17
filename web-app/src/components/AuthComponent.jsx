@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -8,11 +8,17 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
 
-const AuthComponent = ({ unverifiedUser }) => {
+const AuthComponent = ({ unverifiedUser, setTitle }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if(setTitle) {
+      setTitle('Login / Register');
+    }
+  }, [setTitle]);
 
   const handleRegister = () => {
     if (!email.endsWith('@stu.vtc.edu.hk') && !email.endsWith('@vtc.edu.hk')) {
@@ -74,7 +80,6 @@ const AuthComponent = ({ unverifiedUser }) => {
 
   return (
     <div>
-      <h1>Student Registration</h1>
       <div className="card">
         <input
           type="email"

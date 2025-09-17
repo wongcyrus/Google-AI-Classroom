@@ -47,7 +47,7 @@ const Modal = ({ show, onClose, title, children }) => {
   );
 };
 
-const MonitorView = () => {
+const MonitorView = ({ setTitle }) => {
   const { classId } = useParams();
   const [students, setStudents] = useState([]);
   const [classList, setClassList] = useState([]);
@@ -68,6 +68,11 @@ const MonitorView = () => {
     { label: 'Medium', value: 0.5 },
     { label: 'Low', value: 0.2 },
   ];
+
+  // Set the title
+  useEffect(() => {
+    setTitle(`Monitoring Class: ${classId}`);
+  }, [classId, setTitle]);
 
   // Set up an interval to update the current time every second
   useEffect(() => {
@@ -218,12 +223,11 @@ const MonitorView = () => {
   return (
     <div className="monitor-view">
       <div className="monitor-header">
-        <h1>
-          Monitoring Class: {classId}
-          <button onClick={() => setShowControls(!showControls)} style={{ marginLeft: '10px' }}>
+        <div>
+          <button onClick={() => setShowControls(!showControls)} style={{ marginRight: '10px' }}>
             {showControls ? 'Hide Controls' : 'Show Controls'}
           </button>
-        </h1>
+        </div>
         <Link to="/teacher">
             <button>Back to Main View</button>
         </Link>

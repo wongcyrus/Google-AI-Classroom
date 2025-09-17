@@ -15,22 +15,31 @@ import banner from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
 const App = () => {
   const [user, setUser] = useState(null);
+  const [unverifiedUser, setUnverifiedUser] = useState(null);
   const [role, setRole] = useState(null); // 'teacher' or 'student'
   const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        await currentUser.reload(); // Make sure custom claims are fresh
-        const idTokenResult = await currentUser.getIdTokenResult(true); // Force refresh
-        const userRole = idTokenResult.claims.role || 'student'; // Default to student
-        
-        setUser(currentUser);
-        setRole(userRole);
-
+        await currentUser.reload();
+        if (currentUser.emailVerified) {
+            const idTokenResult = await currentUser.getIdTokenResult(true); // Force refresh
+            const userRole = idTokenResult.claims.role || 'student'; // Default to student
+            
+            setUser(currentUser);
+            setRole(userRole);
+            setUnverifiedUser(null);
+        } else {
+            setUnverifiedUser(currentUser);
+            setUser(null);
+            setRole(null);
+        }
       } else {
         setUser(null);
         setRole(null);
+        setUnverifiedUser(null);
       }
       setLoading(false);
     });
@@ -44,14 +53,14 @@ const App = () => {
 
   return (
     <Router>
-      <Layout banner={banner}>
+      <Layout banner={banner} title={title}>
         <Routes>
-            <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
-            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
-            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
-            <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView /> : <Navigate to="/login" />} />
-            <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView /> : <Navigate to="/login" />} />
-            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/login" element={!user ? <AuthComponent setTitle={setTitle} unverifiedUser={unverifiedUser} /> : <Navigate to={`/${role}`} />} />
+            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </Layout>
