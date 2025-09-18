@@ -17,7 +17,7 @@ const StudentView = ({ user, setTitle }) => {
   const intervalRef = useRef(null); 
   const videoRef = useRef(null);
   const lastClassMessageTimestampRef = useRef(null);
-  const lastStudentMessageTimestampRef = useRef(null);
+
   const sessionIdRef = useRef(null);
   const [ipAddress, setIpAddress] = useState(null);
 
@@ -156,7 +156,7 @@ const StudentView = ({ user, setTitle }) => {
 
       if (lastClassMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
         setNotification(message.message);
-        showSystemNotification(message.message);
+        setTimeout(() => showSystemNotification(message.message), 0);
         lastClassMessageTimestampRef.current = messageTimestamp;
       }
     });
@@ -165,7 +165,7 @@ const StudentView = ({ user, setTitle }) => {
   }, [selectedClass]);
 
   useEffect(() => {
-    if (!user || !user.email) return;
+    if (!user || !user.email || !selectedClass) return;
 
     const studentMessagesRef = collection(db, 'students', user.email, 'messages');
     const q = query(
@@ -183,13 +183,15 @@ const StudentView = ({ user, setTitle }) => {
 
       if (lastStudentMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
         setNotification(message.message);
-        showSystemNotification(message.message);
+        setTimeout(() => showSystemNotification(message.message), 0);
         lastStudentMessageTimestampRef.current = messageTimestamp;
       }
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, selectedClass]);
+
+
 
   const captureAndUpload = async (videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;

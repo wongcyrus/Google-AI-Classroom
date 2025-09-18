@@ -34,11 +34,13 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(clients.matchAll({
     type: "window"
   }).then((clientList) => {
+    // If a client is already open, focus it.
     for (const client of clientList) {
-      if (client.url == '/' && 'focus' in client) {
+      if ('focus' in client) {
         return client.focus();
       }
     }
+    // Otherwise, open a new window.
     if (clients.openWindow) {
       return clients.openWindow('/');
     }
