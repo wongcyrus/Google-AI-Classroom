@@ -4,11 +4,13 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import { Link, Navigate } from 'react-router-dom';
+import PromptManagement from './PromptManagement';
 
 const TeacherView = ({ user, setTitle }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [role, setRole] = useState(null);
+  const [showPromptModal, setShowPromptModal] = useState(false);
 
   useEffect(() => {
     setTitle('Teacher Dashboard');
@@ -52,6 +54,7 @@ const TeacherView = ({ user, setTitle }) => {
 
   return (
     <div>
+      {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
       <div>
         <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>
@@ -71,6 +74,7 @@ const TeacherView = ({ user, setTitle }) => {
       <Link to="/class-management">
         <button>Class Management</button>
       </Link>
+      <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
       <hr />
       <button onClick={handleLogout}>Logout</button>
     </div>

@@ -23,7 +23,12 @@ const Modal = ({ show, onClose, title, children }) => {
     padding: '20px',
     zIndex: 1000,
     borderRadius: '8px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    width: '60%',
+    minWidth: '500px',
+    height: '60vh',
+    display: 'flex',
+    flexDirection: 'column'
   };
 
   const overlayStyle = {
@@ -41,7 +46,7 @@ const Modal = ({ show, onClose, title, children }) => {
       <div style={overlayStyle} onClick={onClose} />
       <div style={modalStyle}>
         <h2>{title}</h2>
-        <div>{children}</div>
+        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>{children}</div>
         <button onClick={onClose} style={{ marginTop: '10px' }}>Close</button>
       </div>
     </>
@@ -65,10 +70,13 @@ const MonitorView = ({ setTitle }) => {
   const [isPaused, setIsPaused] = useState(false);
   const pausedRef = useRef(isPaused);
   const [showPromptModal, setShowPromptModal] = useState(false);
-  const [prompt, setPrompt] = useState('');
+
   const [analysisResults, setAnalysisResults] = useState({});
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [prompts, setPrompts] = useState([]);
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+  const [editablePromptText, setEditablePromptText] = useState('');
 
   const functions = getFunctions();
 
@@ -78,6 +86,16 @@ const MonitorView = ({ setTitle }) => {
     { label: 'Medium', value: 0.5 },
     { label: 'Low', value: 0.2 },
   ];
+
+  // Effect to fetch prompts
+  useEffect(() => {
+    const promptsCollectionRef = collection(db, 'prompts');
+    const unsubscribe = onSnapshot(promptsCollectionRef, (snapshot) => {
+      const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      setPrompts(promptsData);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Set the title
   useEffect(() => {
@@ -250,8 +268,8 @@ const MonitorView = ({ setTitle }) => {
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
   const handleRunAnalysis = async () => {
-    if (!prompt.trim()) {
-        alert('Please enter a prompt.');
+    if (!editablePromptText.trim()) {
+        alert('Please select or enter a prompt.');
         return;
     }
 
@@ -265,7 +283,7 @@ const MonitorView = ({ setTitle }) => {
     setIsAnalyzing(true);
     const analyzeImages = httpsCallable(functions, 'analyzeImages');
     try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt });
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
         setAnalysisResults(result.data);
     } catch (error) {
         console.error("Error calling analyzeImages function: ", error);
@@ -279,8 +297,8 @@ const MonitorView = ({ setTitle }) => {
   };
 
   const handleRunAllImagesAnalysis = async () => {
-    if (!prompt.trim()) {
-        alert('Please enter a prompt.');
+    if (!editablePromptText.trim()) {
+        alert('Please select or enter a prompt.');
         return;
     }
 
@@ -294,7 +312,7 @@ const MonitorView = ({ setTitle }) => {
     setIsAnalyzing(true);
     const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
     try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt });
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
         setAnalysisResults({ 'All Images': result.data });
     } catch (error) {
         console.error("Error calling analyzeAllImages function: ", error);
@@ -423,21 +441,48 @@ const MonitorView = ({ setTitle }) => {
       )}
       <Modal
           show={showPromptModal}
-          onClose={() => setShowPromptModal(false)}
+          onClose={() => {
+            setShowPromptModal(false);
+            setSelectedPrompt(null);
+            setEditablePromptText(''); // Reset on close
+          }}
           title="Analyze Student Screens"
       >
+          <select 
+            value={selectedPrompt ? selectedPrompt.id : ''} 
+            onChange={(e) => {
+              const prompt = prompts.find(p => p.id === e.target.value);
+              setSelectedPrompt(prompt);
+              setEditablePromptText(prompt ? prompt.promptText : '');
+            }}
+            style={{ width: '100%', marginBottom: '10px' }}
+          >
+            <option value="" disabled>Select a prompt</option>
+            {prompts.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          
           <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Enter your prompt for Gemini"
-              style={{ width: '100%', minHeight: '100px' }}
+              value={editablePromptText}
+              onChange={(e) => setEditablePromptText(e.target.value)}
+              placeholder="Select a prompt or enter text here..."
+              style={{ width: '100%', flexGrow: 1, marginBottom: '10px' }}
           />
-          <button onClick={handleRunAnalysis} style={{ marginTop: '10px' }} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
-          </button>
-          <button onClick={handleRunAllImagesAnalysis} style={{ marginTop: '10px', marginLeft: '10px' }} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
-          </button>
+
+          <div style={{ marginTop: '10px' }}>
+            {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
+            {(selectedPrompt ? selectedPrompt.applyTo.includes('Per Image') : true) && (
+              <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
+                {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
+              </button>
+            )}
+            {(selectedPrompt ? selectedPrompt.applyTo.includes('All Images') : true) && (
+              <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
+                {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
+              </button>
+            )}
+          </div>
       </Modal>
       <Modal
           show={showAnalysisResultsModal}

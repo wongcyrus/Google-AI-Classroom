@@ -54,5 +54,9 @@ service cloud.firestore {
                          isStudentInClass(request.resource.data.classId);
         allow delete: if isTeacher();
     }
+
+    match /prompts/{promptId} {
+      allow read, write: if isTeacher();
+    }
   }
 }
