@@ -6,7 +6,7 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
-const emails = ['cywong@vtc.edu.hk','kcheung@vtc.edu.hk', 'rontam@vtc.edu.hk', 'hli852@vtc.edu.hk', 'callyho@vtc.edu.hk', 'adayuen@vtc.edu.hk']; // Add more emails to this list
+const emails = ['t-cywong1@stu.vtc.edu.hk']; // Add more emails to this list
 
 emails.forEach(email => {
   admin.auth().getUserByEmail(email)

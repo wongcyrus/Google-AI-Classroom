@@ -27,3 +27,34 @@ exports.analyzeImagesFlow = ai.defineFlow(
     return analysisResults;
   }
 );
+
+exports.analyzeAllImagesFlow = ai.defineFlow(
+  {
+    name: 'analyzeAllImagesFlow',
+    inputSchema: z.object({
+      screenshots: z.record(z.string()),
+      prompt: z.string(),
+    }),
+    outputSchema: z.string(),
+  },
+  async ({ screenshots, prompt }) => {
+    const imageParts = Object.entries(screenshots).flatMap(([email, url]) => ([
+      { text: `The following image is the screen shot from ${email}:` },
+      { media: { url } },
+    ]));
+
+    const fullPrompt = [
+      ...imageParts,
+      { text: prompt },
+    ];
+
+    const response = await ai.generate({
+      model: 'vertexai/gemini-2.5-flash-lite',
+      project: process.env.GCLOUD_PROJECT,
+      location: process.env.FUNCTION_REGION,
+      prompt: fullPrompt,
+    });
+
+    return response.text;
+  }
+);

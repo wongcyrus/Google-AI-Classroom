@@ -68,6 +68,7 @@ const MonitorView = ({ setTitle }) => {
   const [prompt, setPrompt] = useState('');
   const [analysisResults, setAnalysisResults] = useState({});
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const functions = getFunctions();
 
@@ -159,7 +160,7 @@ const MonitorView = ({ setTitle }) => {
           const screenshotData = doc.data();
           try {
             const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
-            setScreenshots(prev => ({ 
+            setScreenshots(prev => ({
                 ...prev, 
                 [student.id]: { url, timestamp: screenshotData.timestamp } 
             }));
@@ -196,7 +197,7 @@ const MonitorView = ({ setTitle }) => {
   };
 
   const handleDownloadAttendance = () => {
-    const csvContent = "data:text/csv;charset=utf-8,"
+    const csvContent = "data:text/csv;charset=utf-8," 
         + "Email,Sharing Screen\n"
         + students.map(s => `${s.email},${s.isSharing}`).join("\n");
 
@@ -261,6 +262,7 @@ const MonitorView = ({ setTitle }) => {
         }
     }
 
+    setIsAnalyzing(true);
     const analyzeImages = httpsCallable(functions, 'analyzeImages');
     try {
         const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt });
@@ -268,6 +270,37 @@ const MonitorView = ({ setTitle }) => {
     } catch (error) {
         console.error("Error calling analyzeImages function: ", error);
         alert("Error analyzing images: " + error.message);
+    } finally {
+        setIsAnalyzing(false);
+    }
+
+    setShowPromptModal(false);
+    setShowAnalysisResultsModal(true);
+  };
+
+  const handleRunAllImagesAnalysis = async () => {
+    if (!prompt.trim()) {
+        alert('Please enter a prompt.');
+        return;
+    }
+
+    const screenshotsToAnalyze = {};
+    for (const student of students) {
+        if (student.isSharing && screenshots[student.id]) {
+            screenshotsToAnalyze[student.email] = screenshots[student.id].url;
+        }
+    }
+
+    setIsAnalyzing(true);
+    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
+    try {
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt });
+        setAnalysisResults({ 'All Images': result.data });
+    } catch (error) {
+        console.error("Error calling analyzeAllImages function: ", error);
+        alert("Error analyzing images: " + error.message);
+    } finally {
+        setIsAnalyzing(false);
     }
 
     setShowPromptModal(false);
@@ -362,7 +395,7 @@ const MonitorView = ({ setTitle }) => {
                 onClick={() => handleStudentClick(student)}
               />
             );
-          })}
+          })};
         </div>
       </div>
 
@@ -399,7 +432,12 @@ const MonitorView = ({ setTitle }) => {
               placeholder="Enter your prompt for Gemini"
               style={{ width: '100%', minHeight: '100px' }}
           />
-          <button onClick={handleRunAnalysis} style={{ marginTop: '10px' }}>Run</button>
+          <button onClick={handleRunAnalysis} style={{ marginTop: '10px' }} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
+          </button>
+          <button onClick={handleRunAllImagesAnalysis} style={{ marginTop: '10px', marginLeft: '10px' }} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
+          </button>
       </Modal>
       <Modal
           show={showAnalysisResultsModal}
