@@ -17,6 +17,7 @@ const StudentView = ({ user, setTitle }) => {
   const intervalRef = useRef(null); 
   const videoRef = useRef(null);
   const lastClassMessageTimestampRef = useRef(null);
+  const lastStudentMessageTimestampRef = useRef(null);
 
   const sessionIdRef = useRef(null);
   const [ipAddress, setIpAddress] = useState(null);
@@ -165,7 +166,7 @@ const StudentView = ({ user, setTitle }) => {
   }, [selectedClass]);
 
   useEffect(() => {
-    if (!user || !user.email || !selectedClass) return;
+    if (!user || !user.email) return;
 
     const studentMessagesRef = collection(db, 'students', user.email, 'messages');
     const q = query(
@@ -189,7 +190,7 @@ const StudentView = ({ user, setTitle }) => {
     });
 
     return () => unsubscribe();
-  }, [user, selectedClass]);
+  }, [user]);
 
 
 
