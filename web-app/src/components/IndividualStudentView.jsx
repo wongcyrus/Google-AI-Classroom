@@ -25,6 +25,31 @@ const IndividualStudentView = ({ student, screenshotUrl, onClose }) => {
     }
   };
 
+  const handleShare = async () => {
+    if (navigator.share && screenshotUrl) {
+      try {
+        const response = await fetch(screenshotUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `${student.email}-screenshot.png`, { type: blob.type });
+
+        await navigator.share({
+          files: [file],
+          title: `Screenshot of ${student.email}`,
+          text: `Here is a screenshot of ${student.email}.`,
+        });
+      } catch (error) {
+        console.error('Error sharing:', error);
+      }
+    } else {
+      if (screenshotUrl) {
+        navigator.clipboard.writeText(screenshotUrl);
+        alert('Screenshot URL copied to clipboard!');
+      } else {
+        alert('No screenshot to share.');
+      }
+    }
+  };
+
   return (
     <div className="individual-student-view-overlay" onClick={onClose}>
       <div className="individual-student-view-content" onClick={(e) => e.stopPropagation()}>
@@ -39,6 +64,7 @@ const IndividualStudentView = ({ student, screenshotUrl, onClose }) => {
             />
             <button onClick={handleSendMessage}>Send</button>
           </div>
+          <button onClick={handleShare}>Share</button>
           <button onClick={onClose}>Close</button>
         </div>
         <div className="individual-student-view-body">

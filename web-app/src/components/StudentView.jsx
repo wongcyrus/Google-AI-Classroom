@@ -263,6 +263,8 @@ const StudentView = ({ user, setTitle }) => {
       setIsSharing(true);
       await updateSharingStatus(true);
 
+      showSystemNotification("Screen recording has started.");
+
       displayMedia.getVideoTracks()[0].onended = () => {
           stopSharing();
       };
@@ -287,6 +289,8 @@ const StudentView = ({ user, setTitle }) => {
       videoRef.current.srcObject = null;
     }
     await updateSharingStatus(false);
+
+    showSystemNotification("Screen recording has stopped.");
   };
 
   const handleLogout = () => {

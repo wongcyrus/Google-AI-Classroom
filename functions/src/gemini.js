@@ -1,7 +1,8 @@
-const { ai } = require('./ai.js');
-const z = require('zod');
+import { ai } from './ai.js';
+import { geminiPro } from '@genkit-ai/google-genai';
+import { z } from 'zod';
 
-exports.analyzeImagesFlow = ai.defineFlow(
+export const analyzeImagesFlow = ai.defineFlow(
   {
     name: 'analyzeImagesFlow',
     inputSchema: z.object({
@@ -14,7 +15,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
       const response = await ai.generate({
-        model: 'vertexai/gemini-2.5-flash-lite',
+        model: 'googleai/gemini-1.5-flash-001',
         project: process.env.GCLOUD_PROJECT,
         location: process.env.FUNCTION_REGION,
         prompt: [
@@ -22,7 +23,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
           { text: prompt },
         ],
       });
-      analysisResults[email] = response.text;
+      analysisResults[email] = await response.text();
     }
     return analysisResults;
   }

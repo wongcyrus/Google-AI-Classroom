@@ -3,9 +3,8 @@
   {
     "origin": [
       "https://*.cloudworkstations.dev",
-      "https://ai-invigilator-hkiit.web.app",
-      "https://9000-firebase-ai-invigilator-1757825283554.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev"
-    ],
+      "https://ai-invigilator-hkiit.web.app"
+      ],
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
     "responseHeader": [
       "Content-Type",
