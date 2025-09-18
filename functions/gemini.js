@@ -1,6 +1,6 @@
-const { https } = require("firebase-functions");
-const { VertexAI } = require('@google-cloud/vertexai');
-const axios = require('axios');
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import { VertexAI } from '@google-cloud/vertexai';
+import axios from 'axios';
 
 // Initialize Vertex AI
 const vertex_ai = new VertexAI({project: 'ai-invigilator-hkiit', location: 'us-central1'});
@@ -74,13 +74,13 @@ async function analyzeImage(imageUrl, prompt) {
     }
 }
 
-exports.analyzeImages = https.onCall(async (data, context) => {
+export const analyzeImages = onCall(async (request) => {
     // Make sure the user is authenticated
-    if (!context.auth) {
-      throw new https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
 
-    const { screenshots, prompt } = data;
+    const { screenshots, prompt } = request.data;
 
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
