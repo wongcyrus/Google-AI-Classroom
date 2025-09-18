@@ -1,10 +1,10 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { ref, uploadString } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import Banner from './Banner';
+import { v4 as uuidv4 } from 'uuid';
 
 const StudentView = ({ user, setTitle }) => {
   const [isSharing, setIsSharing] = useState(false);
@@ -18,6 +18,8 @@ const StudentView = ({ user, setTitle }) => {
   const videoRef = useRef(null);
   const lastClassMessageTimestampRef = useRef(null);
   const lastStudentMessageTimestampRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const [ipAddress, setIpAddress] = useState(null);
 
   // State for capture control from teacher
   const [isCapturing, setIsCapturing] = useState(false);
@@ -26,6 +28,13 @@ const StudentView = ({ user, setTitle }) => {
   useEffect(() => {
     setTitle('Student Dashboard');
   }, [setTitle]);
+
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then(response => response.json())
+      .then(data => setIpAddress(data.ip))
+      .catch(error => console.error('Error fetching IP address:', error));
+  }, []);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -38,6 +47,32 @@ const StudentView = ({ user, setTitle }) => {
         });
     }
   }, []);
+
+  useEffect(() => {
+    if (user && selectedClass) {
+      const newSessionId = uuidv4();
+      sessionIdRef.current = newSessionId;
+      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+      const statusData = { sessionId: newSessionId };
+      if (ipAddress) {
+        statusData.ipAddress = ipAddress;
+      }
+      setDoc(statusRef, statusData, { merge: true });
+
+      const unsubscribe = onSnapshot(statusRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.sessionId && data.sessionId !== sessionIdRef.current) {
+            alert("Another session has started. You will be logged out.");
+            stopSharing();
+            signOut(auth);
+          }
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [user, selectedClass, ipAddress]);
 
   const handleCloseNotification = () => {
     setNotification('');
