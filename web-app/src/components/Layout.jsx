@@ -29,10 +29,10 @@ const Layout = ({ children, banner, title, logoutButton }) => {
         </div>
       </header>
       <main style={{
+        width: '100%',
         maxWidth: '1280px',
         margin: '0 auto',
         padding: '2rem',
-        textAlign: 'left',
         flex: 1
       }}>
         {children}

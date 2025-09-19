@@ -334,9 +334,7 @@ const MonitorView = ({ setTitle }) => {
             {showControls ? 'Hide Controls' : 'Show Controls'}
           </button>
         </div>
-        <Link to="/teacher">
-            <button>Back to Main View</button>
-        </Link>
+        <Link to="/teacher">Back to Main View</Link>
       </div>
       {showControls && (
         <div className="class-controls">

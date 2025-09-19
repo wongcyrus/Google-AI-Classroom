@@ -56,7 +56,8 @@ const TeacherView = ({ user, setTitle }) => {
     <div>
       {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
       <div>
-        <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
+        <label htmlFor="class-select">Select a class to monitor:</label>
+        <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>
           {classes.map(c => (
             <option key={c.id} value={c.id}>{c.id}</option>

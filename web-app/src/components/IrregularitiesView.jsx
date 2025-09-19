@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
@@ -87,7 +88,10 @@ const IrregularitiesView = () => {
 
   return (
     <div className="irregularities-view-container">
-      <h2>Irregularities Report</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h2>Irregularities Report</h2>
+        <Link to="/teacher">Back to Dashboard</Link>
+      </div>
       <div className="filters-and-actions">
         <div className="date-filters">
           <label>From:</label>

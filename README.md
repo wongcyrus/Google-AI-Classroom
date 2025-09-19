@@ -1,3 +1,5 @@
+<p align="center"><img src="web-app/src/assets/logo.jpg" alt="AI Invigilator Logo" width="200"/></p>
+
 # AI Invigilator
 
 An intelligent proctoring solution designed to monitor students' computer screens during computer-based tests using AI analysis. This project leverages the Gemini model to detect potential academic dishonesty, providing a robust tool for modern online assessments.

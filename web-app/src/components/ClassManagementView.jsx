@@ -9,9 +9,7 @@ const ClassManagementView = ({ user, setTitle }) => {
 
   return (
     <div>
-      <Link to="/teacher">
-        <button>Back to Teacher View</button>
-      </Link>
+      <Link to="/teacher">Back to Teacher View</Link>
       <ClassManagement user={user} />
     </div>
   );

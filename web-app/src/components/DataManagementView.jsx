@@ -71,7 +71,7 @@ const DataManagementView = ({ setTitle }) => {
       </div>
 
       <hr />
-      <Link to="/teacher"><button>Back to Teacher View</button></Link>
+      <Link to="/teacher">Back to Teacher View</Link>
     </div>
   );
 };
