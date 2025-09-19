@@ -58,5 +58,9 @@ service cloud.firestore {
     match /prompts/{promptId} {
       allow read, write: if isTeacher();
     }
+
+    match /irregularities/{irregularityId} {
+      allow read, create: if isTeacher();
+    }
   }
 }

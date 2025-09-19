@@ -34,6 +34,45 @@ const sendMessageTool = ai.defineTool(
   }
 );
 
+const recordIrregularity = ai.defineTool(
+  {
+    name: 'recordIrregularity',
+    description: 'Records an irregularity activity.',
+    inputSchema: z.object({
+      email: z.string().describe('The email address of the student.'),
+      title: z.string().describe('The title of the irregularity.'),
+      message: z.string().describe('The description of the irregularity.'),
+      imageUrl: z.string().describe('The URL of the image associated with the irregularity.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async ({ email, title, message, imageUrl }) => {
+    try {
+      const db = getFirestore();
+      const irregularitiesRef = db.collection('irregularities');
+
+      const pathRegex = /o\/(.*?)\?alt=media/;
+      const match = imageUrl.match(pathRegex);
+      let imagePath = imageUrl;
+      if (match && match[1]) {
+        imagePath = decodeURIComponent(match[1]);
+      }
+
+      await irregularitiesRef.add({
+        email,
+        title,
+        message,
+        imageUrl: imagePath,
+        timestamp: FieldValue.serverTimestamp(),
+      });
+      return `Successfully recorded irregularity for ${email}.`;
+    } catch (error) {
+      console.error("Error recording irregularity:", error);
+      return `Failed to record irregularity for ${email}. Error: ${error.message}`;
+    }
+  }
+);
+
 exports.analyzeImagesFlow = ai.defineFlow(
   {
     name: 'analyzeImagesFlow',
@@ -53,10 +92,10 @@ exports.analyzeImagesFlow = ai.defineFlow(
                 temperature: 0,
                 topP: 0.1,
                 prompt: [
+                  { text: `This screen belongs to ${email} (image URL: ${url}). ${prompt}` },
                   { media: { url } },
-                  { text: `This screen belongs to ${email}. ${prompt}` },
                 ],
-                tools: [sendMessageTool], // Make tool available to the model
+                tools: [sendMessageTool, recordIrregularity], // Make tool available to the model
               });
               analysisResults[email] = response.text;
             }
@@ -75,7 +114,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
           },
           async ({ screenshots, prompt }) => {
             const imageParts = Object.entries(screenshots).flatMap(([email, url]) => ([
-              { text: `The following image is the screen shot from ${email}:` },
+              { text: `The following image is the screen shot from ${email} (image URL: ${url}):` },
               { media: { url } },
             ]));
         
@@ -91,7 +130,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
               temperature: 0,
               topP: 0.1,
               prompt: fullPrompt,
-              tools: [sendMessageTool], // Make tool available to the model
+              tools: [sendMessageTool, recordIrregularity], // Make tool available to the model
             });
         
             return response.text;

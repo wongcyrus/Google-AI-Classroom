@@ -75,6 +75,9 @@ const TeacherView = ({ user, setTitle }) => {
         <button>Class Management</button>
       </Link>
       <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
+      <Link to="/teacher/irregularities">
+        <button style={{ marginLeft: '10px' }}>Review Irregularities</button>
+      </Link>
       <hr />
       <button onClick={handleLogout}>Logout</button>
     </div>
