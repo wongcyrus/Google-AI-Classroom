@@ -1,5 +1,5 @@
 import './MonitorView.css';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -79,8 +79,16 @@ const MonitorView = ({ setTitle }) => {
   const [editablePromptText, setEditablePromptText] = useState('');
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
-  const [samplingRate, setSamplingRate] = useState(1);
-  const frameCountRef = useRef(0);
+  const [samplingRate, setSamplingRate] = useState(5);
+  const analysisCounterRef = useRef(0);
+
+  // Refs for stable callbacks
+  const studentsRef = useRef(students);
+  useEffect(() => { studentsRef.current = students; }, [students]);
+  const screenshotsRef = useRef(screenshots);
+  useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
+  const editablePromptTextRef = useRef(editablePromptText);
+  useEffect(() => { editablePromptTextRef.current = editablePromptText; }, [editablePromptText]);
 
   const functions = getFunctions();
 
@@ -90,6 +98,32 @@ const MonitorView = ({ setTitle }) => {
     { label: 'Medium', value: 0.5 },
     { label: 'Low', value: 0.2 },
   ];
+
+  const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze) => {
+    if (!editablePromptTextRef.current.trim()) return;
+    console.log(`[${new Date().toISOString()}] Running per-image analysis for:`, Object.keys(screenshotsToAnalyze));
+    const analyzeImages = httpsCallable(functions, 'analyzeImages');
+    try {
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current });
+        console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
+        setAnalysisResults(prev => ({ ...prev, ...result.data }));
+    } catch (error) {
+        console.error("Error calling analyzeImages function: ", error);
+    }
+  }, [functions]);
+
+  const runAllImagesAnalysis = useCallback(async (screenshotsToAnalyze) => {
+    if (!editablePromptTextRef.current.trim()) return;
+    console.log(`[${new Date().toISOString()}] Running all-images analysis for ${Object.keys(screenshotsToAnalyze).length} images.`);
+    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
+    try {
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current });
+        console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
+        setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
+    } catch (error) {
+        console.error("Error calling analyzeAllImages function: ", error);
+    }
+  }, [functions]);
 
   // Effect to fetch prompts
   useEffect(() => {
@@ -149,7 +183,7 @@ const MonitorView = ({ setTitle }) => {
 
   // Effect to merge the class roster with live statuses
   useEffect(() => {
-    const combinedStudents = classList.map(email => {
+    const newStudents = classList.map(email => {
         const status = studentStatuses.find(s => s.email === email);
         return {
             id: status?.id || email,
@@ -157,7 +191,13 @@ const MonitorView = ({ setTitle }) => {
             isSharing: status?.isSharing || false,
         };
     });
-    setStudents(combinedStudents);
+
+    setStudents(prevStudents => {
+      if (JSON.stringify(prevStudents) === JSON.stringify(newStudents)) {
+        return prevStudents;
+      }
+      return newStudents;
+    });
   }, [classList, studentStatuses]);
 
 
@@ -183,13 +223,13 @@ const MonitorView = ({ setTitle }) => {
           try {
             const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
             setScreenshots(prev => ({
-                ...prev, 
-                [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath } 
+                ...prev,
+                [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath }
             }));
 
             if (isPerImageAnalysisRunning && isCapturing) {
-              frameCountRef.current += 1;
-              if (frameCountRef.current % samplingRate === 0) {
+              analysisCounterRef.current += 1;
+              if (analysisCounterRef.current % samplingRate === 0) {
                 const screenshotsToAnalyze = { [student.email]: url };
                 runPerImageAnalysis(screenshotsToAnalyze);
               }
@@ -214,24 +254,27 @@ const MonitorView = ({ setTitle }) => {
 
     return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate]);
+  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis]);
 
   useEffect(() => {
-    if (isAllImagesAnalysisRunning && isCapturing) {
-      frameCountRef.current += 1;
-      if (frameCountRef.current % samplingRate === 0) {
-        const screenshotsToAnalyze = {};
-        for (const student of students) {
-            if (student.isSharing && screenshots[student.id]) {
-                screenshotsToAnalyze[student.email] = screenshots[student.id].url;
-            }
-        }
-        if (Object.keys(screenshotsToAnalyze).length > 0) {
-          runAllImagesAnalysis(screenshotsToAnalyze);
+    if (!isAllImagesAnalysisRunning || !isCapturing) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const screenshotsToAnalyze = {};
+      for (const student of studentsRef.current) {
+        if (student.isSharing && screenshotsRef.current[student.id]) {
+          screenshotsToAnalyze[student.email] = screenshotsRef.current[student.id].url;
         }
       }
-    }
-  }, [screenshots, isAllImagesAnalysisRunning, isCapturing, samplingRate, students]);
+      if (Object.keys(screenshotsToAnalyze).length > 0) {
+        runAllImagesAnalysis(screenshotsToAnalyze);
+      }
+    }, samplingRate * frameRate * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis]);
 
   const handleSendMessage = async () => {
     if (!classId || !message.trim()) return;
@@ -354,28 +397,6 @@ const MonitorView = ({ setTitle }) => {
     setShowAnalysisResultsModal(true);
   };
 
-  const runPerImageAnalysis = async (screenshotsToAnalyze) => {
-    if (!editablePromptText.trim()) return;
-    const analyzeImages = httpsCallable(functions, 'analyzeImages');
-    try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
-        setAnalysisResults(prev => ({ ...prev, ...result.data }));
-    } catch (error) {
-        console.error("Error calling analyzeImages function: ", error);
-    }
-  };
-
-  const runAllImagesAnalysis = async (screenshotsToAnalyze) => {
-    if (!editablePromptText.trim()) return;
-    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
-    try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
-        setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
-    } catch (error) {
-        console.error("Error calling analyzeAllImages function: ", error);
-    }
-  };
-
 
   return (
     <div className="monitor-view">
@@ -437,10 +458,10 @@ const MonitorView = ({ setTitle }) => {
           </div>
           {editablePromptText && (
             <div className="control-group">
-              <button onClick={() => setIsPerImageAnalysisRunning(prev => !prev)}>
+              <button onClick={() => setIsPerImageAnalysisRunning(prev => !prev)} disabled={isAllImagesAnalysisRunning}>
                 {isPerImageAnalysisRunning ? 'Stop Per Image Analysis' : 'Start Per Image Analysis'}
               </button>
-              <button onClick={() => setIsAllImagesAnalysisRunning(prev => !prev)}>
+              <button onClick={() => setIsAllImagesAnalysisRunning(prev => !prev)} disabled={isPerImageAnalysisRunning}>
                 {isAllImagesAnalysisRunning ? 'Stop All Images Analysis' : 'Start All Images Analysis'}
               </button>
               <label>
