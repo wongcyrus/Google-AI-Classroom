@@ -77,6 +77,10 @@ const MonitorView = ({ setTitle }) => {
   const [prompts, setPrompts] = useState([]);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
+  const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
+  const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
+  const [samplingRate, setSamplingRate] = useState(1);
+  const frameCountRef = useRef(0);
 
   const functions = getFunctions();
 
@@ -180,8 +184,16 @@ const MonitorView = ({ setTitle }) => {
             const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
             setScreenshots(prev => ({
                 ...prev, 
-                [student.id]: { url, timestamp: screenshotData.timestamp } 
+                [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath } 
             }));
+
+            if (isPerImageAnalysisRunning && isCapturing) {
+              frameCountRef.current += 1;
+              if (frameCountRef.current % samplingRate === 0) {
+                const screenshotsToAnalyze = { [student.email]: url };
+                runPerImageAnalysis(screenshotsToAnalyze);
+              }
+            }
           } catch (error) {
             console.error("Error getting download URL: ", error);
             setScreenshots(prev => {
@@ -202,7 +214,24 @@ const MonitorView = ({ setTitle }) => {
 
     return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [students, classId, isPaused]);
+  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate]);
+
+  useEffect(() => {
+    if (isAllImagesAnalysisRunning && isCapturing) {
+      frameCountRef.current += 1;
+      if (frameCountRef.current % samplingRate === 0) {
+        const screenshotsToAnalyze = {};
+        for (const student of students) {
+            if (student.isSharing && screenshots[student.id]) {
+                screenshotsToAnalyze[student.email] = screenshots[student.id].url;
+            }
+        }
+        if (Object.keys(screenshotsToAnalyze).length > 0) {
+          runAllImagesAnalysis(screenshotsToAnalyze);
+        }
+      }
+    }
+  }, [screenshots, isAllImagesAnalysisRunning, isCapturing, samplingRate, students]);
 
   const handleSendMessage = async () => {
     if (!classId || !message.trim()) return;
@@ -325,6 +354,28 @@ const MonitorView = ({ setTitle }) => {
     setShowAnalysisResultsModal(true);
   };
 
+  const runPerImageAnalysis = async (screenshotsToAnalyze) => {
+    if (!editablePromptText.trim()) return;
+    const analyzeImages = httpsCallable(functions, 'analyzeImages');
+    try {
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
+        setAnalysisResults(prev => ({ ...prev, ...result.data }));
+    } catch (error) {
+        console.error("Error calling analyzeImages function: ", error);
+    }
+  };
+
+  const runAllImagesAnalysis = async (screenshotsToAnalyze) => {
+    if (!editablePromptText.trim()) return;
+    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
+    try {
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
+        setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
+    } catch (error) {
+        console.error("Error calling analyzeAllImages function: ", error);
+    }
+  };
+
 
   return (
     <div className="monitor-view">
@@ -384,6 +435,27 @@ const MonitorView = ({ setTitle }) => {
               Download Attendance
             </button>
           </div>
+          {editablePromptText && (
+            <div className="control-group">
+              <button onClick={() => setIsPerImageAnalysisRunning(prev => !prev)}>
+                {isPerImageAnalysisRunning ? 'Stop Per Image Analysis' : 'Start Per Image Analysis'}
+              </button>
+              <button onClick={() => setIsAllImagesAnalysisRunning(prev => !prev)}>
+                {isAllImagesAnalysisRunning ? 'Stop All Images Analysis' : 'Start All Images Analysis'}
+              </button>
+              <label>
+                Analysis Interval:
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={samplingRate}
+                  onChange={(e) => setSamplingRate(Number(e.target.value))}
+                />
+                {samplingRate}
+              </label>
+            </div>
+          )}
         </div>
       )}
       <hr />
@@ -441,8 +513,6 @@ const MonitorView = ({ setTitle }) => {
           show={showPromptModal}
           onClose={() => {
             setShowPromptModal(false);
-            setSelectedPrompt(null);
-            setEditablePromptText(''); // Reset on close
           }}
           title="Analyze Student Screens"
       >
