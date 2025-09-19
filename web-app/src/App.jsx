@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase-config';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
@@ -47,13 +47,21 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
+  const handleLogout = () => {
+    signOut(auth);
+  };
+
   if (loading) {
     return <div>Loading...</div>;
   }
 
   return (
     <Router>
-      <Layout banner={banner} title={title}>
+        <Layout 
+            banner={banner} 
+            title={title} 
+            logoutButton={user && <button onClick={handleLogout} className="student-view-button">Logout</button>}
+        >
         <Routes>
             <Route path="/login" element={!user ? <AuthComponent setTitle={setTitle} unverifiedUser={unverifiedUser} /> : <Navigate to={`/${role}`} />} />
             <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />

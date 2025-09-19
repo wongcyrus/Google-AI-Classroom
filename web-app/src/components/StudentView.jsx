@@ -5,6 +5,7 @@ import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import Banner from './Banner';
 import { v4 as uuidv4 } from 'uuid';
+import './StudentView.css';
 
 const StudentView = ({ user, setTitle }) => {
   const [isSharing, setIsSharing] = useState(false);
@@ -12,9 +13,9 @@ const StudentView = ({ user, setTitle }) => {
   const [userClasses, setUserClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [notification, setNotification] = useState('');
-  const [frameRate, setFrameRate] = useState(5); 
+  const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
-  const intervalRef = useRef(null); 
+  const intervalRef = useRef(null);
   const videoRef = useRef(null);
   const lastClassMessageTimestampRef = useRef(null);
   const lastStudentMessageTimestampRef = useRef(null);
@@ -22,13 +23,14 @@ const StudentView = ({ user, setTitle }) => {
   const sessionIdRef = useRef(null);
   const [ipAddress, setIpAddress] = useState(null);
 
-  // State for capture control from teacher
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
 
   useEffect(() => {
-    setTitle('Student Dashboard');
-  }, [setTitle]);
+    if (user) {
+        setTitle(`Student Dashboard - ${user.email}`);
+    }
+  }, [user, setTitle]);
 
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
@@ -80,25 +82,16 @@ const StudentView = ({ user, setTitle }) => {
   };
 
   const showSystemNotification = (message) => {
-    console.log('Attempting to show system notification via Service Worker...');
-    if (!('serviceWorker' in navigator)) {
-      console.error('This browser does not support service workers.');
-      return;
-    }
+    if (!('serviceWorker' in navigator)) return;
 
     if (window.Notification.permission === 'granted') {
-        navigator.serviceWorker.ready.then((registration) => {
-            registration.active.postMessage({
-                type: 'show-notification',
-                title: 'New Message',
-                body: message,
-            });
-            console.log('Message sent to service worker to show notification.');
-        }).catch(error => {
-            console.error('Service worker not ready:', error);
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.active.postMessage({
+          type: 'show-notification',
+          title: 'New Message',
+          body: message,
         });
-    } else {
-      console.log(`Notification permission is ${window.Notification.permission}. Not showing notification.`);
+      });
     }
   };
 
@@ -111,10 +104,8 @@ const StudentView = ({ user, setTitle }) => {
       setUserClasses(classes);
       if (classes.length === 1) {
         setSelectedClass(classes[0]);
-      } else {
-        if (selectedClass && !classes.includes(selectedClass)) {
-            setSelectedClass(null);
-        }
+      } else if (selectedClass && !classes.includes(selectedClass)) {
+        setSelectedClass(null);
       }
     });
 
@@ -127,11 +118,11 @@ const StudentView = ({ user, setTitle }) => {
     const classRef = doc(db, "classes", selectedClass);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
-          const data = docSnap.data();
-          setFrameRate(data.frameRate || 5);
-          setImageQuality(data.imageQuality || 0.5);
-          setIsCapturing(data.isCapturing || false);
-          setCaptureStartedAt(data.captureStartedAt || null);
+        const data = docSnap.data();
+        setFrameRate(data.frameRate || 5);
+        setImageQuality(data.imageQuality || 0.5);
+        setIsCapturing(data.isCapturing || false);
+        setCaptureStartedAt(data.captureStartedAt || null);
       }
     });
 
@@ -142,11 +133,7 @@ const StudentView = ({ user, setTitle }) => {
     if (!selectedClass) return;
 
     const messagesRef = collection(db, 'classes', selectedClass, 'messages');
-    const q = query(
-      messagesRef,
-      orderBy('timestamp', 'desc'),
-      limit(1)
-    );
+    const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(1));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       if (querySnapshot.empty) return;
@@ -169,11 +156,7 @@ const StudentView = ({ user, setTitle }) => {
     if (!user || !user.email) return;
 
     const studentMessagesRef = collection(db, 'students', user.email, 'messages');
-    const q = query(
-      studentMessagesRef,
-      orderBy('timestamp', 'desc'),
-      limit(1)
-    );
+    const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(1));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       if (querySnapshot.empty) return;
@@ -192,40 +175,41 @@ const StudentView = ({ user, setTitle }) => {
     return () => unsubscribe();
   }, [user]);
 
-
-
   const captureAndUpload = async (videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;
-    console.log("Capturing and uploading screenshot...");
     const canvas = document.createElement('canvas');
     canvas.width = videoElement.videoWidth;
     canvas.height = videoElement.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', imageQuality);
-    console.log('Image size (MB):', dataUrl.length / (1024 * 1024));
 
     const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
     try {
       await uploadString(screenshotRef, dataUrl, 'data_url');
       const screenshotsColRef = collection(db, 'screenshots');
       await addDoc(screenshotsColRef, {
-          classId,
-          studentId: user.uid,
-          imagePath: screenshotRef.fullPath,
-          timestamp: serverTimestamp(),
+        classId,
+        studentId: user.uid,
+        imagePath: screenshotRef.fullPath,
+        timestamp: serverTimestamp(),
       });
 
       const statusRef = doc(db, "classes", classId, "status", user.uid);
       await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
-
-      console.log("Screenshot uploaded successfully.");
-    } catch(err) {
+    } catch (err) {
       console.error("Error uploading screenshot: ", err);
     }
   };
 
   useEffect(() => {
+    const stopSharingAndLogout = () => {
+        if (isSharing) {
+            stopSharing();
+        }
+        signOut(auth);
+    }
+
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -237,15 +221,12 @@ const StudentView = ({ user, setTitle }) => {
       const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
 
       if (now - startTime < twoAndAHalfHours) {
-        console.log(`Setting up capture interval every ${frameRate} seconds.`);
         intervalRef.current = setInterval(() => {
           captureAndUpload(videoRef.current, selectedClass);
         }, frameRate * 1000);
-      } else {
-          if(isCapturing) {
-              const classRef = doc(db, "classes", selectedClass);
-              setDoc(classRef, { isCapturing: false }, { merge: true });
-          }
+      } else if (isCapturing) {
+        const classRef = doc(db, "classes", selectedClass);
+        setDoc(classRef, { isCapturing: false }, { merge: true });
       }
     }
 
@@ -257,43 +238,41 @@ const StudentView = ({ user, setTitle }) => {
   }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt]);
 
   const updateSharingStatus = async (sharingStatus) => {
-      if(!selectedClass) return;
-      try {
-        const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
-        await setDoc(statusRef, {
-            isSharing: sharingStatus,
-            email: user.email,
-            name: user.displayName || user.email
-        }, { merge: true });
-      } catch (error) {
-          console.error("Error updating sharing status: ", error);
-      }
+    if (!selectedClass) return;
+    try {
+      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+      await setDoc(statusRef, {
+        isSharing: sharingStatus,
+        email: user.email,
+        name: user.displayName || user.email
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error updating sharing status: ", error);
+    }
   }
 
   const startSharing = async () => {
     if ('Notification' in window && window.Notification.permission !== 'granted') {
-        try {
-            const permission = await window.Notification.requestPermission();
-            if (permission === 'granted') {
-                console.log('Notification permission granted.');
-                showSystemNotification('Notifications have been enabled!');
-            } else {
-                console.log('Notification permission was denied.');
-                alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
-            }
-        } catch (error) {
-            console.error('Error requesting notification permission:', error);
+      try {
+        const permission = await window.Notification.requestPermission();
+        if (permission === 'granted') {
+          showSystemNotification('Notifications have been enabled!');
+        } else {
+          alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
         }
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+      }
     }
 
     if (!selectedClass) {
-        alert("Please select a class before sharing.");
-        return;
+      alert("Please select a class before sharing.");
+      return;
     }
     try {
       const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
       setStream(displayMedia);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = displayMedia;
       }
@@ -304,9 +283,8 @@ const StudentView = ({ user, setTitle }) => {
       showSystemNotification("Screen recording has started.");
 
       displayMedia.getVideoTracks()[0].onended = () => {
-          stopSharing();
+        stopSharing();
       };
-
     } catch (error) {
       console.error("Error starting screen sharing:", error);
       setIsSharing(false);
@@ -315,11 +293,11 @@ const StudentView = ({ user, setTitle }) => {
 
   const stopSharing = async () => {
     if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(track => track.stop());
     }
-    if(intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
     setIsSharing(false);
     setStream(null);
@@ -331,38 +309,33 @@ const StudentView = ({ user, setTitle }) => {
     showSystemNotification("Screen recording has stopped.");
   };
 
-  const handleLogout = () => {
-    if (isSharing) {
-        stopSharing();
-    }
-    signOut(auth);
-  };
-
   return (
-    <div>
+    <div className="student-view-container">
       <Banner message={notification} onClose={handleCloseNotification} />
-      {userClasses.length > 1 && (
-        <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
-          <option value="" disabled>Select a class</option>
-          {userClasses.map(c => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      )}
+      <div className="student-view-content">
+        <div className="student-view-controls">
+          {userClasses.length > 1 && (
+            <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
+              <option value="" disabled>Select a class</option>
+              {userClasses.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
 
-      {selectedClass && (
-        isSharing ? (
-          <button onClick={stopSharing}>Stop Sharing</button>
-        ) : (
-          <button onClick={startSharing}>Share Screen</button>
-        )
-      )}
+          {selectedClass && (
+            isSharing ? (
+              <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
+            ) : (
+              <button onClick={startSharing} className="student-view-button">Share Screen</button>
+            )
+          )}
+        </div>
 
-      <button onClick={handleLogout}>Logout</button>
-
-      {isCapturing && isSharing && <p style={{color: 'red'}}>Your screen is being recorded, and please don't do anything sensitives!</p>}
-      
-      <video ref={videoRef} autoPlay muted style={{ width: '100%', maxWidth: '600px', display: isSharing ? 'block' : 'none', marginTop: '20px' }} />
+        {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitives!</p>}
+        
+        <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
+      </div>
     </div>
   );
 };

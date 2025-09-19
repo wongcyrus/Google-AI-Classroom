@@ -1,8 +1,6 @@
 const { ai } = require('./ai.js');
 const z = require('zod');
-const { FieldValue } = require('firebase-admin/firestore');
-
-let dbInstance; // To hold the initialized db
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 
 // Define the tool for sending messages to students
 const sendMessageTool = ai.defineTool(
@@ -18,8 +16,8 @@ const sendMessageTool = ai.defineTool(
   },
   async ({ studentEmail, message, classId }) => {
     try {
-      // Use the passed dbInstance
-      const studentMessagesRef = dbInstance.collection('students').doc(studentEmail).collection('messages');
+      const db = getFirestore();
+      const studentMessagesRef = db.collection('students').doc(studentEmail).collection('messages');
       const messageData = {
         message: message,
         timestamp: FieldValue.serverTimestamp(),
@@ -36,70 +34,66 @@ const sendMessageTool = ai.defineTool(
   }
 );
 
-// Export a function to initialize the flows and tools
-exports.initializeFlows = (db) => {
-  dbInstance = db; // Store the initialized db
-
-  exports.analyzeImagesFlow = ai.defineFlow(
-    {
-      name: 'analyzeImagesFlow',
-      inputSchema: z.object({
-        screenshots: z.record(z.string()),
-        prompt: z.string(),
-      }),
-      outputSchema: z.record(z.string()),
-    },
-    async ({ screenshots, prompt }) => {
-      const analysisResults = {};
-      for (const [email, url] of Object.entries(screenshots)) {
-        const response = await ai.generate({
-                  model: 'vertexai/gemini-2.5-flash-lite',
-                  project: process.env.GCLOUD_PROJECT,
-                  location: process.env.FUNCTION_REGION,
-                  temperature: 0,
-                  topP: 0.1,
-                  prompt: [
-                    { media: { url } },
-                    { text: `This screen belongs to ${email}. ${prompt}` },
-                  ],
-                  tools: [sendMessageTool], // Make tool available to the model
-                });
-                analysisResults[email] = response.text;
-              }
-              return analysisResults;
-            }
-          );
-          
-          exports.analyzeAllImagesFlow = ai.defineFlow(
-            {
-              name: 'analyzeAllImagesFlow',
-              inputSchema: z.object({
-                screenshots: z.record(z.string()),
-                prompt: z.string(),
-              }),
-              outputSchema: z.string(),
-            },
-            async ({ screenshots, prompt }) => {
-              const imageParts = Object.entries(screenshots).flatMap(([email, url]) => ([
-                { text: `The following image is the screen shot from ${email}:` },
-                { media: { url } },
-              ]));
-          
-              const fullPrompt = [
-                ...imageParts,
-                { text: prompt },
-              ];
-          
-              const response = await ai.generate({
+exports.analyzeImagesFlow = ai.defineFlow(
+  {
+    name: 'analyzeImagesFlow',
+    inputSchema: z.object({
+      screenshots: z.record(z.string()),
+      prompt: z.string(),
+    }),
+    outputSchema: z.record(z.string()),
+  },
+  async ({ screenshots, prompt }) => {
+    const analysisResults = {};
+    for (const [email, url] of Object.entries(screenshots)) {
+      const response = await ai.generate({
                 model: 'vertexai/gemini-2.5-flash-lite',
                 project: process.env.GCLOUD_PROJECT,
                 location: process.env.FUNCTION_REGION,
                 temperature: 0,
                 topP: 0.1,
-                prompt: fullPrompt,
+                prompt: [
+                  { media: { url } },
+                  { text: `This screen belongs to ${email}. ${prompt}` },
+                ],
                 tools: [sendMessageTool], // Make tool available to the model
               });
-          
-              return response.text;
+              analysisResults[email] = response.text;
             }
-          );};
+            return analysisResults;
+          }
+        );
+
+        exports.analyzeAllImagesFlow = ai.defineFlow(
+          {
+            name: 'analyzeAllImagesFlow',
+            inputSchema: z.object({
+              screenshots: z.record(z.string()),
+              prompt: z.string(),
+            }),
+            outputSchema: z.string(),
+          },
+          async ({ screenshots, prompt }) => {
+            const imageParts = Object.entries(screenshots).flatMap(([email, url]) => ([
+              { text: `The following image is the screen shot from ${email}:` },
+              { media: { url } },
+            ]));
+        
+            const fullPrompt = [
+              ...imageParts,
+              { text: prompt },
+            ];
+        
+            const response = await ai.generate({
+              model: 'vertexai/gemini-2.5-flash-lite',
+              project: process.env.GCLOUD_PROJECT,
+              location: process.env.FUNCTION_REGION,
+              temperature: 0,
+              topP: 0.1,
+              prompt: fullPrompt,
+              tools: [sendMessageTool], // Make tool available to the model
+            });
+        
+            return response.text;
+          }
+        );

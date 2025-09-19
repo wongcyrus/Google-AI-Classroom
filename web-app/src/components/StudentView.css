@@ -1,0 +1,85 @@
+/* StudentView.css */
+
+.student-view-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: #f0f2f5;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.student-view-content {
+  background-color: white;
+  padding: 40px;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  width: 100%;
+  max-width: 500px;
+}
+
+.student-view-content h2 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.student-view-content p {
+  margin-bottom: 20px;
+  color: #555;
+  font-size: 1.1em;
+}
+
+.student-view-controls {
+  margin-bottom: 20px;
+}
+
+.student-view-controls select {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.student-view-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #007bff;
+  color: white;
+  font-size: 1em;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin: 5px;
+}
+
+.student-view-button:hover {
+  background-color: #0056b3;
+}
+
+.student-view-button.stop {
+  background-color: #dc3545;
+}
+
+.student-view-button.stop:hover {
+  background-color: #c82333;
+}
+
+.recording-indicator {
+  color: red;
+  margin-top: 15px;
+  font-weight: bold;
+}
+
+.video-preview {
+  width: 100%;
+  max-width: 600px;
+  display: block;
+  margin-top: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}

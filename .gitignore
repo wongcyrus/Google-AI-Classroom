@@ -32,3 +32,6 @@ admin/sp.json
 # OS-specific
 .DS_Store
 Thumbs.db
+
+# Firebase cache
+/.firebase
