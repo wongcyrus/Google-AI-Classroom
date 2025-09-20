@@ -458,12 +458,26 @@ const MonitorView = ({ setTitle }) => {
           </div>
           {editablePromptText && (
             <div className="control-group">
-              <button onClick={() => setIsPerImageAnalysisRunning(prev => !prev)} disabled={isAllImagesAnalysisRunning}>
-                {isPerImageAnalysisRunning ? 'Stop Per Image Analysis' : 'Start Per Image Analysis'}
-              </button>
-              <button onClick={() => setIsAllImagesAnalysisRunning(prev => !prev)} disabled={isPerImageAnalysisRunning}>
-                {isAllImagesAnalysisRunning ? 'Stop All Images Analysis' : 'Start All Images Analysis'}
-              </button>
+              {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
+                <>
+                  <button onClick={() => setIsPerImageAnalysisRunning(true)}>
+                    Start Per Image Analysis
+                  </button>
+                  <button onClick={() => setIsAllImagesAnalysisRunning(true)}>
+                    Start All Images Analysis
+                  </button>
+                </>
+              )}
+              {isPerImageAnalysisRunning && (
+                <button onClick={() => setIsPerImageAnalysisRunning(false)}>
+                  Stop Per Image Analysis
+                </button>
+              )}
+              {isAllImagesAnalysisRunning && (
+                <button onClick={() => setIsAllImagesAnalysisRunning(false)}>
+                  Stop All Images Analysis
+                </button>
+              )}
               <label>
                 Analysis Interval:
                 <input
@@ -504,7 +518,7 @@ const MonitorView = ({ setTitle }) => {
                 onClick={() => handleStudentClick(student)}
               />
             );
-          })};
+          })}
         </div>
       </div>
 
