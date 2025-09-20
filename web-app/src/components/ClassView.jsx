@@ -5,6 +5,7 @@ import { collection, doc, onSnapshot, query, where, orderBy } from 'firebase/fir
 import MonitorView from './MonitorView';
 import IrregularitiesView from './IrregularitiesView';
 import ProgressView from './ProgressView';
+import PlaybackView from './PlaybackView';
 import './ClassView.css';
 
 const ClassView = ({ setTitle }) => {
@@ -101,7 +102,9 @@ const ClassView = ({ setTitle }) => {
       case 'progress':
         return <ProgressView classId={classId} setTitle={setTitle} />;
       case 'irregularities':
-        return <IrregularitiesView />;
+        return <IrregularitiesView classId={classId} />;
+      case 'playback':
+        return <PlaybackView classId={classId} />;
       case 'notifications':
         const filteredMessages = messages.filter(msg => msg.timestamp.toDate() <= endTime);
 
@@ -180,6 +183,9 @@ const ClassView = ({ setTitle }) => {
             </button>
             <button className={`tab-button ${activeTab === 'irregularities' ? 'active' : ''}`} onClick={() => setActiveTab('irregularities')}>
             Irregularities
+            </button>
+            <button className={`tab-button ${activeTab === 'playback' ? 'active' : ''}`} onClick={() => setActiveTab('playback')}>
+            Playback
             </button>
             <button className={`tab-button ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
             Notifications

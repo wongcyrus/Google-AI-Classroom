@@ -65,8 +65,8 @@ const ClassManagement = ({ user }) => {
     const classRef = doc(db, 'classes', classId);
     const classSnap = await getDoc(classRef);
     const studentEmailList = studentEmails
-      .split('\n')
-      .map((email) => email.trim())
+      .split(/[\n, ]+/)
+      .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
 
     try {

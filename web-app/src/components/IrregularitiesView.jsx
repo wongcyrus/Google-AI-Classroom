@@ -5,7 +5,7 @@ import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefor
 import { ref, getDownloadURL } from 'firebase/storage';
 import './IrregularitiesView.css';
 
-const IrregularitiesView = () => {
+const IrregularitiesView = ({ classId }) => {
   const [irregularities, setIrregularities] = useState([]);
   const [imageUrls, setImageUrls] = useState({});
   const [startDate, setStartDate] = useState(() => {
@@ -35,16 +35,14 @@ const IrregularitiesView = () => {
 
   const PAGE_SIZE = 10;
 
-  useEffect(() => {
-    handlePageChange(1, 'first');
-  }, [startDate, endDate]);
-
-  const handlePageChange = async (newPage, direction) => {
+  const handlePageChange = async (newPage, direction, currentClassId) => {
+    if (!currentClassId) return; // Guard against missing classId
     setLoading(true);
     const irregularitiesCollectionRef = collection(db, 'irregularities');
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
-    // Apply date filters
+    // Apply class and date filters
+    q = query(q, where('classId', '==', currentClassId));
     if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
     if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
 
@@ -90,6 +88,7 @@ const IrregularitiesView = () => {
         }
         setImageUrls(urls);
       } else {
+        setIrregularities([]); // Clear data if no results
         if (direction === 'next') {
           setIsLastPage(true);
         }
@@ -100,24 +99,33 @@ const IrregularitiesView = () => {
     setLoading(false);
   };
 
+  useEffect(() => {
+    if (classId) { // Only run when classId is available
+      handlePageChange(1, 'first', classId);
+    }
+  }, [startDate, endDate, classId]);
+
+
   const handleNext = () => {
     if (!isLastPage) {
-      handlePageChange(page + 1, 'next');
+      handlePageChange(page + 1, 'next', classId);
     }
   };
 
   const handlePrev = () => {
     if (page > 1) {
-      handlePageChange(page - 1, 'prev');
+      handlePageChange(page - 1, 'prev', classId);
     }
   };
 
   const exportToCSV = async () => {
+    if (!classId) return;
     setLoading(true);
     const irregularitiesCollectionRef = collection(db, 'irregularities');
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
-    // Apply date filters
+    // Apply class and date filters
+    q = query(q, where('classId', '==', classId));
     if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
     if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
 

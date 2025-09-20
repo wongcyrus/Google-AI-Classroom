@@ -191,6 +191,7 @@ const StudentView = ({ user, setTitle }) => {
       await addDoc(screenshotsColRef, {
         classId,
         studentId: user.uid,
+        email: user.email.toLowerCase(), // Add student email
         imagePath: screenshotRef.fullPath,
         timestamp: serverTimestamp(),
       });
