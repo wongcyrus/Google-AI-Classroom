@@ -1,6 +1,6 @@
 # Admin Scripts
 
-This directory contains scripts for administering the AI Invigilator application's Firebase backend.
+This directory contains scripts for administering the Gemini AI Classroom Assistant application's Firebase backend.
 
 ## Prerequisites
 

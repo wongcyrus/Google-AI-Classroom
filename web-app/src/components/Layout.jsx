@@ -22,8 +22,8 @@ const Layout = ({ children, banner, title, logoutButton }) => {
             {title && <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '500', color: '#212529' }}>{title}</h2>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <img src={logo} alt="AI Invigilator Logo" style={{ height: '40px', marginRight: '1rem' }} />
-            <h1 style={{ margin: 0, fontSize: '1.5rem', color: '#212529', marginRight: '1rem' }}>AI Invigilator</h1>
+            <img src={logo} alt="Gemini AI Classroom Assistant Logo" style={{ height: '40px', marginRight: '1rem' }} />
+            <h1>Gemini AI Classroom Assistant</h1>
             {logoutButton}
           </div>
         </div>
