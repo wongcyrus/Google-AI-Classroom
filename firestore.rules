@@ -66,5 +66,14 @@ service cloud.firestore {
     match /progress/{progressId} {
       allow read, create: if isTeacher();
     }
+
+    match /teachers/{teacherId} {
+      allow read: if isTeacher() && request.auth.token.email == teacherId;
+
+      match /messages/{messageId} {
+        allow read: if isTeacher() && request.auth.token.email == teacherId;
+        allow create: if isTeacher(); 
+      }
+    }
   }
 }

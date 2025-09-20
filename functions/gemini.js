@@ -2,6 +2,14 @@ const { ai } = require('./ai.js');
 const z = require('zod');
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 
+const modelConfig = {
+  model: 'vertexai/gemini-2.5-flash-lite',
+  project: process.env.GCLOUD_PROJECT,
+  location: process.env.FUNCTION_REGION,
+  temperature: 0,
+  topP: 0.1,
+};
+
 const sendMessageTool = ai.defineTool(
   {
     name: 'SendMessageToStudent',
@@ -102,9 +110,61 @@ const recordStudentProgress = ai.defineTool(
   }
 );
 
+const sendMessageToTeacher = ai.defineTool(
+  {
+    name: 'sendMessageToTeacher',
+    description: 'Sends a direct message to the teacher of a class, optionally regarding a specific student.',
+    inputSchema: z.object({
+      classId: z.string().describe('The ID of the class to which the message pertains.'),
+      message: z.string().describe('The content of the message.'),
+      studentEmail: z.string().optional().describe('The email of the student this message is about.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async ({ classId, message, studentEmail }) => {
+    console.log(`Attempting to send message to teacher of class: ${classId}`);
+    try {
+      const db = getFirestore();
+      const classRef = db.collection('classes').doc(classId);
+      const classDoc = await classRef.get();
+
+      if (!classDoc.exists) {
+        console.error(`Class with ID ${classId} not found.`);
+        return `Failed to send message: Class with ID ${classId} not found.`;
+      }
+
+      const classData = classDoc.data();
+      const teacherEmail = classData.teacher || (classData.teachers && classData.teachers[0]);
+
+      if (!teacherEmail) {
+        console.error(`No teacher found for class ${classId}. Class data:`, classData);
+        return `Failed to send message: No teacher found for class ${classId}.`;
+      }
+      
+      console.log(`Found teacher email ${teacherEmail} for class ${classId}.`);
+
+      const teacherMessagesRef = db.collection('teachers').doc(teacherEmail).collection('messages');
+      
+      const finalMessage = studentEmail ? `Regarding ${studentEmail}: ${message}` : message;
+
+      await teacherMessagesRef.add({
+        message: finalMessage,
+        timestamp: FieldValue.serverTimestamp(),
+        classId: classId,
+      });
+
+      console.log(`Successfully sent message to teacher ${teacherEmail}.`);
+      return `Successfully sent message to the teacher of class ${classId}.`;
+    } catch (error) {
+      console.error("Error sending message to teacher:", error);
+      return `Failed to send message to teacher. Error: ${error.message}`;
+    }
+  }
+);
+
 
 function getTools() {
-  return [sendMessageTool, recordIrregularity, recordStudentProgress];
+  return [sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher];
 }
 
 exports.analyzeImagesFlow = ai.defineFlow(
@@ -122,22 +182,19 @@ exports.analyzeImagesFlow = ai.defineFlow(
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
       const response = await ai.generate({
-                model: 'vertexai/gemini-2.5-flash-lite',
-                project: process.env.GCLOUD_PROJECT,
-                location: process.env.FUNCTION_REGION,
-                temperature: 0,
-                topP: 0.1,
-                prompt: [
-                  { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
-                  { media: { url } },
-                ],
-                tools: tools,
-              });
-              analysisResults[email] = response.text;
-            }
-            return analysisResults;
-          }
-        );
+        ...modelConfig,
+        prompt: [
+          { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
+          { media: { url } },
+        ],
+        tools: tools,
+        maxToolRoundtrips: 5,
+      });
+      analysisResults[email] = response.text;
+    }
+    return analysisResults;
+  }
+);
 
 exports.analyzeAllImagesFlow = ai.defineFlow(
   {
@@ -163,14 +220,14 @@ exports.analyzeAllImagesFlow = ai.defineFlow(
       { text: `The class ID is ${classId}. ${prompt}` },
     ];
 
+    const numScreenshots = Object.keys(screenshots).length;
+    const maxToolRoundtrips = Math.max(5, numScreenshots * 2);
+
     const response = await ai.generate({
-      model: 'vertexai/gemini-2.5-flash-lite',
-      project: process.env.GCLOUD_PROJECT,
-      location: process.env.FUNCTION_REGION,
-      temperature: 0,
-      topP: 0.1,
+      ...modelConfig,
       prompt: fullPrompt,
       tools: tools,
+      maxToolRoundtrips,
     });
 
     return response.text;
