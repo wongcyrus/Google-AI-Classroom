@@ -9,7 +9,7 @@ const serviceAccount = require('../sp.json');
 // --- SCRIPT CONFIGURATION ---
 // Add the names of all your top-level collections to be deleted here.
 //const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'classes', 'students', 'progress', 'irregularities', 'prompts'];
-const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities'];
+const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities', 'prompts'];
 
 /**
  * Initializes the Firebase Admin SDK.

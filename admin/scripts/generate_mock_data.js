@@ -18,11 +18,6 @@ const MOCK_CLASS = {
   students: MOCK_STUDENTS.map(s => s.email),
 };
 
-const MOCK_PROMPTS = [
-    { name: 'General Check-in', promptText: 'How are you progressing on the task? Are you facing any issues?', applyTo: ['Per Image', 'All Images'] },
-    { name: 'Code Review', promptText: 'Please explain the code you have written here. What is its purpose?', applyTo: ['Per Image'] },
-];
-
 // --- INITIALIZATION ---
 function initializeFirebase() {
   try {
@@ -91,16 +86,6 @@ async function createFirestoreData(db) {
         console.log(`Successfully created class: ${MOCK_CLASS.id}`);
     } catch (error) {
         console.error(`Error creating class ${MOCK_CLASS.id}:`, error);
-    }
-
-    // Create prompts
-    for (const prompt of MOCK_PROMPTS) {
-        try {
-            await db.collection('prompts').add(prompt);
-            console.log(`Successfully created prompt: ${prompt.name}`);
-        } catch (error) {
-            console.error(`Error creating prompt ${prompt.name}:`, error);
-        }
     }
 
     // Create irregularities
