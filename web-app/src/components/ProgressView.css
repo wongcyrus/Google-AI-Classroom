@@ -1,0 +1,32 @@
+.progress-view {
+  padding: 20px;
+}
+
+.progress-list {
+  list-style-type: none;
+  padding: 0;
+}
+
+.progress-item {
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  margin-bottom: 10px;
+}
+
+.progress-item p {
+  margin: 5px 0;
+}
+
+.progress-item.clickable {
+  cursor: pointer;
+}
+
+.progress-item.clickable:hover {
+  background-color: #f0f0f0;
+}
+
+.filters {
+  margin-bottom: 20px;
+}

@@ -62,5 +62,9 @@ service cloud.firestore {
     match /irregularities/{irregularityId} {
       allow read, create: if isTeacher();
     }
+
+    match /progress/{progressId} {
+      allow read, create: if isTeacher();
+    }
   }
 }

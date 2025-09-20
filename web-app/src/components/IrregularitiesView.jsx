@@ -8,8 +8,25 @@ import './IrregularitiesView.css';
 const IrregularitiesView = () => {
   const [irregularities, setIrregularities] = useState([]);
   const [imageUrls, setImageUrls] = useState({});
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() - 2);
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  });
   const [lastDoc, setLastDoc] = useState(null);
   const [firstDoc, setFirstDoc] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -149,10 +166,7 @@ const IrregularitiesView = () => {
 
   return (
     <div className="irregularities-view-container">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>Irregularities Report</h2>
-        <Link to="/teacher">Back to Dashboard</Link>
-      </div>
       <div className="filters-and-actions">
         <div className="date-filters">
           <label>From:</label>

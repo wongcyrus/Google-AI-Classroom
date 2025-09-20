@@ -10,6 +10,7 @@ import MonitorView from './components/MonitorView'; // Import MonitorView
 import DataManagementView from './components/DataManagementView';
 import ClassManagementView from './components/ClassManagementView';
 import IrregularitiesView from './components/IrregularitiesView';
+import ClassView from './components/ClassView';
 import Layout from './components/Layout';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import banner from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -70,6 +71,7 @@ const App = () => {
             <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/teacher/irregularities" element={user && role === 'teacher' ? <IrregularitiesView /> : <Navigate to="/login" />} />
             <Route path="*" element={<Navigate to="/login" />} />
         </Routes>

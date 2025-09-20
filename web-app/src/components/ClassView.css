@@ -1,0 +1,26 @@
+.class-view .tab-nav {
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    margin-bottom: 1rem;
+}
+
+.class-view .tab-button {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-right: 5px;
+    border-bottom: 2px solid transparent;
+    color: #333;
+}
+
+.class-view .tab-button.active {
+    border-bottom: 2px solid blue;
+    font-weight: bold;
+    color: blue;
+}
+
+.class-view .tab-content {
+    padding: 1rem 0;
+}

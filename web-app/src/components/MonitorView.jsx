@@ -53,8 +53,9 @@ const Modal = ({ show, onClose, title, children }) => {
   );
 };
 
-const MonitorView = ({ setTitle }) => {
-  const { classId } = useParams();
+const MonitorView = ({ setTitle, classId: propClassId }) => {
+  const { classId: paramClassId } = useParams();
+  const classId = propClassId || paramClassId;
   const [students, setStudents] = useState([]);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
@@ -104,26 +105,26 @@ const MonitorView = ({ setTitle }) => {
     console.log(`[${new Date().toISOString()}] Running per-image analysis for:`, Object.keys(screenshotsToAnalyze));
     const analyzeImages = httpsCallable(functions, 'analyzeImages');
     try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current });
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
         console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
         setAnalysisResults(prev => ({ ...prev, ...result.data }));
     } catch (error) {
         console.error("Error calling analyzeImages function: ", error);
     }
-  }, [functions]);
+  }, [functions, classId]);
 
   const runAllImagesAnalysis = useCallback(async (screenshotsToAnalyze) => {
     if (!editablePromptTextRef.current.trim()) return;
     console.log(`[${new Date().toISOString()}] Running all-images analysis for ${Object.keys(screenshotsToAnalyze).length} images.`);
     const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
     try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current });
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
         console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
         setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
     } catch (error) {
         console.error("Error calling analyzeAllImages function: ", error);
     }
-  }, [functions]);
+  }, [functions, classId]);
 
   // Effect to fetch prompts
   useEffect(() => {
@@ -355,7 +356,7 @@ const MonitorView = ({ setTitle }) => {
     setIsAnalyzing(true);
     const analyzeImages = httpsCallable(functions, 'analyzeImages');
     try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
+        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
         setAnalysisResults(result.data);
     } catch (error) {
         console.error("Error calling analyzeImages function: ", error);
@@ -384,7 +385,7 @@ const MonitorView = ({ setTitle }) => {
     setIsAnalyzing(true);
     const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
     try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText });
+        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
         setAnalysisResults({ 'All Images': result.data });
     } catch (error) {
         console.error("Error calling analyzeAllImages function: ", error);
@@ -406,7 +407,7 @@ const MonitorView = ({ setTitle }) => {
             {showControls ? 'Hide Controls' : 'Show Controls'}
           </button>
         </div>
-        <Link to="/teacher">Back to Main View</Link>
+        
       </div>
       {showControls && (
         <div className="class-controls">

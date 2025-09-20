@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
@@ -47,7 +46,6 @@ const TeacherView = ({ user, setTitle }) => {
     signOut(auth);
   };
 
-  // This is the added security check
   if (role && role !== 'teacher') {
     return <Navigate to="/login" />;
   }
@@ -56,7 +54,7 @@ const TeacherView = ({ user, setTitle }) => {
     <div>
       {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
       <div>
-        <label htmlFor="class-select">Select a class to monitor:</label>
+        <label htmlFor="class-select">Select a class to view:</label>
         <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
           <option value="" disabled>Select a class</option>
           {classes.map(c => (
@@ -64,11 +62,9 @@ const TeacherView = ({ user, setTitle }) => {
           ))}
         </select>
         {selectedClass && (
-          <>
-            <Link to={`/monitor/${selectedClass}`}>
-                <button style={{ marginLeft: '10px' }}>Monitor</button>
-            </Link>
-          </>
+          <Link to={`/class/${selectedClass}`}>
+              <button style={{ marginLeft: '10px' }}>View Class</button>
+          </Link>
         )}
       </div>
       <hr />
@@ -76,9 +72,6 @@ const TeacherView = ({ user, setTitle }) => {
         <button>Class Management</button>
       </Link>
       <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
-      <Link to="/teacher/irregularities">
-        <button style={{ marginLeft: '10px' }}>Review Irregularities</button>
-      </Link>
       <hr />
       <button onClick={handleLogout}>Logout</button>
     </div>

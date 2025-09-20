@@ -1,14 +1,15 @@
-require('dotenv').config({ path: '../web-app/.env' });
+require('dotenv').config({ path: '../../web-app/.env' });
 const admin = require('firebase-admin');
 
 // --- IMPORTANT ---
 // This script uses the same service account key as your other admin scripts.
 // It assumes the key is named 'sp.json' and is located in the same directory.
-const serviceAccount = require('./sp.json');
+const serviceAccount = require('../sp.json');
 
 // --- SCRIPT CONFIGURATION ---
 // Add the names of all your top-level collections to be deleted here.
-const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'classes', 'students'];
+//const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'classes', 'students', 'progress', 'irregularities', 'prompts'];
+const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities'];
 
 /**
  * Initializes the Firebase Admin SDK.
@@ -44,11 +45,16 @@ async function resetStorage(app) {
     }
     console.log(`Found ${files.length} files to delete in bucket: ${bucket.name}`);
     
-    // Use Promise.all for parallel deletion
-    await Promise.all(files.map(async (file) => {
-      console.log(`Deleting file: ${file.name}`);
-      await file.delete();
-    }));
+    // Process deletions in batches to avoid excessive concurrent requests
+    const batchSize = 100; // Adjust batch size as needed
+    for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (file) => {
+            console.log(`Deleting file: ${file.name}`);
+            await file.delete();
+        }));
+        console.log(`Deleted batch of ${batch.length} files.`);
+    }
 
     console.log(`Successfully deleted ${files.length} files.`);
   } catch (error) {
