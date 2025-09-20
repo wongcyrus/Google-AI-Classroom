@@ -8,9 +8,10 @@ const ProgressView = ({ classId, setTitle }) => {
   const [latestProgress, setLatestProgress] = useState({});
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
-    d.setHours(0, 0, 0, 0);
+    d.setHours(d.getHours() - 2);
     return d;
   });
+  const [endTime, setEndTime] = useState(new Date());
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(null);
 
   useEffect(() => {
@@ -43,20 +44,23 @@ const ProgressView = ({ classId, setTitle }) => {
 
   useEffect(() => {
     const latest = {};
-    allProgress.forEach(p => {
+    const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= endTime);
+    filteredProgress.forEach(p => {
       if (!latest[p.email] || p.timestamp.toMillis() > latest[p.email].timestamp.toMillis()) {
         latest[p.email] = p;
       }
     });
     setLatestProgress(latest);
-  }, [allProgress]);
+  }, [allProgress, endTime]);
 
   const handleStartTimeChange = (e) => {
     setStartTime(new Date(e.target.value));
   };
 
   const renderDetailView = () => {
-    const studentProgress = allProgress.filter(p => p.email === selectedStudentEmail);
+    const studentProgress = allProgress
+      .filter(p => p.email === selectedStudentEmail)
+      .filter(p => p.timestamp.toDate() <= endTime);
     return (
       <div>
         <button onClick={() => setSelectedStudentEmail(null)}>Back to Summary</button>
@@ -82,8 +86,31 @@ const ProgressView = ({ classId, setTitle }) => {
           <input
             type="datetime-local"
             id="start-time"
-            value={startTime.toISOString().substring(0, 16)}
+            value={(() => {
+              const d = new Date(startTime);
+              const year = d.getFullYear();
+              const month = (d.getMonth() + 1).toString().padStart(2, '0');
+              const day = d.getDate().toString().padStart(2, '0');
+              const hours = d.getHours().toString().padStart(2, '0');
+              const minutes = d.getMinutes().toString().padStart(2, '0');
+              return `${year}-${month}-${day}T${hours}:${minutes}`;
+            })()}
             onChange={handleStartTimeChange}
+          />
+          <label htmlFor="end-time"> until: </label>
+          <input
+            type="datetime-local"
+            id="end-time"
+            value={(() => {
+              const d = new Date(endTime);
+              const year = d.getFullYear();
+              const month = (d.getMonth() + 1).toString().padStart(2, '0');
+              const day = d.getDate().toString().padStart(2, '0');
+              const hours = d.getHours().toString().padStart(2, '0');
+              const minutes = d.getMinutes().toString().padStart(2, '0');
+              return `${year}-${month}-${day}T${hours}:${minutes}`;
+            })()}
+            onChange={(e) => setEndTime(new Date(e.target.value))}
           />
         </div>
         {latestProgressArray.length === 0 ? (

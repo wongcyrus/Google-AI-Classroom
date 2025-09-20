@@ -21,7 +21,9 @@ const sendMessageTool = ai.defineTool(
     }),
     outputSchema: z.string(),
   },
-  async ({ studentEmail, message, classId }) => {
+  async (input) => {
+    console.log('Tool call: SendMessageToStudent with input:', input);
+    const { studentEmail, message, classId } = input;
     try {
       const db = getFirestore();
       const studentMessagesRef = db.collection('students').doc(studentEmail).collection('messages');
@@ -52,7 +54,9 @@ const recordIrregularity = ai.defineTool(
     }),
     outputSchema: z.string(),
   },
-  async ({ email, title, message, imageUrl, classId }) => {
+  async (input) => {
+    console.log('Tool call: recordIrregularity with input:', input);
+    const { email, title, message, imageUrl, classId } = input;
     try {
       const db = getFirestore();
       const irregularitiesRef = db.collection('irregularities');
@@ -91,7 +95,9 @@ const recordStudentProgress = ai.defineTool(
     }),
     outputSchema: z.string(),
   },
-  async ({ email, progress, classId }) => {
+  async (input) => {
+    console.log('Tool call: recordStudentProgress with input:', input);
+    const { email, progress, classId } = input;
     try {
       const db = getFirestore();
       const progressRef = db.collection('progress');
@@ -121,8 +127,9 @@ const sendMessageToTeacher = ai.defineTool(
     }),
     outputSchema: z.string(),
   },
-  async ({ classId, message, studentEmail }) => {
-    console.log(`Attempting to send message to teacher of class: ${classId}`);
+  async (input) => {
+    console.log('Tool call: sendMessageToTeacher with input:', input);
+    const { classId, message, studentEmail } = input;
     try {
       const db = getFirestore();
       const classRef = db.collection('classes').doc(classId);
@@ -140,8 +147,6 @@ const sendMessageToTeacher = ai.defineTool(
         console.error(`No teacher found for class ${classId}. Class data:`, classData);
         return `Failed to send message: No teacher found for class ${classId}.`;
       }
-      
-      console.log(`Found teacher email ${teacherEmail} for class ${classId}.`);
 
       const teacherMessagesRef = db.collection('teachers').doc(teacherEmail).collection('messages');
       
@@ -153,7 +158,6 @@ const sendMessageToTeacher = ai.defineTool(
         classId: classId,
       });
 
-      console.log(`Successfully sent message to teacher ${teacherEmail}.`);
       return `Successfully sent message to the teacher of class ${classId}.`;
     } catch (error) {
       console.error("Error sending message to teacher:", error);
@@ -188,7 +192,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
           { media: { url } },
         ],
         tools: tools,
-        maxToolRoundtrips: 5,
+        maxToolRoundtrips: 10,
       });
       analysisResults[email] = response.text;
     }
@@ -221,7 +225,7 @@ exports.analyzeAllImagesFlow = ai.defineFlow(
     ];
 
     const numScreenshots = Object.keys(screenshots).length;
-    const maxToolRoundtrips = Math.max(5, numScreenshots * 2);
+    const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
     const response = await ai.generate({
       ...modelConfig,

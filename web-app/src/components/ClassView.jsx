@@ -12,6 +12,19 @@ const ClassView = ({ setTitle }) => {
   const [activeTab, setActiveTab] = useState('monitor');
   const [messages, setMessages] = useState([]);
   const [teacherEmail, setTeacherEmail] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(isMuted);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  const [startTime, setStartTime] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() - 2);
+    return d;
+  });
+  const [endTime, setEndTime] = useState(new Date());
   const isInitialMessagesLoad = useRef(true);
 
   useEffect(() => {
@@ -34,6 +47,12 @@ const ClassView = ({ setTitle }) => {
 
     setMessages([]);
     isInitialMessagesLoad.current = true;
+    setStartTime(() => {
+      const d = new Date();
+      d.setHours(d.getHours() - 2);
+      return d;
+    });
+    setEndTime(new Date());
 
     return () => unsubscribeClass();
   }, [classId, setTitle]);
@@ -41,8 +60,11 @@ const ClassView = ({ setTitle }) => {
   useEffect(() => {
     if (!teacherEmail) return;
 
+    setMessages([]);
+    isInitialMessagesLoad.current = true;
+
     const messagesRef = collection(db, "teachers", teacherEmail, "messages");
-    const q = query(messagesRef, where("classId", "==", classId), orderBy("timestamp", "asc"));
+    const q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", startTime), orderBy("timestamp", "asc"));
 
     const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
       const newMessages = [];
@@ -51,7 +73,7 @@ const ClassView = ({ setTitle }) => {
           const messageData = { id: change.doc.id, ...change.doc.data() };
           newMessages.push(messageData);
 
-          if (!isInitialMessagesLoad.current && Notification.permission === 'granted') {
+          if (!isInitialMessagesLoad.current && Notification.permission === 'granted' && !isMutedRef.current) {
             new Notification('New Message for Teacher', {
               body: messageData.message,
               tag: messageData.id,
@@ -70,7 +92,7 @@ const ClassView = ({ setTitle }) => {
     });
 
     return () => unsubscribeMessages();
-  }, [teacherEmail, classId]);
+  }, [teacherEmail, classId, startTime]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -81,21 +103,65 @@ const ClassView = ({ setTitle }) => {
       case 'irregularities':
         return <IrregularitiesView />;
       case 'notifications':
+        const filteredMessages = messages.filter(msg => msg.timestamp.toDate() <= endTime);
+
         return (
-            <div>
-              <h2>Notifications</h2>
-              {messages.length === 0 ? (
-                <p>No new notifications for this class.</p>
-              ) : (
-                <ul>
-                  {messages.map(msg => (
-                    <li key={msg.id}>
-                      <strong>{new Date(msg.timestamp?.toDate()).toLocaleString()}:</strong> {msg.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
+          <div>
+            <h2>Notifications</h2>
+            <div className="filters">
+              <label htmlFor="start-time">Show since: </label>
+              <input
+                type="datetime-local"
+                id="start-time"
+                value={(() => {
+                  const d = new Date(startTime);
+                  const year = d.getFullYear();
+                  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const day = d.getDate().toString().padStart(2, '0');
+                  const hours = d.getHours().toString().padStart(2, '0');
+                  const minutes = d.getMinutes().toString().padStart(2, '0');
+                  return `${year}-${month}-${day}T${hours}:${minutes}`;
+                })()}
+                onChange={e => setStartTime(new Date(e.target.value))}
+              />
+              <label htmlFor="end-time"> until: </label>
+              <input
+                type="datetime-local"
+                id="end-time"
+                value={(() => {
+                  const d = new Date(endTime);
+                  const year = d.getFullYear();
+                  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+                  const day = d.getDate().toString().padStart(2, '0');
+                  const hours = d.getHours().toString().padStart(2, '0');
+                  const minutes = d.getMinutes().toString().padStart(2, '0');
+                  return `${year}-${month}-${day}T${hours}:${minutes}`;
+                })()}
+                onChange={e => setEndTime(new Date(e.target.value))}
+              />
+              <label htmlFor="mute-toggle" style={{ marginLeft: '20px' }}>
+                <input
+                  type="checkbox"
+                  id="mute-toggle"
+                  checked={isMuted}
+                  onChange={e => setIsMuted(e.target.checked)}
+                />
+                Mute Notifications
+              </label>
             </div>
+            <hr />
+            {filteredMessages.length === 0 ? (
+              <p>No notifications match the current filter.</p>
+            ) : (
+              <ul className="progress-list">
+                {filteredMessages.map(msg => (
+                  <li key={msg.id} className="progress-item">
+                    <strong>{new Date(msg.timestamp?.toDate()).toLocaleString()}:</strong> {msg.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         );
       default:
         return null;
