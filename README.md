@@ -1,38 +1,42 @@
 <p align="center"><img src="web-app/src/assets/logo.jpg" alt="Gemini AI Classroom Assistant Logo" width="200"/></p>
 
-# Gemini AI Classroom Assistant
+# Gemini AI Proactive Classroom Assistant
 
-An intelligent proctoring solution designed to monitor students' computer screens during computer-based tests using AI analysis. This project leverages the Gemini model to detect potential academic dishonesty, providing a robust tool for modern online assessments.
+A next-generation classroom assistant designed to proactively support students during computer-based tests. This project uses the Gemini AI model not just to detect issues, but to prevent them by providing gentle, real-time guidance to students.
+
+Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor**, a **Technical Support Assistant**, and a **Wellness Coach**, creating a more supportive and effective testing environment.
 
 ## Architecture Overview
 
 The project is a monorepo composed of three main parts:
 
-*   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students, teachers, and admins. It uses Firebase for authentication and communicates with the backend services.
+*   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students and teachers. It uses Firebase for authentication and all real-time communication.
 *   **`functions/`**: A Node.js backend using Firebase Functions. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
-*   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles and managing users.
+*   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles and managing AI prompts.
 
 ## Features
 
-### Student Features
+### Student Experience
 
-*   **Simple Login & Class Selection:** Students can easily log in and select their active class.
-*   **Session Management:** Strictly enforces a single active session per user, preventing logins from multiple browsers or devices simultaneously.
-*   **Real-time Screen Sharing:** Shares the screen with the invigilator for proctoring.
-*   **Real-time Messaging:** Receives important announcements and messages from the teacher via OS-level notifications.
+*   **Simple & Secure Login:** Students can easily log in and select their active class.
+*   **Real-time Guidance:** Receives gentle, helpful pop-up messages from the AI to prevent issues related to focus, technical problems, or frustration.
+*   **OS-Level Notifications:** Gets important announcements and messages from the teacher via system notifications.
 
-### Teacher Features
+### Teacher Dashboard
 
-*   **Class Management Dashboard:** Create, view, and manage classes and student enrollment.
+*   **Class Management:** Create, view, and manage classes and student enrollment.
 *   **Live Student Monitoring:** View a gallery of all students who are actively sharing their screens.
-*   **Configurable Capture Settings:** Adjust the screen capture frame rate and image quality for each class to balance detail and performance.
-*   **Real-time Messaging:** Send messages to an entire class or individual students.
-*   **AI-Powered Insights (Inferred):** The system analyzes screen captures to flag potential incidents of academic dishonesty.
-
-### Admin Features
-
-*   **Secure User Management:** Admins can securely grant teacher privileges using dedicated command-line scripts.
-*   **Role-Based Access Control:** Utilizes Firebase custom claims to differentiate between user roles (student, teacher).
+*   **Proactive AI Assistant:** The AI analyzes student screens and provides teachers with real-time alerts for:
+    *   **Potential Distractions:** Notifies the teacher when it has sent a student a gentle reminder to stay focused.
+    *   **Technical Difficulties:** Flags students who may be experiencing technical issues (e.g., low battery, frozen apps).
+    *   **Student Wellness:** Alerts the teacher when a student appears frustrated or burned out.
+*   **Real-time Notification Center:**
+    *   A dedicated "Notifications" tab displays all AI-generated alerts for the class.
+    *   Features OS-level notifications for new alerts so the teacher never misses an important event.
+    *   Includes a time-window filter (start and end time) to easily review events from a specific period.
+    *   A "Mute" button to temporarily disable OS-level notifications.
+*   **Detailed Progress & Irregularity Views:** Review detailed, filterable reports on student progress and any flagged irregularities.
+*   **Customizable AI Behavior:** Teachers can edit the prompts that power the AI assistant, tailoring its personality and actions to their specific needs.
 
 ## Getting Started (Local Development)
 
@@ -53,7 +57,7 @@ Follow these instructions to set up the project for local development.
     *   **Storage:** Create a storage bucket.
 3.  In your Firebase project settings, add a new Web App.
 4.  Copy the `firebaseConfig` object provided.
-5.  In the `web-app/` directory, copy `.env.example` to a new file named `.env` and paste your `firebaseConfig` values into it.
+5.  In the `web-app/` directory, create a new file named `.env` and paste your `firebaseConfig` values into it (see `.env.example` for format).
 
 ### 2. Backend Setup
 
@@ -78,7 +82,7 @@ The application should now be running locally, typically at `http://localhost:51
 
 ## Admin Scripts
 
-The `/admin` directory contains scripts for managing user roles.
+The `/admin` directory contains scripts for managing user roles and AI prompts.
 
 1.  **Setup:**
     *   Navigate to the directory: `cd admin`
@@ -87,16 +91,12 @@ The `/admin` directory contains scripts for managing user roles.
         1.  In your Firebase project settings, go to **Service Accounts**.
         2.  Click **Generate new private key**.
         3.  Save the downloaded JSON file in the `admin/` directory.
-        4.  Rename the key file or update the path in each admin script (e.g., `grantTeacherRole.js`).
+        4.  Rename the key file or update the path in each admin script.
 
 2.  **Usage:**
     *   **To grant a user teacher privileges:**
         ```bash
         node grantTeacherRole.js teacher-email@example.com
-        ```
-    *   **To verify a user's email (if needed):**
-        ```bash
-        node verifyUser.js user-email@example.com
         ```
 
 ## Deployment
@@ -114,8 +114,4 @@ This project is configured for deployment to Firebase.
     ```bash
     # Deploy everything (hosting, functions, firestore rules, etc.)
     firebase deploy
-
-    # Or, deploy only specific parts
-    firebase deploy --only hosting
-    firebase deploy --only functions
     ```
