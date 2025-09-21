@@ -36,6 +36,7 @@ const TeacherView = ({ user, setTitle }) => {
       querySnapshot.forEach((doc) => {
         classesData.push({ id: doc.id, ...doc.data() });
       });
+      classesData.sort((a, b) => a.id.localeCompare(b.id)); // Sort by class ID
       setClasses(classesData);
     });
 

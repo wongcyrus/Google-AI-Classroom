@@ -131,6 +131,7 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     const promptsCollectionRef = collection(db, 'prompts');
     const unsubscribe = onSnapshot(promptsCollectionRef, (snapshot) => {
       const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      promptsData.sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
       setPrompts(promptsData);
     });
     return () => unsubscribe();
