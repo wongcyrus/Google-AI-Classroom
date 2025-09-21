@@ -1,32 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { db } from '../firebase-config';
-import { collection, doc, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import MonitorView from './MonitorView';
 import IrregularitiesView from './IrregularitiesView';
 import ProgressView from './ProgressView';
 import PlaybackView from './PlaybackView';
+import NotificationsView from './NotificationsView';
 import './ClassView.css';
 
-const ClassView = ({ setTitle }) => {
+const ClassView = ({ user, setTitle }) => {
   const { classId } = useParams();
   const [activeTab, setActiveTab] = useState('monitor');
-  const [messages, setMessages] = useState([]);
   const [teacherEmail, setTeacherEmail] = useState(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const isMutedRef = useRef(isMuted);
 
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
-
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 2);
-    return d;
-  });
-  const [endTime, setEndTime] = useState(new Date());
-  const isInitialMessagesLoad = useRef(true);
+  // Helper function to show notifications via Service Worker
+  const showSystemNotification = (message, tag) => {
+    if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
+    navigator.serviceWorker.ready.then((registration) => {
+      registration.active.postMessage({
+        type: 'show-notification',
+        title: 'New Message for Teacher',
+        body: message,
+        tag: tag
+      });
+    });
+  };
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -34,71 +33,48 @@ const ClassView = ({ setTitle }) => {
     }
   }, []);
 
+  // Effect to get the teacher's email
   useEffect(() => {
     setTitle(`Class: ${classId}`);
     const classRef = doc(db, "classes", classId);
-
-    const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
+    const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const teacher = data.teacher || (data.teachers && data.teachers[0]);
-        setTeacherEmail(teacher);
+        setTeacherEmail(data.teacher || (data.teachers && data.teachers[0]));
       }
     });
-
-    setMessages([]);
-    isInitialMessagesLoad.current = true;
-    setStartTime(() => {
-      const d = new Date();
-      d.setHours(d.getHours() - 2);
-      return d;
-    });
-    setEndTime(new Date());
-
-    return () => unsubscribeClass();
+    return () => unsubscribe();
   }, [classId, setTitle]);
 
+  // Dedicated listener for OS notifications that runs for the lifetime of the ClassView
   useEffect(() => {
-    if (!teacherEmail) return;
-
-    setMessages([]);
-    isInitialMessagesLoad.current = true;
+    if (!teacherEmail) {
+      return;
+    }
 
     const messagesRef = collection(db, "teachers", teacherEmail, "messages");
-    const q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", startTime), orderBy("timestamp", "asc"));
+    // Query for messages that arrived in the last 15 seconds to avoid showing old ones on initial load.
+    const q = query(messagesRef, where("timestamp", ">", new Date(Date.now() - 15000)));
 
-    const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
-      const newMessages = [];
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       querySnapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const messageData = { id: change.doc.id, ...change.doc.data() };
-          newMessages.push(messageData);
-
-          if (!isInitialMessagesLoad.current && Notification.permission === 'granted' && !isMutedRef.current) {
-            new Notification('New Message for Teacher', {
-              body: messageData.message,
-              tag: messageData.id,
-            });
+        if (change.type === 'added' && !change.doc.metadata.hasPendingWrites) {
+          const messageData = change.doc.data();
+          if (messageData.classId === classId) {
+            showSystemNotification(messageData.message, change.doc.id);
           }
         }
       });
-
-      if (newMessages.length > 0) {
-        setMessages(prev => [...newMessages, ...prev].sort((a, b) => b.timestamp.toDate() - a.timestamp.toDate()));
-      }
-
-      if (isInitialMessagesLoad.current) {
-        isInitialMessagesLoad.current = false;
-      }
     });
 
-    return () => unsubscribeMessages();
-  }, [teacherEmail, classId, startTime]);
+    return () => unsubscribe();
+  }, [teacherEmail, classId]);
+
 
   const renderContent = () => {
     switch (activeTab) {
       case 'monitor':
-        return <MonitorView setTitle={setTitle} classId={classId} />;
+        return <MonitorView user={user} setTitle={setTitle} classId={classId} />;
       case 'progress':
         return <ProgressView classId={classId} setTitle={setTitle} />;
       case 'irregularities':
@@ -106,66 +82,7 @@ const ClassView = ({ setTitle }) => {
       case 'playback':
         return <PlaybackView classId={classId} />;
       case 'notifications':
-        const filteredMessages = messages.filter(msg => msg.timestamp.toDate() <= endTime);
-
-        return (
-          <div>
-            <h2>Notifications</h2>
-            <div className="filters">
-              <label htmlFor="start-time">Show since: </label>
-              <input
-                type="datetime-local"
-                id="start-time"
-                value={(() => {
-                  const d = new Date(startTime);
-                  const year = d.getFullYear();
-                  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                  const day = d.getDate().toString().padStart(2, '0');
-                  const hours = d.getHours().toString().padStart(2, '0');
-                  const minutes = d.getMinutes().toString().padStart(2, '0');
-                  return `${year}-${month}-${day}T${hours}:${minutes}`;
-                })()}
-                onChange={e => setStartTime(new Date(e.target.value))}
-              />
-              <label htmlFor="end-time"> until: </label>
-              <input
-                type="datetime-local"
-                id="end-time"
-                value={(() => {
-                  const d = new Date(endTime);
-                  const year = d.getFullYear();
-                  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                  const day = d.getDate().toString().padStart(2, '0');
-                  const hours = d.getHours().toString().padStart(2, '0');
-                  const minutes = d.getMinutes().toString().padStart(2, '0');
-                  return `${year}-${month}-${day}T${hours}:${minutes}`;
-                })()}
-                onChange={e => setEndTime(new Date(e.target.value))}
-              />
-              <label htmlFor="mute-toggle" style={{ marginLeft: '20px' }}>
-                <input
-                  type="checkbox"
-                  id="mute-toggle"
-                  checked={isMuted}
-                  onChange={e => setIsMuted(e.target.checked)}
-                />
-                Mute Notifications
-              </label>
-            </div>
-            <hr />
-            {filteredMessages.length === 0 ? (
-              <p>No notifications match the current filter.</p>
-            ) : (
-              <ul className="progress-list">
-                {filteredMessages.map(msg => (
-                  <li key={msg.id} className="progress-item">
-                    <strong>{new Date(msg.timestamp?.toDate()).toLocaleString()}:</strong> {msg.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
+        return <NotificationsView classId={classId} />;
       default:
         return null;
     }

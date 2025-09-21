@@ -71,7 +71,7 @@ const App = () => {
             <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView setTitle={setTitle} /> : <Navigate to="/login" />} />
+            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
             <Route path="/teacher/irregularities" element={user && role === 'teacher' ? <IrregularitiesView /> : <Navigate to="/login" />} />
             <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
