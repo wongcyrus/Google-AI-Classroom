@@ -7,6 +7,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
+import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser, setTitle }) => {
   const [email, setEmail] = useState('');
@@ -16,7 +17,7 @@ const AuthComponent = ({ unverifiedUser, setTitle }) => {
 
   useEffect(() => {
     if(setTitle) {
-      setTitle('Login / Register');
+      setTitle('Welcome');
     }
   }, [setTitle]);
 
@@ -79,8 +80,9 @@ const AuthComponent = ({ unverifiedUser, setTitle }) => {
   };
 
   return (
-    <div>
-      <div className="card">
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>Login / Register</h2>
         <input
           type="email"
           placeholder="Enter your email"
@@ -93,14 +95,18 @@ const AuthComponent = ({ unverifiedUser, setTitle }) => {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button onClick={handleRegister}>Register</button>
-        <button onClick={handleLogin}>Login</button>
+        <div className="button-group">
+          <button onClick={handleLogin}>Login</button>
+          <button onClick={handleRegister}>Register</button>
+        </div>
+        <button onClick={handleForgotPassword} className="forgot-password-button">Forgot Password</button>
         {unverifiedUser && (
             <button onClick={handleResendVerificationEmail}>Resend Verification Email</button>
         )}
-        <button onClick={handleForgotPassword}>Forgot Password</button>
-        {error && <p className="error">{error}</p>}
-        {message && <p className="message">{message}</p>}
+        <div className="message-container">
+            {error && <p className="error">{error}</p>}
+            {message && <p className="message">{message}</p>}
+        </div>
       </div>
     </div>
   );
