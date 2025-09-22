@@ -1,5 +1,5 @@
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   console.log('Service worker installed');
   self.skipWaiting();
 });
@@ -31,7 +31,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   // This looks for an open window with the app and focuses it.
-  event.waitUntil(clients.matchAll({
+  event.waitUntil(self.clients.matchAll({
     type: "window"
   }).then((clientList) => {
     // If a client is already open, focus it.
@@ -41,8 +41,8 @@ self.addEventListener('notificationclick', (event) => {
       }
     }
     // Otherwise, open a new window.
-    if (clients.openWindow) {
-      return clients.openWindow('/');
+    if (self.clients.openWindow) {
+      return self.clients.openWindow('/');
     }
   }));
 });

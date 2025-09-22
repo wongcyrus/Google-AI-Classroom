@@ -1,6 +1,5 @@
-import './MonitorView.css';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -8,68 +7,126 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 import IndividualStudentView from './IndividualStudentView';
 
-// Modal component
+// Modal component can be simplified or remain as is, its styling is independent.
 const Modal = ({ show, onClose, title, children }) => {
-  if (!show) {
-    return null;
-  }
-
-  const modalStyle = {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    backgroundColor: '#FFF',
-    padding: '20px',
-    zIndex: 1000,
-    borderRadius: '8px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-    width: '60%',
-    minWidth: '500px',
-    height: '60vh',
-    display: 'flex',
-    flexDirection: 'column'
-  };
-
-  const overlayStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 999
-  };
-
-  return (
-    <>
-      <div style={overlayStyle} onClick={onClose} />
-      <div style={modalStyle}>
-        <h2>{title}</h2>
-        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>{children}</div>
-        <button onClick={onClose} style={{ marginTop: '10px' }}>Close</button>
-      </div>
-    </>
-  );
+    if (!show) return null;
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+            <div style={{ backgroundColor: '#FFF', padding: '20px 25px', borderRadius: '8px', zIndex: 1001, width: '60vw', minWidth: '600px', maxWidth: '90vw', height: '70vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column'}} onClick={e => e.stopPropagation()}>
+                <h2 style={{marginTop: 0}}>{title}</h2>
+                <div style={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>{children}</div>
+                <button onClick={onClose} style={{ marginTop: '15px', width: 'auto', alignSelf: 'flex-end', padding: '8px 16px' }}>Close</button>
+            </div>
+        </div>
+    );
 };
 
-const MonitorView = ({ setTitle, classId: propClassId }) => {
+const ControlsPanel = ({
+    message, setMessage, handleSendMessage, setShowControls, 
+    frameRate, handleFrameRateChange, frameRateOptions, 
+    imageQuality, handleImageQualityChange, imageQualityOptions, 
+    isCapturing, toggleCapture, isPaused, setIsPaused, 
+    setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
+    handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
+    isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, 
+    setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate 
+}) => (
+    <div className="monitor-controls-sidebar">
+        <div className="control-item"><button onClick={() => setShowControls(false)} className="hide-controls-btn">Hide Controls</button></div>
+        <div className="control-section">
+            <div className="control-item">
+              <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Broadcast a message" />
+            </div>
+            <div className="control-item"><button onClick={handleSendMessage}>Send</button></div>
+        </div>
+        <div className="control-section">
+            <div className="control-item">
+              <label>Frame Rate (seconds):</label>
+              <select value={frameRate} onChange={handleFrameRateChange}>
+                {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}</option>)}
+              </select>
+            </div>
+            <div className="control-item">
+              <label>Image Quality:</label>
+              <select value={imageQuality} onChange={handleImageQualityChange}>
+                {imageQualityOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+            </div>
+        </div>
+        <div className="control-section">
+            <div className="control-item"><button onClick={toggleCapture}>{isCapturing ? 'Stop Capture' : 'Start Capture'}</button></div>
+            <div className="control-item"><button onClick={() => setIsPaused(!isPaused)}>{isPaused ? 'Resume' : 'Pause'}</button></div>
+            <div className="control-item"><button onClick={() => setShowPromptModal(true)} className="secondary-action">Prompt</button></div>
+        </div>
+        <div className="control-section">
+            <div className="control-item"><button onClick={() => setShowNotSharingModal(true)} className="secondary-action">Show Students Not Sharing ({notSharingStudents.length})</button></div>
+            <div className="control-item"><button onClick={handleDownloadAttendance} className="secondary-action">Download Attendance</button></div>
+        </div>
+        {editablePromptText && (
+            <div className="control-section">
+              <div className="control-item">
+              {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
+                <>
+                  <button onClick={() => setIsPerImageAnalysisRunning(true)}>
+                    Start Per Image Analysis
+                  </button>
+                  <button onClick={() => setIsAllImagesAnalysisRunning(true)}>
+                    Start All Images Analysis
+                  </button>
+                </>
+              )}
+              </div>
+              <div className="control-item">
+              {isPerImageAnalysisRunning && (
+                <button onClick={() => setIsPerImageAnalysisRunning(false)}>
+                  Stop Per Image Analysis
+                </button>
+              )}
+              </div>
+              <div className="control-item">
+              {isAllImagesAnalysisRunning && (
+                <button onClick={() => setIsAllImagesAnalysisRunning(false)}>
+                  Stop All Images Analysis
+                </button>
+              )}
+              </div>
+              <div className="control-item">
+              <label>
+                Analysis Interval:
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={samplingRate}
+                  onChange={(e) => setSamplingRate(Number(e.target.value))}
+                />
+                {samplingRate}
+              </label>
+              </div>
+            </div>
+          )}
+    </div>
+);
+
+
+const MemoizedControlsPanel = React.memo(ControlsPanel);
+
+const MonitorView = ({ classId: propClassId }) => {
   const { classId: paramClassId } = useParams();
   const classId = propClassId || paramClassId;
   const [students, setStudents] = useState([]);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
-  const [screenshots, setScreenshots] = useState({}); // Now stores { url, timestamp }
+  const [screenshots, setScreenshots] = useState({});
   const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.2);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
-  const [now, setNow] = useState(new Date()); // State to trigger re-renders for time check
+  const [now, setNow] = useState(new Date());
   const [showControls, setShowControls] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
-  const pausedRef = useRef(isPaused);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
   const [analysisResults, setAnalysisResults] = useState({});
@@ -83,6 +140,11 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
   const [samplingRate, setSamplingRate] = useState(5);
   const analysisCounterRef = useRef(0);
 
+
+
+  const pausedRef = useRef(isPaused);
+  useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
+
   // Refs for stable callbacks
   const studentsRef = useRef(students);
   useEffect(() => { studentsRef.current = students; }, [students]);
@@ -92,13 +154,6 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
   useEffect(() => { editablePromptTextRef.current = editablePromptText; }, [editablePromptText]);
 
   const functions = getFunctions();
-
-  const frameRateOptions = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
-  const imageQualityOptions = [
-    { label: 'High', value: 1.0 },
-    { label: 'Medium', value: 0.5 },
-    { label: 'Low', value: 0.2 },
-  ];
 
   const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze) => {
     if (!editablePromptTextRef.current.trim()) return;
@@ -137,24 +192,14 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     return () => unsubscribe();
   }, []);
 
-  // Set the title
-  useEffect(() => {
-    setTitle(`Monitoring Class: ${classId}`);
-  }, [classId, setTitle]);
+  const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
+  const imageQualityOptions = [{ label: 'High', value: 1.0 }, { label: 'Medium', value: 0.5 }, { label: 'Low', value: 0.2 }];
 
   useEffect(() => {
-    pausedRef.current = isPaused;
-  }, [isPaused]);
-
-  // Set up an interval to update the current time every second
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => setNow(new Date()), 2000);
+    return () => clearInterval(timer);
   }, []);
 
-  // Effect to fetch class roster and live student statuses
   useEffect(() => {
     if (!classId) return;
 
@@ -174,7 +219,13 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     const statusQuery = query(collection(db, 'classes', classId, 'status'));
     const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
       const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setStudentStatuses(statuses);
+      const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
+          if (!acc[curr.email] || (curr.timestamp && acc[curr.email].timestamp && curr.timestamp.toMillis() > acc[curr.email].timestamp.toMillis())) {
+              acc[curr.email] = curr;
+          }
+          return acc;
+      }, {}));
+      setStudentStatuses(latestStatuses);
     });
 
     return () => {
@@ -183,14 +234,15 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     }
   }, [classId]);
 
-  // Effect to merge the class roster with live statuses
   useEffect(() => {
-    const newStudents = classList.map(email => {
-        const status = studentStatuses.find(s => s.email === email);
+    const lowercasedClassList = classList.map(email => email.toLowerCase());
+    const onlineStudents = studentStatuses.filter(status => lowercasedClassList.includes(status.email.toLowerCase()));
+
+    const newStudents = onlineStudents.map(status => {
         return {
-            id: status?.id || email,
-            email: email,
-            isSharing: status?.isSharing || false,
+            id: status.id,
+            email: status.email,
+            isSharing: status.isSharing || false,
         };
     });
 
@@ -202,8 +254,6 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     });
   }, [classList, studentStatuses]);
 
-
-  // Effect to fetch the latest screenshot for each student
   useEffect(() => {
     if (students.length === 0 || pausedRef.current) return;
 
@@ -257,6 +307,8 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     return () => unsubscribes.forEach(unsub => unsub());
 
   }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis]);
+
+
 
   useEffect(() => {
     if (!isAllImagesAnalysisRunning || !isCapturing) {
@@ -399,106 +451,39 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
     setShowAnalysisResultsModal(true);
   };
 
-
   return (
     <div className="monitor-view">
-      <div className="monitor-header">
-        <div>
-          <button onClick={() => setShowControls(!showControls)} style={{ marginRight: '10px' }}>
-            {showControls ? 'Hide Controls' : 'Show Controls'}
-          </button>
-        </div>
-        
-      </div>
-      {showControls && (
-        <div className="class-controls">
-          <div className="control-group">
-            <input 
-              type="text" 
-              value={message} 
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Broadcast a message"
-            />
-            <button onClick={handleSendMessage}>Send</button>
-          </div>
-          <div className="control-group">
-            <label>
-              Frame Rate (seconds): 
-              <select value={frameRate} onChange={handleFrameRateChange}>
-                {frameRateOptions.map(rate => (
-                  <option key={rate} value={rate}>{rate}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Image Quality: 
-              <select value={imageQuality} onChange={handleImageQualityChange}>
-                {imageQualityOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="control-group">
-            <button onClick={toggleCapture}>
-              {isCapturing ? 'Stop Capture' : 'Start Capture'}
-            </button>
-            <button onClick={() => setIsPaused(!isPaused)}>
-              {isPaused ? 'Resume' : 'Pause'}
-            </button>
-            <button onClick={() => setShowPromptModal(true)}>
-              Prompt
-            </button>
-          </div>
-          <div className="control-group">
-            <button onClick={() => setShowNotSharingModal(true)}>
-              Show Students Not Sharing ({notSharingStudents.length})
-            </button>
-            <button onClick={handleDownloadAttendance}>
-              Download Attendance
-            </button>
-          </div>
-          {editablePromptText && (
-            <div className="control-group">
-              {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
-                <>
-                  <button onClick={() => setIsPerImageAnalysisRunning(true)}>
-                    Start Per Image Analysis
-                  </button>
-                  <button onClick={() => setIsAllImagesAnalysisRunning(true)}>
-                    Start All Images Analysis
-                  </button>
-                </>
-              )}
-              {isPerImageAnalysisRunning && (
-                <button onClick={() => setIsPerImageAnalysisRunning(false)}>
-                  Stop Per Image Analysis
-                </button>
-              )}
-              {isAllImagesAnalysisRunning && (
-                <button onClick={() => setIsAllImagesAnalysisRunning(false)}>
-                  Stop All Images Analysis
-                </button>
-              )}
-              <label>
-                Analysis Interval:
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={samplingRate}
-                  onChange={(e) => setSamplingRate(Number(e.target.value))}
-                />
-                {samplingRate}
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-      <hr />
+      {showControls ? <MemoizedControlsPanel 
+        message={message}
+        setMessage={setMessage}
+        handleSendMessage={handleSendMessage}
+        setShowControls={setShowControls}
+        frameRate={frameRate}
+        handleFrameRateChange={handleFrameRateChange}
+        frameRateOptions={frameRateOptions}
+        imageQuality={imageQuality}
+        handleImageQualityChange={handleImageQualityChange}
+        imageQualityOptions={imageQualityOptions}
+        isCapturing={isCapturing}
+        toggleCapture={toggleCapture}
+        isPaused={isPaused}
+        setIsPaused={setIsPaused}
+        setShowPromptModal={setShowPromptModal}
+        notSharingStudents={notSharingStudents}
+        setShowNotSharingModal={setShowNotSharingModal}
+        handleDownloadAttendance={handleDownloadAttendance}
+        editablePromptText={editablePromptText}
+        isPerImageAnalysisRunning={isPerImageAnalysisRunning}
+        isAllImagesAnalysisRunning={isAllImagesAnalysisRunning}
+        setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
+        setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
+        samplingRate={samplingRate}
+        setSamplingRate={setSamplingRate}
+      /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
+      
       <div className="monitor-main-content">
         <div className="students-container">
-          {students.filter(student => student.isSharing).map(student => {
+          {students.filter(student => student.isSharing).sort((a, b) => a.email.localeCompare(b.email)).map(student => {
             const screenshotData = screenshots[student.id];
             let screenshotUrl = null;
 
@@ -524,28 +509,14 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
         </div>
       </div>
 
-      <Modal 
-        show={showNotSharingModal} 
-        onClose={() => setShowNotSharingModal(false)}
-        title="Students Not Sharing Screen"
-      >
+      <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
         {notSharingStudents.length > 0 ? (
-          <ul>
-            {notSharingStudents.map(student => (
-              <li key={student.id}>{student.email}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>All students are currently sharing their screen.</p>
-        )}
+          <ul style={{listStyleType: 'none', padding: 0}}>{notSharingStudents.map(s => <li key={s.id} style={{padding: '5px 0'}}>{s.email}</li>)}</ul>
+        ) : <p>All students are sharing their screen.</p>}
       </Modal>
-      {selectedStudent && (
-        <IndividualStudentView 
-            student={selectedStudent} 
-            screenshotUrl={selectedScreenshotUrl} 
-            onClose={() => setSelectedStudent(null)} 
-        />
-      )}
+
+      {selectedStudent && <IndividualStudentView student={selectedStudent} screenshotUrl={selectedScreenshotUrl} onClose={() => setSelectedStudent(null)} />}
+
       <Modal
           show={showPromptModal}
           onClose={() => {
@@ -560,7 +531,7 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
               setSelectedPrompt(prompt);
               setEditablePromptText(prompt ? prompt.promptText : '');
             }}
-            style={{ width: '100%', marginBottom: '10px' }}
+            style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
           >
             <option value="" disabled>Select a prompt</option>
             {prompts.map(p => (
@@ -572,7 +543,7 @@ const MonitorView = ({ setTitle, classId: propClassId }) => {
               value={editablePromptText}
               onChange={(e) => setEditablePromptText(e.target.value)}
               placeholder="Select a prompt or enter text here..."
-              style={{ width: '100%', flexGrow: 1, marginBottom: '10px' }}
+              style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
           />
 
           <div style={{ marginTop: '10px' }}>

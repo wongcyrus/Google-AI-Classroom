@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ref, uploadString } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
@@ -7,31 +7,158 @@ import Banner from './Banner';
 import { v4 as uuidv4 } from 'uuid';
 import './StudentView.css';
 
-const StudentView = ({ user, setTitle }) => {
-  const [isSharing, setIsSharing] = useState(false);
+const StudentView = ({ user }) => {
+  // State
+  const [ipAddress, setIpAddress] = useState(null);
+  const [notification, setNotification] = useState('');
   const [stream, setStream] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
   const [userClasses, setUserClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
-  const [notification, setNotification] = useState('');
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
-  const intervalRef = useRef(null);
-  const videoRef = useRef(null);
-  const lastClassMessageTimestampRef = useRef(null);
-  const lastStudentMessageTimestampRef = useRef(null);
-
-  const sessionIdRef = useRef(null);
-  const [ipAddress, setIpAddress] = useState(null);
-
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
 
-  useEffect(() => {
-    if (user) {
-        setTitle(`Student Dashboard - ${user.email}`);
-    }
-  }, [user, setTitle]);
+  // Refs
+  const intervalRef = useRef(null);
+  const videoRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const lastClassMessageTimestampRef = useRef(null);
+  const lastStudentMessageTimestampRef = useRef(null);
 
+  // Callbacks
+  const handleCloseNotification = () => {
+    setNotification('');
+  };
+
+  const showSystemNotification = useCallback((message) => {
+    if (!('serviceWorker' in navigator)) return;
+
+    if (window.Notification.permission === 'granted') {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.active.postMessage({
+          type: 'show-notification',
+          title: 'New Message',
+          body: message,
+        });
+      });
+    }
+  }, []);
+
+  const updateSharingStatus = useCallback(async (sharingStatus) => {
+    if (!selectedClass) return;
+    try {
+      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+      await setDoc(statusRef, {
+        isSharing: sharingStatus,
+        email: user.email,
+        name: user.displayName || user.email
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error updating sharing status: ", error);
+    }
+  }, [selectedClass, user]);
+
+  const stopSharing = useCallback(async () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsSharing(false);
+    setStream(null);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    await updateSharingStatus(false);
+
+    showSystemNotification("Screen recording has stopped.");
+  }, [stream, updateSharingStatus, showSystemNotification]);
+
+  const captureAndUpload = useCallback(async (videoElement, classId) => {
+    if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+      console.log('Capture skipped: video element not ready.');
+      return;
+    }
+    console.log('Capturing screenshot...');
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', imageQuality);
+    console.log('Screenshot captured.');
+
+    const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
+    try {
+      console.log('Uploading screenshot...');
+      await uploadString(screenshotRef, dataUrl, 'data_url');
+      console.log('Screenshot uploaded successfully.');
+
+      console.log('Adding screenshot metadata to Firestore...');
+      const screenshotsColRef = collection(db, 'screenshots');
+      await addDoc(screenshotsColRef, {
+        classId,
+        studentId: user.uid,
+        email: user.email.toLowerCase(),
+        imagePath: screenshotRef.fullPath,
+        timestamp: serverTimestamp(),
+      });
+      console.log('Screenshot metadata added to Firestore.');
+
+      console.log('Updating student status with last upload timestamp...');
+      const statusRef = doc(db, "classes", classId, "status", user.uid);
+      await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
+      console.log('Student status updated.');
+    } catch (err) {
+      console.error("Error uploading screenshot: ", err);
+    }
+  }, [imageQuality, user]);
+
+  const startSharing = useCallback(async () => {
+    if ('Notification' in window && window.Notification.permission !== 'granted') {
+      try {
+        const permission = await window.Notification.requestPermission();
+        if (permission === 'granted') {
+          showSystemNotification('Notifications have been enabled!');
+        } else {
+          alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
+        }
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+      }
+    }
+
+    if (!selectedClass) {
+      alert("Please select a class before sharing.");
+      return;
+    }
+    try {
+      const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      setStream(displayMedia);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = displayMedia;
+      }
+
+      setIsSharing(true);
+      await updateSharingStatus(true);
+
+      showSystemNotification("Screen recording has started.");
+
+      displayMedia.getVideoTracks()[0].onended = () => {
+        stopSharing();
+      };
+    } catch (error) {
+      console.error("Error starting screen sharing:", error);
+      setIsSharing(false);
+    }
+  }, [selectedClass, showSystemNotification, stopSharing, updateSharingStatus]);
+
+  // Effects
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then(response => response.json())
@@ -75,25 +202,7 @@ const StudentView = ({ user, setTitle }) => {
 
       return () => unsubscribe();
     }
-  }, [user, selectedClass, ipAddress]);
-
-  const handleCloseNotification = () => {
-    setNotification('');
-  };
-
-  const showSystemNotification = (message) => {
-    if (!('serviceWorker' in navigator)) return;
-
-    if (window.Notification.permission === 'granted') {
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.active.postMessage({
-          type: 'show-notification',
-          title: 'New Message',
-          body: message,
-        });
-      });
-    }
-  };
+  }, [user, selectedClass, ipAddress, stopSharing]);
 
   useEffect(() => {
     if (!user || !user.email) return;
@@ -150,7 +259,7 @@ const StudentView = ({ user, setTitle }) => {
     });
 
     return () => unsubscribe();
-  }, [selectedClass]);
+  }, [selectedClass, showSystemNotification]);
 
   useEffect(() => {
     if (!user || !user.email) return;
@@ -173,44 +282,9 @@ const StudentView = ({ user, setTitle }) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
-
-  const captureAndUpload = async (videoElement, classId) => {
-    if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoElement.videoWidth;
-    canvas.height = videoElement.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', imageQuality);
-
-    const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
-    try {
-      await uploadString(screenshotRef, dataUrl, 'data_url');
-      const screenshotsColRef = collection(db, 'screenshots');
-      await addDoc(screenshotsColRef, {
-        classId,
-        studentId: user.uid,
-        email: user.email.toLowerCase(), // Add student email
-        imagePath: screenshotRef.fullPath,
-        timestamp: serverTimestamp(),
-      });
-
-      const statusRef = doc(db, "classes", classId, "status", user.uid);
-      await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
-    } catch (err) {
-      console.error("Error uploading screenshot: ", err);
-    }
-  };
+  }, [user, showSystemNotification]);
 
   useEffect(() => {
-    const stopSharingAndLogout = () => {
-        if (isSharing) {
-            stopSharing();
-        }
-        signOut(auth);
-    }
-
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -236,79 +310,7 @@ const StudentView = ({ user, setTitle }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt]);
-
-  const updateSharingStatus = async (sharingStatus) => {
-    if (!selectedClass) return;
-    try {
-      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
-      await setDoc(statusRef, {
-        isSharing: sharingStatus,
-        email: user.email,
-        name: user.displayName || user.email
-      }, { merge: true });
-    } catch (error) {
-      console.error("Error updating sharing status: ", error);
-    }
-  }
-
-  const startSharing = async () => {
-    if ('Notification' in window && window.Notification.permission !== 'granted') {
-      try {
-        const permission = await window.Notification.requestPermission();
-        if (permission === 'granted') {
-          showSystemNotification('Notifications have been enabled!');
-        } else {
-          alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
-        }
-      } catch (error) {
-        console.error('Error requesting notification permission:', error);
-      }
-    }
-
-    if (!selectedClass) {
-      alert("Please select a class before sharing.");
-      return;
-    }
-    try {
-      const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      setStream(displayMedia);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = displayMedia;
-      }
-
-      setIsSharing(true);
-      await updateSharingStatus(true);
-
-      showSystemNotification("Screen recording has started.");
-
-      displayMedia.getVideoTracks()[0].onended = () => {
-        stopSharing();
-      };
-    } catch (error) {
-      console.error("Error starting screen sharing:", error);
-      setIsSharing(false);
-    }
-  };
-
-  const stopSharing = async () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setIsSharing(false);
-    setStream(null);
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    await updateSharingStatus(false);
-
-    showSystemNotification("Screen recording has stopped.");
-  };
+  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt, captureAndUpload]);
 
   return (
     <div className="student-view-container">

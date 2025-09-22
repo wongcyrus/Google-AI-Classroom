@@ -5,15 +5,11 @@ import { signOut } from 'firebase/auth';
 import { Link, Navigate } from 'react-router-dom';
 import PromptManagement from './PromptManagement';
 
-const TeacherView = ({ user, setTitle }) => {
+const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [role, setRole] = useState(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
-
-  useEffect(() => {
-    setTitle('Teacher Dashboard');
-  }, [setTitle]);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -53,7 +49,6 @@ const TeacherView = ({ user, setTitle }) => {
 
   return (
     <div>
-      {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
       <div>
         <label htmlFor="class-select">Select a class to view:</label>
         <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
@@ -75,6 +70,7 @@ const TeacherView = ({ user, setTitle }) => {
       <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
       <hr />
       <button onClick={handleLogout}>Logout</button>
+      {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
     </div>
   );
 };

@@ -1,57 +1,43 @@
-
 import { useState, useEffect } from 'react';
-import { auth, db } from './firebase-config';
+import { auth } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, NavLink, Outlet, useParams, useLocation } from 'react-router-dom';
+
 import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
 import StudentView from './components/StudentView';
-import MonitorView from './components/MonitorView'; // Import MonitorView
-import DataManagementView from './components/DataManagementView';
+import MonitorView from './components/MonitorView';
 import ClassManagementView from './components/ClassManagementView';
 import IrregularitiesView from './components/IrregularitiesView';
-import ClassView from './components/ClassView';
-import Layout from './components/Layout';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import banner from './assets/HKIIT_logo_RGB_horizontal.jpg';
+import PlaybackView from './components/PlaybackView';
+import NotificationsView from './components/NotificationsView';
+import ProgressView from './components/ProgressView';
+import DataManagementView from './components/DataManagementView';
+
+import './App.css';
+import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
 const App = () => {
   const [user, setUser] = useState(null);
-  const [unverifiedUser, setUnverifiedUser] = useState(null);
-  const [role, setRole] = useState(null); // 'teacher' or 'student'
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        await currentUser.reload();
-        if (currentUser.emailVerified) {
-            const idTokenResult = await currentUser.getIdTokenResult(true); // Force refresh
-            const userRole = idTokenResult.claims.role || 'student'; // Default to student
-            
-            setUser(currentUser);
-            setRole(userRole);
-            setUnverifiedUser(null);
-        } else {
-            setUnverifiedUser(currentUser);
-            setUser(null);
-            setRole(null);
-        }
+      if (currentUser && currentUser.emailVerified) {
+        const idTokenResult = await currentUser.getIdTokenResult(true);
+        setUser(currentUser);
+        setRole(idTokenResult.claims.role || 'student');
       } else {
         setUser(null);
         setRole(null);
-        setUnverifiedUser(null);
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => {
-    signOut(auth);
-  };
+  const handleLogout = () => signOut(auth);
 
   if (loading) {
     return <div>Loading...</div>;
@@ -59,25 +45,76 @@ const App = () => {
 
   return (
     <Router>
-        <Layout 
-            banner={banner} 
-            title={title} 
-            logoutButton={user && <button onClick={handleLogout} className="student-view-button">Logout</button>}
-        >
-        <Routes>
-            <Route path="/login" element={!user ? <AuthComponent setTitle={setTitle} unverifiedUser={unverifiedUser} /> : <Navigate to={`/${role}`} />} />
-            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/monitor/:classId" element={user && role === 'teacher' ? <MonitorView setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/data-management/:classId" element={user && role === 'teacher' ? <DataManagementView setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} setTitle={setTitle} /> : <Navigate to="/login" />} />
-            <Route path="/teacher/irregularities" element={user && role === 'teacher' ? <IrregularitiesView /> : <Navigate to="/login" />} />
+      <div className="app-container">
+        {user && <MainHeader onLogout={handleLogout} user={user} role={role} />}
+        <main className="main-content">
+          <Routes>
+            <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
+            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
+
+            <Route path="/class/:classId/*" element={user && role === 'teacher' ? <ClassLayout /> : <Navigate to="/login" />}>
+              <Route path="monitor" element={<MonitorView />} />
+              <Route path="progress" element={<ProgressView />} />
+              <Route path="irregularities" element={<IrregularitiesView />} />
+              <Route path="playback" element={<PlaybackView />} />
+              <Route path="notifications" element={<NotificationsView />} />
+              <Route path="data-management" element={<DataManagementView />} />
+              <Route index element={<Navigate to="monitor" replace />} />
+            </Route>
+
             <Route path="*" element={<Navigate to="/login" />} />
-        </Routes>
-      </Layout>
+          </Routes>
+        </main>
+      </div>
     </Router>
   );
 };
+
+const MainHeader = ({ onLogout, user, role }) => {
+  const location = useLocation();
+  const isClassPage = location.pathname.includes('/class/');
+  let title = "Gemini AI Classroom Assistant";
+
+  if (isClassPage) {
+      // In a real app, you might fetch the class name based on the ID
+      title = `Class: Demo`;
+  } else if (role === 'student') {
+      title = `Student Dashboard`;
+  }
+  
+  return (
+      <header className="main-header">
+          <div className="header-left">
+              <img src={hkiitLogo} alt="HKIIT Logo" style={{ height: '40px' }} />
+          </div>
+          <div className="header-right">
+              <span className="header-title">{title}</span>
+              {user && <span style={{margin: "0 10px"}}>{user.email}</span>}
+              <button onClick={onLogout} className="logout-btn">Logout</button>
+          </div>
+      </header>
+  );
+}
+
+const ClassLayout = () => {
+  const { classId } = useParams();
+
+  return (
+    <div>
+      <Link to="/teacher" className="back-link">Back to Dashboard</Link>
+      <nav className="nav-tabs">
+        <NavLink to={`/class/${classId}/monitor`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Monitor</NavLink>
+        <NavLink to={`/class/${classId}/progress`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Progress</NavLink>
+        <NavLink to={`/class/${classId}/irregularities`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Irregularities</NavLink>
+        <NavLink to={`/class/${classId}/playback`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Playback</NavLink>
+        <NavLink to={`/class/${classId}/notifications`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Notifications</NavLink>
+        <NavLink to={`/class/${classId}/data-management`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Data Management</NavLink>
+      </nav>
+      <Outlet />
+    </div>
+  );
+}
 
 export default App;

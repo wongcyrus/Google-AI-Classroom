@@ -1,5 +1,5 @@
-
 import React from 'react';
+import './MonitorView.css'; // Import styles from MonitorView
 
 const StudentScreen = ({ student, isSharing, screenshotUrl, onClick }) => {
   return (
@@ -10,7 +10,11 @@ const StudentScreen = ({ student, isSharing, screenshotUrl, onClick }) => {
       </div>
       {screenshotUrl ? (
         <img src={screenshotUrl} alt={`Screenshot from ${student.email}`} />
-      ) : null}
+      ) : (
+        <div className="no-screenshot-placeholder">
+          {isSharing ? 'Connecting...' : 'Not Sharing'}
+        </div>
+      )}
     </div>
   );
 };

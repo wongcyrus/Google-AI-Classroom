@@ -5,14 +5,10 @@ import { collection, query, where, getDocs, writeBatch } from 'firebase/firestor
 import { ref, deleteObject } from 'firebase/storage';
 import { useParams, Link } from 'react-router-dom';
 
-const DataManagementView = ({ setTitle }) => {
+const DataManagementView = () => {
   const { classId } = useParams();
   const [deleteStartDate, setDeleteStartDate] = useState('');
   const [deleteEndDate, setDeleteEndDate] = useState('');
-
-  useEffect(() => {
-    setTitle(`Data Management: ${classId}`);
-  }, [classId, setTitle]);
 
   const handleDeleteData = async () => {
     if (!deleteStartDate || !deleteEndDate) {
@@ -70,8 +66,7 @@ const DataManagementView = ({ setTitle }) => {
         <button onClick={handleDeleteData}>Delete Data</button>
       </div>
 
-      <hr />
-      <Link to="/teacher">Back to Teacher View</Link>
+      <Link to="/teacher" className="back-link">Back to Teacher View</Link>
     </div>
   );
 };

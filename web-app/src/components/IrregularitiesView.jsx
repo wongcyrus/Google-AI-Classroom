@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../firebase-config';
+import { useParams } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import './IrregularitiesView.css';
 
-const IrregularitiesView = ({ classId }) => {
+const IrregularitiesView = () => {
+  const { classId } = useParams();
   const [irregularities, setIrregularities] = useState([]);
   const [imageUrls, setImageUrls] = useState({});
   const [startDate, setStartDate] = useState(() => {
@@ -35,7 +36,7 @@ const IrregularitiesView = ({ classId }) => {
 
   const PAGE_SIZE = 10;
 
-  const handlePageChange = async (newPage, direction, currentClassId) => {
+  const handlePageChange = useCallback(async (newPage, direction, currentClassId) => {
     if (!currentClassId) return; // Guard against missing classId
     setLoading(true);
     const irregularitiesCollectionRef = collection(db, 'irregularities');
@@ -65,10 +66,14 @@ const IrregularitiesView = ({ classId }) => {
 
     try {
       const snapshot = await getDocs(q);
+      console.log('Fetched irregularities:', snapshot.docs.length);
       if (!snapshot.empty) {
         setPage(newPage);
         setIsLastPage(snapshot.docs.length < PAGE_SIZE);
         const irregularitiesData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        if (direction === 'prev') {
+          irregularitiesData.reverse();
+        }
         setIrregularities(irregularitiesData);
         setFirstDoc(snapshot.docs[0]);
         setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
@@ -97,7 +102,7 @@ const IrregularitiesView = ({ classId }) => {
       console.error("Error fetching irregularities:", error);
     }
     setLoading(false);
-  };
+  }, [endDate, firstDoc, lastDoc, startDate]);
 
   useEffect(() => {
     if (classId) { // Only run when classId is available

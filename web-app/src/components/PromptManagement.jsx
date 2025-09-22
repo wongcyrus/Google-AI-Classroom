@@ -3,14 +3,14 @@ import './PromptManagement.css';
 import { db } from '../firebase-config';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
+const promptsCollectionRef = collection(db, 'prompts');
+
 const PromptManagement = ({ onClose }) => {
   const [prompts, setPrompts] = useState([]);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [name, setName] = useState('');
   const [promptText, setPromptText] = useState('');
   const [applyTo, setApplyTo] = useState([]);
-
-  const promptsCollectionRef = collection(db, 'prompts');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(promptsCollectionRef, (snapshot) => {

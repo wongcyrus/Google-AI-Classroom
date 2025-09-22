@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase-config';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
+import { useParams } from 'react-router-dom';
 
 const PAGE_SIZE = 10;
 
-const NotificationsView = ({ classId }) => {
+const NotificationsView = () => {
+  const { classId } = useParams();
   const [messages, setMessages] = useState([]);
   const [teacherEmail, setTeacherEmail] = useState(null);
   

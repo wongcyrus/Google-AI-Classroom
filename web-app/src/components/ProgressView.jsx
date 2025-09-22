@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { useParams } from 'react-router-dom';
 import { db } from '../firebase-config';
 import './ProgressView.css';
 
-const ProgressView = ({ classId, setTitle }) => {
+const ProgressView = () => {
+  const { classId } = useParams();
   const [allProgress, setAllProgress] = useState([]);
   const [latestProgress, setLatestProgress] = useState({});
   const [startTime, setStartTime] = useState(() => {
@@ -13,12 +15,6 @@ const ProgressView = ({ classId, setTitle }) => {
   });
   const [endTime, setEndTime] = useState(new Date());
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(null);
-
-  useEffect(() => {
-    if (setTitle) {
-      setTitle('Student Progress');
-    }
-  }, [setTitle]);
 
   useEffect(() => {
     if (!classId) return;

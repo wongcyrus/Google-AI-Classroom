@@ -34,6 +34,7 @@ const ClassManagement = ({ user }) => {
       querySnapshot.forEach((doc) => {
         classesData.push({ id: doc.id, ...doc.data() });
       });
+      console.log('Fetched classes:', classesData);
       setClasses(classesData);
     });
 

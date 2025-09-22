@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
+import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import './PlaybackView.css';
+import TimelineSlider from './TimelineSlider';
 
-const PlaybackView = ({ classId }) => {
+const PlaybackView = () => {
+  const { classId } = useParams();
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
@@ -22,6 +25,50 @@ const PlaybackView = ({ classId }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // images per second
+  const [screenshotImageUrls, setScreenshotImageUrls] = useState({});
+  const [isFetchingUrls, setIsFetchingUrls] = useState(false);
+  const urlsFetched = useRef(new Set());
+
+  // Effect to pre-fetch screenshot URLs in a buffer
+  useEffect(() => {
+    if (screenshots.length === 0 || isFetchingUrls) return;
+
+    const preFetchUrls = async () => {
+      setIsFetchingUrls(true);
+      const BUFFER = 5; // How many images to pre-fetch
+      const start = currentIndex;
+      const end = Math.min(screenshots.length, start + BUFFER);
+
+      const urlsToFetch = [];
+      for (let i = start; i < end; i++) {
+        const screenshot = screenshots[i];
+        if (screenshot && !urlsFetched.current.has(screenshot.imagePath)) {
+          urlsToFetch.push(screenshot);
+        }
+      }
+
+      if (urlsToFetch.length === 0) {
+        setIsFetchingUrls(false);
+        return;
+      }
+
+      const newUrls = {};
+      for (const screenshot of urlsToFetch) {
+        try {
+          const url = await getDownloadURL(ref(storage, screenshot.imagePath));
+          newUrls[screenshot.imagePath] = url;
+          urlsFetched.current.add(screenshot.imagePath);
+        } catch (error) {
+          console.error(`Failed to pre-fetch URL for ${screenshot.imagePath}:`, error);
+        }
+      }
+
+      setScreenshotImageUrls(prev => ({ ...prev, ...newUrls }));
+      setIsFetchingUrls(false);
+    };
+
+    preFetchUrls();
+  }, [currentIndex, screenshots, isFetchingUrls]);
 
   // Fetch students for the class
   useEffect(() => {
@@ -45,10 +92,12 @@ const PlaybackView = ({ classId }) => {
     if (!sessionData) return;
 
     const fetchScreenshots = async () => {
-      console.log('Starting to fetch screenshots with session data:', sessionData);
+      console.log('Starting to fetch screenshot metadata:', sessionData);
       setLoading(true);
       setScreenshots([]);
       setCurrentIndex(0);
+      setScreenshotImageUrls({});
+      urlsFetched.current.clear();
 
       try {
         const screenshotsRef = collection(db, 'screenshots');
@@ -70,18 +119,7 @@ const PlaybackView = ({ classId }) => {
           return;
         }
 
-        console.log('Generating download URLs for all screenshots...');
-        const urls = await Promise.all(
-          screenshotDocs.map(doc => getDownloadURL(ref(storage, doc.imagePath)))
-        );
-        console.log('Successfully generated all download URLs.');
-
-        const populatedScreenshots = screenshotDocs.map((doc, i) => ({
-          ...doc,
-          url: urls[i],
-        }));
-
-        setScreenshots(populatedScreenshots);
+        setScreenshots(screenshotDocs);
       } catch (error) {
         console.error("Error fetching screenshots:", error);
         alert("Failed to fetch session data. Check the console for errors. It's possible the database index is still building.");
@@ -108,29 +146,47 @@ const PlaybackView = ({ classId }) => {
       return;
     }
     console.log(`Loading session for ${selectedStudent}`);
+    setScreenshotImageUrls({});
+    urlsFetched.current.clear();
     setSessionData({ student: selectedStudent.trim().toLowerCase(), start: startTime, end: endTime });
   };
 
   const currentTimestamp = screenshots[currentIndex]?.timestamp.toDate().toLocaleString();
+  const currentImageUrl = screenshots[currentIndex]?.imagePath ? screenshotImageUrls[screenshots[currentIndex].imagePath] : null;
+
+  const bufferedRanges = useMemo(() => {
+    if (screenshots.length === 0) return [];
+
+    const ranges = [];
+    let inRange = false;
+    let start = 0;
+
+    for (let i = 0; i < screenshots.length; i++) {
+      const screenshot = screenshots[i];
+      const hasUrl = screenshot && urlsFetched.current.has(screenshot.imagePath);
+
+      if (hasUrl && !inRange) {
+        inRange = true;
+        start = i;
+      } else if (!hasUrl && inRange) {
+        inRange = false;
+        ranges.push({ start, end: i - 1 });
+      }
+    }
+
+    if (inRange) {
+      ranges.push({ start, end: screenshots.length - 1 });
+    }
+
+    return ranges;
+  }, [screenshots, screenshotImageUrls]);
+
 
   if (sessionData) {
     return (
         <div className="playback-player">
             <h3>Playback for: {sessionData.student}</h3>
             <button onClick={() => setSessionData(null)}>Back to Selection</button>
-            <div className="player-main">
-                {loading ? (
-                    <p>Loading session...</p>
-                ) : screenshots.length > 0 ? (
-                    <img src={screenshots[currentIndex]?.url} alt={`Screenshot for ${sessionData.student}`} />
-                ) : (
-                    <p>No screenshots found for the selected student and time range.</p>
-                )}
-            </div>
-            <div className="player-info">
-                <span>{currentTimestamp || 'N/A'}</span>
-                <span>Frame: {currentIndex + 1} / {screenshots.length}</span>
-            </div>
             <div className="player-controls">
                 <button onClick={() => setCurrentIndex(0)} disabled={screenshots.length === 0}>First</button>
                 <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={screenshots.length === 0}>Prev</button>
@@ -141,14 +197,12 @@ const PlaybackView = ({ classId }) => {
                 <button onClick={() => setCurrentIndex(screenshots.length - 1)} disabled={screenshots.length === 0}>Last</button>
             </div>
             <div className="timeline-controls">
-                <input
-                    type="range"
-                    min="0"
+                <TimelineSlider
+                    min={0}
                     max={screenshots.length > 0 ? screenshots.length - 1 : 0}
                     value={currentIndex}
                     onChange={e => setCurrentIndex(Number(e.target.value))}
-                    className="timeline-slider"
-                    disabled={screenshots.length === 0}
+                    bufferedRanges={bufferedRanges}
                 />
                 <label>Speed: </label>
                 <select value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))}>
@@ -157,6 +211,19 @@ const PlaybackView = ({ classId }) => {
                     <option value="2">2x</option>
                     <option value="4">4x</option>
                 </select>
+            </div>
+            <div className="player-main">
+                {loading ? (
+                    <p>Loading session...</p>
+                ) : screenshots.length > 0 ? (
+                    <img src={currentImageUrl} alt={`Screenshot for ${sessionData.student}`} />
+                ) : (
+                    <p>No screenshots found for the selected student and time range.</p>
+                )}
+            </div>
+            <div className="player-info">
+                <span>{currentTimestamp || 'N/A'}</span>
+                <span>Frame: {currentIndex + 1} / {screenshots.length}</span>
             </div>
         </div>
     )

@@ -9,7 +9,7 @@ import PlaybackView from './PlaybackView';
 import NotificationsView from './NotificationsView';
 import './ClassView.css';
 
-const ClassView = ({ user, setTitle }) => {
+const ClassView = ({ user }) => {
   const { classId } = useParams();
   const [activeTab, setActiveTab] = useState('monitor');
   const [teacherEmail, setTeacherEmail] = useState(null);
@@ -35,7 +35,6 @@ const ClassView = ({ user, setTitle }) => {
 
   // Effect to get the teacher's email
   useEffect(() => {
-    setTitle(`Class: ${classId}`);
     const classRef = doc(db, "classes", classId);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -44,7 +43,7 @@ const ClassView = ({ user, setTitle }) => {
       }
     });
     return () => unsubscribe();
-  }, [classId, setTitle]);
+  }, [classId]);
 
   // Dedicated listener for OS notifications that runs for the lifetime of the ClassView
   useEffect(() => {
@@ -74,9 +73,9 @@ const ClassView = ({ user, setTitle }) => {
   const renderContent = () => {
     switch (activeTab) {
       case 'monitor':
-        return <MonitorView user={user} setTitle={setTitle} classId={classId} />;
+        return <MonitorView user={user} classId={classId} />;
       case 'progress':
-        return <ProgressView classId={classId} setTitle={setTitle} />;
+        return <ProgressView classId={classId} />;
       case 'irregularities':
         return <IrregularitiesView classId={classId} />;
       case 'playback':

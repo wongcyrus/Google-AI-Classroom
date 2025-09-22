@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -9,17 +9,11 @@ import {
 import { auth } from '../firebase-config';
 import './AuthComponent.css';
 
-const AuthComponent = ({ unverifiedUser, setTitle }) => {
+const AuthComponent = ({ unverifiedUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    if(setTitle) {
-      setTitle('Welcome');
-    }
-  }, [setTitle]);
 
   const handleRegister = () => {
     if (!email.endsWith('@stu.vtc.edu.hk') && !email.endsWith('@vtc.edu.hk')) {
