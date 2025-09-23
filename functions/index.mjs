@@ -1,7 +1,7 @@
 import './firebase.js';
 
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { runFlow } from "@genkit-ai/flow";
+import { onCallGenkit, HttpsError } from "firebase-functions/v2/https";
+
 
 import { analyzeImagesFlow, analyzeAllImagesFlow } from "./gemini.js";
 import { processVideoJob } from "./processVideoJob.js";
@@ -19,16 +19,16 @@ const callOptions = {
   enforceAppCheck: true,
 };
 
-export const analyzeImages = onCall(callOptions, (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  return runFlow(analyzeImagesFlow, request.data);
-});
+export const analyzeImages = onCallGenkit({
+    ...callOptions,
+    authPolicy: (auth) => {
+        return auth?.token?.email_verified;
+    },
+}, analyzeImagesFlow);
 
-export const analyzeAllImages = onCall(callOptions, (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  return runFlow(analyzeAllImagesFlow, request.data);
-});
+export const analyzeAllImages = onCallGenkit({
+    ...callOptions,
+    authPolicy: (auth) => {
+        return auth?.token?.email_verified;
+    },
+}, analyzeAllImagesFlow);
