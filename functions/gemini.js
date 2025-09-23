@@ -1,9 +1,10 @@
-const { ai } = require('./ai.js');
-const z = require('zod');
-const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+import './firebase.js';
+import { ai } from './ai.js';
+import { z } from 'zod';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
 const modelConfig = {
-  model: 'vertexai/gemini-2.5-flash-lite',
+  model: 'vertexai/gemini-1.5-flash-lite',
   project: process.env.GCLOUD_PROJECT,
   location: process.env.FUNCTION_REGION,
   temperature: 0,
@@ -171,7 +172,7 @@ function getTools() {
   return [sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher];
 }
 
-exports.analyzeImagesFlow = ai.defineFlow(
+export const analyzeImagesFlow = ai.defineFlow(
   {
     name: 'analyzeImagesFlow',
     inputSchema: z.object({
@@ -200,7 +201,7 @@ exports.analyzeImagesFlow = ai.defineFlow(
   }
 );
 
-exports.analyzeAllImagesFlow = ai.defineFlow(
+export const analyzeAllImagesFlow = ai.defineFlow(
   {
     name: 'analyzeAllImagesFlow',
     inputSchema: z.object({

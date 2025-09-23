@@ -13,6 +13,7 @@ import PlaybackView from './components/PlaybackView';
 import NotificationsView from './components/NotificationsView';
 import ProgressView from './components/ProgressView';
 import DataManagementView from './components/DataManagementView';
+import VideoLibrary from './components/VideoLibrary';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -59,6 +60,7 @@ const App = () => {
               <Route path="progress" element={<ProgressView />} />
               <Route path="irregularities" element={<IrregularitiesView />} />
               <Route path="playback" element={<PlaybackView />} />
+              <Route path="video-library" element={<VideoLibrary />} />
               <Route path="notifications" element={<NotificationsView />} />
               <Route path="data-management" element={<DataManagementView />} />
               <Route index element={<Navigate to="monitor" replace />} />
@@ -109,6 +111,7 @@ const ClassLayout = () => {
         <NavLink to={`/class/${classId}/progress`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Progress</NavLink>
         <NavLink to={`/class/${classId}/irregularities`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Irregularities</NavLink>
         <NavLink to={`/class/${classId}/playback`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Playback</NavLink>
+        <NavLink to={`/class/${classId}/video-library`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Video Library</NavLink>
         <NavLink to={`/class/${classId}/notifications`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Notifications</NavLink>
         <NavLink to={`/class/${classId}/data-management`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Data Management</NavLink>
       </nav>

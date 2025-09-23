@@ -331,13 +331,28 @@ const MonitorView = ({ classId: propClassId }) => {
   }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis]);
 
   const handleSendMessage = async () => {
-    if (!classId || !message.trim()) return;
-    const messagesRef = collection(db, 'classes', classId, 'messages');
-    await addDoc(messagesRef, {
-      message,
-      timestamp: serverTimestamp(),
-    });
-    setMessage('');
+    if (!message.trim()) return;
+
+    const onlineStudents = students.filter(s => s.isSharing);
+    if (onlineStudents.length === 0) {
+      alert("No students are online to receive the message.");
+      return;
+    }
+
+    try {
+      for (const student of onlineStudents) {
+        const studentMessagesRef = collection(db, 'students', student.email, 'messages');
+        await addDoc(studentMessagesRef, {
+          message,
+          timestamp: serverTimestamp(),
+        });
+      }
+      setMessage('');
+      alert(`Message sent to ${onlineStudents.length} student(s).`);
+    } catch (error) {
+      console.error("Error sending message to students: ", error);
+      alert("An error occurred while sending the message.");
+    }
   };
 
   const handleDownloadAttendance = () => {

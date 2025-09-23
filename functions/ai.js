@@ -1,10 +1,8 @@
-const { genkit } = require('genkit');
-const { vertexAI } = require('@genkit-ai/google-genai');
+import { genkit } from 'genkit';
+import { vertexAI } from '@genkit-ai/vertexai';
 
-const ai = genkit({
+export const ai = genkit({
   plugins: [
     vertexAI(),
   ],
 });
-
-module.exports = { ai };

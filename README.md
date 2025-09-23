@@ -101,17 +101,15 @@ The `/admin` directory contains scripts for managing user roles and AI prompts.
 
 ## Deployment
 
-This project is configured for deployment to Firebase.
+To deploy the project to Firebase, simply run the deployment script from the project root:
 
-1.  **Build the Frontend:**
-    ```bash
-    cd web-app
-    npm run build
-    ```
+```bash
+./deploy.sh
+```
 
-2.  **Deploy to Firebase:**
-    Run the deploy command from the project root.
-    ```bash
-    # Deploy everything (hosting, functions, firestore rules, etc.)
-    firebase deploy
-    ```
+This script handles all the necessary steps automatically:
+1.  Builds the frontend application.
+2.  Ensures the necessary IAM permissions are granted for Cloud Functions to create signed URLs.
+3.  Deploys all services (Hosting, Functions, Firestore rules, etc.) to Firebase.
+
+**Prerequisites:** Before running the script, make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated with your project.

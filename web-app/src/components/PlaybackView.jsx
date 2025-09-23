@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { doc, getDoc, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
@@ -21,6 +21,8 @@ const PlaybackView = () => {
   const [sessionData, setSessionData] = useState(null);
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeJobId, setActiveJobId] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -151,6 +153,88 @@ const PlaybackView = () => {
     setSessionData({ student: selectedStudent.trim().toLowerCase(), start: startTime, end: endTime });
   };
 
+  // Poll for video job status
+  useEffect(() => {
+    if (!activeJobId) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const jobDocRef = doc(db, 'videoJobs', activeJobId);
+        const jobDocSnap = await getDoc(jobDocRef);
+
+        if (jobDocSnap.exists()) {
+          const jobData = jobDocSnap.data();
+          switch (jobData.status) {
+            case 'completed':
+              setNotification({ 
+                type: 'success', 
+                message: `Video created successfully!`,
+                url: jobData.videoUrl 
+              });
+              setActiveJobId(null);
+              clearInterval(intervalId);
+              break;
+            case 'failed':
+              setNotification({ 
+                type: 'error', 
+                message: `Video creation failed: ${jobData.error || 'Unknown error'}` 
+              });
+              setActiveJobId(null);
+              clearInterval(intervalId);
+              break;
+            case 'processing':
+              setNotification({ type: 'info', message: 'Video is processing...' });
+              break;
+            case 'pending':
+            default:
+              setNotification({ type: 'info', message: 'Video job is pending...' });
+              break;
+          }
+        } else {
+          setNotification({ type: 'error', message: 'Video job details not found.' });
+          setActiveJobId(null);
+          clearInterval(intervalId);
+        }
+      } catch (error) {
+        console.error("Error polling for job status:", error);
+        setNotification({ type: 'error', message: 'Error checking video job status.' });
+        setActiveJobId(null);
+        clearInterval(intervalId);
+      }
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(intervalId); // Cleanup on unmount
+  }, [activeJobId]);
+
+  const handleCombineToVideo = async () => {
+    if (!sessionData) return;
+
+    setNotification({ type: 'info', message: 'Initiating video creation job...' });
+
+    try {
+      const jobCollectionRef = collection(db, 'videoJobs');
+      const newDocRef = doc(jobCollectionRef);
+      const jobId = newDocRef.id;
+
+      await setDoc(newDocRef, {
+        jobId: jobId,
+        classId: classId,
+        student: sessionData.student,
+        startTime: sessionData.start,
+        endTime: sessionData.end,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+
+      setActiveJobId(jobId);
+      setNotification({ type: 'info', message: `Video job created (ID: ${jobId}). Waiting for processing to start...` });
+
+    } catch (error) {
+      console.error('Error creating video job:', error);
+      setNotification({ type: 'error', message: `Error: ${error.message}` });
+    }
+  };
+
   const currentTimestamp = screenshots[currentIndex]?.timestamp.toDate().toLocaleString();
   const currentImageUrl = screenshots[currentIndex]?.imagePath ? screenshotImageUrls[screenshots[currentIndex].imagePath] : null;
 
@@ -187,6 +271,19 @@ const PlaybackView = () => {
         <div className="playback-player">
             <h3>Playback for: {sessionData.student}</h3>
             <button onClick={() => setSessionData(null)}>Back to Selection</button>
+            <button onClick={handleCombineToVideo} disabled={activeJobId || screenshots.length === 0}>
+              {activeJobId ? 'Processing...' : 'Combine to Video'}
+            </button>
+            
+            {notification && (
+              <div className={`notification notification-${notification.type}`}>
+                <p>{notification.message}</p>
+                {notification.type === 'success' && notification.url && (
+                  <a href={notification.url} target="_blank" rel="noopener noreferrer">Download Video</a>
+                )}
+              </div>
+            )}
+
             <div className="player-controls">
                 <button onClick={() => setCurrentIndex(0)} disabled={screenshots.length === 0}>First</button>
                 <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={screenshots.length === 0}>Prev</button>
