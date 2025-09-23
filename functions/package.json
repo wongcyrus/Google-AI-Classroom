@@ -17,7 +17,6 @@
   "dependencies": {
     "@genkit-ai/firebase": "^1.19.3",
     "@genkit-ai/flow": "^0.5.17",
-    "@genkit-ai/google-genai": "^1.19.3",
     "@genkit-ai/vertexai": "^1.19.3",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",

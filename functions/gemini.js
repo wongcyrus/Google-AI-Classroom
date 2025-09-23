@@ -1,15 +1,7 @@
 import './firebase.js';
 import { ai } from './ai.js';
 import { z } from 'zod';
-import { vertexAI } from '@genkit-ai/google-genai';
 
-const modelConfig = {
-  model: vertexAI.model('gemini-2.5-flash'),
-  project: process.env.GCLOUD_PROJECT,
-  location: process.env.FUNCTION_REGION,
-  temperature: 0,
-  topP: 0.1,
-};
 
 import { sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './tools.js';
 
@@ -33,7 +25,8 @@ export const analyzeImagesFlow = ai.defineFlow(
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
       const response = await ai.generate({
-        ...modelConfig,
+        temperature: 0,
+        topP: 0.1,
         prompt: [
           { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
           { media: { url } },
@@ -75,7 +68,8 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
     const response = await ai.generate({
-      ...modelConfig,
+      temperature: 0,
+      topP: 0.1,
       prompt: fullPrompt,
       tools: tools,
       maxToolRoundtrips,
