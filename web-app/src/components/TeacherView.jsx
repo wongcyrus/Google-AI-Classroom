@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db, auth } from '../firebase-config';
-import { signOut } from 'firebase/auth';
+import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
-import PromptManagement from './PromptManagement';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [role, setRole] = useState(null);
-  const [showPromptModal, setShowPromptModal] = useState(false);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -39,27 +36,12 @@ const TeacherView = ({ user }) => {
     return () => unsubscribe();
   }, [user]);
 
-  const handleLogout = () => {
-    signOut(auth);
-  };
-
   if (role && role !== 'teacher') {
     return <Navigate to="/login" />;
   }
 
   return (
     <div>
-        <div>
-            <Link to="/mailbox">
-                <button>Mailbox</button>
-            </Link>
-            <Link to="/class-management" style={{ marginLeft: '10px' }}>
-                <button>Class Management</button>
-            </Link>
-            <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
-        </div>
-        <hr />
-
         <div>
             <label htmlFor="class-select">Select a class to view:</label>
             <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
@@ -74,10 +56,6 @@ const TeacherView = ({ user }) => {
                 </Link>
             )}
         </div>
-
-        <hr />
-        <button onClick={handleLogout}>Logout</button>
-        {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
     </div>
   );
 };

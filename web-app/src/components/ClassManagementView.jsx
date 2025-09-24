@@ -5,7 +5,7 @@ const ClassManagementView = ({ user }) => {
 
   return (
     <div>
-      <Link to="/teacher">Back to Teacher View</Link>
+
       <ClassManagement user={user} />
     </div>
   );

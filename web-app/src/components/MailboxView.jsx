@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { auth, db } from '../firebase-config';
-import './MailboxView.css';
+import './SharedViews.css';
+
 
 const MailboxView = () => {
     const [emails, setEmails] = useState([]);
@@ -42,8 +43,11 @@ const MailboxView = () => {
     }
 
     return (
-        <div className="mailbox-view">
-            <h2>Mailbox</h2>
+        <div className="view-container">
+
+            <div className="view-header">
+                <h2>Mailbox</h2>
+            </div>
             <div className="email-list">
                 {emails.length === 0 ? (
                     <p>You have no mail.</p>

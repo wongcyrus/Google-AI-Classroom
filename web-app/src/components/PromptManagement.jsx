@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import './SharedViews.css';
 import './PromptManagement.css';
 import { db } from '../firebase-config';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 const promptsCollectionRef = collection(db, 'prompts');
 
-const PromptManagement = ({ onClose }) => {
+const PromptManagement = () => {
   const [prompts, setPrompts] = useState([]);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [name, setName] = useState('');
@@ -85,65 +86,66 @@ const PromptManagement = ({ onClose }) => {
     if (!selectedPrompt) return;
     setSelectedPrompt(null); // Switch to create mode
     setName(`${name} - Copy`);
-    // The rest of the form state (promptText, applyTo) remains, creating a duplicate
   };
 
   return (
-    <div className="prompt-management-modal">
-      <div className="prompt-management-content">
-        <div className="prompt-list-column">
-          <h3>Saved Prompts</h3>
-          <button onClick={clearForm} className="new-prompt-btn">+ New Prompt</button>
-          <ul>
-            {prompts.map(prompt => (
-              <li key={prompt.id} onClick={() => handleSelectPrompt(prompt)} className={selectedPrompt?.id === prompt.id ? 'selected' : ''}>
-                {prompt.name}
-              </li>
-            ))}
-          </ul>
+    <div className="view-container">
+        <div className="view-header">
+            <h2>Manage Prompts</h2>
         </div>
-        <div className="prompt-form-column">
-          <h3>{selectedPrompt ? 'Edit Prompt' : 'Create Prompt'}</h3>
-          <input 
-            type="text" 
-            placeholder="Prompt Name" 
-            value={name} 
-            onChange={(e) => setName(e.target.value)} 
-          />
-          <textarea 
-            placeholder="Enter prompt text..." 
-            value={promptText} 
-            onChange={(e) => setPromptText(e.target.value)}
-          />
-          <div className="apply-to-group">
-            <label>Apply to:</label>
-            <label>
-              <input 
-                type="checkbox" 
-                value="Per Image" 
-                checked={applyTo.includes('Per Image')} 
-                onChange={handleApplyToChange} 
-              />
-              Per Image
-            </label>
-            <label>
-              <input 
-                type="checkbox" 
-                value="All Images" 
-                checked={applyTo.includes('All Images')} 
-                onChange={handleApplyToChange} 
-              />
-              All Images
-            </label>
-          </div>
-          <div className="form-actions">
-            <button onClick={handleSave}>{selectedPrompt ? 'Save Changes' : 'Save Prompt'}</button>
-            {selectedPrompt && <button onClick={handleDuplicate} className="secondary-btn">Duplicate</button>}
-            {selectedPrompt && <button onClick={handleDelete} className="delete-btn">Delete</button>}
-          </div>
+        <div className="prompt-management-content">
+            <div className="prompt-list-column">
+            <h3>Saved Prompts</h3>
+            <button onClick={clearForm} className="new-prompt-btn">+ New Prompt</button>
+            <ul>
+                {prompts.map(prompt => (
+                <li key={prompt.id} onClick={() => handleSelectPrompt(prompt)} className={selectedPrompt?.id === prompt.id ? 'selected' : ''}>
+                    {prompt.name}
+                </li>
+                ))}
+            </ul>
+            </div>
+            <div className="prompt-form-column">
+            <h3>{selectedPrompt ? 'Edit Prompt' : 'Create Prompt'}</h3>
+            <input 
+                type="text" 
+                placeholder="Prompt Name" 
+                value={name} 
+                onChange={(e) => setName(e.target.value)} 
+            />
+            <textarea 
+                placeholder="Enter prompt text..." 
+                value={promptText} 
+                onChange={(e) => setPromptText(e.target.value)}
+            />
+            <div className="apply-to-group">
+                <label>Apply to:</label>
+                <label>
+                <input 
+                    type="checkbox" 
+                    value="Per Image" 
+                    checked={applyTo.includes('Per Image')} 
+                    onChange={handleApplyToChange} 
+                />
+                Per Image
+                </label>
+                <label>
+                <input 
+                    type="checkbox" 
+                    value="All Images" 
+                    checked={applyTo.includes('All Images')} 
+                    onChange={handleApplyToChange} 
+                />
+                All Images
+                </label>
+            </div>
+            <div className="form-actions">
+                <button onClick={handleSave}>{selectedPrompt ? 'Save Changes' : 'Save Prompt'}</button>
+                {selectedPrompt && <button onClick={handleDuplicate} className="secondary-btn">Duplicate</button>}
+                {selectedPrompt && <button onClick={handleDelete} className="delete-btn">Delete</button>}
+            </div>
+            </div>
         </div>
-        <button onClick={onClose} className="close-btn">X</button>
-      </div>
     </div>
   );
 };

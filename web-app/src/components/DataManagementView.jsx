@@ -1,30 +1,90 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../firebase-config';
-import { collection, query, where, getDocs, writeBatch, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, orderBy, limit, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import './SharedViews.css';
+
+const PAGE_SIZE = 10;
 
 const DataManagementView = () => {
   const { classId } = useParams();
   const [deleteStartDate, setDeleteStartDate] = useState('');
   const [deleteEndDate, setDeleteEndDate] = useState('');
+  
+  // State for pagination
   const [zipJobs, setZipJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [page, setPage] = useState(1);
+  const [firstDoc, setFirstDoc] = useState(null);
+  const [lastDoc, setLastDoc] = useState(null);
+  const [isLastPage, setIsLastPage] = useState(false);
 
-  useEffect(() => {
-    const jobsQuery = query(
-      collection(db, 'zipJobs'),
+  const fetchJobs = useCallback(async (direction = 'first', newPage = 1) => {
+    setLoadingJobs(true);
+    const jobsCollectionRef = collection(db, 'zipJobs');
+    let q = query(
+      jobsCollectionRef,
       where('classId', '==', classId),
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(jobsQuery, (querySnapshot) => {
-      const jobs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setZipJobs(jobs);
-    });
+    if (direction === 'first') {
+      setIsLastPage(false);
+    }
 
-    return () => unsubscribe();
+    switch (direction) {
+      case 'next':
+        q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
+        break;
+      case 'prev':
+        q = query(q, endBefore(firstDoc), limitToLast(PAGE_SIZE));
+        break;
+      default: // first
+        q = query(q, limit(PAGE_SIZE));
+        break;
+    }
+
+    try {
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        setPage(newPage);
+        setIsLastPage(snapshot.docs.length < PAGE_SIZE);
+        const jobsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        if (direction === 'prev') {
+          jobsData.reverse();
+        }
+        setZipJobs(jobsData);
+        setFirstDoc(snapshot.docs[0]);
+        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      } else {
+        setZipJobs([]);
+        if (direction === 'next') setIsLastPage(true);
+        if (direction === 'first') setPage(1);
+      }
+    } catch (error) {
+      console.error("Error fetching zip jobs:", error);
+    }
+    setLoadingJobs(false);
+  }, [classId, lastDoc, firstDoc]);
+
+  useEffect(() => {
+    if (classId) {
+      fetchJobs('first', 1);
+    }
   }, [classId]);
+
+  const handleNext = () => {
+    if (!isLastPage) {
+      fetchJobs('next', page + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (page > 1) {
+      fetchJobs('prev', page - 1);
+    }
+  };
 
   const handleDeleteData = async () => {
     if (!deleteStartDate || !deleteEndDate) {
@@ -37,7 +97,7 @@ const DataManagementView = () => {
 
     const startDate = new Date(deleteStartDate);
     const endDate = new Date(deleteEndDate);
-    endDate.setHours(23, 59, 59, 999); // Set to end of day
+    endDate.setHours(23, 59, 59, 999);
 
     const screenshotsQuery = query(
       collection(db, 'screenshots'),
@@ -61,7 +121,6 @@ const DataManagementView = () => {
                 console.error("Error deleting image from storage: ", error);
             }
         }
-
         batch.delete(doc.ref);
       }
 
@@ -85,49 +144,66 @@ const DataManagementView = () => {
   };
 
   return (
-    <div>
-      <div>
-        <h3>Delete Screenshots by Date Range</h3>
-        <input type="date" value={deleteStartDate} onChange={e => setDeleteStartDate(e.target.value)} />
-        <input type="date" value={deleteEndDate} onChange={e => setDeleteEndDate(e.target.value)} />
-        <button onClick={handleDeleteData}>Delete Data</button>
+    <div className="view-container">
+      <div className="view-header">
+        <h2>Data Management</h2>
+      </div>
+      
+      <div className="actions-container">
+        <div>
+            <h4>Delete Screenshots by Date Range</h4>
+            <input type="date" value={deleteStartDate} onChange={e => setDeleteStartDate(e.target.value)} />
+            <input type="date" value={deleteEndDate} onChange={e => setDeleteEndDate(e.target.value)} />
+            <button onClick={handleDeleteData}>Delete Data</button>
+        </div>
       </div>
 
       <hr style={{ margin: '20px 0' }} />
 
       <div>
         <h3>Video Archives (ZIP Jobs)</h3>
-        {zipJobs.length === 0 ? (
-          <p>No video archive jobs found for this class.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Requested At</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Status</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px' }}>Download</th>
-              </tr>
-            </thead>
-            <tbody>
-              {zipJobs.map(job => (
-                <tr key={job.id}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{job.createdAt?.toDate().toLocaleString()}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{job.status}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                    {job.status === 'completed' && job.zipPath ? (
-                      <button onClick={() => handleDownloadZip(job.zipPath)}>Download</button>
-                    ) : (
-                      <span>{job.status === 'failed' ? `Failed: ${job.error}` : 'Processing...'}</span>
-                    )}
-                  </td>
+        <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Requested At</th>
+                  <th>Status</th>
+                  <th>Download</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {loadingJobs && zipJobs.length === 0 ? (
+                    <tr><td colSpan="3">Loading...</td></tr>
+                ) : zipJobs.length > 0 ? (
+                    zipJobs.map(job => (
+                    <tr key={job.id}>
+                        <td>{job.createdAt?.toDate().toLocaleString()}</td>
+                        <td>{job.status}</td>
+                        <td>
+                        {job.status === 'completed' && job.zipPath ? (
+                            <button onClick={() => handleDownloadZip(job.zipPath)}>Download</button>
+                        ) : (
+                            <span>{job.status === 'failed' ? `Failed: ${job.error}` : 'Processing...'}</span>
+                        )}
+                        </td>
+                    </tr>
+                    ))
+                ) : (
+                    <tr><td colSpan="3">No video archive jobs found for this class.</td></tr>
+                )}
+              </tbody>
+            </table>
+        </div>
+        <div className="pagination-controls">
+            <button onClick={handlePrev} disabled={page <= 1 || loadingJobs}>
+            Previous
+            </button>
+            <span>Page {page}</span>
+            <button onClick={handleNext} disabled={isLastPage || loadingJobs}>
+            Next
+            </button>
+        </div>
       </div>
-
-      <Link to="/teacher" className="back-link">Back to Teacher View</Link>
     </div>
   );
 };

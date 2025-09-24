@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase-config';
-import './MailboxView.css'; // Reuse styles for now
+import './SharedViews.css';
+
 
 const AttachmentLink = ({ attachment }) => {
     const [url, setUrl] = useState(null);
@@ -74,9 +75,11 @@ const EmailDetailView = () => {
     }
 
     return (
-        <div className="email-detail-view">
+        <div className="view-container">
             <Link to="/mailbox">Back to Mailbox</Link>
-            <h2>{email.title}</h2>
+            <div className="view-header">
+                <h2>{email.title}</h2>
+            </div>
             <div className="email-meta">
                 <p><strong>To:</strong> {email.to}</p>
                 <p><strong>Date:</strong> {email.createdAt && new Date(email.createdAt.seconds * 1000).toLocaleString()}</p>

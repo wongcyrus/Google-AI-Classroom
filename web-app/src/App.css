@@ -121,3 +121,28 @@ body, html, #root {
 .back-link:hover {
     text-decoration: underline;
 }
+
+/* Teacher Main Navigation */
+.teacher-main-nav {
+    display: flex;
+    gap: 15px;
+}
+
+.teacher-main-nav a {
+    color: #495057;
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-weight: 500;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.teacher-main-nav a:hover {
+    background-color: #e9ecef;
+    color: #0056b3;
+}
+
+.teacher-main-nav a.active {
+    background-color: #007bff;
+    color: white;
+}

@@ -16,6 +16,7 @@ import DataManagementView from './components/DataManagementView';
 import VideoLibrary from './components/VideoLibrary';
 import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
+import PromptManagement from './components/PromptManagement';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -58,6 +59,7 @@ const App = () => {
             <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
             <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
             <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
+            <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
 
             <Route path="/class/:classId/*" element={user && role === 'teacher' ? <ClassLayout user={user} /> : <Navigate to="/login" />}>
               <Route path="monitor" element={<MonitorView />} />
@@ -94,9 +96,17 @@ const MainHeader = ({ onLogout, user, role }) => {
       <header className="main-header">
           <div className="header-left">
               <img src={hkiitLogo} alt="HKIIT Logo" style={{ height: '40px' }} />
-          </div>
-          <div className="header-right">
               <span className="header-title">{title}</span>
+          </div>
+          {role === 'teacher' && (
+            <nav className="teacher-main-nav">
+                <NavLink to="/teacher" end>Dashboard</NavLink>
+                <NavLink to="/class-management">Class Management</NavLink>
+                <NavLink to="/mailbox">Mailbox</NavLink>
+                <NavLink to="/manage-prompts">Manage Prompts</NavLink>
+            </nav>
+          )}
+          <div className="header-right">
               {user && <span style={{margin: "0 10px"}}>{user.email}</span>}
               <button onClick={onLogout} className="logout-btn">Logout</button>
           </div>
@@ -109,7 +119,6 @@ const ClassLayout = ({ user }) => {
 
   return (
     <div>
-      <Link to="/teacher" className="back-link">Back to Dashboard</Link>
       <nav className="nav-tabs">
         <NavLink to={`/class/${classId}/monitor`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Monitor</NavLink>
         <NavLink to={`/class/${classId}/progress`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Progress</NavLink>
