@@ -60,7 +60,8 @@ service cloud.firestore {
     }
 
     match /irregularities/{irregularityId} {
-      allow read, create: if isTeacher();
+      allow read: if isTeacher() || request.auth.token.email == resource.data.email;
+      allow create: if isTeacher();
     }
 
     match /progress/{progressId} {

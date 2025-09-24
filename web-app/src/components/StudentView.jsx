@@ -19,13 +19,16 @@ const StudentView = ({ user }) => {
   const [imageQuality, setImageQuality] = useState(0.5);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
+  const [recentIrregularities, setRecentIrregularities] = useState([]);
+  const [directMessages, setDirectMessages] = useState([]);
+  const [classMessages, setClassMessages] = useState([]);
+  const [recentMessages, setRecentMessages] = useState([]);
 
   // Refs
   const intervalRef = useRef(null);
   const videoRef = useRef(null);
   const sessionIdRef = useRef(null);
-  const lastClassMessageTimestampRef = useRef(null);
-  const lastStudentMessageTimestampRef = useRef(null);
+  const lastMessageTimestampRef = useRef(null);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -238,51 +241,83 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [selectedClass]);
 
+  // Listen for class-wide messages
   useEffect(() => {
-    if (!selectedClass) return;
+    if (!selectedClass) {
+      setClassMessages([]);
+      return;
+    }
 
     const messagesRef = collection(db, 'classes', selectedClass, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(1));
+    const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(5));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      if (querySnapshot.empty) return;
-      const messageDoc = querySnapshot.docs[0];
-      const message = messageDoc.data();
-      if (!message.timestamp) return;
-      const messageTimestamp = message.timestamp.toDate();
-
-      if (lastClassMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
-        setNotification(message.message);
-        setTimeout(() => showSystemNotification(message.message), 0);
-        lastClassMessageTimestampRef.current = messageTimestamp;
-      }
+      const messagesData = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, type: 'class' }));
+      setClassMessages(messagesData);
     });
 
     return () => unsubscribe();
-  }, [selectedClass, showSystemNotification]);
+  }, [selectedClass]);
 
+  // Listen for direct student messages
   useEffect(() => {
     if (!user || !user.email) return;
 
     const studentMessagesRef = collection(db, 'students', user.email, 'messages');
-    const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(1));
+    const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(5));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      if (querySnapshot.empty) return;
-      const messageDoc = querySnapshot.docs[0];
-      const message = messageDoc.data();
-      if (!message.timestamp) return;
-      const messageTimestamp = message.timestamp.toDate();
-
-      if (lastStudentMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
-        setNotification(message.message);
-        setTimeout(() => showSystemNotification(message.message), 0);
-        lastStudentMessageTimestampRef.current = messageTimestamp;
-      }
+      const messagesData = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, type: 'direct' }));
+      setDirectMessages(messagesData);
     });
 
     return () => unsubscribe();
-  }, [user, showSystemNotification]);
+  }, [user]);
+
+  // Merge messages and handle notifications
+  useEffect(() => {
+    const allMessages = [...directMessages, ...classMessages];
+    
+    allMessages.sort((a, b) => {
+        const timeA = a.timestamp?.toMillis() || 0;
+        const timeB = b.timestamp?.toMillis() || 0;
+        return timeB - timeA;
+    });
+    
+    const latestMessages = allMessages.slice(0, 5);
+    setRecentMessages(latestMessages);
+
+    if (latestMessages.length > 0) {
+        const latestMessage = latestMessages[0];
+        if (latestMessage.timestamp) {
+            const messageTimestamp = latestMessage.timestamp.toDate();
+            if (lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
+                setNotification(latestMessage.message);
+                setTimeout(() => showSystemNotification(latestMessage.message), 0);
+                lastMessageTimestampRef.current = messageTimestamp;
+            }
+        }
+    }
+  }, [directMessages, classMessages, showSystemNotification]);
+
+  useEffect(() => {
+    if (!user || !user.email) return;
+
+    const irregularitiesRef = collection(db, "irregularities");
+    const q = query(
+      irregularitiesRef,
+      where("email", "==", user.email),
+      orderBy("timestamp", "desc"),
+      limit(5)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const irregularitiesData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      setRecentIrregularities(irregularitiesData);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     if (intervalRef.current) {
@@ -316,28 +351,62 @@ const StudentView = ({ user }) => {
     <div className="student-view-container">
       <Banner message={notification} onClose={handleCloseNotification} />
       <div className="student-view-content">
-        <div className="student-view-controls">
-          {userClasses.length > 1 && (
-            <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
-              <option value="" disabled>Select a class</option>
-              {userClasses.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          )}
+        <div className="student-view-main">
+            <div className="student-view-controls">
+            {userClasses.length > 1 && (
+                <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
+                <option value="" disabled>Select a class</option>
+                {userClasses.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                ))}
+                </select>
+            )}
 
-          {selectedClass && (
-            isSharing ? (
-              <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
-            ) : (
-              <button onClick={startSharing} className="student-view-button">Share Screen</button>
-            )
-          )}
+            {selectedClass && (
+                isSharing ? (
+                <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
+                ) : (
+                <button onClick={startSharing} className="student-view-button">Share Screen</button>
+                )
+            )}
+            </div>
+
+            {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitives!</p>}
+            
+            <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
         </div>
-
-        {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitives!</p>}
-        
-        <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
+        <div className="student-view-sidebar">
+            <div className="alerts-widget">
+                <h2>My Recent Alerts</h2>
+                <div className="alert-list">
+                    {recentIrregularities.length > 0 ? (
+                        recentIrregularities.map(item => (
+                            <div key={item.id} className="alert-item">
+                                <p className="alert-title">{item.title}</p>
+                                <span className="alert-time">{item.timestamp.toDate().toLocaleString()}</span>
+                            </div>
+                        ))
+                    ) : (
+                        <p>You have no recent alerts.</p>
+                    )}
+                </div>
+            </div>
+            <div className="messages-widget">
+                <h2>My Recent Messages</h2>
+                <div className="message-list">
+                    {recentMessages.length > 0 ? (
+                        recentMessages.map(item => (
+                            <div key={item.id} className="message-item">
+                                <p className="message-text">{item.message}</p>
+                                <span className="message-time">{item.timestamp.toDate().toLocaleString()}</span>
+                            </div>
+                        ))
+                    ) : (
+                        <p>You have no recent messages.</p>
+                    )}
+                </div>
+            </div>
+        </div>
       </div>
     </div>
   );

@@ -107,7 +107,7 @@ const MainHeader = ({ onLogout, user, role }) => {
             </nav>
           )}
           <div className="header-right">
-              {user && <span style={{margin: "0 10px"}}>{user.email}</span>}
+              {user && role === 'student' && <span style={{margin: "0 10px"}}>{user.email}</span>}
               <button onClick={onLogout} className="logout-btn">Logout</button>
           </div>
       </header>

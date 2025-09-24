@@ -24,7 +24,13 @@ The project is a monorepo composed of three main parts:
 
 ### Teacher Dashboard
 
+*   **Unified Navigation & UI:** A persistent navigation bar provides quick access to all major sections (Dashboard, Class Management, Mailbox, Prompts), and a standardized layout across all views ensures a consistent and intuitive user experience.
 *   **Class Management:** Create, view, and manage classes and student enrollment.
+*   **Asynchronous Video Archiving & Mailbox:**
+    *   Select multiple student recordings from the Video Library and request them as a single ZIP archive.
+    *   The archiving process runs as a background job, allowing teachers to continue working without interruption.
+    *   Teachers can monitor the status of their archive jobs in the "Data Management" view for each class.
+    *   When an archive is ready, a notification is delivered to a new, dedicated **Mailbox**, providing a secure, one-click download link.
 *   **Live Student Monitoring:** View a gallery of all students who are actively sharing their screens.
 *   **Proactive AI Assistant:** The AI analyzes student screens and provides teachers with real-time alerts for:
     *   **Potential Distractions:** Notifies the teacher when it has sent a student a gentle reminder to stay focused.

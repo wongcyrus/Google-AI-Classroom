@@ -65,6 +65,20 @@
       ]
     },
     {
+      "collectionGroup": "irregularities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "email",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "mails",
       "queryScope": "COLLECTION",
       "fields": [
