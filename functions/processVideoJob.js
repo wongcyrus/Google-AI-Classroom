@@ -14,7 +14,7 @@ const bucket = storage.bucket();
 
 ffmpeg.setFfmpegPath(ffmpeg_static);
 
-export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', memory: '4GiB', timeoutSeconds: 540 }, async (event) => {
+export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', memory: '8GiB', timeoutSeconds: 540 }, async (event) => {
     const snap = event.data;
     if (!snap) {
         console.log("No data associated with the event");

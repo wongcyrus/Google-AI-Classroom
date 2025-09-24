@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import './ProgressView.css';
+import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
 
 const ProgressView = () => {
   const { classId } = useParams();
@@ -11,19 +12,24 @@ const ProgressView = () => {
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setHours(d.getHours() - 2);
-    return d;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
-  const [endTime, setEndTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
+    setLoading(true);
 
     const progressRef = collection(db, "progress");
     const q = query(
       progressRef,
       where("classId", "==", classId),
-      where("timestamp", ">=", startTime),
+      where("timestamp", ">=", new Date(startTime)),
       orderBy("timestamp", "desc")
     );
 
@@ -33,6 +39,10 @@ const ProgressView = () => {
         progressData.push({ id: doc.id, ...doc.data() });
       });
       setAllProgress(progressData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching progress: ", error);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -40,7 +50,7 @@ const ProgressView = () => {
 
   useEffect(() => {
     const latest = {};
-    const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= endTime);
+    const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= new Date(endTime));
     filteredProgress.forEach(p => {
       if (!latest[p.email] || p.timestamp.toMillis() > latest[p.email].timestamp.toMillis()) {
         latest[p.email] = p;
@@ -49,18 +59,17 @@ const ProgressView = () => {
     setLatestProgress(latest);
   }, [allProgress, endTime]);
 
-  const handleStartTimeChange = (e) => {
-    setStartTime(new Date(e.target.value));
-  };
-
   const renderDetailView = () => {
     const studentProgress = allProgress
       .filter(p => p.email === selectedStudentEmail)
-      .filter(p => p.timestamp.toDate() <= endTime);
+      .filter(p => p.timestamp.toDate() <= new Date(endTime));
+
     return (
-      <div>
-        <button onClick={() => setSelectedStudentEmail(null)}>Back to Summary</button>
-        <h3>Progress for {selectedStudentEmail}</h3>
+      <div className="view-container">
+        <div className="view-header">
+            <button onClick={() => setSelectedStudentEmail(null)}>Back to Summary</button>
+            <h3>Progress for {selectedStudentEmail}</h3>
+        </div>
         <ul className="progress-list">
           {studentProgress.map((p) => (
             <li key={p.id} className="progress-item">
@@ -76,51 +85,42 @@ const ProgressView = () => {
   const renderSummaryView = () => {
     const latestProgressArray = Object.values(latestProgress);
     return (
-      <div>
-        <div className="filters">
-          <label htmlFor="start-time">Show progress since: </label>
-          <input
-            type="datetime-local"
-            id="start-time"
-            value={(() => {
-              const d = new Date(startTime);
-              const year = d.getFullYear();
-              const month = (d.getMonth() + 1).toString().padStart(2, '0');
-              const day = d.getDate().toString().padStart(2, '0');
-              const hours = d.getHours().toString().padStart(2, '0');
-              const minutes = d.getMinutes().toString().padStart(2, '0');
-              return `${year}-${month}-${day}T${hours}:${minutes}`;
-            })()}
-            onChange={handleStartTimeChange}
-          />
-          <label htmlFor="end-time"> until: </label>
-          <input
-            type="datetime-local"
-            id="end-time"
-            value={(() => {
-              const d = new Date(endTime);
-              const year = d.getFullYear();
-              const month = (d.getMonth() + 1).toString().padStart(2, '0');
-              const day = d.getDate().toString().padStart(2, '0');
-              const hours = d.getHours().toString().padStart(2, '0');
-              const minutes = d.getMinutes().toString().padStart(2, '0');
-              return `${year}-${month}-${day}T${hours}:${minutes}`;
-            })()}
-            onChange={(e) => setEndTime(new Date(e.target.value))}
-          />
+      <div className="view-container">
+        <div className="view-header">
+          <h2>Student Progress Summary</h2>
         </div>
-        {latestProgressArray.length === 0 ? (
+        <DateRangeFilter 
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
+          loading={loading}
+        />
+        {loading ? (
+          <p>Loading progress...</p>
+        ) : latestProgressArray.length === 0 ? (
           <p>No progress recorded for this class in the selected time range.</p>
         ) : (
-          <ul className="progress-list">
-            {latestProgressArray.map((p) => (
-              <li key={p.id} className="progress-item clickable" onClick={() => setSelectedStudentEmail(p.email)}>
-                <p><strong>Student:</strong> {p.email}</p>
-                <p><strong>Latest Progress:</strong> {p.progress}</p>
-                <p><strong>Timestamp:</strong> {new Date(p.timestamp?.toDate()).toLocaleString()}</p>
-              </li>
-            ))}
-          </ul>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Latest Progress</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestProgressArray.map((p) => (
+                  <tr key={p.id} className="clickable" onClick={() => setSelectedStudentEmail(p.email)}>
+                    <td>{p.email}</td>
+                    <td>{p.progress}</td>
+                    <td>{new Date(p.timestamp?.toDate()).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     );
@@ -128,7 +128,6 @@ const ProgressView = () => {
 
   return (
     <div className="progress-view">
-      <h2>Student Progress for Class: {classId}</h2>
       {selectedStudentEmail ? renderDetailView() : renderSummaryView()}
     </div>
   );

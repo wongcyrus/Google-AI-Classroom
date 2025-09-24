@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase-config';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
+import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
 
 const PAGE_SIZE = 10;
 
@@ -13,16 +15,19 @@ const NotificationsView = () => {
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setHours(d.getHours() - 2);
-    return d;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
-  const [endTime, setEndTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
 
   const [firstDoc, setFirstDoc] = useState(null);
   const [lastDoc, setLastDoc] = useState(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isLastPage, setIsLastPage] = useState(false);
 
-  // Effect to get the teacher's email
   useEffect(() => {
     const classRef = doc(db, "classes", classId);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
@@ -39,7 +44,12 @@ const NotificationsView = () => {
     setLoading(true);
 
     const messagesRef = collection(db, "teachers", teacherEmail, "messages");
-    let q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", startTime), where("timestamp", "<=", endTime), orderBy("timestamp", "desc"));
+    let q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", new Date(startTime)), where("timestamp", "<=", new Date(endTime)), orderBy("timestamp", "desc"));
+
+    if (direction === 'initial') {
+        setPage(1);
+        setIsLastPage(false);
+    }
 
     switch (direction) {
       case 'next':
@@ -48,7 +58,7 @@ const NotificationsView = () => {
       case 'prev':
         q = query(q, endBefore(firstDoc), limitToLast(PAGE_SIZE));
         break;
-      default:
+      default: // initial
         q = query(q, limit(PAGE_SIZE));
         break;
     }
@@ -58,15 +68,14 @@ const NotificationsView = () => {
       const newMessages = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       if (newMessages.length > 0) {
+        if (direction === 'prev') newMessages.reverse();
         setMessages(newMessages);
         setFirstDoc(querySnapshot.docs[0]);
         setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
-        if (direction === 'next') setPage(p => p + 1);
-        if (direction === 'prev') setPage(p => p - 1);
+        setIsLastPage(querySnapshot.docs.length < PAGE_SIZE);
       } else {
-        // Handle no more documents in the requested direction
-        if (direction === 'next') alert("No more notifications.");
-        if (direction === 'prev') alert("This is the first page.");
+        if (direction === 'initial') setMessages([]);
+        setIsLastPage(true);
       }
     } catch (error) {
       console.error("Error fetching messages: ", error);
@@ -75,70 +84,69 @@ const NotificationsView = () => {
     setLoading(false);
   };
 
-  // Effect to fetch messages for display in the UI
   useEffect(() => {
-    setPage(1);
-    setFirstDoc(null);
-    setLastDoc(null);
     fetchMessages('initial');
   }, [teacherEmail, classId, startTime, endTime]);
 
+  const handleNext = () => {
+    if (!isLastPage) {
+        setPage(p => p + 1);
+        fetchMessages('next');
+    }
+  };
+
+  const handlePrev = () => {
+      if (page > 1) {
+          setPage(p => p - 1);
+          fetchMessages('prev');
+      }
+  };
+
   return (
-    <div>
-      <h2>Notifications</h2>
-      <div className="filters">
-        <label htmlFor="start-time">Show since: </label>
-        <input
-          type="datetime-local"
-          id="start-time"
-          value={(() => {
-            const d = new Date(startTime);
-            const year = d.getFullYear();
-            const month = (d.getMonth() + 1).toString().padStart(2, '0');
-            const day = d.getDate().toString().padStart(2, '0');
-            const hours = d.getHours().toString().padStart(2, '0');
-            const minutes = d.getMinutes().toString().padStart(2, '0');
-            return `${year}-${month}-${day}T${hours}:${minutes}`;
-          })()}
-          onChange={e => setStartTime(new Date(e.target.value))}
+    <div className="view-container">
+        <div className="view-header">
+            <h2>Notifications</h2>
+        </div>
+        <DateRangeFilter 
+            startTime={startTime}
+            endTime={endTime}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+            loading={loading}
         />
-        <label htmlFor="end-time"> until: </label>
-        <input
-          type="datetime-local"
-          id="end-time"
-          value={(() => {
-            const d = new Date(endTime);
-            const year = d.getFullYear();
-            const month = (d.getMonth() + 1).toString().padStart(2, '0');
-            const day = d.getDate().toString().padStart(2, '0');
-            const hours = d.getHours().toString().padStart(2, '0');
-            const minutes = d.getMinutes().toString().padStart(2, '0');
-            return `${year}-${month}-${day}T${hours}:${minutes}`;
-          })()}
-          onChange={e => setEndTime(new Date(e.target.value))}
-        />
-      </div>
-      <hr />
-      {messages.length === 0 ? (
-        <p>No notifications match the current filter.</p>
-      ) : (
-        <ul className="progress-list">
-          {messages.map(msg => (
-            <li key={msg.id} className="progress-item">
-              <strong>{new Date(msg.timestamp?.toDate()).toLocaleString()}:</strong> {msg.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="pagination-controls">
-        <button onClick={() => fetchMessages('prev')} disabled={loading || page <= 1}>
-          Previous
-        </button>
-        <span style={{ margin: '0 10px' }}>Page {page}</span>
-        <button onClick={() => fetchMessages('next')} disabled={loading || messages.length < PAGE_SIZE}>
-          Next
-        </button>
-      </div>
+        <div className="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {loading ? (
+                        <tr><td colSpan="2">Loading...</td></tr>
+                    ) : messages.length > 0 ? (
+                        messages.map(msg => (
+                            <tr key={msg.id}>
+                                <td>{new Date(msg.timestamp?.toDate()).toLocaleString()}</td>
+                                <td>{msg.message}</td>
+                            </tr>
+                        ))
+                    ) : (
+                        <tr><td colSpan="2">No notifications match the current filter.</td></tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+        <div className="pagination-controls">
+            <button onClick={handlePrev} disabled={loading || page <= 1}>
+            Previous
+            </button>
+            <span>Page {page}</span>
+            <button onClick={handleNext} disabled={loading || isLastPage}>
+            Next
+            </button>
+        </div>
     </div>
   );
 };

@@ -1,0 +1,38 @@
+.date-range-filter {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  padding: 15px;
+  background-color: #f7f7f7;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.date-range-filter label {
+  font-weight: bold;
+}
+
+.date-range-filter input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.date-range-filter button {
+  padding: 8px 15px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.date-range-filter button:hover {
+  background-color: #0056b3;
+}
+
+.date-range-filter button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}

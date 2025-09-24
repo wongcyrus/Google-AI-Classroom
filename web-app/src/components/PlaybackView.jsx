@@ -3,7 +3,8 @@ import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, server
 import { ref, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
-import './PlaybackView.css';
+import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
 
 const PlaybackView = () => {
@@ -14,9 +15,12 @@ const PlaybackView = () => {
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setHours(d.getHours() - 2);
-    return d;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
-  const [endTime, setEndTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
   
   const [sessionData, setSessionData] = useState(null);
   const [screenshots, setScreenshots] = useState([]);
@@ -107,8 +111,8 @@ const PlaybackView = () => {
           screenshotsRef,
           where("classId", "==", classId),
           where("email", "==", sessionData.student),
-          where("timestamp", ">=", sessionData.start),
-          where("timestamp", "<=", sessionData.end),
+          where("timestamp", ">=", new Date(sessionData.start)),
+          where("timestamp", "<=", new Date(sessionData.end)),
           orderBy("timestamp", "asc")
         );
         console.log('Executing query to fetch screenshot documents...');
@@ -220,8 +224,8 @@ const PlaybackView = () => {
         jobId: jobId,
         classId: classId,
         student: sessionData.student,
-        startTime: sessionData.start,
-        endTime: sessionData.end,
+        startTime: new Date(sessionData.start),
+        endTime: new Date(sessionData.end),
         status: 'pending',
         createdAt: serverTimestamp(),
       });
@@ -268,8 +272,10 @@ const PlaybackView = () => {
 
   if (sessionData) {
     return (
-        <div className="playback-player">
-            <h3>Playback for: {sessionData.student}</h3>
+        <div className="view-container playback-player">
+            <div className="view-header">
+              <h3>Playback for: {sessionData.student}</h3>
+            </div>
             <button onClick={() => setSessionData(null)}>Back to Selection</button>
             <button onClick={handleCombineToVideo} disabled={activeJobId || screenshots.length === 0}>
               {activeJobId ? 'Processing...' : 'Combine to Video'}
@@ -327,10 +333,12 @@ const PlaybackView = () => {
   }
 
   return (
-    <div className="playback-selection">
-      <h2>Session Playback</h2>
-      <p>Select a student and a time range to begin.</p>
-      <div className="filters">
+    <div className="view-container playback-selection">
+      <div className="view-header">
+        <h2>Session Playback</h2>
+        <p>Select a student and a time range to begin.</p>
+      </div>
+      <div className="actions-container">
         <label htmlFor="student-select">Student: </label>
         <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
             <option value="" disabled>Select a student</option>
@@ -338,40 +346,14 @@ const PlaybackView = () => {
                 <option key={email} value={email}>{email}</option>
             ))}
         </select>
-
-        <label htmlFor="start-time" style={{ marginLeft: '20px' }}>From: </label>
-        <input
-            type="datetime-local"
-            id="start-time"
-            value={(() => {
-                const d = new Date(startTime);
-                const year = d.getFullYear();
-                const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                const day = d.getDate().toString().padStart(2, '0');
-                const hours = d.getHours().toString().padStart(2, '0');
-                const minutes = d.getMinutes().toString().padStart(2, '0');
-                return `${year}-${month}-${day}T${hours}:${minutes}`;
-            })()}
-            onChange={e => setStartTime(new Date(e.target.value))}
+        <DateRangeFilter 
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
+          loading={loading}
         />
-
-        <label htmlFor="end-time" style={{ marginLeft: '10px' }}>To: </label>
-        <input
-            type="datetime-local"
-            id="end-time"
-            value={(() => {
-                const d = new Date(endTime);
-                const year = d.getFullYear();
-                const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                const day = d.getDate().toString().padStart(2, '0');
-                const hours = d.getHours().toString().padStart(2, '0');
-                const minutes = d.getMinutes().toString().padStart(2, '0');
-                return `${year}-${month}-${day}T${hours}:${minutes}`;
-            })()}
-            onChange={e => setEndTime(new Date(e.target.value))}
-        />
-
-        <button onClick={handleStartPlayback} style={{ marginLeft: '20px' }}>Load Session</button>
+        <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
       </div>
     </div>
   );

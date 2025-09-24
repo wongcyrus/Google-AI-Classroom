@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
-import './VideoLibrary.css';
+import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
 
 const PAGE_SIZE = 10;
 
@@ -17,12 +18,10 @@ const VideoLibrary = () => {
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0); // Start of today
-    // Adjust for timezone to get local time in YYYY-MM-DDTHH:mm format
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
   });
   const [endTime, setEndTime] = useState(() => {
     const d = new Date();
-    // Adjust for timezone to get local time in YYYY-MM-DDTHH:mm format
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
   });
 
@@ -45,12 +44,6 @@ const VideoLibrary = () => {
 
   const fetchPage = async (cursor) => {
     setLoading(true);
-    console.log('Querying for videos with:', { 
-      classId, 
-      status: 'completed', 
-      startTime: new Date(startTime), 
-      endTime: new Date(endTime) 
-    });
     try {
       const videoJobsRef = collection(db, 'videoJobs');
       const queryConstraints = [
@@ -69,7 +62,6 @@ const VideoLibrary = () => {
       const q = query(videoJobsRef, ...queryConstraints);
       const querySnapshot = await getDocs(q);
       const videoList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log("Fetched video data:", videoList); // Log the fetched data
       setVideos(videoList);
 
       if (querySnapshot.docs.length < PAGE_SIZE) {
@@ -109,7 +101,7 @@ const VideoLibrary = () => {
       const videoPaths = selectedVideoObjects.map(v => v.videoPath).filter(Boolean);
 
       if (videoPaths.length !== selectedVideos.size) {
-        alert('Some selected videos are missing a storage path and cannot be zipped. These may be older videos created before this feature was added.');
+        alert('Some selected videos are missing a storage path and cannot be zipped.');
         setIsZipping(false);
         return;
       }
@@ -130,7 +122,6 @@ const VideoLibrary = () => {
       }
 
       const result = await response.json();
-      // Trigger download
       window.location.href = result.zipUrl;
 
     } catch (error) {
@@ -187,14 +178,19 @@ const VideoLibrary = () => {
   };
 
   return (
-    <div className="video-library">
-      <div className="video-library-filters">
-        <label>From: <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} /></label>
-        <label>To: <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} /></label>
-        <button onClick={handleSearch} disabled={loading || isZipping}>Search</button>
+    <div className="view-container">
+      <div className="view-header">
+        <h2>Video Library</h2>
       </div>
-
-      <div className="video-library-controls">
+      <div className="actions-container">
+        <DateRangeFilter 
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
+          onSearch={handleSearch}
+          loading={loading || isZipping}
+        />
         <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
           {isZipping ? 'Zipping...' : `Download ${selectedVideos.size} Selected as ZIP`}
         </button>
@@ -203,44 +199,50 @@ const VideoLibrary = () => {
       {loading ? (
         <p>Loading videos...</p>
       ) : videos.length === 0 ? (
-        <p>No videos found for the selected criteria. Please try a different time range or click Search.</p>
+        <p>No videos found for the selected criteria.</p>
       ) : (
-        <table className="videos-table">
-          <thead>
-            <tr>
-              <th>
-                <input type="checkbox" disabled />
-              </th>
-              <th>Student</th>
-              <th>Created At</th>
-              <th>Download</th>
-            </tr>
-          </thead>
-          <tbody>
-            {videos.map(video => (
-              <tr key={video.id}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedVideos.has(video.id)}
-                    onChange={() => handleSelectVideo(video.id)}
-                  />
-                </td>
-                <td>{video.student}</td>
-                <td>{video.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
-                <td>
-                  {video.videoPath ? (
-                    <button onClick={() => handleDownload(video)}>
-                      Download
-                    </button>
-                  ) : (
-                    <span>Path Not Found</span>
-                  )}
-                </td>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" onChange={(e) => {
+                  const newSelection = new Set();
+                  if (e.target.checked) {
+                    videos.forEach(v => newSelection.add(v.id));
+                  }
+                  setSelectedVideos(newSelection);
+                }} /></th>
+                <th>Student</th>
+                <th>Created At</th>
+                <th>Download</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {videos.map(video => (
+                <tr key={video.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedVideos.has(video.id)}
+                      onChange={() => handleSelectVideo(video.id)}
+                    />
+                  </td>
+                  <td>{video.student}</td>
+                  <td>{video.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
+                  <td>
+                    {video.videoPath ? (
+                      <button onClick={() => handleDownload(video)}>
+                        Download
+                      </button>
+                    ) : (
+                      <span>Path Not Found</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       <div className="pagination-controls">
         <button disabled>Previous</button> {/* Previous not implemented */}

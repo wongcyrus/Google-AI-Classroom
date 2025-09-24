@@ -3,7 +3,8 @@ import { db, storage } from '../firebase-config';
 import { useParams } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import './IrregularitiesView.css';
+import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
 
 const IrregularitiesView = () => {
   const { classId } = useParams();
@@ -12,21 +13,11 @@ const IrregularitiesView = () => {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setHours(d.getHours() - 2);
-    const year = d.getFullYear();
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const day = d.getDate().toString().padStart(2, '0');
-    const hours = d.getHours().toString().padStart(2, '0');
-    const minutes = d.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
   const [endDate, setEndDate] = useState(() => {
     const d = new Date();
-    const year = d.getFullYear();
-    const month = (d.getMonth() + 1).toString().padStart(2, '0');
-    const day = d.getDate().toString().padStart(2, '0');
-    const hours = d.getHours().toString().padStart(2, '0');
-    const minutes = d.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
   const [lastDoc, setLastDoc] = useState(null);
   const [firstDoc, setFirstDoc] = useState(null);
@@ -36,18 +27,16 @@ const IrregularitiesView = () => {
 
   const PAGE_SIZE = 10;
 
-  const handlePageChange = useCallback(async (newPage, direction, currentClassId) => {
-    if (!currentClassId) return; // Guard against missing classId
+  const fetchIrregularities = useCallback(async (direction = 'first', newPage = 1) => {
+    if (!classId) return;
     setLoading(true);
     const irregularitiesCollectionRef = collection(db, 'irregularities');
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
-    // Apply class and date filters
-    q = query(q, where('classId', '==', currentClassId));
+    q = query(q, where('classId', '==', classId));
     if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
     if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
 
-    // Reset last page status on first page load
     if (direction === 'first') {
       setIsLastPage(false);
     }
@@ -66,7 +55,6 @@ const IrregularitiesView = () => {
 
     try {
       const snapshot = await getDocs(q);
-      console.log('Fetched irregularities:', snapshot.docs.length);
       if (!snapshot.empty) {
         setPage(newPage);
         setIsLastPage(snapshot.docs.length < PAGE_SIZE);
@@ -78,7 +66,6 @@ const IrregularitiesView = () => {
         setFirstDoc(snapshot.docs[0]);
         setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
 
-        // Fetch image URLs
         const urls = {};
         for (const item of irregularitiesData) {
           if (item.imageUrl) {
@@ -91,35 +78,31 @@ const IrregularitiesView = () => {
             }
           }
         }
-        setImageUrls(urls);
+        setImageUrls(prev => ({ ...prev, ...urls }));
       } else {
-        setIrregularities([]); // Clear data if no results
-        if (direction === 'next') {
-          setIsLastPage(true);
-        }
+        setIrregularities([]);
+        if (direction === 'next') setIsLastPage(true);
+        if (direction === 'first') setPage(1);
       }
     } catch (error) {
       console.error("Error fetching irregularities:", error);
     }
     setLoading(false);
-  }, [endDate, firstDoc, lastDoc, startDate]);
+  }, [classId, startDate, endDate, lastDoc, firstDoc]);
 
   useEffect(() => {
-    if (classId) { // Only run when classId is available
-      handlePageChange(1, 'first', classId);
-    }
-  }, [startDate, endDate, classId]);
-
+    fetchIrregularities('first', 1);
+  }, [classId, startDate, endDate]);
 
   const handleNext = () => {
     if (!isLastPage) {
-      handlePageChange(page + 1, 'next', classId);
+      fetchIrregularities('next', page + 1);
     }
   };
 
   const handlePrev = () => {
     if (page > 1) {
-      handlePageChange(page - 1, 'prev', classId);
+      fetchIrregularities('prev', page - 1);
     }
   };
 
@@ -129,7 +112,6 @@ const IrregularitiesView = () => {
     const irregularitiesCollectionRef = collection(db, 'irregularities');
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
-    // Apply class and date filters
     q = query(q, where('classId', '==', classId));
     if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
     if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
@@ -149,12 +131,9 @@ const IrregularitiesView = () => {
         item.email,
         item.title,
         item.message,
-        item.imageUrl, // Use stored path directly
+        item.imageUrl,
         item.timestamp.toDate().toLocaleString(),
-      ].map(value => {
-        const str = String(value).replace(/"/g, '""');
-        return `"${str}"`;
-      }));
+      ].map(value => `"${String(value).replace(/"/g, '""')}"`));
 
       let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
 
@@ -178,22 +157,25 @@ const IrregularitiesView = () => {
   };
 
   return (
-    <div className="irregularities-view-container">
+    <div className="view-container">
+      <div className="view-header">
         <h2>Irregularities Report</h2>
-      <div className="filters-and-actions">
-        <div className="date-filters">
-          <label>From:</label>
-          <input type="datetime-local" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          <label>To:</label>
-          <input type="datetime-local" value={endDate} onChange={e => setEndDate(e.target.value)} />
-        </div>
+      </div>
+      <div className="actions-container">
+        <DateRangeFilter 
+          startTime={startDate}
+          endTime={endDate}
+          onStartTimeChange={setStartDate}
+          onEndTimeChange={setEndDate}
+          loading={loading}
+        />
         <div className="actions">
-          <button onClick={exportToCSV}>Export as CSV</button>
-          <button onClick={printReport}>Print</button>
+          <button onClick={exportToCSV} disabled={loading}>Export as CSV</button>
+          <button onClick={printReport} disabled={loading}>Print</button>
         </div>
       </div>
-      <div className="irregularities-table-container">
-        <table className="irregularities-table">
+      <div className="table-container">
+        <table>
           <thead>
             <tr>
               <th>Email</th>
@@ -204,9 +186,9 @@ const IrregularitiesView = () => {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {loading && irregularities.length === 0 ? (
               <tr><td colSpan="5">Loading...</td></tr>
-            ) : (
+            ) : irregularities.length > 0 ? (
               irregularities.map(item => (
                 <tr key={item.id}>
                   <td>{item.email}</td>
@@ -224,6 +206,8 @@ const IrregularitiesView = () => {
                   <td>{item.timestamp.toDate().toLocaleString()}</td>
                 </tr>
               ))
+            ) : (
+              <tr><td colSpan="5">No irregularities found for the selected criteria.</td></tr>
             )}
           </tbody>
         </table>
