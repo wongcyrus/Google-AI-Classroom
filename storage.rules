@@ -16,5 +16,10 @@ service firebase.storage {
       // Allow authenticated teachers to delete.
       allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
+
+    match /videos/{classId}/{videoId} {
+      // Allow authenticated teachers to read any video in a class.
+      allow read: if request.auth != null && request.auth.token.role == 'teacher';
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
+import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './VideoLibrary.css';
 
@@ -15,11 +16,14 @@ const VideoLibrary = () => {
   
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 1); // 24 hours ago
-    return d.toISOString().substring(0, 16);
+    d.setHours(0, 0, 0, 0); // Start of today
+    // Adjust for timezone to get local time in YYYY-MM-DDTHH:mm format
+    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
   });
   const [endTime, setEndTime] = useState(() => {
-    return new Date().toISOString().substring(0, 16);
+    const d = new Date();
+    // Adjust for timezone to get local time in YYYY-MM-DDTHH:mm format
+    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
   });
 
   const [lastVisible, setLastVisible] = useState(null);
@@ -65,6 +69,7 @@ const VideoLibrary = () => {
       const q = query(videoJobsRef, ...queryConstraints);
       const querySnapshot = await getDocs(q);
       const videoList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log("Fetched video data:", videoList); // Log the fetched data
       setVideos(videoList);
 
       if (querySnapshot.docs.length < PAGE_SIZE) {
@@ -135,6 +140,52 @@ const VideoLibrary = () => {
     setIsZipping(false);
   };
 
+  const handleDownload = async (video) => {
+    console.log("Attempting to download:", video);
+    if (!video.videoPath) {
+      alert("This video does not have a storage path.");
+      return;
+    }
+    try {
+      const storage = getStorage();
+      const videoRef = ref(storage, video.videoPath);
+      const downloadUrl = await getDownloadURL(videoRef);
+
+      // Fetch the video as a blob. This is important to bypass potential
+      // cross-origin issues with the download attribute.
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Network response was not ok, status: ${response.status}.`);
+      }
+      const blob = await response.blob();
+
+      // Create a temporary link to trigger the download
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+
+      // Create a meaningful filename from class, email, and time
+      const formattedStartTime = video.startTime.toDate().toISOString()
+        .replace(/:/g, '-') // Replace colons
+        .replace(/\..+/, '') // Remove milliseconds
+        .replace('T', '_'); // Replace T with underscore
+      const safeEmail = video.student.replace(/[@.]/g, '_');
+      const filename = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
+
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading video:', error);
+      alert(`Failed to download video. ${error.message}`);
+    }
+  };
+
   return (
     <div className="video-library">
       <div className="video-library-filters">
@@ -178,9 +229,13 @@ const VideoLibrary = () => {
                 <td>{video.student}</td>
                 <td>{video.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
                 <td>
-                  <a href={video.videoUrl} target="_blank" rel="noopener noreferrer" download>
-                    Download
-                  </a>
+                  {video.videoPath ? (
+                    <button onClick={() => handleDownload(video)}>
+                      Download
+                    </button>
+                  ) : (
+                    <span>Path Not Found</span>
+                  )}
                 </td>
               </tr>
             ))}

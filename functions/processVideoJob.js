@@ -62,12 +62,20 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const outputVideoPath = path.join(os.tmpdir(), outputVideoName);
 
         await new Promise((resolve, reject) => {
+            let lastPercent = -1;
             ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
                 .inputOptions(['-framerate', '1'])
-                .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30'])
+                .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
                 .on('progress', (progress) => {
-                    if (progress.percent) {
-                        console.log(`[ffmpeg] Processing: ${Math.round(progress.percent)}% done`);
+                    if (progress.frames) {
+                        const totalFrames = imagePaths.length;
+                        if (totalFrames > 0) {
+                            const percent = Math.min(100, Math.floor((progress.frames / totalFrames) * 100));
+                            if (percent > lastPercent) {
+                                console.log(`[ffmpeg] Processing: ${percent}% done`);
+                                lastPercent = percent;
+                            }
+                        }
                     }
                 })
                 .on('end', resolve)
@@ -78,19 +86,17 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         console.log(`Video created at ${outputVideoPath}. Uploading to storage.`);
 
         const destinationPath = `videos/${classId}/${outputVideoName}`;
-        const [file] = await bucket.upload(outputVideoPath, {
+        await bucket.upload(outputVideoPath, {
             destination: destinationPath,
             metadata: {
                 contentType: 'video/mp4',
                 metadata: { classId, student, startTime, endTime }
             }
         });
-        
-        const videoUrl = await file.getSignedUrl({ action: 'read', expires: '03-09-2491' });
 
         console.log(`Video uploaded to ${destinationPath}`);
 
-        await jobRef.update({ status: 'completed', finishedAt: new Date(), videoUrl: videoUrl[0], videoPath: destinationPath });
+        await jobRef.update({ status: 'completed', finishedAt: new Date(), videoPath: destinationPath });
 
         // Clean up local files
         fs.rmSync(tempDir, { recursive: true, force: true });
