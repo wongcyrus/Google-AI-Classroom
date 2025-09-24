@@ -19,13 +19,13 @@ const callOptions = {
 export const analyzeImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.email_verified && auth?.token?.['teacher'];
+        return auth?.token?.email_verified && auth?.token?.role === 'teacher';
     },
 }, analyzeImagesFlow);
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.email_verified && auth?.token?.['teacher'];
+        return auth?.token?.email_verified && auth?.token?.role === 'teacher';
     },
 }, analyzeAllImagesFlow);
