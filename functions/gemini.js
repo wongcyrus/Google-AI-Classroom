@@ -1,6 +1,6 @@
 import './firebase.js';
 import { ai } from './ai.js';
-import { z } from 'zod';
+import { z } from 'genkit';
 
 
 import { sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './tools.js';

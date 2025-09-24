@@ -1,5 +1,5 @@
 import { ai } from './ai.js';
-import { z } from 'zod';
+import { z } from 'genkit';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
 export const sendMessageTool = ai.defineTool(
