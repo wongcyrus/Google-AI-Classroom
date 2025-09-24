@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { useParams, useOutletContext } from 'react-router-dom';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -10,9 +10,10 @@ const PAGE_SIZE = 10;
 
 const VideoLibrary = () => {
   const { classId } = useParams();
+  const { user } = useOutletContext();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedVideos, setSelectedVideos] = useState(new Set());
+  const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   
   const [startTime, setStartTime] = useState(() => {
@@ -80,13 +81,13 @@ const VideoLibrary = () => {
     setLoading(false);
   };
 
-  const handleSelectVideo = (videoId) => {
+  const handleSelectVideo = (video) => {
     setSelectedVideos(prev => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(videoId)) {
-        newSelection.delete(videoId);
+      const newSelection = new Map(prev);
+      if (newSelection.has(video.id)) {
+        newSelection.delete(video.id);
       } else {
-        newSelection.add(videoId);
+        newSelection.set(video.id, video);
       }
       return newSelection;
     });
@@ -96,38 +97,34 @@ const VideoLibrary = () => {
     if (selectedVideos.size === 0) return;
 
     setIsZipping(true);
+    const videosToZip = Array.from(selectedVideos.values()).map(v => ({
+        path: v.videoPath,
+        classId: v.classId,
+        student: v.student,
+        startTime: v.startTime
+    }));
+
     try {
-      const selectedVideoObjects = videos.filter(v => selectedVideos.has(v.id));
-      const videoPaths = selectedVideoObjects.map(v => v.videoPath).filter(Boolean);
+        const jobCollectionRef = collection(db, 'zipJobs');
+        const newDocRef = doc(jobCollectionRef);
+        
+        await setDoc(newDocRef, {
+            jobId: newDocRef.id,
+            classId: classId,
+            requester: user.email,
+            videos: videosToZip,
+            status: 'pending',
+            createdAt: serverTimestamp(),
+        });
 
-      if (videoPaths.length !== selectedVideos.size) {
-        alert('Some selected videos are missing a storage path and cannot be zipped.');
-        setIsZipping(false);
-        return;
-      }
-
-      const region = 'us-central1'; // Or your function's region
-      const projectId = import.meta.env.VITE_PROJECT_ID;
-      const url = `https://${region}-${projectId}.cloudfunctions.net/zipVideos`;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPaths }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Failed to create zip file: ${errorData}`);
-      }
-
-      const result = await response.json();
-      window.location.href = result.zipUrl;
+        alert(`Your ZIP request for ${videosToZip.length} videos has been submitted. You can find the download in the Data Management view once it is ready.`);
+        setSelectedVideos(new Map());
 
     } catch (error) {
-      console.error('Error creating zip file:', error);
-      alert(`Error: ${error.message}`);
+        console.error('Error creating zip job:', error);
+        alert(`Error submitting ZIP request: ${error.message}`);
     }
+
     setIsZipping(false);
   };
 
@@ -142,25 +139,21 @@ const VideoLibrary = () => {
       const videoRef = ref(storage, video.videoPath);
       const downloadUrl = await getDownloadURL(videoRef);
 
-      // Fetch the video as a blob. This is important to bypass potential
-      // cross-origin issues with the download attribute.
       const response = await fetch(downloadUrl);
       if (!response.ok) {
         throw new Error(`Network response was not ok, status: ${response.status}.`);
       }
       const blob = await response.blob();
 
-      // Create a temporary link to trigger the download
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
 
-      // Create a meaningful filename from class, email, and time
       const formattedStartTime = video.startTime.toDate().toISOString()
-        .replace(/:/g, '-') // Replace colons
-        .replace(/\..+/, '') // Remove milliseconds
-        .replace('T', '_'); // Replace T with underscore
+        .replace(/:/g, '-')
+        .replace(/\..+/, '')
+        .replace('T', '_');
       const safeEmail = video.student.replace(/[@.]/g, '_');
       const filename = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
@@ -168,7 +161,6 @@ const VideoLibrary = () => {
       document.body.appendChild(a);
       a.click();
 
-      // Clean up
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
@@ -192,7 +184,7 @@ const VideoLibrary = () => {
           loading={loading || isZipping}
         />
         <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
-          {isZipping ? 'Zipping...' : `Download ${selectedVideos.size} Selected as ZIP`}
+          {isZipping ? 'Submitting Job...' : `Request ${selectedVideos.size} Selected as ZIP`}
         </button>
       </div>
 
@@ -206,9 +198,9 @@ const VideoLibrary = () => {
             <thead>
               <tr>
                 <th><input type="checkbox" onChange={(e) => {
-                  const newSelection = new Set();
+                  const newSelection = new Map();
                   if (e.target.checked) {
-                    videos.forEach(v => newSelection.add(v.id));
+                    videos.forEach(v => newSelection.set(v.id, v));
                   }
                   setSelectedVideos(newSelection);
                 }} /></th>
@@ -224,7 +216,7 @@ const VideoLibrary = () => {
                     <input
                       type="checkbox"
                       checked={selectedVideos.has(video.id)}
-                      onChange={() => handleSelectVideo(video.id)}
+                      onChange={() => handleSelectVideo(video)}
                     />
                   </td>
                   <td>{video.student}</td>

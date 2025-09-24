@@ -7,7 +7,7 @@ import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
 
-const PlaybackView = () => {
+const PlaybackView = ({ user }) => {
   const { classId } = useParams();
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);

@@ -21,5 +21,10 @@ service firebase.storage {
       // Allow authenticated teachers to read any video in a class.
       allow read: if request.auth != null && request.auth.token.role == 'teacher';
     }
+
+    match /zips/{classId}/{zipFilename} {
+      // Allow authenticated teachers to read any zip archive in a class.
+      allow read: if request.auth != null && request.auth.token.role == 'teacher';
+    }
   }
 }

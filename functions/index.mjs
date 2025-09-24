@@ -1,13 +1,10 @@
 import './firebase.js';
 
-import { onCallGenkit, HttpsError } from "firebase-functions/v2/https";
-
-
+import { onCallGenkit } from "firebase-functions/v2/https";
 import { analyzeImagesFlow, analyzeAllImagesFlow } from "./gemini.js";
-import { processVideoJob } from "./processVideoJob.js";
-import { zipVideos } from "./zipVideos.js";
 
-export { processVideoJob, zipVideos };
+export * from './processVideoJob.js';
+export * from './processZipJob.js';
 
 const callOptions = {
   cors: [
@@ -22,13 +19,13 @@ const callOptions = {
 export const analyzeImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.email_verified;
+        return auth?.token?.email_verified && auth?.token?.['teacher'];
     },
 }, analyzeImagesFlow);
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.email_verified;
+        return auth?.token?.email_verified && auth?.token?.['teacher'];
     },
 }, analyzeAllImagesFlow);

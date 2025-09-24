@@ -14,6 +14,8 @@ import NotificationsView from './components/NotificationsView';
 import ProgressView from './components/ProgressView';
 import DataManagementView from './components/DataManagementView';
 import VideoLibrary from './components/VideoLibrary';
+import MailboxView from './components/MailboxView';
+import EmailDetailView from './components/EmailDetailView';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -54,8 +56,10 @@ const App = () => {
             <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
             <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
             <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
+            <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
 
-            <Route path="/class/:classId/*" element={user && role === 'teacher' ? <ClassLayout /> : <Navigate to="/login" />}>
+            <Route path="/class/:classId/*" element={user && role === 'teacher' ? <ClassLayout user={user} /> : <Navigate to="/login" />}>
               <Route path="monitor" element={<MonitorView />} />
               <Route path="progress" element={<ProgressView />} />
               <Route path="irregularities" element={<IrregularitiesView />} />
@@ -100,7 +104,7 @@ const MainHeader = ({ onLogout, user, role }) => {
   );
 }
 
-const ClassLayout = () => {
+const ClassLayout = ({ user }) => {
   const { classId } = useParams();
 
   return (
@@ -115,7 +119,7 @@ const ClassLayout = () => {
         <NavLink to={`/class/${classId}/notifications`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Notifications</NavLink>
         <NavLink to={`/class/${classId}/data-management`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Data Management</NavLink>
       </nav>
-      <Outlet />
+      <Outlet context={{ user }} />
     </div>
   );
 }

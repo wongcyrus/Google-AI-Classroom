@@ -49,28 +49,35 @@ const TeacherView = ({ user }) => {
 
   return (
     <div>
-      <div>
-        <label htmlFor="class-select">Select a class to view:</label>
-        <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
-          <option value="" disabled>Select a class</option>
-          {classes.map(c => (
-            <option key={c.id} value={c.id}>{c.id}</option>
-          ))}
-        </select>
-        {selectedClass && (
-          <Link to={`/class/${selectedClass}`}>
-              <button style={{ marginLeft: '10px' }}>View Class</button>
-          </Link>
-        )}
-      </div>
-      <hr />
-      <Link to="/class-management">
-        <button>Class Management</button>
-      </Link>
-      <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
-      <hr />
-      <button onClick={handleLogout}>Logout</button>
-      {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
+        <div>
+            <Link to="/mailbox">
+                <button>Mailbox</button>
+            </Link>
+            <Link to="/class-management" style={{ marginLeft: '10px' }}>
+                <button>Class Management</button>
+            </Link>
+            <button onClick={() => setShowPromptModal(true)} style={{ marginLeft: '10px' }}>Manage Prompts</button>
+        </div>
+        <hr />
+
+        <div>
+            <label htmlFor="class-select">Select a class to view:</label>
+            <select id="class-select" onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
+                <option value="" disabled>Select a class</option>
+                {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.id}</option>
+                ))}
+            </select>
+            {selectedClass && (
+                <Link to={`/class/${selectedClass}`}>
+                    <button style={{ marginLeft: '10px' }}>View Class</button>
+                </Link>
+            )}
+        </div>
+
+        <hr />
+        <button onClick={handleLogout}>Logout</button>
+        {showPromptModal && <PromptManagement onClose={() => setShowPromptModal(false)} />}
     </div>
   );
 };

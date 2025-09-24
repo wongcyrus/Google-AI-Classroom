@@ -79,7 +79,7 @@ const ClassView = ({ user }) => {
       case 'irregularities':
         return <IrregularitiesView classId={classId} />;
       case 'playback':
-        return <PlaybackView classId={classId} />;
+        return <PlaybackView user={user} classId={classId} />;
       case 'notifications':
         return <NotificationsView classId={classId} />;
       default:

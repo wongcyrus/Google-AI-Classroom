@@ -72,6 +72,15 @@ service cloud.firestore {
       allow read: if isTeacher();
     }
 
+    match /zipJobs/{jobId} {
+      allow create: if isTeacher();
+      allow read: if isTeacher();
+    }
+
+    match /mails/{mailId} {
+      allow read, update: if isTeacher() && request.auth.token.email == resource.data.to;
+    }
+
     match /teachers/{teacherId} {
       allow read: if isTeacher() && request.auth.token.email == teacherId;
 
