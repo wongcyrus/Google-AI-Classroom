@@ -7,14 +7,14 @@ const serviceAccount = require('../sp.json');
 
 // --- SCRIPT CONFIGURATION ---
 // Add the names of all your top-level collections to be deleted here.
-const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities', 'prompts', 'mails', 'zipJobs'];
+const COLLECTIONS_TO_DELETE = ['classes', 'screenshots', 'users', 'students', 'progress', 'irregularities', 'notifications', 'playback', 'prompts', 'mails', 'zipJobs', 'videoJobs', 'videoLibrary'];
 
 /**
  * Initializes the Firebase Admin SDK.
  */
 function initializeFirebase() {
   try {
-    const bucketName = `${serviceAccount.project_id}.appspot.com`;
+    const bucketName = `ai-invigilator-hkiit.firebasestorage.app`;
     const app = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       storageBucket: bucketName
@@ -43,16 +43,16 @@ async function resetStorage(app) {
       return;
     }
     console.log(`Found ${files.length} files to delete in bucket: ${bucket.name}`);
-    
+
     // Process deletions in batches to avoid excessive concurrent requests
     const batchSize = 100; // Adjust batch size as needed
     for (let i = 0; i < files.length; i += batchSize) {
-        const batch = files.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (file) => {
-            console.log(`Deleting file: ${file.name}`);
-            await file.delete();
-        }));
-        console.log(`Deleted batch of ${batch.length} files.`);
+      const batch = files.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (file) => {
+        console.log(`Deleting file: ${file.name}`);
+        await file.delete();
+      }));
+      console.log(`Deleted batch of ${batch.length} files.`);
     }
 
     console.log(`Successfully deleted ${files.length} files.`);
@@ -80,7 +80,7 @@ async function deleteCollection(db, collectionPath, batchSize) {
 async function deleteQueryBatch(db, query, resolve, reject) {
   try {
     const snapshot = await query.get();
-    
+
     if (snapshot.size === 0) {
       // When there are no documents left, we are done
       return resolve();
@@ -116,17 +116,17 @@ async function deleteQueryBatch(db, query, resolve, reject) {
 async function resetFirestore(app) {
   const db = app.firestore();
   console.log('\n--- Starting Firestore Reset ---');
-  
+
   for (const collectionId of COLLECTIONS_TO_DELETE) {
     console.log(`\nDeleting all documents from '${collectionId}' collection...`);
     try {
-        await deleteCollection(db, collectionId, 100);
-        console.log(`Successfully deleted collection '${collectionId}'.`);
+      await deleteCollection(db, collectionId, 100);
+      console.log(`Successfully deleted collection '${collectionId}'.`);
     } catch (error) {
-        console.error(`Failed to delete collection '${collectionId}'.`, error);
+      console.error(`Failed to delete collection '${collectionId}'.`, error);
     }
   }
-  
+
   console.log('\n--- Firestore Reset Complete ---');
 }
 
@@ -139,7 +139,7 @@ async function main() {
   console.log('******************  APPLICATION RESET SCRIPT  *******************');
   console.log('*****************************************************************');
   console.log('WARNING: This script will permanently delete data from your project.');
-  
+
   const app = initializeFirebase();
 
   // You can comment out any of these lines to run only specific resets.
