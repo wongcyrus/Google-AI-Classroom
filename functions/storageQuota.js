@@ -70,17 +70,29 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     } catch (error) {
         // If the document or field doesn't exist, set it.
         if (error.code === 5) { // NOT_FOUND error
-            console.log(`Document for class ${classId} or field storageUsage not found. Creating it.`);
+            console.log(`Handling NOT_FOUND error for class ${classId}.`);
             const classDoc = await classRef.get();
-            const quota = classDoc.exists ? (classDoc.data().storageQuota || 0) : 0;
-            if (quota > 0 && fileSize > quota) {
-                console.log(`Quota exceeded for class ${classId} on first upload. Deleting file: ${filePath}`);
-                const bucket = adminStorage.bucket(event.bucket);
-                const file = bucket.file(filePath);
-                await file.delete();
-                console.log(`Successfully deleted ${filePath}.`);
+            if (classDoc.exists) {
+                // The document exists, but the storageUsage field likely doesn't. This is the first upload.
+                const classData = classDoc.data();
+                const quota = classData.storageQuota || 0;
+
+                if (quota > 0 && fileSize > quota) {
+                    console.log(`Quota exceeded for class ${classId} on first upload. Deleting file: ${filePath}`);
+                    const bucket = adminStorage.bucket(event.bucket);
+                    await bucket.file(filePath).delete();
+                    console.log(`Successfully deleted ${filePath}.`);
+                } else {
+                    // The field doesn't exist, so we create it with the current file size.
+                    await classRef.set({ storageUsage: fileSize }, { merge: true });
+                    console.log(`Initialized storageUsage for class ${classId}.`);
+                }
             } else {
-                await classRef.set({ storageUsage: fileSize }, { merge: true });
+                // The class document itself does not exist. This is an orphaned file.
+                console.error(`Class document ${classId} not found. Deleting orphaned file: ${filePath}`);
+                const bucket = adminStorage.bucket(event.bucket);
+                await bucket.file(filePath).delete();
+                console.log(`Successfully deleted orphaned file.`);
             }
         } else {
             console.error(`Failed to update storage usage for class ${classId}:`, error);

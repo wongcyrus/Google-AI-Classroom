@@ -235,8 +235,8 @@ const MonitorView = ({ classId: propClassId }) => {
   }, [classId]);
 
   useEffect(() => {
-    const lowercasedClassList = classList.map(email => email.toLowerCase());
-    const onlineStudents = studentStatuses.filter(status => lowercasedClassList.includes(status.email.toLowerCase()));
+    const lowercasedClassList = classList.map(email => (email || '').toLowerCase());
+    const onlineStudents = studentStatuses.filter(status => status && status.email && lowercasedClassList.includes(status.email.toLowerCase()));
 
     const newStudents = onlineStudents.map(status => {
         return {

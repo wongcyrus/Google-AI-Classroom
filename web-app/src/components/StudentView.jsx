@@ -397,6 +397,17 @@ const StudentView = ({ user }) => {
                         <p>You have no recent alerts.</p>
                     )}
                 </div>
+                <p style={{
+                    padding: '0 15px 15px',
+                    margin: 0,
+                    fontSize: '0.9rem',
+                    color: '#555',
+                    borderTop: '1px solid #e0e0e0',
+                    paddingTop: '15px',
+                    marginTop: '15px'
+                }}>
+                    IP Address: {ipAddress || 'Fetching...'}
+                </p>
             </div>
             <div className="messages-widget">
                 <h2>My Recent Messages</h2>

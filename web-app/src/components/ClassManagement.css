@@ -1,50 +1,123 @@
+/* General Container Styling */
 .class-management-container {
-    display: flex;
-    flex-direction: column;
-    gap: 10px; /* Adds space between the elements */
-    max-width: 500px; /* Or whatever width you prefer */
-    margin: 20px auto; /* Centers the container */
+    max-width: 800px;
+    margin: 20px auto;
     padding: 20px;
-    border: 1px solid #ccc;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
     border-radius: 8px;
 }
 
-.class-management-container h2 {
-    text-align: center;
-    margin-bottom: 15px;
+.class-management-container h2, .class-management-container h3 {
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
 }
 
-.class-management-container input,
+/* Form Elements */
+.class-management-container input[type="text"],
+.class-management-container select,
 .class-management-container textarea {
-    padding: 10px;
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
     border-radius: 4px;
-    border: 1px solid #ddd;
-    width: 100%; /* Makes them take the full width of the container */
-    box-sizing: border-box; /* Ensures padding doesn't affect the width */
-}
-
-.class-management-container textarea {
-    min-height: 100px; /* Gives more space for lists of emails */
-    resize: vertical; /* Allows the user to resize the textarea vertically */
+    border: 1px solid #ccc;
+    box-sizing: border-box;
 }
 
 .class-management-container button {
-    padding: 12px;
+    padding: 10px 15px;
+    border-radius: 4px;
     border: none;
     background-color: #007bff;
     color: white;
-    border-radius: 4px;
     cursor: pointer;
-    font-size: 16px;
+    margin-right: 5px;
 }
 
 .class-management-container button:hover {
     background-color: #0056b3;
 }
 
-.error-message {
-    color: red;
-    margin-top: -5px;
+/* Form Groups */
+.form-group {
+    background-color: #fff;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 10px;
+}
+
+/* Schedule Section */
+.date-range-inputs,
+.add-schedule {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.add-schedule {
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+}
+
+.days-checkboxes {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.days-checkboxes label {
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+}
+
+.schedules-list {
+    margin-top: 10px;
+}
+
+.schedule-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f0f0f0;
+    padding: 8px;
+    border-radius: 4px;
     margin-bottom: 5px;
-    font-size: 0.9em;
+}
+
+.schedule-item button {
+    background-color: #dc3545;
+}
+
+.schedule-item button:hover {
+    background-color: #c82333;
+}
+
+/* Manage Selected Class Section */
+.manage-selected-class {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid #eee;
+}
+
+.error-message {
+    color: #dc3545;
+    margin-bottom: 10px;
+}
+
+.input-hint {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-top: -5px;
+    margin-bottom: 10px;
 }
