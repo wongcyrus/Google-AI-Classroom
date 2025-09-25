@@ -5,14 +5,11 @@ import { analyzeImagesFlow, analyzeAllImagesFlow } from "./gemini.js";
 
 export * from './processVideoJob.js';
 export * from './processZipJob.js';
+export * from './storageQuota.js';
+import { CORS_ORIGINS } from './config.js';
 
 const callOptions = {
-  cors: [
-    /^https:\/\/.*\.cloudworkstations\.dev$/,
-    "https://us-central1-ai-invigilator-hkiit.cloudfunctions.net",
-    "https://ai-invigilator-hkiit.web.app",
-    /https:\/\/.*--ai-invigilator-hkiit\.web\.app/,
-  ],
+  cors: CORS_ORIGINS,
   enforceAppCheck: true,
 };
 

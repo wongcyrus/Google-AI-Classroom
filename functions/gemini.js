@@ -1,6 +1,7 @@
 import './firebase.js';
 import { ai } from './ai.js';
 import { z } from 'genkit';
+import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
 
 
 import { sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './tools.js';
@@ -25,8 +26,8 @@ export const analyzeImagesFlow = ai.defineFlow(
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
       const response = await ai.generate({
-        temperature: 0,
-        topP: 0.1,
+        temperature: AI_TEMPERATURE,
+        topP: AI_TOP_P,
         prompt: [
           { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
           { media: { url } },
@@ -68,8 +69,8 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
     const response = await ai.generate({
-      temperature: 0,
-      topP: 0.1,
+      temperature: AI_TEMPERATURE,
+      topP: AI_TOP_P,
       prompt: fullPrompt,
       tools: tools,
       maxToolRoundtrips,

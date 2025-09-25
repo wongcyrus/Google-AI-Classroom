@@ -2,6 +2,7 @@ import './firebase.js';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
+import { ZIP_COMPRESSION_LEVEL } from './config.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -54,7 +55,7 @@ export const processZipJob = onDocumentCreated({
         const outputZipPath = path.join(os.tmpdir(), outputZipName);
         const output = fs.createWriteStream(outputZipPath);
         const archive = archiver('zip', {
-            zlib: { level: 9 } // Sets the compression level.
+            zlib: { level: ZIP_COMPRESSION_LEVEL } // Sets the compression level.
         });
 
         archive.pipe(output);

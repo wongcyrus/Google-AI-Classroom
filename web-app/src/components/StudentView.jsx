@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ref, uploadString } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -81,7 +81,7 @@ const StudentView = ({ user }) => {
     showSystemNotification("Screen recording has stopped.");
   }, [stream, updateSharingStatus, showSystemNotification]);
 
-  const captureAndUpload = useCallback(async (videoElement, classId) => {
+  const captureAndUpload = useCallback((videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
       console.log('Capture skipped: video element not ready.');
       return;
@@ -92,33 +92,40 @@ const StudentView = ({ user }) => {
     canvas.height = videoElement.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', imageQuality);
-    console.log('Screenshot captured.');
+    
+    canvas.toBlob(async (blob) => {
+        if (!blob) {
+            console.error("Canvas toBlob returned null.");
+            return;
+        }
+        console.log('Screenshot captured.');
+        const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
+        
+        try {
+            console.log('Uploading screenshot...');
+            await uploadBytes(screenshotRef, blob);
+            console.log('Screenshot uploaded successfully.');
 
-    const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
-    try {
-      console.log('Uploading screenshot...');
-      await uploadString(screenshotRef, dataUrl, 'data_url');
-      console.log('Screenshot uploaded successfully.');
+            console.log('Adding screenshot metadata to Firestore...');
+            const screenshotsColRef = collection(db, 'screenshots');
+            await addDoc(screenshotsColRef, {
+                classId,
+                studentId: user.uid,
+                email: user.email.toLowerCase(),
+                imagePath: screenshotRef.fullPath,
+                size: blob.size, // Add image size here
+                timestamp: serverTimestamp(),
+            });
+            console.log('Screenshot metadata added to Firestore.');
 
-      console.log('Adding screenshot metadata to Firestore...');
-      const screenshotsColRef = collection(db, 'screenshots');
-      await addDoc(screenshotsColRef, {
-        classId,
-        studentId: user.uid,
-        email: user.email.toLowerCase(),
-        imagePath: screenshotRef.fullPath,
-        timestamp: serverTimestamp(),
-      });
-      console.log('Screenshot metadata added to Firestore.');
-
-      console.log('Updating student status with last upload timestamp...');
-      const statusRef = doc(db, "classes", classId, "status", user.uid);
-      await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
-      console.log('Student status updated.');
-    } catch (err) {
-      console.error("Error uploading screenshot: ", err);
-    }
+            console.log('Updating student status with last upload timestamp...');
+            const statusRef = doc(db, "classes", classId, "status", user.uid);
+            await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
+            console.log('Student status updated.');
+        } catch (err) {
+            console.error("Error uploading screenshot: ", err);
+        }
+    }, 'image/jpeg', imageQuality);
   }, [imageQuality, user]);
 
   const startSharing = useCallback(async () => {

@@ -2,6 +2,7 @@ import './firebase.js';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
+import { VIDEO_FRAME_RATE } from './config.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -64,7 +65,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         await new Promise((resolve, reject) => {
             let lastPercent = -1;
             ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
-                .inputOptions(['-framerate', '1'])
+                .inputOptions(['-framerate', VIDEO_FRAME_RATE])
                 .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
                 .on('progress', (progress) => {
                     if (progress.frames) {

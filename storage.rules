@@ -7,7 +7,7 @@ service firebase.storage {
       // The userId in the path MUST match the user's own UID.
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
-                      request.resource.size < 2 * 1024 * 1024 &&
+                      request.resource.size < 2097152 && // 2 MB, configured in functions/config.js
                       request.resource.contentType == 'image/jpeg';
 
       // Allow authenticated teachers to read any screenshot.

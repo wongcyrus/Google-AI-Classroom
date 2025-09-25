@@ -1,30 +1,29 @@
-require('dotenv').config({ path: '../../web-app/.env' });
 const admin = require('firebase-admin');
 
 // --- IMPORTANT ---
-// This script uses the same service account key as your other admin scripts.
-// It assumes the key is named 'sp.json' and is located in the same directory.
+// This script uses a service account key to access your Firebase project.
+// It assumes the key is named 'sp.json' and is located in the parent 'admin' directory.
 const serviceAccount = require('../sp.json');
 
 // --- SCRIPT CONFIGURATION ---
 // Add the names of all your top-level collections to be deleted here.
-//const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'classes', 'students', 'progress', 'irregularities', 'prompts'];
-const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities', 'prompts'];
+const COLLECTIONS_TO_DELETE = ['screenshots', 'users', 'students', 'progress', 'irregularities', 'prompts', 'mails', 'zipJobs'];
 
 /**
  * Initializes the Firebase Admin SDK.
  */
 function initializeFirebase() {
   try {
+    const bucketName = `${serviceAccount.project_id}.appspot.com`;
     const app = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      storageBucket: process.env.VITE_STORAGE_BUCKET
+      storageBucket: bucketName
     });
-    console.log('Firebase Admin SDK initialized successfully.');
+    console.log(`Firebase Admin SDK initialized successfully for project ${serviceAccount.project_id}.`);
     return app;
   } catch (error) {
     console.error('\nERROR: Could not initialize Firebase Admin SDK.', error);
-    console.error('Please ensure \'sp.json\' is in the admin directory and the VITE_STORAGE_BUCKET is set in web-app/.env');
+    console.error('Please ensure \'sp.json\' is in the admin directory.');
     process.exit(1);
   }
 }
@@ -93,7 +92,7 @@ async function deleteQueryBatch(db, query, resolve, reject) {
       // Recursively delete subcollections
       // This is a placeholder; for deep nesting, a more robust solution is needed.
       // For this project's structure, it's sufficient.
-      console.log(`Deleting doc: ${doc.id} from collection: ${query.path}`);
+      console.log(`Deleting doc: ${doc.id} from collection: ${doc.ref.parent.path}`);
       batch.delete(doc.ref);
     });
     await batch.commit();

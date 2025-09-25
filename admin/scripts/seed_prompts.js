@@ -41,7 +41,9 @@ async function seedPrompts(db) {
             const promptData = {
                 name: name,
                 promptText: content,
-                applyTo: ['Per Image', 'All Images']
+                applyTo: ['Per Image', 'All Images'],
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
             };
 
             try {

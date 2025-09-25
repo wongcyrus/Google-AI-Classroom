@@ -4,6 +4,16 @@ import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
 
+// Helper function to format bytes
+const formatBytes = (bytes, decimals = 2) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
   const [role, setRole] = useState(null);
@@ -53,13 +63,27 @@ const TeacherView = ({ user }) => {
                 <h2>My Classes</h2>
                 <div className="class-card-list">
                     {classes.length > 0 ? (
-                        classes.map(c => (
-                            <div key={c.id} className="class-card">
-                                <h3>{c.name || c.id}</h3>
-                                <p>{c.students ? c.students.length : 0} student(s)</p>
-                                <Link to={`/class/${c.id}`} className="view-class-link">View Class</Link>
-                            </div>
-                        ))
+                        classes.map(c => {
+                            const usage = c.storageUsage || 0;
+                            const quota = c.storageQuota || 0;
+                            const percentage = quota > 0 ? (usage / quota) * 100 : 0;
+
+                            return (
+                                <div key={c.id} className="class-card">
+                                    <h3>{c.name || c.id}</h3>
+                                    <p>{c.students ? c.students.length : 0} student(s)</p>
+                                    <div className="storage-info">
+                                        <div className="progress-bar-container">
+                                            <div className="progress-bar" style={{ width: `${percentage}%` }}></div>
+                                        </div>
+                                        <p className="storage-text">
+                                            {formatBytes(usage)} of {formatBytes(quota)} used
+                                        </p>
+                                    </div>
+                                    <Link to={`/class/${c.id}`} className="view-class-link">View Class</Link>
+                                </div>
+                            );
+                        })
                     ) : (
                         <p>You are not enrolled in any classes.</p>
                     )}
