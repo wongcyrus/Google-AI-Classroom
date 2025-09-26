@@ -5,6 +5,8 @@ import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';
 
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
 const PAGE_SIZE = 10;
 
 const DataManagementView = () => {
@@ -92,43 +94,25 @@ const DataManagementView = () => {
       return;
     }
 
-    const confirmation = window.confirm('Are you sure you want to delete data in this date range? This action cannot be undone.');
+    const confirmation = window.confirm(
+      'Are you sure you want to delete data in this date range? This will trigger a backend process and cannot be undone.'
+    );
     if (!confirmation) return;
 
-    const startDate = new Date(deleteStartDate);
-    const endDate = new Date(deleteEndDate);
-    endDate.setHours(23, 59, 59, 999);
-
-    const screenshotsQuery = query(
-      collection(db, 'screenshots'),
-      where('classId', '==', classId),
-      where('timestamp', '>=', startDate),
-      where('timestamp', '<=', endDate)
-    );
+    const functions = getFunctions();
+    const deleteFunction = httpsCallable(functions, 'deleteScreenshotsByDateRange');
 
     try {
-      const querySnapshot = await getDocs(screenshotsQuery);
-      const batch = writeBatch(db);
-
-      for (const doc of querySnapshot.docs) {
-        const screenshotData = doc.data();
-        const imageRef = ref(storage, screenshotData.imagePath);
-
-        try {
-          await deleteObject(imageRef);
-        } catch (error) {
-            if (error.code !== 'storage/object-not-found') {
-                console.error("Error deleting image from storage: ", error);
-            }
-        }
-        batch.delete(doc.ref);
-      }
-
-      await batch.commit();
-      alert('Data deleted successfully!');
+      alert("Starting the deletion process. This may take some time. You can close this window.");
+      const result = await deleteFunction({
+        classId,
+        startDate: deleteStartDate,
+        endDate: deleteEndDate,
+      });
+      alert(result.data.message);
     } catch (error) {
-      console.error("Error deleting data: ", error);
-      alert('An error occurred while deleting data.');
+      console.error("Error calling delete function: ", error);
+      alert(`An error occurred: ${error.message}`);
     }
   };
 
