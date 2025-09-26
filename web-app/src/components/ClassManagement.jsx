@@ -208,6 +208,9 @@ const ClassManagement = ({ user }) => {
     try {
       if (classSnap.exists()) {
         // The class exists, so we update it.
+        const updatedTeachers = [auth.currentUser.email, ...teacherEmailList];
+        const uniqueTeachers = [...new Set(updatedTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
+
         const updateData = {
           storageQuota: storageQuotaBytes,
           schedule: {
@@ -217,7 +220,7 @@ const ClassManagement = ({ user }) => {
             timeSlots: classSchedules,
           },
           students: studentEmailList,
-          teachers: teacherEmailList,
+          teachers: uniqueTeachers,
           ipRestrictions: ipList,
         };
         await updateDoc(classRef, updateData);
