@@ -4,6 +4,7 @@ import { collection, doc, onSnapshot, query, where, orderBy, limit, getDocs, sta
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const PAGE_SIZE = 10;
 
@@ -12,15 +13,15 @@ const NotificationsView = () => {
   const [messages, setMessages] = useState([]);
   const [teacherEmail, setTeacherEmail] = useState(null);
   
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 2);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
-  const [endTime, setEndTime] = useState(() => {
-    const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
 
   const [firstDoc, setFirstDoc] = useState(null);
   const [lastDoc, setLastDoc] = useState(null);
@@ -113,6 +114,9 @@ const NotificationsView = () => {
             onStartTimeChange={setStartTime}
             onEndTimeChange={setEndTime}
             loading={loading}
+            lessons={lessons}
+            selectedLesson={selectedLesson}
+            onLessonChange={handleLessonChange}
         />
         <div className="table-container">
             <table>

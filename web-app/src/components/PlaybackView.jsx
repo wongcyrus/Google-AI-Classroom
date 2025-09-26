@@ -6,22 +6,24 @@ import { db, storage } from '../firebase-config';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const PlaybackView = ({ user }) => {
   const { classId } = useParams();
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 2);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
-  const [endTime, setEndTime] = useState(() => {
-    const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
   
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
+
   const [sessionData, setSessionData] = useState(null);
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -353,6 +355,9 @@ const PlaybackView = ({ user }) => {
           onStartTimeChange={setStartTime}
           onEndTimeChange={setEndTime}
           loading={loading}
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
         />
         <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
       </div>

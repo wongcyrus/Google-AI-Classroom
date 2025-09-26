@@ -5,20 +5,22 @@ import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefor
 import { ref, getDownloadURL } from 'firebase/storage';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const IrregularitiesView = () => {
   const { classId } = useParams();
   const [irregularities, setIrregularities] = useState([]);
   const [imageUrls, setImageUrls] = useState({});
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 2);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
+
   const [lastDoc, setLastDoc] = useState(null);
   const [firstDoc, setFirstDoc] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -34,8 +36,8 @@ const IrregularitiesView = () => {
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
     q = query(q, where('classId', '==', classId));
-    if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
-    if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
+    if (startTime) q = query(q, where('timestamp', '>=', new Date(startTime)));
+    if (endTime) q = query(q, where('timestamp', '<=', new Date(endTime)));
 
     if (direction === 'first') {
       setIsLastPage(false);
@@ -88,11 +90,11 @@ const IrregularitiesView = () => {
       console.error("Error fetching irregularities:", error);
     }
     setLoading(false);
-  }, [classId, startDate, endDate, lastDoc, firstDoc]);
+  }, [classId, startTime, endTime, lastDoc, firstDoc]);
 
   useEffect(() => {
     fetchIrregularities('first', 1);
-  }, [classId, startDate, endDate]);
+  }, [classId, startTime, endTime]);
 
   const handleNext = () => {
     if (!isLastPage) {
@@ -113,8 +115,8 @@ const IrregularitiesView = () => {
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
 
     q = query(q, where('classId', '==', classId));
-    if (startDate) q = query(q, where('timestamp', '>=', new Date(startDate)));
-    if (endDate) q = query(q, where('timestamp', '<=', new Date(endDate)));
+    if (startTime) q = query(q, where('timestamp', '>=', new Date(startTime)));
+    if (endTime) q = query(q, where('timestamp', '<=', new Date(endTime)));
 
     try {
       const snapshot = await getDocs(q);
@@ -163,11 +165,14 @@ const IrregularitiesView = () => {
       </div>
       <div className="actions-container">
         <DateRangeFilter 
-          startTime={startDate}
-          endTime={endDate}
-          onStartTimeChange={setStartDate}
-          onEndTimeChange={setEndDate}
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
           loading={loading}
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
         />
         <div className="actions">
           <button onClick={exportToCSV} disabled={loading}>Export as CSV</button>

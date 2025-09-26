@@ -4,20 +4,21 @@ import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestor
 import { db } from '../firebase-config';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const ProgressView = () => {
   const { classId } = useParams();
   const [allProgress, setAllProgress] = useState([]);
   const [latestProgress, setLatestProgress] = useState({});
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 2);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
-  const [endTime, setEndTime] = useState(() => {
-    const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
   const [selectedStudentEmail, setSelectedStudentEmail] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -95,6 +96,9 @@ const ProgressView = () => {
           onStartTimeChange={setStartTime}
           onEndTimeChange={setEndTime}
           loading={loading}
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
         />
         {loading ? (
           <p>Loading progress...</p>

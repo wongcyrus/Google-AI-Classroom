@@ -4,6 +4,8 @@ import { collection, query, where, getDocs, writeBatch, orderBy, limit, startAft
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';
+import DateRangeFilter from './DateRangeFilter';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -11,9 +13,17 @@ const PAGE_SIZE = 10;
 
 const DataManagementView = () => {
   const { classId } = useParams();
-  const [deleteStartDate, setDeleteStartDate] = useState('');
-  const [deleteEndDate, setDeleteEndDate] = useState('');
   
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
+
   // State for pagination
   const [zipJobs, setZipJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -28,6 +38,8 @@ const DataManagementView = () => {
     let q = query(
       jobsCollectionRef,
       where('classId', '==', classId),
+      where('createdAt', '>=', new Date(startTime)),
+      where('createdAt', '<=', new Date(endTime)),
       orderBy('createdAt', 'desc')
     );
 
@@ -68,13 +80,13 @@ const DataManagementView = () => {
       console.error("Error fetching zip jobs:", error);
     }
     setLoadingJobs(false);
-  }, [classId, lastDoc, firstDoc]);
+  }, [classId, lastDoc, firstDoc, startTime, endTime]);
 
   useEffect(() => {
     if (classId) {
       fetchJobs('first', 1);
     }
-  }, [classId]);
+  }, [classId, startTime, endTime]);
 
   const handleNext = () => {
     if (!isLastPage) {
@@ -89,7 +101,7 @@ const DataManagementView = () => {
   };
 
   const handleDeleteData = async () => {
-    if (!deleteStartDate || !deleteEndDate) {
+    if (!startTime || !endTime) {
       alert('Please select a start and end date.');
       return;
     }
@@ -106,8 +118,8 @@ const DataManagementView = () => {
       alert("Starting the deletion process. This may take some time. You can close this window.");
       const result = await deleteFunction({
         classId,
-        startDate: deleteStartDate,
-        endDate: deleteEndDate,
+        startDate: startTime,
+        endDate: endTime,
       });
       alert(result.data.message);
     } catch (error) {
@@ -134,12 +146,17 @@ const DataManagementView = () => {
       </div>
       
       <div className="actions-container">
-        <div>
-            <h4>Delete Screenshots by Date Range</h4>
-            <input type="date" value={deleteStartDate} onChange={e => setDeleteStartDate(e.target.value)} />
-            <input type="date" value={deleteEndDate} onChange={e => setDeleteEndDate(e.target.value)} />
-            <button onClick={handleDeleteData}>Delete Data</button>
-        </div>
+        <DateRangeFilter
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
+          loading={loadingJobs}
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
+        />
+        <button onClick={handleDeleteData}>Delete Screenshots in Range</button>
       </div>
 
       <hr style={{ margin: '20px 0' }} />

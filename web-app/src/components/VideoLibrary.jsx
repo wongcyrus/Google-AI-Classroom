@@ -5,6 +5,7 @@ import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const PAGE_SIZE = 10;
 
@@ -29,16 +30,16 @@ const VideoLibrary = () => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [filterField, setFilterField] = useState('createdAt');
-  
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0); // Start of today
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-  });
-  const [endTime, setEndTime] = useState(() => {
-    const d = new Date();
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-  });
+
+  const {
+    lessons,
+    selectedLesson,
+    startTime,
+    endTime,
+    setStartTime,
+    setEndTime,
+    handleLessonChange,
+  } = useClassSchedule(classId);
 
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(true);
@@ -196,6 +197,9 @@ const VideoLibrary = () => {
           onEndTimeChange={setEndTime}
           onSearch={handleSearch}
           loading={loading || isZipping}
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
         />
         <select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
           <option value="createdAt">Filter by Creation Time</option>
