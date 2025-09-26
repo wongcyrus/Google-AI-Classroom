@@ -8,6 +8,19 @@ import DateRangeFilter from './DateRangeFilter';
 
 const PAGE_SIZE = 10;
 
+const formatDuration = (seconds) => {
+  if (!seconds) return 'N/A';
+  return new Date(seconds * 1000).toISOString().substr(11, 8);
+};
+
+const formatSize = (bytes) => {
+  if (!bytes) return 'N/A';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
 const VideoLibrary = () => {
   const { classId } = useParams();
   const { user } = useOutletContext();
@@ -15,6 +28,7 @@ const VideoLibrary = () => {
   const [loading, setLoading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
+  const [filterField, setFilterField] = useState('createdAt');
   
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -50,9 +64,9 @@ const VideoLibrary = () => {
       const queryConstraints = [
         where('status', '==', 'completed'),
         where('classId', '==', classId),
-        where('createdAt', '>=', new Date(startTime)),
-        where('createdAt', '<=', new Date(endTime)),
-        orderBy('createdAt', 'desc'),
+        where(filterField, '>=', new Date(startTime)),
+        where(filterField, '<=', new Date(endTime)),
+        orderBy(filterField, 'desc'),
         limit(PAGE_SIZE)
       ];
 
@@ -183,6 +197,10 @@ const VideoLibrary = () => {
           onSearch={handleSearch}
           loading={loading || isZipping}
         />
+        <select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
+          <option value="createdAt">Filter by Creation Time</option>
+          <option value="startTime">Filter by Start Time</option>
+        </select>
         <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
           {isZipping ? 'Submitting Job...' : `Request ${selectedVideos.size} Selected as ZIP`}
         </button>
@@ -205,6 +223,10 @@ const VideoLibrary = () => {
                   setSelectedVideos(newSelection);
                 }} /></th>
                 <th>Student</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Duration</th>
+                <th>Size</th>
                 <th>Created At</th>
                 <th>Download</th>
               </tr>
@@ -220,6 +242,10 @@ const VideoLibrary = () => {
                     />
                   </td>
                   <td>{video.student}</td>
+                  <td>{video.startTime?.toDate().toLocaleString() || 'N/A'}</td>
+                  <td>{video.endTime?.toDate().toLocaleString() || 'N/A'}</td>
+                  <td>{formatDuration(video.duration)}</td>
+                  <td>{formatSize(video.size)}</td>
                   <td>{video.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
                   <td>
                     {video.videoPath ? (

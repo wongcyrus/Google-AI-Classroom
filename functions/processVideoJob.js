@@ -8,6 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
+import Jimp from 'jimp';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -46,19 +47,46 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
             return;
         }
 
-        const imagePaths = querySnapshot.docs.map(doc => doc.data().imagePath);
+        const screenshots = querySnapshot.docs.map(doc => doc.data());
         const tempDir = path.join(os.tmpdir(), jobId);
         fs.mkdirSync(tempDir, { recursive: true });
 
-        console.log(`Downloading ${imagePaths.length} images to ${tempDir}`);
+        console.log(`Downloading and processing ${screenshots.length} images to ${tempDir}`);
 
-        const downloadPromises = imagePaths.map((filePath, index) => {
-            const fileName = path.join(tempDir, `image-${index.toString().padStart(5, '0')}.jpg`);
-            return bucket.file(filePath).download({ destination: fileName });
+        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
+
+        const processPromises = screenshots.map(async (screenshot, index) => {
+            const fileName = `image-${index.toString().padStart(5, '0')}.jpg`;
+            const filePath = path.join(tempDir, fileName);
+            await bucket.file(screenshot.imagePath).download({ destination: filePath });
+            
+            const image = await Jimp.read(filePath);
+
+            if (image.bitmap.width % 2 !== 0 || image.bitmap.height % 2 !== 0) {
+                image.resize(
+                    image.bitmap.width % 2 === 0 ? image.bitmap.width : image.bitmap.width - 1,
+                    image.bitmap.height % 2 === 0 ? image.bitmap.height : image.bitmap.height - 1
+                );
+            }
+
+            const timestamp = screenshot.timestamp.toDate();
+            const date = timestamp.toLocaleDateString();
+            const time = timestamp.toLocaleTimeString();
+            const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${student}`;
+
+            const textHeight = 40;
+            const newHeight = image.bitmap.height + textHeight;
+
+            const newImage = new Jimp(image.bitmap.width, newHeight, '#FFFFFF');
+            newImage.composite(image, 0, textHeight);
+            newImage.print(font, 10, 12, text);
+            
+            await newImage.writeAsync(filePath);
         });
-        await Promise.all(downloadPromises);
+        
+        await Promise.all(processPromises);
 
-        console.log('All images downloaded. Starting ffmpeg.');
+        console.log('All images downloaded and processed. Starting ffmpeg.');
 
         const outputVideoName = `${jobId}.mp4`;
         const outputVideoPath = path.join(os.tmpdir(), outputVideoName);
@@ -70,7 +98,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
                 .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
                 .on('progress', (progress) => {
                     if (progress.frames) {
-                        const totalFrames = imagePaths.length;
+                        const totalFrames = screenshots.length;
                         if (totalFrames > 0) {
                             const percent = Math.min(100, Math.floor((progress.frames / totalFrames) * 100));
                             if (percent > lastPercent) {
@@ -81,24 +109,38 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
                     }
                 })
                 .on('end', resolve)
-                .on('error', reject)
+                .on('error', (err, stdout, stderr) => {
+                    console.error('ffmpeg stdout:', stdout);
+                    console.error('ffmpeg stderr:', stderr);
+                    reject(err);
+                })
                 .save(outputVideoPath);
         });
 
         console.log(`Video created at ${outputVideoPath}. Uploading to storage.`);
+
+        const videoStats = await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(outputVideoPath, (err, metadata) => {
+                if (err) reject(err);
+                resolve(metadata);
+            });
+        });
+
+        const duration = videoStats.format.duration;
+        const size = videoStats.format.size;
 
         const destinationPath = `videos/${classId}/${outputVideoName}`;
         await bucket.upload(outputVideoPath, {
             destination: destinationPath,
             metadata: {
                 contentType: 'video/mp4',
-                metadata: { classId, student, startTime, endTime }
+                metadata: { classId, student, startTime, endTime, duration, size }
             }
         });
 
         console.log(`Video uploaded to ${destinationPath}`);
 
-        await jobRef.update({ status: 'completed', finishedAt: new Date(), videoPath: destinationPath });
+        await jobRef.update({ status: 'completed', finishedAt: new Date(), videoPath: destinationPath, duration, size });
 
         // Clean up local files
         fs.rmSync(tempDir, { recursive: true, force: true });
