@@ -403,7 +403,7 @@ const StudentView = ({ user }) => {
             )}
             </div>
 
-            {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitives!</p>}
+            {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitive!</p>}
             
             <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
         </div>
