@@ -113,6 +113,7 @@ const PlaybackView = ({ user }) => {
           where("email", "==", sessionData.student),
           where("timestamp", ">=", new Date(sessionData.start)),
           where("timestamp", "<=", new Date(sessionData.end)),
+          where("deleted", "==", false),
           orderBy("timestamp", "asc")
         );
         console.log('Executing query to fetch screenshot documents...');

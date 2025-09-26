@@ -28,6 +28,7 @@ const timeZones = [
 const ClassManagement = ({ user }) => {
   const [classId, setClassId] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
+  const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -87,6 +88,11 @@ const ClassManagement = ({ user }) => {
             setTimeZone('Asia/Hong_Kong');
             setClassSchedules([]);
           }
+          if (classData.teachers) {
+            setTeacherEmails(classData.teachers.join('\n'));
+          } else {
+            setTeacherEmails('');
+          }
           if (classData.students) {
             setStudentEmails(classData.students.join('\n'));
           } else {
@@ -106,6 +112,7 @@ const ClassManagement = ({ user }) => {
         setScheduleEndDate('');
         setTimeZone('Asia/Hong_Kong');
         setClassSchedules([]);
+        setTeacherEmails('');
         setStudentEmails('');
         setIpRestrictions('');
       }
@@ -188,6 +195,12 @@ const ClassManagement = ({ user }) => {
       .split(/[, ]+/)
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
+    
+    const teacherEmailList = teacherEmails
+      .replace(/\n/g, ' ')
+      .split(/[, ]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
 
     const storageQuotaBytes = parseInt(storageLimit) * 1024 * 1024 * 1024;
     const ipList = ipRestrictions.split('\n').map(ip => ip.trim()).filter(Boolean);
@@ -204,14 +217,18 @@ const ClassManagement = ({ user }) => {
             timeSlots: classSchedules,
           },
           students: studentEmailList,
+          teachers: teacherEmailList,
           ipRestrictions: ipList,
         };
         await updateDoc(classRef, updateData);
         console.log('Successfully updated the class!');
       } else {
         // The class does not exist, so create it with the current user as the teacher.
+        const initialTeachers = [auth.currentUser.email, ...teacherEmailList];
+        const uniqueTeachers = [...new Set(initialTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
+
         await setDoc(classRef, {
-          teachers: [auth.currentUser.email],
+          teachers: uniqueTeachers,
           students: studentEmailList,
           storageQuota: storageQuotaBytes,
           schedule: {
@@ -340,6 +357,16 @@ const ClassManagement = ({ user }) => {
           rows="4"
         />
         <p className="input-hint">Leave blank for no IP restrictions. If IPs are entered, students can only log in from these addresses during scheduled class times.</p>
+      </div>
+
+      <div className="form-group">
+        <label>Teacher Emails</label>
+        <textarea
+          placeholder="Add teacher emails (one per line)"
+          value={teacherEmails}
+          onChange={(e) => setTeacherEmails(e.target.value)}
+          rows="3"
+        />
       </div>
 
       <div className="form-group">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { auth } from './firebase-config';
+import { auth, db } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from "firebase/firestore";
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, NavLink, Outlet, useParams, useLocation } from 'react-router-dom';
 
 import AuthComponent from './components/AuthComponent';
@@ -82,14 +83,39 @@ const App = () => {
 
 const MainHeader = ({ onLogout, user, role }) => {
   const location = useLocation();
-  const isClassPage = location.pathname.includes('/class/');
-  let title = "Gemini AI Classroom Assistant";
+  const [className, setClassName] = useState('');
+  const isClassPage = location.pathname.startsWith('/class/');
 
+  useEffect(() => {
+    let classId = null;
+    if (isClassPage) {
+      const pathParts = location.pathname.split('/');
+      if (pathParts.length > 2) {
+        classId = pathParts[2];
+      }
+    }
+
+    if (classId) {
+      const classRef = doc(db, "classes", classId);
+      getDoc(classRef).then(docSnap => {
+        if (docSnap.exists()) {
+          setClassName(docSnap.data().name);
+        } else {
+          setClassName('');
+        }
+      });
+    } else {
+      setClassName('');
+    }
+  }, [location.pathname, isClassPage]);
+
+  let title = "Gemini AI Classroom Assistant";
   if (isClassPage) {
-      // In a real app, you might fetch the class name based on the ID
-      title = `Class: Demo`;
+    const pathParts = location.pathname.split('/');
+    const classId = pathParts.length > 2 ? pathParts[2] : '';
+    title = `Class: ${className || classId}`;
   } else if (role === 'student') {
-      title = `Student Dashboard`;
+    title = `Student Dashboard`;
   }
   
   return (

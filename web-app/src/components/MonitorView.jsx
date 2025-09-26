@@ -410,9 +410,18 @@ const MonitorView = ({ classId: propClassId }) => {
   };
 
   const handleDownloadAttendance = () => {
+    const statusMap = new Map(studentStatuses.map(status => [status.email.toLowerCase(), status]));
+
+    const attendanceData = classList.map(email => {
+      const lowercasedEmail = email.toLowerCase();
+      const status = statusMap.get(lowercasedEmail);
+      const isSharing = status ? status.isSharing || false : false;
+      return { email, isSharing };
+    });
+
     const csvContent = "data:text/csv;charset=utf-8,"
         + "Email,Sharing Screen\n"
-        + students.map(s => `${s.email},${s.isSharing}`).join("\n");
+        + attendanceData.map(s => `${s.email},${s.isSharing}`).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");

@@ -49,7 +49,7 @@ export const deleteScreenshotsByDateRange = onCall(async (request) => {
       const screenshotData = doc.data();
       const imageRef = storage.bucket().file(screenshotData.imagePath);
       promises.push(imageRef.delete().catch(err => console.error(`Failed to delete ${screenshotData.imagePath}:`, err)));
-      batch.delete(doc.ref);
+      batch.update(doc.ref, { imagePath: null, deleted: true });
       count++;
 
       if (count === 499) {

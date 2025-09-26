@@ -137,6 +137,7 @@ const StudentView = ({ user }) => {
               imagePath: screenshotRef.fullPath,
               size: blob.size,
               timestamp: serverTimestamp(),
+              deleted: false,
             });
             console.log('Screenshot metadata added to Firestore.');
             const statusRef = doc(db, "classes", classId, "status", user.uid);

@@ -36,6 +36,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
             .where("email", "==", student)
             .where("timestamp", ">=", startTime)
             .where("timestamp", "<=", endTime)
+            .where("deleted", "==", false)
             .orderBy("timestamp", "asc");
 
         const querySnapshot = await q.get();
