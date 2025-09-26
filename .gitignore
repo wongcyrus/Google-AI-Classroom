@@ -36,3 +36,4 @@ Thumbs.db
 # Firebase cache
 /.firebase
 firebase-debug.log
+web-app/.env.production

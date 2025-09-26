@@ -21,7 +21,9 @@ export const analyzeImagesFlow = ai.defineFlow(
     }),
     outputSchema: z.record(z.string()),
   },
-  async ({ screenshots, prompt, classId }) => {
+  async ({ screenshots, prompt, classId }, context) => {
+    console.log('Authentication context received in analyzeImagesFlow:', context);
+    const teacherUid = context.auth?.uid;
     const tools = getTools();
     const analysisResults = {};
     for (const [email, url] of Object.entries(screenshots)) {
@@ -29,7 +31,7 @@ export const analyzeImagesFlow = ai.defineFlow(
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: [
-          { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
+          { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The request is made by teacher ${teacherUid}. ${prompt}` },
           { media: { url } },
         ],
         tools: tools,
@@ -51,7 +53,9 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     }),
     outputSchema: z.string(),
   },
-  async ({ screenshots, prompt, classId }) => {
+  async ({ screenshots, prompt, classId }, context) => {
+    console.log('Authentication context received in analyzeAllImagesFlow:', context);
+    const teacherUid = context.auth?.uid;
     const tools = getTools();
     const imageParts = Object.entries(screenshots).flatMap(([email, url]) => (
       [
@@ -62,7 +66,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
 
     const fullPrompt = [
       ...imageParts,
-      { text: `The class ID is ${classId}. ${prompt}` },
+      { text: `The class ID is ${classId}. The request is made by teacher ${teacherUid}. ${prompt}` },
     ];
 
     const numScreenshots = Object.keys(screenshots).length;

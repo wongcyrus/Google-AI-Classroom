@@ -34,4 +34,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+if (import.meta.env.DEV) {
+  window.auth = auth;
+}
+
 export { auth, db, storage };

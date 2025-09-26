@@ -7,7 +7,7 @@ import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
 import StudentView from './components/StudentView';
 import MonitorView from './components/MonitorView';
-import ClassManagementView from './components/ClassManagementView';
+import ClassManagement from './components/ClassManagement';
 import IrregularitiesView from './components/IrregularitiesView';
 import PlaybackView from './components/PlaybackView';
 import NotificationsView from './components/NotificationsView';
@@ -56,7 +56,7 @@ const App = () => {
             <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
             <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
             <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
-            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagementView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
             <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
             <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />

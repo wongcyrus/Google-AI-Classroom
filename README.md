@@ -1,6 +1,6 @@
 <p align="center"><img src="web-app/src/assets/logo.jpg" alt="Gemini AI Classroom Assistant Logo" width="200"/></p>
 
-# Gemini AI Proactive Classroom Assistant
+# Gemini AI Classroom Assistant
 
 A next-generation classroom assistant designed to proactively support students during computer-based tests. This project uses the Gemini AI model not just to detect issues, but to prevent them by providing gentle, real-time guidance to students.
 

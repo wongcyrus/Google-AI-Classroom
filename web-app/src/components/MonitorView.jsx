@@ -2,10 +2,25 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 import IndividualStudentView from './IndividualStudentView';
+
+// Helper function to format bytes
+const formatBytes = (bytes, decimals = 2) => {
+    if (!bytes || bytes <= 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    if (i <= 0) {
+        return `${Math.round(bytes)} Bytes`;
+    }
+
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
 
 // Modal component can be simplified or remain as is, its styling is independent.
 const Modal = ({ show, onClose, title, children }) => {
@@ -24,13 +39,17 @@ const Modal = ({ show, onClose, title, children }) => {
 const ControlsPanel = ({
     message, setMessage, handleSendMessage, setShowControls, 
     frameRate, handleFrameRateChange, frameRateOptions, 
-    imageQuality, handleImageQualityChange, imageQualityOptions, 
+    maxImageSize, handleMaxImageSizeChange, maxImageSizeOptions,
     isCapturing, toggleCapture, isPaused, setIsPaused, 
     setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, 
-    setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate 
-}) => (
+    setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate,
+    storageUsage, storageQuota
+}) => {
+    const percentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
+
+    return (
     <div className="monitor-controls-sidebar">
         <div className="control-item"><button onClick={() => setShowControls(false)} className="hide-controls-btn">Hide Controls</button></div>
         <div className="control-section">
@@ -47,9 +66,9 @@ const ControlsPanel = ({
               </select>
             </div>
             <div className="control-item">
-              <label>Image Quality:</label>
-              <select value={imageQuality} onChange={handleImageQualityChange}>
-                {imageQualityOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              <label>Max Image Size:</label>
+              <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
+                {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
             </div>
         </div>
@@ -61,6 +80,19 @@ const ControlsPanel = ({
         <div className="control-section">
             <div className="control-item"><button onClick={() => setShowNotSharingModal(true)} className="secondary-action">Show Students Not Sharing ({notSharingStudents.length})</button></div>
             <div className="control-item"><button onClick={handleDownloadAttendance} className="secondary-action">Download Attendance</button></div>
+        </div>
+        <div className="control-section">
+            <div className="control-item" style={{width: '100%'}}>
+                <label>Storage Usage:</label>
+                <div className="storage-info" style={{ width: '100%' }}>
+                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
+                        <div className="progress-bar" style={{ width: `${percentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
+                    </div>
+                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
+                        {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} used` : `${formatBytes(storageUsage)} used`}
+                    </p>
+                </div>
+            </div>
         </div>
         {editablePromptText && (
             <div className="control-section">
@@ -106,7 +138,8 @@ const ControlsPanel = ({
             </div>
           )}
     </div>
-);
+    )}
+;
 
 
 const MemoizedControlsPanel = React.memo(ControlsPanel);
@@ -120,7 +153,7 @@ const MonitorView = ({ classId: propClassId }) => {
   const [screenshots, setScreenshots] = useState({});
   const [message, setMessage] = useState('');
   const [frameRate, setFrameRate] = useState(5);
-  const [imageQuality, setImageQuality] = useState(0.2);
+  const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -128,6 +161,9 @@ const MonitorView = ({ classId: propClassId }) => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
+
+  const [storageUsage, setStorageUsage] = useState(0);
+  const [storageQuota, setStorageQuota] = useState(0);
 
   const [analysisResults, setAnalysisResults] = useState({});
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
@@ -193,7 +229,13 @@ const MonitorView = ({ classId: propClassId }) => {
   }, []);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
-  const imageQualityOptions = [{ label: 'High', value: 1.0 }, { label: 'Medium', value: 0.5 }, { label: 'Low', value: 0.2 }];
+  const maxImageSizeOptions = [
+    { label: '1MB', value: 1024 * 1024 },
+    { label: '0.75MB', value: 0.75 * 1024 * 1024 },
+    { label: '0.5MB', value: 0.5 * 1024 * 1024 },
+    { label: '0.25MB', value: 0.25 * 1024 * 1024 },
+    { label: '0.1MB', value: 0.1 * 1024 * 1024 }
+  ];
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 2000);
@@ -208,9 +250,17 @@ const MonitorView = ({ classId: propClassId }) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
             setClassList(data.students || []);
-            setFrameRate(data.frameRate || 5);
-            setImageQuality(data.imageQuality || 0.2);
+            setFrameRate(prevRate => {
+                const newRate = data.frameRate || 5;
+                return newRate === prevRate ? prevRate : newRate;
+            });
+            setMaxImageSize(prevSize => {
+                const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
+                return newSize === prevSize ? prevSize : newSize;
+            });
             setIsCapturing(data.isCapturing || false);
+            setStorageUsage(data.storageUsage || 0);
+            setStorageQuota(data.storageQuota || 0);
         } else {
             setClassList([]);
         }
@@ -220,7 +270,11 @@ const MonitorView = ({ classId: propClassId }) => {
     const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
       const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
-          if (!acc[curr.email] || (curr.timestamp && acc[curr.email].timestamp && curr.timestamp.toMillis() > acc[curr.email].timestamp.toMillis())) {
+          if (!curr.email) return acc;
+          const existingTs = acc[curr.email]?.timestamp?.toMillis() || 0;
+          const currentTs = curr.timestamp?.toMillis() || 0;
+
+          if (currentTs >= existingTs) {
               acc[curr.email] = curr;
           }
           return acc;
@@ -356,7 +410,7 @@ const MonitorView = ({ classId: propClassId }) => {
   };
 
   const handleDownloadAttendance = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
         + "Email,Sharing Screen\n"
         + students.map(s => `${s.email},${s.isSharing}`).join("\n");
 
@@ -371,40 +425,65 @@ const MonitorView = ({ classId: propClassId }) => {
     document.body.removeChild(link);
   };
 
-  const handleFrameRateChange = async (e) => {
+  const handleFrameRateChange = useCallback(async (e) => {
     const newRate = parseInt(e.target.value, 10);
-    setFrameRate(newRate);
+    const oldRate = frameRate;
+    setFrameRate(newRate); // Optimistic update
     if (classId) {
-      const classRef = doc(db, 'classes', classId);
-      await updateDoc(classRef, { frameRate: newRate });
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { frameRate: newRate });
+      } catch (error) {
+        console.error("Error updating frame rate:", error);
+        setFrameRate(oldRate); // Revert on error
+        alert("Failed to update frame rate. Please try again.");
+      }
+    }
+  }, [classId, frameRate]);
+
+  const handleMaxImageSizeChange = async (e) => {
+    const newSize = parseFloat(e.target.value);
+    if (classId) {
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { maxImageSize: newSize });
+      } catch (error) {
+        console.error("Error updating max image size:", error);
+        alert("Failed to update max image size. Please try again.");
+      }
     }
   };
 
-  const handleImageQualityChange = async (e) => {
-    const newQuality = parseFloat(e.target.value);
-    setImageQuality(newQuality);
-    if (classId) {
-      const classRef = doc(db, 'classes', classId);
-      await updateDoc(classRef, { imageQuality: newQuality });
-    }
-  };
-
-  const toggleCapture = async () => {
+  const toggleCapture = useCallback(async () => {
     if (!classId) return;
-    const classRef = doc(db, 'classes', classId);
     const newIsCapturing = !isCapturing;
-    await updateDoc(classRef, { 
-      isCapturing: newIsCapturing,
-      captureStartedAt: newIsCapturing ? serverTimestamp() : null 
-    });
-    setIsCapturing(newIsCapturing);
-  };
+    setIsCapturing(newIsCapturing); // Optimistic update
+    try {
+      const classRef = doc(db, 'classes', classId);
+      await updateDoc(classRef, { 
+        isCapturing: newIsCapturing,
+        captureStartedAt: newIsCapturing ? serverTimestamp() : null 
+      });
+    } catch (error) {
+      console.error("Error toggling capture:", error);
+      setIsCapturing(!newIsCapturing); // Revert on error
+      alert("Failed to update capture status. Please try again.");
+    }
+  }, [classId, isCapturing]);
 
   const handleStudentClick = (student) => {
     setSelectedStudent(student);
   };
 
-  const notSharingStudents = students.filter(s => !s.isSharing);
+  const onlineSharingEmails = new Set(
+    studentStatuses
+      .filter(status => status.isSharing)
+      .map(status => status.email.toLowerCase())
+  );
+
+  const notSharingStudents = classList
+    .filter(email => !onlineSharingEmails.has(email.toLowerCase()))
+    .map(email => ({ id: email, email: email }));
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
@@ -476,9 +555,9 @@ const MonitorView = ({ classId: propClassId }) => {
         frameRate={frameRate}
         handleFrameRateChange={handleFrameRateChange}
         frameRateOptions={frameRateOptions}
-        imageQuality={imageQuality}
-        handleImageQualityChange={handleImageQualityChange}
-        imageQualityOptions={imageQualityOptions}
+        maxImageSize={maxImageSize}
+        handleMaxImageSizeChange={handleMaxImageSizeChange}
+        maxImageSizeOptions={maxImageSizeOptions}
         isCapturing={isCapturing}
         toggleCapture={toggleCapture}
         isPaused={isPaused}
@@ -494,6 +573,8 @@ const MonitorView = ({ classId: propClassId }) => {
         setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
         samplingRate={samplingRate}
         setSamplingRate={setSamplingRate}
+        storageUsage={storageUsage}
+        storageQuota={storageQuota}
       /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
       
       <div className="monitor-main-content">
@@ -563,12 +644,12 @@ const MonitorView = ({ classId: propClassId }) => {
 
           <div style={{ marginTop: '10px' }}>
             {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
-            {(selectedPrompt ? selectedPrompt.applyTo.includes('Per Image') : true) && (
+            {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
               <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
                 {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
               </button>
             )}
-            {(selectedPrompt ? selectedPrompt.applyTo.includes('All Images') : true) && (
+            {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
               <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
                 {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
               </button>

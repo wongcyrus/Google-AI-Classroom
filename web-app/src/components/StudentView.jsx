@@ -17,6 +17,7 @@ const StudentView = ({ user }) => {
   const [selectedClass, setSelectedClass] = useState(null);
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
+  const [maxImageSize, setMaxImageSize] = useState(1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
   const [recentIrregularities, setRecentIrregularities] = useState([]);
@@ -64,8 +65,8 @@ const StudentView = ({ user }) => {
   }, [selectedClass, user]);
 
   const stopSharing = useCallback(async () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+    if (videoRef.current && videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
     }
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -79,7 +80,7 @@ const StudentView = ({ user }) => {
     await updateSharingStatus(false);
 
     showSystemNotification("Screen recording has stopped.");
-  }, [stream, updateSharingStatus, showSystemNotification]);
+  }, [updateSharingStatus, showSystemNotification]);
 
   const captureAndUpload = useCallback((videoElement, classId) => {
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
@@ -93,40 +94,63 @@ const StudentView = ({ user }) => {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
     
-    canvas.toBlob(async (blob) => {
+    const MAX_SIZE_BYTES = maxImageSize;
+
+    // Function to attempt upload, resizing if necessary
+    const attemptUpload = (currentCanvas, quality) => {
+      currentCanvas.toBlob(async (blob) => {
         if (!blob) {
-            console.error("Canvas toBlob returned null.");
-            return;
+          console.error("Canvas toBlob returned null.");
+          return;
         }
-        console.log('Screenshot captured.');
-        const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
-        
-        try {
-            console.log('Uploading screenshot...');
+
+        if (blob.size > MAX_SIZE_BYTES) {
+          if (quality > 0.2) {
+            // If size is too large, first try reducing quality
+            console.log(`Image size is too large (${(blob.size / MAX_SIZE_BYTES).toFixed(2)}MB). Reducing quality.`);
+            attemptUpload(currentCanvas, quality - 0.1);
+          } else {
+            // If quality is already low, resize the image dimensions
+            console.log(`Image size is still too large (${(blob.size / MAX_SIZE_BYTES).toFixed(2)}MB). Resizing image.`);
+            const scale = Math.sqrt(MAX_SIZE_BYTES / blob.size) * 0.9;
+            const newWidth = currentCanvas.width * scale;
+            const newHeight = currentCanvas.height * scale;
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = newWidth;
+            newCanvas.height = newHeight;
+            const newCtx = newCanvas.getContext('2d');
+            newCtx.drawImage(currentCanvas, 0, 0, newWidth, newHeight);
+            attemptUpload(newCanvas, 0.9); // try with high quality on resized image
+          }
+        } else {
+          // If size is acceptable, upload
+          const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
+          try {
+            console.log(`Uploading screenshot... Size: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
             await uploadBytes(screenshotRef, blob);
             console.log('Screenshot uploaded successfully.');
-
-            console.log('Adding screenshot metadata to Firestore...');
             const screenshotsColRef = collection(db, 'screenshots');
             await addDoc(screenshotsColRef, {
-                classId,
-                studentId: user.uid,
-                email: user.email.toLowerCase(),
-                imagePath: screenshotRef.fullPath,
-                size: blob.size, // Add image size here
-                timestamp: serverTimestamp(),
+              classId,
+              studentId: user.uid,
+              email: user.email.toLowerCase(),
+              imagePath: screenshotRef.fullPath,
+              size: blob.size,
+              timestamp: serverTimestamp(),
             });
             console.log('Screenshot metadata added to Firestore.');
-
-            console.log('Updating student status with last upload timestamp...');
             const statusRef = doc(db, "classes", classId, "status", user.uid);
             await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
             console.log('Student status updated.');
-        } catch (err) {
+          } catch (err) {
             console.error("Error uploading screenshot: ", err);
+          }
         }
-    }, 'image/jpeg', imageQuality);
-  }, [imageQuality, user]);
+      }, 'image/jpeg', quality);
+    };
+
+    attemptUpload(canvas, imageQuality);
+  }, [imageQuality, user, maxImageSize]);
 
   const startSharing = useCallback(async () => {
     if ('Notification' in window && window.Notification.permission !== 'granted') {
@@ -240,6 +264,7 @@ const StudentView = ({ user }) => {
         const data = docSnap.data();
         setFrameRate(data.frameRate || 5);
         setImageQuality(data.imageQuality || 0.5);
+        setMaxImageSize(data.maxImageSize || 1024 * 1024);
         setIsCapturing(data.isCapturing || false);
         setCaptureStartedAt(data.captureStartedAt || null);
       }
@@ -390,7 +415,7 @@ const StudentView = ({ user }) => {
                         recentIrregularities.map(item => (
                             <div key={item.id} className="alert-item">
                                 <p className="alert-title">{item.title}</p>
-                                <span className="alert-time">{item.timestamp.toDate().toLocaleString()}</span>
+                                <span className="alert-time">{item.timestamp ? item.timestamp.toDate().toLocaleString() : ''}</span>
                             </div>
                         ))
                     ) : (
@@ -416,7 +441,7 @@ const StudentView = ({ user }) => {
                         recentMessages.map(item => (
                             <div key={item.id} className="message-item">
                                 <p className="message-text">{item.message}</p>
-                                <span className="message-time">{item.timestamp.toDate().toLocaleString()}</span>
+                                <span className="message-time">{item.timestamp ? item.timestamp.toDate().toLocaleString() : ''}</span>
                             </div>
                         ))
                     ) : (
