@@ -47,7 +47,7 @@ const ControlsPanel = ({
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, 
     setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate,
-    storageUsage, storageQuota
+    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips
 }) => {
     const percentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
 
@@ -93,6 +93,11 @@ const ControlsPanel = ({
                     <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
                         {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} used` : `${formatBytes(storageUsage)} used`}
                     </p>
+                    <div className="storage-breakdown" style={{ fontSize: '0.7em', marginTop: '5px', textAlign: 'center' }}>
+                        <p style={{ margin: '2px 0' }}>Screenshots: {formatBytes(storageUsageScreenShots)}</p>
+                        <p style={{ margin: '2px 0' }}>Videos: {formatBytes(storageUsageVideos)}</p>
+                        <p style={{ margin: '2px 0' }}>Zips: {formatBytes(storageUsageZips)}</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -174,6 +179,9 @@ const MonitorView = ({ classId: propClassId }) => {
 
   const [storageUsage, setStorageUsage] = useState(0);
   const [storageQuota, setStorageQuota] = useState(0);
+  const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
+  const [storageUsageVideos, setStorageUsageVideos] = useState(0);
+  const [storageUsageZips, setStorageUsageZips] = useState(0);
 
   const [analysisResults, setAnalysisResults] = useState({});
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
@@ -272,6 +280,9 @@ const MonitorView = ({ classId: propClassId }) => {
             setIsCapturing(data.isCapturing || false);
             setStorageUsage(data.storageUsage || 0);
             setStorageQuota(data.storageQuota || 0);
+            setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
+            setStorageUsageVideos(data.storageUsageVideos || 0);
+            setStorageUsageZips(data.storageUsageZips || 0);
         } else {
             setClassList([]);
         }
@@ -638,6 +649,9 @@ const MonitorView = ({ classId: propClassId }) => {
         setSamplingRate={setSamplingRate}
         storageUsage={storageUsage}
         storageQuota={storageQuota}
+        storageUsageScreenShots={storageUsageScreenShots}
+        storageUsageVideos={storageUsageVideos}
+        storageUsageZips={storageUsageZips}
       /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
       
       <div className="monitor-main-content">

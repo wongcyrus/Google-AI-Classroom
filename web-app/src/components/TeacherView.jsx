@@ -84,6 +84,11 @@ const TeacherView = ({ user }) => {
                                         <p className="storage-text">
                                             {quota > 0 ? `${formatBytes(usage)} of ${formatBytes(quota)} used` : `${formatBytes(usage)} used`}
                                         </p>
+                                        <div className="storage-breakdown-summary" style={{ fontSize: '0.8em', color: '#666', textAlign: 'center' }}>
+                                            <span>SS: {formatBytes(c.storageUsageScreenShots || 0)}</span> | 
+                                            <span> Vids: {formatBytes(c.storageUsageVideos || 0)}</span> | 
+                                            <span> Zips: {formatBytes(c.storageUsageZips || 0)}</span>
+                                        </div>
                                     </div>
                                     <Link to={`/class/${c.id}`} className="view-class-link">View Class</Link>
                                 </div>

@@ -7,6 +7,8 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const adminStorage = getStorage();
 
+const TRACKED_FOLDERS = ['videos/', 'zips/', 'screenshots/'];
+
 // Function to update storage usage when a file is uploaded
 export const updateStorageUsageOnUpload = onObjectFinalized({
     region: FUNCTION_REGION,
@@ -15,9 +17,17 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     const filePath = event.data.name;
     const size = event.data.size;
 
-    // We only care about screenshots for now
-    if (!filePath.startsWith('screenshots/')) {
-        console.log(`Ignoring file: ${filePath} as it is not a screenshot.`);
+    let usageField = null;
+    if (filePath.startsWith('screenshots/')) {
+        usageField = 'storageUsageScreenShots';
+    } else if (filePath.startsWith('videos/')) {
+        usageField = 'storageUsageVideos';
+    } else if (filePath.startsWith('zips/')) {
+        usageField = 'storageUsageZips';
+    }
+
+    if (!usageField) {
+        console.log(`Ignoring file: ${filePath} as it is not in a tracked folder.`);
         return;
     }
 
@@ -34,15 +44,17 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
         return;
     }
 
-    console.log(`Updating storage for class ${classId} by ${fileSize} bytes.`);
+    console.log(`Updating storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
     const classRef = db.collection('classes').doc(classId);
     
     try {
         // Atomically increment the storageUsage field
-        await classRef.update({
-            storageUsage: FieldValue.increment(fileSize)
-        });
+        const updatePayload = {
+            storageUsage: FieldValue.increment(fileSize),
+            [usageField]: FieldValue.increment(fileSize)
+        };
+        await classRef.update(updatePayload);
         console.log(`Successfully updated storage usage for class ${classId}.`);
 
         // After updating, check if the quota is exceeded.
@@ -60,9 +72,11 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
                 await file.delete();
                 console.log(`Successfully deleted ${filePath}.`);
                 
-                await classRef.update({
-                    storageUsage: FieldValue.increment(-fileSize)
-                });
+                const revertPayload = {
+                    storageUsage: FieldValue.increment(-fileSize),
+                    [usageField]: FieldValue.increment(-fileSize)
+                };
+                await classRef.update(revertPayload);
                 console.log(`Reverted storage usage increment for ${classId}.`);
             }
         }
@@ -84,7 +98,11 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
                     console.log(`Successfully deleted ${filePath}.`);
                 } else {
                     // The field doesn't exist, so we create it with the current file size.
-                    await classRef.set({ storageUsage: fileSize }, { merge: true });
+                    const initialPayload = { 
+                        storageUsage: fileSize,
+                        [usageField]: fileSize
+                    };
+                    await classRef.set(initialPayload, { merge: true });
                     console.log(`Initialized storageUsage for class ${classId}.`);
                 }
             } else {
@@ -108,8 +126,17 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
     const filePath = event.data.name;
     const size = event.data.size;
 
-    if (!filePath.startsWith('screenshots/')) {
-        console.log(`Ignoring file: ${filePath} as it is not a screenshot.`);
+    let usageField = null;
+    if (filePath.startsWith('screenshots/')) {
+        usageField = 'storageUsageScreenShots';
+    } else if (filePath.startsWith('videos/')) {
+        usageField = 'storageUsageVideos';
+    } else if (filePath.startsWith('zips/')) {
+        usageField = 'storageUsageZips';
+    }
+
+    if (!usageField) {
+        console.log(`Ignoring file: ${filePath} as it is not in a tracked folder.`);
         return;
     }
 
@@ -126,14 +153,16 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
         return;
     }
 
-    console.log(`Decreasing storage for class ${classId} by ${fileSize} bytes.`);
+    console.log(`Decreasing storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
     const classRef = db.collection('classes').doc(classId);
 
     try {
-        await classRef.update({
-            storageUsage: FieldValue.increment(-fileSize)
-        });
+        const updatePayload = {
+            storageUsage: FieldValue.increment(-fileSize),
+            [usageField]: FieldValue.increment(-fileSize)
+        };
+        await classRef.update(updatePayload);
         console.log(`Successfully decreased storage usage for class ${classId}.`);
     } catch (error) {
         console.error(`Failed to decrease storage usage for class ${classId}:`, error);
