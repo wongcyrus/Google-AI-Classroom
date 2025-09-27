@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDoc, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 import IndividualStudentView from './IndividualStudentView';
+import TimelineSlider from './TimelineSlider';
+import { useClassSchedule } from '../hooks/useClassSchedule';
 
 // Helper function to format bytes
 const formatBytes = (bytes, decimals = 2) => {
@@ -36,7 +38,7 @@ const Modal = ({ show, onClose, title, children }) => {
     );
 };
 
-const ControlsPanel = ({
+const ControlsPanel = ({ 
     message, setMessage, handleSendMessage, setShowControls, 
     frameRate, handleFrameRateChange, frameRateOptions, 
     maxImageSize, handleMaxImageSizeChange, maxImageSizeOptions,
@@ -162,6 +164,14 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
+  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
+  const [reviewTime, setReviewTime] = useState(null);
+
+  const handleLessonChange = (e) => {
+    originalHandleLessonChange(e);
+    setReviewTime(null);
+  };
+
   const [storageUsage, setStorageUsage] = useState(0);
   const [storageQuota, setStorageQuota] = useState(0);
 
@@ -175,6 +185,7 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
   const [samplingRate, setSamplingRate] = useState(5);
   const analysisCounterRef = useRef(0);
+  const studentIdMap = useRef(new Map());
 
 
 
@@ -269,6 +280,13 @@ const MonitorView = ({ classId: propClassId }) => {
     const statusQuery = query(collection(db, 'classes', classId, 'status'));
     const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
       const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      statuses.forEach(status => {
+        if (status.email && status.id) {
+          studentIdMap.current.set(status.email.toLowerCase(), status.id);
+        }
+      });
+
       const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
           if (!curr.email) return acc;
           const existingTs = acc[curr.email]?.timestamp?.toMillis() || 0;
@@ -287,6 +305,44 @@ const MonitorView = ({ classId: propClassId }) => {
         unsubscribeStatus();
     }
   }, [classId]);
+
+  useEffect(() => {
+    if (!reviewTime || classList.length === 0) return;
+
+    const fetchScreenshotsForReview = async () => {
+      const newScreenshots = {};
+      const reviewTimeDate = new Date(reviewTime);
+
+      for (const studentEmail of classList) {
+        const studentId = studentIdMap.current.get(studentEmail.toLowerCase());
+        if (!studentId) continue;
+
+        const screenshotsQuery = query(
+          collection(db, 'screenshots'),
+          where('classId', '==', classId),
+          where('studentId', '==', studentId),
+          where('timestamp', '<=', reviewTimeDate),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+
+        const snapshot = await getDocs(screenshotsQuery);
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          const screenshotData = doc.data();
+          try {
+            const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
+            newScreenshots[studentId] = { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath };
+          } catch (error) {
+            console.error("Error getting download URL for review: ", error);
+          }
+        }
+      }
+      setScreenshots(newScreenshots);
+    };
+
+    fetchScreenshotsForReview();
+  }, [reviewTime, classList, classId]);
 
   useEffect(() => {
     const lowercasedClassList = classList.map(email => (email || '').toLowerCase());
@@ -309,7 +365,7 @@ const MonitorView = ({ classId: propClassId }) => {
   }, [classList, studentStatuses]);
 
   useEffect(() => {
-    if (students.length === 0 || pausedRef.current) return;
+    if (reviewTime || students.length === 0 || pausedRef.current) return;
 
     const unsubscribes = students.map(student => {
       if (student.id === student.email) return () => {};
@@ -360,7 +416,7 @@ const MonitorView = ({ classId: propClassId }) => {
 
     return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis]);
+  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, reviewTime]);
 
 
 
@@ -419,9 +475,7 @@ const MonitorView = ({ classId: propClassId }) => {
       return { email, isSharing };
     });
 
-    const csvContent = "data:text/csv;charset=utf-8,"
-        + "Email,Sharing Screen\n"
-        + attendanceData.map(s => `${s.email},${s.isSharing}`).join("\n");
+    const csvContent = 'data:text/csv;charset=utf-8,' + 'Email,Sharing Screen\n' + attendanceData.map(s => `${s.email},${s.isSharing}`).join('\n');
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -587,30 +641,81 @@ const MonitorView = ({ classId: propClassId }) => {
       /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
       
       <div className="monitor-main-content">
+        <div className="timeline-controls" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+            <select value={selectedLesson} onChange={handleLessonChange}>
+              {lessons.map(lesson => (
+                <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
+                  {`${lesson.start.toLocaleDateString()} ${lesson.start.toLocaleTimeString()} - ${lesson.end.toLocaleTimeString()}`}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
+            <span>
+              {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
+            </span>
+          </div>
+          {startTime && endTime && (
+            <TimelineSlider
+              min={new Date(startTime).getTime()}
+              max={new Date(endTime).getTime()}
+              value={reviewTime ? new Date(reviewTime).getTime() : now.getTime()}
+              onChange={(e) => setReviewTime(new Date(parseInt(e.target.value)).toISOString())}
+              bufferedRanges={[]}
+            />
+          )}
+        </div>
         <div className="students-container">
-          {students.filter(student => student.isSharing).sort((a, b) => a.email.localeCompare(b.email)).map(student => {
-            const screenshotData = screenshots[student.id];
-            let screenshotUrl = null;
+          {reviewTime
+            ? classList.sort((a, b) => a.localeCompare(b)).map(email => {
+                const studentId = studentIdMap.current.get(email.toLowerCase());
+                const student = { id: studentId || email, email };
 
-            if (screenshotData && screenshotData.timestamp) {
-              const screenshotTime = screenshotData.timestamp.toDate();
-              const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
+                let screenshotUrl = null;
+                if (studentId) {
+                  const screenshotData = screenshots[studentId];
+                  if (screenshotData && screenshotData.timestamp) {
+                    const screenshotTime = screenshotData.timestamp.toDate();
+                    const reviewTimeDate = new Date(reviewTime);
+                    const secondsDiff = (reviewTimeDate.getTime() - screenshotTime.getTime()) / 1000;
+                    if (secondsDiff >= 0 && secondsDiff < frameRate) {
+                      screenshotUrl = screenshotData.url;
+                    }
+                  }
+                }
 
-              if (isPaused || secondsDiff <= frameRate) {
-                screenshotUrl = screenshotData.url;
-              }
-            }
+                return (
+                  <StudentScreen
+                    key={email}
+                    student={student}
+                    isSharing={!!screenshotUrl} // In review, "isSharing" can mean "has a screenshot for this time"
+                    screenshotUrl={screenshotUrl}
+                    onClick={() => handleStudentClick(student)}
+                  />
+                );
+              })
+            : students.filter(student => student.isSharing).sort((a, b) => a.email.localeCompare(b.email)).map(student => {
+                const screenshotData = screenshots[student.id];
+                let screenshotUrl = null;
 
-            return (
-              <StudentScreen
-                key={student.id}
-                student={student}
-                isSharing={student.isSharing}
-                screenshotUrl={screenshotUrl}
-                onClick={() => handleStudentClick(student)}
-              />
-            );
-          })}
+                if (screenshotData && screenshotData.timestamp) {
+                  const screenshotTime = screenshotData.timestamp.toDate();
+                  const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
+                  if (isPaused || secondsDiff <= frameRate) {
+                    screenshotUrl = screenshotData.url;
+                  }
+                }
+
+                return (
+                  <StudentScreen
+                    key={student.id}
+                    student={student}
+                    isSharing={student.isSharing}
+                    screenshotUrl={screenshotUrl}
+                    onClick={() => handleStudentClick(student)}
+                  />
+                );
+              })}
         </div>
       </div>
 

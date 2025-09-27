@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
+const toLocalISOString = (date) => {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const h = date.getHours().toString().padStart(2, '0');
+  const min = date.getMinutes().toString().padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+};
+
 export const useClassSchedule = (classId) => {
   const [schedule, setSchedule] = useState(null);
   const [lessons, setLessons] = useState([]);
@@ -9,11 +18,11 @@ export const useClassSchedule = (classId) => {
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    return toLocalISOString(d);
   });
   const [endTime, setEndTime] = useState(() => {
     const d = new Date();
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    return toLocalISOString(d);
   });
 
   useEffect(() => {
@@ -64,8 +73,8 @@ export const useClassSchedule = (classId) => {
           setLessons(generatedLessons);
           const defaultLesson = getDefaultLesson(generatedLessons);
           if (defaultLesson) {
-            setStartTime(defaultLesson.start.toISOString().slice(0, 16));
-            setEndTime(defaultLesson.end.toISOString().slice(0, 16));
+            setStartTime(toLocalISOString(defaultLesson.start));
+            setEndTime(toLocalISOString(defaultLesson.end));
             setSelectedLesson(defaultLesson.start.toISOString());
           }
         }
@@ -77,8 +86,8 @@ export const useClassSchedule = (classId) => {
   const handleLessonChange = (e) => {
     const selected = lessons.find(l => l.start.toISOString() === e.target.value);
     if (selected) {
-      setStartTime(selected.start.toISOString().slice(0, 16));
-      setEndTime(selected.end.toISOString().slice(0, 16));
+      setStartTime(toLocalISOString(selected.start));
+      setEndTime(toLocalISOString(selected.end));
       setSelectedLesson(e.target.value);
     }
   };
