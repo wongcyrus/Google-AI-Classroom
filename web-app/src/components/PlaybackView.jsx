@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
@@ -29,6 +29,9 @@ const PlaybackView = ({ user }) => {
   const [loading, setLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [videoJobs, setVideoJobs] = useState([]);
+  const [lastBatchJobInfo, setLastBatchJobInfo] = useState(null);
+  const [filteredVideoJobs, setFilteredVideoJobs] = useState([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -36,6 +39,33 @@ const PlaybackView = ({ user }) => {
   const [screenshotImageUrls, setScreenshotImageUrls] = useState({});
   const [isFetchingUrls, setIsFetchingUrls] = useState(false);
   const urlsFetched = useRef(new Set());
+
+  useEffect(() => {
+    if (!classId) return;
+    const q = query(collection(db, 'videoJobs'), where('classId', '==', classId));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const jobs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+        setVideoJobs(jobs);
+    });
+    return unsubscribe;
+  }, [classId]);
+
+  useEffect(() => {
+    if (!selectedLesson) {
+      setFilteredVideoJobs(videoJobs);
+      return;
+    }
+    const lessonStartTime = new Date(startTime).getTime();
+    const lessonEndTime = new Date(endTime).getTime();
+
+    const filtered = videoJobs.filter(job => {
+      if (!job.startTime) return false;
+      const jobStartTime = job.startTime.toMillis();
+      return jobStartTime >= lessonStartTime && jobStartTime < lessonEndTime;
+    });
+    setFilteredVideoJobs(filtered);
+  }, [videoJobs, selectedLesson, startTime, endTime]);
 
   // Effect to pre-fetch screenshot URLs in a buffer
   useEffect(() => {
@@ -219,6 +249,20 @@ const PlaybackView = ({ user }) => {
     setNotification({ type: 'info', message: 'Initiating video creation job...' });
 
     try {
+      const q = query(
+          collection(db, 'videoJobs'),
+          where('classId', '==', classId),
+          where('student', '==', sessionData.student),
+          where('startTime', '==', new Date(startTime)),
+          where('endTime', '==', new Date(endTime)),
+          where('status', 'in', ['pending', 'processing', 'completed'])
+      );
+      const existingJobs = await getDocs(q);
+      if (!existingJobs.empty) {
+          setNotification({ type: 'warning', message: 'A similar video job already exists.' });
+          return;
+      }
+
       const jobCollectionRef = collection(db, 'videoJobs');
       const newDocRef = doc(jobCollectionRef);
       const jobId = newDocRef.id;
@@ -239,6 +283,65 @@ const PlaybackView = ({ user }) => {
     } catch (error) {
       console.error('Error creating video job:', error);
       setNotification({ type: 'error', message: `Error: ${error.message}` });
+    }
+  };
+
+  const handleCombineAllToVideo = async () => {
+    if (!selectedLesson) {
+        alert('Please select a lesson.');
+        return;
+    }
+    if (students.length === 0) {
+        alert('No students in this class.');
+        return;
+    }
+
+    setNotification({ type: 'info', message: `Checking for existing jobs and initiating video creation for ${students.length} students...` });
+    setLastBatchJobInfo(null);
+
+    try {
+        const createdJobs = [];
+        const skippedJobs = [];
+
+        for (const studentEmail of students) {
+            const student = studentEmail.trim().toLowerCase();
+            const q = query(
+                collection(db, 'videoJobs'),
+                where('classId', '==', classId),
+                where('student', '==', student),
+                where('startTime', '==', new Date(startTime)),
+                where('endTime', '==', new Date(endTime)),
+                where('status', 'in', ['pending', 'processing', 'completed'])
+            );
+            const existingJobs = await getDocs(q);
+            if (!existingJobs.empty) {
+                console.log(`Job already exists for ${student} in this time range.`);
+                skippedJobs.push(student);
+                continue;
+            }
+
+            const jobCollectionRef = collection(db, 'videoJobs');
+            const newDocRef = doc(jobCollectionRef);
+            const jobId = newDocRef.id;
+
+            await setDoc(newDocRef, {
+                jobId: jobId,
+                classId: classId,
+                student: student,
+                startTime: new Date(startTime),
+                endTime: new Date(endTime),
+                status: 'pending',
+                createdAt: serverTimestamp(),
+            });
+            createdJobs.push(student);
+        }
+
+        setLastBatchJobInfo({ created: createdJobs, skipped: skippedJobs });
+        setNotification({ type: 'success', message: `Batch job summary: ${createdJobs.length} new jobs created, ${skippedJobs.length} jobs already existed.` });
+
+    } catch (error) {
+        console.error('Error creating video jobs for all students:', error);
+        setNotification({ type: 'error', message: `Error: ${error.message}` });
     }
   };
 
@@ -360,6 +463,56 @@ const PlaybackView = ({ user }) => {
           onLessonChange={handleLessonChange}
         />
         <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
+        <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
+      </div>
+      {notification && (
+        <div className={`notification notification-${notification.type}`}>
+          <p>{notification.message}</p>
+        </div>
+      )}
+      {lastBatchJobInfo && (
+        <div className="batch-job-info">
+            <h4>Last Batch Job Summary</h4>
+            {lastBatchJobInfo.created.length > 0 && (
+                <div>
+                    <p>New jobs created for:</p>
+                    <ul>
+                        {lastBatchJobInfo.created.map(student => <li key={student}>{student}</li>)}
+                    </ul>
+                </div>
+            )}
+            {lastBatchJobInfo.skipped.length > 0 && (
+                <div>
+                    <p>Jobs already existed for (skipped):</p>
+                    <ul>
+                        {lastBatchJobInfo.skipped.map(student => <li key={student}>{student}</li>)}
+                    </ul>
+                </div>
+            )}
+        </div>
+      )}
+      <div className="jobs-table">
+          <h3>Video Jobs</h3>
+          <table>
+              <thead>
+                  <tr>
+                      <th>Job ID</th>
+                      <th>Student</th>
+                      <th>Created At</th>
+                      <th>Status</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  {videoJobs.map(job => (
+                      <tr key={job.id}>
+                          <td>{job.id}</td>
+                          <td>{job.student || 'All Students'}</td>
+                          <td>{job.createdAt?.toDate().toLocaleString()}</td>
+                          <td>{job.status}</td>
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
       </div>
     </div>
   );

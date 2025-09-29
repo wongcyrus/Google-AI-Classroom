@@ -29,7 +29,7 @@ const VideoLibrary = () => {
   const [loading, setLoading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
-  const [filterField, setFilterField] = useState('createdAt');
+  const [filterField, setFilterField] = useState('startTime');
 
   const {
     lessons,
