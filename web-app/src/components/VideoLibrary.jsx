@@ -137,6 +137,8 @@ const VideoLibrary = () => {
             videos: videosToZip,
             status: 'pending',
             createdAt: serverTimestamp(),
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
         });
 
         alert(`Your ZIP request for ${videosToZip.length} videos has been submitted. You can find the download in the Data Management view once it is ready.`);
@@ -144,6 +146,72 @@ const VideoLibrary = () => {
 
     } catch (error) {
         console.error('Error creating zip job:', error);
+        alert(`Error submitting ZIP request: ${error.message}`);
+    }
+
+    setIsZipping(false);
+  };
+
+  const handleDownloadAll = async () => {
+    if (!startTime || !endTime) {
+        alert("Please select a start and end time to define the range for the zip file.");
+        return;
+    }
+    if (!window.confirm(`This will find ALL completed videos for this class within the selected date range and submit a single ZIP job. This may include videos not currently visible on the page. Do you want to continue?`)) {
+        return;
+    }
+
+    setIsZipping(true);
+    try {
+        // 1. Query for ALL videos matching the filter, without pagination
+        const videoJobsRef = collection(db, 'videoJobs');
+        const q = query(videoJobsRef,
+            where('status', '==', 'completed'),
+            where('classId', '==', classId),
+            where(filterField, '>=', new Date(startTime)),
+            where(filterField, '<=', new Date(endTime)),
+            orderBy(filterField, 'desc')
+        );
+
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            alert("No completed videos were found for the selected criteria.");
+            setIsZipping(false);
+            return;
+        }
+
+        // 2. Create the videosToZip array from the full query result
+        const videosToZip = querySnapshot.docs.map(doc => {
+            const v = doc.data();
+            return {
+                path: v.videoPath,
+                classId: v.classId,
+                student: v.student,
+                startTime: v.startTime
+            };
+        });
+
+        // 3. Create the zipJob document
+        const jobCollectionRef = collection(db, 'zipJobs');
+        const newDocRef = doc(jobCollectionRef);
+        
+        await setDoc(newDocRef, {
+            jobId: newDocRef.id,
+            classId: classId,
+            requester: user.email,
+            videos: videosToZip,
+            status: 'pending',
+            createdAt: serverTimestamp(),
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
+        });
+
+        alert(`Your ZIP request for ${videosToZip.length} videos has been submitted. You can find the download in the Data Management view once it is ready.`);
+        setSelectedVideos(new Map());
+
+    } catch (error) {
+        console.error('Error creating zip job for all videos:', error);
         alert(`Error submitting ZIP request: ${error.message}`);
     }
 
@@ -213,7 +281,10 @@ const VideoLibrary = () => {
           <option value="startTime">Filter by Start Time</option>
         </select>
         <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
-          {isZipping ? 'Submitting Job...' : `Request ${selectedVideos.size} Selected as ZIP`}
+          {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
+        </button>
+        <button onClick={handleDownloadAll} disabled={isZipping}>
+          {isZipping ? 'Submitting...' : 'Request All as ZIP'}
         </button>
       </div>
 

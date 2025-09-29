@@ -32,14 +32,15 @@ const DataManagementView = () => {
   const [lastDoc, setLastDoc] = useState(null);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  const fetchJobs = useCallback(async (direction = 'first', newPage = 1) => {
+  const fetchJobs = async (direction = 'first', newPage = 1) => {
     setLoadingJobs(true);
     const jobsCollectionRef = collection(db, 'zipJobs');
     let q = query(
       jobsCollectionRef,
       where('classId', '==', classId),
-      where('createdAt', '>=', new Date(startTime)),
-      where('createdAt', '<=', new Date(endTime)),
+      where('startTime', '>=', new Date(startTime)),
+      where('startTime', '<=', new Date(endTime)),
+      orderBy('startTime', 'desc'),
       orderBy('createdAt', 'desc')
     );
 
@@ -80,12 +81,13 @@ const DataManagementView = () => {
       console.error("Error fetching zip jobs:", error);
     }
     setLoadingJobs(false);
-  }, [classId, lastDoc, firstDoc, startTime, endTime]);
+  };
 
   useEffect(() => {
     if (classId) {
       fetchJobs('first', 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, startTime, endTime]);
 
   const handleNext = () => {
