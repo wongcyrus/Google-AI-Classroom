@@ -529,6 +529,7 @@ const PlaybackView = ({ user }) => {
                     <option key={email} value={email}>{email}</option>
                 ))}
             </select>
+            <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Student</button>
             <DateRangeFilter 
               startTime={startTime}
               endTime={endTime}
@@ -554,7 +555,6 @@ const PlaybackView = ({ user }) => {
                 </label>
               ))}
             </div>
-            <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
             <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
             <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
               Delete Selected ({selectedJobs.size})

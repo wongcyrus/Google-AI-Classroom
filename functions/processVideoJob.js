@@ -30,7 +30,7 @@ const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after mul
   }
 };
 
-export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', memory: '8GiB', timeoutSeconds: 540 }, async (event) => {
+export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
     const snap = event.data;
     if (!snap) {
         console.log("No data associated with the event");
@@ -74,7 +74,8 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
         const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
 
-        const BATCH_SIZE = 5;
+        // WARNING: A high batch size can lead to out-of-memory errors. Recommended: 5-10.
+        const BATCH_SIZE = 50;
         for (let i = 0; i < screenshots.length; i += BATCH_SIZE) {
             const batch = screenshots.slice(i, i + BATCH_SIZE);
             console.log(`Processing batch of ${batch.length} images...`);

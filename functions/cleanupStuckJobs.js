@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 const db = getFirestore();
 
-const STUCK_JOB_TIMEOUT_MINUTES = 15;
+const STUCK_JOB_TIMEOUT_MINUTES = 120;
 
 export const cleanupStuckJobs = onSchedule("every 1 hours", async (event) => {
     console.log("Running job to clean up stuck video processing jobs.");
