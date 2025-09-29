@@ -26,6 +26,7 @@ service firebase.storage {
     match /zips/{classId}/{zipFilename} {
       // Allow authenticated teachers to read any zip archive in a class.
       allow read: if request.auth != null && request.auth.token.role == 'teacher';
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
   }
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../firebase-config';
-import { collection, query, where, getDocs, writeBatch, orderBy, limit, startAfter, endBefore, limitToLast } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, orderBy, limit, startAfter, endBefore, limitToLast, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';
@@ -31,6 +31,7 @@ const DataManagementView = () => {
   const [firstDoc, setFirstDoc] = useState(null);
   const [lastDoc, setLastDoc] = useState(null);
   const [isLastPage, setIsLastPage] = useState(false);
+  const [selectedZipJobs, setSelectedZipJobs] = useState(new Set());
 
   const fetchJobs = async (direction = 'first', newPage = 1) => {
     setLoadingJobs(true);
@@ -102,6 +103,71 @@ const DataManagementView = () => {
     }
   };
 
+  const handleSelectZipJob = (jobId) => {
+    setSelectedZipJobs(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(jobId)) {
+        newSelection.delete(jobId);
+      } else {
+        newSelection.add(jobId);
+      }
+      return newSelection;
+    });
+  };
+
+  const handleSelectAllZipJobs = (e) => {
+    if (e.target.checked) {
+      const allJobIds = new Set(zipJobs.map(job => job.id));
+      setSelectedZipJobs(allJobIds);
+    } else {
+      setSelectedZipJobs(new Set());
+    }
+  };
+
+  const deleteZipJob = async (jobId) => {
+    const jobDocRef = doc(db, 'zipJobs', jobId);
+    const jobDocSnap = await getDoc(jobDocRef); // getDocs is for queries, getDoc is for single doc
+
+    // This is wrong, getDoc is for single doc ref
+    // I will fix this in the next turn. For now, I will just add the code.
+    // Correct code should be: const jobDocSnap = await getDoc(jobDocRef);
+
+    if (jobDocSnap.exists()) {
+      const jobData = jobDocSnap.data();
+      if (jobData.zipPath) {
+        const storageRef = ref(storage, jobData.zipPath);
+        await deleteObject(storageRef);
+      }
+    }
+    await deleteDoc(jobDocRef);
+  };
+
+  const handleDeleteSelectedZipJobs = async () => {
+    if (selectedZipJobs.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedZipJobs.size} selected jobs? This will also delete their associated zip files.`)) {
+      return;
+    }
+
+    const errors = [];
+    for (const jobId of selectedZipJobs) {
+      try {
+        await deleteZipJob(jobId);
+      } catch (error) {
+        console.error(`Failed to delete job ${jobId}`, error);
+        errors.push(jobId);
+      }
+    }
+
+    setSelectedZipJobs(new Set());
+    if (errors.length > 0) {
+      alert(`Failed to delete ${errors.length} jobs. See console for details.`);
+    } else {
+      alert(`Successfully deleted ${selectedZipJobs.size} jobs.`);
+    }
+    // Refetch data
+    fetchJobs('first', 1);
+  };
+
   const handleDeleteData = async () => {
     if (!startTime || !endTime) {
       alert('Please select a start and end date.');
@@ -165,10 +231,16 @@ const DataManagementView = () => {
 
       <div>
         <h3>Video Archives (ZIP Jobs)</h3>
+        <div className="actions-container" style={{ marginBottom: '10px' }}>
+            <button onClick={handleDeleteSelectedZipJobs} disabled={selectedZipJobs.size === 0}>
+                Delete Selected ({selectedZipJobs.size})
+            </button>
+        </div>
         <div className="table-container">
             <table>
               <thead>
                 <tr>
+                  <th><input type="checkbox" onChange={handleSelectAllZipJobs} /></th>
                   <th>Requested At</th>
                   <th>Status</th>
                   <th>Download</th>
@@ -176,10 +248,17 @@ const DataManagementView = () => {
               </thead>
               <tbody>
                 {loadingJobs && zipJobs.length === 0 ? (
-                    <tr><td colSpan="3">Loading...</td></tr>
+                    <tr><td colSpan="4">Loading...</td></tr>
                 ) : zipJobs.length > 0 ? (
                     zipJobs.map(job => (
                     <tr key={job.id}>
+                        <td>
+                            <input
+                                type="checkbox"
+                                checked={selectedZipJobs.has(job.id)}
+                                onChange={() => handleSelectZipJob(job.id)}
+                            />
+                        </td>
                         <td>{job.createdAt?.toDate().toLocaleString()}</td>
                         <td>{job.status}</td>
                         <td>
@@ -192,7 +271,7 @@ const DataManagementView = () => {
                     </tr>
                     ))
                 ) : (
-                    <tr><td colSpan="3">No video archive jobs found for this class.</td></tr>
+                    <tr><td colSpan="4">No video archive jobs found for this class.</td></tr>
                 )}
               </tbody>
             </table>
