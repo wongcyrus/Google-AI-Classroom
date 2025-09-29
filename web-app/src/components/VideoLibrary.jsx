@@ -41,6 +41,13 @@ const VideoLibrary = () => {
     handleLessonChange,
   } = useClassSchedule(classId);
 
+  useEffect(() => {
+    if (startTime && endTime) {
+      fetchPage(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLesson, filterField]);
+
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(true);
 
