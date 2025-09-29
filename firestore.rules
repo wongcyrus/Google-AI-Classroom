@@ -71,6 +71,7 @@ service cloud.firestore {
     match /videoJobs/{jobId} {
       allow create: if isTeacher();
       allow read: if isTeacher();
+      allow delete: if isTeacher();
     }
 
     match /zipJobs/{jobId} {

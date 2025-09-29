@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
+import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { ref, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import './SharedViews.css';
@@ -32,6 +32,9 @@ const PlaybackView = ({ user }) => {
   const [videoJobs, setVideoJobs] = useState([]);
   const [lastBatchJobInfo, setLastBatchJobInfo] = useState(null);
   const [filteredVideoJobs, setFilteredVideoJobs] = useState([]);
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [selectedJobs, setSelectedJobs] = useState(new Set());
+  const [errorModalJob, setErrorModalJob] = useState(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -52,20 +55,23 @@ const PlaybackView = ({ user }) => {
   }, [classId]);
 
   useEffect(() => {
-    if (!selectedLesson) {
-      setFilteredVideoJobs(videoJobs);
-      return;
+    let jobs = videoJobs;
+    if (statusFilter.length > 0) {
+      jobs = jobs.filter(job => statusFilter.includes(job.status));
     }
-    const lessonStartTime = new Date(startTime).getTime();
-    const lessonEndTime = new Date(endTime).getTime();
 
-    const filtered = videoJobs.filter(job => {
-      if (!job.startTime) return false;
-      const jobStartTime = job.startTime.toMillis();
-      return jobStartTime >= lessonStartTime && jobStartTime < lessonEndTime;
-    });
-    setFilteredVideoJobs(filtered);
-  }, [videoJobs, selectedLesson, startTime, endTime]);
+    if (selectedLesson) {
+      const lessonStartTime = new Date(startTime).getTime();
+      const lessonEndTime = new Date(endTime).getTime();
+
+      jobs = jobs.filter(job => {
+        if (!job.startTime) return false;
+        const jobStartTime = job.startTime.toMillis();
+        return jobStartTime >= lessonStartTime && jobStartTime < lessonEndTime;
+      });
+    }
+    setFilteredVideoJobs(jobs);
+  }, [videoJobs, selectedLesson, startTime, endTime, statusFilter]);
 
   // Effect to pre-fetch screenshot URLs in a buffer
   useEffect(() => {
@@ -242,6 +248,76 @@ const PlaybackView = ({ user }) => {
 
     return () => clearInterval(intervalId); // Cleanup on unmount
   }, [activeJobId]);
+
+  const handleStatusFilterChange = (status) => {
+    setStatusFilter(prev => {
+      if (prev.includes(status)) {
+        return prev.filter(s => s !== status);
+      } else {
+        return [...prev, status];
+      }
+    });
+  };
+
+  const handleSelectJob = (jobId) => {
+    setSelectedJobs(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(jobId)) {
+        newSelection.delete(jobId);
+      } else {
+        newSelection.add(jobId);
+      }
+      return newSelection;
+    });
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      const allJobIds = new Set(filteredVideoJobs.map(job => job.id));
+      setSelectedJobs(allJobIds);
+    } else {
+      setSelectedJobs(new Set());
+    }
+  };
+
+  const deleteJob = async (jobId) => {
+    const jobDocRef = doc(db, 'videoJobs', jobId);
+    const jobDocSnap = await getDoc(jobDocRef);
+
+    if (jobDocSnap.exists()) {
+      const jobData = jobDocSnap.data();
+      if (jobData.videoPath) {
+        const storageRef = ref(storage, jobData.videoPath);
+        await deleteObject(storageRef);
+      }
+    }
+    await deleteDoc(jobDocRef);
+  };
+
+  const handleDeleteSelectedJobs = async () => {
+    if (selectedJobs.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedJobs.size} selected jobs? This will also delete their associated video files.`)) {
+      return;
+    }
+
+    setNotification({ type: 'info', message: `Deleting ${selectedJobs.size} jobs...` });
+    const errors = [];
+    for (const jobId of selectedJobs) {
+      try {
+        await deleteJob(jobId);
+      } catch (error) {
+        console.error(`Failed to delete job ${jobId}`, error);
+        errors.push(jobId);
+      }
+    }
+
+    setSelectedJobs(new Set());
+    if (errors.length > 0) {
+      setNotification({ type: 'error', message: `Failed to delete ${errors.length} jobs. See console for details.` });
+    } else {
+      setNotification({ type: 'success', message: `Successfully deleted ${selectedJobs.size} jobs.` });
+    }
+  };
 
   const handleCombineToVideo = async () => {
     if (!sessionData) return;
@@ -444,51 +520,105 @@ const PlaybackView = ({ user }) => {
         <h2>Session Playback</h2>
         <p>Select a student and a time range to begin.</p>
       </div>
-      <div className="actions-container">
-        <label htmlFor="student-select">Student: </label>
-        <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
-            <option value="" disabled>Select a student</option>
-            {students.map(email => (
-                <option key={email} value={email}>{email}</option>
-            ))}
-        </select>
-        <DateRangeFilter 
-          startTime={startTime}
-          endTime={endTime}
-          onStartTimeChange={setStartTime}
-          onEndTimeChange={setEndTime}
-          loading={loading}
-          lessons={lessons}
-          selectedLesson={selectedLesson}
-          onLessonChange={handleLessonChange}
-        />
-        <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
-        <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
+      <div className="actions-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <label htmlFor="student-select">Student: </label>
+            <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
+                <option value="" disabled>Select a student</option>
+                {students.map(email => (
+                    <option key={email} value={email}>{email}</option>
+                ))}
+            </select>
+            <DateRangeFilter 
+              startTime={startTime}
+              endTime={endTime}
+              onStartTimeChange={setStartTime}
+              onEndTimeChange={setEndTime}
+              loading={loading}
+              lessons={lessons}
+              selectedLesson={selectedLesson}
+              onLessonChange={handleLessonChange}
+            />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span>Status:</span>
+              {['pending', 'processing', 'completed', 'failed'].map(status => (
+                <label key={status} style={{ textTransform: 'capitalize' }}>
+                  <input
+                    type="checkbox"
+                    checked={statusFilter.includes(status)}
+                    onChange={() => handleStatusFilterChange(status)}
+                  />
+                  {status}
+                </label>
+              ))}
+            </div>
+            <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Session</button>
+            <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
+            <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
+              Delete Selected ({selectedJobs.size})
+            </button>
+        </div>
       </div>
       {notification && (
-        <div className={`notification notification-${notification.type}`}>
+        <div className={`notification notification-${notification.type}`} style={{ position: 'relative', paddingRight: '40px' }}>
           <p>{notification.message}</p>
+          <button onClick={() => setNotification(null)} style={{
+            position: 'absolute', top: '50%', right: '15px', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer',
+            lineHeight: 1, padding: 0
+          }}>
+            &times;
+          </button>
         </div>
       )}
       {lastBatchJobInfo && (
-        <div className="batch-job-info">
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
+            justifyContent: 'center', alignItems: 'center', zIndex: 1000
+          }}
+          onClick={() => setLastBatchJobInfo(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white', padding: '20px', borderRadius: '8px',
+              width: '600px', maxHeight: '90vh', overflowY: 'auto', position: 'relative'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button onClick={() => {
+                console.log('Closing modal');
+                setLastBatchJobInfo(null);
+              }} style={{
+              position: 'absolute', top: '15px', right: '15px', background: 'none',
+              border: 'none', cursor: 'pointer', zIndex: 1001, padding: 0, lineHeight: 0
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 6L18 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
             <h4>Last Batch Job Summary</h4>
             {lastBatchJobInfo.created.length > 0 && (
                 <div>
-                    <p>New jobs created for:</p>
-                    <ul>
+                    <p>New jobs created for ({lastBatchJobInfo.created.length}):</p>
+                    <ul style={{ columns: 2, listStyle: 'none', padding: 0 }}>
                         {lastBatchJobInfo.created.map(student => <li key={student}>{student}</li>)}
                     </ul>
                 </div>
             )}
             {lastBatchJobInfo.skipped.length > 0 && (
-                <div>
-                    <p>Jobs already existed for (skipped):</p>
-                    <ul>
+                <div style={{ marginTop: '20px' }}>
+                    <p>Jobs already existed for ({lastBatchJobInfo.skipped.length}) - Skipped:</p>
+                    <ul style={{ columns: 2, listStyle: 'none', padding: 0 }}>
                         {lastBatchJobInfo.skipped.map(student => <li key={student}>{student}</li>)}
                     </ul>
                 </div>
             )}
+          </div>
         </div>
       )}
       <div className="jobs-table">
@@ -496,24 +626,89 @@ const PlaybackView = ({ user }) => {
           <table>
               <thead>
                   <tr>
+                      <th><input type="checkbox" onChange={handleSelectAll} /></th>
                       <th>Job ID</th>
                       <th>Student</th>
+                      <th>Start Time</th>
+                      <th>End Time</th>
                       <th>Created At</th>
                       <th>Status</th>
                   </tr>
               </thead>
               <tbody>
-                  {videoJobs.map(job => (
+                  {filteredVideoJobs.map(job => (
                       <tr key={job.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedJobs.has(job.id)}
+                              onChange={() => handleSelectJob(job.id)}
+                            />
+                          </td>
                           <td>{job.id}</td>
                           <td>{job.student || 'All Students'}</td>
+                          <td>{job.startTime?.toDate().toLocaleString() || 'N/A'}</td>
+                          <td>{job.endTime?.toDate().toLocaleString() || 'N/A'}</td>
                           <td>{job.createdAt?.toDate().toLocaleString()}</td>
-                          <td>{job.status}</td>
+                          <td>
+                            {job.status === 'failed' ? (
+                              <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                  e.preventDefault(); 
+                                  setErrorModalJob(job);
+                                }} 
+                                style={{ color: 'red', textDecoration: 'underline', cursor: 'pointer' }}
+                              >
+                                {job.error === 'No screenshots found in the selected time range.' ? 'failed (No image)' : job.status}
+                              </a>
+                            ) : (
+                              job.status
+                            )}
+                          </td>
                       </tr>
                   ))}
               </tbody>
           </table>
       </div>
+      {errorModalJob && (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
+            justifyContent: 'center', alignItems: 'center', zIndex: 1001
+        }}>
+            <div style={{
+                backgroundColor: 'white', padding: '20px', borderRadius: '8px',
+                width: '80%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', position: 'relative'
+            }}>
+                <button onClick={() => setErrorModalJob(null)} style={{
+                    position: 'absolute', top: '15px', right: '15px', background: 'none',
+                    border: 'none', cursor: 'pointer', padding: 0, lineHeight: 0
+                }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 6L6 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M6 6L18 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                </button>
+                <h4>Job Failure Details (Job ID: {errorModalJob.id})</h4>
+                
+                <h5 style={{ marginTop: '20px' }}>Error Message</h5>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f5f5f5', padding: '10px', borderRadius: '5px' }}>
+                    {errorModalJob.error || 'N/A'}
+                </pre>
+
+                <h5 style={{ marginTop: '20px' }}>ffmpeg Log / Details</h5>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f5f5f5', padding: '10px', borderRadius: '5px' }}>
+                    {errorModalJob.ffmpegError || 'N/A'}
+                </pre>
+
+                <h5 style={{ marginTop: '20px' }}>Stack Trace</h5>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f5f5f5', padding: '10px', borderRadius: '5px' }}>
+                    {errorModalJob.errorStack || 'N/A'}
+                </pre>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

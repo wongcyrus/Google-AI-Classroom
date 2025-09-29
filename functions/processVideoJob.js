@@ -16,6 +16,20 @@ const bucket = storage.bucket();
 
 ffmpeg.setFfmpegPath(ffmpeg_static);
 
+const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after multiple retries') => {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error(err); // Log the error on each retry
+    if (retries <= 0) {
+      throw new Error(finalErr);
+    }
+    console.log(`Retrying in ${delay}ms... (${retries} retries left)`);
+    await new Promise(res => setTimeout(res, delay));
+    return retry(fn, retries - 1, delay * 2, finalErr);
+  }
+};
+
 export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', memory: '8GiB', timeoutSeconds: 540 }, async (event) => {
     const snap = event.data;
     if (!snap) {
@@ -25,6 +39,11 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     const jobData = snap.data();
     const { jobId, classId, student, startTime, endTime } = jobData;
     const jobRef = snap.ref;
+
+    if (jobData.status !== 'pending') {
+        console.log(`Job ${jobId} was triggered but is not in 'pending' state (current state: '${jobData.status}'). Aborting execution.`);
+        return;
+    }
 
     console.log(`Processing video job: ${jobId}`);
 
@@ -55,36 +74,42 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
         const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
 
-        const processPromises = screenshots.map(async (screenshot, index) => {
-            const fileName = `image-${index.toString().padStart(5, '0')}.jpg`;
-            const filePath = path.join(tempDir, fileName);
-            await bucket.file(screenshot.imagePath).download({ destination: filePath });
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < screenshots.length; i += BATCH_SIZE) {
+            const batch = screenshots.slice(i, i + BATCH_SIZE);
+            console.log(`Processing batch of ${batch.length} images...`);
+            const processPromises = batch.map(async (screenshot, indexInBatch) => {
+                const overallIndex = i + indexInBatch;
+                const fileName = `image-${overallIndex.toString().padStart(5, '0')}.jpg`;
+                const filePath = path.join(tempDir, fileName);
+                await bucket.file(screenshot.imagePath).download({ destination: filePath });
+                
+                const image = await Jimp.read(filePath);
+
+                if (image.bitmap.width % 2 !== 0 || image.bitmap.height % 2 !== 0) {
+                    image.resize(
+                        image.bitmap.width % 2 === 0 ? image.bitmap.width : image.bitmap.width - 1,
+                        image.bitmap.height % 2 === 0 ? image.bitmap.height : image.bitmap.height - 1
+                    );
+                }
+
+                const timestamp = screenshot.timestamp.toDate();
+                const date = timestamp.toLocaleDateString();
+                const time = timestamp.toLocaleTimeString();
+                const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${student}`;
+
+                const textHeight = 40;
+                const newHeight = image.bitmap.height + textHeight;
+
+                const newImage = new Jimp(image.bitmap.width, newHeight, '#FFFFFF');
+                newImage.composite(image, 0, textHeight);
+                newImage.print(font, 10, 12, text);
+                
+                await newImage.writeAsync(filePath);
+            });
             
-            const image = await Jimp.read(filePath);
-
-            if (image.bitmap.width % 2 !== 0 || image.bitmap.height % 2 !== 0) {
-                image.resize(
-                    image.bitmap.width % 2 === 0 ? image.bitmap.width : image.bitmap.width - 1,
-                    image.bitmap.height % 2 === 0 ? image.bitmap.height : image.bitmap.height - 1
-                );
-            }
-
-            const timestamp = screenshot.timestamp.toDate();
-            const date = timestamp.toLocaleDateString();
-            const time = timestamp.toLocaleTimeString();
-            const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${student}`;
-
-            const textHeight = 40;
-            const newHeight = image.bitmap.height + textHeight;
-
-            const newImage = new Jimp(image.bitmap.width, newHeight, '#FFFFFF');
-            newImage.composite(image, 0, textHeight);
-            newImage.print(font, 10, 12, text);
-            
-            await newImage.writeAsync(filePath);
-        });
-        
-        await Promise.all(processPromises);
+            await Promise.all(processPromises);
+        }
 
         console.log('All images downloaded and processed. Starting ffmpeg.');
 
@@ -112,7 +137,9 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
                 .on('error', (err, stdout, stderr) => {
                     console.error('ffmpeg stdout:', stdout);
                     console.error('ffmpeg stderr:', stderr);
-                    reject(err);
+                    const ffmpegError = new Error('ffmpeg failed to process video.');
+                    ffmpegError.ffmpegStderr = stderr;
+                    reject(ffmpegError);
                 })
                 .save(outputVideoPath);
         });
@@ -130,13 +157,13 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const size = videoStats.format.size;
 
         const destinationPath = `videos/${classId}/${outputVideoName}`;
-        await bucket.upload(outputVideoPath, {
+        await retry(() => bucket.upload(outputVideoPath, {
             destination: destinationPath,
             metadata: {
                 contentType: 'video/mp4',
                 metadata: { classId, student, startTime, endTime, duration, size }
             }
-        });
+        }), 3, 2000, 'Failed to upload video after multiple retries.');
 
         console.log(`Video uploaded to ${destinationPath}`);
 
@@ -150,6 +177,17 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
     } catch (error) {
         console.error(`Job ${jobId} failed:`, error);
-        await jobRef.update({ status: 'failed', finishedAt: new Date(), error: error.message });
+        const updatePayload = {
+            status: 'failed',
+            finishedAt: new Date(),
+            error: error.message,
+            errorStack: error.stack,
+        };
+        if (error.ffmpegStderr) {
+            updatePayload.ffmpegError = error.ffmpegStderr;
+        } else {
+            updatePayload.ffmpegError = "No specific ffmpeg stderr was captured. The error may have occurred before the ffmpeg process started (e.g., during image download or processing). See the 'error' and 'errorStack' fields for more details.";
+        }
+        await jobRef.update(updatePayload);
     }
 });
