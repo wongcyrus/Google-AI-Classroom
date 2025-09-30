@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, limit, startAfter, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -22,6 +22,19 @@ const formatSize = (bytes) => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
+const Modal = ({ show, onClose, title, children }) => {
+    if (!show) return null;
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+            <div style={{ backgroundColor: '#FFF', padding: '20px 25px', borderRadius: '8px', zIndex: 1001, width: '60vw', minWidth: '600px', maxWidth: '90vw', height: '70vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column'}} onClick={e => e.stopPropagation()}>
+                <h2 style={{marginTop: 0}}>{title}</h2>
+                <div style={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>{children}</div>
+                <button onClick={onClose} style={{ marginTop: '15px', width: 'auto', alignSelf: 'flex-end', padding: '8px 16px' }}>Close</button>
+            </div>
+        </div>
+    );
+};
+
 const VideoLibrary = () => {
   const { classId } = useParams();
   const { user } = useOutletContext();
@@ -33,6 +46,10 @@ const VideoLibrary = () => {
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [prompts, setPrompts] = useState([]);
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+  const [editablePromptText, setEditablePromptText] = useState('');
 
   const {
     lessons,
@@ -50,6 +67,17 @@ const VideoLibrary = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLesson, filterField]);
+
+  useEffect(() => {
+    const promptsCollectionRef = collection(db, 'prompts');
+    const q = query(promptsCollectionRef, where('category', '==', 'videos'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      promptsData.sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
+      setPrompts(promptsData);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(true);
@@ -142,6 +170,7 @@ const VideoLibrary = () => {
             createdAt: serverTimestamp(),
             startTime: new Date(startTime),
             endTime: new Date(endTime),
+            prompt: editablePromptText,
         });
 
         alert(`Your ZIP request for ${videosToZip.length} videos has been submitted. You can find the download in the Data Management view once it is ready.`);
@@ -208,6 +237,7 @@ const VideoLibrary = () => {
             createdAt: serverTimestamp(),
             startTime: new Date(startTime),
             endTime: new Date(endTime),
+            prompt: editablePromptText,
         });
 
         alert(`Your ZIP request for ${videosToZip.length} videos has been submitted. You can find the download in the Data Management view once it is ready.`);
@@ -313,31 +343,66 @@ const VideoLibrary = () => {
   return (
     <div className="view-container">
       {showPlayer && <VideoPlayerModal />}
+      <Modal
+          show={showPromptModal}
+          onClose={() => {
+            setShowPromptModal(false);
+          }}
+          title="Analyze Student Screens"
+      >
+          <select 
+            value={selectedPrompt ? selectedPrompt.id : ''} 
+            onChange={(e) => {
+              const prompt = prompts.find(p => p.id === e.target.value);
+              setSelectedPrompt(prompt);
+              setEditablePromptText(prompt ? prompt.promptText : '');
+            }}
+            style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
+          >
+            <option value="" disabled>Select a prompt</option>
+            {prompts.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          
+          <textarea
+              value={editablePromptText}
+              onChange={(e) => setEditablePromptText(e.target.value)}
+              placeholder="Select a prompt or enter text here..."
+              style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
+          />
+      </Modal>
+
       <div className="view-header">
         <h2>Video Library</h2>
       </div>
-      <div className="actions-container">
-        <DateRangeFilter
-          startTime={startTime}
-          endTime={endTime}
-          onStartTimeChange={setStartTime}
-          onEndTimeChange={setEndTime}
-          onSearch={handleSearch}
-          loading={loading || isZipping}
-          lessons={lessons}
-          selectedLesson={selectedLesson}
-          onLessonChange={handleLessonChange}
-        />
-        <select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
-          <option value="createdAt">Filter by Creation Time</option>
-          <option value="startTime">Filter by Start Time</option>
-        </select>
-        <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
-          {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
-        </button>
-        <button onClick={handleDownloadAll} disabled={isZipping}>
-          {isZipping ? 'Submitting...' : 'Request All as ZIP'}
-        </button>
+      <div className="actions-container" style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+        <div className="filter-column">
+          <DateRangeFilter
+            startTime={startTime}
+            endTime={endTime}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+            onSearch={handleSearch}
+            loading={loading || isZipping}
+            lessons={lessons}
+            selectedLesson={selectedLesson}
+            onLessonChange={handleLessonChange}
+          />
+        </div>
+        <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
+            <option value="createdAt">Filter by Creation Time</option>
+            <option value="startTime">Filter by Start Time</option>
+          </select>
+          <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
+            {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
+          </button>
+          <button onClick={handleDownloadAll} disabled={isZipping}>
+            {isZipping ? 'Submitting...' : 'Request All as ZIP'}
+          </button>
+          <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
+        </div>
       </div>
 
       {loading ? (
