@@ -7,6 +7,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import archiver from 'archiver';
+import { stringify } from 'csv-stringify/sync';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -49,7 +50,27 @@ export const processZipJob = onDocumentCreated({
         });
         await Promise.all(downloadPromises);
 
-        console.log('All videos downloaded. Starting zip process.');
+        console.log('All videos downloaded. Generating CSV summary.');
+
+        const csvData = videos.map(video => {
+            const formattedStartTime = new Date(video.startTime.seconds * 1000).toISOString()
+                .replace(/:/g, '-')
+                .replace(/\..+/, '')
+                .replace('T', '_');
+            const safeEmail = video.student.replace(/[@.]/g, '_');
+            const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
+
+            return {
+                student_email: video.student,
+                video_start_time: new Date(video.startTime.seconds * 1000).toISOString(),
+                filename_in_zip: newFileName
+            };
+        });
+
+        const csvString = stringify(csvData, { header: true });
+        fs.writeFileSync(path.join(tempDir, 'summary.csv'), csvString);
+
+        console.log('CSV summary generated. Starting zip process.');
 
         const outputZipName = `${jobId}.zip`;
         const outputZipPath = path.join(os.tmpdir(), outputZipName);

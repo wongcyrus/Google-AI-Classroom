@@ -20,6 +20,7 @@
     "@genkit-ai/vertexai": "^1.19.3",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
+    "csv-stringify": "^6.6.0",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "ffmpeg-static": "^5.2.0",
