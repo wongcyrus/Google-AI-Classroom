@@ -30,6 +30,9 @@ const VideoLibrary = () => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [filterField, setFilterField] = useState('startTime');
+  const [showPlayer, setShowPlayer] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [playerLoading, setPlayerLoading] = useState(false);
 
   const {
     lessons,
@@ -259,13 +262,62 @@ const VideoLibrary = () => {
     }
   };
 
+  const handlePlayVideo = async (video) => {
+    if (!video.videoPath) {
+      alert("This video does not have a storage path.");
+      return;
+    }
+    setPlayerLoading(true);
+    setShowPlayer(true);
+    try {
+      const storage = getStorage();
+      const videoRef = ref(storage, video.videoPath);
+      const downloadUrl = await getDownloadURL(videoRef);
+      setVideoUrl(downloadUrl);
+    } catch (error) {
+      console.error('Error getting video URL for playback:', error);
+      alert(`Failed to get video for playback. ${error.message}`);
+      setShowPlayer(false); // Close modal on error
+    } finally {
+      setPlayerLoading(false);
+    }
+  };
+
+  const VideoPlayerModal = () => (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+      backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
+      justifyContent: 'center', alignItems: 'center', zIndex: 1050
+    }} onClick={() => setShowPlayer(false)}>
+      <div style={{
+        position: 'relative', padding: '20px', background: 'white',
+        borderRadius: '8px', maxWidth: '90vw', maxHeight: '90vh'
+      }} onClick={e => e.stopPropagation()}>
+        <button onClick={() => setShowPlayer(false)} style={{
+          position: 'absolute', top: '10px', right: '10px',
+          background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer'
+        }}>
+          &times;
+        </button>
+        {playerLoading ? (
+          <p>Loading video...</p>
+        ) : (
+          <video controls autoPlay src={videoUrl} style={{ maxWidth: '100%', maxHeight: '80vh' }}>
+            Your browser does not support the video tag.
+          </video>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="view-container">
+      {showPlayer && <VideoPlayerModal />}
       <div className="view-header">
         <h2>Video Library</h2>
       </div>
       <div className="actions-container">
-        <DateRangeFilter 
+        <DateRangeFilter
           startTime={startTime}
           endTime={endTime}
           onStartTimeChange={setStartTime}
@@ -304,6 +356,7 @@ const VideoLibrary = () => {
                   }
                   setSelectedVideos(newSelection);
                 }} /></th>
+                <th>Play</th>
                 <th>Student</th>
                 <th>Start Time</th>
                 <th>End Time</th>
@@ -322,6 +375,11 @@ const VideoLibrary = () => {
                       checked={selectedVideos.has(video.id)}
                       onChange={() => handleSelectVideo(video)}
                     />
+                  </td>
+                  <td>
+                    <button onClick={() => handlePlayVideo(video)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', padding: 0, lineHeight: 1}}>
+                      ▶️
+                    </button>
                   </td>
                   <td>{video.student}</td>
                   <td>{video.startTime?.toDate().toLocaleString() || 'N/A'}</td>
