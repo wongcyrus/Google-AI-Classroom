@@ -12,6 +12,9 @@ const PromptManagement = () => {
   const [name, setName] = useState('');
   const [promptText, setPromptText] = useState('');
   const [applyTo, setApplyTo] = useState([]);
+  const [activeTab, setActiveTab] = useState('images'); // 'images' or 'videos'
+
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(promptsCollectionRef, (snapshot) => {
@@ -45,17 +48,32 @@ const PromptManagement = () => {
   };
 
   const handleSave = async () => {
-    if (!name || !promptText || applyTo.length === 0) {
-      alert('Please fill in all fields and select at least one application type.');
-      return;
+    let promptData;
+    if (activeTab === 'videos') {
+        if (!name || !promptText) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        promptData = { 
+          name, 
+          promptText, 
+          applyTo: ['Per Video'], 
+          category: activeTab,
+          lastUpdated: serverTimestamp() 
+        };
+    } else {
+        if (!name || !promptText || applyTo.length === 0) {
+          alert('Please fill in all fields and select at least one application type.');
+          return;
+        }
+        promptData = { 
+          name, 
+          promptText, 
+          applyTo, 
+          category: activeTab,
+          lastUpdated: serverTimestamp() 
+        };
     }
-
-    const promptData = { 
-      name, 
-      promptText, 
-      applyTo, 
-      lastUpdated: serverTimestamp() 
-    };
 
     try {
       if (selectedPrompt) {
@@ -88,6 +106,11 @@ const PromptManagement = () => {
     setName(`${name} - Copy`);
   };
 
+  const filteredPrompts = prompts
+    .filter(p => p.category === activeTab)
+    .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="view-container">
         <div className="view-header">
@@ -95,10 +118,21 @@ const PromptManagement = () => {
         </div>
         <div className="prompt-management-content">
             <div className="prompt-list-column">
+            <div className="tabs">
+                <button onClick={() => setActiveTab('images')} className={activeTab === 'images' ? 'active' : ''}>Image Prompts</button>
+                <button onClick={() => setActiveTab('videos')} className={activeTab === 'videos' ? 'active' : ''}>Video Prompts</button>
+            </div>
+            <input 
+                type="text" 
+                placeholder="Search prompts..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="search-box"
+            />
             <h3>Saved Prompts</h3>
             <button onClick={clearForm} className="new-prompt-btn">+ New Prompt</button>
             <ul>
-                {prompts.map(prompt => (
+                {filteredPrompts.map(prompt => (
                 <li key={prompt.id} onClick={() => handleSelectPrompt(prompt)} className={selectedPrompt?.id === prompt.id ? 'selected' : ''}>
                     {prompt.name}
                 </li>
@@ -120,24 +154,31 @@ const PromptManagement = () => {
             />
             <div className="apply-to-group">
                 <label>Apply to:</label>
-                <label>
-                <input 
-                    type="checkbox" 
-                    value="Per Image" 
-                    checked={applyTo.includes('Per Image')} 
-                    onChange={handleApplyToChange} 
-                />
-                Per Image
-                </label>
-                <label>
-                <input 
-                    type="checkbox" 
-                    value="All Images" 
-                    checked={applyTo.includes('All Images')} 
-                    onChange={handleApplyToChange} 
-                />
-                All Images
-                </label>
+                {activeTab === 'images' && (
+                    <>
+                        <label>
+                        <input 
+                            type="checkbox" 
+                            value="Per Image" 
+                            checked={applyTo.includes('Per Image')} 
+                            onChange={handleApplyToChange} 
+                        />
+                        Per Image
+                        </label>
+                        <label>
+                        <input 
+                            type="checkbox" 
+                            value="All Images" 
+                            checked={applyTo.includes('All Images')} 
+                            onChange={handleApplyToChange} 
+                        />
+                        All Images
+                        </label>
+                    </>
+                )}
+                {activeTab === 'videos' && (
+                    <span> Per Video</span>
+                )}
             </div>
             <div className="form-actions">
                 <button onClick={handleSave}>{selectedPrompt ? 'Save Changes' : 'Save Prompt'}</button>

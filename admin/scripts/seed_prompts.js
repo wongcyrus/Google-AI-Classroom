@@ -30,28 +30,50 @@ async function seedPrompts(db) {
         process.exit(1);
     }
 
-    const files = fs.readdirSync(promptsDir);
-
-    for (const file of files) {
-        if (path.extname(file) === '.md') {
-            const filePath = path.join(promptsDir, file);
-            const content = fs.readFileSync(filePath, 'utf8');
-            const name = path.basename(file, '.md');
-
-            const promptData = {
-                name: name,
-                promptText: content,
-                applyTo: ['Per Image', 'All Images'],
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-            };
-
-            try {
-                const docRef = await db.collection('prompts').add(promptData);
-                console.log(`Successfully seeded prompt "${name}" with ID: ${docRef.id}`);
-            } catch (error) {
-                console.error(`Error seeding prompt "${name}":`, error);
+    // Helper function to recursively get all .md files
+    function getMdFiles(dir) {
+        let files = [];
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+            const fullPath = path.join(dir, item);
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+                files = files.concat(getMdFiles(fullPath));
+            } else if (path.extname(item) === '.md') {
+                files.push(fullPath);
             }
+        }
+        return files;
+    }
+
+    const files = getMdFiles(promptsDir);
+
+    for (const filePath of files) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const name = path.basename(filePath, '.md');
+        const category = path.basename(path.dirname(filePath));
+
+        let applyTo;
+        if (category === 'images') {
+            applyTo = ['Per Image', 'All Images'];
+        } else if (category === 'videos') {
+            applyTo = ['Per Video'];
+        }
+
+        const promptData = {
+            name: name,
+            promptText: content,
+            category: category,
+            applyTo: applyTo,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        try {
+            const docRef = await db.collection('prompts').add(promptData);
+            console.log(`Successfully seeded prompt "${name}" from category "${category}" with ID: ${docRef.id}`);
+        } catch (error) {
+            console.error(`Error seeding prompt "${name}":`, error);
         }
     }
 }
