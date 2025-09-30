@@ -1,7 +1,7 @@
 import './firebase.js';
 
 import { onCallGenkit } from "firebase-functions/v2/https";
-import { analyzeImagesFlow, analyzeAllImagesFlow } from "./gemini.js";
+import { analyzeImageFlow, analyzeAllImagesFlow } from "./gemini.js";
 
 export * from './processVideoJob.js';
 export * from './processZipJob.js';
@@ -16,12 +16,12 @@ const callOptions = {
   enforceAppCheck: true,
 };
 
-export const analyzeImages = onCallGenkit({
+export const analyzeImage = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
         return auth?.token?.email_verified && auth?.token?.role === 'teacher';
     },
-}, analyzeImagesFlow);
+}, analyzeImageFlow);
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,

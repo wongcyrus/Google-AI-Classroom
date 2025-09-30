@@ -213,13 +213,13 @@ const MonitorView = ({ classId: propClassId }) => {
   const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze) => {
     if (!editablePromptTextRef.current.trim()) return;
     console.log(`[${new Date().toISOString()}] Running per-image analysis for:`, Object.keys(screenshotsToAnalyze));
-    const analyzeImages = httpsCallable(functions, 'analyzeImages');
+    const analyzeImage = httpsCallable(functions, 'analyzeImage');
     try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
+        const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
         console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
         setAnalysisResults(prev => ({ ...prev, ...result.data }));
     } catch (error) {
-        console.error("Error calling analyzeImages function: ", error);
+        console.error("Error calling analyzeImage function: ", error);
     }
   }, [functions, classId]);
 
@@ -575,12 +575,12 @@ const MonitorView = ({ classId: propClassId }) => {
     }
 
     setIsAnalyzing(true);
-    const analyzeImages = httpsCallable(functions, 'analyzeImages');
+    const analyzeImage = httpsCallable(functions, 'analyzeImage');
     try {
-        const result = await analyzeImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
+        const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
         setAnalysisResults(result.data);
     } catch (error) {
-        console.error("Error calling analyzeImages function: ", error);
+        console.error("Error calling analyzeImage function: ", error);
         alert("Error analyzing images: " + error.message);
     } finally {
         setIsAnalyzing(false);

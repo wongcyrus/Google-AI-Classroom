@@ -11,9 +11,9 @@ function getTools() {
   return [sendMessageTool, recordIrregularity, recordStudentProgress, sendMessageToTeacher];
 }
 
-export const analyzeImagesFlow = ai.defineFlow(
+export const analyzeImageFlow = ai.defineFlow(
   {
-    name: 'analyzeImagesFlow',
+    name: 'analyzeImageFlow',
     inputSchema: z.object({
       screenshots: z.record(z.string()),
       prompt: z.string(),
@@ -22,7 +22,7 @@ export const analyzeImagesFlow = ai.defineFlow(
     outputSchema: z.record(z.string()),
   },
   async ({ screenshots, prompt, classId }, context) => {
-    console.log('Authentication context received in analyzeImagesFlow:', context);
+    console.log('Authentication context received in analyzeImageFlow:', context);
     const teacherUid = context.auth?.uid;
     const tools = getTools();
     const analysisResults = {};
