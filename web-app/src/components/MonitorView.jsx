@@ -169,14 +169,26 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
-  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
-  const [reviewTime, setReviewTime] = useState(null);
-
-  const handleLessonChange = (e) => {
-    originalHandleLessonChange(e);
-    setReviewTime(null);
-  };
-
+        const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
+        const [reviewTime, setReviewTime] = useState(null);
+        const [timelineScrubTime, setTimelineScrubTime] = useState(null);
+        const timelineDebounceTimer = useRef(null);
+      
+        const handleLessonChange = (e) => {
+          originalHandleLessonChange(e);
+          setReviewTime(null);
+        };
+  
+        const handleTimelineChange = (e) => {
+          const time = parseInt(e.target.value, 10);
+          setTimelineScrubTime(time);
+  
+          clearTimeout(timelineDebounceTimer.current);
+          timelineDebounceTimer.current = setTimeout(() => {
+              setReviewTime(new Date(time).toISOString());
+              setTimelineScrubTime(null);
+          }, 500);
+        };
   const [storageUsage, setStorageUsage] = useState(0);
   const [storageQuota, setStorageQuota] = useState(0);
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
@@ -239,7 +251,8 @@ const MonitorView = ({ classId: propClassId }) => {
   // Effect to fetch prompts
   useEffect(() => {
     const promptsCollectionRef = collection(db, 'prompts');
-    const unsubscribe = onSnapshot(promptsCollectionRef, (snapshot) => {
+    const q = query(promptsCollectionRef, where('category', '==', 'images'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       promptsData.sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
       setPrompts(promptsData);
@@ -619,66 +632,67 @@ const MonitorView = ({ classId: propClassId }) => {
     setShowAnalysisResultsModal(true);
   };
 
-  return (
-    <div className="monitor-view">
-      {showControls ? <MemoizedControlsPanel 
-        message={message}
-        setMessage={setMessage}
-        handleSendMessage={handleSendMessage}
-        setShowControls={setShowControls}
-        frameRate={frameRate}
-        handleFrameRateChange={handleFrameRateChange}
-        frameRateOptions={frameRateOptions}
-        maxImageSize={maxImageSize}
-        handleMaxImageSizeChange={handleMaxImageSizeChange}
-        maxImageSizeOptions={maxImageSizeOptions}
-        isCapturing={isCapturing}
-        toggleCapture={toggleCapture}
-        isPaused={isPaused}
-        setIsPaused={setIsPaused}
-        setShowPromptModal={setShowPromptModal}
-        notSharingStudents={notSharingStudents}
-        setShowNotSharingModal={setShowNotSharingModal}
-        handleDownloadAttendance={handleDownloadAttendance}
-        editablePromptText={editablePromptText}
-        isPerImageAnalysisRunning={isPerImageAnalysisRunning}
-        isAllImagesAnalysisRunning={isAllImagesAnalysisRunning}
-        setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
-        setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
-        samplingRate={samplingRate}
-        setSamplingRate={setSamplingRate}
-        storageUsage={storageUsage}
-        storageQuota={storageQuota}
-        storageUsageScreenShots={storageUsageScreenShots}
-        storageUsageVideos={storageUsageVideos}
-        storageUsageZips={storageUsageZips}
-      /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
-      
-      <div className="monitor-main-content">
-        <div className="timeline-controls" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
-            <select value={selectedLesson} onChange={handleLessonChange}>
-              {lessons.map(lesson => (
-                <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                  {`${lesson.start.toLocaleDateString()} ${lesson.start.toLocaleTimeString()} - ${lesson.end.toLocaleTimeString()}`}
-                </option>
-              ))}
-            </select>
-            <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
-            <span>
-              {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
-            </span>
-          </div>
-          {startTime && endTime && (
-            <TimelineSlider
-              min={new Date(startTime).getTime()}
-              max={new Date(endTime).getTime()}
-              value={reviewTime ? new Date(reviewTime).getTime() : now.getTime()}
-              onChange={(e) => setReviewTime(new Date(parseInt(e.target.value)).toISOString())}
-              bufferedRanges={[]}
-            />
-          )}
-        </div>
+        const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
+  
+        return (
+          <div className="monitor-view">
+            {showControls ? <MemoizedControlsPanel 
+              message={message}
+              setMessage={setMessage}
+              handleSendMessage={handleSendMessage}
+              setShowControls={setShowControls}
+              frameRate={frameRate}
+              handleFrameRateChange={handleFrameRateChange}
+              frameRateOptions={frameRateOptions}
+              maxImageSize={maxImageSize}
+              handleMaxImageSizeChange={handleMaxImageSizeChange}
+              maxImageSizeOptions={maxImageSizeOptions}
+              isCapturing={isCapturing}
+              toggleCapture={toggleCapture}
+              isPaused={isPaused}
+              setIsPaused={setIsPaused}
+              setShowPromptModal={setShowPromptModal}
+              notSharingStudents={notSharingStudents}
+              setShowNotSharingModal={setShowNotSharingModal}
+              handleDownloadAttendance={handleDownloadAttendance}
+              editablePromptText={editablePromptText}
+              isPerImageAnalysisRunning={isPerImageAnalysisRunning}
+              isAllImagesAnalysisRunning={isAllImagesAnalysisRunning}
+              setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
+              setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
+              samplingRate={samplingRate}
+              setSamplingRate={setSamplingRate}
+              storageUsage={storageUsage}
+              storageQuota={storageQuota}
+              storageUsageScreenShots={storageUsageScreenShots}
+              storageUsageVideos={storageUsageVideos}
+              storageUsageZips={storageUsageZips}
+            /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
+            
+            <div className="monitor-main-content">
+              <div className="timeline-controls" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+                  <select value={selectedLesson} onChange={handleLessonChange}>
+                    {lessons.map(lesson => (
+                      <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
+                        {`${lesson.start.toLocaleDateString()} ${lesson.start.toLocaleTimeString()} - ${lesson.end.toLocaleTimeString()}`}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
+                  <span>
+                    {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
+                  </span>
+                </div>
+                {startTime && endTime && (
+                  <TimelineSlider
+                    min={new Date(startTime).getTime()}
+                    max={new Date(endTime).getTime()}
+                    value={displayTime}
+                    onChange={handleTimelineChange}
+                    bufferedRanges={[]}
+                  />
+                )}        </div>
         <div className="students-container">
           {reviewTime
             ? classList.sort((a, b) => a.localeCompare(b)).map(email => {
