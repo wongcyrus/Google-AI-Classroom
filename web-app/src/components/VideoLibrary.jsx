@@ -42,6 +42,7 @@ const VideoLibrary = () => {
   const [loading, setLoading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
+  const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);
   const [filterField, setFilterField] = useState('startTime');
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
@@ -164,7 +165,7 @@ const VideoLibrary = () => {
         await setDoc(newDocRef, {
             jobId: newDocRef.id,
             classId: classId,
-            requester: user.email,
+            requester: user.uid,
             videos: videosToZip,
             status: 'pending',
             createdAt: serverTimestamp(),
@@ -195,7 +196,6 @@ const VideoLibrary = () => {
 
     setIsZipping(true);
     try {
-        // 1. Query for ALL videos matching the filter, without pagination
         const videoJobsRef = collection(db, 'videoJobs');
         const q = query(videoJobsRef,
             where('status', '==', 'completed'),
@@ -213,7 +213,6 @@ const VideoLibrary = () => {
             return;
         }
 
-        // 2. Create the videosToZip array from the full query result
         const videosToZip = querySnapshot.docs.map(doc => {
             const v = doc.data();
             return {
@@ -224,14 +223,13 @@ const VideoLibrary = () => {
             };
         });
 
-        // 3. Create the zipJob document
         const jobCollectionRef = collection(db, 'zipJobs');
         const newDocRef = doc(jobCollectionRef);
         
         await setDoc(newDocRef, {
             jobId: newDocRef.id,
             classId: classId,
-            requester: user.email,
+            requester: user.uid,
             videos: videosToZip,
             status: 'pending',
             createdAt: serverTimestamp(),
@@ -249,6 +247,79 @@ const VideoLibrary = () => {
     }
 
     setIsZipping(false);
+  };
+
+  const handleRequestAnalysis = async () => {
+    if (!editablePromptText.trim() || selectedVideos.size === 0) {
+      alert('Please select a prompt and at least one video to analyze.');
+      return;
+    }
+
+    setIsRequestingAnalysis(true);
+    try {
+      const videos = Array.from(selectedVideos.values()).map(v => ({
+        student: v.student,
+        videoPath: v.videoPath,
+      }));
+
+      const jobCollectionRef = collection(db, 'videoAnalysisJobs');
+      const newDocRef = doc(jobCollectionRef);
+      
+      await setDoc(newDocRef, {
+          jobId: newDocRef.id,
+          classId: classId,
+          requester: user.uid,
+          videos: videos,
+          prompt: editablePromptText,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+      });
+
+      alert(`Your analysis request for ${videos.length} videos has been submitted. You can find the results in the Data Management view once it is ready.`);
+      setSelectedVideos(new Map());
+
+    } catch (error) {
+      console.error('Error creating analysis job:', error);
+      alert(`Error submitting analysis request: ${error.message}`);
+    } finally {
+      setIsRequestingAnalysis(false);
+    }
+  };
+
+  const handleRequestAllAnalysis = async () => {
+    if (!editablePromptText.trim()) {
+      alert('Please select a prompt.');
+      return;
+    }
+    if (!window.confirm(`This will find ALL completed videos for this class within the selected date range and submit a single analysis job. Do you want to continue?`)) {
+        return;
+    }
+
+    setIsRequestingAnalysis(true);
+    try {
+      const jobCollectionRef = collection(db, 'videoAnalysisJobs');
+      const newDocRef = doc(jobCollectionRef);
+      
+      await setDoc(newDocRef, {
+          jobId: newDocRef.id,
+          classId: classId,
+          requester: user.uid,
+          startTime: new Date(startTime),
+          endTime: new Date(endTime),
+          filterField: filterField,
+          prompt: editablePromptText,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+      });
+
+      alert(`Your analysis request for all videos in the selected range has been submitted. You can find the results in the Data Management view once it is ready.`);
+
+    } catch (error) {
+      console.error('Error creating analysis job for all videos:', error);
+      alert(`Error submitting analysis request: ${error.message}`);
+    } finally {
+      setIsRequestingAnalysis(false);
+    }
   };
 
   const handleDownload = async (video) => {
@@ -348,7 +419,7 @@ const VideoLibrary = () => {
           onClose={() => {
             setShowPromptModal(false);
           }}
-          title="Analyze Student Screens"
+          title="Select Video Prompt"
       >
           <select 
             value={selectedPrompt ? selectedPrompt.id : ''} 
@@ -402,6 +473,12 @@ const VideoLibrary = () => {
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
+          <button onClick={handleRequestAnalysis} disabled={!editablePromptText.trim() || selectedVideos.size === 0 || isRequestingAnalysis}>
+            {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis'}
+          </button>
+          <button onClick={handleRequestAllAnalysis} disabled={!editablePromptText.trim() || isRequestingAnalysis}>
+            {isRequestingAnalysis ? 'Requesting...' : 'Request All Analysis'}
+          </button>
         </div>
       </div>
 

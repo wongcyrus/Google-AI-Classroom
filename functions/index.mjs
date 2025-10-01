@@ -9,6 +9,7 @@ export * from './storageQuota.js';
 export * from './ipRestriction.js';
 export * from './deleteJobs.js';
 export * from './cleanupStuckJobs.js';
+export * from './processVideoAnalysisJob.js';
 import { CORS_ORIGINS } from './config.js';
 
 const callOptions = {

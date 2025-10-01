@@ -43,6 +43,33 @@ export const analyzeImageFlow = ai.defineFlow(
   }
 );
 
+export const analyzeSingleVideoFlow = ai.defineFlow(
+  {
+    name: 'analyzeSingleVideoFlow',
+    inputSchema: z.object({
+      videoUrl: z.string(),
+      prompt: z.string(),
+      classId: z.string(),
+      studentEmail: z.string(),
+    }),
+    outputSchema: z.string(),
+  },
+  async ({ videoUrl, prompt, classId, studentEmail }) => {
+    const tools = getTools();
+    const response = await ai.generate({
+      temperature: AI_TEMPERATURE,
+      topP: AI_TOP_P,
+      prompt: [
+        { text: `This video belongs to ${studentEmail} (video URL: ${videoUrl}). The class ID is ${classId}. ${prompt}` },
+        { media: { url: videoUrl } },
+      ],
+      tools: tools,
+      maxToolRoundtrips: 10,
+    });
+    return response.text;
+  }
+);
+
 export const analyzeAllImagesFlow = ai.defineFlow(
   {
     name: 'analyzeAllImagesFlow',

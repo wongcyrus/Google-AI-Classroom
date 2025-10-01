@@ -80,6 +80,10 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
 
+    match /videoAnalysisJobs/{jobId} {
+      allow create: if isTeacher() && request.resource.data.requester == request.auth.uid;
+    }
+
     match /mails/{mailId} {
       allow read, update: if isTeacher() && request.auth.token.email == resource.data.to;
     }
