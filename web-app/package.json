@@ -12,6 +12,7 @@
         "dependencies": {
                 "@tanstack-query-firebase/react": "^2.1.1",
                 "@tanstack/react-query": "^5.87.4",
+                "@uiw/react-md-editor": "^4.0.8",
                 "firebase": "^12.2.0",
                 "react": "^19.1.1",
                 "react-dom": "^19.1.1",

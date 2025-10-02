@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import MDEditor from '@uiw/react-md-editor';
+import "@uiw/react-md-editor/markdown-editor.css";
 import './SharedViews.css';
 import './PromptManagement.css';
 import { db } from '../firebase-config';
@@ -147,11 +149,12 @@ const PromptManagement = () => {
                 value={name} 
                 onChange={(e) => setName(e.target.value)} 
             />
-            <textarea 
-                placeholder="Enter prompt text..." 
-                value={promptText} 
-                onChange={(e) => setPromptText(e.target.value)}
-            />
+            <div className="editor-container" data-color-mode="light">
+              <MDEditor
+                  value={promptText}
+                  onChange={setPromptText}
+              />
+            </div>
             <div className="apply-to-group">
                 <label>Apply to:</label>
                 {activeTab === 'images' && (

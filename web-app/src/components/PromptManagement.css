@@ -145,3 +145,14 @@
     border-radius: 4px;
     box-sizing: border-box;
 }
+
+.editor-container {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px; /* Add a minimum height to ensure it's visible */
+}
+
+.editor-container .w-md-editor {
+  flex-grow: 1;
+}
