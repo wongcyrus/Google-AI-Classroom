@@ -18,31 +18,36 @@ The project is a monorepo composed of three main parts:
 
 ### Student Experience
 
-*   **Simple & Secure Login:** Students can easily log in and select their active class.
+*   **Simple & Secure Login:** Students can easily log in and select their active class. Login may be restricted by IP address based on class schedules.
 *   **Real-time Guidance:** Receives gentle, helpful pop-up messages from the AI to prevent issues related to focus, technical problems, or frustration.
 *   **OS-Level Notifications:** Gets important announcements and messages from the teacher via system notifications.
 
-### Teacher Dashboard
+### Teacher Experience
 
-*   **Unified Navigation & UI:** A persistent navigation bar provides quick access to all major sections (Dashboard, Class Management, Mailbox, Prompts), and a standardized layout across all views ensures a consistent and intuitive user experience.
-*   **Class Management:** Create, view, and manage classes and student enrollment.
-*   **Asynchronous Video Archiving & Mailbox:**
-    *   Select multiple student recordings from the Video Library and request them as a single ZIP archive.
-    *   The archiving process runs as a background job, allowing teachers to continue working without interruption.
-    *   Teachers can monitor the status of their archive jobs in the "Data Management" view for each class.
-    *   When an archive is ready, a notification is delivered to a new, dedicated **Mailbox**, providing a secure, one-click download link.
+*   **Unified Dashboard:** A central dashboard provides a high-level overview of all classes, including student count, storage usage, and AI budget consumption.
+*   **Class Scheduling:** Define class schedules with specific dates, times, and timezones. This powers features like IP restrictions and event filtering.
+*   **Class Management:** Create, view, and manage classes, student enrollment, and resource quotas.
 *   **Live Student Monitoring:** View a gallery of all students who are actively sharing their screens.
 *   **Proactive AI Assistant:** The AI analyzes student screens and provides teachers with real-time alerts for:
     *   **Potential Distractions:** Notifies the teacher when it has sent a student a gentle reminder to stay focused.
     *   **Technical Difficulties:** Flags students who may be experiencing technical issues (e.g., low battery, frozen apps).
     *   **Student Wellness:** Alerts the teacher when a student appears frustrated or burned out.
-*   **Real-time Notification Center:**
-    *   A dedicated "Notifications" tab displays all AI-generated alerts for the class.
+*   **Advanced Notification Center:**
+    *   A dedicated "Notifications" tab displays all AI-generated alerts.
     *   Features OS-level notifications for new alerts so the teacher never misses an important event.
-    *   Includes a time-window filter (start and end time) to easily review events from a specific period.
+    *   **Lesson-Based Filtering:** A dropdown menu, generated from the class schedule, allows teachers to quickly filter events to a specific class session.
     *   A "Mute" button to temporarily disable OS-level notifications.
-*   **Detailed Progress & Irregularity Views:** Review detailed, filterable reports on student progress and any flagged irregularities.
-*   **Customizable AI Behavior:** Teachers can edit the prompts that power the AI assistant, tailoring its personality and actions to their specific needs.
+*   **Asynchronous Data Archiving & Mailbox:**
+    *   Select multiple student recordings and request them as a single ZIP archive.
+    *   The archiving process runs as a background job, tracked in the "Data Management" view.
+    *   Receive a notification in a dedicated **Mailbox** with a secure download link when the archive is ready.
+*   **Detailed Reporting:** Review filterable reports on student progress and any flagged irregularities.
+*   **Customizable AI Behavior:** Teachers can edit the prompts that power the AI assistant, tailoring its personality and actions.
+
+### Security & Resource Management
+
+*   **IP-Based Access Control:** Restrict student logins to specific IP addresses or CIDR ranges (e.g., the school's network). This restriction is automatically enforced only during scheduled class times.
+*   **AI & Storage Quotas:** Set and monitor budgets for AI analysis and cloud storage on a per-class basis. The system prevents resource over-usage and provides detailed breakdowns of consumption (e.g., storage used by screenshots vs. videos vs. ZIPs).
 
 ## Getting Started (Local Development)
 
@@ -119,3 +124,4 @@ This script handles all the necessary steps automatically:
 3.  Deploys all services (Hosting, Functions, Firestore rules, etc.) to Firebase.
 
 **Prerequisites:** Before running the script, make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated with your project.
+
