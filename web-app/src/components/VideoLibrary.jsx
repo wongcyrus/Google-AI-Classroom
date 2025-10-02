@@ -473,12 +473,16 @@ const VideoLibrary = () => {
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
-          <button onClick={handleRequestAnalysis} disabled={!editablePromptText.trim() || selectedVideos.size === 0 || isRequestingAnalysis}>
-            {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis'}
-          </button>
-          <button onClick={handleRequestAllAnalysis} disabled={!editablePromptText.trim() || isRequestingAnalysis}>
-            {isRequestingAnalysis ? 'Requesting...' : 'Request All Analysis'}
-          </button>
+          {editablePromptText.trim() && (
+            <>
+              <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis}>
+                {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis'}
+              </button>
+              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis}>
+                {isRequestingAnalysis ? 'Requesting...' : 'Request All Analysis'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
