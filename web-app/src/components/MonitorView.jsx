@@ -794,7 +794,7 @@ const MonitorView = ({ classId: propClassId }) => {
           >
             <option value="" disabled>Select a prompt</option>
             {prompts.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
             ))}
           </select>
           
