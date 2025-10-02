@@ -47,9 +47,11 @@ const ControlsPanel = ({
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, 
     setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate,
-    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips
+    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips,
+    aiQuota, aiUsedQuota
 }) => {
-    const percentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
+    const storagePercentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
+    const aiPercentage = aiQuota > 0 ? (aiUsedQuota / aiQuota) * 100 : 0;
 
     return (
     <div className="monitor-controls-sidebar">
@@ -88,7 +90,7 @@ const ControlsPanel = ({
                 <label>Storage Usage:</label>
                 <div className="storage-info" style={{ width: '100%' }}>
                     <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
-                        <div className="progress-bar" style={{ width: `${percentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
+                        <div className="progress-bar" style={{ width: `${storagePercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
                     </div>
                     <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
                         {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} used` : `${formatBytes(storageUsage)} used`}
@@ -98,6 +100,19 @@ const ControlsPanel = ({
                         <p style={{ margin: '2px 0' }}>Videos: {formatBytes(storageUsageVideos)}</p>
                         <p style={{ margin: '2px 0' }}>Zips: {formatBytes(storageUsageZips)}</p>
                     </div>
+                </div>
+            </div>
+        </div>
+        <div className="control-section">
+            <div className="control-item" style={{width: '100%'}}>
+                <label>AI Budget:</label>
+                <div className="storage-info" style={{ width: '100%' }}>
+                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
+                        <div className="progress-bar" style={{ width: `${aiPercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
+                    </div>
+                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
+                        {`$${aiUsedQuota.toFixed(2)} of $${aiQuota.toFixed(2)} used`}
+                    </p>
                 </div>
             </div>
         </div>
@@ -194,6 +209,8 @@ const MonitorView = ({ classId: propClassId }) => {
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
   const [storageUsageVideos, setStorageUsageVideos] = useState(0);
   const [storageUsageZips, setStorageUsageZips] = useState(0);
+  const [aiQuota, setAiQuota] = useState(0);
+  const [aiUsedQuota, setAiUsedQuota] = useState(0);
 
   const [analysisResults, setAnalysisResults] = useState({});
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
@@ -296,6 +313,8 @@ const MonitorView = ({ classId: propClassId }) => {
             setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
             setStorageUsageVideos(data.storageUsageVideos || 0);
             setStorageUsageZips(data.storageUsageZips || 0);
+            setAiQuota(data.aiQuota || 0);
+            setAiUsedQuota(data.aiUsedQuota || 0);
         } else {
             setClassList([]);
         }
@@ -667,6 +686,8 @@ const MonitorView = ({ classId: propClassId }) => {
               storageUsageScreenShots={storageUsageScreenShots}
               storageUsageVideos={storageUsageVideos}
               storageUsageZips={storageUsageZips}
+              aiQuota={aiQuota}
+              aiUsedQuota={aiUsedQuota}
             /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
             
             <div className="monitor-main-content">

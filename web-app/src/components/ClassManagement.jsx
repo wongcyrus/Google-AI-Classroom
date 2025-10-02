@@ -242,6 +242,8 @@ const ClassManagement = ({ user }) => {
           },
           storageUsage: 0, // Initialize storage usage
           ipRestrictions: ipList,
+          aiQuota: 10, // Default AI Quota
+          aiUsedQuota: 0, // Initialize AI Quota Usage
         });
         console.log('Successfully created the class!');
       }

@@ -8,10 +8,10 @@ const storage = getStorage();
 
 export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
   const jobDoc = event.data;
-  const jobId = event.params.jobId;
+  const masterJobId = event.params.jobId;
   const jobData = jobDoc.data();
 
-  await db.collection('videoAnalysisJobs').doc(jobId).update({ status: 'processing' });
+  await db.collection('videoAnalysisJobs').doc(masterJobId).update({ status: 'processing' });
 
   try {
     let videosToAnalyze = [];
@@ -24,7 +24,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
         .where('status', '==', 'completed')
         .where('classId', '==', jobData.classId)
         .where(jobData.filterField, '>=', jobData.startTime)
-        .where(jobData.filterField, '<=', jobData.endTime);
+        .where(jobData.filterField, '<= ', jobData.endTime);
       
       const querySnapshot = await q.get();
       querySnapshot.forEach(doc => {
@@ -33,7 +33,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       });
     }
 
-    const analysisResults = {};
+    const aiJobIds = [];
     for (const video of videosToAnalyze) {
       let file;
       try {
@@ -41,17 +41,18 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
         await file.makePublic();
         const url = file.publicUrl();
         
-        const result = await analyzeSingleVideoFlow({
+        const { jobId } = await analyzeSingleVideoFlow({
           videoUrl: url,
           prompt: jobData.prompt,
           classId: jobData.classId,
           studentEmail: video.student,
+          masterJobId,
         });
 
-        analysisResults[video.student] = result;
+        aiJobIds.push(jobId);
       } catch (e) {
         console.error(`Failed to analyze video for ${video.student}`, e);
-        analysisResults[video.student] = 'Error: Failed to analyze video.';
+        // The error is already logged inside analyzeSingleVideoFlow
       } finally {
         if (file) {
           await file.makePrivate();
@@ -59,15 +60,15 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       }
     }
 
-    await db.collection('videoAnalysisJobs').doc(jobId).update({
+    await db.collection('videoAnalysisJobs').doc(masterJobId).update({
       status: 'completed',
-      results: analysisResults,
+      aiJobIds: aiJobIds,
       completedAt: FieldValue.serverTimestamp(),
     });
 
   } catch (error) {
     console.error('Failed to process video analysis job:', error);
-    await db.collection('videoAnalysisJobs').doc(jobId).update({
+    await db.collection('videoAnalysisJobs').doc(masterJobId).update({
       status: 'failed',
       error: error.message,
     });

@@ -10,6 +10,7 @@ export * from './ipRestriction.js';
 export * from './deleteJobs.js';
 export * from './cleanupStuckJobs.js';
 export * from './processVideoAnalysisJob.js';
+export * from './updateQuota.js';
 import { CORS_ORIGINS } from './config.js';
 
 const callOptions = {

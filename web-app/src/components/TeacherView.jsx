@@ -72,6 +72,9 @@ const TeacherView = ({ user }) => {
                             const usage = c.storageUsage || 0;
                             const quota = c.storageQuota || 0;
                             const percentage = quota > 0 ? (usage / quota) * 100 : 0;
+                            const aiUsed = c.aiUsedQuota || 0;
+                            const aiQuota = c.aiQuota || 0;
+                            const aiPercentage = aiQuota > 0 ? (aiUsed / aiQuota) * 100 : 0;
 
                             return (
                                 <div key={c.id} className="class-card">
@@ -89,6 +92,15 @@ const TeacherView = ({ user }) => {
                                             <span> Vids: {formatBytes(c.storageUsageVideos || 0)}</span> | 
                                             <span> Zips: {formatBytes(c.storageUsageZips || 0)}</span>
                                         </div>
+                                    </div>
+                                    <div className="storage-info">
+                                        <label>AI Budget:</label>
+                                        <div className="progress-bar-container">
+                                            <div className="progress-bar" style={{ width: `${aiPercentage}%` }}></div>
+                                        </div>
+                                        <p className="storage-text">
+                                            {`$${aiUsed.toFixed(2)} of $${aiQuota.toFixed(2)} used`}
+                                        </p>
                                     </div>
                                     <Link to={`/class/${c.id}`} className="view-class-link">View Class</Link>
                                 </div>
