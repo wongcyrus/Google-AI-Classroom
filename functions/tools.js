@@ -2,9 +2,9 @@ import { ai } from './ai.js';
 import { z } from 'genkit';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
-export const sendMessageTool = ai.defineTool(
+export const sendMessageToStudent = ai.defineTool(
   {
-    name: 'SendMessageToStudent',
+    name: 'sendMessageToStudent',
     description: 'Sends a direct message to a specific student.',
     inputSchema: z.object({
       studentEmail: z.string().describe('The email address of the student to send the message to.'),
@@ -14,7 +14,7 @@ export const sendMessageTool = ai.defineTool(
     outputSchema: z.string(),
   },
   async (input) => {
-    console.log('SendMessageToStudent input:', input);
+    console.log('sendMessageToStudent input:', input);
     const { studentEmail, message, classId } = input;
     try {
       const db = getFirestore();
