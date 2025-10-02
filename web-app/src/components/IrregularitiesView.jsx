@@ -7,10 +7,29 @@ import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
 import { useClassSchedule } from '../hooks/useClassSchedule';
 
+const MediaPlayer = ({ url, type, onClose }) => {
+  if (!url) return null;
+  return (
+    <div className="media-player-modal" onClick={onClose}>
+      <div className="media-player-content" onClick={(e) => e.stopPropagation()}>
+        <span className="close" onClick={onClose}>&times;</span>
+        {type === 'image' ? (
+          <img src={url} alt="Media" />
+        ) : (
+          <video controls autoPlay>
+            <source src={url} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const IrregularitiesView = () => {
   const { classId } = useParams();
   const [irregularities, setIrregularities] = useState([]);
-  const [imageUrls, setImageUrls] = useState({});
+  const [mediaUrls, setMediaUrls] = useState({});
   const {
     lessons,
     selectedLesson,
@@ -26,6 +45,16 @@ const IrregularitiesView = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [isLastPage, setIsLastPage] = useState(false);
+
+  const [showMediaPlayer, setShowMediaPlayer] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaType, setMediaType] = useState('');
+
+  const openMediaPlayer = (url, type) => {
+    setMediaUrl(url);
+    setMediaType(type);
+    setShowMediaPlayer(true);
+  };
 
   const PAGE_SIZE = 10;
 
@@ -70,17 +99,22 @@ const IrregularitiesView = () => {
 
         const urls = {};
         for (const item of irregularitiesData) {
-          if (item.imageUrl) {
+          const mediaPath = item.imageUrl || item.videoUrl;
+          let mediaType = 'image';
+          if (mediaPath) {
+            if (mediaPath.includes('videos/') || mediaPath.endsWith('.mp4') || mediaPath.endsWith('.webm') || mediaPath.endsWith('.ogv')) {
+              mediaType = 'video';
+            }
             try {
-              const storageRef = ref(storage, item.imageUrl);
+              const storageRef = ref(storage, mediaPath);
               const url = await getDownloadURL(storageRef);
-              urls[item.id] = url;
+              urls[item.id] = { url, type: mediaType };
             } catch (error) {
               console.error("Error getting download URL:", error);
             }
           }
         }
-        setImageUrls(prev => ({ ...prev, ...urls }));
+        setMediaUrls(prev => ({ ...prev, ...urls }));
       } else {
         setIrregularities([]);
         if (direction === 'next') setIsLastPage(true);
@@ -108,8 +142,8 @@ const IrregularitiesView = () => {
     }
   };
 
-  const exportToCSV = async () => {
-    if (!classId) return;
+  const fetchAllIrregularities = async () => {
+    if (!classId) return [];
     setLoading(true);
     const irregularitiesCollectionRef = collection(db, 'irregularities');
     let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
@@ -120,112 +154,115 @@ const IrregularitiesView = () => {
 
     try {
       const snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        alert("No data to export for the selected date range.");
-        setLoading(false);
-        return;
+      if (!snapshot.empty) {
+        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       }
+      return [];
+    } catch (error) {
+      console.error("Error fetching all irregularities:", error);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const allIrregularities = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  const exportToCSV = async () => {
+    const allIrregularities = await fetchAllIrregularities();
+    if (allIrregularities.length === 0) {
+      alert("No data to export.");
+      return;
+    }
 
-      const headers = ['Email', 'Title', 'Message', 'Image Path', 'Timestamp'];
-      const rows = allIrregularities.map(item => [
+    const headers = ['Email', 'Title', 'Message', 'Media Path', 'Timestamp'];
+    const rows = allIrregularities.map(item =>
+      [
         item.email,
         item.title,
         item.message,
-        item.imageUrl,
+        item.imageUrl || item.videoUrl,
         item.timestamp.toDate().toLocaleString(),
-      ].map(value => `"${String(value).replace(/"/g, '""')}"`));
+      ]
+        .map(value => `"${String(value ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    );
 
-      let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "irregularities.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-    } catch (error) {
-      console.error("Error fetching all irregularities for export:", error);
-      alert("Failed to export data.");
-    }
-    setLoading(false);
-  };
-
-  const printReport = () => {
-    window.print();
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'irregularities.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="view-container">
-      <div className="view-header">
-        <h2>Irregularities Report</h2>
-      </div>
-      <div className="actions-container">
-        <DateRangeFilter 
+    <div className="container">
+      <h2 className="header">Irregularities for Class: {classId}</h2>
+      <div className="controls">
+        <DateRangeFilter
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          onLessonChange={handleLessonChange}
           startTime={startTime}
           endTime={endTime}
           onStartTimeChange={setStartTime}
           onEndTimeChange={setEndTime}
-          loading={loading}
-          lessons={lessons}
-          selectedLesson={selectedLesson}
-          onLessonChange={handleLessonChange}
         />
-        <div className="actions">
-          <button onClick={exportToCSV} disabled={loading}>Export as CSV</button>
-          <button onClick={printReport} disabled={loading}>Print</button>
-        </div>
+        <button onClick={exportToCSV} className="button">Export to CSV</button>
       </div>
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Title</th>
-              <th>Message</th>
-              <th>Image</th>
-              <th>Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && irregularities.length === 0 ? (
-              <tr><td colSpan="5">Loading...</td></tr>
-            ) : irregularities.length > 0 ? (
-              irregularities.map(item => (
+
+      {loading ? <p>Loading...</p> : (
+        <>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Timestamp</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Media</th>
+              </tr>
+            </thead>
+            <tbody>
+              {irregularities.map(item => (
                 <tr key={item.id}>
                   <td>{item.email}</td>
+                  <td>{item.timestamp.toDate().toLocaleString()}</td>
                   <td>{item.title}</td>
                   <td>{item.message}</td>
                   <td>
-                    {imageUrls[item.id] ? (
-                      <a href={imageUrls[item.id]} target="_blank" rel="noopener noreferrer">
-                        <img src={imageUrls[item.id]} alt="Irregularity" style={{ width: '100px', height: 'auto' }} />
-                      </a>
-                    ) : (
-                      <span>No Image</span>
+                    {mediaUrls[item.id] && (
+                      <div
+                        className="media-thumbnail"
+                        onClick={() => openMediaPlayer(mediaUrls[item.id].url, mediaUrls[item.id].type)}
+                      >
+                        {mediaUrls[item.id].type === 'image' ? (
+                          <img src={mediaUrls[item.id].url} alt="irregularity" />
+                        ) : (
+                          <div className="play-icon-container">
+                            <svg className="play-icon" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </td>
-                  <td>{item.timestamp.toDate().toLocaleString()}</td>
                 </tr>
-              ))
-            ) : (
-              <tr><td colSpan="5">No irregularities found for the selected criteria.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="pagination-controls">
-        <button onClick={handlePrev} disabled={page <= 1 || loading}>
-          Previous
-        </button>
-        <span>Page {page}</span>
-        <button onClick={handleNext} disabled={isLastPage || loading}>
-          Next
-        </button>
-      </div>
+              ))}
+            </tbody>
+          </table>
+          <div className="pagination">
+            <button onClick={handlePrev} disabled={page <= 1} className="button">Previous</button>
+            <span>Page {page}</span>
+            <button onClick={handleNext} disabled={isLastPage} className="button">Next</button>
+          </div>
+        </>
+      )}
+      {showMediaPlayer && <MediaPlayer url={mediaUrl} type={mediaType} onClose={() => setShowMediaPlayer(false)} />}
     </div>
   );
 };
