@@ -17,65 +17,60 @@ The project is a monorepo composed of three main parts:
 ## Architecture Diagram
 
 ```mermaid
-graph TD
-    subgraph "Firebase"
-        subgraph "Cloud Functions"
-            F1["processVideoJob<br>(on videoJobs document created)"]
-            F2["updateStorageUsageOnUpload<br>(on storage object finalized)"]
-            F3["updateStorageUsageOnDelete<br>(on storage object deleted)"]
-            F4["checkipaddress<br>(before user signed in)"]
-            F5["Callable Functions<br>(analyzeImage, analyzeAllImages, etc.)"]
-        end
-
-        subgraph "Cloud Firestore"
-            C1["/classes/{classId}"]
-            C2["/videoJobs/{jobId}"]
-            C3["/screenshots"]
-        end
-
-        subgraph "Cloud Storage"
-            S1["/videos/{classId}/{videoId}"]
-            S2["/screenshots/{classId}/{screenshotId}"]
-            S3["/zips/{classId}/{zipId}"]
-        end
-
-        subgraph "Firebase Hosting"
-            H1["Web App (React)"]
-        end
-
-        subgraph "Firebase Authentication"
-            Auth["Firebase Authentication"]
-        end
-    end
-
-    subgraph "External Services"
+graph LR
+    subgraph "User & External"
+        U["User (Student/Teacher)"]
         G1["Google AI (Gemini)"]
     end
 
-    U["User (Student/Teacher)"] -- "Interacts with" --> H1
+    subgraph "Firebase Platform"
+        subgraph "Frontend"
+            H1["Web App (React)<br>Firebase Hosting"]
+            Auth["Firebase Authentication"]
+        end
 
+        subgraph "Backend"
+            subgraph "Cloud Functions"
+                F1["processVideoJob"]
+                F2["updateStorageOnUpload"]
+                F3["updateStorageOnDelete"]
+                F4["checkipaddress (Auth Trigger)"]
+                F5["Callable Functions (AI Analysis)"]
+            end
+
+            subgraph "Databases & Storage"
+                C1["Firestore: /classes"]
+                C2["Firestore: /videoJobs"]
+                S1["Storage: /videos"]
+                S2["Storage: /screenshots"]
+                S3["Storage: /zips"]
+            end
+        end
+    end
+
+    %% --- Connections ---
+
+    %% User Flow
+    U -- "Interacts with" --> H1
+    U -- "Logs in via" --> Auth
+    Auth -- "Triggers on sign-in" --> F4
+
+    %% AI Analysis Flow
     H1 -- "Calls" --> F5
     F5 -- "Uses" --> G1
+    F5 -- "Writes to" --> C1
 
-    U -- "Login" --> Auth
-    Auth -- "Triggers" --> F4
-
-    F1 -- "Reads from" --> C3
+    %% Video Creation Flow
+    H1 -- "Creates Job" --> C2
+    C2 -- "Triggers" --> F1
+    F1 -- "Reads from" --> S2
     F1 -- "Writes to" --> S1
     F1 -- "Updates" --> C2
 
-    F2 -- "Updates" --> C1
-    F3 -- "Updates" --> C1
-
-    C2 -- "Triggers" --> F1
-
-    S2 -- "Triggers" --> F2
-    S1 -- "Triggers" --> F2
-    S3 -- "Triggers" --> F2
-
-    S2 -- "Triggers" --> F3
-    S1 -- "Triggers" --> F3
-    S3 -- "Triggers" --> F3
+    %% Storage Quota Flow
+    S1 & S2 & S3 -- "Upload triggers" --> F2
+    S1 & S2 & S3 -- "Delete triggers" --> F3
+    F2 & F3 -- "Update usage" --> C1
 ```
 
 ## Features
