@@ -18,33 +18,31 @@ The project is a monorepo composed of three main parts:
 
 ```mermaid
 graph LR
-    subgraph "User & External"
-        U["User (Student/Teacher)"]
-        G1["Google AI (Gemini)"]
-    end
+    U["User (Student/Teacher)"]
 
-    subgraph "Firebase Platform"
-        subgraph "Frontend"
+    subgraph "Google Cloud Platform (GCP)"
+        subgraph "Firebase"
             H1["Web App (React)<br>Firebase Hosting"]
             Auth["Firebase Authentication"]
+            C1["Firestore: /classes"]
+            C2["Firestore: /videoJobs"]
+            S1["Storage: /videos"]
+            S2["Storage: /screenshots"]
+            S3["Storage: /zips"]
         end
 
-        subgraph "Backend"
-            subgraph "Cloud Functions"
+        subgraph "Compute"
+            subgraph "Cloud Functions (2nd Gen)"
                 F1["processVideoJob"]
                 F2["updateStorageOnUpload"]
                 F3["updateStorageOnDelete"]
                 F4["checkipaddress (Auth Trigger)"]
                 F5["Callable Functions (AI Analysis)"]
             end
+        end
 
-            subgraph "Databases & Storage"
-                C1["Firestore: /classes"]
-                C2["Firestore: /videoJobs"]
-                S1["Storage: /videos"]
-                S2["Storage: /screenshots"]
-                S3["Storage: /zips"]
-            end
+        subgraph "AI"
+            G1["Vertex AI (Gemini)"]
         end
     end
 
