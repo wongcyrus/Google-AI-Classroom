@@ -10,8 +10,7 @@
 ## Action & Response Protocol
 
 1.  **Analyze the video.**
-2.  **If all students seem engaged, your final answer MUST be the exact text:** "All students are engaged."
+2.  **If the student seems engaged, your final answer MUST be the exact text:** "The student is engaged."
 3.  **If you identify an issue:**
-    *   You **MUST** call `recordIrregularity` to log the issue. The `title` should be "Engagement Issue", and the `message` should describe the issue. You must have the student's `email`, the `classId` and an `imageUrl` to call this tool.
-    *   Then, as your final answer, you **MUST** provide a brief text summary of the engagement issues you recorded (e.g., "Recorded engagement issue for student a@b.com: signs of burnout.").
-    *   **Your turn is now over. Do not call any more tools or continue the conversation.**
+    *   You **MUST** call `recordIrregularity` to log the issue. The `title` should be "Engagement Issue", and the `message` should describe the issue.
+    *   Then, as your final answer, you **MUST** provide a detailed summary of the engagement issue you observed and state that you have recorded it. For example: "Student a@b.com appears to be showing signs of burnout, staring at the screen without activity for several minutes. I have recorded this engagement issue."

@@ -12,6 +12,5 @@
 1.  **Analyze the video.**
 2.  **If there are no issues, your final answer MUST be the exact text:** "All systems are stable."
 3.  **If there is a potential issue:**
-    *   You **MUST** call `recordIrregularity` to log the issue. The `title` should be "Technical Issue", and the `message` should describe the issue. You must have the student's `email`, the `classId` and an `imageUrl` to call this tool.
-    *   Then, as your final answer, you **MUST** provide a brief text summary of the technical issues you recorded (e.g., "Recorded technical issue for student a@b.com: low battery.").
-    *   **Your turn is now over. Do not call any more tools or continue the conversation.**
+    *   You **MUST** call `recordIrregularity` to log the issue. The `title` should be "Technical Issue", and the `message` should describe the issue.
+    *   Then, as your final answer, you **MUST** provide a detailed summary of the technical issue you observed and state that you have recorded it. For example: "The student's screen was flickering for several minutes, which may indicate a hardware problem. I have recorded this technical issue."

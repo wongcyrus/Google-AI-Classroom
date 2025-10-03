@@ -15,5 +15,5 @@
 ## Actions
 
 *   **For each student, you MUST use the `recordStudentProgress` tool to record a summary of their activity.** The summary should be concise and informative.
-*   **After using the tool, you MUST provide a brief text summary of the actions you took** (e.g., "Recorded progress for student a@b.com").
+*   **After using the tool, you MUST provide the same summary that you recorded as your final answer.** For example: "The student is currently working on setting up a new virtual machine but seems to be struggling with the network configuration."
 *   **If you are unable to summarize the activity of a student, you MUST respond with the exact text:** "Unable to summarize work for [student's email]."
