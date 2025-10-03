@@ -21,7 +21,7 @@ graph LR
     U["User (Student/Teacher)"]
 
     subgraph "Google Cloud Platform (GCP)"
-        subgraph "Firebase"
+        subgraph "Firebase Services"
             H1["Web App (React)<br>Firebase Hosting"]
             Auth["Firebase Authentication"]
             C1["Firestore: /classes"]
@@ -31,19 +31,15 @@ graph LR
             S3["Storage: /zips"]
         end
 
-        subgraph "Compute"
-            subgraph "Cloud Functions (2nd Gen)"
-                F1["processVideoJob"]
-                F2["updateStorageOnUpload"]
-                F3["updateStorageOnDelete"]
-                F4["checkipaddress (Auth Trigger)"]
-                F5["Callable Functions (AI Analysis)"]
-            end
+        subgraph "Cloud Functions (2nd Gen)"
+            F1["processVideoJob"]
+            F2["updateStorageOnUpload"]
+            F3["updateStorageOnDelete"]
+            F4["checkipaddress (Auth Trigger)"]
+            F5["Callable Functions (AI Analysis)"]
         end
 
-        subgraph "AI"
-            G1["Vertex AI (Gemini)"]
-        end
+        G1["Vertex AI (Gemini)"]
     end
 
     %% --- Connections ---
