@@ -82,6 +82,11 @@ service cloud.firestore {
 
     match /videoAnalysisJobs/{jobId} {
       allow create: if isTeacher() && request.resource.data.requester == request.auth.uid;
+      allow read: if isTeacher();
+    }
+
+    match /aiJobs/{jobId} {
+      allow read, create: if isTeacher();
     }
 
     match /mails/{mailId} {

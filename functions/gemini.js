@@ -106,7 +106,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
   },
   async ({ videoUrl, prompt, classId, studentEmail, masterJobId }) => {
     const fullPrompt = [
-        { text: `This video belongs to ${studentEmail} (video URL: ${videoUrl}). The class ID is ${classId}. ${prompt}` },
+        { text: `The following video is from a student. Email: ${studentEmail}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
         { media: { url: videoUrl } },
     ];
     const media = [{ media: { url: videoUrl } }];
@@ -117,6 +117,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     if (!hasQuota) {
         const jobId = await logJob({
             classId,
+            student: studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'blocked-by-quota',
             promptText: fullPrompt.find(p => p.text)?.text,
@@ -141,6 +142,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
 
         const jobId = await logJob({
             classId,
+            student: studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'completed',
             promptText: fullPrompt.find(p => p.text)?.text,
@@ -157,6 +159,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     } catch (error) {
         const jobId = await logJob({
             classId,
+            student: studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'failed',
             promptText: fullPrompt.find(p => p.text)?.text,

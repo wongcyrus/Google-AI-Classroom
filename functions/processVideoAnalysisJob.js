@@ -24,7 +24,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
         .where('status', '==', 'completed')
         .where('classId', '==', jobData.classId)
         .where(jobData.filterField, '>=', jobData.startTime)
-        .where(jobData.filterField, '<= ', jobData.endTime);
+        .where(jobData.filterField, '<=', jobData.endTime);
       
       const querySnapshot = await q.get();
       querySnapshot.forEach(doc => {

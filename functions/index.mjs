@@ -16,10 +16,11 @@ import { CORS_ORIGINS } from './config.js';
 const callOptions = {
   cors: CORS_ORIGINS,
   enforceAppCheck: true,
+  memory: '1GiB',
 };
 
 export const analyzeImage = onCallGenkit({
-    ...callOptions,
+    ...callOptions,    
     authPolicy: (auth) => {
         return auth?.token?.email_verified && auth?.token?.role === 'teacher';
     },

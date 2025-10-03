@@ -1,4 +1,4 @@
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 const db = getFirestore();
 
@@ -8,7 +8,6 @@ const db = getFirestore();
  * @returns {Promise<string>} The ID of the newly created job document.
  */
 export async function logJob(jobData) {
-  const { FieldValue } = await import('firebase-admin/firestore');
   const jobWithTimestamp = {
     ...jobData,
     timestamp: FieldValue.serverTimestamp(),
