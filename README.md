@@ -14,6 +14,70 @@ The project is a monorepo composed of three main parts:
 *   **`functions/`**: A Node.js backend using Firebase Functions. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles and managing AI prompts.
 
+## Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph "Firebase"
+        subgraph "Cloud Functions"
+            F1["processVideoJob<br>(on videoJobs document created)"]
+            F2["updateStorageUsageOnUpload<br>(on storage object finalized)"]
+            F3["updateStorageUsageOnDelete<br>(on storage object deleted)"]
+            F4["checkipaddress<br>(before user signed in)"]
+            F5["Callable Functions<br>(analyzeImage, analyzeAllImages, etc.)"]
+        end
+
+        subgraph "Cloud Firestore"
+            C1["/classes/{classId}"]
+            C2["/videoJobs/{jobId}"]
+            C3["/screenshots"]
+        end
+
+        subgraph "Cloud Storage"
+            S1["/videos/{classId}/{videoId}"]
+            S2["/screenshots/{classId}/{screenshotId}"]
+            S3["/zips/{classId}/{zipId}"]
+        end
+
+        subgraph "Firebase Hosting"
+            H1["Web App (React)"]
+        end
+
+        subgraph "Firebase Authentication"
+            Auth["Firebase Authentication"]
+        end
+    end
+
+    subgraph "External Services"
+        G1["Google AI (Gemini)"]
+    end
+
+    U["User (Student/Teacher)"] -- "Interacts with" --> H1
+
+    H1 -- "Calls" --> F5
+    F5 -- "Uses" --> G1
+
+    U -- "Login" --> Auth
+    Auth -- "Triggers" --> F4
+
+    F1 -- "Reads from" --> C3
+    F1 -- "Writes to" --> S1
+    F1 -- "Updates" --> C2
+
+    F2 -- "Updates" --> C1
+    F3 -- "Updates" --> C1
+
+    C2 -- "Triggers" --> F1
+
+    S2 -- "Triggers" --> F2
+    S1 -- "Triggers" --> F2
+    S3 -- "Triggers" --> F2
+
+    S2 -- "Triggers" --> F3
+    S1 -- "Triggers" --> F3
+    S3 -- "Triggers" --> F3
+```
+
 ## Features
 
 ### Student Experience
@@ -124,4 +188,3 @@ This script handles all the necessary steps automatically:
 3.  Deploys all services (Hosting, Functions, Firestore rules, etc.) to Firebase.
 
 **Prerequisites:** Before running the script, make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated with your project.
-
