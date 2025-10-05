@@ -47,21 +47,23 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     console.log(`Updating storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
     const classRef = db.collection('classes').doc(classId);
+    const storageRef = classRef.collection('metadata').doc('storage');
     
     try {
-        // Atomically increment the storageUsage field
         const updatePayload = {
             storageUsage: FieldValue.increment(fileSize),
             [usageField]: FieldValue.increment(fileSize)
         };
-        await classRef.update(updatePayload);
+        await storageRef.update(updatePayload);
         console.log(`Successfully updated storage usage for class ${classId}.`);
 
-        // After updating, check if the quota is exceeded.
         const classDoc = await classRef.get();
+        const storageDoc = await storageRef.get();
+
         if (classDoc.exists) {
             const classData = classDoc.data();
-            const usage = classData.storageUsage || 0;
+            const storageData = storageDoc.data();
+            const usage = storageData.storageUsage || 0;
             const quota = classData.storageQuota || 0;
 
             if (quota > 0 && usage > quota) {
@@ -76,18 +78,16 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
                     storageUsage: FieldValue.increment(-fileSize),
                     [usageField]: FieldValue.increment(-fileSize)
                 };
-                await classRef.update(revertPayload);
+                await storageRef.update(revertPayload);
                 console.log(`Reverted storage usage increment for ${classId}.`);
             }
         }
 
     } catch (error) {
-        // If the document or field doesn't exist, set it.
-        if (error.code === 5) { // NOT_FOUND error
-            console.log(`Handling NOT_FOUND error for class ${classId}.`);
+        if (error.code === 5) { // NOT_FOUND on the update, meaning the storage doc doesn't exist
+            console.log(`Handling NOT_FOUND error for storage doc on class ${classId}.`);
             const classDoc = await classRef.get();
             if (classDoc.exists) {
-                // The document exists, but the storageUsage field likely doesn't. This is the first upload.
                 const classData = classDoc.data();
                 const quota = classData.storageQuota || 0;
 
@@ -97,16 +97,14 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
                     await bucket.file(filePath).delete();
                     console.log(`Successfully deleted ${filePath}.`);
                 } else {
-                    // The field doesn't exist, so we create it with the current file size.
                     const initialPayload = { 
                         storageUsage: fileSize,
                         [usageField]: fileSize
                     };
-                    await classRef.set(initialPayload, { merge: true });
+                    await storageRef.set(initialPayload);
                     console.log(`Initialized storageUsage for class ${classId}.`);
                 }
             } else {
-                // The class document itself does not exist. This is an orphaned file.
                 console.error(`Class document ${classId} not found. Deleting orphaned file: ${filePath}`);
                 const bucket = adminStorage.bucket(event.bucket);
                 await bucket.file(filePath).delete();
@@ -155,14 +153,14 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
 
     console.log(`Decreasing storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
-    const classRef = db.collection('classes').doc(classId);
+    const storageRef = db.collection('classes').doc(classId).collection('metadata').doc('storage');
 
     try {
         const updatePayload = {
             storageUsage: FieldValue.increment(-fileSize),
             [usageField]: FieldValue.increment(-fileSize)
         };
-        await classRef.update(updatePayload);
+        await storageRef.update(updatePayload);
         console.log(`Successfully decreased storage usage for class ${classId}.`);
     } catch (error) {
         console.error(`Failed to decrease storage usage for class ${classId}:`, error);

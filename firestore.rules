@@ -46,6 +46,11 @@ service cloud.firestore {
         allow read: if isTeacher() || isStudentInClass(classId);
         allow write: if isStudentInClass(classId) && request.auth.uid == studentId;
       }
+
+      match /metadata/{docId} {
+        allow read: if isTeacher();
+        allow write: if false; // Only backend functions can write
+      }
     }
 
     match /screenshots/{screenshotId} {

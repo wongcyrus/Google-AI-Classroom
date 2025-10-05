@@ -308,15 +308,22 @@ const MonitorView = ({ classId: propClassId }) => {
                 return newSize === prevSize ? prevSize : newSize;
             });
             setIsCapturing(data.isCapturing || false);
-            setStorageUsage(data.storageUsage || 0);
             setStorageQuota(data.storageQuota || 0);
-            setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
-            setStorageUsageVideos(data.storageUsageVideos || 0);
-            setStorageUsageZips(data.storageUsageZips || 0);
             setAiQuota(data.aiQuota || 0);
             setAiUsedQuota(data.aiUsedQuota || 0);
         } else {
             setClassList([]);
+        }
+    });
+
+    const storageRef = doc(db, "classes", classId, "metadata", "storage");
+    const unsubscribeStorage = onSnapshot(storageRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            setStorageUsage(data.storageUsage || 0);
+            setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
+            setStorageUsageVideos(data.storageUsageVideos || 0);
+            setStorageUsageZips(data.storageUsageZips || 0);
         }
     });
 
@@ -345,6 +352,7 @@ const MonitorView = ({ classId: propClassId }) => {
 
     return () => {
         unsubscribeClass();
+        unsubscribeStorage();
         unsubscribeStatus();
     }
   }, [classId]);

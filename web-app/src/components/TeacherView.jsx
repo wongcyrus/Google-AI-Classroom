@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
@@ -39,10 +39,20 @@ const TeacherView = ({ user }) => {
 
     const classesRef = collection(db, "classes");
     const qClasses = query(classesRef, where("teachers", "array-contains", user.email));
-    const unsubscribeClasses = onSnapshot(qClasses, (querySnapshot) => {
+    const unsubscribeClasses = onSnapshot(qClasses, async (querySnapshot) => {
       const classesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       classesData.sort((a, b) => a.id.localeCompare(b.id));
-      setClasses(classesData);
+      
+      const updatedClasses = await Promise.all(classesData.map(async c => {
+          const storageRef = doc(db, "classes", c.id, "metadata", "storage");
+          const docSnap = await getDoc(storageRef);
+          if (docSnap.exists()) {
+              return { ...c, ...docSnap.data() };
+          }
+          return c;
+      }));
+
+      setClasses(updatedClasses);
       setLoading(false);
     });
 
