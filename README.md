@@ -14,93 +14,126 @@ The project is a monorepo composed of three main parts:
 *   **`functions/`**: A Node.js backend using Firebase Functions. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles and managing AI prompts.
 
+For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md).
+
 ## Architecture Diagram
 
 ```mermaid
-graph LR
-    U["User (Student/Teacher)"]
-
-    subgraph "Google Cloud Platform (GCP)"
-        subgraph "Firebase Services"
-            H1["Web App (React)<br>Firebase Hosting"]
-            Auth["Firebase Authentication"]
-            C1["Firestore: /classes"]
-            C2["Firestore: /videoJobs"]
-            S1["Storage: /videos"]
-            S2["Storage: /screenshots"]
-            S3["Storage: /zips"]
-        end
-
-        subgraph "Cloud Functions (2nd Gen)"
-            F1["processVideoJob"]
-            F2["updateStorageOnUpload"]
-            F3["updateStorageOnDelete"]
-            F4["checkipaddress (Auth Trigger)"]
-            F5["Callable Functions (AI Analysis)"]
-        end
-
-        G1["Vertex AI (Gemini)"]
+graph TD
+    subgraph "User Interface"
+        WebApp["React Web App (Vite)"]
     end
 
-    %% --- Connections ---
+    subgraph "Firebase"
+        Auth["Firebase Authentication"]
+        Hosting["Firebase Hosting"]
+        Firestore["Firestore Database"]
+        Storage["Cloud Storage"]
+        Functions["Cloud Functions"]
+    end
 
-    %% User Flow
-    U -- "Interacts with" --> H1
-    U -- "Logs in via" --> Auth
-    Auth -- "Triggers on sign-in" --> F4
+    subgraph "Google Cloud"
+        VertexAI["Vertex AI (Gemini)"]
+    end
 
-    %% AI Analysis Flow
-    H1 -- "Calls" --> F5
-    F5 -- "Uses" --> G1
-    F5 -- "Writes to" --> C1
+    subgraph "Firestore Collections"
+        C_classes["classes"]
+        C_studentProfiles["studentProfiles"]
+        C_students["students"]
+        C_teachers["teachers"]
+        C_screenshots["screenshots"]
+        C_videoJobs["videoJobs"]
+        C_zipJobs["zipJobs"]
+        C_videoAnalysisJobs["videoAnalysisJobs"]
+        C_aiJobs["aiJobs"]
+        C_irregularities["irregularities"]
+        C_mails["mails"]
+        C_notifications["notifications"]
+        C_progress["progress"]
+        C_prompts["prompts"]
+    end
 
-    %% Video Creation Flow
-    H1 -- "Creates Job" --> C2
-    C2 -- "Triggers" --> F1
-    F1 -- "Reads from" --> S2
-    F1 -- "Writes to" --> S1
-    F1 -- "Updates" --> C2
+    WebApp -- "Interacts with" --> Auth
+    WebApp -- "Hosted on" --> Hosting
+    WebApp -- "Reads/Writes" --> Firestore
+    WebApp -- "Uploads to" --> Storage
 
-    %% Storage Quota Flow
-    S1 & S2 & S3 -- "Upload triggers" --> F2
-    S1 & S2 & S3 -- "Delete triggers" --> F3
-    F2 & F3 -- "Update usage" --> C1
+    Functions -- "Triggered by" --> Auth
+    Functions -- "Triggered by" --> Firestore
+    Functions -- "Triggered by" --> Storage
+    Functions -- "Calls" --> VertexAI
+    Functions -- "Reads/Writes" --> Firestore
+
+    Firestore -- "Contains" --> C_classes
+    Firestore -- "Contains" --> C_studentProfiles
+    Firestore -- "Contains" --> C_students
+    Firestore -- "Contains" --> C_teachers
+    Firestore -- "Contains" --> C_screenshots
+    Firestore -- "Contains" --> C_videoJobs
+    Firestore -- "Contains" --> C_zipJobs
+    Firestore -- "Contains" --> C_videoAnalysisJobs
+    Firestore -- "Contains" --> C_aiJobs
+    Firestore -- "Contains" --> C_irregularities
+    Firestore -- "Contains" --> C_mails
+    Firestore -- "Contains" --> C_notifications
+    Firestore -- "Contains" --> C_progress
+    Firestore -- "Contains" --> C_prompts
 ```
 
-## Features
+## Backend Functionality
 
-### Student Experience
+All backend logic is implemented as individual, single-purpose Cloud Functions located in the `functions/` directory. The functions are organized into modules based on their trigger type and domain.
 
-*   **Simple & Secure Login:** Students can easily log in and select their active class. Login may be restricted by IP address based on class schedules.
-*   **Real-time Guidance:** Receives gentle, helpful pop-up messages from the AI to prevent issues related to focus, technical problems, or frustration.
-*   **OS-Level Notifications:** Gets important announcements and messages from the teacher via system notifications.
+### AI-Powered Analysis (`ai_flows`)
 
-### Teacher Experience
+This module contains all the core AI logic, powered by Google's Genkit and the Gemini model.
 
-*   **Unified Dashboard:** A central dashboard provides a high-level overview of all classes, including student count, storage usage, and AI budget consumption.
-*   **Class Scheduling:** Define class schedules with specific dates, times, and timezones. This powers features like IP restrictions and event filtering.
-*   **Class Management:** Create, view, and manage classes, student enrollment, and resource quotas.
-*   **Live Student Monitoring:** View a gallery of all students who are actively sharing their screens.
-*   **Proactive AI Assistant:** The AI analyzes student screens and provides teachers with real-time alerts for:
-    *   **Potential Distractions:** Notifies the teacher when it has sent a student a gentle reminder to stay focused.
-    *   **Technical Difficulties:** Flags students who may be experiencing technical issues (e.g., low battery, frozen apps).
-    *   **Student Wellness:** Alerts the teacher when a student appears frustrated or burned out.
-*   **Advanced Notification Center:**
-    *   A dedicated "Notifications" tab displays all AI-generated alerts.
-    *   Features OS-level notifications for new alerts so the teacher never misses an important event.
-    *   **Lesson-Based Filtering:** A dropdown menu, generated from the class schedule, allows teachers to quickly filter events to a specific class session.
-    *   A "Mute" button to temporarily disable OS-level notifications.
-*   **Asynchronous Data Archiving & Mailbox:**
-    *   Select multiple student recordings and request them as a single ZIP archive.
-    *   The archiving process runs as a background job, tracked in the "Data Management" view.
-    *   Receive a notification in a dedicated **Mailbox** with a secure download link when the archive is ready.
-*   **Detailed Reporting:** Review filterable reports on student progress and any flagged irregularities.
-*   **Customizable AI Behavior:** Teachers can edit the prompts that power the AI assistant, tailoring its personality and actions.
+*   **AI Flows**: Defines the logic for analyzing images and videos. 
+    *   `analyzeImageFlow`: Analyzes a single image.
+    *   `analyzeAllImagesFlow`: Analyzes a batch of images.
+    *   `analyzeSingleVideoFlow`: Analyzes a single video.
+*   **AI Tools**: A set of tools that the AI can use to interact with the system.
+    *   `sendMessageToStudent`: Sends a direct message to a student.
+    *   `recordIrregularity`: Records an irregularity activity.
+    *   `recordStudentProgress`: Records a student's work progress.
+    *   `sendMessageToTeacher`: Sends a message to the teacher.
+*   **Cost & Quota Management**: Manages the cost and usage of the AI services.
+    *   `cost.js`: Calculates the cost of AI jobs.
+    *   `quotaManagement.js`: Checks and updates the AI quota for each class.
+    *   `quotaTriggers.js`: A Firestore trigger that updates the AI quota when an AI job is created.
 
-### Security & Resource Management
+### Authentication Triggers (`auth_triggers`)
 
-*   **IP-Based Access Control:** Restrict student logins to specific IP addresses or CIDR ranges (e.g., the school's network). This restriction is automatically enforced only during scheduled class times.
-*   **AI & Storage Quotas:** Set and monitor budgets for AI analysis and cloud storage on a per-class basis. The system prevents resource over-usage and provides detailed breakdowns of consumption (e.g., storage used by screenshots vs. videos vs. ZIPs).
+These functions are triggered by Firebase Authentication events.
+
+*   `ipRestriction.js`: Checks the user's IP address upon login and restricts access based on the class schedule and IP whitelist.
+*   `userManagement.js`: A Firestore trigger that automatically updates a student's profile when they are added to or removed from a class.
+
+### Media Processing (`media_processing`)
+
+This module handles the processing of media files.
+
+*   `processVideoJob.js`: A Firestore trigger that creates a video from a series of screenshots when a `videoJobs` document is created.
+*   `processZipJob.js`: A Firestore trigger that creates a zip archive of videos and sends a download link to the requester when a `zipJobs` document is created.
+*   `cleanupStuckJobs.js`: A scheduled function that runs periodically to clean up any video processing jobs that have been stuck in a processing state for too long.
+
+### Scheduled Tasks (`scheduled_tasks`)
+
+These functions are triggered on a schedule.
+
+*   `scheduledTasks.js`:
+    *   `handleAutomaticCapture`: Starts and stops screen capture for classes with `automaticCapture` enabled.
+    *   `handleAutomaticVideoCombination`: Automatically creates video jobs for classes with `automaticCombine` enabled.
+
+### Storage Triggers (`storage_triggers`)
+
+These functions are triggered by Cloud Storage events.
+
+*   `storageQuota.js`:
+    *   `updateStorageUsageOnUpload`: Updates the storage usage for a class when a file is uploaded and enforces the storage quota.
+    *   `updateStorageUsageOnDelete`: Updates the storage usage for a class when a file is deleted.
+*   `screenshotManagement.js`:
+    *   `deleteScreenshotsByDateRange`: A callable function that allows teachers to delete screenshots within a specific date range.
 
 ## Getting Started (Local Development)
 
