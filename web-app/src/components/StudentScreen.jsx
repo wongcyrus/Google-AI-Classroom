@@ -1,5 +1,5 @@
 import React from 'react';
-import './MonitorView.css'; // Import styles from MonitorView
+import './StudentScreen.css'; // Import styles from StudentScreen.css
 
 const StudentScreen = ({ student, isSharing, screenshotUrl, onClick }) => {
   return (

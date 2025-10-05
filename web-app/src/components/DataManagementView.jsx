@@ -128,10 +128,6 @@ const DataManagementView = () => {
     const jobDocRef = doc(db, 'zipJobs', jobId);
     const jobDocSnap = await getDoc(jobDocRef); // getDocs is for queries, getDoc is for single doc
 
-    // This is wrong, getDoc is for single doc ref
-    // I will fix this in the next turn. For now, I will just add the code.
-    // Correct code should be: const jobDocSnap = await getDoc(jobDocRef);
-
     if (jobDocSnap.exists()) {
       const jobData = jobDocSnap.data();
       if (jobData.zipPath) {

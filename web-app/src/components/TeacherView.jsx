@@ -3,21 +3,7 @@ import { collection, onSnapshot, query, where, getDoc, doc } from 'firebase/fire
 import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
-
-// Helper function to format bytes
-const formatBytes = (bytes, decimals = 2) => {
-    if (!bytes || bytes <= 0) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    if (i <= 0) {
-        return `${Math.round(bytes)} Bytes`;
-    }
-
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
+import { formatBytes } from '../utils/formatters';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);

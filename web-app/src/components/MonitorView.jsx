@@ -8,163 +8,11 @@ import StudentScreen from './StudentScreen';
 import IndividualStudentView from './IndividualStudentView';
 import TimelineSlider from './TimelineSlider';
 import { useClassSchedule } from '../hooks/useClassSchedule';
+import { formatBytes } from '../utils/formatters';
+import Modal from './Modal';
 
-// Helper function to format bytes
-const formatBytes = (bytes, decimals = 2) => {
-    if (!bytes || bytes <= 0) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    if (i <= 0) {
-        return `${Math.round(bytes)} Bytes`;
-    }
-
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-// Modal component can be simplified or remain as is, its styling is independent.
-const Modal = ({ show, onClose, title, children }) => {
-    if (!show) return null;
-    return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-            <div style={{ backgroundColor: '#FFF', padding: '20px 25px', borderRadius: '8px', zIndex: 1001, width: '60vw', minWidth: '600px', maxWidth: '90vw', height: '70vh', maxHeight: '90vh', display: 'flex', flexDirection: 'column'}} onClick={e => e.stopPropagation()}>
-                <h2 style={{marginTop: 0}}>{title}</h2>
-                <div style={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>{children}</div>
-                <button onClick={onClose} style={{ marginTop: '15px', width: 'auto', alignSelf: 'flex-end', padding: '8px 16px' }}>Close</button>
-            </div>
-        </div>
-    );
-};
-
-const ControlsPanel = ({ 
-    message, setMessage, handleSendMessage, setShowControls, 
-    frameRate, handleFrameRateChange, frameRateOptions, 
-    maxImageSize, handleMaxImageSizeChange, maxImageSizeOptions,
-    isCapturing, toggleCapture, isPaused, setIsPaused, 
-    setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
-    handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
-    isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, 
-    setIsAllImagesAnalysisRunning, samplingRate, setSamplingRate,
-    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips,
-    aiQuota, aiUsedQuota
-}) => {
-    const storagePercentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
-    const aiPercentage = aiQuota > 0 ? (aiUsedQuota / aiQuota) * 100 : 0;
-
-    return (
-    <div className="monitor-controls-sidebar">
-        <div className="control-item"><button onClick={() => setShowControls(false)} className="hide-controls-btn">Hide Controls</button></div>
-        <div className="control-section">
-            <div className="control-item">
-              <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Broadcast a message" />
-            </div>
-            <div className="control-item"><button onClick={handleSendMessage}>Send</button></div>
-        </div>
-        <div className="control-section">
-            <div className="control-item">
-              <label>Frame Rate (seconds):</label>
-              <select value={frameRate} onChange={handleFrameRateChange}>
-                {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}</option>)}
-              </select>
-            </div>
-            <div className="control-item">
-              <label>Max Image Size:</label>
-              <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
-                {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            </div>
-        </div>
-        <div className="control-section">
-            <div className="control-item"><button onClick={toggleCapture}>{isCapturing ? 'Stop Capture' : 'Start Capture'}</button></div>
-            <div className="control-item"><button onClick={() => setIsPaused(!isPaused)}>{isPaused ? 'Resume' : 'Pause'}</button></div>
-            <div className="control-item"><button onClick={() => setShowPromptModal(true)} className="secondary-action">Prompt</button></div>
-        </div>
-        <div className="control-section">
-            <div className="control-item"><button onClick={() => setShowNotSharingModal(true)} className="secondary-action">Show Students Not Sharing ({notSharingStudents.length})</button></div>
-            <div className="control-item"><button onClick={handleDownloadAttendance} className="secondary-action">Download Attendance</button></div>
-        </div>
-        <div className="control-section">
-            <div className="control-item" style={{width: '100%'}}>
-                <label>Storage Usage:</label>
-                <div className="storage-info" style={{ width: '100%' }}>
-                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
-                        <div className="progress-bar" style={{ width: `${storagePercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
-                    </div>
-                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
-                        {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} used` : `${formatBytes(storageUsage)} used`}
-                    </p>
-                    <div className="storage-breakdown" style={{ fontSize: '0.7em', marginTop: '5px', textAlign: 'center' }}>
-                        <p style={{ margin: '2px 0' }}>Screenshots: {formatBytes(storageUsageScreenShots)}</p>
-                        <p style={{ margin: '2px 0' }}>Videos: {formatBytes(storageUsageVideos)}</p>
-                        <p style={{ margin: '2px 0' }}>Zips: {formatBytes(storageUsageZips)}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div className="control-section">
-            <div className="control-item" style={{width: '100%'}}>
-                <label>AI Budget:</label>
-                <div className="storage-info" style={{ width: '100%' }}>
-                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
-                        <div className="progress-bar" style={{ width: `${aiPercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
-                    </div>
-                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
-                        {`$${aiUsedQuota.toFixed(2)} of $${aiQuota.toFixed(2)} used`}
-                    </p>
-                </div>
-            </div>
-        </div>
-        {editablePromptText && (
-            <div className="control-section">
-              <div className="control-item">
-              {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
-                <>
-                  <button onClick={() => setIsPerImageAnalysisRunning(true)}>
-                    Start Per Image Analysis
-                  </button>
-                  <button onClick={() => setIsAllImagesAnalysisRunning(true)}>
-                    Start All Images Analysis
-                  </button>
-                </>
-              )}
-              </div>
-              <div className="control-item">
-              {isPerImageAnalysisRunning && (
-                <button onClick={() => setIsPerImageAnalysisRunning(false)}>
-                  Stop Per Image Analysis
-                </button>
-              )}
-              </div>
-              <div className="control-item">
-              {isAllImagesAnalysisRunning && (
-                <button onClick={() => setIsAllImagesAnalysisRunning(false)}>
-                  Stop All Images Analysis
-                </button>
-              )}
-              </div>
-              <div className="control-item">
-              <label>
-                Analysis Interval:
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={samplingRate}
-                  onChange={(e) => setSamplingRate(Number(e.target.value))}
-                />
-                {samplingRate}
-              </label>
-              </div>
-            </div>
-          )}
-    </div>
-    )}
-;
-
-
-const MemoizedControlsPanel = React.memo(ControlsPanel);
+import ControlsPanel from './monitor/ControlsPanel';
+import StudentsGrid from './monitor/StudentsGrid';
 
 const MonitorView = ({ classId: propClassId }) => {
   const { classId: paramClassId } = useParams();
@@ -662,8 +510,8 @@ const MonitorView = ({ classId: propClassId }) => {
         const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
   
         return (
-          <div className="monitor-view">
-            {showControls ? <MemoizedControlsPanel 
+          <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
+            {showControls ? <ControlsPanel 
               message={message}
               setMessage={setMessage}
               handleSendMessage={handleSendMessage}
@@ -721,129 +569,89 @@ const MonitorView = ({ classId: propClassId }) => {
                     onChange={handleTimelineChange}
                     bufferedRanges={[]}
                   />
-                )}        </div>
-        <div className="students-container">
-          {reviewTime
-            ? classList.sort((a, b) => a.localeCompare(b)).map(email => {
-                const studentId = studentIdMap.current.get(email.toLowerCase());
-                const student = { id: studentId || email, email };
+                )}
+              </div>
+              <StudentsGrid
+                reviewTime={reviewTime}
+                classList={classList}
+                studentIdMap={studentIdMap}
+                screenshots={screenshots}
+                frameRate={frameRate}
+                students={students}
+                now={now}
+                isPaused={isPaused}
+                handleStudentClick={handleStudentClick}
+              />
+            </div>
 
-                let screenshotUrl = null;
-                if (studentId) {
-                  const screenshotData = screenshots[studentId];
-                  if (screenshotData && screenshotData.timestamp) {
-                    const screenshotTime = screenshotData.timestamp.toDate();
-                    const reviewTimeDate = new Date(reviewTime);
-                    const secondsDiff = (reviewTimeDate.getTime() - screenshotTime.getTime()) / 1000;
-                    if (secondsDiff >= 0 && secondsDiff < frameRate) {
-                      screenshotUrl = screenshotData.url;
-                    }
-                  }
-                }
+            <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
+              {notSharingStudents.length > 0 ? (
+                <ul style={{listStyleType: 'none', padding: 0}}>{notSharingStudents.map(s => <li key={s.id} style={{padding: '5px 0'}}>{s.email}</li>)}</ul>
+              ) : <p>All students are sharing their screen.</p>}
+            </Modal>
 
-                return (
-                  <StudentScreen
-                    key={email}
-                    student={student}
-                    isSharing={!!screenshotUrl} // In review, "isSharing" can mean "has a screenshot for this time"
-                    screenshotUrl={screenshotUrl}
-                    onClick={() => handleStudentClick(student)}
-                  />
-                );
-              })
-            : students.filter(student => student.isSharing).sort((a, b) => a.email.localeCompare(b.email)).map(student => {
-                const screenshotData = screenshots[student.id];
-                let screenshotUrl = null;
+            {selectedStudent && <IndividualStudentView student={selectedStudent} screenshotUrl={selectedScreenshotUrl} onClose={() => setSelectedStudent(null)} />}
 
-                if (screenshotData && screenshotData.timestamp) {
-                  const screenshotTime = screenshotData.timestamp.toDate();
-                  const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
-                  if (isPaused || secondsDiff <= frameRate) {
-                    screenshotUrl = screenshotData.url;
-                  }
-                }
-
-                return (
-                  <StudentScreen
-                    key={student.id}
-                    student={student}
-                    isSharing={student.isSharing}
-                    screenshotUrl={screenshotUrl}
-                    onClick={() => handleStudentClick(student)}
-                  />
-                );
-              })}
-        </div>
-      </div>
-
-      <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
-        {notSharingStudents.length > 0 ? (
-          <ul style={{listStyleType: 'none', padding: 0}}>{notSharingStudents.map(s => <li key={s.id} style={{padding: '5px 0'}}>{s.email}</li>)}</ul>
-        ) : <p>All students are sharing their screen.</p>}
-      </Modal>
-
-      {selectedStudent && <IndividualStudentView student={selectedStudent} screenshotUrl={selectedScreenshotUrl} onClose={() => setSelectedStudent(null)} />}
-
-      <Modal
-          show={showPromptModal}
-          onClose={() => {
-            setShowPromptModal(false);
-          }}
-          title="Analyze Student Screens"
-      >
-          <select 
-            value={selectedPrompt ? selectedPrompt.id : ''} 
-            onChange={(e) => {
-              const prompt = prompts.find(p => p.id === e.target.value);
-              setSelectedPrompt(prompt);
-              setEditablePromptText(prompt ? prompt.promptText : '');
-            }}
-            style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
-          >
-            <option value="" disabled>Select a prompt</option>
-            {prompts.map(p => (
-              <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
-            ))}
-          </select>
-          
-          <textarea
-              value={editablePromptText}
-              onChange={(e) => setEditablePromptText(e.target.value)}
-              placeholder="Select a prompt or enter text here..."
-              style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
-          />
-
-          <div style={{ marginTop: '10px' }}>
-            {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
-            {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
-              <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
-                {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
-              </button>
-            )}
-            {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
-              <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
-                {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
-              </button>
-            )}
-          </div>
-      </Modal>
-      <Modal
-          show={showAnalysisResultsModal}
-          onClose={() => setShowAnalysisResultsModal(false)}
-          title="Analysis Results"
-      >
-          {Object.keys(analysisResults).length > 0 ? (
-              <ul>
-                  {Object.entries(analysisResults).map(([email, result]) => (
-                      <li key={email}><strong>{email}:</strong> {result}</li>
+            <Modal
+                show={showPromptModal}
+                onClose={() => {
+                  setShowPromptModal(false);
+                }}
+                title="Analyze Student Screens"
+            >
+                <select 
+                  value={selectedPrompt ? selectedPrompt.id : ''} 
+                  onChange={(e) => {
+                    const prompt = prompts.find(p => p.id === e.target.value);
+                    setSelectedPrompt(prompt);
+                    setEditablePromptText(prompt ? prompt.promptText : '');
+                  }}
+                  style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
+                >
+                  <option value="" disabled>Select a prompt</option>
+                  {prompts.map(p => (
+                    <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
                   ))}
-              </ul>
-          ) : (
-              <p>No analysis has been run yet.</p>
-          )}
-      </Modal>
-    </div>
-  );
+                </select>
+                
+                <textarea
+                    value={editablePromptText}
+                    onChange={(e) => setEditablePromptText(e.target.value)}
+                    placeholder="Select a prompt or enter text here..."
+                    style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
+                />
+
+                <div style={{ marginTop: '10px' }}>
+                  {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
+                  {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
+                    <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
+                      {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
+                    </button>
+                  )}
+                  {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
+                    <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
+                      {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
+                    </button>
+                  )}
+                </div>
+            </Modal>
+            <Modal
+                show={showAnalysisResultsModal}
+                onClose={() => setShowAnalysisResultsModal(false)}
+                title="Analysis Results"
+            >
+                {Object.keys(analysisResults).length > 0 ? (
+                    <ul>
+                        {Object.entries(analysisResults).map(([email, result]) => (
+                            <li key={email}><strong>{email}:</strong> {result}</li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p>No analysis has been run yet.</p>
+                )}
+            </Modal>
+          </div>
+        );
 };
 
 export default MonitorView;
