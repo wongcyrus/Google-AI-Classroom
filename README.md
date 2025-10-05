@@ -39,18 +39,18 @@ graph TD
         subgraph "AI Flows (`ai_flows`)"
             F_analyzeImage["analyzeImage (onCall)"]
             F_analyzeAllImages["analyzeAllImages (onCall)"]
-            F_onAiJobCreated["onAiJobCreated (onWrite `aiJobs`)"]
-            F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate `videoAnalysisJobs`)"]
+            F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
+            F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
         end
 
         subgraph "Auth Triggers (`auth_triggers`)"
             F_checkIpAddress["checkipaddress (beforeUserSignedIn)"]
-            F_updateUserClasses["updateUserClassesOnClassUpdate (onWrite `classes`)"]
+            F_updateUserClasses["updateUserClassesOnClassUpdate (onWrite classes)"]
         end
 
         subgraph "Media Processing (`media_processing`)"
-            F_processVideoJob["processVideoJob (onCreate `videoJobs`)"]
-            F_processZipJob["processZipJob (onCreate `zipJobs`)"]
+            F_processVideoJob["processVideoJob (onCreate videoJobs)"]
+            F_processZipJob["processZipJob (onCreate zipJobs)"]
             F_cleanupStuckJobs["cleanupStuckJobs (onSchedule)"]
         end
 
@@ -78,11 +78,11 @@ graph TD
     Auth -- "Triggers" --> F_checkIpAddress
 
     %% Firestore Triggers
-    Firestore -- "`classes` write" --> F_updateUserClasses
-    Firestore -- "`videoJobs` create" --> F_processVideoJob
-    Firestore -- "`zipJobs` create" --> F_processZipJob
-    Firestore -- "`videoAnalysisJobs` create" --> F_processVideoAnalysisJob
-    Firestore -- "`aiJobs` write" --> F_onAiJobCreated
+    Firestore -- "classes write" --> F_updateUserClasses
+    Firestore -- "videoJobs create" --> F_processVideoJob
+    Firestore -- "zipJobs create" --> F_processZipJob
+    Firestore -- "videoAnalysisJobs create" --> F_processVideoAnalysisJob
+    Firestore -- "aiJobs write" --> F_onAiJobCreated
 
     %% Storage Triggers
     Storage -- "onFinalize" --> F_updateStorageUpload
