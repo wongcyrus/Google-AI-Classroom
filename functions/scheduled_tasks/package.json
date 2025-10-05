@@ -1,0 +1,14 @@
+{
+  "name": "scheduled_tasks",
+  "description": "Scheduled tasks for the application",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.mjs",
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^6.4.0",
+    "date-fns-tz": "^3.2.0"
+  }
+}

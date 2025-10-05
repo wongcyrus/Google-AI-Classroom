@@ -1,0 +1,13 @@
+{
+  "name": "storage_triggers",
+  "description": "Storage triggers for the application",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.mjs",
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^6.4.0"
+  }
+}

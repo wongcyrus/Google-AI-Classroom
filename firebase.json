@@ -1,8 +1,36 @@
 {
-  "functions": {
-    "source": "functions",
-    "runtime": "nodejs22"
-  },
+  "functions": [
+    {
+      "source": "functions/ai_flows",
+      "codebase": "ai-flows",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/media_processing",
+      "codebase": "media-processing",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/scheduled_tasks",
+      "codebase": "scheduled-tasks",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/auth_triggers",
+      "codebase": "auth-triggers",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/storage_triggers",
+      "codebase": "storage-triggers",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

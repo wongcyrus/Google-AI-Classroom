@@ -1,8 +1,6 @@
 # Dependencies
-/node_modules
-/functions/node_modules
-/web-app/node_modules
-/admin/node_modules
+**/node_modules
+
 
 # Build artifacts
 /web-app/dist

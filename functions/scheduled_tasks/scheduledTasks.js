@@ -1,7 +1,7 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import * as dateFnsTz from 'date-fns-tz';
+import { format } from 'date-fns-tz';
 
 // Helper to get local time and day in a specific timezone
 function getLocalTimeInfo(date, timeZone) {
@@ -102,14 +102,16 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
     snapshot.forEach(doc => {
         const classData = doc.data();
         const classId = doc.id;
-        const { schedule, students, timeZone, teachers } = classData;
+        const { schedule, students, teachers } = classData;
 
-        if (!schedule || !timeZone || !schedule.timeSlots || !students || students.length === 0) {
+        if (!schedule || !schedule.timeZone || !schedule.timeSlots || !students || students.length === 0) {
             return; // Skip if not properly configured
         }
 
+        const { timeZone } = schedule;
+
         const { localDay } = getLocalTimeInfo(now, timeZone);
-        const todayStr = dateFnsTz.formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
+        const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
         const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
 
         schedule.timeSlots.forEach(slot => {
@@ -117,7 +119,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                 return; // Not scheduled for today
             }
 
-            const lessonEndDateTimeInZone = dateFnsTz.zonedTimeToUtc(`${todayStr}T${slot.endTime}`, timeZone);
+            const offset = format(now, 'XXX', { timeZone });
+            const lessonEndDateTimeStr = `${todayStr}T${slot.endTime}:00${offset}`;
+            const lessonEndDateTimeInZone = new Date(lessonEndDateTimeStr);
 
             // Check if the lesson ended within the last 30 minutes
             if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
@@ -127,7 +131,8 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                     notificationsToCreate.set(classId, teachers || []);
                 }
 
-                const lessonStartDateTimeInZone = dateFnsTz.zonedTimeToUtc(`${todayStr}T${slot.startTime}`, timeZone);
+                const lessonStartDateTimeStr = `${todayStr}T${slot.startTime}:00${offset}`;
+                const lessonStartDateTimeInZone = new Date(lessonStartDateTimeStr);
 
                 const jobsForClass = students.map(studentEmail => {
                     const student = studentEmail.trim().toLowerCase();

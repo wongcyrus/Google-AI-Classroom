@@ -1,3 +1,4 @@
+import './firebase.js';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';

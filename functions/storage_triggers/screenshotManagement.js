@@ -1,7 +1,7 @@
-
+import './firebase.js';
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getApp } from "firebase-admin/app";
 
 const db = getFirestore();
@@ -10,7 +10,7 @@ const app = getApp();
 
 export const deleteScreenshotsByDateRange = onCall(async (request) => {
   if (!request.auth) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "unauthenticated",
       "The function must be called while authenticated."
     );
@@ -19,7 +19,7 @@ export const deleteScreenshotsByDateRange = onCall(async (request) => {
   const { classId, startDate, endDate } = request.data;
 
   if (!classId || !startDate || !endDate) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "invalid-argument",
       "The function must be called with classId, startDate, and endDate."
     );
@@ -68,7 +68,7 @@ export const deleteScreenshotsByDateRange = onCall(async (request) => {
     return { status: "success", message: `Successfully deleted ${snapshot.size} screenshots.` };
   } catch (error) {
     console.error("Error deleting screenshots:", error);
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "internal",
       "An error occurred while deleting screenshots."
     );
