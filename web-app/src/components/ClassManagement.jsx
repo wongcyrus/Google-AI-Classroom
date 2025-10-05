@@ -61,7 +61,7 @@ const ClassManagement = ({ user }) => {
     if (!user) return;
 
     const classesRef = collection(db, 'classes');
-    const q = query(classesRef, where('teachers', 'array-contains', user.email));
+    const q = query(classesRef, where('teacherUids', 'array-contains', user.uid));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const classesData = [];

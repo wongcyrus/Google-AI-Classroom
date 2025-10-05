@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase-config';
-import { collection, doc, onSnapshot, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
@@ -8,10 +8,9 @@ import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const PAGE_SIZE = 10;
 
-const NotificationsView = () => {
+const NotificationsView = ({ user }) => {
   const { classId } = useParams();
   const [messages, setMessages] = useState([]);
-  const [teacherEmail, setTeacherEmail] = useState(null);
   
   const {
     lessons,
@@ -29,22 +28,12 @@ const NotificationsView = () => {
   const [loading, setLoading] = useState(false);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  useEffect(() => {
-    const classRef = doc(db, "classes", classId);
-    const unsubscribe = onSnapshot(classRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setTeacherEmail(data.teacher || (data.teachers && data.teachers[0]));
-      }
-    });
-    return () => unsubscribe();
-  }, [classId]);
 
-  const fetchMessages = async (direction = 'initial') => {
-    if (!teacherEmail) return;
+  const fetchMessages = useCallback(async (direction = 'initial') => {
+    if (!user || !user.uid) return;
     setLoading(true);
 
-    const messagesRef = collection(db, "teachers", teacherEmail, "messages");
+    const messagesRef = collection(db, "teachers", user.uid, "messages");
     let q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", new Date(startTime)), where("timestamp", "<=", new Date(endTime)), orderBy("timestamp", "desc"));
 
     if (direction === 'initial') {
@@ -83,11 +72,11 @@ const NotificationsView = () => {
     }
 
     setLoading(false);
-  };
+  }, [user, classId, startTime, endTime, lastDoc, firstDoc]);
 
   useEffect(() => {
     fetchMessages('initial');
-  }, [teacherEmail, classId, startTime, endTime]);
+  }, [fetchMessages]);
 
   const handleNext = () => {
     if (!isLastPage) {

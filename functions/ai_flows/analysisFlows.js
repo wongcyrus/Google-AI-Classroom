@@ -15,7 +15,7 @@ export const analyzeImageFlow = ai.defineFlow(
   {
     name: 'analyzeImageFlow',
     inputSchema: z.object({
-      screenshots: z.record(z.string()),
+      screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
       prompt: z.string(),
       classId: z.string(),
     }),
@@ -23,9 +23,9 @@ export const analyzeImageFlow = ai.defineFlow(
   },
   async ({ screenshots, prompt, classId }, context) => {
     const analysisResults = {};
-    for (const [email, url] of Object.entries(screenshots)) {
+    for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
         const fullPrompt = [
-            { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. ${prompt}` },
+            { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. ${prompt}` },
             { media: { url } },
         ];
         const media = [{ media: { url } }];
@@ -36,13 +36,15 @@ export const analyzeImageFlow = ai.defineFlow(
         if (!hasQuota) {
             await logJob({
                 classId,
+                studentUid,
+                studentEmail: email,
                 jobType: 'analyzeImage',
                 status: 'blocked-by-quota',
                 promptText: fullPrompt.find(p => p.text)?.text,
                 mediaPaths: media.map(m => m.media.url),
                 cost: 0,
             });
-            analysisResults[email] = 'Error: Insufficient quota.';
+            analysisResults[studentUid] = 'Error: Insufficient quota.';
             continue;
         }
 
@@ -60,6 +62,8 @@ export const analyzeImageFlow = ai.defineFlow(
 
             await logJob({
                 classId,
+                studentUid,
+                studentEmail: email,
                 jobType: 'analyzeImage',
                 status: 'completed',
                 promptText: fullPrompt.find(p => p.text)?.text,
@@ -71,10 +75,12 @@ export const analyzeImageFlow = ai.defineFlow(
                 cost,
                 result: response.text,
             });
-            analysisResults[email] = response.text;
+            analysisResults[studentUid] = response.text;
         } catch (error) {
             await logJob({
                 classId,
+                studentUid,
+                studentEmail: email,
                 jobType: 'analyzeImage',
                 status: 'failed',
                 promptText: fullPrompt.find(p => p.text)?.text,
@@ -82,7 +88,7 @@ export const analyzeImageFlow = ai.defineFlow(
                 cost: 0,
                 errorDetails: error.message,
             });
-            analysisResults[email] = `Error: ${error.message}`;
+            analysisResults[studentUid] = `Error: ${error.message}`;
         }
     }
     return analysisResults;
@@ -96,6 +102,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       videoUrl: z.string(),
       prompt: z.string(),
       classId: z.string(),
+      studentUid: z.string(),
       studentEmail: z.string(),
       masterJobId: z.string().optional(),
     }),
@@ -104,9 +111,9 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
         jobId: z.string(),
     }),
   },
-  async ({ videoUrl, prompt, classId, studentEmail, masterJobId }) => {
+  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId }) => {
     const fullPrompt = [
-        { text: `The following video is from a student. Email: ${studentEmail}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
+        { text: `The following video is from a student. Email: ${studentEmail}. Student UID: ${studentUid}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
         { media: { url: videoUrl } },
     ];
     const media = [{ media: { url: videoUrl } }];
@@ -117,7 +124,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     if (!hasQuota) {
         const jobId = await logJob({
             classId,
-            student: studentEmail,
+            studentUid,
+            studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'blocked-by-quota',
             promptText: fullPrompt.find(p => p.text)?.text,
@@ -142,7 +150,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
 
         const jobId = await logJob({
             classId,
-            student: studentEmail,
+            studentUid,
+            studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'completed',
             promptText: fullPrompt.find(p => p.text)?.text,
@@ -159,7 +168,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     } catch (error) {
         const jobId = await logJob({
             classId,
-            student: studentEmail,
+            studentUid,
+            studentEmail,
             jobType: 'analyzeSingleVideo',
             status: 'failed',
             promptText: fullPrompt.find(p => p.text)?.text,
@@ -177,16 +187,16 @@ export const analyzeAllImagesFlow = ai.defineFlow(
   {
     name: 'analyzeAllImagesFlow',
     inputSchema: z.object({
-      screenshots: z.record(z.string()),
-      prompt: z.string(),
-      classId: z.string(),
+        screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
+        prompt: z.string(),
+        classId: z.string(),
     }),
     outputSchema: z.string(),
   },
   async ({ screenshots, prompt, classId }, context) => {
-    const imageParts = Object.entries(screenshots).flatMap(([email, url]) => (
+    const imageParts = Object.entries(screenshots).flatMap(([studentUid, { url, email }]) => (
       [
-        { text: `The following image is the screen shot from ${email} (image URL: ${url}):` },
+        { text: `The following image is the screen shot from ${email} (student UID: ${studentUid}, image URL: ${url}):` },
         { media: { url } },
       ]
     ));
@@ -196,7 +206,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
       { text: `The class ID is ${classId}. ${prompt}` },
     ];
 
-    const media = Object.values(screenshots).map(url => ({ media: { url } }));
+    const media = Object.values(screenshots).map(s => ({ media: { url: s.url } }));
 
     const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
     const hasQuota = await checkQuota(classId, estimatedCost);

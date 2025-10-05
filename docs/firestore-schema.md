@@ -8,8 +8,10 @@ This document outlines the Firestore database schema for the AI Invigilator appl
 erDiagram
     classes {
         string classId PK
-        array teachers
-        array students
+        array teachers "invited teacher emails"
+        array students "invited student emails"
+        array teacherUids "enrolled teacher UIDs"
+        array studentUids "enrolled student UIDs"
         number storageQuota
         number storageUsage
         object schedule
@@ -25,24 +27,29 @@ erDiagram
         timestamp captureStartedAt
     }
 
+    teacherProfiles {
+        string teacherUid PK
+        array classes
+    }
+
     studentProfiles {
         string studentUid PK
         array classes
     }
 
     students {
-        string studentEmail PK
+        string studentUid PK
     }
 
     teachers {
-        string teacherEmail PK
+        string teacherUid PK
     }
 
     screenshots {
         string screenshotId PK
         string classId FK
-        string studentId FK
-        string email
+        string studentUid FK
+        string email "denormalized"
         string imagePath
         number size
         timestamp timestamp
@@ -52,7 +59,8 @@ erDiagram
     videoJobs {
         string jobId PK
         string classId FK
-        string student
+        string studentUid FK
+        string studentEmail "denormalized"
         timestamp startTime
         timestamp endTime
         string status
@@ -69,7 +77,8 @@ erDiagram
     zipJobs {
         string jobId PK
         string classId FK
-        string student
+        string studentUid FK
+        string studentEmail "denormalized"
         timestamp startTime
         timestamp endTime
         string status
@@ -87,7 +96,8 @@ erDiagram
     aiJobs {
         string jobId PK
         string classId FK
-        string studentEmail
+        string studentUid FK
+        string studentEmail "denormalized"
         string prompt
         string status
         string result
@@ -97,8 +107,8 @@ erDiagram
     irregularities {
         string irregularityId PK
         string classId FK
-        string studentId FK
-        string email
+        string studentUid FK
+        string email "denormalized"
         string title
         string message
         timestamp timestamp
@@ -122,7 +132,8 @@ erDiagram
     progress {
         string progressId PK
         string classId FK
-        string studentEmail
+        string studentUid FK
+        string studentEmail "denormalized"
         string progress
         timestamp timestamp
     }
@@ -136,6 +147,7 @@ erDiagram
     }
 
     classes ||--o{ studentProfiles : "many-to-many"
+    classes ||--o{ teacherProfiles : "many-to-many"
     classes }o--|| students : "one-to-many"
     classes }o--|| teachers : "one-to-many"
     screenshots }o--|| classes : "many-to-one"
@@ -161,7 +173,8 @@ Stores information about AI processing jobs.
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `classId`: (string) The ID of the class.
-    *   `studentEmail`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student.
+    *   `studentEmail`: (string) The student's email, denormalized for easier querying/display.
     *   `prompt`: (string) The prompt used for the AI job.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
     *   `result`: (string) The result of the AI job.
@@ -173,8 +186,10 @@ Stores information about each class.
 
 *   **Document ID**: `classId` (string)
 *   **Fields**:
-    *   `teachers`: (array) An array of teacher emails.
-    *   `students`: (array) An array of student emails.
+    *   `teachers`: (array) An array of teacher emails, used for inviting teachers who may not have an account yet.
+    *   `students`: (array) An array of student emails, used for inviting students who may not have an account yet.
+    *   `teacherUids`: (array) An array of teacher UIDs who have successfully enrolled in the class.
+    *   `studentUids`: (array) An array of student UIDs who have successfully enrolled in the class.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
     *   `storageUsage`: (number) The total storage used by the class in bytes.
     *   `schedule`: (object) An object containing the class schedule.
@@ -215,8 +230,8 @@ Stores information about any irregularities detected.
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `classId`: (string) The ID of the class where the irregularity occurred.
-    *   `studentId`: (string) The ID of the student involved.
-    *   `email`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student involved.
+    *   `email`: (string) The student's email, denormalized for display.
     *   `title`: (string) A title for the irregularity.
     *   `message`: (string) A description of the irregularity.
     *   `timestamp`: (timestamp) A timestamp of when the irregularity occurred.
@@ -237,7 +252,7 @@ Stores notifications for users.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
-    *   `userId`: (string) The ID of the user the notification is for.
+    *   `userId`: (string) The UID of the user the notification is for.
     *   `message`: (string) The notification message.
     *   `read`: (boolean) A boolean indicating if the notification has been read.
     *   `timestamp`: (timestamp) A timestamp of when the notification was created.
@@ -249,7 +264,8 @@ Stores student progress reports.
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `classId`: (string) The ID of the class.
-    *   `studentEmail`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student.
+    *   `studentEmail`: (string) The student's email, denormalized for display.
     *   `progress`: (string) A description of the student's progress.
     *   `timestamp`: (timestamp) A timestamp of when the progress was recorded.
 
@@ -271,8 +287,8 @@ Stores metadata for each screenshot.
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `classId`: (string) The ID of the class the screenshot belongs to.
-    *   `studentId`: (string) The ID of the student who took the screenshot.
-    *   `email`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student who took the screenshot.
+    *   `email`: (string) The student's email, denormalized for easier querying.
     *   `imagePath`: (string) The path to the screenshot image in Firebase Storage.
     *   `size`: (number) The size of the screenshot in bytes.
     *   `timestamp`: (timestamp) A timestamp of when the screenshot was taken.
@@ -290,7 +306,7 @@ Stores information about each student.
 
 Used for sending messages to students.
 
-*   **Document ID**: `studentEmail` (string)
+*   **Document ID**: `studentUid` (string)
 *   **Subcollections**:
     *   **`messages`**: Stores direct messages sent to the student.
         *   **Document ID**: Auto-generated.
@@ -302,7 +318,7 @@ Used for sending messages to students.
 
 Used for sending messages to teachers.
 
-*   **Document ID**: `teacherEmail` (string)
+*   **Document ID**: `teacherUid` (string)
 *   **Subcollections**:
     *   **`messages`**: Stores direct messages sent to the teacher.
         *   **Document ID**: Auto-generated.
@@ -327,7 +343,8 @@ Stores information about video processing jobs.
 *   **Document ID**: `jobId` (string)
 *   **Fields**:
     *   `classId`: (string) The ID of the class the video belongs to.
-    *   `student`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student.
+    *   `studentEmail`: (string) The student's email, denormalized for easier querying.
     *   `startTime`: (timestamp) The start time of the video.
     *   `endTime`: (timestamp) The end time of the video.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
@@ -347,7 +364,8 @@ Stores information about zip file creation jobs.
 *   **Document ID**: `jobId` (string)
 *   **Fields**:
     *   `classId`: (string) The ID of the class the zip file belongs to.
-    *   `student`: (string) The student's email.
+    *   `studentUid`: (string) The UID of the student.
+    *   `studentEmail`: (string) The student's email, denormalized for easier querying.
     *   `startTime`: (timestamp) The start time of the zip file.
     *   `endTime`: (timestamp) The end time of the zip file.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
@@ -356,13 +374,13 @@ Stores information about zip file creation jobs.
 
 ## Relationships
 
-*   **`classes` <-> `studentProfiles`**: Many-to-many. A class has many students, a student can be in many classes. Synced by a cloud function.
-*   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher emails, which are used as keys in the `students` and `teachers` collections for messaging.
-*   **`screenshots` -> `classes` & `studentProfiles`**: Many-to-one. A screenshot belongs to one class and one student.
-*   **`videoJobs` -> `classes` & `studentProfiles`**: Many-to-one. A video job belongs to one class and one student.
+*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, a user can be in many classes. Synced by a cloud function that populates `studentUids` / `teacherUids` in `classes` and the `classes` array in the user's profile.
+*   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher UIDs, which are used as keys in the `students` and `teachers` collections for messaging.
+*   **`screenshots` -> `classes` & `studentProfiles`**: Many-to-one. A screenshot belongs to one class and one student, linked via `studentUid`.
+*   **`videoJobs` -> `classes` & `studentProfiles`**: Many-to-one. A video job belongs to one class and one student, linked via `studentUid`.
 *   **`videoAnalysisJobs` -> `videoJobs`**: One-to-one. A video analysis job is created from a video job.
 *   **`aiJobs` -> `videoAnalysisJobs`**: Many-to-one. Many AI jobs can be part of one video analysis job.
-*   **`irregularities` / `progress` -> `classes` & `studentProfiles`**: Many-to-one. These records belong to a class and a student.
+*   **`irregularities` / `progress` -> `classes` & `studentProfiles`**: Many-to-one. These records belong to a class and a student, linked via `studentUid`.
 *   **`aiJobs` -> `prompts`**: Many-to-one. An AI job uses one prompt.
-*   **`notifications` -> `users` (Firebase Auth)**: Many-to-one. A notification is for a specific user.
+*   **`notifications` -> `users` (Firebase Auth)**: Many-to-one. A notification is for a specific user, linked via `userId` (which should be a UID).
 *   **`mails`**: Standalone collection for triggering emails.

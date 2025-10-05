@@ -24,7 +24,7 @@ const TeacherView = ({ user }) => {
     if (!user) return;
 
     const classesRef = collection(db, "classes");
-    const qClasses = query(classesRef, where("teachers", "array-contains", user.email));
+    const qClasses = query(classesRef, where("teacherUids", "array-contains", user.uid));
     const unsubscribeClasses = onSnapshot(qClasses, async (querySnapshot) => {
       const classesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       classesData.sort((a, b) => a.id.localeCompare(b.id));
@@ -75,7 +75,7 @@ const TeacherView = ({ user }) => {
                             return (
                                 <div key={c.id} className="class-card">
                                     <h3>{c.name || c.id}</h3>
-                                    <p>{c.students ? c.students.length : 0} student(s)</p>
+                                    <p>{c.studentUids ? c.studentUids.length : 0} student(s)</p>
                                     <div className="storage-info">
                                         <div className="progress-bar-container">
                                             <div className="progress-bar" style={{ width: `${percentage}%` }}></div>

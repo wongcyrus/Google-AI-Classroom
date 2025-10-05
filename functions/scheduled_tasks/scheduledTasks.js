@@ -1,3 +1,4 @@
+import { getAuth } from 'firebase-admin/auth';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
@@ -85,7 +86,6 @@ const videoCombinationOptions = {
 };
 
 export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async (event) => {
-    const db = getFirestore();
     const now = new Date();
 
     const classesRef = db.collection('classes');
@@ -99,24 +99,23 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
     const jobCreationPromises = [];
     const notificationsToCreate = new Map(); // Use a map to avoid duplicate notifications per class
 
-    snapshot.forEach(doc => {
+    for (const doc of snapshot.docs) {
         const classData = doc.data();
         const classId = doc.id;
-        const { schedule, students, teachers } = classData;
+        const { schedule, studentUids, teacherUids } = classData;
 
-        if (!schedule || !schedule.timeZone || !schedule.timeSlots || !students || students.length === 0) {
-            return; // Skip if not properly configured
+        if (!schedule || !schedule.timeZone || !schedule.timeSlots || !studentUids || studentUids.length === 0) {
+            continue; // Skip if not properly configured
         }
 
         const { timeZone } = schedule;
-
         const { localDay } = getLocalTimeInfo(now, timeZone);
         const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
         const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
 
-        schedule.timeSlots.forEach(slot => {
+        for (const slot of schedule.timeSlots) {
             if (!slot.days.includes(localDay)) {
-                return; // Not scheduled for today
+                continue; // Not scheduled for today
             }
 
             const offset = format(now, 'XXX', { timeZone });
@@ -128,53 +127,62 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                 logger.info(`Found recently ended class ${classId} at ${slot.endTime}. Triggering video combination.`);
 
                 if (!notificationsToCreate.has(classId)) {
-                    notificationsToCreate.set(classId, teachers || []);
+                    notificationsToCreate.set(classId, teacherUids || []);
                 }
 
-                const lessonStartDateTimeStr = `${todayStr}T${slot.startTime}:00${offset}`;
-                const lessonStartDateTimeInZone = new Date(lessonStartDateTimeStr);
+                const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
 
-                const jobsForClass = students.map(studentEmail => {
-                    const student = studentEmail.trim().toLowerCase();
+                for (const studentUid of studentUids) {
                     const videoJobsRef = db.collection('videoJobs');
-                    
                     const q = videoJobsRef
                         .where('classId', '==', classId)
-                        .where('student', '==', student)
+                        .where('studentUid', '==', studentUid)
                         .where('startTime', '==', lessonStartDateTimeInZone)
                         .where('endTime', '==', lessonEndDateTimeInZone);
 
-                    return q.get().then(existingJobs => {
+                    const jobPromise = q.get().then(async (existingJobs) => {
                         if (existingJobs.empty) {
-                            const newDocRef = videoJobsRef.doc();
-                            logger.info(`Creating video job for student ${student} in class ${classId}`);
-                            return newDocRef.set({
-                                jobId: newDocRef.id,
-                                classId: classId,
-                                student: student,
-                                startTime: lessonStartDateTimeInZone,
-                                endTime: lessonEndDateTimeInZone,
-                                status: 'pending',
-                                createdAt: FieldValue.serverTimestamp(),
-                            });
+                            try {
+                                const userRecord = await adminAuth.getUser(studentUid);
+                                const studentEmail = userRecord.email;
+
+                                if (!studentEmail) {
+                                    logger.error(`Student with UID ${studentUid} has no email. Cannot create video job.`);
+                                    return;
+                                }
+
+                                const newDocRef = videoJobsRef.doc();
+                                logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId}`);
+                                return newDocRef.set({
+                                    jobId: newDocRef.id,
+                                    classId: classId,
+                                    studentUid: studentUid,
+                                    studentEmail: studentEmail,
+                                    startTime: lessonStartDateTimeInZone,
+                                    endTime: lessonEndDateTimeInZone,
+                                    status: 'pending',
+                                    createdAt: FieldValue.serverTimestamp(),
+                                });
+                            } catch (e) {
+                                logger.error(`Failed to get user record for UID ${studentUid}`, e);
+                            }
                         } else {
-                            logger.info(`Video job already exists for student ${student} in class ${classId}, skipping.`);
-                            return Promise.resolve();
+                            logger.info(`Video job already exists for student ${studentUid} in class ${classId}, skipping.`);
                         }
                     });
-                });
-                jobCreationPromises.push(...jobsForClass);
+                    jobCreationPromises.push(jobPromise);
+                }
             }
-        });
-    });
+        }
+    }
 
     await Promise.all(jobCreationPromises);
 
     const notificationPromises = [];
     for (const [classId, teachers] of notificationsToCreate.entries()) {
-        for (const teacherEmail of teachers) {
+        for (const teacherUid of teachers) {
             const promise = db.collection('notifications').add({
-                userId: teacherEmail,
+                userId: teacherUid,
                 message: `Automatic video creation has started for class '${classId}'. Videos will appear in the Playback tab as they become available.`,
                 createdAt: FieldValue.serverTimestamp(),
                 read: false,

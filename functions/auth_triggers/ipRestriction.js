@@ -69,20 +69,26 @@ export const checkipaddress = beforeUserSignedIn(async (event) => {
     }
 
     const classesRef = db.collection('classes');
-    const q = classesRef.where('students', 'array-contains', user.email);
-    const querySnapshot = await q.get();
+    const qByEmail = classesRef.where('students', 'array-contains', user.email);
+    const qByUid = classesRef.where('studentUids', 'array-contains', user.uid);
 
-    if (querySnapshot.empty) {
+    const [snapshotByEmail, snapshotByUid] = await Promise.all([qByEmail.get(), qByUid.get()]);
+
+    const allDocs = new Map();
+    snapshotByEmail.forEach(doc => allDocs.set(doc.id, doc));
+    snapshotByUid.forEach(doc => allDocs.set(doc.id, doc));
+
+    if (allDocs.size === 0) {
         console.log(`Exiting: User ${user.email} is not enrolled in any classes.`);
         return;
     }
 
-    console.log(`User ${user.email} is in ${querySnapshot.size} class(es). Checking for active IP restrictions...`);
+    console.log(`User ${user.email} is in ${allDocs.size} class(es). Checking for active IP restrictions...`);
 
     let allRestrictions = [];
     let restrictionsFound = false;
 
-    querySnapshot.forEach(doc => {
+    allDocs.forEach(doc => {
         const classData = doc.data();
         // Only consider restrictions if the login is during a scheduled time
         if (isDuringScheduledTime(classData.schedule)) {
@@ -99,8 +105,6 @@ export const checkipaddress = beforeUserSignedIn(async (event) => {
 
     if (!restrictionsFound) {
         // No active restrictions at this time, so allow login.
-        // This means that if a class is in session but has no IP restrictions defined (the input was empty),
-        // the login is permitted from any IP address.
         console.log('Exiting: No active IP restrictions found for this user at this time. Login allowed.');
         return;
     }

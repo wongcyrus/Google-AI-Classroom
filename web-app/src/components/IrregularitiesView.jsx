@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db, storage } from '../firebase-config';
 import { useParams } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
@@ -40,8 +40,8 @@ const IrregularitiesView = () => {
     handleLessonChange,
   } = useClassSchedule(classId);
 
-  const [lastDoc, setLastDoc] = useState(null);
-  const [firstDoc, setFirstDoc] = useState(null);
+  const lastDocRef = useRef(null);
+  const firstDocRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [isLastPage, setIsLastPage] = useState(false);
@@ -74,10 +74,10 @@ const IrregularitiesView = () => {
 
     switch (direction) {
       case 'next':
-        q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
+        q = query(q, startAfter(lastDocRef.current), limit(PAGE_SIZE));
         break;
       case 'prev':
-        q = query(q, endBefore(firstDoc), limitToLast(PAGE_SIZE));
+        q = query(q, endBefore(firstDocRef.current), limitToLast(PAGE_SIZE));
         break;
       default: // first
         q = query(q, limit(PAGE_SIZE));
@@ -94,8 +94,8 @@ const IrregularitiesView = () => {
           irregularitiesData.reverse();
         }
         setIrregularities(irregularitiesData);
-        setFirstDoc(snapshot.docs[0]);
-        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+        firstDocRef.current = snapshot.docs[0];
+        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1];
 
         const urls = {};
         for (const item of irregularitiesData) {
@@ -124,11 +124,11 @@ const IrregularitiesView = () => {
       console.error("Error fetching irregularities:", error);
     }
     setLoading(false);
-  }, [classId, startTime, endTime, lastDoc, firstDoc]);
+  }, [classId, startTime, endTime]);
 
   useEffect(() => {
     fetchIrregularities('first', 1);
-  }, [classId, startTime, endTime]);
+  }, [fetchIrregularities]);
 
   const handleNext = () => {
     if (!isLastPage) {

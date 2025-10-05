@@ -8,7 +8,7 @@ import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
 import { useClassSchedule } from '../hooks/useClassSchedule';
 
-const PlaybackView = ({ user }) => {
+const PlaybackView = () => {
   const { classId } = useParams();
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);
@@ -114,21 +114,21 @@ const PlaybackView = ({ user }) => {
     preFetchUrls();
   }, [currentIndex, screenshots, isFetchingUrls]);
 
-  // Fetch students for the class
   useEffect(() => {
-    const fetchStudents = async () => {
-      if (!classId) return;
-      console.log('Fetching students for class:', classId);
-      const classRef = doc(db, 'classes', classId);
-      const classSnap = await getDoc(classRef);
-      if (classSnap.exists()) {
-        const studentList = classSnap.data().students || [];
-        setStudents(studentList.map(s => s.trim()));
-      } else {
-        console.error('Class document not found!');
-      }
-    };
-    fetchStudents();
+    if (!classId) return;
+    const unsubscribe = onSnapshot(query(collection(db, 'videoJobs'), where('classId', '==', classId)), (snapshot) => {
+        const studentMap = new Map();
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.studentUid && data.studentEmail) {
+                studentMap.set(data.studentUid, data.studentEmail);
+            }
+        });
+        const studentList = Array.from(studentMap, ([uid, email]) => ({ uid, email }));
+        studentList.sort((a, b) => a.email.localeCompare(b.email));
+        setStudents(studentList);
+    });
+    return unsubscribe;
   }, [classId]);
 
   // Fetch screenshots when a session is loaded
@@ -148,7 +148,7 @@ const PlaybackView = ({ user }) => {
         const q = query(
           screenshotsRef,
           where("classId", "==", classId),
-          where("email", "==", sessionData.student),
+          where("studentUid", "==", sessionData.studentUid),
           where("timestamp", ">=", new Date(sessionData.start)),
           where("timestamp", "<=", new Date(sessionData.end)),
           where("deleted", "==", false),
@@ -190,10 +190,15 @@ const PlaybackView = ({ user }) => {
       alert('Please select a student.');
       return;
     }
-    console.log(`Loading session for ${selectedStudent}`);
+    const studentInfo = students.find(s => s.uid === selectedStudent);
+    if (!studentInfo) {
+        alert('Could not find student details.');
+        return;
+    }
+    console.log(`Loading session for ${studentInfo.email}`);
     setScreenshotImageUrls({});
     urlsFetched.current.clear();
-    setSessionData({ student: selectedStudent.trim().toLowerCase(), start: startTime, end: endTime });
+    setSessionData({ studentUid: selectedStudent, studentEmail: studentInfo.email, start: startTime, end: endTime });
   };
 
   // Poll for video job status
@@ -328,7 +333,7 @@ const PlaybackView = ({ user }) => {
       const q = query(
           collection(db, 'videoJobs'),
           where('classId', '==', classId),
-          where('student', '==', sessionData.student),
+          where('studentUid', '==', sessionData.studentUid),
           where('startTime', '==', new Date(startTime)),
           where('endTime', '==', new Date(endTime)),
           where('status', 'in', ['pending', 'processing', 'completed'])
@@ -346,7 +351,8 @@ const PlaybackView = ({ user }) => {
       await setDoc(newDocRef, {
         jobId: jobId,
         classId: classId,
-        student: sessionData.student,
+        studentUid: sessionData.studentUid,
+        studentEmail: sessionData.studentEmail,
         startTime: new Date(sessionData.start),
         endTime: new Date(sessionData.end),
         status: 'pending',
@@ -379,20 +385,19 @@ const PlaybackView = ({ user }) => {
         const createdJobs = [];
         const skippedJobs = [];
 
-        for (const studentEmail of students) {
-            const student = studentEmail.trim().toLowerCase();
+        for (const student of students) {
             const q = query(
                 collection(db, 'videoJobs'),
                 where('classId', '==', classId),
-                where('student', '==', student),
+                where('studentUid', '==', student.uid),
                 where('startTime', '==', new Date(startTime)),
                 where('endTime', '==', new Date(endTime)),
                 where('status', 'in', ['pending', 'processing', 'completed'])
             );
             const existingJobs = await getDocs(q);
             if (!existingJobs.empty) {
-                console.log(`Job already exists for ${student} in this time range.`);
-                skippedJobs.push(student);
+                console.log(`Job already exists for ${student.email} in this time range.`);
+                skippedJobs.push(student.email);
                 continue;
             }
 
@@ -403,13 +408,14 @@ const PlaybackView = ({ user }) => {
             await setDoc(newDocRef, {
                 jobId: jobId,
                 classId: classId,
-                student: student,
+                studentUid: student.uid,
+                studentEmail: student.email,
                 startTime: new Date(startTime),
                 endTime: new Date(endTime),
                 status: 'pending',
                 createdAt: serverTimestamp(),
             });
-            createdJobs.push(student);
+            createdJobs.push(student.email);
         }
 
         setLastBatchJobInfo({ created: createdJobs, skipped: skippedJobs });
@@ -449,6 +455,7 @@ const PlaybackView = ({ user }) => {
     }
 
     return ranges;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenshots, screenshotImageUrls]);
 
 
@@ -525,8 +532,8 @@ const PlaybackView = ({ user }) => {
             <label htmlFor="student-select">Student: </label>
             <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
                 <option value="" disabled>Select a student</option>
-                {students.map(email => (
-                    <option key={email} value={email}>{email}</option>
+                {students.map(student => (
+                    <option key={student.uid} value={student.uid}>{student.email}</option>
                 ))}
             </select>
             <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Student</button>
@@ -646,7 +653,7 @@ const PlaybackView = ({ user }) => {
                             />
                           </td>
                           <td>{job.id}</td>
-                          <td>{job.student || 'All Students'}</td>
+                          <td>{job.studentEmail || 'All Students'}</td>
                           <td>{job.startTime?.toDate().toLocaleString() || 'N/A'}</td>
                           <td>{job.endTime?.toDate().toLocaleString() || 'N/A'}</td>
                           <td>{job.createdAt?.toDate().toLocaleString()}</td>

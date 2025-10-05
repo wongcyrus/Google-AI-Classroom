@@ -257,7 +257,8 @@ const VideoLibrary = () => {
     const videosToZip = Array.from(selectedVideos.values()).map(v => ({
         path: v.videoPath,
         classId: v.classId,
-        student: v.student,
+        studentUid: v.studentUid,
+        studentEmail: v.studentEmail,
         startTime: v.startTime
     }));
 
@@ -321,7 +322,8 @@ const VideoLibrary = () => {
             return {
                 path: v.videoPath,
                 classId: v.classId,
-                student: v.student,
+                studentUid: v.studentUid,
+                studentEmail: v.studentEmail,
                 startTime: v.startTime
             };
         });
@@ -361,7 +363,8 @@ const VideoLibrary = () => {
     setIsRequestingAnalysis(true);
     try {
       const videos = Array.from(selectedVideos.values()).map(v => ({
-        student: v.student,
+        studentUid: v.studentUid,
+        studentEmail: v.studentEmail,
         videoPath: v.videoPath,
       }));
 
@@ -453,7 +456,7 @@ const VideoLibrary = () => {
         .replace(/:/g, '-')
         .replace(/\..+/, '')
         .replace('T', '_');
-      const safeEmail = video.student.replace(/[@.]/g, '_');
+      const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
       const filename = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
       a.download = filename;
@@ -699,7 +702,7 @@ const VideoLibrary = () => {
                           ▶️
                         </button>
                       </td>
-                      <td>{video.student}</td>
+                      <td>{video.studentEmail}</td>
                       <td>{video.startTime?.toDate().toLocaleString() || 'N/A'}</td>
                       <td>{video.endTime?.toDate().toLocaleString() || 'N/A'}</td>
                       <td>{formatDuration(video.duration)}</td>
@@ -786,7 +789,7 @@ const VideoLibrary = () => {
                                                 ▶️
                                             </button>
                                         </td>
-                                        <td>{job.student}</td>
+                                        <td>{job.studentEmail}</td>
                                         <td>{job.status}</td>
                                         <td>
                                             {job.status === 'failed' ? (

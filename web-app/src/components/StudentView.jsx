@@ -11,7 +11,7 @@ const StudentView = ({ user }) => {
   // State
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
-  const [stream, setStream] = useState(null);
+
   const [isSharing, setIsSharing] = useState(false);
   const [userClasses, setUserClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -73,7 +73,6 @@ const StudentView = ({ user }) => {
       intervalRef.current = null;
     }
     setIsSharing(false);
-    setStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -177,7 +176,7 @@ const StudentView = ({ user }) => {
     }
     try {
       const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      setStream(displayMedia);
+
 
       if (videoRef.current) {
         videoRef.current.srcObject = displayMedia;
@@ -305,9 +304,9 @@ const StudentView = ({ user }) => {
 
   // Listen for direct student messages
   useEffect(() => {
-    if (!user || !user.email) return;
+    if (!user || !user.uid) return;
 
-    const studentMessagesRef = collection(db, 'students', user.email, 'messages');
+    const studentMessagesRef = collection(db, 'students', user.uid, 'messages');
     const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(5));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -345,12 +344,12 @@ const StudentView = ({ user }) => {
   }, [directMessages, classMessages, showSystemNotification]);
 
   useEffect(() => {
-    if (!user || !user.email) return;
+    if (!user || !user.uid) return;
 
     const irregularitiesRef = collection(db, "irregularities");
     const q = query(
       irregularitiesRef,
-      where("email", "==", user.email),
+      where("studentUid", "==", user.uid),
       orderBy("timestamp", "desc"),
       limit(5)
     );

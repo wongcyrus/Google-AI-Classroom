@@ -7,7 +7,7 @@ const serviceAccount = require('../sp.json');
 
 // --- SCRIPT CONFIGURATION ---
 // Add the names of all your top-level collections to be deleted here.
-const COLLECTIONS_TO_DELETE = ['classes', 'screenshots', 'users', 'students', 'progress', 'irregularities', 'notifications', 'playback', 'prompts', 'mails', 'zipJobs', 'videoJobs', 'videoLibrary'];
+const COLLECTIONS_TO_DELETE = ['classes', 'screenshots', 'students', 'progress', 'irregularities', 'notifications', 'prompts', 'mails', 'zipJobs', 'videoJobs'];
 
 /**
  * Initializes the Firebase Admin SDK.
@@ -70,41 +70,27 @@ async function resetStorage(app) {
  */
 async function deleteCollection(db, collectionPath, batchSize) {
   const collectionRef = db.collection(collectionPath);
-  const query = collectionRef.orderBy('__name__').limit(batchSize);
+  let query = collectionRef.orderBy('__name__').limit(batchSize);
 
-  return new Promise((resolve, reject) => {
-    deleteQueryBatch(db, query, resolve, reject);
-  });
-}
-
-async function deleteQueryBatch(db, query, resolve, reject) {
-  try {
+  while (true) {
     const snapshot = await query.get();
 
     if (snapshot.size === 0) {
-      // When there are no documents left, we are done
-      return resolve();
+      return; // We're done
     }
 
     // Delete documents in a batch
     const batch = db.batch();
     snapshot.docs.forEach(doc => {
-      // Recursively delete subcollections
-      // This is a placeholder; for deep nesting, a more robust solution is needed.
-      // For this project's structure, it's sufficient.
       console.log(`Deleting doc: ${doc.id} from collection: ${doc.ref.parent.path}`);
       batch.delete(doc.ref);
     });
     await batch.commit();
 
-    // Recurse on the same process until all documents are deleted
-    process.nextTick(() => {
-      deleteQueryBatch(db, query, resolve, reject);
-    });
-
-  } catch (error) {
-    console.error("Error deleting collection batch:", error);
-    reject(error);
+    // Get the last document from the batch
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    // Construct a new query starting after this document
+    query = collectionRef.orderBy('__name__').startAfter(lastVisible).limit(batchSize);
   }
 }
 

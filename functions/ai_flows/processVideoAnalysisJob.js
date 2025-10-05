@@ -17,7 +17,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     let videosToAnalyze = [];
 
     if (jobData.videos) { // Job for selected videos
-      videosToAnalyze = jobData.videos; // Expects array of { student, videoPath }
+      videosToAnalyze = jobData.videos; // Expects array of { studentUid, studentEmail, videoPath }
     } else { // Job for all videos in a time range
       const videoJobsRef = db.collection('videoJobs');
       const q = videoJobsRef
@@ -29,7 +29,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       const querySnapshot = await q.get();
       querySnapshot.forEach(doc => {
         const video = doc.data();
-        videosToAnalyze.push({ student: video.student, videoPath: video.videoPath });
+        videosToAnalyze.push({ studentUid: video.studentUid, studentEmail: video.studentEmail, videoPath: video.videoPath });
       });
     }
 
@@ -45,13 +45,14 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
           videoUrl: url,
           prompt: jobData.prompt,
           classId: jobData.classId,
-          studentEmail: video.student,
+          studentUid: video.studentUid,
+          studentEmail: video.studentEmail,
           masterJobId,
         });
 
         aiJobIds.push(jobId);
       } catch (e) {
-        console.error(`Failed to analyze video for ${video.student}`, e);
+        console.error(`Failed to analyze video for ${video.studentEmail}`, e);
         // The error is already logged inside analyzeSingleVideoFlow
       } finally {
         if (file) {

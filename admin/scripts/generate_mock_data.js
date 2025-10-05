@@ -33,83 +33,21 @@ const MOCK_CLASS = {
   }
 };
 
-const MOCK_VIDEOS = [
-    {
-        name: 'Introduction to Algebra',
-        duration: 3600, // 1 hour
-        thumbnailUrl: 'https://via.placeholder.com/320x180.png?text=Algebra+Intro',
-        videoUrl: 'https://example.com/algebra_intro.mp4',
-    },
-    {
-        name: 'Calculus Basics',
-        duration: 5400, // 1.5 hours
-        thumbnailUrl: 'https://via.placeholder.com/320x180.png?text=Calculus+Basics',
-        videoUrl: 'https://example.com/calculus_basics.mp4',
-    }
-]
-
-// --- INITIALIZATION ---
-function initializeFirebase() {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: process.env.VITE_STORAGE_BUCKET
-    });
-    console.log('Firebase Admin SDK initialized successfully.');
-    return admin;
-  } catch (error) {
-    if (error.code === 'app/duplicate-app') {
-        return admin.app();
-    }
-    console.error('\nERROR: Could not initialize Firebase Admin SDK.', error);
-    process.exit(1);
-  }
-}
-
-// --- DATA CREATION FUNCTIONS ---
-
-async function createAuthUsers(auth, users) {
-    const userRecords = [];
-    for (const user of users) {
-        try {
-            const userRecord = await auth.createUser({
-                email: user.email,
-                password: user.password,
-                displayName: user.displayName,
-                emailVerified: true,
-            });
-            userRecords.push(userRecord);
-            console.log(`Successfully created user: ${user.email}`);
-        } catch (error) {
-            if (error.code === 'auth/email-already-exists') {
-                console.log(`User already exists: ${user.email}`);
-                const userRecord = await auth.getUserByEmail(user.email);
-                userRecords.push(userRecord);
-            } else {
-                console.error(`Error creating user ${user.email}:`, error);
-            }
-        }
-    }
-    return userRecords;
-}
-
-async function setTeacherRole(auth, email) {
-    try {
-        const user = await auth.getUserByEmail(email);
-        await auth.setCustomUserClaims(user.uid, { role: 'teacher' });
-        console.log(`Successfully set teacher role for: ${email}`);
-    } catch (error) {
-        console.error(`Error setting teacher role for ${email}:`, error);
-    } 
-}
-
 async function createFirestoreData(db, users) {
     console.log('\nCreating Firestore data...');
+
+    const studentUidMap = new Map(users.studentUsers.map(u => [u.email, u.uid]));
 
     // Create class
     try {
         const { id, ...classData } = MOCK_CLASS;
-        await db.collection('classes').doc(id).set(classData);
+        const teacherUids = users.teacherUsers.map(u => u.uid);
+        const studentUids = users.studentUsers.map(u => u.uid);
+        await db.collection('classes').doc(id).set({
+            ...classData,
+            teacherUids,
+            studentUids,
+        });
         console.log(`Successfully created class: ${MOCK_CLASS.id}`);
     } catch (error) {
         console.error(`Error creating class ${MOCK_CLASS.id}:`, error);
@@ -123,9 +61,14 @@ async function createFirestoreData(db, users) {
     ];
     for (const irregularity of irregularities) {
         try {
+            const studentUid = studentUidMap.get(irregularity.email);
+            if (!studentUid) continue;
             await db.collection('irregularities').add({
                 classId: MOCK_CLASS.id,
-                ...irregularity,
+                studentUid,
+                email: irregularity.email,
+                title: irregularity.title,
+                message: irregularity.message,
                 imageUrl: 'https://via.placeholder.com/150',
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
@@ -139,9 +82,12 @@ async function createFirestoreData(db, users) {
     for (let i = 0; i < 3; i++) {
         for (const student of MOCK_STUDENTS) {
             try {
+                const studentUid = studentUidMap.get(student.email);
+                if (!studentUid) continue;
                 await db.collection('progress').add({
                     classId: MOCK_CLASS.id,
-                    email: student.email,
+                    studentUid,
+                    studentEmail: student.email,
                     progress: `This is sample progress report #${i + 1} for ${student.displayName}. The student is showing improvement in calculus concepts but needs to work on algebra fundamentals.`, 
                     timestamp: admin.firestore.Timestamp.now(),
                 });
@@ -152,42 +98,17 @@ async function createFirestoreData(db, users) {
     }
     console.log('Successfully created progress records.');
 
-    // Create Video Library
-    for (const video of MOCK_VIDEOS) {
-        try {
-            await db.collection('videoLibrary').add({
-                classId: MOCK_CLASS.id,
-                ...video,
-                uploadDate: admin.firestore.FieldValue.serverTimestamp(),
-            });
-        } catch (error) {
-            console.error(`Error creating video library record for ${video.name}:`, error);
-        }
-    }
-    console.log('Successfully created video library records.');
-
-    // Create Playback Records
-    try {
-        await db.collection('playback').add({
-            classId: MOCK_CLASS.id,
-            studentEmail: MOCK_STUDENTS[0].email,
-            videoUrl: MOCK_VIDEOS[0].videoUrl,
-            startTime: admin.firestore.Timestamp.fromDate(new Date(Date.now() - 3600 * 1000)), // 1 hour ago
-            endTime: admin.firestore.Timestamp.now(),
-            duration: 3500,
-        });
-        console.log('Successfully created a playback record.');
-    } catch (error) {
-        console.error('Error creating playback record:', error);
-    }
-
     // Create Screenshot Records
     for (let i = 0; i < 5; i++) {
         try {
+            const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
+            const studentUid = studentUidMap.get(student.email);
+            if (!studentUid) continue;
             await db.collection('screenshots').add({
                 classId: MOCK_CLASS.id,
-                studentEmail: MOCK_STUDENTS[i % MOCK_STUDENTS.length].email,
-                imageUrl: `https://via.placeholder.com/640x480.png?text=Screenshot+${i+1}`,
+                studentUid,
+                email: student.email,
+                imagePath: `https://via.placeholder.com/640x480.png?text=Screenshot+${i+1}`,
                 timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 60000))), // every minute for the last 5 mins
             });
         } catch (error) {

@@ -14,7 +14,7 @@ const IndividualStudentView = ({ student, screenshotUrl, onClose }) => {
     if (!message.trim()) return;
 
     try {
-      const studentMessagesRef = collection(db, 'students', student.email, 'messages');
+      const studentMessagesRef = collection(db, 'students', student.id, 'messages');
       await addDoc(studentMessagesRef, {
         message,
         timestamp: serverTimestamp(),

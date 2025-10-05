@@ -2,6 +2,7 @@ import './firebase.js';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import { ZIP_COMPRESSION_LEVEL } from './config.js';
 import path from 'path';
 import os from 'os';
@@ -11,6 +12,7 @@ import { stringify } from 'csv-stringify/sync';
 
 const db = getFirestore();
 const storage = getStorage();
+const adminAuth = getAuth();
 const bucket = storage.bucket();
 
 export const processZipJob = onDocumentCreated({
@@ -42,7 +44,7 @@ export const processZipJob = onDocumentCreated({
                 .replace(/:/g, '-')
                 .replace(/\..+/, '')
                 .replace('T', '_');
-            const safeEmail = video.student.replace(/[@.]/g, '_');
+            const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
             const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
             const tempFilePath = path.join(tempDir, newFileName);
@@ -57,11 +59,11 @@ export const processZipJob = onDocumentCreated({
                 .replace(/:/g, '-')
                 .replace(/\..+/, '')
                 .replace('T', '_');
-            const safeEmail = video.student.replace(/[@.]/g, '_');
+            const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
             const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
             return {
-                student_email: video.student,
+                student_email: video.studentEmail,
                 video_start_time: new Date(video.startTime.seconds * 1000).toISOString(),
                 filename_in_zip: newFileName
             };
@@ -97,25 +99,31 @@ export const processZipJob = onDocumentCreated({
 
         console.log(`Zip file uploaded to ${destinationPath}. Getting signed URL.`);
 
+        const requesterUser = await adminAuth.getUser(requester);
+        const requesterEmail = requesterUser.email;
 
-        const title = `Video archive for class '${classId}'`;
+        if (!requesterEmail) {
+            console.error(`Requester ${requester} has no email address.`);
+            // Still mark job as complete, but admin may need to manually notify.
+        } else {
+            const title = `Video archive for class '${classId}'`;
 
-        // Create email document with download link
-        await db.collection('mails').add({
-            to: requester,
-            title: title,
-            createdAt: new Date(),
-            read: false,
-            message: {
-                subject: 'Your video archive is ready for download',
-                html: `Hello,<br><br>Your requested video archive for class '${classId}' is ready.`
-            },
-            attachments: [
-                { name: jobId + ".zip", key: destinationPath }
-            ]
-        });
-
-        console.log(`Email with download link sent to ${requester}.`);
+            // Create email document with download link
+            await db.collection('mails').add({
+                to: requesterEmail,
+                title: title,
+                createdAt: new Date(),
+                read: false,
+                message: {
+                    subject: 'Your video archive is ready for download',
+                    html: `Hello,<br><br>Your requested video archive for class '${classId}' is ready.`
+                },
+                attachments: [
+                    { name: jobId + ".zip", key: destinationPath }
+                ]
+            });
+            console.log(`Email with download link sent to ${requesterEmail}.`);
+        }
 
         await jobRef.update({ status: 'completed', finishedAt: new Date(), zipPath: destinationPath });
 

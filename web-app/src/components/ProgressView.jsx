@@ -19,7 +19,7 @@ const ProgressView = () => {
     setEndTime,
     handleLessonChange,
   } = useClassSchedule(classId);
-  const [selectedStudentEmail, setSelectedStudentEmail] = useState(null);
+  const [selectedStudentUid, setSelectedStudentUid] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -53,8 +53,8 @@ const ProgressView = () => {
     const latest = {};
     const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= new Date(endTime));
     filteredProgress.forEach(p => {
-      if (!latest[p.email] || p.timestamp.toMillis() > latest[p.email].timestamp.toMillis()) {
-        latest[p.email] = p;
+      if (!latest[p.studentUid] || p.timestamp.toMillis() > latest[p.studentUid].timestamp.toMillis()) {
+        latest[p.studentUid] = p;
       }
     });
     setLatestProgress(latest);
@@ -62,14 +62,16 @@ const ProgressView = () => {
 
   const renderDetailView = () => {
     const studentProgress = allProgress
-      .filter(p => p.email === selectedStudentEmail)
+      .filter(p => p.studentUid === selectedStudentUid)
       .filter(p => p.timestamp.toDate() <= new Date(endTime));
+
+    const studentEmail = studentProgress.length > 0 ? studentProgress[0].studentEmail : selectedStudentUid;
 
     return (
       <div className="view-container">
         <div className="view-header">
-            <button onClick={() => setSelectedStudentEmail(null)}>Back to Summary</button>
-            <h3>Progress for {selectedStudentEmail}</h3>
+            <button onClick={() => setSelectedStudentUid(null)}>Back to Summary</button>
+            <h3>Progress for {studentEmail}</h3>
         </div>
         <ul className="progress-list">
           {studentProgress.map((p) => (
@@ -116,8 +118,8 @@ const ProgressView = () => {
               </thead>
               <tbody>
                 {latestProgressArray.map((p) => (
-                  <tr key={p.id} className="clickable" onClick={() => setSelectedStudentEmail(p.email)}>
-                    <td>{p.email}</td>
+                  <tr key={p.id} className="clickable" onClick={() => setSelectedStudentUid(p.studentUid)}>
+                    <td>{p.studentEmail}</td>
                     <td>{p.progress}</td>
                     <td>{new Date(p.timestamp?.toDate()).toLocaleString()}</td>
                   </tr>
@@ -132,7 +134,7 @@ const ProgressView = () => {
 
   return (
     <div className="progress-view">
-      {selectedStudentEmail ? renderDetailView() : renderSummaryView()}
+      {selectedStudentUid ? renderDetailView() : renderSummaryView()}
     </div>
   );
 };

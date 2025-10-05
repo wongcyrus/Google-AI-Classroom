@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { db, storage } from '../firebase-config';
-import { collection, query, where, getDocs, writeBatch, orderBy, limit, startAfter, endBefore, limitToLast, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, startAfter, endBefore, limitToLast, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
 import { useParams } from 'react-router-dom';
 import './SharedViews.css';

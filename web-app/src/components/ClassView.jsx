@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { db } from '../firebase-config';
-import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import MonitorView from './MonitorView';
 import IrregularitiesView from './IrregularitiesView';
 import ProgressView from './ProgressView';
@@ -12,7 +12,6 @@ import './ClassView.css';
 const ClassView = ({ user }) => {
   const { classId } = useParams();
   const [activeTab, setActiveTab] = useState('monitor');
-  const [teacherEmail, setTeacherEmail] = useState(null);
 
   // Helper function to show notifications via Service Worker
   const showSystemNotification = (message, tag) => {
@@ -33,25 +32,15 @@ const ClassView = ({ user }) => {
     }
   }, []);
 
-  // Effect to get the teacher's email
-  useEffect(() => {
-    const classRef = doc(db, "classes", classId);
-    const unsubscribe = onSnapshot(classRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setTeacherEmail(data.teacher || (data.teachers && data.teachers[0]));
-      }
-    });
-    return () => unsubscribe();
-  }, [classId]);
+
 
   // Dedicated listener for OS notifications that runs for the lifetime of the ClassView
   useEffect(() => {
-    if (!teacherEmail) {
+    if (!user || !user.uid) {
       return;
     }
 
-    const messagesRef = collection(db, "teachers", teacherEmail, "messages");
+    const messagesRef = collection(db, "teachers", user.uid, "messages");
     // Query for messages that arrived in the last 15 seconds to avoid showing old ones on initial load.
     const q = query(messagesRef, where("timestamp", ">", new Date(Date.now() - 15000)));
 
@@ -67,7 +56,7 @@ const ClassView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [teacherEmail, classId]);
+  }, [user, classId]);
 
 
   const renderContent = () => {
@@ -81,7 +70,7 @@ const ClassView = ({ user }) => {
       case 'playback':
         return <PlaybackView user={user} classId={classId} />;
       case 'notifications':
-        return <NotificationsView classId={classId} />;
+        return <NotificationsView user={user} classId={classId} />;
       default:
         return null;
     }

@@ -37,7 +37,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         return;
     }
     const jobData = snap.data();
-    const { jobId, classId, student, startTime, endTime } = jobData;
+    const { jobId, classId, studentUid, studentEmail, startTime, endTime } = jobData;
     const jobRef = snap.ref;
 
     if (jobData.status !== 'pending') {
@@ -53,7 +53,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const screenshotsRef = db.collection('screenshots');
         const q = screenshotsRef
             .where("classId", "==", classId)
-            .where("email", "==", student)
+            .where("studentUid", "==", studentUid)
             .where("timestamp", ">=", startTime)
             .where("timestamp", "<=", endTime)
             .where("deleted", "==", false)
@@ -97,7 +97,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
                 const timestamp = screenshot.timestamp.toDate();
                 const date = timestamp.toLocaleDateString();
                 const time = timestamp.toLocaleTimeString();
-                const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${student}`;
+                const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${studentEmail}`;
 
                 const textHeight = 40;
                 const newHeight = image.bitmap.height + textHeight;
@@ -162,7 +162,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
             destination: destinationPath,
             metadata: {
                 contentType: 'video/mp4',
-                metadata: { classId, student, startTime, endTime, duration, size }
+                metadata: { classId, studentUid, studentEmail, startTime, endTime, duration, size }
             }
         }), 3, 2000, 'Failed to upload video after multiple retries.');
 

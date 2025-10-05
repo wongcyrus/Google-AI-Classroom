@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
 import IndividualStudentView from './IndividualStudentView';
 import TimelineSlider from './TimelineSlider';
 import { useClassSchedule } from '../hooks/useClassSchedule';
-import { formatBytes } from '../utils/formatters';
+
 import Modal from './Modal';
 
 import ControlsPanel from './monitor/ControlsPanel';
@@ -146,7 +146,7 @@ const MonitorView = ({ classId: propClassId }) => {
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            setClassList(data.students || []);
+            setClassList(data.studentUids || []);
             setFrameRate(prevRate => {
                 const newRate = data.frameRate || 5;
                 return newRate === prevRate ? prevRate : newRate;
@@ -212,8 +212,7 @@ const MonitorView = ({ classId: propClassId }) => {
       const newScreenshots = {};
       const reviewTimeDate = new Date(reviewTime);
 
-      for (const studentEmail of classList) {
-        const studentId = studentIdMap.current.get(studentEmail.toLowerCase());
+      for (const studentId of classList) {
         if (!studentId) continue;
 
         const screenshotsQuery = query(
@@ -244,12 +243,12 @@ const MonitorView = ({ classId: propClassId }) => {
   }, [reviewTime, classList, classId]);
 
   useEffect(() => {
-    const lowercasedClassList = classList.map(email => (email || '').toLowerCase());
-    const onlineStudents = studentStatuses.filter(status => status && status.email && lowercasedClassList.includes(status.email.toLowerCase()));
+    // classList is now an array of UIDs.
+    const onlineStudents = studentStatuses.filter(status => status && status.id && classList.includes(status.id));
 
     const newStudents = onlineStudents.map(status => {
         return {
-            id: status.id,
+            id: status.id, // UID
             email: status.email,
             isSharing: status.isSharing || false,
         };
@@ -291,7 +290,7 @@ const MonitorView = ({ classId: propClassId }) => {
             if (isPerImageAnalysisRunning && isCapturing) {
               analysisCounterRef.current += 1;
               if (analysisCounterRef.current % samplingRate === 0) {
-                const screenshotsToAnalyze = { [student.email]: url };
+                const screenshotsToAnalyze = { [student.id]: { url: url, email: student.email } };
                 runPerImageAnalysis(screenshotsToAnalyze);
               }
             }
@@ -328,7 +327,7 @@ const MonitorView = ({ classId: propClassId }) => {
       const screenshotsToAnalyze = {};
       for (const student of studentsRef.current) {
         if (student.isSharing && screenshotsRef.current[student.id]) {
-          screenshotsToAnalyze[student.email] = screenshotsRef.current[student.id].url;
+          screenshotsToAnalyze[student.id] = { url: screenshotsRef.current[student.id].url, email: student.email };
         }
       }
       if (Object.keys(screenshotsToAnalyze).length > 0) {
@@ -350,7 +349,7 @@ const MonitorView = ({ classId: propClassId }) => {
 
     try {
       for (const student of onlineStudents) {
-        const studentMessagesRef = collection(db, 'students', student.email, 'messages');
+        const studentMessagesRef = collection(db, 'students', student.id, 'messages');
         await addDoc(studentMessagesRef, {
           message,
           timestamp: serverTimestamp(),
@@ -365,11 +364,12 @@ const MonitorView = ({ classId: propClassId }) => {
   };
 
   const handleDownloadAttendance = () => {
-    const statusMap = new Map(studentStatuses.map(status => [status.email.toLowerCase(), status]));
+    const uidToEmailMap = new Map(studentStatuses.map(status => [status.id, status.email]));
+    const statusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
-    const attendanceData = classList.map(email => {
-      const lowercasedEmail = email.toLowerCase();
-      const status = statusMap.get(lowercasedEmail);
+    const attendanceData = classList.map(uid => {
+      const email = uidToEmailMap.get(uid) || 'Unknown';
+      const status = statusMap.get(uid);
       const isSharing = status ? status.isSharing || false : false;
       return { email, isSharing };
     });
@@ -437,15 +437,17 @@ const MonitorView = ({ classId: propClassId }) => {
     setSelectedStudent(student);
   };
 
-  const onlineSharingEmails = new Set(
+  const sharingStudentUids = new Set(
     studentStatuses
       .filter(status => status.isSharing)
-      .map(status => status.email.toLowerCase())
+      .map(status => status.id)
   );
 
+  const uidToEmailMap = new Map(studentStatuses.map(status => [status.id, status.email]));
+
   const notSharingStudents = classList
-    .filter(email => !onlineSharingEmails.has(email.toLowerCase()))
-    .map(email => ({ id: email, email: email }));
+    .filter(uid => !sharingStudentUids.has(uid))
+    .map(uid => ({ id: uid, email: uidToEmailMap.get(uid) || 'Unknown' }));
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
@@ -458,7 +460,7 @@ const MonitorView = ({ classId: propClassId }) => {
     const screenshotsToAnalyze = {};
     for (const student of students) {
         if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.email] = screenshots[student.id].url;
+            screenshotsToAnalyze[student.id] = { url: screenshots[student.id].url, email: student.email };
         }
     }
 
@@ -487,7 +489,7 @@ const MonitorView = ({ classId: propClassId }) => {
     const screenshotsToAnalyze = {};
     for (const student of students) {
         if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.email] = screenshots[student.id].url;
+            screenshotsToAnalyze[student.id] = { url: screenshots[student.id].url, email: student.email };
         }
     }
 
@@ -642,10 +644,13 @@ const MonitorView = ({ classId: propClassId }) => {
             >
                 {Object.keys(analysisResults).length > 0 ? (
                     <ul>
-                        {Object.entries(analysisResults).map(([email, result]) => (
-                            <li key={email}><strong>{email}:</strong> {result}</li>
-                        ))}
-                    </ul>
+                        {Object.entries(analysisResults).map(([uid, result]) => {
+                            const student = students.find(s => s.id === uid);
+                            const studentIdentifier = student ? student.email : (uid === 'All Images' ? 'All Images' : uid);
+                            return (
+                                <li key={uid}><strong>{studentIdentifier}:</strong> {result}</li>
+                            );
+                        })}                    </ul>
                 ) : (
                     <p>No analysis has been run yet.</p>
                 )}

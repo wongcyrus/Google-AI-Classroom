@@ -1,13 +1,16 @@
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+
+const adminAuth = getAuth();
 
 export const sendMessageToStudent = ai.defineTool(
   {
     name: 'sendMessageToStudent',
     description: 'Sends a direct message to a specific student.',
     inputSchema: z.object({
-      studentEmail: z.string().describe('The email address of the student to send the message to.'),
+      studentUid: z.string().describe('The UID of the student to send the message to.'),
       message: z.string().describe('The content of the message.'),
       classId: z.string().describe('The ID of the class.'),
     }),
@@ -15,20 +18,20 @@ export const sendMessageToStudent = ai.defineTool(
   },
   async (input) => {
     console.log('sendMessageToStudent input:', input);
-    const { studentEmail, message, classId } = input;
+    const { studentUid, message, classId } = input;
     try {
       const db = getFirestore();
-      const studentMessagesRef = db.collection('students').doc(studentEmail).collection('messages');
+      const studentMessagesRef = db.collection('students').doc(studentUid).collection('messages');
       const messageData = {
         message: message,
         timestamp: FieldValue.serverTimestamp(),
         classId: classId,
       };
       await studentMessagesRef.add(messageData);
-      return `Successfully sent message to ${studentEmail}.`;
+      return `Successfully sent message to student ${studentUid}.`;
     } catch (error) {
       console.error("Error sending message:", error);
-      return `Failed to send message to ${studentEmail}. Error: ${error.message}`;
+      return `Failed to send message to student ${studentUid}. Error: ${error.message}`;
     }
   }
 );
@@ -38,7 +41,8 @@ export const recordIrregularity = ai.defineTool(
     name: 'recordIrregularity',
     description: 'Records an irregularity activity.',
     inputSchema: z.object({
-      email: z.string().describe('The email address of the student.'),
+      studentUid: z.string().describe('The UID of the student.'),
+      studentEmail: z.string().describe('The email of the student (denormalized).'),
       title: z.string().describe('The title of the irregularity.'),
       message: z.string().describe('The description of the irregularity.'),
       imageUrl: z.string().describe('The URL of the image associated with the irregularity.'),
@@ -48,7 +52,7 @@ export const recordIrregularity = ai.defineTool(
   },
   async (input) => {
     console.log('recordIrregularity input:', input);
-    const { email, title, message, imageUrl, classId } = input;
+    const { studentUid, studentEmail, title, message, imageUrl, classId } = input;
     try {
       const db = getFirestore();
       const irregularitiesRef = db.collection('irregularities');
@@ -61,17 +65,18 @@ export const recordIrregularity = ai.defineTool(
       }
 
       await irregularitiesRef.add({
-        email,
+        studentUid,
+        email: studentEmail, // Keep email field for compatibility/display
         title,
         message,
         imageUrl: imagePath,
         timestamp: FieldValue.serverTimestamp(),
         classId: classId,
       });
-      return `Successfully recorded irregularity for ${email}.`;
+      return `Successfully recorded irregularity for ${studentEmail}.`;
     } catch (error) {
       console.error("Error recording irregularity:", error);
-      return `Failed to record irregularity for ${email}. Error: ${error.message}`;
+      return `Failed to record irregularity for ${studentEmail}. Error: ${error.message}`;
     }
   }
 );
@@ -81,7 +86,8 @@ export const recordStudentProgress = ai.defineTool(
     name: 'recordStudentProgress',
     description: 'Records the work progress of a student.',
     inputSchema: z.object({
-      email: z.string().describe('The email address of the student.'),
+      studentUid: z.string().describe('The UID of the student.'),
+      studentEmail: z.string().describe('The email of the student (denormalized).'),
       progress: z.string().describe('The description of the student\'s work progress.'),
       classId: z.string().describe('The ID of the class.'),
     }),
@@ -89,21 +95,22 @@ export const recordStudentProgress = ai.defineTool(
   },
   async (input) => {
     console.log('recordStudentProgress input:', input);
-    const { email, progress, classId } = input;
+    const { studentUid, studentEmail, progress, classId } = input;
     try {
       const db = getFirestore();
       const progressRef = db.collection('progress');
 
       await progressRef.add({
-        email,
+        studentUid,
+        studentEmail, // Keep email field for compatibility/display
         progress,
         classId,
         timestamp: FieldValue.serverTimestamp(),
       });
-      return `Successfully recorded progress for ${email}.`;
+      return `Successfully recorded progress for ${studentEmail}.`;
     } catch (error) {
       console.error("Error recording progress:", error);
-      return `Failed to record progress for ${email}. Error: ${error.message}`;
+      return `Failed to record progress for ${studentEmail}. Error: ${error.message}`;
     }
   }
 );
@@ -115,13 +122,13 @@ export const sendMessageToTeacher = ai.defineTool(
     inputSchema: z.object({
       classId: z.string().describe('The ID of the class to which the message pertains.'),
       message: z.string().describe('The content of the message.'),
-      studentEmail: z.string().optional().describe('The email of the student this message is about.'),
+      studentUid: z.string().optional().describe('The UID of the student this message is about.'),
     }),
     outputSchema: z.string(),
   },
   async (input) => {
     console.log('sendMessageToTeacher input:', input);
-    const { classId, message, studentEmail } = input;
+    const { classId, message, studentUid } = input;
     try {
       const db = getFirestore();
       const classRef = db.collection('classes').doc(classId);
@@ -133,16 +140,24 @@ export const sendMessageToTeacher = ai.defineTool(
       }
 
       const classData = classDoc.data();
-      const teacherEmail = classData.teacher || (classData.teachers && classData.teachers[0]);
+      const teacherUid = classData.teacherUids && classData.teacherUids[0];
 
-      if (!teacherEmail) {
+      if (!teacherUid) {
         console.error(`No teacher found for class ${classId}. Class data:`, classData);
         return `Failed to send message: No teacher found for class ${classId}.`;
       }
 
-      const teacherMessagesRef = db.collection('teachers').doc(teacherEmail).collection('messages');
+      const teacherMessagesRef = db.collection('teachers').doc(teacherUid).collection('messages');
       
-      const finalMessage = studentEmail ? `Regarding ${studentEmail}: ${message}` : message;
+      let finalMessage = message;
+      if (studentUid) {
+        try {
+            const studentUser = await adminAuth.getUser(studentUid);
+            finalMessage = `Regarding ${studentUser.email}: ${message}`;
+        } catch (e) {
+            finalMessage = `Regarding student ${studentUid}: ${message}`;
+        }
+      }
 
       await teacherMessagesRef.add({
         message: finalMessage,
