@@ -174,9 +174,9 @@ const ClassManagement = ({ user }) => {
         const existingStart = existing.startTime;
         const existingEnd = existing.endTime;
 
-        if (newStart < existingEnd && newEnd > existingStart) {
+        if (newStart <= existingEnd && newEnd >= existingStart) {
           const commonDays = newSchedule.days.filter(day => existing.days.includes(day));
-          setError(`Schedule overlap detected on ${commonDays.join(', ')} with the existing schedule: ${existingStart} - ${existingEnd}.`);
+          setError(`Schedule overlap or adjacent schedule detected on ${commonDays.join(', ')} with the existing schedule: ${existingStart} - ${existingEnd}.`);
           return;
         }
       }
