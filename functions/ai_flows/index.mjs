@@ -9,6 +9,7 @@ const callOptions = {
   cors: CORS_ORIGINS,
   enforceAppCheck: true,
   memory: '1GiB',
+  timeoutSeconds: 180,
 };
 
 export const analyzeImage = onCallGenkit({
