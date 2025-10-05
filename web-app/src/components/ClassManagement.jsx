@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
-import { Link } from 'react-router-dom';
 
 const timeZones = [
     'Asia/Hong_Kong',
@@ -25,11 +24,21 @@ const timeZones = [
     'UTC',
 ]
 
+const timeOptions = [];
+for (let h = 0; h < 24; h++) {
+  for (let m = 0; m < 60; m += 30) {
+    const hour = h.toString().padStart(2, '0');
+    const minute = m.toString().padStart(2, '0');
+    timeOptions.push(`${hour}:${minute}`);
+  }
+}
+
 const ClassManagement = ({ user }) => {
   const [classId, setClassId] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
 
@@ -45,6 +54,8 @@ const ClassManagement = ({ user }) => {
     days: [],
   });
   const [ipRestrictions, setIpRestrictions] = useState('');
+  const [automaticCapture, setAutomaticCapture] = useState(false);
+  const [automaticCombine, setAutomaticCombine] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -103,6 +114,8 @@ const ClassManagement = ({ user }) => {
           } else {
             setIpRestrictions('');
           }
+          setAutomaticCapture(classData.automaticCapture || false);
+          setAutomaticCombine(classData.automaticCombine || false);
         }
       } else {
         // Reset form if no class is selected
@@ -115,6 +128,8 @@ const ClassManagement = ({ user }) => {
         setTeacherEmails('');
         setStudentEmails('');
         setIpRestrictions('');
+        setAutomaticCapture(false);
+        setAutomaticCombine(false);
       }
     };
     fetchClassDetails();
@@ -139,8 +154,9 @@ const ClassManagement = ({ user }) => {
   };
 
   const addSchedule = () => {
+    setError(null); // Clear previous errors
     if (!newSchedule.startTime || !newSchedule.endTime || newSchedule.days.length === 0) {
-      alert('Please provide start time, end time, and at least one day for the schedule.');
+      setError('Please provide start time, end time, and at least one day for the schedule.');
       return;
     }
 
@@ -148,7 +164,7 @@ const ClassManagement = ({ user }) => {
     const newEnd = newSchedule.endTime;
 
     if (newStart >= newEnd) {
-      alert('Start time must be before end time.');
+      setError('Start time must be before end time.');
       return;
     }
 
@@ -160,7 +176,7 @@ const ClassManagement = ({ user }) => {
 
         if (newStart < existingEnd && newEnd > existingStart) {
           const commonDays = newSchedule.days.filter(day => existing.days.includes(day));
-          alert(`Schedule overlap detected on ${commonDays.join(', ')} with the existing schedule: ${existingStart} - ${existingEnd}.`);
+          setError(`Schedule overlap detected on ${commonDays.join(', ')} with the existing schedule: ${existingStart} - ${existingEnd}.`);
           return;
         }
       }
@@ -176,17 +192,45 @@ const ClassManagement = ({ user }) => {
     setClassSchedules(updatedSchedules);
   };
 
+  const handleStartTimeChange = (e) => {
+    const startTime = e.target.value;
+    // If start time is cleared, do nothing special, just update the state
+    if (!startTime) {
+      setNewSchedule({ ...newSchedule, startTime: '', endTime: '' });
+      return;
+    }
+
+    const [hour, minute] = startTime.split(':').map(Number);
+    const newEndHour = hour + 2;
+    const suggestedEndTime = `${String(newEndHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+    // Check if the suggested time is a valid option. If not, use the last available time slot.
+    const finalEndTime = timeOptions.includes(suggestedEndTime)
+      ? suggestedEndTime
+      : timeOptions[timeOptions.length - 1];
+
+    setNewSchedule({ ...newSchedule, startTime, endTime: finalEndTime });
+  };
+
   const handleUpdateClass = async () => {
     const validationError = validateClassId(classId);
     if (validationError) {
       setError(validationError);
       return;
     }
+
+    // Validate that the end date is not before the start date
+    if (scheduleStartDate && scheduleEndDate && scheduleEndDate < scheduleStartDate) {
+      setError('Schedule end date cannot be before the start date.');
+      return;
+    }
+    
     if (!auth.currentUser) {
       setError('You must be logged in to manage classes.');
       return;
     }
     setError(null); // Clear previous errors
+    setSuccessMessage(''); // Clear previous success messages
 
     const classRef = doc(db, 'classes', classId);
     const classSnap = await getDoc(classRef);
@@ -222,9 +266,11 @@ const ClassManagement = ({ user }) => {
           students: studentEmailList,
           teachers: uniqueTeachers,
           ipRestrictions: ipList,
+          automaticCapture: automaticCapture,
+          automaticCombine: automaticCombine,
         };
         await updateDoc(classRef, updateData);
-        console.log('Successfully updated the class!');
+        setSuccessMessage('Successfully updated the class!');
       } else {
         // The class does not exist, so create it with the current user as the teacher.
         const initialTeachers = [auth.currentUser.email, ...teacherEmailList];
@@ -242,10 +288,12 @@ const ClassManagement = ({ user }) => {
           },
           storageUsage: 0, // Initialize storage usage
           ipRestrictions: ipList,
+          automaticCapture: automaticCapture,
+          automaticCombine: automaticCombine,
           aiQuota: 10, // Default AI Quota
           aiUsedQuota: 0, // Initialize AI Quota Usage
         });
-        console.log('Successfully created the class!');
+        setSuccessMessage('Successfully created the class!');
       }
     } catch (error) {
       console.error('Error updating or creating class: ', error);
@@ -336,8 +384,14 @@ const ClassManagement = ({ user }) => {
             ))}
         </div>
         <div className="add-schedule">
-          <input type="time" value={newSchedule.startTime} onChange={(e) => setNewSchedule({...newSchedule, startTime: e.target.value})} />
-          <input type="time" value={newSchedule.endTime} onChange={(e) => setNewSchedule({...newSchedule, endTime: e.target.value})} />
+          <select value={newSchedule.startTime} onChange={handleStartTimeChange}>
+            <option value="" disabled>Start Time</option>
+            {timeOptions.map(time => <option key={time} value={time}>{time}</option>)}
+          </select>
+          <select value={newSchedule.endTime} onChange={(e) => setNewSchedule({...newSchedule, endTime: e.target.value})}>
+            <option value="" disabled>End Time</option>
+            {timeOptions.map(time => <option key={time} value={time}>{time}</option>)}
+          </select>
           <div className="days-checkboxes">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
               <label key={day}>
@@ -365,6 +419,30 @@ const ClassManagement = ({ user }) => {
       </div>
 
       <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input
+            type="checkbox"
+            checked={automaticCapture}
+            onChange={(e) => setAutomaticCapture(e.target.checked)}
+          />
+          Automatic Capture
+        </label>
+        <p className="input-hint">Start capturing 5 mins before class starts and stop 5 mins after it ends.</p>
+      </div>
+
+      <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input
+            type="checkbox"
+            checked={automaticCombine}
+            onChange={(e) => setAutomaticCombine(e.target.checked)}
+          />
+          Automatic Combine Image to Video
+        </label>
+        <p className="input-hint">Automatically generate a video recording for each student after the class session ends.</p>
+      </div>
+
+      <div className="form-group">
         <label>Teacher Emails</label>
         <textarea
           placeholder="Add teacher emails (one per line)"
@@ -384,15 +462,13 @@ const ClassManagement = ({ user }) => {
         />
       </div>
       <button onClick={handleUpdateClass}>Update/Create Class</button>
+      {successMessage && <div className="success-message">{successMessage}</div>}
       
       {selectedClass && (
         <div className="manage-selected-class">
           <hr />
           <h3>Manage Selected Class</h3>
           <button onClick={handleDeleteClass}>Delete Class</button>
-          <Link to={`/data-management/${selectedClass}`} style={{ marginLeft: '10px' }}>
-              <button>Data Management</button>
-          </Link>
         </div>
       )}
     </div>

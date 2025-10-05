@@ -11,6 +11,7 @@ export * from './deleteJobs.js';
 export * from './cleanupStuckJobs.js';
 export * from './processVideoAnalysisJob.js';
 export * from './updateQuota.js';
+export * from './scheduledTasks.js';
 import { CORS_ORIGINS } from './config.js';
 
 const callOptions = {

@@ -68,6 +68,11 @@
     flex-wrap: wrap; /* Allow wrapping on smaller screens */
 }
 
+.add-schedule select {
+    width: auto;
+    flex-grow: 1;
+}
+
 .days-checkboxes {
     display: flex;
     align-items: center;
@@ -120,4 +125,14 @@
     color: #6c757d;
     margin-top: -5px;
     margin-bottom: 10px;
+}
+
+.success-message {
+  color: #28a745; /* Green text */
+  background-color: #e9f7ef; /* Light green background */
+  border: 1px solid #a1e0b6; /* Green border */
+  padding: 10px;
+  margin-top: 15px;
+  border-radius: 4px;
+  text-align: center;
 }

@@ -101,5 +101,12 @@ service cloud.firestore {
         allow create: if isTeacher(); 
       }
     }
+
+    match /notifications/{notificationId} {
+      // Users can read and update (to mark as read) their own notifications.
+      allow read, update: if request.auth != null && request.auth.token.email == resource.data.userId;
+      // Creation is handled by backend functions, so client-side creation is disallowed.
+      allow create: if false;
+    }
   }
 }
