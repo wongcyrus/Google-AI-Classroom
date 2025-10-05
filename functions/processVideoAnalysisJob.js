@@ -1,7 +1,7 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { analyzeSingleVideoFlow } from './gemini.js';
+import { analyzeSingleVideoFlow } from './analysis-flows.js';
 
 const db = getFirestore();
 const storage = getStorage();

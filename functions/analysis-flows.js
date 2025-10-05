@@ -2,8 +2,8 @@ import './firebase.js';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './tools.js';
-import { checkQuota } from './quota.js';
+import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './ai-tools.js';
+import { checkQuota } from './quota-management.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
 
