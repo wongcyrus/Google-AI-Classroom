@@ -20,64 +20,102 @@ For a detailed breakdown of the Firestore data model, please see the [Firestore 
 
 ```mermaid
 graph TD
-    subgraph "User Interface"
-        WebApp["React Web App (Vite)"]
+    subgraph "Client"
+        WebApp["Web App (React)"]
     end
 
     subgraph "Firebase"
         Auth["Firebase Authentication"]
-        Hosting["Firebase Hosting"]
         Firestore["Firestore Database"]
         Storage["Cloud Storage"]
-        Functions["Cloud Functions"]
+        Scheduler["Cloud Scheduler"]
     end
 
     subgraph "Google Cloud"
         VertexAI["Vertex AI (Gemini)"]
     end
 
-    subgraph "Firestore Collections"
-        C_classes["classes"]
-        C_studentProfiles["studentProfiles"]
-        C_students["students"]
-        C_teachers["teachers"]
-        C_screenshots["screenshots"]
-        C_videoJobs["videoJobs"]
-        C_zipJobs["zipJobs"]
-        C_videoAnalysisJobs["videoAnalysisJobs"]
-        C_aiJobs["aiJobs"]
-        C_irregularities["irregularities"]
-        C_mails["mails"]
-        C_notifications["notifications"]
-        C_progress["progress"]
-        C_prompts["prompts"]
+    subgraph "Cloud Functions"
+        subgraph "AI Flows (`ai_flows`)"
+            F_analyzeImage["analyzeImage (onCall)"]
+            F_analyzeAllImages["analyzeAllImages (onCall)"]
+            F_onAiJobCreated["onAiJobCreated (onWrite `aiJobs`)"]
+            F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate `videoAnalysisJobs`)"]
+        end
+
+        subgraph "Auth Triggers (`auth_triggers`)"
+            F_checkIpAddress["checkipaddress (beforeUserSignedIn)"]
+            F_updateUserClasses["updateUserClassesOnClassUpdate (onWrite `classes`)"]
+        end
+
+        subgraph "Media Processing (`media_processing`)"
+            F_processVideoJob["processVideoJob (onCreate `videoJobs`)"]
+            F_processZipJob["processZipJob (onCreate `zipJobs`)"]
+            F_cleanupStuckJobs["cleanupStuckJobs (onSchedule)"]
+        end
+
+        subgraph "Scheduled Tasks (`scheduled_tasks`)"
+            F_handleAutoCapture["handleAutomaticCapture (onSchedule)"]
+            F_handleAutoVideoCombine["handleAutomaticVideoCombination (onSchedule)"]
+        end
+
+        subgraph "Storage Triggers (`storage_triggers`)"
+            F_updateStorageUpload["updateStorageUsageOnUpload (onFinalize)"]
+            F_updateStorageDelete["updateStorageUsageOnDelete (onDelete)"]
+            F_deleteScreenshots["deleteScreenshotsByDateRange (onCall)"]
+        end
     end
 
-    WebApp -- "Interacts with" --> Auth
-    WebApp -- "Hosted on" --> Hosting
+    %% Client to Firebase
+    WebApp -- "HTTPS Calls" --> F_analyzeImage
+    WebApp -- "HTTPS Calls" --> F_analyzeAllImages
+    WebApp -- "HTTPS Calls" --> F_deleteScreenshots
     WebApp -- "Reads/Writes" --> Firestore
-    WebApp -- "Uploads to" --> Storage
+    WebApp -- "Uploads" --> Storage
+    WebApp -- "Authenticates with" --> Auth
 
-    Functions -- "Triggered by" --> Auth
-    Functions -- "Triggered by" --> Firestore
-    Functions -- "Triggered by" --> Storage
-    Functions -- "Calls" --> VertexAI
-    Functions -- "Reads/Writes" --> Firestore
+    %% Auth Triggers
+    Auth -- "Triggers" --> F_checkIpAddress
 
-    Firestore -- "Contains" --> C_classes
-    Firestore -- "Contains" --> C_studentProfiles
-    Firestore -- "Contains" --> C_students
-    Firestore -- "Contains" --> C_teachers
-    Firestore -- "Contains" --> C_screenshots
-    Firestore -- "Contains" --> C_videoJobs
-    Firestore -- "Contains" --> C_zipJobs
-    Firestore -- "Contains" --> C_videoAnalysisJobs
-    Firestore -- "Contains" --> C_aiJobs
-    Firestore -- "Contains" --> C_irregularities
-    Firestore -- "Contains" --> C_mails
-    Firestore -- "Contains" --> C_notifications
-    Firestore -- "Contains" --> C_progress
-    Firestore -- "Contains" --> C_prompts
+    %% Firestore Triggers
+    Firestore -- "`classes` write" --> F_updateUserClasses
+    Firestore -- "`videoJobs` create" --> F_processVideoJob
+    Firestore -- "`zipJobs` create" --> F_processZipJob
+    Firestore -- "`videoAnalysisJobs` create" --> F_processVideoAnalysisJob
+    Firestore -- "`aiJobs` write" --> F_onAiJobCreated
+
+    %% Storage Triggers
+    Storage -- "onFinalize" --> F_updateStorageUpload
+    Storage -- "onDelete" --> F_updateStorageDelete
+
+    %% Scheduled Triggers
+    Scheduler -- "Triggers" --> F_cleanupStuckJobs
+    Scheduler -- "Triggers" --> F_handleAutoCapture
+    Scheduler -- "Triggers" --> F_handleAutoVideoCombine
+
+    %% Function to Firestore Interactions
+    F_checkIpAddress -- "Reads" --> Firestore
+    F_updateUserClasses -- "Writes" --> Firestore
+    F_processVideoJob -- "Reads/Writes" --> Firestore
+    F_processVideoJob -- "Reads" --> Storage
+    F_processVideoJob -- "Writes" --> Storage
+    F_processZipJob -- "Reads/Writes" --> Firestore
+    F_processZipJob -- "Reads" --> Storage
+    F_processZipJob -- "Writes" --> Storage
+    F_cleanupStuckJobs -- "Reads/Writes" --> Firestore
+    F_handleAutoCapture -- "Reads/Writes" --> Firestore
+    F_handleAutoVideoCombine -- "Reads/Writes" --> Firestore
+    F_updateStorageUpload -- "Reads/Writes" --> Firestore
+    F_updateStorageDelete -- "Reads/Writes" --> Firestore
+    F_deleteScreenshots -- "Reads/Writes" --> Firestore
+    F_deleteScreenshots -- "Deletes from" --> Storage
+    F_analyzeImage -- "Calls" --> VertexAI
+    F_analyzeImage -- "Writes" --> Firestore
+    F_analyzeAllImages -- "Calls" --> VertexAI
+    F_analyzeAllImages -- "Writes" --> Firestore
+    F_processVideoAnalysisJob -- "Calls" --> F_analyzeImage
+    F_processVideoAnalysisJob -- "Writes" --> Firestore
+    F_onAiJobCreated -- "Writes" --> Firestore
 ```
 
 ## Backend Functionality
