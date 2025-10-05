@@ -51,7 +51,7 @@ const StudentView = ({ user }) => {
   }, []);
 
   const updateSharingStatus = useCallback(async (sharingStatus) => {
-    if (!selectedClass) return;
+    if (!selectedClass || !user || !user.uid) return;
     try {
       const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
       await setDoc(statusRef, {
@@ -83,6 +83,10 @@ const StudentView = ({ user }) => {
   }, [updateSharingStatus, showSystemNotification]);
 
   const captureAndUpload = useCallback((videoElement, classId) => {
+    if (!user || !user.uid) {
+      console.error('Capture skipped: user not available.');
+      return;
+    }
     if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
       console.log('Capture skipped: video element not ready.');
       return;
@@ -240,15 +244,22 @@ const StudentView = ({ user }) => {
   }, [user, selectedClass, ipAddress, stopSharing]);
 
   useEffect(() => {
-    if (!user || !user.email) return;
+    if (!user || !user.uid) return;
 
-    const classesQuery = query(collection(db, 'classes'), where('students', 'array-contains', user.email));
-    const unsubscribe = onSnapshot(classesQuery, (snapshot) => {
-      const classes = snapshot.docs.map(doc => doc.id);
-      setUserClasses(classes);
-      if (classes.length === 1) {
-        setSelectedClass(classes[0]);
-      } else if (selectedClass && !classes.includes(selectedClass)) {
+    const userDocRef = doc(db, 'studentProfiles', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        const classes = userData.classes || [];
+        setUserClasses(classes);
+        if (classes.length === 1) {
+          setSelectedClass(classes[0]);
+        } else if (selectedClass && !classes.includes(selectedClass)) {
+          setSelectedClass(null); // Deselect if no longer in the list
+        }
+      } else {
+        // This case might happen for a new user who hasn't been added to any class yet
+        setUserClasses([]);
         setSelectedClass(null);
       }
     });

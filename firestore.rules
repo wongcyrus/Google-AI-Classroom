@@ -11,7 +11,7 @@ service cloud.firestore {
       return request.auth.token.email in get(/databases/$(database)/documents/classes/$(classId)).data.students;
     }
 
-    match /users/{userId} {
+    match /studentProfiles/{userId} {
       allow read, write: if request.auth.uid == userId;
     }
 
@@ -29,7 +29,7 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow read: if isTeacher() || (request.auth.token.email in resource.data.students);
+      allow read: if isTeacher() || (classId in get(/databases/$(database)/documents/studentProfiles/$(request.auth.uid)).data.classes);
       allow create: if isTeacher() &&
                     (classId == 'demo' ||
                      (request.resource.data.teachers is list &&
