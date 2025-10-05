@@ -1,6 +1,6 @@
 import './firebase.js';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { onUserCreate as onUserCreateHandler } from 'firebase-functions/v2/auth';
+import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
@@ -66,7 +66,8 @@ export const onClassUpdate = onDocumentWritten('classes/{classId}', async (event
   return Promise.all(promises);
 });
 
-export const onUserCreate = onUserCreateHandler(async (user) => {
+export const beforeusercreated = beforeUserCreated(async (event) => {
+    const user = event.data;
     const { uid, email, customClaims } = user;
 
     if (!email) {
