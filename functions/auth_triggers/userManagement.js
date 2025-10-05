@@ -1,6 +1,7 @@
 import './firebase.js';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
+import { HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
@@ -68,14 +69,24 @@ export const onClassUpdate = onDocumentWritten('classes/{classId}', async (event
 
 export const beforeusercreated = beforeUserCreated(async (event) => {
     const user = event.data;
-    const { uid, email, customClaims } = user;
+    const { uid, email } = user;
 
     if (!email) {
-        logger.warn(`User ${uid} created without an email address.`);
-        return;
+        throw new HttpsError('invalid-argument', 'Email is required to sign up.');
     }
 
-    const isTeacher = customClaims && customClaims.role === 'teacher';
+    const newCustomClaims = {};
+    let isTeacher = false;
+
+    if (email.endsWith('@vtc.edu.hk')) {
+        newCustomClaims.role = 'teacher';
+        isTeacher = true;
+    } else if (email.endsWith('@stu.vtc.edu.hk')) {
+        newCustomClaims.role = 'student';
+    } else {
+        throw new HttpsError('invalid-argument', 'Please use a valid VTC email address (@vtc.edu.hk or @stu.vtc.edu.hk).');
+    }
+
     const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
     const emailField = isTeacher ? 'teachers' : 'students';
     const uidField = isTeacher ? 'teacherUids' : 'studentUids';
@@ -85,26 +96,23 @@ export const beforeusercreated = beforeUserCreated(async (event) => {
     const classesRef = db.collection('classes');
     const querySnapshot = await classesRef.where(emailField, 'array-contains', email).get();
 
-    if (querySnapshot.empty) {
+    if (!querySnapshot.empty) {
+        const batch = db.batch();
+        querySnapshot.forEach(doc => {
+            const classId = doc.id;
+            logger.info(`Found matching class '${classId}'. Linking user.`);
+            const userProfileRef = db.collection(profileCollection).doc(uid);
+            batch.set(userProfileRef, { classes: FieldValue.arrayUnion(classId) }, { merge: true });
+            const classRef = doc.ref;
+            batch.update(classRef, { [uidField]: FieldValue.arrayUnion(uid) });
+        });
+        await batch.commit();
+        logger.info(`Successfully linked ${email} to ${querySnapshot.size} class(es).`);
+    } else {
         logger.info(`No pre-enrolled classes found for ${email}.`);
-        return;
     }
 
-    const batch = db.batch();
-
-    querySnapshot.forEach(doc => {
-        const classId = doc.id;
-        logger.info(`Found matching class '${classId}'. Linking user.`);
-
-        // Add classId to the user's profile
-        const userProfileRef = db.collection(profileCollection).doc(uid);
-        batch.set(userProfileRef, { classes: FieldValue.arrayUnion(classId) }, { merge: true });
-
-        // Add UID to the class's UID array
-        const classRef = doc.ref;
-        batch.update(classRef, { [uidField]: FieldValue.arrayUnion(uid) });
-    });
-
-    await batch.commit();
-    logger.info(`Successfully linked ${email} to ${querySnapshot.size} class(es).`);
+    return {
+        customClaims: newCustomClaims
+    };
 });
