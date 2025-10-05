@@ -8,7 +8,7 @@ admin.initializeApp({
 });
 
 // The emails of the users you want to make teachers
-const emails = ['cywong@vtc.edu.hk','kcheung@vtc.edu.hk', 'rontam@vtc.edu.hk', 'hli852@vtc.edu.hk', 'callyho@vtc.edu.hk', 'adayuen@vtc.edu.hk'] // Add emails to this list
+const emails = ['cywong@vtc.edu.hk','kcheung@vtc.edu.hk', 'rontam@vtc.edu.hk', 'hli852@vtc.edu.hk', 'callyho@vtc.edu.hk', 'adayuen@vtc.edu.hk','alanpo@vtc.edu.hk'] // Add emails to this list
 
 emails.forEach(email => {
   admin.auth().getUserByEmail(email)
