@@ -381,8 +381,19 @@ const StudentView = ({ user }) => {
           captureAndUpload(videoRef.current, selectedClass);
         }, frameRate * 1000);
       } else if (isCapturing) {
-        const classRef = doc(db, "classes", selectedClass);
-        setDoc(classRef, { isCapturing: false }, { merge: true });
+        // The capture session time has expired for this student.
+        // Update the student's own status document instead of the class document.
+        const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+        setDoc(statusRef, { 
+            isCapturing: false,
+            reason: "Capture time limit reached."
+        }, { merge: true })
+          .then(() => {
+            console.log("Student capture time expired, updated student status to isCapturing: false.");
+          })
+          .catch(err => {
+            console.error("Failed to update student status after capture time expired.", err);
+          });
       }
     }
 
