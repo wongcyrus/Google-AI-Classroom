@@ -35,7 +35,7 @@ export const useClassSchedule = (classId) => {
       const end = new Date(endDate);
       const today = new Date();
   
-      for (let d = start; d <= end && d <= today; d.setDate(d.getDate() + 1)) {
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });
         timeSlots.forEach(slot => {
           if (slot.days.includes(dayOfWeek)) {

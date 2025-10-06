@@ -6,11 +6,11 @@ const serviceAccount = require('../sp.json');
 const MOCK_TEACHERS = [
   { email: 'cywong@vtc.edu.hk', password: 'password', displayName: 'CY Wong' },
 ];
-const MOCK_STUDENTS = [
-  { email: 'student1@test.com', password: 'password', displayName: 'Test Student 1' },
-  { email: 'student2@test.com', password: 'password', displayName: 'Test Student 2' },
-  { email: 'student3@test.com', password: 'password', displayName: 'Test Student 3' },
-];
+const MOCK_STUDENTS = Array.from({ length: 10 }, (_, i) => ({
+  email: `student${i + 1}@test.com`,
+  password: 'password',
+  displayName: `Test Student ${i + 1}`,
+}));
 
 const today = new Date();
 const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -26,11 +26,22 @@ const MOCK_CLASS = {
   schedule: {
     startDate: startDate.toISOString().split('T')[0],
     endDate: endDate.toISOString().split('T')[0],
+    timeZone: 'Asia/Hong_Kong',
     timeSlots: [
       { startTime: '09:00', endTime: '11:00', days: ['Mon', 'Wed'] },
       { startTime: '14:00', endTime: '16:00', days: ['Fri'] }
     ]
-  }
+  },
+  ipRestrictions: [],
+  automaticCapture: true,
+  automaticCombine: true,
+  aiQuota: 1000,
+  aiUsedQuota: 0,
+  frameRate: 1,
+  imageQuality: 80,
+  maxImageSize: 1024,
+  isCapturing: false,
+  captureStartedAt: null
 };
 
 async function createFirestoreData(db, users) {
@@ -54,23 +65,27 @@ async function createFirestoreData(db, users) {
     }
 
     // Create irregularities
-    const irregularities = [
-        { email: MOCK_STUDENTS[0].email, title: 'Phone Usage', message: 'Student was observed using their phone during the session.' },
-        { email: MOCK_STUDENTS[1].email, title: 'Distracted', message: 'Student appeared distracted and was not paying attention.' },
-        { email: MOCK_STUDENTS[0].email, title: 'Left Seat', message: 'Student left their seat without permission.' },
+    const irregularityTemplates = [
+        { title: 'Phone Usage', message: 'Student was observed using their phone during the session.' },
+        { title: 'Distracted', message: 'Student appeared distracted and was not paying attention.' },
+        { title: 'Left Seat', message: 'Student left their seat without permission.' },
+        { title: 'Talking', message: 'Student was talking to another student during the exam.' },
+        { title: 'Eyes Wandering', message: 'Student was repeatedly looking away from their screen.' },
     ];
-    for (const irregularity of irregularities) {
+
+    for (let i = 0; i < 15; i++) {
         try {
-            const studentUid = studentUidMap.get(irregularity.email);
+            const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
+            const irregularity = irregularityTemplates[i % irregularityTemplates.length];
+            const studentUid = studentUidMap.get(student.email);
             if (!studentUid) continue;
             await db.collection('irregularities').add({
                 classId: MOCK_CLASS.id,
                 studentUid,
-                email: irregularity.email,
+                email: student.email,
                 title: irregularity.title,
                 message: irregularity.message,
-                imageUrl: 'https://via.placeholder.com/150',
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 300000))), // every 5 minutes
             });
         } catch (error) {
             console.error('Error creating irregularity record:', error);
@@ -79,8 +94,15 @@ async function createFirestoreData(db, users) {
     console.log('Successfully created irregularity records.');
 
     // Create progress records
-    for (let i = 0; i < 3; i++) {
-        for (const student of MOCK_STUDENTS) {
+    const progressTemplates = [
+        "The student is showing excellent progress and is ahead of the curriculum.",
+        "Good progress, but needs to focus more on practical exercises.",
+        "Struggling with the fundamental concepts. Additional support is recommended.",
+        "Making steady progress. Consistent effort is paying off.",
+        "Exceptional work on the last assignment. Keep up the great work!",
+    ];
+    for (const student of MOCK_STUDENTS) {
+        for (let i = 0; i < 2; i++) { // 2 progress reports per student
             try {
                 const studentUid = studentUidMap.get(student.email);
                 if (!studentUid) continue;
@@ -88,8 +110,8 @@ async function createFirestoreData(db, users) {
                     classId: MOCK_CLASS.id,
                     studentUid,
                     studentEmail: student.email,
-                    progress: `This is sample progress report #${i + 1} for ${student.displayName}. The student is showing improvement in calculus concepts but needs to work on algebra fundamentals.`, 
-                    timestamp: admin.firestore.Timestamp.now(),
+                    progress: `[Report #${i + 1}] ${progressTemplates[(i + student.displayName.length) % progressTemplates.length]}`,
+                    timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 7 * 24 * 60 * 60 * 1000))), // weekly
                 });
             } catch (error) {
                 console.error(`Error creating progress record for ${student.email}:`, error);
@@ -99,7 +121,7 @@ async function createFirestoreData(db, users) {
     console.log('Successfully created progress records.');
 
     // Create Screenshot Records
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 50; i++) {
         try {
             const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
             const studentUid = studentUidMap.get(student.email);
@@ -109,7 +131,9 @@ async function createFirestoreData(db, users) {
                 studentUid,
                 email: student.email,
                 imagePath: `https://via.placeholder.com/640x480.png?text=Screenshot+${i+1}`,
-                timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 60000))), // every minute for the last 5 mins
+                size: Math.floor(Math.random() * (200 * 1024)) + (50 * 1024), // 50-250 KB
+                deleted: false,
+                timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 60000))), // every minute for the last 50 mins
             });
         } catch (error) {
             console.error('Error creating screenshot record:', error);
@@ -120,23 +144,34 @@ async function createFirestoreData(db, users) {
     // Create Notifications
     try {
         // For teacher
-        await db.collection('notifications').add({
-            userId: users.teacherUsers[0].uid,
-            message: `A new irregularity 'Phone Usage' was detected for ${MOCK_STUDENTS[0].email} in class ${MOCK_CLASS.id}.`,
-            type: 'irregularity',
-            read: false,
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            link: `/class/${MOCK_CLASS.id}/irregularities`
-        });
-        // For student
-        await db.collection('notifications').add({
-            userId: users.studentUsers[0].uid,
-            message: 'A new video Calculus Basics has been added to your library.',
-            type: 'info',
-            read: false,
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            link: `/class/${MOCK_CLASS.id}/videos`
-        });
+        for (let i = 0; i < 5; i++) {
+            const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
+            const irregularity = irregularityTemplates[i % irregularityTemplates.length];
+            await db.collection('notifications').add({
+                userId: users.teacherUsers[0].uid,
+                message: `New irregularity '${irregularity.title}' for ${student.email}.`,
+                read: i > 2, // Mark some as read
+                timestamp: admin.firestore.Timestamp.fromDate(new Date(Date.now() - (i * 60000 * 5))),
+            });
+        }
+
+        // For students
+        for (const student of MOCK_STUDENTS) {
+             const studentUid = studentUidMap.get(student.email);
+             if (!studentUid) continue;
+             await db.collection('notifications').add({
+                userId: studentUid,
+                message: 'A new video "Advanced Calculus" has been added to your library.',
+                read: Math.random() > 0.5,
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            });
+             await db.collection('notifications').add({
+                userId: studentUid,
+                message: 'Reminder: Exam tomorrow at 10:00 AM.',
+                read: false,
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
         console.log('Successfully created notification records.');
     } catch (error) {
         console.error('Error creating notification records:', error);

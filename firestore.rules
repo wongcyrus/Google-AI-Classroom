@@ -8,14 +8,14 @@ service cloud.firestore {
     }
 
     function isStudentInClass(classId) {
-      return request.auth.token.email in get(/databases/$(database)/documents/classes/$(classId)).data.students;
+      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentUids;
     }
 
     match /studentProfiles/{userId} {
       allow read, write: if request.auth.uid == userId;
     }
 
-    match /students/{studentId} {
+    match /students/{studentUid} {
       allow read: if isTeacher();
 
       match /classes/{classId} {
@@ -24,7 +24,7 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow create: if isTeacher();
-        allow read: if request.auth.token.email == studentId;
+        allow read: if request.auth.uid == studentUid;
       }
     }
 
@@ -42,9 +42,9 @@ service cloud.firestore {
         allow read: if isTeacher() || isStudentInClass(classId);
       }
 
-      match /status/{studentId} {
+      match /status/{studentUid} {
         allow read: if isTeacher() || isStudentInClass(classId);
-        allow write: if isStudentInClass(classId) && request.auth.uid == studentId;
+        allow write: if isStudentInClass(classId) && request.auth.uid == studentUid;
       }
 
       match /metadata/{docId} {
@@ -55,7 +55,7 @@ service cloud.firestore {
 
     match /screenshots/{screenshotId} {
         allow read: if isTeacher();
-        allow create: if request.auth.uid == request.resource.data.studentId && 
+        allow create: if request.auth.uid == request.resource.data.studentUid && 
                          isStudentInClass(request.resource.data.classId);
         allow delete: if isTeacher();
     }
@@ -65,7 +65,7 @@ service cloud.firestore {
     }
 
     match /irregularities/{irregularityId} {
-      allow read: if isTeacher() || request.auth.token.email == resource.data.email;
+      allow read: if isTeacher() || request.auth.uid == resource.data.studentUid;
       allow create: if isTeacher();
     }
 
@@ -109,7 +109,7 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       // Users can read and update (to mark as read) their own notifications.
-      allow read, update: if request.auth != null && request.auth.token.email == resource.data.userId;
+      allow read, update: if request.auth != null && request.auth.uid == resource.data.userId;
       // Creation is handled by backend functions, so client-side creation is disallowed.
       allow create: if false;
     }

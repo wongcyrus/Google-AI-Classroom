@@ -57,12 +57,13 @@ const StudentView = ({ user }) => {
       await setDoc(statusRef, {
         isSharing: sharingStatus,
         email: user.email,
-        name: user.displayName || user.email
+        name: user.displayName || user.email,
+        timestamp: serverTimestamp()
       }, { merge: true });
     } catch (error) {
       console.error("Error updating sharing status: ", error);
     }
-  }, [selectedClass, user]);
+  }, [selectedClass, user?.uid, user?.email, user?.displayName]);
 
   const stopSharing = useCallback(async () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -135,16 +136,17 @@ const StudentView = ({ user }) => {
             const screenshotsColRef = collection(db, 'screenshots');
             await addDoc(screenshotsColRef, {
               classId,
-              studentId: user.uid,
+              studentUid: user.uid,
               email: user.email.toLowerCase(),
               imagePath: screenshotRef.fullPath,
               size: blob.size,
               timestamp: serverTimestamp(),
               deleted: false,
+              ipAddress: ipAddress,
             });
             console.log('Screenshot metadata added to Firestore.');
             const statusRef = doc(db, "classes", classId, "status", user.uid);
-            await setDoc(statusRef, { lastUploadTimestamp: serverTimestamp() }, { merge: true });
+            await setDoc(statusRef, { timestamp: serverTimestamp() }, { merge: true });
             console.log('Student status updated.');
           } catch (err) {
             console.error("Error uploading screenshot: ", err);
@@ -154,7 +156,7 @@ const StudentView = ({ user }) => {
     };
 
     attemptUpload(canvas, imageQuality);
-  }, [imageQuality, user, maxImageSize]);
+  }, [imageQuality, user, maxImageSize, ipAddress]);
 
   const startSharing = useCallback(async () => {
     if ('Notification' in window && window.Notification.permission !== 'granted') {
@@ -240,7 +242,7 @@ const StudentView = ({ user }) => {
 
       return () => unsubscribe();
     }
-  }, [user, selectedClass, ipAddress, stopSharing]);
+  }, [user?.uid, selectedClass, ipAddress, stopSharing]);
 
   useEffect(() => {
     if (!user || !user.uid) return;
@@ -264,7 +266,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user, selectedClass]);
+  }, [user?.uid, selectedClass]);
 
   useEffect(() => {
     if (!selectedClass) return;
@@ -307,7 +309,8 @@ const StudentView = ({ user }) => {
     if (!user || !user.uid) return;
 
     const studentMessagesRef = collection(db, 'students', user.uid, 'messages');
-    const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(5));
+    // Temporarily remove orderBy to check for indexing issues
+    const q = query(studentMessagesRef, limit(5));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const messagesData = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, type: 'direct' }));
@@ -315,7 +318,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid]);
 
   // Merge messages and handle notifications
   useEffect(() => {
@@ -360,7 +363,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (intervalRef.current) {
