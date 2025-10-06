@@ -3,12 +3,13 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getApp } from "firebase-admin/app";
+import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 const storage = getStorage();
 const app = getApp();
 
-export const deleteScreenshotsByDateRange = onCall(async (request) => {
+export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError(
       "unauthenticated",

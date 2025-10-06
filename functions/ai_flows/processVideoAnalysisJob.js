@@ -2,11 +2,12 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { analyzeSingleVideoFlow } from './analysisFlows.js';
+import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 const storage = getStorage();
 
-export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
+export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
   const jobDoc = event.data;
   const masterJobId = event.params.jobId;
   const jobData = jobDoc.data();

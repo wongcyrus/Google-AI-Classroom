@@ -5,6 +5,7 @@ import { Address4 } from 'ip-address';
 import { format } from 'date-fns-tz';
 import { toZonedTime } from 'date-fns-tz/toZonedTime';
 import './firebase.js'; // Ensure firebase is initialized
+import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 
@@ -52,7 +53,7 @@ function isDuringScheduledTime(schedule) {
     return false; // Not in any scheduled time slot for the current day
 }
 
-export const checkipaddress = beforeUserSignedIn(async (event) => {
+export const checkipaddress = beforeUserSignedIn({ region: FUNCTION_REGION }, async (event) => {
     console.log('--- checkipaddress function triggered (v2) ---');
     const user = event.data;
     const ipAddress = event.ipAddress;

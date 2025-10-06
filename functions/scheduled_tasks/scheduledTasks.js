@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { format } from 'date-fns-tz';
+import { FUNCTION_REGION } from './config.js';
 
 // Helper to get local time and day in a specific timezone
 function getLocalTimeInfo(date, timeZone) {
@@ -18,7 +19,8 @@ function getLocalTimeInfo(date, timeZone) {
 
 const scheduleOptions = {
     schedule: '5,25,35,55 * * * *',
-    memory: '512MB'
+    memory: '512MB',
+    region: FUNCTION_REGION
 };
 
 export const handleAutomaticCapture = onSchedule(scheduleOptions, async (event) => {
@@ -82,7 +84,8 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async (event) 
 
 const videoCombinationOptions = {
     schedule: '15,45 * * * *',
-    memory: '512MB'
+    memory: '512MB',
+    region: FUNCTION_REGION
 };
 
 export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async (event) => {

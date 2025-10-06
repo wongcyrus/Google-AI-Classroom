@@ -5,6 +5,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
+import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 const adminAuth = getAuth();
@@ -40,7 +41,7 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
   return Promise.all(promises);
 };
 
-export const onClassUpdate = onDocumentWritten('classes/{classId}', async (event) => {
+export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', region: FUNCTION_REGION }, async (event) => {
   const classId = event.params.classId;
   const beforeData = event.data.before.data() || {};
   const afterData = event.data.after.data() || {};
@@ -67,7 +68,7 @@ export const onClassUpdate = onDocumentWritten('classes/{classId}', async (event
   return Promise.all(promises);
 });
 
-export const beforeusercreated = beforeUserCreated(async (event) => {
+export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, async (event) => {
     const user = event.data;
     const { uid, email } = user;
 

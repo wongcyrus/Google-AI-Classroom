@@ -3,7 +3,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { ZIP_COMPRESSION_LEVEL } from './config.js';
+import { ZIP_COMPRESSION_LEVEL, FUNCTION_REGION } from './config.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -17,6 +17,7 @@ const bucket = storage.bucket();
 
 export const processZipJob = onDocumentCreated({
     document: 'zipJobs/{jobId}',
+    region: FUNCTION_REGION,
     memory: '1GiB', // Start with 1GiB, can be increased
     timeoutSeconds: 540
 }, async (event) => {

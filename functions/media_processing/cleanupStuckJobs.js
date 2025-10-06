@@ -1,12 +1,13 @@
 import './firebase.js';
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from 'firebase-admin/firestore';
+import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 
 const STUCK_JOB_TIMEOUT_MINUTES = 120;
 
-export const cleanupStuckJobs = onSchedule("every 1 hours", async (event) => {
+export const cleanupStuckJobs = onSchedule({ schedule: "every 1 hours", region: FUNCTION_REGION }, async (event) => {
     console.log("Running job to clean up stuck video processing jobs.");
 
     const cutoffTime = new Date(Date.now() - STUCK_JOB_TIMEOUT_MINUTES * 60 * 1000);

@@ -2,7 +2,7 @@ import './firebase.js';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
-import { VIDEO_FRAME_RATE } from './config.js';
+import { VIDEO_FRAME_RATE, FUNCTION_REGION } from './config.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -30,7 +30,7 @@ const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after mul
   }
 };
 
-export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
+export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
     if (!ffmpegPathSet) {
         ffmpeg.setFfmpegPath(ffmpeg_static);
         ffmpegPathSet = true;
