@@ -60,7 +60,7 @@ const MailboxView = () => {
                             <div className="email-details">
                                 <div className="email-title">{email.title}</div>
                                 <div className="email-date">
-                                    {email.createdAt && new Date(email.createdAt.seconds * 1000).toLocaleDateString()}
+                                    {email.createdAt && new Date(email.createdAt.seconds * 1000).toLocaleString()}
                                 </div>
                             </div>
                         </Link>

@@ -594,7 +594,7 @@ const MonitorView = ({ classId: propClassId }) => {
                   <select value={selectedLesson} onChange={handleLessonChange}>
                     {lessons.map(lesson => (
                       <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                        {`${lesson.start.toLocaleDateString()} ${lesson.start.toLocaleTimeString()} - ${lesson.end.toLocaleTimeString()}`}
+                        {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${lesson.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`}
                       </option>
                     ))}
                   </select>

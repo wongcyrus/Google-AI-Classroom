@@ -21,7 +21,7 @@ const DateRangeFilter = ({ startTime, endTime, onStartTimeChange, onEndTimeChang
             <option value="">Select a Lesson</option>
             {lessons.map(lesson => (
               <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                {lesson.start.toLocaleString()}
+                {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${lesson.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`}
               </option>
             ))}
           </select>
