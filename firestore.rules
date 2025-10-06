@@ -37,6 +37,10 @@ service cloud.firestore {
                       classId.size() >= 3));
       allow update, delete: if isTeacher();
 
+      match /students/{studentId} {
+        allow read: if isTeacher();
+      }
+
       match /messages/{messageId} {
         allow create: if isTeacher();
         allow read: if isTeacher() || isStudentInClass(classId);

@@ -115,20 +115,45 @@ const PlaybackView = () => {
   }, [currentIndex, screenshots, isFetchingUrls]);
 
   useEffect(() => {
-    if (!classId) return;
-    const unsubscribe = onSnapshot(query(collection(db, 'videoJobs'), where('classId', '==', classId)), (snapshot) => {
-        const studentMap = new Map();
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.studentUid && data.studentEmail) {
-                studentMap.set(data.studentUid, data.studentEmail);
-            }
-        });
-        const studentList = Array.from(studentMap, ([uid, email]) => ({ uid, email }));
+    if (!classId) {
+      console.log('PlaybackView: No classId provided.');
+      return;
+    }
+    console.log(`PlaybackView: Setting up student listener for classId: ${classId}`);
+
+    const classRef = doc(db, 'classes', classId);
+    const unsubscribe = onSnapshot(classRef, (classSnap) => {
+      console.log('PlaybackView: Class snapshot received.');
+      if (classSnap.exists()) {
+        const classData = classSnap.data();
+        console.log('PlaybackView: Class document data:', classData);
+        
+        const studentUids = classData.studentUids || [];
+        const studentEmails = classData.students || []; // This is the array of emails
+
+        // Combine the two arrays into the structure the component expects
+        const studentList = studentUids.map((uid, index) => ({
+          uid: uid,
+          email: studentEmails[index] || 'Email not found', // Fallback
+        }));
+
+        console.log('PlaybackView: Correctly processed student list:', studentList);
         studentList.sort((a, b) => a.email.localeCompare(b.email));
         setStudents(studentList);
+
+      } else {
+        console.log(`PlaybackView: Class document with id ${classId} does not exist!`);
+        setStudents([]);
+      }
+    }, (error) => {
+      console.error(`PlaybackView: Error listening to class document ${classId}:`, error);
+      setStudents([]);
     });
-    return unsubscribe;
+
+    return () => {
+      console.log(`PlaybackView: Unsubscribing from student listener for classId: ${classId}`);
+      unsubscribe();
+    };
   }, [classId]);
 
   // Fetch screenshots when a session is loaded
