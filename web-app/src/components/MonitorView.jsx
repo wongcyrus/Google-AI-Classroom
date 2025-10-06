@@ -170,7 +170,6 @@ const MonitorView = ({ classId: propClassId }) => {
             setIsCapturing(data.isCapturing || false);
             setStorageQuota(data.storageQuota || 0);
             setAiQuota(data.aiQuota || 0);
-            setAiUsedQuota(data.aiUsedQuota || 0);
             setFrameRate(prevRate => {
                 const newRate = data.frameRate || 5;
                 return newRate === prevRate ? prevRate : newRate;
@@ -195,7 +194,15 @@ const MonitorView = ({ classId: propClassId }) => {
             setStorageUsage(data.storageUsage || 0);
             setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
             setStorageUsageVideos(data.storageUsageVideos || 0);
-            setStorageUsageZips(data.storageUsageZips || 0);
+        }
+    });
+
+    const aiMetaRef = doc(db, "classes", classId, "metadata", "ai");
+    const unsubscribeAiMeta = onSnapshot(aiMetaRef, (docSnap) => {
+        if (docSnap.exists()) {
+            setAiUsedQuota(docSnap.data().aiUsedQuota || 0);
+        } else {
+            setAiUsedQuota(0);
         }
     });
 
@@ -226,6 +233,7 @@ const MonitorView = ({ classId: propClassId }) => {
         unsubscribeClass();
         unsubscribeStorage();
         unsubscribeStatus();
+        unsubscribeAiMeta();
     }
   }, [classId]);
 

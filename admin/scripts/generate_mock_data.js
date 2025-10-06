@@ -22,7 +22,6 @@ const MOCK_CLASS = {
   teachers: MOCK_TEACHERS.map(t => t.email),
   students: MOCK_STUDENTS.map(s => s.email),
   storageQuota: 5 * 1024 * 1024 * 1024, // 5 GB
-  storageUsage: 0,
   schedule: {
     startDate: startDate.toISOString().split('T')[0],
     endDate: endDate.toISOString().split('T')[0],
@@ -36,7 +35,6 @@ const MOCK_CLASS = {
   automaticCapture: true,
   automaticCombine: true,
   aiQuota: 1000,
-  aiUsedQuota: 0,
   frameRate: 1,
   imageQuality: 80,
   maxImageSize: 1024,
@@ -58,6 +56,15 @@ async function createFirestoreData(db, users) {
             ...classData,
             teacherUids,
             studentUids,
+        });
+        await db.collection('classes').doc(id).collection('metadata').doc('storage').set({
+            storageUsage: 0,
+            storageUsageScreenShots: 0,
+            storageUsageVideos: 0,
+            storageUsageZips: 0,
+        });
+        await db.collection('classes').doc(id).collection('metadata').doc('ai').set({
+            aiUsedQuota: 0,
         });
         console.log(`Successfully created class: ${MOCK_CLASS.id}`);
     } catch (error) {
@@ -176,6 +183,50 @@ async function createFirestoreData(db, users) {
     } catch (error) {
         console.error('Error creating notification records:', error);
     }
+}
+
+
+async function createAuthUsers(auth, usersToCreate) {
+  const createdUsers = [];
+  for (const user of usersToCreate) {
+    try {
+      let userRecord = await auth.createUser({
+        email: user.email,
+        password: user.password,
+        displayName: user.displayName,
+      });
+      console.log(`Successfully created user: ${userRecord.email}`);
+      createdUsers.push(userRecord);
+    } catch (error) {
+      if (error.code === 'auth/email-already-exists') {
+        console.log(`User ${user.email} already exists. Fetching user record.`);
+        const userRecord = await auth.getUserByEmail(user.email);
+        createdUsers.push(userRecord);
+      } else {
+        console.error(`Error creating user ${user.email}:`, error);
+      }
+    }
+  }
+  return createdUsers;
+}
+
+async function setTeacherRole(auth, email) {
+  try {
+    const user = await auth.getUserByEmail(email);
+    await auth.setCustomUserClaims(user.uid, { role: 'teacher' });
+    console.log(`Successfully set teacher role for ${email}`);
+  } catch (error) {
+    console.error(`Error setting teacher role for ${email}:`, error);
+  }
+}
+
+function initializeFirebase() {
+    if (admin.apps.length === 0) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+    }
+    return admin;
 }
 
 

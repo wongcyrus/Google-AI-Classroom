@@ -13,13 +13,11 @@ erDiagram
         array teacherUids "enrolled teacher UIDs"
         array studentUids "enrolled student UIDs"
         number storageQuota
-        number storageUsage
         object schedule
         array ipRestrictions
         boolean automaticCapture
         boolean automaticCombine
         number aiQuota
-        number aiUsedQuota
         number frameRate
         number imageQuality
         number maxImageSize
@@ -191,7 +189,6 @@ Stores information about each class.
     *   `teacherUids`: (array) An array of teacher UIDs who have successfully enrolled in the class.
     *   `studentUids`: (array) An array of student UIDs who have successfully enrolled in the class.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
-    *   `storageUsage`: (number) The total storage used by the class in bytes.
     *   `schedule`: (object) An object containing the class schedule.
         *   `startDate`: (string) The start date of the class.
         *   `endDate`: (string) The end date of the class.
@@ -201,13 +198,21 @@ Stores information about each class.
     *   `automaticCapture`: (boolean) A boolean indicating if automatic screen capture is enabled.
     *   `automaticCombine`: (boolean) A boolean indicating if automatic video combination is enabled.
     *   `aiQuota`: (number) The AI processing quota for the class.
-    *   `aiUsedQuota`: (number) The used AI processing quota.
     *   `frameRate`: (number) The frame rate for screen capture.
     *   `imageQuality`: (number) The image quality for screen capture.
     *   `maxImageSize`: (number) The maximum image size for screen capture.
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
 *   **Subcollections**:
+    *   **`metadata`**: Stores metadata for the class, like usage information.
+        *   **Document ID**: Can be `storage` or `ai`.
+        *   **If Document ID is `storage`**:
+            *   `storageUsage`: (number) The total storage used by the class in bytes.
+            *   `storageUsageScreenShots`: (number) Storage used by screenshots.
+            *   `storageUsageVideos`: (number) Storage used by videos.
+            *   `storageUsageZips`: (number) Storage used by zips.
+        *   **If Document ID is `ai`**:
+            *   `aiUsedQuota`: (number) The used AI processing quota.
     *   **`status`**: Stores the real-time status of students in the class.
         *   **Document ID**: `studentUid` (string)
         *   **Fields**:

@@ -31,11 +31,20 @@ const TeacherView = ({ user }) => {
       
       const updatedClasses = await Promise.all(classesData.map(async c => {
           const storageRef = doc(db, "classes", c.id, "metadata", "storage");
-          const docSnap = await getDoc(storageRef);
-          if (docSnap.exists()) {
-              return { ...c, ...docSnap.data() };
+          const aiMetaRef = doc(db, "classes", c.id, "metadata", "ai");
+          const [storageSnap, aiMetaSnap] = await Promise.all([
+            getDoc(storageRef),
+            getDoc(aiMetaRef)
+          ]);
+
+          let mergedData = { ...c };
+          if (storageSnap.exists()) {
+              mergedData = { ...mergedData, ...storageSnap.data() };
           }
-          return c;
+          if (aiMetaSnap.exists()) {
+              mergedData = { ...mergedData, ...aiMetaSnap.data() };
+          }
+          return mergedData;
       }));
 
       setClasses(updatedClasses);
