@@ -5,7 +5,7 @@ import './StudentsGrid.css';
 const StudentsGrid = ({
   reviewTime,
   classList,
-  studentIdMap,
+  uidToEmailMap, // Changed from studentUidMap
   screenshots,
   frameRate,
   students,
@@ -16,26 +16,24 @@ const StudentsGrid = ({
   return (
     <div className="students-container">
       {reviewTime
-        ? classList.sort((a, b) => a.localeCompare(b)).map(email => {
-            const studentId = studentIdMap.current.get(email.toLowerCase());
-            const student = { id: studentId || email, email };
+        ? classList.sort((a, b) => a.localeCompare(b)).map(studentUid => { // Changed variable name for clarity
+            const email = uidToEmailMap.current.get(studentUid) || studentUid; // Use uidToEmailMap
+            const student = { id: studentUid, email };
 
             let screenshotUrl = null;
-            if (studentId) {
-              const screenshotData = screenshots[studentId];
-              if (screenshotData && screenshotData.timestamp) {
+            const screenshotData = screenshots[studentUid]; // Use studentUid directly
+            if (screenshotData && screenshotData.timestamp) {
                 const screenshotTime = screenshotData.timestamp.toDate();
                 const reviewTimeDate = new Date(reviewTime);
                 const secondsDiff = (reviewTimeDate.getTime() - screenshotTime.getTime()) / 1000;
                 if (secondsDiff >= 0 && secondsDiff < frameRate) {
                   screenshotUrl = screenshotData.url;
                 }
-              }
             }
 
             return (
               <StudentScreen
-                key={email}
+                key={studentUid} // Use studentUid for key
                 student={student}
                 isSharing={!!screenshotUrl}
                 screenshotUrl={screenshotUrl}

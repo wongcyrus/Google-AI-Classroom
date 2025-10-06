@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, storage } from '../firebase-config';
+import { db, storage, auth } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
@@ -70,7 +70,8 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
   const [samplingRate, setSamplingRate] = useState(5);
   const analysisCounterRef = useRef(0);
-  const studentIdMap = useRef(new Map());
+  const studentUidMap = useRef(new Map());
+  const uidToEmailMap = useRef(new Map());
 
 
 
@@ -146,7 +147,30 @@ const MonitorView = ({ classId: propClassId }) => {
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            setClassList(data.studentUids || []);
+            const studentUids = data.studentUids || [];
+            const studentEmails = data.students || [];
+            setClassList(studentUids);
+
+            const newMap = new Map();
+            if (studentUids.length === studentEmails.length) {
+                studentUids.forEach((uid, index) => {
+                    newMap.set(uid, studentEmails[index]);
+                });
+            }
+            uidToEmailMap.current = newMap;
+            
+            setFrameRate(prevRate => {
+                const newRate = data.frameRate || 5;
+                return newRate === prevRate ? prevRate : newRate;
+            });
+            setMaxImageSize(prevSize => {
+                const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
+                return newSize === prevSize ? prevSize : newSize;
+            });
+            setIsCapturing(data.isCapturing || false);
+            setStorageQuota(data.storageQuota || 0);
+            setAiQuota(data.aiQuota || 0);
+            setAiUsedQuota(data.aiUsedQuota || 0);
             setFrameRate(prevRate => {
                 const newRate = data.frameRate || 5;
                 return newRate === prevRate ? prevRate : newRate;
@@ -181,17 +205,17 @@ const MonitorView = ({ classId: propClassId }) => {
       
       statuses.forEach(status => {
         if (status.email && status.id) {
-          studentIdMap.current.set(status.email.toLowerCase(), status.id);
+          studentUidMap.current.set(status.email.toLowerCase(), status.id);
         }
       });
 
       const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
-          if (!curr.email) return acc;
-          const existingTs = acc[curr.email]?.timestamp?.toMillis() || 0;
+          if (!curr.id) return acc; // Use UID as the key
+          const existingTs = acc[curr.id]?.timestamp?.toMillis() || 0;
           const currentTs = curr.timestamp?.toMillis() || 0;
 
           if (currentTs >= existingTs) {
-              acc[curr.email] = curr;
+              acc[curr.id] = curr;
           }
           return acc;
       }, {}));
@@ -212,13 +236,13 @@ const MonitorView = ({ classId: propClassId }) => {
       const newScreenshots = {};
       const reviewTimeDate = new Date(reviewTime);
 
-      for (const studentId of classList) {
-        if (!studentId) continue;
+      for (const studentUid of classList) {
+        if (!studentUid) continue;
 
         const screenshotsQuery = query(
           collection(db, 'screenshots'),
           where('classId', '==', classId),
-          where('studentId', '==', studentId),
+          where('studentUid', '==', studentUid),
           where('timestamp', '<=', reviewTimeDate),
           orderBy('timestamp', 'desc'),
           limit(1)
@@ -230,7 +254,7 @@ const MonitorView = ({ classId: propClassId }) => {
           const screenshotData = doc.data();
           try {
             const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
-            newScreenshots[studentId] = { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath };
+            newScreenshots[studentUid] = { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath };
           } catch (error) {
             console.error("Error getting download URL for review: ", error);
           }
@@ -250,6 +274,7 @@ const MonitorView = ({ classId: propClassId }) => {
         return {
             id: status.id, // UID
             email: status.email,
+            name: status.name,
             isSharing: status.isSharing || false,
         };
     });
@@ -271,7 +296,7 @@ const MonitorView = ({ classId: propClassId }) => {
       const screenshotsQuery = query(
         collection(db, 'screenshots'),
         where('classId', '==', classId),
-        where('studentId', '==', student.id),
+        where('studentUid', '==', student.id),
         orderBy('timestamp', 'desc'),
         limit(1)
       );
@@ -347,12 +372,21 @@ const MonitorView = ({ classId: propClassId }) => {
       return;
     }
 
+    const senderUid = auth.currentUser?.uid;
+    if (!senderUid) {
+      console.error("Sender UID not available.");
+      alert("Could not send message: user not authenticated.");
+      return;
+    }
+
     try {
       for (const student of onlineStudents) {
         const studentMessagesRef = collection(db, 'students', student.id, 'messages');
         await addDoc(studentMessagesRef, {
           message,
           timestamp: serverTimestamp(),
+          senderUid: senderUid,
+          classId: classId,
         });
       }
       setMessage('');
@@ -364,17 +398,22 @@ const MonitorView = ({ classId: propClassId }) => {
   };
 
   const handleDownloadAttendance = () => {
-    const uidToEmailMap = new Map(studentStatuses.map(status => [status.id, status.email]));
-    const statusMap = new Map(studentStatuses.map(status => [status.id, status]));
+    const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
     const attendanceData = classList.map(uid => {
-      const email = uidToEmailMap.get(uid) || 'Unknown';
-      const status = statusMap.get(uid);
+      const email = uidToEmailMap.current.get(uid) || '';
+      const status = uidToStatusMap.get(uid);
       const isSharing = status ? status.isSharing || false : false;
       return { email, isSharing };
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + 'Email,Sharing Screen\n' + attendanceData.map(s => `${s.email},${s.isSharing}`).join('\n');
+    const header = ['Email', 'Sharing Screen'];
+    const rows = attendanceData.map(s => [
+        `"${s.email.replace(/"/g, '""')}"`,
+        s.isSharing
+    ].join(','));
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows].join('\n');
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -443,11 +482,12 @@ const MonitorView = ({ classId: propClassId }) => {
       .map(status => status.id)
   );
 
-  const uidToEmailMap = new Map(studentStatuses.map(status => [status.id, status.email]));
-
   const notSharingStudents = classList
     .filter(uid => !sharingStudentUids.has(uid))
-    .map(uid => ({ id: uid, email: uidToEmailMap.get(uid) || 'Unknown' }));
+    .map(uid => {
+        const email = uidToEmailMap.current.get(uid) || '';
+        return { id: uid, email: email };
+    });
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
@@ -576,7 +616,8 @@ const MonitorView = ({ classId: propClassId }) => {
               <StudentsGrid
                 reviewTime={reviewTime}
                 classList={classList}
-                studentIdMap={studentIdMap}
+                studentUidMap={studentUidMap}
+                uidToEmailMap={uidToEmailMap}
                 screenshots={screenshots}
                 frameRate={frameRate}
                 students={students}
