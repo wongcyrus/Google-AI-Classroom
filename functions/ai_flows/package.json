@@ -12,7 +12,6 @@
     "@genkit-ai/vertexai": "^1.19.3",
     "firebase-admin": "^12.1.0",
     "firebase-functions": "^6.4.0",
-    "genkit": "^1.19.3",
-    "zod": "^4.1.11"
+    "genkit": "^1.20.0"
   }
 }
