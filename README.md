@@ -248,3 +248,28 @@ This script handles all the necessary steps automatically:
 3.  Deploys all services (Hosting, Functions, Firestore rules, etc.) to Firebase.
 
 **Prerequisites:** Before running the script, make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated with your project.
+
+### Deployment Best Practices
+
+To ensure stable and predictable deployments, please follow these important configuration practices.
+
+#### 1. Explicitly Define Function Regions
+
+The Firestore database for this project is located in `nam5` (a US multi-region). To prevent trigger failures and minimize latency, all Cloud Functions should be deployed to the `us-central1` region.
+
+You should explicitly set this in the definition of every function.
+
+**Example:**
+```javascript
+// In any function file, e.g., functions/media_processing/processVideoJob.js
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+
+export const processVideoJob = onDocumentCreated({
+  document: 'videoJobs/{jobId}',
+  region: 'us-central1', // <-- Add this line
+  // ... other options
+}, async (event) => {
+  // ... function body
+});
+```
+`

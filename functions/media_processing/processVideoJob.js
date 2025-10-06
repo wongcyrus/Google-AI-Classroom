@@ -14,7 +14,7 @@ const db = getFirestore();
 const storage = getStorage();
 const bucket = storage.bucket();
 
-ffmpeg.setFfmpegPath(ffmpeg_static);
+let ffmpegPathSet = false;
 
 const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after multiple retries') => {
   try {
@@ -31,6 +31,10 @@ const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after mul
 };
 
 export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
+    if (!ffmpegPathSet) {
+        ffmpeg.setFfmpegPath(ffmpeg_static);
+        ffmpegPathSet = true;
+    }
     const snap = event.data;
     if (!snap) {
         console.log("No data associated with the event");
