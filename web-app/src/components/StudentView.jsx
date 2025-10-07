@@ -7,14 +7,19 @@ import Banner from './Banner';
 import { v4 as uuidv4 } from 'uuid';
 import './StudentView.css';
 
+import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
+
 const StudentView = ({ user }) => {
   // State
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
 
   const [isSharing, setIsSharing] = useState(false);
-  const [userClasses, setUserClasses] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
+
+  // Schedule-driven class state
+  const { userClasses, currentActiveClassId } = useStudentClassSchedule(user);
+  const [manualClassSelection, setManualClassSelection] = useState(null);
+  const activeClass = manualClassSelection || currentActiveClassId;
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(1024 * 1024);
@@ -51,9 +56,9 @@ const StudentView = ({ user }) => {
   }, []);
 
   const updateSharingStatus = useCallback(async (sharingStatus) => {
-    if (!selectedClass || !user || !user.uid) return;
+    if (!activeClass || !user || !user.uid) return;
     try {
-      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
       await setDoc(statusRef, {
         isSharing: sharingStatus,
         email: user.email,
@@ -63,7 +68,7 @@ const StudentView = ({ user }) => {
     } catch (error) {
       console.error("Error updating sharing status: ", error);
     }
-  }, [selectedClass, user]);
+  }, [activeClass, user]);
 
   const stopSharing = useCallback(async () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -172,7 +177,7 @@ const StudentView = ({ user }) => {
       }
     }
 
-    if (!selectedClass) {
+    if (!activeClass) {
       alert("Please select a class before sharing.");
       return;
     }
@@ -196,7 +201,7 @@ const StudentView = ({ user }) => {
       console.error("Error starting screen sharing:", error);
       setIsSharing(false);
     }
-  }, [selectedClass, showSystemNotification, stopSharing, updateSharingStatus]);
+  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus]);
 
   // Effects
   useEffect(() => {
@@ -219,10 +224,10 @@ const StudentView = ({ user }) => {
   }, []);
 
   useEffect(() => {
-    if (user && selectedClass) {
+    if (user && activeClass) {
       const newSessionId = uuidv4();
       sessionIdRef.current = newSessionId;
-      const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
       const statusData = { sessionId: newSessionId };
       if (ipAddress) {
         statusData.ipAddress = ipAddress;
@@ -242,36 +247,14 @@ const StudentView = ({ user }) => {
 
       return () => unsubscribe();
     }
-  }, [user, selectedClass, ipAddress, stopSharing]);
+  }, [user, activeClass, ipAddress, stopSharing]);
+
+
 
   useEffect(() => {
-    if (!user || !user.uid) return;
+    if (!activeClass) return;
 
-    const userDocRef = doc(db, 'studentProfiles', user.uid);
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const userData = docSnap.data();
-        const classes = userData.classes || [];
-        setUserClasses(classes);
-        if (classes.length === 1) {
-          setSelectedClass(classes[0]);
-        } else if (selectedClass && !classes.includes(selectedClass)) {
-          setSelectedClass(null); // Deselect if no longer in the list
-        }
-      } else {
-        // This case might happen for a new user who hasn't been added to any class yet
-        setUserClasses([]);
-        setSelectedClass(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [user, selectedClass]);
-
-  useEffect(() => {
-    if (!selectedClass) return;
-
-    const classRef = doc(db, "classes", selectedClass);
+    const classRef = doc(db, "classes", activeClass);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -284,17 +267,17 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [selectedClass]);
+  }, [activeClass]);
 
   // Listen for class-wide messages
   useEffect(() => {
-    if (!selectedClass) {
+    if (!activeClass) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setClassMessages([]);
       return;
     }
 
-    const messagesRef = collection(db, 'classes', selectedClass, 'messages');
+    const messagesRef = collection(db, 'classes', activeClass, 'messages');
     const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(5));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -303,7 +286,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [selectedClass]);
+  }, [activeClass]);
 
   // Listen for direct student messages
   useEffect(() => {
@@ -373,19 +356,19 @@ const StudentView = ({ user }) => {
       intervalRef.current = null;
     }
 
-    if (isSharing && isCapturing && videoRef.current && selectedClass) {
+    if (isSharing && isCapturing && videoRef.current && activeClass) {
       const now = Date.now();
       const startTime = captureStartedAt ? captureStartedAt.toDate().getTime() : now;
       const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
 
       if (now - startTime < twoAndAHalfHours) {
         intervalRef.current = setInterval(() => {
-          captureAndUpload(videoRef.current, selectedClass);
+          captureAndUpload(videoRef.current, activeClass);
         }, frameRate * 1000);
       } else if (isCapturing) {
         // The capture session time has expired for this student.
         // Update the student's own status document instead of the class document.
-        const statusRef = doc(db, "classes", selectedClass, "status", user.uid);
+        const statusRef = doc(db, "classes", activeClass, "status", user.uid);
         setDoc(statusRef, { 
             isCapturing: false,
             reason: "Capture time limit reached."
@@ -404,7 +387,7 @@ const StudentView = ({ user }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt, captureAndUpload, user.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, captureAndUpload, user.uid]);
 
   return (
     <div className="student-view-container">
@@ -413,15 +396,20 @@ const StudentView = ({ user }) => {
         <div className="student-view-main">
             <div className="student-view-controls">
             {userClasses.length > 1 && (
-                <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
-                <option value="" disabled>Select a class</option>
-                {userClasses.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                ))}
-                </select>
+                <>
+                    <select onChange={(e) => setManualClassSelection(e.target.value)} value={activeClass || ''}>
+                        <option value="" disabled>Select a class</option>
+                        {userClasses.map(c => (
+                            <option key={c} value={c}>{c}{c === currentActiveClassId ? ' (Live)' : ''}</option>
+                        ))}
+                    </select>
+                    {manualClassSelection && (
+                        <button onClick={() => setManualClassSelection(null)}>Follow Schedule</button>
+                    )}
+                </>
             )}
 
-            {selectedClass && (
+            {activeClass && (
                 isSharing ? (
                 <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
                 ) : (
