@@ -12,6 +12,7 @@ const MailboxView = () => {
     useEffect(() => {
         const currentUser = auth.currentUser;
         if (!currentUser) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setLoading(false);
             return;
         }

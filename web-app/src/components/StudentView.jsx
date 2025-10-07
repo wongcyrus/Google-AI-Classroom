@@ -63,7 +63,7 @@ const StudentView = ({ user }) => {
     } catch (error) {
       console.error("Error updating sharing status: ", error);
     }
-  }, [selectedClass, user?.uid, user?.email, user?.displayName]);
+  }, [selectedClass, user]);
 
   const stopSharing = useCallback(async () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -242,7 +242,7 @@ const StudentView = ({ user }) => {
 
       return () => unsubscribe();
     }
-  }, [user?.uid, selectedClass, ipAddress, stopSharing]);
+  }, [user, selectedClass, ipAddress, stopSharing]);
 
   useEffect(() => {
     if (!user || !user.uid) return;
@@ -266,7 +266,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user?.uid, selectedClass]);
+  }, [user, selectedClass]);
 
   useEffect(() => {
     if (!selectedClass) return;
@@ -289,6 +289,7 @@ const StudentView = ({ user }) => {
   // Listen for class-wide messages
   useEffect(() => {
     if (!selectedClass) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setClassMessages([]);
       return;
     }
@@ -318,7 +319,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [user]);
 
   // Merge messages and handle notifications
   useEffect(() => {
@@ -331,6 +332,7 @@ const StudentView = ({ user }) => {
     });
     
     const latestMessages = allMessages.slice(0, 5);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentMessages(latestMessages);
 
     if (latestMessages.length > 0) {
@@ -363,7 +365,7 @@ const StudentView = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [user]);
 
   useEffect(() => {
     if (intervalRef.current) {
@@ -402,7 +404,7 @@ const StudentView = ({ user }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt, captureAndUpload]);
+  }, [isSharing, isCapturing, frameRate, selectedClass, captureStartedAt, captureAndUpload, user.uid]);
 
   return (
     <div className="student-view-container">

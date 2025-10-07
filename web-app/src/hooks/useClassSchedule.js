@@ -33,7 +33,6 @@ export const useClassSchedule = (classId) => {
   
       const start = new Date(startDate);
       const end = new Date(endDate);
-      const today = new Date();
   
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });

@@ -24,6 +24,7 @@ const ProgressView = () => {
 
   useEffect(() => {
     if (!classId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
     const progressRef = collection(db, "progress");
@@ -57,6 +58,7 @@ const ProgressView = () => {
         latest[p.studentUid] = p;
       }
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLatestProgress(latest);
   }, [allProgress, endTime]);
 

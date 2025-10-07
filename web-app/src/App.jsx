@@ -100,12 +100,8 @@ const MainHeader = ({ onLogout, user, role }) => {
       getDoc(classRef).then(docSnap => {
         if (docSnap.exists()) {
           setClassName(docSnap.data().name);
-        } else {
-          setClassName('');
         }
       });
-    } else {
-      setClassName('');
     }
   }, [location.pathname, isClassPage]);
 

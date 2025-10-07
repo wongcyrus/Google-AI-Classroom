@@ -75,6 +75,7 @@ const NotificationsView = ({ user }) => {
   }, [user, classId, startTime, endTime, lastDoc, firstDoc]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchMessages('initial');
   }, [fetchMessages]);
 

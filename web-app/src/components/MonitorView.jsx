@@ -56,7 +56,7 @@ const MonitorView = ({ classId: propClassId }) => {
   const [storageQuota, setStorageQuota] = useState(0);
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
   const [storageUsageVideos, setStorageUsageVideos] = useState(0);
-  const [storageUsageZips, setStorageUsageZips] = useState(0);
+  const storageUsageZips = 0;
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
 
