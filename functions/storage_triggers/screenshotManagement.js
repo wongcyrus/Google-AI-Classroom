@@ -1,19 +1,18 @@
 import './firebase.js';
-import { getFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getApp } from "firebase-admin/app";
+import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+
 import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 const storage = getStorage();
-const app = getApp();
 
 export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION }, async (request) => {
   if (!request.auth) {
     throw new HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated."
+      'unauthenticated',
+      'The function must be called while authenticated.'
     );
   }
 
@@ -21,8 +20,8 @@ export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION }, 
 
   if (!classId || !startDate || !endDate) {
     throw new HttpsError(
-      "invalid-argument",
-      "The function must be called with classId, startDate, and endDate."
+      'invalid-argument',
+      'The function must be called with classId, startDate, and endDate.'
     );
   }
 
@@ -30,15 +29,15 @@ export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION }, 
   const end = new Date(endDate);
 
   const screenshotsQuery = db
-    .collection("screenshots")
-    .where("classId", "==", classId)
-    .where("timestamp", ">=", start)
-    .where("timestamp", "<=", end);
+    .collection('screenshots')
+    .where('classId', '==', classId)
+    .where('timestamp', '>=', start)
+    .where('timestamp', '<=', end);
 
   try {
     const snapshot = await screenshotsQuery.get();
     if (snapshot.empty) {
-      return { status: "success", message: "No screenshots found in the specified range." };
+      return { status: 'success', message: 'No screenshots found in the specified range.' };
     }
 
     // Delete in batches to avoid memory issues and batch limits
@@ -66,12 +65,12 @@ export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION }, 
 
     await Promise.all(promises);
 
-    return { status: "success", message: `Successfully deleted ${snapshot.size} screenshots.` };
+    return { status: 'success', message: `Successfully deleted ${snapshot.size} screenshots.` };
   } catch (error) {
-    console.error("Error deleting screenshots:", error);
+    console.error('Error deleting screenshots:', error);
     throw new HttpsError(
-      "internal",
-      "An error occurred while deleting screenshots."
+      'internal',
+      'An error occurred while deleting screenshots.'
     );
   }
 });

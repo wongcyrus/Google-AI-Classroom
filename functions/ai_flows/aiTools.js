@@ -30,7 +30,7 @@ export const sendMessageToStudent = ai.defineTool(
       await studentMessagesRef.add(messageData);
       return `Successfully sent message to student ${studentUid}.`;
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error('Error sending message:', error);
       return `Failed to send message to student ${studentUid}. Error: ${error.message}`;
     }
   }
@@ -75,7 +75,7 @@ export const recordIrregularity = ai.defineTool(
       });
       return `Successfully recorded irregularity for ${studentEmail}.`;
     } catch (error) {
-      console.error("Error recording irregularity:", error);
+      console.error('Error recording irregularity:', error);
       return `Failed to record irregularity for ${studentEmail}. Error: ${error.message}`;
     }
   }
@@ -109,7 +109,7 @@ export const recordStudentProgress = ai.defineTool(
       });
       return `Successfully recorded progress for ${studentEmail}.`;
     } catch (error) {
-      console.error("Error recording progress:", error);
+      console.error('Error recording progress:', error);
       return `Failed to record progress for ${studentEmail}. Error: ${error.message}`;
     }
   }
@@ -152,10 +152,10 @@ export const sendMessageToTeacher = ai.defineTool(
       let finalMessage = message;
       if (studentUid) {
         try {
-            const studentUser = await adminAuth.getUser(studentUid);
-            finalMessage = `Regarding ${studentUser.email}: ${message}`;
+          const studentUser = await adminAuth.getUser(studentUid);
+          finalMessage = `Regarding ${studentUser.email}: ${message}`;
         } catch (e) {
-            finalMessage = `Regarding student ${studentUid}: ${message}`;
+          finalMessage = `Regarding student ${studentUid}: ${message}`;
         }
       }
 
@@ -167,7 +167,7 @@ export const sendMessageToTeacher = ai.defineTool(
 
       return `Successfully sent message to the teacher of class ${classId}.`;
     } catch (error) {
-      console.error("Error sending message to teacher:", error);
+      console.error('Error sending message to teacher:', error);
       return `Failed to send message to teacher. Error: ${error.message}`;
     }
   }

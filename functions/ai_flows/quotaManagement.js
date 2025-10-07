@@ -42,22 +42,22 @@ export async function checkQuota(classId, estimatedCost) {
  * @returns {Promise<void>}
  */
 export async function updateUsage(classId, cost) {
-    if (!classId || cost === undefined) {
-        console.error('updateUsage called with invalid arguments.');
-        return;
-    }
-    const aiMetaRef = db.collection('classes').doc(classId).collection('metadata').doc('ai');
+  if (!classId || cost === undefined) {
+    console.error('updateUsage called with invalid arguments.');
+    return;
+  }
+  const aiMetaRef = db.collection('classes').doc(classId).collection('metadata').doc('ai');
 
-    try {
-        await aiMetaRef.update({
-            aiUsedQuota: FieldValue.increment(cost)
-        });
-    } catch (error) {
-        if (error.code === 5) { // NOT_FOUND, document doesn't exist
-            await aiMetaRef.set({ aiUsedQuota: cost });
-        } else {
-            console.error(`Failed to update AI usage for class ${classId}:`, error);
-            throw error; // re-throw other errors
-        }
+  try {
+    await aiMetaRef.update({
+      aiUsedQuota: FieldValue.increment(cost)
+    });
+  } catch (error) {
+    if (error.code === 5) { // NOT_FOUND, document doesn't exist
+      await aiMetaRef.set({ aiUsedQuota: cost });
+    } else {
+      console.error(`Failed to update AI usage for class ${classId}:`, error);
+      throw error; // re-throw other errors
     }
+  }
 }

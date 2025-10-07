@@ -21,75 +21,75 @@ export const analyzeImageFlow = ai.defineFlow(
     }),
     outputSchema: z.record(z.string()),
   },
-  async ({ screenshots, prompt, classId }, context) => {
+  async ({ screenshots, prompt, classId }, _context) => {
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
-        const fullPrompt = [
-            { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. ${prompt}` },
-            { media: { url } },
-        ];
-        const media = [{ media: { url } }];
+      const fullPrompt = [
+        { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. ${prompt}` },
+        { media: { url } },
+      ];
+      const media = [{ media: { url } }];
 
-        const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
-        const hasQuota = await checkQuota(classId, estimatedCost);
+      const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
+      const hasQuota = await checkQuota(classId, estimatedCost);
 
-        if (!hasQuota) {
-            await logJob({
-                classId,
-                studentUid,
-                studentEmail: email,
-                jobType: 'analyzeImage',
-                status: 'blocked-by-quota',
-                promptText: fullPrompt.find(p => p.text)?.text,
-                mediaPaths: media.map(m => m.media.url),
-                cost: 0,
-            });
-            analysisResults[studentUid] = 'Error: Insufficient quota.';
-            continue;
-        }
+      if (!hasQuota) {
+        await logJob({
+          classId,
+          studentUid,
+          studentEmail: email,
+          jobType: 'analyzeImage',
+          status: 'blocked-by-quota',
+          promptText: fullPrompt.find(p => p.text)?.text,
+          mediaPaths: media.map(m => m.media.url),
+          cost: 0,
+        });
+        analysisResults[studentUid] = 'Error: Insufficient quota.';
+        continue;
+      }
 
-        try {
-            const response = await ai.generate({
-                temperature: AI_TEMPERATURE,
-                topP: AI_TOP_P,
-                prompt: fullPrompt,
-                tools: getTools(),
-                maxToolRoundtrips: 10,
-            });
-            console.log('AI response usage:', response.usage);
-            const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-            const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+      try {
+        const response = await ai.generate({
+          temperature: AI_TEMPERATURE,
+          topP: AI_TOP_P,
+          prompt: fullPrompt,
+          tools: getTools(),
+          maxToolRoundtrips: 10,
+        });
+        console.log('AI response usage:', response.usage);
+        const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
+        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
 
-            await logJob({
-                classId,
-                studentUid,
-                studentEmail: email,
-                jobType: 'analyzeImage',
-                status: 'completed',
-                promptText: fullPrompt.find(p => p.text)?.text,
-                mediaPaths: media.map(m => m.media.url),
-                usage: {
-                    inputTokens: usage.inputTokens,
-                    outputTokens: usage.outputTokens,
-                },
-                cost,
-                result: response.text,
-            });
-            analysisResults[studentUid] = response.text;
-        } catch (error) {
-            await logJob({
-                classId,
-                studentUid,
-                studentEmail: email,
-                jobType: 'analyzeImage',
-                status: 'failed',
-                promptText: fullPrompt.find(p => p.text)?.text,
-                mediaPaths: media.map(m => m.media.url),
-                cost: 0,
-                errorDetails: error.message,
-            });
-            analysisResults[studentUid] = `Error: ${error.message}`;
-        }
+        await logJob({
+          classId,
+          studentUid,
+          studentEmail: email,
+          jobType: 'analyzeImage',
+          status: 'completed',
+          promptText: fullPrompt.find(p => p.text)?.text,
+          mediaPaths: media.map(m => m.media.url),
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+          },
+          cost,
+          result: response.text,
+        });
+        analysisResults[studentUid] = response.text;
+      } catch (error) {
+        await logJob({
+          classId,
+          studentUid,
+          studentEmail: email,
+          jobType: 'analyzeImage',
+          status: 'failed',
+          promptText: fullPrompt.find(p => p.text)?.text,
+          mediaPaths: media.map(m => m.media.url),
+          cost: 0,
+          errorDetails: error.message,
+        });
+        analysisResults[studentUid] = `Error: ${error.message}`;
+      }
     }
     return analysisResults;
   }
@@ -107,14 +107,14 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       masterJobId: z.string().optional(),
     }),
     outputSchema: z.object({
-        result: z.string(),
-        jobId: z.string(),
+      result: z.string(),
+      jobId: z.string(),
     }),
   },
   async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId }) => {
     const fullPrompt = [
-        { text: `The following video is from a student. Email: ${studentEmail}. Student UID: ${studentUid}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
-        { media: { url: videoUrl } },
+      { text: `The following video is from a student. Email: ${studentEmail}. Student UID: ${studentUid}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
+      { media: { url: videoUrl } },
     ];
     const media = [{ media: { url: videoUrl } }];
 
@@ -122,63 +122,63 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
-        const jobId = await logJob({
-            classId,
-            studentUid,
-            studentEmail,
-            jobType: 'analyzeSingleVideo',
-            status: 'blocked-by-quota',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            cost: 0,
-            masterJobId,
-        });
-        return { result: 'Error: Insufficient quota.', jobId };
+      const jobId = await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeSingleVideo',
+        status: 'blocked-by-quota',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        cost: 0,
+        masterJobId,
+      });
+      return { result: 'Error: Insufficient quota.', jobId };
     }
 
     try {
-        const response = await ai.generate({
-            temperature: AI_TEMPERATURE,
-            topP: AI_TOP_P,
-            prompt: fullPrompt,
-            tools: getTools(),
-            maxToolRoundtrips: 10,
-        });
-        console.log('AI response usage:', response.usage);
-        const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+      const response = await ai.generate({
+        temperature: AI_TEMPERATURE,
+        topP: AI_TOP_P,
+        prompt: fullPrompt,
+        tools: getTools(),
+        maxToolRoundtrips: 10,
+      });
+      console.log('AI response usage:', response.usage);
+      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
 
-        const jobId = await logJob({
-            classId,
-            studentUid,
-            studentEmail,
-            jobType: 'analyzeSingleVideo',
-            status: 'completed',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            usage: {
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-            },
-            cost,
-            result: response.text,
-            masterJobId,
-        });
-        return { result: response.text, jobId };
+      const jobId = await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeSingleVideo',
+        status: 'completed',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+        cost,
+        result: response.text,
+        masterJobId,
+      });
+      return { result: response.text, jobId };
     } catch (error) {
-        const jobId = await logJob({
-            classId,
-            studentUid,
-            studentEmail,
-            jobType: 'analyzeSingleVideo',
-            status: 'failed',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            cost: 0,
-            errorDetails: error.message,
-            masterJobId,
-        });
-        return { result: `Error: ${error.message}`, jobId };
+      const jobId = await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeSingleVideo',
+        status: 'failed',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        cost: 0,
+        errorDetails: error.message,
+        masterJobId,
+      });
+      return { result: `Error: ${error.message}`, jobId };
     }
   }
 );
@@ -187,13 +187,13 @@ export const analyzeAllImagesFlow = ai.defineFlow(
   {
     name: 'analyzeAllImagesFlow',
     inputSchema: z.object({
-        screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
-        prompt: z.string(),
-        classId: z.string(),
+      screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
+      prompt: z.string(),
+      classId: z.string(),
     }),
     outputSchema: z.string(),
   },
-  async ({ screenshots, prompt, classId }, context) => {
+  async ({ screenshots, prompt, classId }, _context) => {
     const imageParts = Object.entries(screenshots).flatMap(([studentUid, { url, email }]) => (
       [
         { text: `The following image is the screen shot from ${email} (student UID: ${studentUid}, image URL: ${url}):` },
@@ -212,58 +212,58 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
-        await logJob({
-            classId,
-            jobType: 'analyzeAllImages',
-            status: 'blocked-by-quota',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            cost: 0,
-        });
-        return 'Error: Insufficient quota.';
+      await logJob({
+        classId,
+        jobType: 'analyzeAllImages',
+        status: 'blocked-by-quota',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        cost: 0,
+      });
+      return 'Error: Insufficient quota.';
     }
 
     try {
-        const numScreenshots = Object.keys(screenshots).length;
-        const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
+      const numScreenshots = Object.keys(screenshots).length;
+      const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
-        const response = await ai.generate({
-            temperature: AI_TEMPERATURE,
-            topP: AI_TOP_P,
-            prompt: fullPrompt,
-            tools: getTools(),
-            maxToolRoundtrips,
-        });
-        console.log('AI response usage:', response.usage);
-        const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+      const response = await ai.generate({
+        temperature: AI_TEMPERATURE,
+        topP: AI_TOP_P,
+        prompt: fullPrompt,
+        tools: getTools(),
+        maxToolRoundtrips,
+      });
+      console.log('AI response usage:', response.usage);
+      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
 
-        await logJob({
-            classId,
-            jobType: 'analyzeAllImages',
-            status: 'completed',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            usage: {
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-            },
-            cost,
-            result: response.text,
-        });
+      await logJob({
+        classId,
+        jobType: 'analyzeAllImages',
+        status: 'completed',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+        cost,
+        result: response.text,
+      });
 
-        return response.text;
+      return response.text;
     } catch (error) {
-        await logJob({
-            classId,
-            jobType: 'analyzeAllImages',
-            status: 'failed',
-            promptText: fullPrompt.find(p => p.text)?.text,
-            mediaPaths: media.map(m => m.media.url),
-            cost: 0,
-            errorDetails: error.message,
-        });
-        return `Error: ${error.message}`;
+      await logJob({
+        classId,
+        jobType: 'analyzeAllImages',
+        status: 'failed',
+        promptText: fullPrompt.find(p => p.text)?.text,
+        mediaPaths: media.map(m => m.media.url),
+        cost: 0,
+        errorDetails: error.message,
+      });
+      return `Error: ${error.message}`;
     }
   }
 );

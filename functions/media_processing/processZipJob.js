@@ -1,5 +1,5 @@
 import './firebase.js';
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
@@ -16,126 +16,126 @@ const adminAuth = getAuth();
 const bucket = storage.bucket();
 
 export const processZipJob = onDocumentCreated({
-    document: 'zipJobs/{jobId}',
-    region: FUNCTION_REGION,
-    memory: '1GiB', // Start with 1GiB, can be increased
-    timeoutSeconds: 540
+  document: 'zipJobs/{jobId}',
+  region: FUNCTION_REGION,
+  memory: '1GiB', // Start with 1GiB, can be increased
+  timeoutSeconds: 540
 }, async (event) => {
-    const snap = event.data;
-    if (!snap) {
-        console.log("No data associated with the event");
-        return;
-    }
-    const jobData = snap.data();
-    const { jobId, videos, requester, classId } = jobData;
-    const jobRef = snap.ref;
+  const snap = event.data;
+  if (!snap) {
+    console.log('No data associated with the event');
+    return;
+  }
+  const jobData = snap.data();
+  const { jobId, videos, requester, classId } = jobData;
+  const jobRef = snap.ref;
 
-    console.log(`Processing zip job: ${jobId} for ${requester}`);
+  console.log(`Processing zip job: ${jobId} for ${requester}`);
 
-    try {
-        await jobRef.update({ status: 'processing', startedAt: new Date() });
+  try {
+    await jobRef.update({ status: 'processing', startedAt: new Date() });
 
-        const tempDir = path.join(os.tmpdir(), jobId);
-        fs.mkdirSync(tempDir, { recursive: true });
+    const tempDir = path.join(os.tmpdir(), jobId);
+    fs.mkdirSync(tempDir, { recursive: true });
 
-        console.log(`Downloading ${videos.length} videos to ${tempDir}`);
+    console.log(`Downloading ${videos.length} videos to ${tempDir}`);
 
-        const downloadPromises = videos.map(video => {
-            const formattedStartTime = new Date(video.startTime.seconds * 1000).toISOString()
-                .replace(/:/g, '-')
-                .replace(/\..+/, '')
-                .replace('T', '_');
-            const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
-            const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
+    const downloadPromises = videos.map(video => {
+      const formattedStartTime = new Date(video.startTime.seconds * 1000).toISOString()
+        .replace(/:/g, '-')
+        .replace(/\..+/, '')
+        .replace('T', '_');
+      const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
+      const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
-            const tempFilePath = path.join(tempDir, newFileName);
-            return bucket.file(video.path).download({ destination: tempFilePath });
-        });
-        await Promise.all(downloadPromises);
+      const tempFilePath = path.join(tempDir, newFileName);
+      return bucket.file(video.path).download({ destination: tempFilePath });
+    });
+    await Promise.all(downloadPromises);
 
-        console.log('All videos downloaded. Generating CSV summary.');
+    console.log('All videos downloaded. Generating CSV summary.');
 
-        const csvData = videos.map(video => {
-            const formattedStartTime = new Date(video.startTime.seconds * 1000).toISOString()
-                .replace(/:/g, '-')
-                .replace(/\..+/, '')
-                .replace('T', '_');
-            const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
-            const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
+    const csvData = videos.map(video => {
+      const formattedStartTime = new Date(video.startTime.seconds * 1000).toISOString()
+        .replace(/:/g, '-')
+        .replace(/\..+/, '')
+        .replace('T', '_');
+      const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
+      const newFileName = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
 
-            return {
-                student_email: video.studentEmail,
-                video_start_time: new Date(video.startTime.seconds * 1000).toISOString(),
-                filename_in_zip: newFileName
-            };
-        });
+      return {
+        student_email: video.studentEmail,
+        video_start_time: new Date(video.startTime.seconds * 1000).toISOString(),
+        filename_in_zip: newFileName
+      };
+    });
 
-        const csvString = stringify(csvData, { header: true });
-        fs.writeFileSync(path.join(tempDir, 'summary.csv'), csvString);
+    const csvString = stringify(csvData, { header: true });
+    fs.writeFileSync(path.join(tempDir, 'summary.csv'), csvString);
 
-        console.log('CSV summary generated. Starting zip process.');
+    console.log('CSV summary generated. Starting zip process.');
 
-        const outputZipName = `${jobId}.zip`;
-        const outputZipPath = path.join(os.tmpdir(), outputZipName);
-        const output = fs.createWriteStream(outputZipPath);
-        const archive = archiver('zip', {
-            zlib: { level: ZIP_COMPRESSION_LEVEL } // Sets the compression level.
-        });
+    const outputZipName = `${jobId}.zip`;
+    const outputZipPath = path.join(os.tmpdir(), outputZipName);
+    const output = fs.createWriteStream(outputZipPath);
+    const archive = archiver('zip', {
+      zlib: { level: ZIP_COMPRESSION_LEVEL } // Sets the compression level.
+    });
 
-        archive.pipe(output);
-        archive.directory(tempDir, false);
-        await archive.finalize();
+    archive.pipe(output);
+    archive.directory(tempDir, false);
+    await archive.finalize();
 
-        const destinationPath = `zips/${classId}/${outputZipName}`;
-        await bucket.upload(outputZipPath, {
-            destination: destinationPath,
-            metadata: {
-                contentType: 'application/zip',
-                metadata: {
-                    classId,
-                    requester,
-                }
-            }
-        });
-
-        console.log(`Zip file uploaded to ${destinationPath}. Getting signed URL.`);
-
-        const requesterUser = await adminAuth.getUser(requester);
-        const requesterEmail = requesterUser.email;
-
-        if (!requesterEmail) {
-            console.error(`Requester ${requester} has no email address.`);
-            // Still mark job as complete, but admin may need to manually notify.
-        } else {
-            const title = `Video archive for class '${classId}'`;
-
-            // Create email document with download link
-            await db.collection('mails').add({
-                to: requesterEmail,
-                title: title,
-                createdAt: new Date(),
-                read: false,
-                message: {
-                    subject: 'Your video archive is ready for download',
-                    html: `Hello,<br><br>Your requested video archive for class '${classId}' is ready.`
-                },
-                attachments: [
-                    { name: jobId + ".zip", key: destinationPath }
-                ]
-            });
-            console.log(`Email with download link sent to ${requesterEmail}.`);
+    const destinationPath = `zips/${classId}/${outputZipName}`;
+    await bucket.upload(outputZipPath, {
+      destination: destinationPath,
+      metadata: {
+        contentType: 'application/zip',
+        metadata: {
+          classId,
+          requester,
         }
+      }
+    });
 
-        await jobRef.update({ status: 'completed', finishedAt: new Date(), zipPath: destinationPath });
+    console.log(`Zip file uploaded to ${destinationPath}. Getting signed URL.`);
 
-        // Clean up local files
-        fs.rmSync(tempDir, { recursive: true, force: true });
-        fs.unlinkSync(outputZipPath);
+    const requesterUser = await adminAuth.getUser(requester);
+    const requesterEmail = requesterUser.email;
 
-        console.log(`Job ${jobId} completed successfully.`);
+    if (!requesterEmail) {
+      console.error(`Requester ${requester} has no email address.`);
+      // Still mark job as complete, but admin may need to manually notify.
+    } else {
+      const title = `Video archive for class '${classId}'`;
 
-    } catch (error) {
-        console.error(`Job ${jobId} failed:`, error);
-        await jobRef.update({ status: 'failed', finishedAt: new Date(), error: error.message });
+      // Create email document with download link
+      await db.collection('mails').add({
+        to: requesterEmail,
+        title: title,
+        createdAt: new Date(),
+        read: false,
+        message: {
+          subject: 'Your video archive is ready for download',
+          html: `Hello,<br><br>Your requested video archive for class '${classId}' is ready.`
+        },
+        attachments: [
+          { name: jobId + '.zip', key: destinationPath }
+        ]
+      });
+      console.log(`Email with download link sent to ${requesterEmail}.`);
     }
+
+    await jobRef.update({ status: 'completed', finishedAt: new Date(), zipPath: destinationPath });
+
+    // Clean up local files
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(outputZipPath);
+
+    console.log(`Job ${jobId} completed successfully.`);
+
+  } catch (error) {
+    console.error(`Job ${jobId} failed:`, error);
+    await jobRef.update({ status: 'failed', finishedAt: new Date(), error: error.message });
+  }
 });
