@@ -504,10 +504,27 @@ const MonitorView = ({ classId: propClassId }) => {
     }
 
     const screenshotsToAnalyze = {};
-    for (const student of students) {
-        if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.id] = { url: screenshots[student.id].url, email: student.email };
+    if (reviewTime) {
+      for (const studentId in screenshots) {
+        const student = students.find(s => s.id === studentId);
+        if (student && screenshots[studentId]) {
+          screenshotsToAnalyze[studentId] = {
+            url: screenshots[studentId].url,
+            email: student.email,
+            imagePath: screenshots[studentId].imagePath
+          };
         }
+      }
+    } else {
+      for (const student of students) {
+          if (student.isSharing && screenshots[student.id]) {
+            screenshotsToAnalyze[student.id] = {
+              url: screenshots[student.id].url,
+              email: student.email,
+              imagePath: screenshots[student.id].imagePath
+            };
+          }
+      }
     }
 
     setIsAnalyzing(true);
@@ -533,10 +550,27 @@ const MonitorView = ({ classId: propClassId }) => {
     }
 
     const screenshotsToAnalyze = {};
-    for (const student of students) {
-        if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.id] = { url: screenshots[student.id].url, email: student.email };
+    if (reviewTime) {
+      for (const studentId in screenshots) {
+        const student = students.find(s => s.id === studentId);
+        if (student && screenshots[studentId]) {
+          screenshotsToAnalyze[studentId] = {
+            url: screenshots[studentId].url,
+            email: student.email,
+            imagePath: screenshots[studentId].imagePath
+          };
         }
+      }
+    } else {
+      for (const student of students) {
+          if (student.isSharing && screenshots[student.id]) {
+            screenshotsToAnalyze[student.id] = {
+              url: screenshots[student.id].url,
+              email: student.email,
+              imagePath: screenshots[student.id].imagePath
+            };
+          }
+      }
     }
 
     setIsAnalyzing(true);
