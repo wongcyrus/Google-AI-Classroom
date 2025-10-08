@@ -276,24 +276,24 @@ const MonitorView = ({ classId: propClassId }) => {
 
   useEffect(() => {
     // classList is now an array of UIDs.
-    const onlineStudents = studentStatuses.filter(status => status && status.id && classList.includes(status.id));
-
-    const newStudents = onlineStudents.map(status => {
-        return {
-            id: status.id, // UID
-            email: status.email,
-            name: status.name,
-            isSharing: status.isSharing || false,
-        };
+    const studentsWithStatus = classList.map(uid => {
+      const status = studentStatuses.find(s => s.id === uid);
+      const email = uidToEmailMap.current.get(uid) || '';
+      return {
+        id: uid,
+        email: email,
+        name: status ? status.name : email, // fallback to email if no name
+        isSharing: status ? status.isSharing || false : false,
+      };
     });
 
     setStudents(prevStudents => {
-      if (JSON.stringify(prevStudents) === JSON.stringify(newStudents)) {
+      if (JSON.stringify(prevStudents) === JSON.stringify(studentsWithStatus)) {
         return prevStudents;
       }
-      return newStudents;
+      return studentsWithStatus;
     });
-  }, [classList, studentStatuses]);
+  }, [classList, studentStatuses, uidToEmailMap]);
 
   useEffect(() => {
     if (reviewTime || students.length === 0 || pausedRef.current) return;

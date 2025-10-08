@@ -224,6 +224,11 @@ const ClassManagement = ({ user }) => {
       setError('Schedule end date cannot be before the start date.');
       return;
     }
+
+    if (!scheduleStartDate || !scheduleEndDate || classSchedules.length === 0) {
+      setError('Schedule information is required. Please provide a start date, end date, and at least one time slot.');
+      return;
+    }
     
     if (!auth.currentUser) {
       setError('You must be logged in to manage classes.');
@@ -339,7 +344,7 @@ const ClassManagement = ({ user }) => {
           <option key={c.id} value={c.id}>{c.id}</option>
         ))}
       </select>
-      <p>To create a new class, type a new Class ID below and fill out the details.</p>
+      <p>Or, to create a new class, type a new Class ID below and fill out the details.</p>
 
       <input
         type="text"
