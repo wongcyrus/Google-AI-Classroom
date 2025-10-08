@@ -8,7 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
-import * as Jimp from 'jimp';
+import sharp from 'sharp';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -76,8 +76,6 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
     console.log(`Downloading and processing ${screenshots.length} images to ${tempDir}`);
 
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
-
     // WARNING: A high batch size can lead to out-of-memory errors. Recommended: 5-10.
     const BATCH_SIZE = 50;
     for (let i = 0; i < screenshots.length; i += BATCH_SIZE) {
@@ -88,15 +86,16 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const fileName = `image-${overallIndex.toString().padStart(5, '0')}.jpg`;
         const filePath = path.join(tempDir, fileName);
         await bucket.file(screenshot.imagePath).download({ destination: filePath });
-                
-        const image = await Jimp.read(filePath);
+        
+        const image = sharp(filePath);
+        const metadata = await image.metadata();
 
-        if (image.bitmap.width % 2 !== 0 || image.bitmap.height % 2 !== 0) {
-          image.resize(
-            image.bitmap.width % 2 === 0 ? image.bitmap.width : image.bitmap.width - 1,
-            image.bitmap.height % 2 === 0 ? image.bitmap.height : image.bitmap.height - 1
-          );
-        }
+        let width = metadata.width;
+        let height = metadata.height;
+
+        // Ensure dimensions are even for ffmpeg
+        if (width % 2 !== 0) width--;
+        if (height % 2 !== 0) height--;
 
         const timestamp = screenshot.timestamp.toDate();
         const date = timestamp.toLocaleDateString();
@@ -104,13 +103,26 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${studentEmail}`;
 
         const textHeight = 40;
-        const newHeight = image.bitmap.height + textHeight;
 
-        const newImage = new Jimp(image.bitmap.width, newHeight, '#FFFFFF');
-        newImage.composite(image, 0, textHeight);
-        newImage.print(font, 10, 12, text);
-                
-        await newImage.writeAsync(filePath);
+        const svgText = `<svg width="${width}" height="${textHeight}"><rect x="0" y="0" width="${width}" height="${textHeight}" fill="white"/><text x="10" y="25" font-family="sans-serif" font-size="16" fill="black">${text}</text></svg>`;
+        const svgBuffer = Buffer.from(svgText);
+
+        const tempOutputPath = filePath + ".tmp";
+
+        await image
+            .resize(width, height)
+            .extend({
+                top: textHeight,
+                background: { r: 255, g: 255, b: 255, alpha: 1 }
+            })
+            .composite([
+                { input: svgBuffer, gravity: 'north' }
+            ])
+            .jpeg()
+            .toFile(tempOutputPath);
+
+        // Overwrite original file
+        await fs.promises.rename(tempOutputPath, filePath);
       });
             
       await Promise.all(processPromises);

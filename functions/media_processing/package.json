@@ -14,7 +14,7 @@
     "firebase-functions": "^6.4.0",
     "fluent-ffmpeg": "^2.1.3",
     "ffmpeg-static": "^5.2.0",
-    "jimp": "^1.6.0",
+    "sharp": "^0.33.4",
     "archiver": "^7.0.1",
     "csv-stringify": "^6.6.0"
   },
