@@ -5,8 +5,7 @@ export const FUNCTION_REGION = 'asia-east2';
 // CORS origins for callable functions
 export const CORS_ORIGINS = [
     "https://9000-firebase-ai-invigilator-1757825283554.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev",
-    /^https:\/\/.*\.cloudworkstations\.dev$/,
-    "https://us-central1-ai-invigilator-hkiit.cloudfunctions.net",
+    /https:\/\/.*\.cloudworkstations\.dev/,
     "https://ai-invigilator-hkiit.web.app",
     /https:\/\/.*--ai-invigilator-hkiit\.web\.app/,
 ];

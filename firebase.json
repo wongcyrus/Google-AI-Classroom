@@ -47,6 +47,14 @@
     ],
     "rewrites": [
       {
+        "source": "/api/analyzeImage",
+        "function": "analyzeImage"
+      },
+      {
+        "source": "/api/analyzeAllImages",
+        "function": "analyzeAllImages"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

@@ -5,6 +5,7 @@ import { analyzeImageFlow, analyzeAllImagesFlow } from "./analysisFlows.js";
 import { onAiJobCreated } from './quotaTriggers.js';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 
+// Force deployment
 const callOptions = {
   region: FUNCTION_REGION,
   cors: CORS_ORIGINS,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, storage, auth } from '../firebase-config';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { db, storage, auth, functions } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import StudentScreen from './StudentScreen';
@@ -32,26 +32,26 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
-        const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
-        const [reviewTime, setReviewTime] = useState(null);
-        const [timelineScrubTime, setTimelineScrubTime] = useState(null);
-        const timelineDebounceTimer = useRef(null);
-      
-        const handleLessonChange = (e) => {
-          originalHandleLessonChange(e);
-          setReviewTime(null);
-        };
-  
-        const handleTimelineChange = (e) => {
-          const time = parseInt(e.target.value, 10);
-          setTimelineScrubTime(time);
-  
-          clearTimeout(timelineDebounceTimer.current);
-          timelineDebounceTimer.current = setTimeout(() => {
-              setReviewTime(new Date(time).toISOString());
-              setTimelineScrubTime(null);
-          }, 500);
-        };
+  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
+  const [reviewTime, setReviewTime] = useState(null);
+  const [timelineScrubTime, setTimelineScrubTime] = useState(null);
+  const timelineDebounceTimer = useRef(null);
+
+  const handleLessonChange = (e) => {
+    originalHandleLessonChange(e);
+    setReviewTime(null);
+  };
+
+  const handleTimelineChange = (e) => {
+    const time = parseInt(e.target.value, 10);
+    setTimelineScrubTime(time);
+
+    clearTimeout(timelineDebounceTimer.current);
+    timelineDebounceTimer.current = setTimeout(() => {
+      setReviewTime(new Date(time).toISOString());
+      setTimelineScrubTime(null);
+    }, 500);
+  };
   const [storageUsage, setStorageUsage] = useState(0);
   const [storageQuota, setStorageQuota] = useState(0);
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
@@ -86,18 +86,16 @@ const MonitorView = ({ classId: propClassId }) => {
   const editablePromptTextRef = useRef(editablePromptText);
   useEffect(() => { editablePromptTextRef.current = editablePromptText; }, [editablePromptText]);
 
-  const functions = getFunctions();
-
   const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze) => {
     if (!editablePromptTextRef.current.trim()) return;
     console.log(`[${new Date().toISOString()}] Running per-image analysis for:`, Object.keys(screenshotsToAnalyze));
     const analyzeImage = httpsCallable(functions, 'analyzeImage');
     try {
-        const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
-        console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
-        setAnalysisResults(prev => ({ ...prev, ...result.data }));
+      const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
+      console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
+      setAnalysisResults(prev => ({ ...prev, ...result.data }));
     } catch (error) {
-        console.error("Error calling analyzeImage function: ", error);
+      console.error("Error calling analyzeImage function: ", error);
     }
   }, [functions, classId]);
 
@@ -106,11 +104,11 @@ const MonitorView = ({ classId: propClassId }) => {
     console.log(`[${new Date().toISOString()}] Running all-images analysis for ${Object.keys(screenshotsToAnalyze).length} images.`);
     const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
     try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
-        console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
-        setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
+      const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
+      console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
+      setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
     } catch (error) {
-        console.error("Error calling analyzeAllImages function: ", error);
+      console.error("Error calling analyzeAllImages function: ", error);
     }
   }, [functions, classId]);
 
@@ -145,71 +143,71 @@ const MonitorView = ({ classId: propClassId }) => {
 
     const classRef = doc(db, "classes", classId);
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            const studentUids = data.studentUids || [];
-            const studentEmails = data.students || [];
-            setClassList(studentUids);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const studentUids = data.studentUids || [];
+        const studentEmails = data.students || [];
+        setClassList(studentUids);
 
-            const newMap = new Map();
-            if (studentUids.length === studentEmails.length) {
-                studentUids.forEach((uid, index) => {
-                    newMap.set(uid, studentEmails[index]);
-                });
-            }
-            uidToEmailMap.current = newMap;
-            
-            setFrameRate(prevRate => {
-                const newRate = data.frameRate || 5;
-                return newRate === prevRate ? prevRate : newRate;
-            });
-            setMaxImageSize(prevSize => {
-                const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
-                return newSize === prevSize ? prevSize : newSize;
-            });
-            setIsCapturing(data.isCapturing || false);
-            setStorageQuota(data.storageQuota || 0);
-            setAiQuota(data.aiQuota || 0);
-            setFrameRate(prevRate => {
-                const newRate = data.frameRate || 5;
-                return newRate === prevRate ? prevRate : newRate;
-            });
-            setMaxImageSize(prevSize => {
-                const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
-                return newSize === prevSize ? prevSize : newSize;
-            });
-            setIsCapturing(data.isCapturing || false);
-            setStorageQuota(data.storageQuota || 0);
-            setAiQuota(data.aiQuota || 0);
-            setAiUsedQuota(data.aiUsedQuota || 0);
-        } else {
-            setClassList([]);
+        const newMap = new Map();
+        if (studentUids.length === studentEmails.length) {
+          studentUids.forEach((uid, index) => {
+            newMap.set(uid, studentEmails[index]);
+          });
         }
+        uidToEmailMap.current = newMap;
+
+        setFrameRate(prevRate => {
+          const newRate = data.frameRate || 5;
+          return newRate === prevRate ? prevRate : newRate;
+        });
+        setMaxImageSize(prevSize => {
+          const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
+          return newSize === prevSize ? prevSize : newSize;
+        });
+        setIsCapturing(data.isCapturing || false);
+        setStorageQuota(data.storageQuota || 0);
+        setAiQuota(data.aiQuota || 0);
+        setFrameRate(prevRate => {
+          const newRate = data.frameRate || 5;
+          return newRate === prevRate ? prevRate : newRate;
+        });
+        setMaxImageSize(prevSize => {
+          const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
+          return newSize === prevSize ? prevSize : newSize;
+        });
+        setIsCapturing(data.isCapturing || false);
+        setStorageQuota(data.storageQuota || 0);
+        setAiQuota(data.aiQuota || 0);
+        setAiUsedQuota(data.aiUsedQuota || 0);
+      } else {
+        setClassList([]);
+      }
     });
 
     const storageRef = doc(db, "classes", classId, "metadata", "storage");
     const unsubscribeStorage = onSnapshot(storageRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            setStorageUsage(data.storageUsage || 0);
-            setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
-            setStorageUsageVideos(data.storageUsageVideos || 0);
-        }
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setStorageUsage(data.storageUsage || 0);
+        setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
+        setStorageUsageVideos(data.storageUsageVideos || 0);
+      }
     });
 
     const aiMetaRef = doc(db, "classes", classId, "metadata", "ai");
     const unsubscribeAiMeta = onSnapshot(aiMetaRef, (docSnap) => {
-        if (docSnap.exists()) {
-            setAiUsedQuota(docSnap.data().aiUsedQuota || 0);
-        } else {
-            setAiUsedQuota(0);
-        }
+      if (docSnap.exists()) {
+        setAiUsedQuota(docSnap.data().aiUsedQuota || 0);
+      } else {
+        setAiUsedQuota(0);
+      }
     });
 
     const statusQuery = query(collection(db, 'classes', classId, 'status'));
     const unsubscribeStatus = onSnapshot(statusQuery, (snapshot) => {
       const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
+
       statuses.forEach(status => {
         if (status.email && status.id) {
           studentUidMap.current.set(status.email.toLowerCase(), status.id);
@@ -217,23 +215,23 @@ const MonitorView = ({ classId: propClassId }) => {
       });
 
       const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
-          if (!curr.id) return acc; // Use UID as the key
-          const existingTs = acc[curr.id]?.timestamp?.toMillis() || 0;
-          const currentTs = curr.timestamp?.toMillis() || 0;
+        if (!curr.id) return acc; // Use UID as the key
+        const existingTs = acc[curr.id]?.timestamp?.toMillis() || 0;
+        const currentTs = curr.timestamp?.toMillis() || 0;
 
-          if (currentTs >= existingTs) {
-              acc[curr.id] = curr;
-          }
-          return acc;
+        if (currentTs >= existingTs) {
+          acc[curr.id] = curr;
+        }
+        return acc;
       }, {}));
       setStudentStatuses(latestStatuses);
     });
 
     return () => {
-        unsubscribeClass();
-        unsubscribeStorage();
-        unsubscribeStatus();
-        unsubscribeAiMeta();
+      unsubscribeClass();
+      unsubscribeStorage();
+      unsubscribeStatus();
+      unsubscribeAiMeta();
     }
   }, [classId]);
 
@@ -299,7 +297,7 @@ const MonitorView = ({ classId: propClassId }) => {
     if (reviewTime || students.length === 0 || pausedRef.current) return;
 
     const unsubscribes = students.map(student => {
-      if (student.id === student.email) return () => {};
+      if (student.id === student.email) return () => { };
 
       const screenshotsQuery = query(
         collection(db, 'screenshots'),
@@ -316,8 +314,8 @@ const MonitorView = ({ classId: propClassId }) => {
           try {
             const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
             setScreenshots(prev => ({
-                ...prev,
-                [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath }
+              ...prev,
+              [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath }
             }));
 
             if (isPerImageAnalysisRunning && isCapturing) {
@@ -330,17 +328,17 @@ const MonitorView = ({ classId: propClassId }) => {
           } catch (error) {
             console.error("Error getting download URL: ", error);
             setScreenshots(prev => {
-                const newState = { ...prev };
-                delete newState[student.id];
-                return newState;
+              const newState = { ...prev };
+              delete newState[student.id];
+              return newState;
             });
           }
         } else {
-            setScreenshots(prev => {
-                const newState = { ...prev };
-                delete newState[student.id];
-                return newState;
-            });
+          setScreenshots(prev => {
+            const newState = { ...prev };
+            delete newState[student.id];
+            return newState;
+          });
         }
       });
     });
@@ -417,8 +415,8 @@ const MonitorView = ({ classId: propClassId }) => {
 
     const header = ['Email', 'Sharing Screen'];
     const rows = attendanceData.map(s => [
-        `"${s.email.replace(/"/g, '""')}"`,
-        s.isSharing
+      `"${s.email.replace(/"/g, '""')}"`,
+      s.isSharing
     ].join(','));
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows].join('\n');
@@ -469,9 +467,9 @@ const MonitorView = ({ classId: propClassId }) => {
     setIsCapturing(newIsCapturing); // Optimistic update
     try {
       const classRef = doc(db, 'classes', classId);
-      await updateDoc(classRef, { 
+      await updateDoc(classRef, {
         isCapturing: newIsCapturing,
-        captureStartedAt: newIsCapturing ? serverTimestamp() : null 
+        captureStartedAt: newIsCapturing ? serverTimestamp() : null
       });
     } catch (error) {
       console.error("Error toggling capture:", error);
@@ -493,8 +491,8 @@ const MonitorView = ({ classId: propClassId }) => {
   const notSharingStudents = classList
     .filter(uid => !sharingStudentUids.has(uid))
     .map(uid => {
-        const email = uidToEmailMap.current.get(uid) || '';
-        return { id: uid, email: email };
+      const email = uidToEmailMap.current.get(uid) || '';
+      return { id: uid, email: email };
     });
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
@@ -515,13 +513,13 @@ const MonitorView = ({ classId: propClassId }) => {
     setIsAnalyzing(true);
     const analyzeImage = httpsCallable(functions, 'analyzeImage');
     try {
-        const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
-        setAnalysisResults(result.data);
+      const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
+      setAnalysisResults(result.data);
     } catch (error) {
-        console.error("Error calling analyzeImage function: ", error);
-        alert("Error analyzing images: " + error.message);
+      console.error("Error calling analyzeImage function: ", error);
+      alert("Error analyzing images: " + error.message);
     } finally {
-        setIsAnalyzing(false);
+      setIsAnalyzing(false);
     }
 
     setShowPromptModal(false);
@@ -544,168 +542,168 @@ const MonitorView = ({ classId: propClassId }) => {
     setIsAnalyzing(true);
     const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
     try {
-        const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
-        setAnalysisResults({ 'All Images': result.data });
+      const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
+      setAnalysisResults({ 'All Images': result.data });
     } catch (error) {
-        console.error("Error calling analyzeAllImages function: ", error);
-        alert("Error analyzing images: " + error.message);
+      console.error("Error calling analyzeAllImages function: ", error);
+      alert("Error analyzing images: " + error.message);
     } finally {
-        setIsAnalyzing(false);
+      setIsAnalyzing(false);
     }
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
   };
 
-        const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
-  
-        return (
-          <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
-            {showControls ? <ControlsPanel 
-              message={message}
-              setMessage={setMessage}
-              handleSendMessage={handleSendMessage}
-              setShowControls={setShowControls}
-              frameRate={frameRate}
-              handleFrameRateChange={handleFrameRateChange}
-              frameRateOptions={frameRateOptions}
-              maxImageSize={maxImageSize}
-              handleMaxImageSizeChange={handleMaxImageSizeChange}
-              maxImageSizeOptions={maxImageSizeOptions}
-              isCapturing={isCapturing}
-              toggleCapture={toggleCapture}
-              isPaused={isPaused}
-              setIsPaused={setIsPaused}
-              setShowPromptModal={setShowPromptModal}
-              notSharingStudents={notSharingStudents}
-              setShowNotSharingModal={setShowNotSharingModal}
-              handleDownloadAttendance={handleDownloadAttendance}
-              editablePromptText={editablePromptText}
-              isPerImageAnalysisRunning={isPerImageAnalysisRunning}
-              isAllImagesAnalysisRunning={isAllImagesAnalysisRunning}
-              setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
-              setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
-              samplingRate={samplingRate}
-              setSamplingRate={setSamplingRate}
-              storageUsage={storageUsage}
-              storageQuota={storageQuota}
-              storageUsageScreenShots={storageUsageScreenShots}
-              storageUsageVideos={storageUsageVideos}
-              storageUsageZips={storageUsageZips}
-              aiQuota={aiQuota}
-              aiUsedQuota={aiUsedQuota}
-            /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
-            
-            <div className="monitor-main-content">
-              <div className="timeline-controls" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
-                  <select value={selectedLesson} onChange={handleLessonChange}>
-                    {lessons.map(lesson => (
-                      <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                        {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${lesson.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`}
-                      </option>
-                    ))}
-                  </select>
-                  <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
-                  <span>
-                    {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
-                  </span>
-                </div>
-                {startTime && endTime && (
-                  <TimelineSlider
-                    min={new Date(startTime).getTime()}
-                    max={new Date(endTime).getTime()}
-                    value={displayTime}
-                    onChange={handleTimelineChange}
-                    bufferedRanges={[]}
-                  />
-                )}
-              </div>
-              <StudentsGrid
-                reviewTime={reviewTime}
-                classList={classList}
-                studentUidMap={studentUidMap}
-                uidToEmailMap={uidToEmailMap}
-                screenshots={screenshots}
-                frameRate={frameRate}
-                students={students}
-                now={now}
-                isPaused={isPaused}
-                handleStudentClick={handleStudentClick}
-              />
-            </div>
+  const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
 
-            <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
-              {notSharingStudents.length > 0 ? (
-                <ul style={{listStyleType: 'none', padding: 0}}>{notSharingStudents.map(s => <li key={s.id} style={{padding: '5px 0'}}>{s.email}</li>)}</ul>
-              ) : <p>All students are sharing their screen.</p>}
-            </Modal>
+  return (
+    <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
+      {showControls ? <ControlsPanel
+        message={message}
+        setMessage={setMessage}
+        handleSendMessage={handleSendMessage}
+        setShowControls={setShowControls}
+        frameRate={frameRate}
+        handleFrameRateChange={handleFrameRateChange}
+        frameRateOptions={frameRateOptions}
+        maxImageSize={maxImageSize}
+        handleMaxImageSizeChange={handleMaxImageSizeChange}
+        maxImageSizeOptions={maxImageSizeOptions}
+        isCapturing={isCapturing}
+        toggleCapture={toggleCapture}
+        isPaused={isPaused}
+        setIsPaused={setIsPaused}
+        setShowPromptModal={setShowPromptModal}
+        notSharingStudents={notSharingStudents}
+        setShowNotSharingModal={setShowNotSharingModal}
+        handleDownloadAttendance={handleDownloadAttendance}
+        editablePromptText={editablePromptText}
+        isPerImageAnalysisRunning={isPerImageAnalysisRunning}
+        isAllImagesAnalysisRunning={isAllImagesAnalysisRunning}
+        setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
+        setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
+        samplingRate={samplingRate}
+        setSamplingRate={setSamplingRate}
+        storageUsage={storageUsage}
+        storageQuota={storageQuota}
+        storageUsageScreenShots={storageUsageScreenShots}
+        storageUsageVideos={storageUsageVideos}
+        storageUsageZips={storageUsageZips}
+        aiQuota={aiQuota}
+        aiUsedQuota={aiUsedQuota}
+      /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
 
-            {selectedStudent && <IndividualStudentView student={selectedStudent} screenshotUrl={selectedScreenshotUrl} onClose={() => setSelectedStudent(null)} />}
-
-            <Modal
-                show={showPromptModal}
-                onClose={() => {
-                  setShowPromptModal(false);
-                }}
-                title="Analyze Student Screens"
-            >
-                <select 
-                  value={selectedPrompt ? selectedPrompt.id : ''} 
-                  onChange={(e) => {
-                    const prompt = prompts.find(p => p.id === e.target.value);
-                    setSelectedPrompt(prompt);
-                    setEditablePromptText(prompt ? prompt.promptText : '');
-                  }}
-                  style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
-                >
-                  <option value="" disabled>Select a prompt</option>
-                  {prompts.map(p => (
-                    <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
-                  ))}
-                </select>
-                
-                <textarea
-                    value={editablePromptText}
-                    onChange={(e) => setEditablePromptText(e.target.value)}
-                    placeholder="Select a prompt or enter text here..."
-                    style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
-                />
-
-                <div style={{ marginTop: '10px' }}>
-                  {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
-                  {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
-                    <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
-                      {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
-                    </button>
-                  )}
-                  {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
-                    <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
-                      {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
-                    </button>
-                  )}
-                </div>
-            </Modal>
-            <Modal
-                show={showAnalysisResultsModal}
-                onClose={() => setShowAnalysisResultsModal(false)}
-                title="Analysis Results"
-            >
-                {Object.keys(analysisResults).length > 0 ? (
-                    <ul>
-                        {Object.entries(analysisResults).map(([uid, result]) => {
-                            const student = students.find(s => s.id === uid);
-                            const studentIdentifier = student ? student.email : (uid === 'All Images' ? 'All Images' : uid);
-                            return (
-                                <li key={uid}><strong>{studentIdentifier}:</strong> {result}</li>
-                            );
-                        })}                    </ul>
-                ) : (
-                    <p>No analysis has been run yet.</p>
-                )}
-            </Modal>
+      <div className="monitor-main-content">
+        <div className="timeline-controls" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+            <select value={selectedLesson} onChange={handleLessonChange}>
+              {lessons.map(lesson => (
+                <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
+                  {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
+            <span>
+              {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
+            </span>
           </div>
-        );
+          {startTime && endTime && (
+            <TimelineSlider
+              min={new Date(startTime).getTime()}
+              max={new Date(endTime).getTime()}
+              value={displayTime}
+              onChange={handleTimelineChange}
+              bufferedRanges={[]}
+            />
+          )}
+        </div>
+        <StudentsGrid
+          reviewTime={reviewTime}
+          classList={classList}
+          studentUidMap={studentUidMap}
+          uidToEmailMap={uidToEmailMap}
+          screenshots={screenshots}
+          frameRate={frameRate}
+          students={students}
+          now={now}
+          isPaused={isPaused}
+          handleStudentClick={handleStudentClick}
+        />
+      </div>
+
+      <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
+        {notSharingStudents.length > 0 ? (
+          <ul style={{ listStyleType: 'none', padding: 0 }}>{notSharingStudents.map(s => <li key={s.id} style={{ padding: '5px 0' }}>{s.email}</li>)}</ul>
+        ) : <p>All students are sharing their screen.</p>}
+      </Modal>
+
+      {selectedStudent && <IndividualStudentView student={selectedStudent} screenshotUrl={selectedScreenshotUrl} onClose={() => setSelectedStudent(null)} />}
+
+      <Modal
+        show={showPromptModal}
+        onClose={() => {
+          setShowPromptModal(false);
+        }}
+        title="Analyze Student Screens"
+      >
+        <select
+          value={selectedPrompt ? selectedPrompt.id : ''}
+          onChange={(e) => {
+            const prompt = prompts.find(p => p.id === e.target.value);
+            setSelectedPrompt(prompt);
+            setEditablePromptText(prompt ? prompt.promptText : '');
+          }}
+          style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
+        >
+          <option value="" disabled>Select a prompt</option>
+          {prompts.map(p => (
+            <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
+          ))}
+        </select>
+
+        <textarea
+          value={editablePromptText}
+          onChange={(e) => setEditablePromptText(e.target.value)}
+          placeholder="Select a prompt or enter text here..."
+          style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
+        />
+
+        <div style={{ marginTop: '10px' }}>
+          {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
+          {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
+            <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
+            </button>
+          )}
+          {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
+            <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
+            </button>
+          )}
+        </div>
+      </Modal>
+      <Modal
+        show={showAnalysisResultsModal}
+        onClose={() => setShowAnalysisResultsModal(false)}
+        title="Analysis Results"
+      >
+        {Object.keys(analysisResults).length > 0 ? (
+          <ul>
+            {Object.entries(analysisResults).map(([uid, result]) => {
+              const student = students.find(s => s.id === uid);
+              const studentIdentifier = student ? student.email : (uid === 'All Images' ? 'All Images' : uid);
+              return (
+                <li key={uid}><strong>{studentIdentifier}:</strong> {result}</li>
+              );
+            })}                    </ul>
+        ) : (
+          <p>No analysis has been run yet.</p>
+        )}
+      </Modal>
+    </div>
+  );
 };
 
 export default MonitorView;

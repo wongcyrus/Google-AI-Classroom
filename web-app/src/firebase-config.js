@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 if (import.meta.env.DEV) {
@@ -33,9 +34,10 @@ initializeAppCheck(app, {
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const functions = getFunctions(app, import.meta.env.VITE_REGION);
 
 if (import.meta.env.DEV) {
   window.auth = auth;
 }
 
-export { auth, db, storage };
+export { auth, db, storage, functions };

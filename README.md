@@ -2,9 +2,23 @@
 
 # Gemini AI Classroom Assistant
 
-A next-generation classroom assistant designed to proactively support students during computer-based tests. This project uses the Gemini AI model not just to detect issues, but to prevent them by providing gentle, real-time guidance to students.
+A next-generation classroom assistant designed to proactively support students during computer-based tests. Built entirely on Google Cloud and Firebase, this project uses the Gemini AI model not just to detect issues, but to prevent them by providing gentle, real-time guidance to students.
 
 Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor**, a **Technical Support Assistant**, and a **Wellness Coach**, creating a more supportive and effective testing environment.
+
+## Powered by Google Technologies
+
+This project is a showcase of modern, scalable, and intelligent application development using a suite of powerful Google technologies:
+
+*   **[Vertex AI](https://cloud.google.com/vertex-ai):** The core AI capabilities are powered by the **Gemini Pro** model, enabling sophisticated analysis of student activity.
+*   **[Firebase](https://firebase.google.com):** The entire backend and application infrastructure is built on Firebase.
+    *   **[Firebase Authentication](https://firebase.google.com/docs/auth):** For secure and easy user sign-in.
+    *   **[Firestore](https://firebase.google.com/docs/firestore):** A scalable NoSQL database for all application data.
+    *   **[Cloud Storage for Firebase](https://firebase.google.com/docs/storage):** To store all student-generated media like screenshots and videos.
+    *   **[Cloud Functions for Firebase](https://firebase.google.com/docs/functions):** For all serverless backend logic, from data processing to AI triggers.
+    *   **[Firebase Hosting](https://firebase.google.com/docs/hosting):** To deploy and host the web application globally.
+*   **[Genkit](https://firebase.google.com/docs/genkit):** The AI flows are developed using Genkit, an open-source framework from Google that helps developers build, deploy, and monitor production-ready AI-powered features.
+*   **[Google Cloud Scheduler](https://cloud.google.com/scheduler):** To run scheduled tasks for maintenance and automated class management.
 
 ## Architecture Overview
 
