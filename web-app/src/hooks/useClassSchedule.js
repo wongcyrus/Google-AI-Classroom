@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 
 const toLocalISOString = (date) => {
+  if (!date) return '';
   const y = date.getFullYear();
   const m = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
@@ -24,33 +26,37 @@ export const useClassSchedule = (classId) => {
     const d = new Date();
     return toLocalISOString(d);
   });
+  const [timezone, setTimezone] = useState('UTC');
 
   useEffect(() => {
-    const generateLessons = (schedule) => {
+    const generateLessons = (schedule, tz) => {
       const lessons = [];
       const { startDate, endDate, timeSlots } = schedule;
       if (!startDate || !endDate || !timeSlots) return lessons;
-  
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-  
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });
+
+      const start = new Date(`${startDate}T00:00:00.000Z`);
+      const end = new Date(`${endDate}T23:59:59.999Z`);
+
+      for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        const dayOfWeek = formatInTimeZone(d, tz, 'E');
+
         timeSlots.forEach(slot => {
           if (slot.days.includes(dayOfWeek)) {
-            const [startHour, startMinute] = slot.startTime.split(':');
-            const [endHour, endMinute] = slot.endTime.split(':');
-            const lessonStart = new Date(d);
-            lessonStart.setHours(startHour, startMinute, 0, 0);
-            const lessonEnd = new Date(d);
-            lessonEnd.setHours(endHour, endMinute, 0, 0);
+            const datePart = d.toISOString().split('T')[0];
+            
+            const lessonStartString = `${datePart}T${slot.startTime}:00`;
+            const lessonEndString = `${datePart}T${slot.endTime}:00`;
+
+            const lessonStart = fromZonedTime(lessonStartString, tz);
+            const lessonEnd = fromZonedTime(lessonEndString, tz);
+            
             lessons.push({ start: lessonStart, end: lessonEnd });
           }
         });
       }
       return lessons.sort((a, b) => b.start - a.start);
     };
-  
+
     const getDefaultLesson = (lessons) => {
       if (lessons.length === 0) return null;
       const now = new Date();
@@ -65,10 +71,13 @@ export const useClassSchedule = (classId) => {
       const classRef = doc(db, 'classes', classId);
       const classSnap = await getDoc(classRef);
       if (classSnap.exists()) {
-        const scheduleData = classSnap.data().schedule;
+        const classData = classSnap.data();
+        const scheduleData = classData.schedule;
+        const tz = classData.timezone || 'UTC';
+        setTimezone(tz);
         setSchedule(scheduleData);
         if (scheduleData) {
-          const generatedLessons = generateLessons(scheduleData);
+          const generatedLessons = generateLessons(scheduleData, tz);
           setLessons(generatedLessons);
           const defaultLesson = getDefaultLesson(generatedLessons);
           if (defaultLesson) {
@@ -91,5 +100,5 @@ export const useClassSchedule = (classId) => {
     }
   };
 
-  return { schedule, lessons, selectedLesson, startTime, endTime, setStartTime, setEndTime, handleLessonChange };
+  return { schedule, lessons, selectedLesson, startTime, endTime, setStartTime, setEndTime, handleLessonChange, timezone };
 };

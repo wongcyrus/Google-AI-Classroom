@@ -32,7 +32,7 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
-  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange } = useClassSchedule(classId);
+  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone } = useClassSchedule(classId);
   const [reviewTime, setReviewTime] = useState(null);
   const [timelineScrubTime, setTimelineScrubTime] = useState(null);
   const timelineDebounceTimer = useRef(null);
@@ -635,11 +635,11 @@ const MonitorView = ({ classId: propClassId }) => {
               {lessons.map(lesson => (
                 <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
                   {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
-                </option>
-              ))}
+                </option>              ))}
             </select>
             <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
-            <span>
+                        {timezone && timezone !== 'UTC' && <span style={{ fontStyle: 'italic', color: '#555', marginLeft: '15px' }}>Timezone: {timezone.replace(/_/g, ' ')}</span>}
+            <span style={{ marginLeft: '15px' }}>
               {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
             </span>
           </div>

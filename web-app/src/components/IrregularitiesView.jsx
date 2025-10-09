@@ -38,6 +38,7 @@ const IrregularitiesView = () => {
     setStartTime,
     setEndTime,
     handleLessonChange,
+    timezone,
   } = useClassSchedule(classId);
 
   const lastDocRef = useRef(null);
@@ -210,6 +211,7 @@ const IrregularitiesView = () => {
           endTime={endTime}
           onStartTimeChange={setStartTime}
           onEndTimeChange={setEndTime}
+          timezone={timezone}
         />
         <button onClick={exportToCSV} className="button">Export to CSV</button>
       </div>

@@ -23,7 +23,7 @@ const ProgressView = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!classId) return;
+    if (!classId || !startTime) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
@@ -51,6 +51,10 @@ const ProgressView = () => {
   }, [classId, startTime]);
 
   useEffect(() => {
+    if (!endTime) {
+      setLatestProgress({});
+      return;
+    }
     const latest = {};
     const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= new Date(endTime));
     filteredProgress.forEach(p => {
@@ -65,7 +69,7 @@ const ProgressView = () => {
   const renderDetailView = () => {
     const studentProgress = allProgress
       .filter(p => p.studentUid === selectedStudentUid)
-      .filter(p => p.timestamp.toDate() <= new Date(endTime));
+      .filter(p => !endTime || p.timestamp.toDate() <= new Date(endTime));
 
     const studentEmail = studentProgress.length > 0 ? studentProgress[0].studentEmail : selectedStudentUid;
 

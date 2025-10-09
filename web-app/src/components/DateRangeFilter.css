@@ -36,3 +36,8 @@
   background-color: #ccc;
   cursor: not-allowed;
 }
+
+.timezone-display {
+  font-style: italic;
+  color: #555;
+}
