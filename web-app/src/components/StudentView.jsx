@@ -55,10 +55,11 @@ const StudentView = ({ user }) => {
     }
   }, []);
 
-  const updateSharingStatus = useCallback(async (sharingStatus) => {
-    if (!activeClass || !user || !user.uid) return;
+  const updateSharingStatus = useCallback(async (sharingStatus, classId) => {
+    const targetClass = classId || activeClass;
+    if (!targetClass || !user || !user.uid) return;
     try {
-      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+      const statusRef = doc(db, "classes", targetClass, "status", user.uid);
       await setDoc(statusRef, {
         isSharing: sharingStatus,
         email: user.email,
@@ -177,10 +178,25 @@ const StudentView = ({ user }) => {
       }
     }
 
-    if (!activeClass) {
-      alert("Please select a class before sharing.");
+    let classToShare = activeClass;
+    if (!classToShare) {
+      if (userClasses.length === 1) {
+        classToShare = userClasses[0];
+        setManualClassSelection(classToShare);
+      } else if (userClasses.length > 1) {
+        alert("Please select a class before sharing.");
+        return;
+      } else {
+        alert("You are not enrolled in any classes.");
+        return;
+      }
+    }
+
+    if (!classToShare) {
+      alert("Could not determine a class. Please select one manually.");
       return;
     }
+
     try {
       const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
 
@@ -190,7 +206,7 @@ const StudentView = ({ user }) => {
       }
 
       setIsSharing(true);
-      await updateSharingStatus(true);
+      await updateSharingStatus(true, classToShare);
 
       showSystemNotification("Screen recording has started.");
 
@@ -201,7 +217,7 @@ const StudentView = ({ user }) => {
       console.error("Error starting screen sharing:", error);
       setIsSharing(false);
     }
-  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus]);
+  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus, userClasses]);
 
   // Effects
   useEffect(() => {
@@ -409,12 +425,10 @@ const StudentView = ({ user }) => {
                 </>
             )}
 
-            {activeClass && (
-                isSharing ? (
+            {isSharing ? (
                 <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
                 ) : (
                 <button onClick={startSharing} className="student-view-button">Share Screen</button>
-                )
             )}
             </div>
 
