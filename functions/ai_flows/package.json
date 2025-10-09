@@ -15,10 +15,10 @@
     "@genkit-ai/vertexai": "^1.21.0",
     "cors": "^2.8.5",
     "firebase-admin": "^13.5.0",
-    "firebase-functions": "^6.4.0",
+    "firebase-functions": "^6.5.0",
     "genkit": "^1.21.0"
   },
   "devDependencies": {
-    "eslint": "^8.57.0"
+    "eslint": "^9.37.0"
   }
 }

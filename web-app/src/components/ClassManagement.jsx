@@ -408,19 +408,31 @@ const ClassManagement = ({ user }) => {
               </label>
             ))}
           </div>
-          <button type="button" onClick={addSchedule}>Add Schedule</button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginTop: '10px' }}>
+            <p className="input-hint">Remember to click "Add Schedule" to save the time slot above.</p>
+            <button type="button" onClick={addSchedule}>Add Schedule</button>
+          </div>
         </div>
       </div>
 
       <div className="form-group">
-        <label>IP Address Restrictions</label>
+        <label>Student Emails</label>
         <textarea
-          placeholder="Allowed IP addresses or ranges (one per line)"
-          value={ipRestrictions}
-          onChange={(e) => setIpRestrictions(e.target.value)}
-          rows="4"
+          placeholder="Add student emails (one per line)"
+          value={studentEmails}
+          onChange={(e) => setStudentEmails(e.target.value)}
+          rows="6"
         />
-        <p className="input-hint">Leave blank for no IP restrictions. If IPs are entered, students can only log in from these addresses during scheduled class times.</p>
+      </div>
+
+      <div className="form-group">
+        <label>Teacher Emails</label>
+        <textarea
+          placeholder="Add teacher emails (one per line)"
+          value={teacherEmails}
+          onChange={(e) => setTeacherEmails(e.target.value)}
+          rows="3"
+        />
       </div>
 
       <div className="form-group">
@@ -448,23 +460,14 @@ const ClassManagement = ({ user }) => {
       </div>
 
       <div className="form-group">
-        <label>Teacher Emails</label>
+        <label>IP Address Restrictions</label>
         <textarea
-          placeholder="Add teacher emails (one per line)"
-          value={teacherEmails}
-          onChange={(e) => setTeacherEmails(e.target.value)}
-          rows="3"
+          placeholder="Allowed IP addresses or ranges (one per line)"
+          value={ipRestrictions}
+          onChange={(e) => setIpRestrictions(e.target.value)}
+          rows="4"
         />
-      </div>
-
-      <div className="form-group">
-        <label>Student Emails</label>
-        <textarea
-          placeholder="Add student emails (one per line)"
-          value={studentEmails}
-          onChange={(e) => setStudentEmails(e.target.value)}
-          rows="6"
-        />
+        <p className="input-hint">Leave blank for no IP restrictions. If IPs are entered, students can only log in from these addresses during scheduled class times.</p>
       </div>
       <button onClick={handleUpdateClass}>Update/Create Class</button>
       {successMessage && <div className="success-message">{successMessage}</div>}
