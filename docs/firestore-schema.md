@@ -6,6 +6,13 @@ This document outlines the Firestore database schema for the AI Invigilator appl
 
 ```mermaid
 erDiagram
+    users {
+        string uid PK
+        string email
+        string name
+        string role
+    }
+
     classes {
         string classId PK
         array teachers "invited teacher emails"
@@ -141,6 +148,9 @@ erDiagram
         string name
         string category
         string prompt
+        string accessLevel
+        string owner
+        array sharedWith
         timestamp createdAt
     }
 
@@ -284,6 +294,9 @@ Stores the AI prompts.
     *   `category`: (string) The category of the prompt (e.g., `images`, `videos`).
     *   `prompt`: (string) The prompt text.
     *   `createdAt`: (timestamp) A timestamp of when the prompt was created.
+    *   `accessLevel`: (string) The access level of the prompt (`private`, `shared`, `public`).
+    *   `owner`: (string) The UID of the user who created the prompt.
+    *   `sharedWith`: (array) An array of UIDs with whom the prompt is shared.
 
 ### `screenshots`
 
@@ -301,7 +314,7 @@ Stores metadata for each screenshot.
 
 ### `studentProfiles`
 
-Stores information about each student.
+Stores the class enrollments for each student. This is a core part of the authorization system.
 
 *   **Document ID**: `studentUid` (string)
 *   **Fields**:
@@ -319,6 +332,14 @@ Used for sending messages to students.
             *   `message`: (string) The message content.
             *   `timestamp`: (timestamp) A timestamp of when the message was sent.
 
+### `teacherProfiles`
+
+Stores the class enrollments for each teacher. This is a core part of the authorization system.
+
+*   **Document ID**: `teacherUid` (string)
+*   **Fields**:
+    *   `classes`: (array) An array of `classId`s that the teacher is enrolled in.
+
 ### `teachers`
 
 Used for sending messages to teachers.
@@ -330,6 +351,16 @@ Used for sending messages to teachers.
         *   **Fields**:
             *   `message`: (string) The message content.
             *   `timestamp`: (timestamp) A timestamp of when the message was sent.
+
+### `users`
+
+Stores a directory of users for discovery and lookup purposes (e.g., finding a user's UID by their email address when sharing prompts). It is not the primary source for authorization.
+
+*   **Document ID**: `uid` (string) - The Firebase Auth User ID.
+*   **Fields**:
+    *   `email`: (string) The user's email address.
+    *   `name`: (string) The user's display name.
+    *   `role`: (string) The user's role (e.g., `student`, `teacher`).
 
 ### `videoAnalysisJobs`
 
@@ -379,8 +410,8 @@ Stores information about zip file creation jobs.
 
 ## Relationships
 
-*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, a user can be in many classes. Synced by a cloud function that populates `studentUids` / `teacherUids` in `classes` and the `classes` array in the user's profile.
-*   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher UIDs, which are used as keys in the `students` and `teachers` collections for messaging.
+*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, and a user can be in many classes. This relationship is the core of the authorization system, managed by a cloud function that syncs `studentUids` / `teacherUids` in the `classes` collection with the `classes` array in the respective user profile collections.
+*   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher UIDs, which are used as keys in the `students` and `teachers` collections for direct messaging.
 *   **`screenshots` -> `classes` & `studentProfiles`**: Many-to-one. A screenshot belongs to one class and one student, linked via `studentUid`.
 *   **`videoJobs` -> `classes` & `studentProfiles`**: Many-to-one. A video job belongs to one class and one student, linked via `studentUid`.
 *   **`videoAnalysisJobs` -> `videoJobs`**: One-to-one. A video analysis job is created from a video job.
@@ -389,3 +420,4 @@ Stores information about zip file creation jobs.
 *   **`aiJobs` -> `prompts`**: Many-to-one. An AI job uses one prompt.
 *   **`notifications` -> `users` (Firebase Auth)**: Many-to-one. A notification is for a specific user, linked via `userId` (which should be a UID).
 *   **`mails`**: Standalone collection for triggering emails.
+*   **`users`**: A directory for user discovery. It is not directly linked in the authorization flow but is used to look up user UIDs by email for features like sharing.

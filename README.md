@@ -55,6 +55,7 @@ graph TD
             F_analyzeAllImages["analyzeAllImages (onCall)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
+            F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]
         end
 
         subgraph "Auth Triggers (`auth_triggers`)"
@@ -94,6 +95,7 @@ graph TD
     %% Firestore Triggers
     Firestore -- "classes write" --> F_updateUserClasses
     Firestore -- "videoJobs create" --> F_processVideoJob
+    Firestore -- "videoJobs update" --> F_triggerAutomaticAnalysis
     Firestore -- "zipJobs create" --> F_processZipJob
     Firestore -- "videoAnalysisJobs create" --> F_processVideoAnalysisJob
     Firestore -- "aiJobs write" --> F_onAiJobCreated
@@ -130,6 +132,7 @@ graph TD
     F_processVideoAnalysisJob -- "Calls" --> F_analyzeImage
     F_processVideoAnalysisJob -- "Writes" --> Firestore
     F_onAiJobCreated -- "Writes" --> Firestore
+    F_triggerAutomaticAnalysis -- "Writes" --> Firestore
 ```
 
 ## Backend Functionality
@@ -153,6 +156,7 @@ This module contains all the core AI logic, powered by Google's Genkit and the G
     *   `cost.js`: Calculates the cost of AI jobs.
     *   `quotaManagement.js`: Checks and updates the AI quota for each class.
     *   `quotaTriggers.js`: A Firestore trigger that updates the AI quota when an AI job is created.
+*   **`triggerAutomaticAnalysis.js`**: An event-driven function that triggers when a `videoJob` is updated. It checks if all video jobs for a class session are complete (or have failed), and if so, creates a `videoAnalysisJob` to start the automatic analysis using the class's configured prompt.
 
 ### Authentication Triggers (`auth_triggers`)
 
@@ -175,7 +179,7 @@ These functions are triggered on a schedule.
 
 *   `scheduledTasks.js`:
     *   `handleAutomaticCapture`: Starts and stops screen capture for classes with `automaticCapture` enabled.
-    *   `handleAutomaticVideoCombination`: Automatically creates video jobs for classes with `automaticCombine` enabled.
+    *   `handleAutomaticVideoCombination`: Runs shortly after a class ends and creates individual video combination jobs for each student in classes where `automaticCombine` is enabled.
 
 ### Storage Triggers (`storage_triggers`)
 
