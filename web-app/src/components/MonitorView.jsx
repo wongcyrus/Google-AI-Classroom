@@ -64,6 +64,8 @@ const MonitorView = ({ classId: propClassId }) => {
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [prompts, setPrompts] = useState([]);
+  const [filteredPrompts, setFilteredPrompts] = useState([]);
+  const [promptFilter, setPromptFilter] = useState('all');
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
@@ -114,15 +116,63 @@ const MonitorView = ({ classId: propClassId }) => {
 
   // Effect to fetch prompts
   useEffect(() => {
-    const promptsCollectionRef = collection(db, 'prompts');
-    const q = query(promptsCollectionRef, where('category', '==', 'images'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      promptsData.sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
-      setPrompts(promptsData);
-    });
-    return () => unsubscribe();
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        setPrompts([]);
+        return;
+    }
+    const { uid, email } = currentUser;
+
+    const unsubscribers = [];
+    let publicPrompts = [], privatePrompts = [], sharedPrompts = [];
+
+    const combineAndSetPrompts = () => {
+        const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
+        const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
+        const imagePrompts = unique.filter(p => p.category === 'images');
+        imagePrompts.sort((a, b) => a.name.localeCompare(b.name));
+        setPrompts(imagePrompts);
+    };
+
+    const qPublic = query(collection(db, 'prompts'), where('accessLevel', '==', 'public'));
+    unsubscribers.push(onSnapshot(qPublic, snapshot => {
+        publicPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    const qOwner = query(collection(db, 'prompts'), where('owner', '==', uid));
+    unsubscribers.push(onSnapshot(qOwner, snapshot => {
+        privatePrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    const qShared = query(collection(db, 'prompts'), where('sharedWith', 'array-contains', uid));
+    unsubscribers.push(onSnapshot(qShared, snapshot => {
+        sharedPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    return () => unsubscribers.forEach(unsub => unsub());
   }, []);
+
+  useEffect(() => {
+    const { uid } = auth.currentUser || {};
+    if (!uid) {
+        setFilteredPrompts([]);
+        return;
+    }
+    let newFilteredPrompts = [];
+    if (promptFilter === 'all') {
+        newFilteredPrompts = prompts;
+    } else if (promptFilter === 'public') {
+        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'public');
+    } else if (promptFilter === 'private') {
+        newFilteredPrompts = prompts.filter(p => p.owner === uid && p.accessLevel === 'private');
+    } else if (promptFilter === 'shared') {
+        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'shared');
+    }
+    setFilteredPrompts(newFilteredPrompts);
+  }, [prompts, promptFilter]);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
   const maxImageSizeOptions = [
@@ -682,6 +732,12 @@ const MonitorView = ({ classId: propClassId }) => {
         }}
         title="Analyze Student Screens"
       >
+        <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
+          <label><input type="radio" value="all" name="promptFilter" checked={promptFilter === 'all'} onChange={(e) => setPromptFilter(e.target.value)} /> All</label>
+          <label><input type="radio" value="public" name="promptFilter" checked={promptFilter === 'public'} onChange={(e) => setPromptFilter(e.target.value)} /> Public</label>
+          <label><input type="radio" value="private" name="promptFilter" checked={promptFilter === 'private'} onChange={(e) => setPromptFilter(e.target.value)} /> Private</label>
+          <label><input type="radio" value="shared" name="promptFilter" checked={promptFilter === 'shared'} onChange={(e) => setPromptFilter(e.target.value)} /> Shared</label>
+        </div>
         <select
           value={selectedPrompt ? selectedPrompt.id : ''}
           onChange={(e) => {
@@ -692,7 +748,7 @@ const MonitorView = ({ classId: propClassId }) => {
           style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
         >
           <option value="" disabled>Select a prompt</option>
-          {prompts.map(p => (
+          {filteredPrompts.map(p => (
             <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
           ))}
         </select>

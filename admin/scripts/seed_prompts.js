@@ -65,6 +65,7 @@ async function seedPrompts(db) {
             promptText: content,
             category: category,
             applyTo: applyTo,
+            accessLevel: 'public',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             lastUpdated: admin.firestore.FieldValue.serverTimestamp()
         };

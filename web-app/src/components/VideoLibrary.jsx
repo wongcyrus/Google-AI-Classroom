@@ -37,6 +37,8 @@ const VideoLibrary = () => {
   const [playerLoading, setPlayerLoading] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [prompts, setPrompts] = useState([]);
+  const [filteredPrompts, setFilteredPrompts] = useState([]);
+  const [promptFilter, setPromptFilter] = useState('all');
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
 
@@ -67,15 +69,64 @@ const VideoLibrary = () => {
   }, [selectedLesson, filterField, activeTab]);
 
   useEffect(() => {
+    if (!user) {
+        setPrompts([]);
+        return;
+    }
+    const { uid, email } = user;
+
+    const unsubscribers = [];
+    let publicPrompts = [], privatePrompts = [], sharedPrompts = [];
+
+    const combineAndSetPrompts = () => {
+        const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
+        const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
+        const videoPrompts = unique.filter(p => p.category === 'videos');
+        videoPrompts.sort((a, b) => a.name.localeCompare(b.name));
+        setPrompts(videoPrompts);
+    };
+
     const promptsCollectionRef = collection(db, 'prompts');
-    const q = query(promptsCollectionRef, where('category', '==', 'videos'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const promptsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      promptsData.sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
-      setPrompts(promptsData);
-    });
-    return () => unsubscribe();
-  }, []);
+
+    const qPublic = query(promptsCollectionRef, where('accessLevel', '==', 'public'));
+    unsubscribers.push(onSnapshot(qPublic, snapshot => {
+        publicPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    const qOwner = query(promptsCollectionRef, where('owner', '==', uid));
+    unsubscribers.push(onSnapshot(qOwner, snapshot => {
+        privatePrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    const qShared = query(promptsCollectionRef, where('sharedWith', 'array-contains', uid));
+    unsubscribers.push(onSnapshot(qShared, snapshot => {
+        sharedPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        combineAndSetPrompts();
+    }));
+
+    return () => unsubscribers.forEach(unsub => unsub());
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+        setFilteredPrompts([]);
+        return;
+    }
+    const { uid } = user;
+    let newFilteredPrompts = [];
+    if (promptFilter === 'all') {
+        newFilteredPrompts = prompts;
+    } else if (promptFilter === 'public') {
+        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'public');
+    } else if (promptFilter === 'private') {
+        newFilteredPrompts = prompts.filter(p => p.owner === uid && p.accessLevel === 'private');
+    } else if (promptFilter === 'shared') {
+        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'shared');
+    }
+    setFilteredPrompts(newFilteredPrompts);
+  }, [prompts, promptFilter, user]);
 
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(true);
@@ -587,6 +638,12 @@ const VideoLibrary = () => {
           }}
           title="Select Video Prompt"
       >
+          <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
+            <label><input type="radio" value="all" name="promptFilter" checked={promptFilter === 'all'} onChange={(e) => setPromptFilter(e.target.value)} /> All</label>
+            <label><input type="radio" value="public" name="promptFilter" checked={promptFilter === 'public'} onChange={(e) => setPromptFilter(e.target.value)} /> Public</label>
+            <label><input type="radio" value="private" name="promptFilter" checked={promptFilter === 'private'} onChange={(e) => setPromptFilter(e.target.value)} /> Private</label>
+            <label><input type="radio" value="shared" name="promptFilter" checked={promptFilter === 'shared'} onChange={(e) => setPromptFilter(e.target.value)} /> Shared</label>
+          </div>
           <select 
             value={selectedPrompt ? selectedPrompt.id : ''} 
             onChange={(e) => {
@@ -597,7 +654,7 @@ const VideoLibrary = () => {
             style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
           >
             <option value="" disabled>Select a prompt</option>
-            {prompts.map(p => (
+            {filteredPrompts.map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
