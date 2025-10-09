@@ -92,6 +92,7 @@ const videoCombinationOptions = {
 
 export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async (_event) => {
   const now = new Date();
+  logger.info(`handleAutomaticVideoCombination triggered at ${now.toISOString()}`);
 
   const classesRef = db.collection('classes');
   const snapshot = await classesRef.where('automaticCombine', '==', true).get();
@@ -100,6 +101,8 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
     logger.info('No classes with automaticCombine enabled.');
     return;
   }
+
+  logger.info(`Found ${snapshot.size} classes with automaticCombine enabled.`);
 
   const jobCreationPromises = [];
   const notificationsToCreate = new Map(); // Use a map to avoid duplicate notifications per class
@@ -110,13 +113,17 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
     const { schedule, studentUids, teacherUids } = classData;
 
     if (!schedule || !schedule.timeZone || !schedule.timeSlots || !studentUids || studentUids.length === 0) {
+      logger.warn(`Skipping class ${classId} due to incomplete configuration (schedule, timeZone, timeSlots, or studentUids missing).`);
       continue; // Skip if not properly configured
     }
 
     const { timeZone } = schedule;
-    const { localDay } = getLocalTimeInfo(now, timeZone);
+    const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
     const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
     const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
+    logger.info(`Checking class '${classId}'. Current time in ${timeZone}: ${localDay} ${localTime}.`);
+    let slotFound = false;
 
     for (const slot of schedule.timeSlots) {
       if (!slot.days.includes(localDay)) {
@@ -129,7 +136,8 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
 
       // Check if the lesson ended within the last 30 minutes
       if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
-        logger.info(`Found recently ended class ${classId} at ${slot.endTime}. Triggering video combination.`);
+        slotFound = true;
+        logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}). Triggering video combination.`);
 
         if (!notificationsToCreate.has(classId)) {
           notificationsToCreate.set(classId, teacherUids || []);
@@ -178,6 +186,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
           jobCreationPromises.push(jobPromise);
         }
       }
+    }
+    if (!slotFound) {
+      logger.info(`No recently ended lesson slots found for class '${classId}'.`);
     }
   }
 
