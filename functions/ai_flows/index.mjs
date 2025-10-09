@@ -3,6 +3,7 @@ import './firebase.js';
 import { onCallGenkit } from "firebase-functions/v2/https";
 import { analyzeImageFlow, analyzeAllImagesFlow } from "./analysisFlows.js";
 import { onAiJobCreated } from './quotaTriggers.js';
+export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 
 // Force deployment

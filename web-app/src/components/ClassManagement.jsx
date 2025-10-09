@@ -12,6 +12,8 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
+import Modal from './Modal';
+import VideoPromptSelector from './VideoPromptSelector';
 
 const timeZones = [
     'Asia/Hong_Kong',
@@ -56,6 +58,13 @@ const ClassManagement = ({ user }) => {
   const [ipRestrictions, setIpRestrictions] = useState('');
   const [automaticCapture, setAutomaticCapture] = useState(false);
   const [automaticCombine, setAutomaticCombine] = useState(false);
+  
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
+  
+  // Temp state for modal editing
+  const [modalPrompt, setModalPrompt] = useState(null);
+  const [modalPromptText, setModalPromptText] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -116,6 +125,7 @@ const ClassManagement = ({ user }) => {
           }
           setAutomaticCapture(classData.automaticCapture || false);
           setAutomaticCombine(classData.automaticCombine || false);
+          setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
         }
       } else {
         // Reset form if no class is selected
@@ -130,6 +140,7 @@ const ClassManagement = ({ user }) => {
         setIpRestrictions('');
         setAutomaticCapture(false);
         setAutomaticCombine(false);
+        setAfterClassVideoPrompt(null);
       }
     };
     fetchClassDetails();
@@ -273,6 +284,7 @@ const ClassManagement = ({ user }) => {
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
+          afterClassVideoPrompt,
         };
         await updateDoc(classRef, updateData);
         setSuccessMessage('Successfully updated the class!');
@@ -295,6 +307,7 @@ const ClassManagement = ({ user }) => {
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
+          afterClassVideoPrompt,
           aiQuota: 10, // Default AI Quota
           aiUsedQuota: 0, // Initialize AI Quota Usage
         });
@@ -333,8 +346,52 @@ const ClassManagement = ({ user }) => {
     }
   };
 
+  const handleOpenPromptModal = () => {
+    setModalPrompt(afterClassVideoPrompt);
+    setModalPromptText(afterClassVideoPrompt ? afterClassVideoPrompt.promptText : '');
+    setShowPromptModal(true);
+  };
+
+  const handleSetPrompt = () => {
+    if (modalPrompt) {
+        const isModified = modalPrompt.promptText !== modalPromptText;
+        const finalPrompt = {
+            ...modalPrompt,
+            promptText: modalPromptText,
+            name: isModified && modalPrompt.name ? `${modalPrompt.name} (Customized)` : (modalPrompt.name || 'Custom Prompt'),
+            originalId: modalPrompt.id || modalPrompt.originalId,
+        };
+        if (finalPrompt.id) delete finalPrompt.id;
+        setAfterClassVideoPrompt(finalPrompt);
+    } else if (modalPromptText.trim()) {
+        setAfterClassVideoPrompt({
+            name: 'Custom Prompt',
+            promptText: modalPromptText,
+            category: 'videos',
+        });
+    } else {
+        setAfterClassVideoPrompt(null);
+    }
+    setShowPromptModal(false);
+  };
+
   return (
     <div className="class-management-container">
+      <Modal show={showPromptModal} onClose={() => setShowPromptModal(false)} title="Set After Class Video Prompt">
+          <VideoPromptSelector
+              user={user}
+              selectedPrompt={modalPrompt}
+              onSelectPrompt={(p) => {
+                setModalPrompt(p);
+                setModalPromptText(p ? p.promptText : '');
+              }}
+              promptText={modalPromptText}
+              onTextChange={setModalPromptText}
+          />
+          <button onClick={handleSetPrompt}>Set Prompt</button>
+          <button onClick={() => { setAfterClassVideoPrompt(null); setShowPromptModal(false); }} style={{marginLeft: '10px'}}>Clear and Close</button>
+      </Modal>
+
       <h2>Class Management</h2>
 
       <h3>Select a Class to Manage or Create a New One</h3>
@@ -457,6 +514,14 @@ const ClassManagement = ({ user }) => {
           Automatic Combine Image to Video
         </label>
         <p className="input-hint">Automatically generate a video recording for each student after the class session ends.</p>
+      </div>
+
+      <div className="form-group">
+        <label>After Class Video Prompt</label>
+        <button type="button" onClick={handleOpenPromptModal}>
+            {afterClassVideoPrompt ? afterClassVideoPrompt.name || 'Custom Prompt' : 'Select Prompt'}
+        </button>
+        {afterClassVideoPrompt && <p className="input-hint">{afterClassVideoPrompt.promptText.substring(0, 100)}...</p>}
       </div>
 
       <div className="form-group">
