@@ -73,7 +73,7 @@ export const useClassSchedule = (classId) => {
       if (classSnap.exists()) {
         const classData = classSnap.data();
         const scheduleData = classData.schedule;
-        const tz = classData.timezone || 'UTC';
+        const tz = classData.schedule?.timeZone || 'UTC';
         setTimezone(tz);
         setSchedule(scheduleData);
         if (scheduleData) {
