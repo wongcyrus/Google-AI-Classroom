@@ -13,3 +13,6 @@
 *   **For each student, you MUST use the `recordStudentProgress` tool to record a summary of their work.** The summary should be concise and informative.
 *   **After using the tool, you MUST provide the same summary that you recorded as your final answer.** For example: "The student has completed the first two sections of the assignment and is now starting the conclusion."
 *   **If you are unable to summarize the work of a student, you MUST respond with the exact text:** "Unable to summarize work for [student's email]."
+
+## Output Guidelines
+*   When referring to a student in any output, you **MUST** use the format 'email (uid)'. For example: 'john.doe@example.com (abc123xyz)'.

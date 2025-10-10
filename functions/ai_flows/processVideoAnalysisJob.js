@@ -49,6 +49,8 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
           studentUid: video.studentUid,
           studentEmail: video.studentEmail,
           masterJobId,
+          startTime: jobData.startTime,
+          endTime: jobData.endTime,
         });
 
         aiJobIds.push(jobId);

@@ -8,6 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
+import { formatInTimeZone } from 'date-fns-tz';
 import sharp from 'sharp';
 
 const db = getFirestore();
@@ -54,6 +55,11 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
   try {
     await jobRef.update({ status: 'processing', startedAt: new Date() });
 
+    const classRef = db.collection('classes').doc(classId);
+    const classDoc = await classRef.get();
+    const classData = classDoc.data();
+    const timezone = classData.schedule?.timeZone || 'UTC';
+
     const screenshotsRef = db.collection('screenshots');
     const q = screenshotsRef
       .where('classId', '==', classId)
@@ -98,8 +104,8 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         if (height % 2 !== 0) height--;
 
         const timestamp = screenshot.timestamp.toDate();
-        const date = timestamp.toLocaleDateString();
-        const time = timestamp.toLocaleTimeString();
+        const date = formatInTimeZone(timestamp, timezone, 'yyyy-MM-dd');
+        const time = formatInTimeZone(timestamp, timezone, 'HH:mm:ss');
         const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${studentEmail}`;
 
         const textHeight = 40;

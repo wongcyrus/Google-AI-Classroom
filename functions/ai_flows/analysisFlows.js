@@ -1,4 +1,6 @@
 import './firebase.js';
+import { getFirestore } from 'firebase-admin/firestore';
+import { formatInTimeZone } from 'date-fns-tz';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
@@ -6,6 +8,8 @@ import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMe
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
+
+const db = getFirestore();
 
 function getTools() {
   return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher];
@@ -105,15 +109,31 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       studentUid: z.string(),
       studentEmail: z.string(),
       masterJobId: z.string().optional(),
+      startTime: z.any(),
+      endTime: z.any(),
     }),
     outputSchema: z.object({
       result: z.string(),
       jobId: z.string(),
     }),
   },
-  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId }) => {
+  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime }) => {
+    const classRef = db.collection('classes').doc(classId);
+    const classDoc = await classRef.get();
+    const timezone = classDoc.exists ? classDoc.data().schedule?.timeZone || 'UTC' : 'UTC';
+
+    const startDate = startTime ? formatInTimeZone(startTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
+    const endDate = endTime ? formatInTimeZone(endTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
+
+    const promptText = `The following video is from a student.
+Email: ${studentEmail}
+Student UID: ${studentUid}
+Class ID: ${classId}
+The video was recorded between ${startDate} and ${endDate}.
+Please analyze the video based on the user's prompt: "${prompt}"`;
+
     const fullPrompt = [
-      { text: `The following video is from a student. Email: ${studentEmail}. Student UID: ${studentUid}. Class ID: ${classId}. Please analyze the video based on the user's prompt: "${prompt}"` },
+      { text: promptText },
       { media: { url: videoUrl } },
     ];
     const media = [{ media: { url: videoUrl } }];

@@ -10,3 +10,6 @@
 3.  **If there is a potential issue:**
     *   First, call all necessary tools in parallel. You **MUST** call `sendMessageToStudent` (to warn the student) and `sendMessageToTeacher` (to alert the teacher).
     *   Then, as your final answer, you **MUST** provide a detailed summary of the issue and the actions you took. For example: "Student a@b.com has a low battery warning at 15%. I have sent a warning to the student and a notification to the teacher."
+
+## Output Guidelines
+*   When referring to a student in any output, you **MUST** use the format 'email (uid)'. For example: 'john.doe@example.com (abc123xyz)'.

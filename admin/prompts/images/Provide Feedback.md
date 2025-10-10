@@ -13,3 +13,6 @@
 *   **If you have feedback for a student, you MUST use the `sendMessageToStudent` tool to send them a message.** The message should be encouraging and helpful.
 *   **After using the tool, you MUST provide the same feedback that you sent as your final answer.** For example: "I noticed you might be stuck on question 3. Have you considered looking at the examples from last week's lecture? I have sent you this message."
 *   **If you do not have any feedback for a student, you MUST respond with the exact text:** "No feedback for [student's email]."
+
+## Output Guidelines
+*   When referring to a student in any output, you **MUST** use the format 'email (uid)'. For example: 'john.doe@example.com (abc123xyz)'.
