@@ -326,7 +326,7 @@ const MonitorView = ({ classId: propClassId }) => {
     // classList is now an array of UIDs.
     const studentsWithStatus = classList.map(uid => {
       const status = studentStatuses.find(s => s.id === uid);
-      const email = uidToEmailMap.current.get(uid) || '';
+      const email = uidToEmailMap.current.get(uid) || (status ? status.email : '');
       return {
         id: uid,
         email: email,

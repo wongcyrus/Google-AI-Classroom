@@ -15,6 +15,7 @@ import NotificationsView from './components/NotificationsView';
 import ProgressView from './components/ProgressView';
 import DataManagementView from './components/DataManagementView';
 import VideoLibrary from './components/VideoLibrary';
+import VideoAnalysisJobs from './components/VideoAnalysisJobs';
 import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
 import PromptManagement from './components/PromptManagement';
@@ -68,6 +69,7 @@ const App = () => {
               <Route path="irregularities" element={<IrregularitiesView />} />
               <Route path="playback" element={<PlaybackView />} />
               <Route path="video-library" element={<VideoLibrary />} />
+              <Route path="video-analysis-jobs" element={<VideoAnalysisJobs />} />
               <Route path="notifications" element={<NotificationsView />} />
               <Route path="data-management" element={<DataManagementView />} />
               <Route index element={<Navigate to="monitor" replace />} />
@@ -147,6 +149,7 @@ const ClassLayout = ({ user }) => {
         <NavLink to={`/class/${classId}/irregularities`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Irregularities</NavLink>
         <NavLink to={`/class/${classId}/playback`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Playback</NavLink>
         <NavLink to={`/class/${classId}/video-library`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Video Library</NavLink>
+        <NavLink to={`/class/${classId}/video-analysis-jobs`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Video Analysis Jobs</NavLink>
         <NavLink to={`/class/${classId}/notifications`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Notifications</NavLink>
         <NavLink to={`/class/${classId}/data-management`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Data Management</NavLink>
       </nav>

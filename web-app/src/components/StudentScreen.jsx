@@ -5,7 +5,7 @@ const StudentScreen = ({ student, isSharing, screenshotUrl, onClick }) => {
   return (
     <div className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} onClick={onClick}>
       <div className="student-header">
-        <h2>{student.email}</h2>
+        <h2>{student.name || student.email}</h2>
         <span className={`status-indicator ${isSharing ? 'on' : 'off'}`}></span>
       </div>
       {screenshotUrl ? (

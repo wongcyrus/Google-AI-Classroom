@@ -97,21 +97,30 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   const classesRef = db.collection('classes');
   const querySnapshot = await classesRef.where(emailField, 'array-contains', email).get();
 
+  const batch = db.batch();
+  const userProfileRef = db.collection(profileCollection).doc(uid);
+  const classIds = [];
+
   if (!querySnapshot.empty) {
-    const batch = db.batch();
     querySnapshot.forEach(doc => {
-      const classId = doc.id;
-      logger.info(`Found matching class '${classId}'. Linking user.`);
-      const userProfileRef = db.collection(profileCollection).doc(uid);
-      batch.set(userProfileRef, { classes: FieldValue.arrayUnion(classId) }, { merge: true });
+      classIds.push(doc.id);
       const classRef = doc.ref;
       batch.update(classRef, { [uidField]: FieldValue.arrayUnion(uid) });
     });
-    await batch.commit();
-    logger.info(`Successfully linked ${email} to ${querySnapshot.size} class(es).`);
+    logger.info(`Found ${querySnapshot.size} pre-enrolled classes for ${email}, linking them.`);
   } else {
     logger.info(`No pre-enrolled classes found for ${email}.`);
   }
+
+  // Create or merge the user's profile, linking any classes.
+  const profileData = {};
+  if (classIds.length > 0) {
+    profileData.classes = FieldValue.arrayUnion(...classIds);
+  }
+  batch.set(userProfileRef, profileData, { merge: true });
+
+  await batch.commit();
+  logger.info(`User profile and class links committed for ${email}.`);
 
   return {
     customClaims: newCustomClaims

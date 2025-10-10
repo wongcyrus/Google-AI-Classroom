@@ -18,8 +18,7 @@ const StudentView = ({ user }) => {
 
   // Schedule-driven class state
   const { userClasses, currentActiveClassId } = useStudentClassSchedule(user);
-  const [manualClassSelection, setManualClassSelection] = useState(null);
-  const activeClass = manualClassSelection || currentActiveClassId;
+  const activeClass = currentActiveClassId;
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(1024 * 1024);
@@ -178,22 +177,8 @@ const StudentView = ({ user }) => {
       }
     }
 
-    let classToShare = activeClass;
-    if (!classToShare) {
-      if (userClasses.length === 1) {
-        classToShare = userClasses[0];
-        setManualClassSelection(classToShare);
-      } else if (userClasses.length > 1) {
-        alert("Please select a class before sharing.");
-        return;
-      } else {
-        alert("You are not enrolled in any classes.");
-        return;
-      }
-    }
-
-    if (!classToShare) {
-      alert("Could not determine a class. Please select one manually.");
+    if (!activeClass) {
+      alert("There is no active class to share your screen with.");
       return;
     }
 
@@ -206,7 +191,7 @@ const StudentView = ({ user }) => {
       }
 
       setIsSharing(true);
-      await updateSharingStatus(true, classToShare);
+      await updateSharingStatus(true, activeClass);
 
       showSystemNotification("Screen recording has started.");
 
@@ -217,7 +202,7 @@ const StudentView = ({ user }) => {
       console.error("Error starting screen sharing:", error);
       setIsSharing(false);
     }
-  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus, userClasses]);
+  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus]);
 
   // Effects
   useEffect(() => {
@@ -411,24 +396,16 @@ const StudentView = ({ user }) => {
       <div className="student-view-content">
         <div className="student-view-main">
             <div className="student-view-controls">
-            {userClasses.length > 1 && (
-                <>
-                    <select onChange={(e) => setManualClassSelection(e.target.value)} value={activeClass || ''}>
-                        <option value="" disabled>Select a class</option>
-                        {userClasses.map(c => (
-                            <option key={c} value={c}>{c}{c === currentActiveClassId ? ' (Live)' : ''}</option>
-                        ))}
-                    </select>
-                    {manualClassSelection && (
-                        <button onClick={() => setManualClassSelection(null)}>Follow Schedule</button>
-                    )}
-                </>
+            {activeClass ? (
+                <p>Class: <strong>{activeClass}</strong></p>
+            ) : (
+                <p>No active class.</p>
             )}
 
             {isSharing ? (
                 <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
                 ) : (
-                <button onClick={startSharing} className="student-view-button">Share Screen</button>
+                <button onClick={startSharing} className="student-view-button" disabled={!activeClass}>Share Screen</button>
             )}
             </div>
 
