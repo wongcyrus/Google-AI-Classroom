@@ -70,7 +70,7 @@ export const checkipaddress = beforeUserSignedIn({ region: FUNCTION_REGION }, as
   }
 
   const classesRef = db.collection('classes');
-  const qByEmail = classesRef.where('students', 'array-contains', user.email);
+  const qByEmail = classesRef.where('studentEmails', 'array-contains', user.email);
   const qByUid = classesRef.where('studentUids', 'array-contains', user.uid);
 
   const [snapshotByEmail, snapshotByUid] = await Promise.all([qByEmail.get(), qByUid.get()]);

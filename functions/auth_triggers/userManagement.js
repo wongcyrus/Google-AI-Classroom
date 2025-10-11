@@ -27,7 +27,20 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       promises.push(userDocRef.set({ classes: firestoreAction(classId) }, { merge: true }));
 
       // Update the class document with the user's UID
-      promises.push(classDocRef.update({ [uidArrayField]: firestoreAction(userRecord.uid) }));
+      const updatePayload = {
+        [uidArrayField]: firestoreAction(userRecord.uid)
+      };
+
+      // Only modify the 'students' map if the user is a student
+      if (userType === 'student') {
+        if (action === 'add') {
+          updatePayload[`students.${userRecord.uid}`] = email;
+        } else { // action === 'remove'
+          updatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
+        }
+      }
+      
+      promises.push(classDocRef.update(updatePayload));
 
       logger.info(`${action === 'add' ? 'Linked' : 'Unlinked'} class '${classId}' for ${userType} ${userRecord.uid} (${email})`);
     } catch (error) {
@@ -47,8 +60,11 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   const afterData = event.data.after.data() || {};
 
   // Handle Students
-  const studentsBefore = new Set(beforeData.students || []);
-  const studentsAfter = new Set(afterData.students || []);
+  const originalStudentEmails = afterData.studentEmails || [];
+  const cleanedStudentEmails = originalStudentEmails.map(e => e.replace(/\s/g, '')).filter(Boolean);
+
+  const studentsBefore = new Set(beforeData.studentEmails || []);
+  const studentsAfter = new Set(cleanedStudentEmails);
   const addedStudents = [...studentsAfter].filter(email => !studentsBefore.has(email));
   const removedStudents = [...studentsBefore].filter(email => !studentsAfter.has(email));
 
@@ -64,6 +80,13 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     updateUserAssociations(classId, addedTeachers, 'teacher', 'add'),
     updateUserAssociations(classId, removedTeachers, 'teacher', 'remove'),
   ];
+
+  // If the student emails were cleaned, update the document to store the clean version.
+  if (JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails)) {
+    logger.info(`Sanitizing studentEmails array for class ${classId}.`);
+    const classRef = db.collection('classes').doc(classId);
+    promises.push(classRef.update({ studentEmails: cleanedStudentEmails }));
+  }
 
   return Promise.all(promises);
 });
@@ -89,7 +112,7 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   }
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
-  const emailField = isTeacher ? 'teachers' : 'students';
+  const emailField = isTeacher ? 'teachers' : 'studentEmails';
   const uidField = isTeacher ? 'teacherUids' : 'studentUids';
 
   logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid}). Checking for pre-enrolled classes.`);

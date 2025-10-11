@@ -128,13 +128,11 @@ const PlaybackView = () => {
         const classData = classSnap.data();
         console.log('PlaybackView: Class document data:', classData);
         
-        const studentUids = classData.studentUids || [];
-        const studentEmails = classData.students || []; // This is the array of emails
-
-        // Combine the two arrays into the structure the component expects
-        const studentList = studentUids.map((uid, index) => ({
+        const studentsMap = classData.students || {}; // This is the new map {uid: email}
+        
+        const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
           uid: uid,
-          email: studentEmails[index] || 'Email not found', // Fallback
+          email: email,
         }));
 
         console.log('PlaybackView: Correctly processed student list:', studentList);

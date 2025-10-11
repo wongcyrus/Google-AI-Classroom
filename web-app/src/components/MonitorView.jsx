@@ -201,24 +201,10 @@ const MonitorView = ({ classId: propClassId }) => {
         setClassList(studentUids);
 
         const newMap = new Map();
-        if (data.students && typeof data.students === 'object') {
-            if (Array.isArray(data.students)) {
-                // Logic for parallel arrays (current implementation)
-                console.log('[MonitorView] DEBUG: data.students is an array.');
-                if (studentUids.length !== data.students.length) {
-                    console.warn(`[MonitorView] Mismatch between studentUids (${studentUids.length}) and students (${data.students.length}) array lengths. The map might be incomplete.`);
-                }
-                const minLength = Math.min(studentUids.length, data.students.length);
-                for (let i = 0; i < minLength; i++) {
-                    newMap.set(studentUids[i], data.students[i]);
-                }
-            } else {
-                // Logic for a map object
-                console.log('[MonitorView] DEBUG: data.students is a map/object.');
-                Object.entries(data.students).forEach(([uid, email]) => {
-                    newMap.set(uid, email);
-                });
-            }
+        if (data.students && typeof data.students === 'object' && !Array.isArray(data.students)) {
+            Object.entries(data.students).forEach(([uid, email]) => {
+                newMap.set(uid, email);
+            });
         }
         
         uidToEmailMap.current = newMap;

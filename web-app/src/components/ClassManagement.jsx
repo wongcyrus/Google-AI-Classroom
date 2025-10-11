@@ -113,8 +113,8 @@ const ClassManagement = ({ user }) => {
           } else {
             setTeacherEmails('');
           }
-          if (classData.students) {
-            setStudentEmails(classData.students.join('\n'));
+          if (classData.studentEmails) {
+            setStudentEmails(classData.studentEmails.join('\n'));
           } else {
             setStudentEmails('');
           }
@@ -251,8 +251,7 @@ const ClassManagement = ({ user }) => {
     const classRef = doc(db, 'classes', classId);
     const classSnap = await getDoc(classRef);
     const studentEmailList = studentEmails
-      .replace(/\n/g, ' ')
-      .split(/[, ]+/)
+      .split(/[\n,]+/)
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
     
@@ -279,7 +278,7 @@ const ClassManagement = ({ user }) => {
             timeZone: timeZone,
             timeSlots: classSchedules,
           },
-          students: studentEmailList,
+          studentEmails: studentEmailList,
           teachers: uniqueTeachers,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
@@ -295,7 +294,7 @@ const ClassManagement = ({ user }) => {
 
         await setDoc(classRef, {
           teachers: uniqueTeachers,
-          students: studentEmailList,
+          studentEmails: studentEmailList,
           storageQuota: storageQuotaBytes,
           schedule: {
             startDate: scheduleStartDate,
