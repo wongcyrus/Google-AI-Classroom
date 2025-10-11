@@ -261,6 +261,7 @@ const VideoLibrary = () => {
           createdAt: serverTimestamp(),
           startTime: new Date(startTime),
           endTime: new Date(endTime),
+          deleted: false,
       });
 
       alert(`Your analysis request for ${videos.length} videos has been submitted. You can find the results in the Data Management view once it is ready.`);
@@ -298,6 +299,7 @@ const VideoLibrary = () => {
           prompt: editablePromptText,
           status: 'pending',
           createdAt: serverTimestamp(),
+          deleted: false,
       });
 
       alert(`Your analysis request for all videos in the selected range has been submitted. You can find the results in the Data Management view once it is ready.`);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, limit, startAfter, documentId } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, documentId, doc, writeBatch } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -66,6 +66,7 @@ const VideoAnalysisJobs = () => {
 
       const queryConstraints = [
         where('classId', '==', classId),
+        where('deleted', '==', false),
         where(filterField, '>=', new Date(startTime)),
         where(filterField, '<=', endDate),
         orderBy(filterField, 'desc'),
@@ -92,7 +93,7 @@ const VideoAnalysisJobs = () => {
 
     } catch (error) {
       console.error("Error fetching video analysis jobs:", error);
-      alert("Failed to fetch video analysis jobs. It's possible the database index is still building.");
+      alert("Failed to fetch video analysis jobs. It's possible the database index is still building. Check the browser console for a link to create the required index.");
     }
     setAnalysisJobsLoading(false);
   };
@@ -114,7 +115,10 @@ const VideoAnalysisJobs = () => {
         const q = query(aiJobsRef, where(documentId(), 'in', batchIds));
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach(doc => {
-          allJobs.push({ id: doc.id, ...doc.data() });
+          const jobData = doc.data();
+          if (jobData.deleted !== true) {
+            allJobs.push({ id: doc.id, ...jobData });
+          }
         });
       }
 
@@ -140,6 +144,43 @@ const VideoAnalysisJobs = () => {
         } else {
             setAiJobs([]);
         }
+    }
+  };
+
+  const handleDeleteAnalysisJob = async (jobId, aiJobIds) => {
+    if (!window.confirm(`Are you sure you want to soft delete this analysis job (${jobId}) and its ${aiJobIds?.length || 0} sub-jobs?`)) {
+      return;
+    }
+
+    setAnalysisJobsLoading(true);
+
+    try {
+      const batch = writeBatch(db);
+
+      const analysisJobRef = doc(db, 'videoAnalysisJobs', jobId);
+      batch.update(analysisJobRef, { deleted: true });
+
+      if (aiJobIds && aiJobIds.length > 0) {
+        aiJobIds.forEach(id => {
+          const aiJobRef = doc(db, 'aiJobs', id);
+          batch.update(aiJobRef, { deleted: true });
+        });
+      }
+
+      await batch.commit();
+
+      alert('Job and sub-jobs marked as deleted.');
+
+      setVideoAnalysisJobs(prevJobs => prevJobs.filter(job => job.id !== jobId));
+      if (selectedAnalysisJob?.id === jobId) {
+        setSelectedAnalysisJob(null);
+        setAiJobs([]);
+      }
+    } catch (error) {
+      console.error("Error deleting analysis job:", error);
+      alert(`An error occurred while deleting the job: ${error.message}`);
+    } finally {
+      setAnalysisJobsLoading(false);
     }
   };
 
@@ -281,6 +322,7 @@ const VideoAnalysisJobs = () => {
                   <th>Created At</th>
                   <th>Status</th>
                   <th>Prompt</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -290,6 +332,12 @@ const VideoAnalysisJobs = () => {
                     <td>{job.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
                     <td>{job.status}</td>
                     <td style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{job.prompt}</td>
+                    <td>
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAnalysisJob(job.id, job.aiJobIds);
+                      }}>Delete</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

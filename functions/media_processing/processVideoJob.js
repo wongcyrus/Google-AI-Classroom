@@ -143,7 +143,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       let lastPercent = -1;
       ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
         .inputOptions(['-framerate', VIDEO_FRAME_RATE])
-        .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
+        .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', '28'])
         .on('progress', (progress) => {
           if (progress.frames) {
             const totalFrames = screenshots.length;

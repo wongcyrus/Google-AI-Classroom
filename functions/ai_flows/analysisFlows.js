@@ -134,9 +134,9 @@ Please analyze the video based on the user's prompt: "${prompt}"`;
 
     const fullPrompt = [
       { text: promptText },
-      { media: { url: videoUrl } },
+      { media: { url: videoUrl, contentType: 'video/mp4' } },
     ];
-    const media = [{ media: { url: videoUrl } }];
+    const media = [{ media: { url: videoUrl, contentType: 'video/mp4' } }];
 
     const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
     const hasQuota = await checkQuota(classId, estimatedCost);

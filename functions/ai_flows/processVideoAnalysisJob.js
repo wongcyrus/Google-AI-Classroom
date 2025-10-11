@@ -35,15 +35,13 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     }
 
     const aiJobIds = [];
+    const bucketName = storage.bucket().name;
     for (const video of videosToAnalyze) {
-      let file;
       try {
-        file = storage.bucket().file(video.videoPath);
-        await file.makePublic();
-        const url = file.publicUrl();
+        const gsUri = `gs://${bucketName}/${video.videoPath}`;
         
         const { jobId } = await analyzeSingleVideoFlow({
-          videoUrl: url,
+          videoUrl: gsUri,
           prompt: jobData.prompt,
           classId: jobData.classId,
           studentUid: video.studentUid,
@@ -57,10 +55,6 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       } catch (e) {
         console.error(`Failed to analyze video for ${video.studentEmail}`, e);
         // The error is already logged inside analyzeSingleVideoFlow
-      } finally {
-        if (file) {
-          await file.makePrivate();
-        }
       }
     }
 

@@ -195,17 +195,34 @@ const MonitorView = ({ classId: propClassId }) => {
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        console.log('[MonitorView] DEBUG: Raw class data:', JSON.stringify(data, null, 2));
+
         const studentUids = data.studentUids || [];
-        const studentEmails = data.students || [];
         setClassList(studentUids);
 
         const newMap = new Map();
-        if (studentUids.length === studentEmails.length) {
-          studentUids.forEach((uid, index) => {
-            newMap.set(uid, studentEmails[index]);
-          });
+        if (data.students && typeof data.students === 'object') {
+            if (Array.isArray(data.students)) {
+                // Logic for parallel arrays (current implementation)
+                console.log('[MonitorView] DEBUG: data.students is an array.');
+                if (studentUids.length !== data.students.length) {
+                    console.warn(`[MonitorView] Mismatch between studentUids (${studentUids.length}) and students (${data.students.length}) array lengths. The map might be incomplete.`);
+                }
+                const minLength = Math.min(studentUids.length, data.students.length);
+                for (let i = 0; i < minLength; i++) {
+                    newMap.set(studentUids[i], data.students[i]);
+                }
+            } else {
+                // Logic for a map object
+                console.log('[MonitorView] DEBUG: data.students is a map/object.');
+                Object.entries(data.students).forEach(([uid, email]) => {
+                    newMap.set(uid, email);
+                });
+            }
         }
+        
         uidToEmailMap.current = newMap;
+        console.log('[MonitorView] DEBUG: uidToEmailMap populated:', uidToEmailMap.current);
 
         setFrameRate(prevRate => {
           const newRate = data.frameRate || 5;
@@ -782,12 +799,12 @@ const MonitorView = ({ classId: propClassId }) => {
         {Object.keys(analysisResults).length > 0 ? (
           <ul>
             {Object.entries(analysisResults).map(([uid, result]) => {
-              const student = students.find(s => s.id === uid);
-              const studentIdentifier = student ? student.email : (uid === 'All Images' ? 'All Images' : uid);
+              const studentIdentifier = uidToEmailMap.current.get(uid) || (uid === 'All Images' ? 'All Images' : uid);
               return (
                 <li key={uid}><strong>{studentIdentifier}:</strong> {result}</li>
               );
-            })}                    </ul>
+            })}
+          </ul>
         ) : (
           <p>No analysis has been run yet.</p>
         )}
