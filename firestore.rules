@@ -77,6 +77,10 @@ service cloud.firestore {
       allow read, create: if isTeacher();
     }
 
+    match /performanceMetrics/{metricId} {
+      allow read: if isTeacher();
+    }
+
     match /videoJobs/{jobId} {
       allow create: if isTeacher();
       allow read: if isTeacher();

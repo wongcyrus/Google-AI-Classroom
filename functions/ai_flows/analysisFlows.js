@@ -12,7 +12,7 @@ import { logJob } from './jobLogger.js';
 const db = getFirestore();
 
 function getTools() {
-  return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher];
+  return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
 }
 
 export const analyzeImageFlow = ai.defineFlow(
@@ -29,7 +29,7 @@ export const analyzeImageFlow = ai.defineFlow(
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
       const fullPrompt = [
-        { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. ${prompt}` },
+        { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. Analyze the screen to identify the current task (e.g., 'Question 5', 'Writing introduction'). Call the 'recordScreenshotAnalysis' tool with the identified task. Also, perform the original analysis based on the user's prompt: ${prompt}` },
         { media: { url } },
       ];
       const media = [{ media: { url } }];

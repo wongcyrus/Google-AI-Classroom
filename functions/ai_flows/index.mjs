@@ -31,3 +31,6 @@ export const analyzeAllImages = onCallGenkit({
 
 export { onAiJobCreated };
 export * from './processVideoAnalysisJob.js';
+export * from './quotaTriggers.js';
+export * from './triggerAutomaticAnalysis.js';
+export * from './performanceMetrics.js';

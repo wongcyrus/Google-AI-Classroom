@@ -115,6 +115,38 @@ export const recordStudentProgress = ai.defineTool(
   }
 );
 
+export const recordScreenshotAnalysis = ai.defineTool(
+  {
+    name: 'recordScreenshotAnalysis',
+    description: "Records the student's current task based on screenshot analysis.",
+    inputSchema: z.object({
+      studentUid: z.string().describe('The UID of the student.'),
+      classId: z.string().describe('The ID of the class.'),
+      screenshotUrl: z.string().describe('The URL of the screenshot being analyzed.'),
+      currentTask: z.string().describe("The student's current task, e.g., 'Question 5' or 'Writing introduction'."),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordScreenshotAnalysis input:', input);
+    const { studentUid, classId, screenshotUrl, currentTask } = input;
+    try {
+      const db = getFirestore();
+      await db.collection('screenshotAnalyses').add({
+        studentUid,
+        classId,
+        screenshotUrl,
+        currentTask,
+        timestamp: FieldValue.serverTimestamp(),
+      });
+      return `Successfully recorded screenshot analysis for student ${studentUid}.`;
+    } catch (error) {
+      console.error('Error recording screenshot analysis:', error);
+      return `Failed to record screenshot analysis. Error: ${error.message}`;
+    }
+  }
+);
+
 export const sendMessageToTeacher = ai.defineTool(
   {
     name: 'sendMessageToTeacher',

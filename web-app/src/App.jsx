@@ -19,6 +19,7 @@ import VideoAnalysisJobs from './components/VideoAnalysisJobs';
 import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
 import PromptManagement from './components/PromptManagement';
+import PerformanceAnalyticsView from './components/PerformanceAnalyticsView';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -72,6 +73,7 @@ const App = () => {
               <Route path="video-analysis-jobs" element={<VideoAnalysisJobs />} />
               <Route path="notifications" element={<NotificationsView />} />
               <Route path="data-management" element={<DataManagementView />} />
+              <Route path="performance" element={<PerformanceAnalyticsView />} />
               <Route index element={<Navigate to="monitor" replace />} />
             </Route>
 
@@ -152,6 +154,7 @@ const ClassLayout = ({ user }) => {
         <NavLink to={`/class/${classId}/video-analysis-jobs`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Video Analysis Jobs</NavLink>
         <NavLink to={`/class/${classId}/notifications`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Notifications</NavLink>
         <NavLink to={`/class/${classId}/data-management`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Data Management</NavLink>
+        <NavLink to={`/class/${classId}/performance`} className={({isActive}) => isActive ? "nav-tab active" : "nav-tab"}>Performance</NavLink>
       </nav>
       <Outlet context={{ user }} />
     </div>
