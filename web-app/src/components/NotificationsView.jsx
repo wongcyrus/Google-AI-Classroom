@@ -8,19 +8,8 @@ import { useClassSchedule } from '../hooks/useClassSchedule';
 
 const PAGE_SIZE = 10;
 
-const NotificationsView = ({ user }) => {
-  const { classId } = useParams();
+const NotificationsView = ({ user, classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
   const [messages, setMessages] = useState([]);
-  
-  const {
-    lessons,
-    selectedLesson,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-  } = useClassSchedule(classId);
 
   const [firstDoc, setFirstDoc] = useState(null);
   const [lastDoc, setLastDoc] = useState(null);
@@ -75,7 +64,6 @@ const NotificationsView = ({ user }) => {
   }, [user, classId, startTime, endTime, lastDoc, firstDoc]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchMessages('initial');
   }, [fetchMessages]);
 
@@ -98,16 +86,7 @@ const NotificationsView = ({ user }) => {
         <div className="view-header">
             <h2>Notifications</h2>
         </div>
-        <DateRangeFilter 
-            startTime={startTime}
-            endTime={endTime}
-            onStartTimeChange={setStartTime}
-            onEndTimeChange={setEndTime}
-            loading={loading}
-            lessons={lessons}
-            selectedLesson={selectedLesson}
-            onLessonChange={handleLessonChange}
-        />
+
         <div className="table-container">
             <table>
                 <thead>

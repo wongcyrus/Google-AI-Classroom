@@ -11,18 +11,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const PAGE_SIZE = 10;
 
-const DataManagementView = () => {
-  const { classId } = useParams();
-  
-  const {
-    lessons,
-    selectedLesson,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-  } = useClassSchedule(classId);
+const DataManagementView = ({ classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
 
   // State for pagination
   const [zipJobs, setZipJobs] = useState([]);
@@ -210,16 +199,7 @@ const DataManagementView = () => {
       </div>
       
       <div className="actions-container">
-        <DateRangeFilter
-          startTime={startTime}
-          endTime={endTime}
-          onStartTimeChange={setStartTime}
-          onEndTimeChange={setEndTime}
-          loading={loadingJobs}
-          lessons={lessons}
-          selectedLesson={selectedLesson}
-          onLessonChange={handleLessonChange}
-        />
+
         <button onClick={handleDeleteData}>Delete Screenshots in Range</button>
       </div>
 

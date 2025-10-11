@@ -20,6 +20,7 @@ import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
 import PromptManagement from './components/PromptManagement';
 import PerformanceAnalyticsView from './components/PerformanceAnalyticsView';
+import ClassView from './components/ClassView';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -64,18 +65,7 @@ const App = () => {
             <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
 
-            <Route path="/class/:classId/*" element={user && role === 'teacher' ? <ClassLayout user={user} /> : <Navigate to="/login" />}>
-              <Route path="monitor" element={<MonitorView />} />
-              <Route path="progress" element={<ProgressView />} />
-              <Route path="irregularities" element={<IrregularitiesView />} />
-              <Route path="playback" element={<PlaybackView />} />
-              <Route path="video-library" element={<VideoLibrary />} />
-              <Route path="video-analysis-jobs" element={<VideoAnalysisJobs />} />
-              <Route path="notifications" element={<NotificationsView />} />
-              <Route path="data-management" element={<DataManagementView />} />
-              <Route path="performance" element={<PerformanceAnalyticsView />} />
-              <Route index element={<Navigate to="monitor" replace />} />
-            </Route>
+            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
 
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>

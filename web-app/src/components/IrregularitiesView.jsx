@@ -26,20 +26,10 @@ const MediaPlayer = ({ url, type, onClose }) => {
   );
 };
 
-const IrregularitiesView = () => {
+const IrregularitiesView = ({ startTime, endTime }) => {
   const { classId } = useParams();
   const [irregularities, setIrregularities] = useState([]);
   const [mediaUrls, setMediaUrls] = useState({});
-  const {
-    lessons,
-    selectedLesson,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-    timezone,
-  } = useClassSchedule(classId);
 
   const lastDocRef = useRef(null);
   const firstDocRef = useRef(null);
@@ -128,8 +118,10 @@ const IrregularitiesView = () => {
   }, [classId, startTime, endTime]);
 
   useEffect(() => {
-    fetchIrregularities('first', 1);
-  }, [fetchIrregularities]);
+    if (startTime && endTime) {
+      fetchIrregularities('first', 1);
+    }
+  }, [startTime, endTime, fetchIrregularities]);
 
   const handleNext = () => {
     if (!isLastPage) {
@@ -203,16 +195,6 @@ const IrregularitiesView = () => {
     <div className="container">
       <h2 className="header">Irregularities for Class: {classId}</h2>
       <div className="controls">
-        <DateRangeFilter
-          lessons={lessons}
-          selectedLesson={selectedLesson}
-          onLessonChange={handleLessonChange}
-          startTime={startTime}
-          endTime={endTime}
-          onStartTimeChange={setStartTime}
-          onEndTimeChange={setEndTime}
-          timezone={timezone}
-        />
         <button onClick={exportToCSV} className="button">Export to CSV</button>
       </div>
 

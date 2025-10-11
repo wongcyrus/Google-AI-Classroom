@@ -24,9 +24,7 @@ const formatSize = (bytes) => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
-const VideoLibrary = () => {
-  const { classId } = useParams();
-  const { user } = useOutletContext();
+const VideoLibrary = ({ user, classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState(new Map());
@@ -40,22 +38,14 @@ const VideoLibrary = () => {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
 
-  const {
-    lessons,
-    selectedLesson,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-  } = useClassSchedule(classId);
+
 
   useEffect(() => {
     if (startTime && endTime) {
       handleSearch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLesson, filterField]);
+  }, [startTime, endTime, filterField]);
 
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(true);
@@ -427,21 +417,7 @@ const VideoLibrary = () => {
         <h2>Video Library</h2>
       </div>
       
-      <div className="actions-container" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-        <div className="filter-column">
-          <DateRangeFilter
-            startTime={startTime}
-            endTime={endTime}
-            onStartTimeChange={setStartTime}
-            onEndTimeChange={setEndTime}
-            onSearch={handleSearch}
-            loading={loading || isZipping}
-            lessons={lessons}
-            selectedLesson={selectedLesson}
-            onLessonChange={handleLessonChange}
-          />
-        </div>
-      </div>
+
 
       <>
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
