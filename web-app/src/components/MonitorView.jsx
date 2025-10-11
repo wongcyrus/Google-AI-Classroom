@@ -646,7 +646,7 @@ const MonitorView = ({ classId: propClassId }) => {
 
   return (
     <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
-      {showControls ? <ControlsPanel
+      {showControls && <ControlsPanel
         message={message}
         setMessage={setMessage}
         handleSendMessage={handleSendMessage}
@@ -679,11 +679,12 @@ const MonitorView = ({ classId: propClassId }) => {
         storageUsageZips={storageUsageZips}
         aiQuota={aiQuota}
         aiUsedQuota={aiUsedQuota}
-      /> : <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
+      />}
 
-      <div className="monitor-main-content">
+      <div className="monitor-main-content" style={{ flexGrow: 1 }}>
         <div className="timeline-controls" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+            {!showControls && <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
             <select value={selectedLesson} onChange={handleLessonChange}>
               {lessons.map(lesson => (
                 <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
