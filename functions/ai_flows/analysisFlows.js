@@ -130,11 +130,12 @@ Email: ${studentEmail}
 Student UID: ${studentUid}
 Class ID: ${classId}
 The video was recorded between ${startDate} and ${endDate}.
-Please analyze the video based on the user's prompt: "${prompt}"`;
+Please analyze the video based on the user's prompt: "${prompt}"
+If you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
     const fullPrompt = [
-      { text: promptText },
       { media: { url: videoUrl, contentType: 'video/mp4' } },
+      { text: promptText },
     ];
     const media = [{ media: { url: videoUrl, contentType: 'video/mp4' } }];
 
