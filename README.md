@@ -59,8 +59,9 @@ graph TD
         end
 
         subgraph "Auth Triggers (`auth_triggers`)"
+            F_beforeUserCreated["beforeUserCreated (beforeUserCreated)"]
             F_checkIpAddress["checkipaddress (beforeUserSignedIn)"]
-            F_updateUserClasses["updateUserClassesOnClassUpdate (onWrite classes)"]
+            F_onClassUpdate["onClassUpdate (onWrite classes)"]
         end
 
         subgraph "Media Processing (`media_processing`)"
@@ -90,10 +91,11 @@ graph TD
     WebApp -- "Authenticates with" --> Auth
 
     %% Auth Triggers
+    Auth -- "Triggers" --> F_beforeUserCreated
     Auth -- "Triggers" --> F_checkIpAddress
 
     %% Firestore Triggers
-    Firestore -- "classes write" --> F_updateUserClasses
+    Firestore -- "classes write" --> F_onClassUpdate
     Firestore -- "videoJobs create" --> F_processVideoJob
     Firestore -- "videoJobs update" --> F_triggerAutomaticAnalysis
     Firestore -- "zipJobs create" --> F_processZipJob
@@ -110,8 +112,9 @@ graph TD
     Scheduler -- "Triggers" --> F_handleAutoVideoCombine
 
     %% Function to Firestore Interactions
+    F_beforeUserCreated -- "Reads/Writes" --> Firestore
     F_checkIpAddress -- "Reads" --> Firestore
-    F_updateUserClasses -- "Writes" --> Firestore
+    F_onClassUpdate -- "Writes" --> Firestore
     F_processVideoJob -- "Reads/Writes" --> Firestore
     F_processVideoJob -- "Reads" --> Storage
     F_processVideoJob -- "Writes" --> Storage
@@ -163,7 +166,9 @@ This module contains all the core AI logic, powered by Google's Genkit and the G
 These functions are triggered by Firebase Authentication events.
 
 *   `ipRestriction.js`: Checks the user's IP address upon login and restricts access based on the class schedule and IP whitelist.
-*   `userManagement.js`: A Firestore trigger that automatically updates a student's profile when they are added to or removed from a class.
+*   `userManagement.js`:
+    *   `beforeUserCreated`: Triggered before a new user is created. It validates the user's email domain, assigns a `student` or `teacher` role via custom claims, and links the new user to any classes they were pre-enrolled in by email.
+    *   `onClassUpdate`: A Firestore trigger that automatically updates user profiles (`studentProfiles`, `teacherProfiles`) when the `studentEmails` or `teachers` array in a `classes` document is modified. It handles both adding and removing users from classes.
 
 ### Media Processing (`media_processing`)
 
@@ -243,13 +248,20 @@ The `/admin` directory contains scripts for managing user roles and AI prompts.
     *   **Authentication:** You need to provide service account credentials to the Admin SDK.
         1.  In your Firebase project settings, go to **Service Accounts**.
         2.  Click **Generate new private key**.
-        3.  Save the downloaded JSON file in the `admin/` directory.
-        4.  Rename the key file or update the path in each admin script.
+        3.  Save the downloaded JSON file in the `admin/` directory as `sp.json`.
 
 2.  **Usage:**
     *   **To grant a user teacher privileges:**
         ```bash
-        node grantTeacherRole.js teacher-email@example.com
+        node scripts/grantTeacherRole.js
+        ```
+    *   **To manually verify a user's email:**
+        ```bash
+        node scripts/verifyUser.js
+        ```
+    *   **To seed the database with default AI prompts:**
+        ```bash
+        node scripts/seed_prompts.js
         ```
 
 ## Deployment

@@ -17,6 +17,7 @@ erDiagram
         string classId PK
         array teachers "invited teacher emails"
         array students "invited student emails"
+        array studentEmails "denormalized student emails"
         array teacherUids "enrolled teacher UIDs"
         array studentUids "enrolled student UIDs"
         number storageQuota
@@ -116,6 +117,7 @@ erDiagram
         string email "denormalized"
         string title
         string message
+        string imageUrl
         timestamp timestamp
     }
 
@@ -148,6 +150,7 @@ erDiagram
         string name
         string category
         string prompt
+        array applyTo
         string accessLevel
         string owner
         array sharedWith
@@ -196,6 +199,7 @@ Stores information about each class.
 *   **Fields**:
     *   `teachers`: (array) An array of teacher emails, used for inviting teachers who may not have an account yet.
     *   `students`: (array) An array of student emails, used for inviting students who may not have an account yet.
+    *   `studentEmails`: (array) A denormalized array of student emails, used for easier querying.
     *   `teacherUids`: (array) An array of teacher UIDs who have successfully enrolled in the class.
     *   `studentUids`: (array) An array of student UIDs who have successfully enrolled in the class.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
@@ -249,6 +253,7 @@ Stores information about any irregularities detected.
     *   `email`: (string) The student's email, denormalized for display.
     *   `title`: (string) A title for the irregularity.
     *   `message`: (string) A description of the irregularity.
+    *   `imageUrl`: (string) The URL of the image associated with the irregularity.
     *   `timestamp`: (timestamp) A timestamp of when the irregularity occurred.
 
 ### `mails`
@@ -293,6 +298,7 @@ Stores the AI prompts.
     *   `name`: (string) The name of the prompt.
     *   `category`: (string) The category of the prompt (e.g., `images`, `videos`).
     *   `prompt`: (string) The prompt text.
+    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (e.g., `Per Image`, `All Images`, `Per Video`).
     *   `createdAt`: (timestamp) A timestamp of when the prompt was created.
     *   `accessLevel`: (string) The access level of the prompt (`private`, `shared`, `public`).
     *   `owner`: (string) The UID of the user who created the prompt.
