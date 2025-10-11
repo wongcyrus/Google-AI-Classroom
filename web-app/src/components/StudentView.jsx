@@ -103,6 +103,41 @@ const StudentView = ({ user }) => {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
     
+    const { width, height } = canvas;
+    if (width > 1 && height > 1) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        
+        const isSolidColor = () => {
+            const firstPixelR = data[0];
+            const firstPixelG = data[1];
+            const firstPixelB = data[2];
+
+            // Check a few strategic pixels to see if they are the same
+            const pointsToCheck = [
+                0, // top-left
+                (width - 1) * 4, // top-right
+                (height - 1) * width * 4, // bottom-left
+                ((height - 1) * width + (width - 1)) * 4, // bottom-right
+                (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4 // center
+            ];
+
+            for (const i of pointsToCheck) {
+                if (i < data.length && (data[i] !== firstPixelR || data[i+1] !== firstPixelG || data[i+2] !== firstPixelB)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        if (isSolidColor()) {
+            console.error("Screen capture appears to be a solid color. This might be an issue with the browser or screen sharing permissions.");
+            stopSharing();
+            alert("Screen sharing has been stopped because the output appears to be a solid color (e.g., a black screen). This can happen with older browsers or if the wrong screen was selected. Please try again with a newer browser.");
+            return;
+        }
+    }
+
     const MAX_SIZE_BYTES = maxImageSize;
 
     // Function to attempt upload, resizing if necessary
@@ -161,7 +196,7 @@ const StudentView = ({ user }) => {
     };
 
     attemptUpload(canvas, imageQuality);
-  }, [imageQuality, user, maxImageSize, ipAddress]);
+  }, [imageQuality, user, maxImageSize, ipAddress, stopSharing]);
 
   const startSharing = useCallback(async () => {
     if ('Notification' in window && window.Notification.permission !== 'granted') {
@@ -177,12 +212,11 @@ const StudentView = ({ user }) => {
       }
     }
 
-    if (!activeClass) {
-      alert("There is no active class to share your screen with.");
-      return;
-    }
-
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert("Screen sharing is not supported by your browser. Please use a modern browser like Chrome, Firefox, or Edge.");
+        return;
+      }
       const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
 
 
@@ -201,6 +235,7 @@ const StudentView = ({ user }) => {
     } catch (error) {
       console.error("Error starting screen sharing:", error);
       setIsSharing(false);
+      alert("Could not start screen sharing. Please ensure you grant permission and are using a modern browser. If the problem persists, try restarting your browser.");
     }
   }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus]);
 
@@ -307,30 +342,46 @@ const StudentView = ({ user }) => {
 
   // Merge messages and handle notifications
   useEffect(() => {
-    const allMessages = [...directMessages, ...classMessages];
-    
-    allMessages.sort((a, b) => {
-        const timeA = a.timestamp?.toMillis() || 0;
-        const timeB = b.timestamp?.toMillis() || 0;
-        return timeB - timeA;
-    });
-    
-    const latestMessages = allMessages.slice(0, 5);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecentMessages(latestMessages);
+    // For UI display, filter out messages that are also alerts
+    const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
+    const filteredMessagesForUI = [...directMessages, ...classMessages]
+      .filter(msg => !alertTitles.has(msg.message));
 
-    if (latestMessages.length > 0) {
-        const latestMessage = latestMessages[0];
-        if (latestMessage.timestamp) {
-            const messageTimestamp = latestMessage.timestamp.toDate();
-            if (lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime()) {
-                setNotification(latestMessage.message);
-                setTimeout(() => showSystemNotification(latestMessage.message), 0);
-                lastMessageTimestampRef.current = messageTimestamp;
-            }
+    filteredMessagesForUI.sort((a, b) => {
+      const timeA = a.timestamp?.toMillis() || 0;
+      const timeB = b.timestamp?.toMillis() || 0;
+      return timeB - timeA;
+    });
+
+    const latestMessagesForUI = filteredMessagesForUI.slice(0, 5);
+    setRecentMessages(latestMessagesForUI);
+
+    // For notification, consider all messages, but only recent ones
+    const allMessages = [...directMessages, ...classMessages];
+    allMessages.sort((a, b) => {
+      const timeA = a.timestamp?.toMillis() || 0;
+      const timeB = b.timestamp?.toMillis() || 0;
+      return timeB - timeA;
+    });
+
+    if (allMessages.length > 0) {
+      const latestMessage = allMessages[0];
+      if (latestMessage.timestamp) {
+        const messageTimestamp = latestMessage.timestamp.toDate();
+        const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000);
+
+        // Is it a new message, and is it recent?
+        if (
+          lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime() &&
+          messageTimestamp > oneHourAgo
+        ) {
+          setNotification(latestMessage.message);
+          setTimeout(() => showSystemNotification(latestMessage.message), 0);
+          lastMessageTimestampRef.current = messageTimestamp;
         }
+      }
     }
-  }, [directMessages, classMessages, showSystemNotification]);
+  }, [directMessages, classMessages, recentIrregularities, showSystemNotification]);
 
   useEffect(() => {
     if (!user || !user.uid) return;
@@ -405,7 +456,7 @@ const StudentView = ({ user }) => {
             {isSharing ? (
                 <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
                 ) : (
-                <button onClick={startSharing} className="student-view-button" disabled={!activeClass}>Share Screen</button>
+                <button onClick={startSharing} className="student-view-button">Share Screen</button>
             )}
             </div>
 
