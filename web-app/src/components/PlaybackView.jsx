@@ -1,16 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { doc, getDoc, collection, query, where, orderBy, getDocs, setDoc, serverTimestamp, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { ref, getDownloadURL, deleteObject } from 'firebase/storage';
-import { useParams } from 'react-router-dom';
 import { db, storage } from '../firebase-config';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
-import { useClassSchedule } from '../hooks/useClassSchedule';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange }) => {
+const PlaybackView = ({ classId, selectedLesson, startTime, endTime }) => {
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
@@ -32,7 +29,7 @@ const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, ha
   const [isFetchingUrls, setIsFetchingUrls] = useState(false);
   const urlsFetched = useRef(new Set());
 
-  const { data: videoJobsFromHook, loading: videoJobsLoading } = usePaginatedQuery('videoJobs', {
+  const { data: videoJobsFromHook } = usePaginatedQuery('videoJobs', {
     classId,
     startTime,
     endTime,
@@ -40,16 +37,14 @@ const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, ha
     orderByField: 'startTime',
   });
 
-  const [filteredVideoJobs, setFilteredVideoJobs] = useState([]);
-
-  useEffect(() => {
+  const filteredVideoJobs = useMemo(() => {
     let jobs = videoJobsFromHook;
     if (statusFilter.length > 0) {
       jobs = jobs.filter(job => statusFilter.includes(job.status));
     }
     // Perform secondary sort on the client
     jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
-    setFilteredVideoJobs(jobs);
+    return jobs;
   }, [videoJobsFromHook, statusFilter]);
 
   // Effect to pre-fetch screenshot URLs in a buffer
@@ -441,7 +436,7 @@ const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, ha
 
     for (let i = 0; i < screenshots.length; i++) {
       const screenshot = screenshots[i];
-      const hasUrl = screenshot && urlsFetched.current.has(screenshot.imagePath);
+      const hasUrl = screenshot && screenshotImageUrls[screenshot.imagePath];
 
       if (hasUrl && !inRange) {
         inRange = true;
@@ -457,7 +452,6 @@ const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, ha
     }
 
     return ranges;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenshots, screenshotImageUrls]);
 
 
@@ -660,7 +654,6 @@ const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, ha
                                 }} 
                                 style={{ color: 'red', textDecoration: 'underline', cursor: 'pointer' }}
                               >
-                                {job.error === 'No screenshots found in the selected time range.' ? 'failed (No image)' : job.status}
                               </a>
                             ) : (
                               job.status

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase-config';
-import { collection, query, where, orderBy, getDocs, limit, startAfter, endBefore, limitToLast } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 
 const usePaginatedQuery = (collectionPath, {
   classId,
@@ -21,6 +21,7 @@ const usePaginatedQuery = (collectionPath, {
   const [page, setPage] = useState(1);
 
   const buildQuery = useCallback(() => {
+    if (!collectionPath) return null;
     let q = query(collection(db, collectionPath));
 
     if (classId) {
@@ -40,9 +41,10 @@ const usePaginatedQuery = (collectionPath, {
     q = query(q, orderBy(orderByField, orderByDirection));
     
     return q;
-  }, [collectionPath, classId, startTime, endTime, filterField, orderByField, orderByDirection, JSON.stringify(extraClauses)]);
+  }, [collectionPath, classId, startTime, endTime, filterField, orderByField, orderByDirection, extraClauses]);
 
   const fetchPage = useCallback(async (pageQuery) => {
+    if (!pageQuery) return;
     setLoading(true);
     setError(null);
     try {
@@ -85,9 +87,7 @@ const usePaginatedQuery = (collectionPath, {
   };
 
   const fetchPrevPage = () => {
-    if (firstVisible) {
-      const q = buildQuery();
-      setPage(p => p - 1);
+    if (firstVisible && page > 1) {
       // Note: Firestore does not have a simple way to paginate backwards with `desc` order.
       // A full implementation requires reversing order, using endBefore, and then reversing the results array.
       // For now, we will re-fetch the first page as a simpler alternative.
@@ -97,12 +97,13 @@ const usePaginatedQuery = (collectionPath, {
 
   // Effect to fetch data when filters change
   useEffect(() => {
-    if (classId && startTime && endTime) {
+    if (collectionPath && startTime && endTime) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchFirstPage();
     }
-  }, [classId, startTime, endTime, fetchFirstPage]);
+  }, [collectionPath, startTime, endTime, fetchFirstPage]);
 
-  return { data, loading, error, page, isLastPage, fetchNextPage, fetchPrevPage };
+  return { data, loading, error, page, isLastPage, fetchNextPage, fetchPrevPage, refetch: fetchFirstPage };
 };
 
 export default usePaginatedQuery;

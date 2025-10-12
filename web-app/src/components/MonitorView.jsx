@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+
 import { db, storage, auth, functions } from '../firebase-config';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
-import StudentScreen from './StudentScreen';
-import IndividualStudentView from './IndividualStudentView';
-import TimelineSlider from './TimelineSlider';
-import { useClassSchedule } from '../hooks/useClassSchedule';
+
 
 import Modal from './Modal';
 
 import ControlsPanel from './monitor/ControlsPanel';
 import StudentsGrid from './monitor/StudentsGrid';
+import TimelineSlider from './TimelineSlider';
+import IndividualStudentView from './IndividualStudentView';
 
 const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
   const [students, setStudents] = useState([]);
@@ -97,7 +96,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     } catch (error) {
       console.error("Error calling analyzeImage function: ", error);
     }
-  }, [functions, classId]);
+  }, [classId]);
 
   const runAllImagesAnalysis = useCallback(async (screenshotsToAnalyze) => {
     if (!editablePromptTextRef.current.trim()) return;
@@ -110,7 +109,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     } catch (error) {
       console.error("Error calling analyzeAllImages function: ", error);
     }
-  }, [functions, classId]);
+  }, [classId]);
 
   // Effect to fetch prompts
   useEffect(() => {
@@ -119,7 +118,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         setPrompts([]);
         return;
     }
-    const { uid, email } = currentUser;
+    const { uid } = currentUser;
 
     const unsubscribers = [];
     let publicPrompts = [], privatePrompts = [], sharedPrompts = [];

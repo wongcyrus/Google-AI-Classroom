@@ -1,11 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { db, storage } from '../firebase-config';
-import { collection, query, where, getDocs, orderBy, limit, startAfter, endBefore, limitToLast, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
-import { useParams } from 'react-router-dom';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -20,7 +17,8 @@ const DataManagementView = ({ classId, startTime, endTime }) => {
     page, 
     isLastPage, 
     fetchNextPage, 
-    fetchPrevPage 
+    fetchPrevPage, 
+    refetch 
   } = usePaginatedQuery('zipJobs', {
     classId,
     startTime,
@@ -28,18 +26,6 @@ const DataManagementView = ({ classId, startTime, endTime }) => {
     filterField: 'createdAt',
     orderByField: 'createdAt'
   });
-
-  const handleNext = () => {
-    if (!isLastPage) {
-      fetchJobs('next', page + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (page > 1) {
-      fetchJobs('prev', page - 1);
-    }
-  };
 
   const handleSelectZipJob = (jobId) => {
     setSelectedZipJobs(prev => {
@@ -64,7 +50,7 @@ const DataManagementView = ({ classId, startTime, endTime }) => {
 
   const deleteZipJob = async (jobId) => {
     const jobDocRef = doc(db, 'zipJobs', jobId);
-    const jobDocSnap = await getDoc(jobDocRef); // getDocs is for queries, getDoc is for single doc
+    const jobDocSnap = await getDoc(jobDocRef);
 
     if (jobDocSnap.exists()) {
       const jobData = jobDocSnap.data();
@@ -98,8 +84,7 @@ const DataManagementView = ({ classId, startTime, endTime }) => {
     } else {
       alert(`Successfully deleted ${selectedZipJobs.size} jobs.`);
     }
-    // Refetch data
-    fetchJobs('first', 1);
+    refetch();
   };
 
   const handleDeleteData = async () => {

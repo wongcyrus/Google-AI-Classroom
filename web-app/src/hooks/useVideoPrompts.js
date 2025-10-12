@@ -7,7 +7,6 @@ export const useVideoPrompts = (user) => {
 
   useEffect(() => {
     if (!user) {
-      setVideoPrompts([]);
       return;
     }
     const { uid } = user;

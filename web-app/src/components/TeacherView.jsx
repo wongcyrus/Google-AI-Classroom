@@ -66,7 +66,7 @@ const TeacherView = ({ user }) => {
     <div className="teacher-dashboard">
         <div className="dashboard-header">
             <h1>Teacher Dashboard</h1>
-            <p>Welcome, {user.email}. Here's a summary of your classes.</p>
+            <p>Welcome, {user.email}. Here&apos;s a summary of your classes.</p>
         </div>
         <div className="dashboard-grid">
             <div className="dashboard-widget classes-widget">

@@ -1,12 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { db } from '../firebase-config';
-import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
-import { useParams } from 'react-router-dom';
-import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
-
 import usePaginatedQuery from '../hooks/useCollectionQuery';
+import './SharedViews.css';
 
 const NotificationsView = ({ user, classId, startTime, endTime }) => {
   const collectionPath = user ? `teachers/${user.uid}/messages` : null;
@@ -19,20 +12,6 @@ const NotificationsView = ({ user, classId, startTime, endTime }) => {
     fetchNextPage, 
     fetchPrevPage 
   } = usePaginatedQuery(collectionPath, { classId, startTime, endTime });
-
-  const handleNext = () => {
-    if (!isLastPage) {
-        setPage(p => p + 1);
-        fetchMessages('next');
-    }
-  };
-
-  const handlePrev = () => {
-      if (page > 1) {
-          setPage(p => p - 1);
-          fetchMessages('prev');
-      }
-  };
 
   return (
     <div className="view-container">

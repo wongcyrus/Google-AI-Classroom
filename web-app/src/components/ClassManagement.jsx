@@ -324,11 +324,7 @@ const ClassManagement = ({ user }) => {
       return;
     }
 
-    if (
-      window.confirm(
-        `Are you sure you want to delete the class "${selectedClass}"? This action cannot be undone.`
-      )
-    ) {
+    if (confirm('Are you sure you want to delete the class ' + selectedClass + '? This action cannot be undone.')) {
       try {
         const classRef = doc(db, 'classes', selectedClass);
         await deleteDoc(classRef);

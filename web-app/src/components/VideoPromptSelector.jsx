@@ -1,15 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useVideoPrompts } from '../hooks/useVideoPrompts';
 
 const VideoPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText, onTextChange }) => {
   const prompts = useVideoPrompts(user);
-  const [filteredPrompts, setFilteredPrompts] = useState([]);
   const [promptFilter, setPromptFilter] = useState('all');
 
-  useEffect(() => {
+  const filteredPrompts = useMemo(() => {
     if (!user) {
-      setFilteredPrompts([]);
-      return;
+      return [];
     }
     const { uid } = user;
     let newFilteredPrompts = [];
@@ -22,7 +20,7 @@ const VideoPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
     } else if (promptFilter === 'shared') {
       newFilteredPrompts = prompts.filter(p => p.accessLevel === 'shared');
     }
-    setFilteredPrompts(newFilteredPrompts);
+    return newFilteredPrompts;
   }, [prompts, promptFilter, user]);
 
   return (
