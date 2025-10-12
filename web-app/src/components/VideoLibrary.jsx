@@ -21,11 +21,11 @@ const formatSize = (bytes) => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
-const VideoLibrary = ({ user, classId, startTime, endTime }) => {
+const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);
-  const [filterField, setFilterField] = useState('startTime');
+
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
@@ -362,10 +362,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime }) => {
 
       <>
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
-          <select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
-            <option value="createdAt">Filter by Creation Time</option>
-            <option value="startTime">Filter by Start Time</option>
-          </select>
+
           <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
             {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
           </button>

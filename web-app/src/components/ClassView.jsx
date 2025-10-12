@@ -26,6 +26,7 @@ const ClassView = ({ user }) => {
   const [videoSubTab, setVideoSubTab] = useState('library');
   const [analyticsSubTab, setAnalyticsSubTab] = useState('irregularities');
   const [moreSubTab, setMoreSubTab] = useState('data');
+  const [filterField, setFilterField] = useState('startTime');
 
   // Centralized schedule and date range management
   const {
@@ -77,7 +78,7 @@ const ClassView = ({ user }) => {
   }, [user, classId]);
 
   const renderContent = () => {
-    const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange };
+    const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange, filterField };
     switch (mainTab) {
       case 'monitor':
         return <MonitorView {...props} />;
@@ -147,6 +148,12 @@ const ClassView = ({ user }) => {
               onStartTimeChange={setStartTime}
               onEndTimeChange={setEndTime}
               timezone={timezone}
+              filterField={filterField}
+              onFilterFieldChange={setFilterField}
+              filterFieldOptions={[
+                { value: 'startTime', label: 'Lesson Start Time' },
+                { value: 'createdAt', label: 'Job Creation Time' },
+              ]}
             />
           </div>
         )}

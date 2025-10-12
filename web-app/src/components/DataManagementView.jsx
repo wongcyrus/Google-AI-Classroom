@@ -8,7 +8,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const DataManagementView = ({ classId, startTime, endTime }) => {
+const DataManagementView = ({ classId, startTime, endTime, filterField }) => {
   const [selectedZipJobs, setSelectedZipJobs] = useState(new Set());
 
   const { 
@@ -23,8 +23,8 @@ const DataManagementView = ({ classId, startTime, endTime }) => {
     classId,
     startTime,
     endTime,
-    filterField: 'createdAt',
-    orderByField: 'createdAt'
+    filterField: filterField,
+    orderByField: filterField
   });
 
   const handleSelectZipJob = (jobId) => {

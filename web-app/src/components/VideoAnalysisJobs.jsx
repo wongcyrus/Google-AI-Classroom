@@ -6,14 +6,14 @@ import './SharedViews.css';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
+const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
   const [aiJobs, setAiJobs] = useState([]);
   const [aiJobsLoading, setAiJobsLoading] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
-  const [filterField, setFilterField] = useState('startTime');
+
 
   const extraClauses = useMemo(() => [{ field: 'deleted', op: '==', value: false }], []);
 
@@ -220,17 +220,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
       <div className="actions-container" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
         <div className="filter-column">
 
-          <div style={{ marginTop: '10px' }}>
-            <label htmlFor="filter-field-select" style={{ marginRight: '10px' }}>Filter and Sort by: </label>
-            <select 
-              id="filter-field-select"
-              value={filterField} 
-              onChange={(e) => setFilterField(e.target.value)}
-            >
-              <option value="startTime">Lesson Start Time</option>
-              <option value="createdAt">Job Creation Time</option>
-            </select>
-          </div>
+
         </div>
       </div>
 

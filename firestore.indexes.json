@@ -434,6 +434,20 @@
       "density": "SPARSE_ALL"
     },
     {
+      "collectionGroup": "zipJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "classId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startTime",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "videoAnalysisJobs",
       "queryScope": "COLLECTION",
       "fields": [
