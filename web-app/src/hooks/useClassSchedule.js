@@ -17,15 +17,8 @@ export const useClassSchedule = (classId) => {
   const [schedule, setSchedule] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [selectedLesson, setSelectedLesson] = useState('');
-  const [startTime, setStartTime] = useState(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return toLocalISOString(d);
-  });
-  const [endTime, setEndTime] = useState(() => {
-    const d = new Date();
-    return toLocalISOString(d);
-  });
+  const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
   const [timezone, setTimezone] = useState('UTC');
 
   useEffect(() => {
