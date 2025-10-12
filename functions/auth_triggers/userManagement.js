@@ -10,16 +10,65 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const adminAuth = getAuth();
 
+// Helper function to get an existing user or create a new one
+const getOrCreateUser = async (email, userType) => {
+  const expectedRole = userType === 'student' ? 'student' : 'teacher';
+  let derivedRole;
+
+  if (email.endsWith('@vtc.edu.hk')) {
+    derivedRole = 'teacher';
+  } else if (email.endsWith('@stu.vtc.edu.hk')) {
+    derivedRole = 'student';
+  } else {
+    logger.warn(`Invalid email domain for '${email}'. Skipping.`);
+    return null;
+  }
+
+  if (derivedRole !== expectedRole) {
+    logger.warn(`Email '${email}' has a domain for a '${derivedRole}' but was added to a list for '${expectedRole}'. Skipping.`);
+    return null;
+  }
+
+  try {
+    const userRecord = await adminAuth.getUserByEmail(email);
+    if (userRecord.customClaims?.role !== derivedRole) {
+      await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
+      logger.info(`Updated role to '${derivedRole}' for existing user ${email}`);
+    }
+    return userRecord;
+  } catch (error) {
+    if (error.code === 'auth/user-not-found') {
+      logger.info(`User with email '${email}' not found. Creating a new user.`);
+      try {
+        const userRecord = await adminAuth.createUser({
+          email,
+          emailVerified: false, // User will need to use password reset to login
+        });
+        await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
+        logger.info(`Created new user '${email}' with role '${derivedRole}'.`);
+        return userRecord;
+      } catch (creationError) {
+        logger.error(`Error creating user '${email}':`, creationError);
+        return null;
+      }
+    } else {
+      logger.error(`Error fetching user '${email}':`, error);
+      return null;
+    }
+  }
+};
+
+
 // Helper function to manage user-class associations
 const updateUserAssociations = async (classId, emails, userType, action) => {
   const promises = [];
   const profileCollection = userType === 'student' ? 'studentProfiles' : 'teacherProfiles';
-  const uidArrayField = userType === 'student' ? 'studentUids' : 'teacherUids';
   const firestoreAction = action === 'add' ? FieldValue.arrayUnion : FieldValue.arrayRemove;
 
   for (const email of emails) {
-    try {
-      const userRecord = await adminAuth.getUserByEmail(email);
+    const userRecord = await getOrCreateUser(email, userType);
+
+    if (userRecord) {
       const userDocRef = db.collection(profileCollection).doc(userRecord.uid);
       const classDocRef = db.collection('classes').doc(classId);
 
@@ -42,12 +91,8 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       promises.push(classDocRef.update(updatePayload));
 
       logger.info(`${action === 'add' ? 'Linked' : 'Unlinked'} class '${classId}' for ${userType} ${userRecord.uid} (${email})`);
-    } catch (error) {
-      if (error.code === 'auth/user-not-found') {
-        logger.info(`User with email '${email}' not found. They will be fully enrolled once they sign up.`);
-      } else {
-        logger.error(`Error finding user '${email}' to ${action} class '${classId}':`, error);
-      }
+    } else {
+        logger.error(`Could not get or create user for email '${email}'. Skipping association for class '${classId}'.`);
     }
   }
   return Promise.all(promises);
@@ -111,7 +156,7 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   }
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
-  const uidField = isTeacher ? 'teacherUids' : 'studentUids';
+  const emailField = isTeacher ? 'teachers' : 'studentEmails';
 
   logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid}). Checking for pre-enrolled classes.`);
 
@@ -126,7 +171,11 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
     querySnapshot.forEach(doc => {
       classIds.push(doc.id);
       const classRef = doc.ref;
-      batch.update(classRef, { [uidField]: FieldValue.arrayUnion(uid) });
+      if (isTeacher) {
+        batch.update(classRef, { teacherUids: FieldValue.arrayUnion(uid) });
+      } else {
+        batch.update(classRef, { [`students.${uid}`]: email });
+      }
     });
     logger.info(`Found ${querySnapshot.size} pre-enrolled classes for ${email}, linking them.`);
   } else {

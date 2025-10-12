@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -14,6 +13,19 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (cooldown > 0) {
+      timer = setInterval(() => {
+        setCooldown((prevCooldown) => prevCooldown - 1);
+      }, 1000);
+    }
+    return () => {
+      clearInterval(timer);
+    };
+  }, [cooldown]);
 
   const handleRegister = () => {
     if (!email.endsWith('@stu.vtc.edu.hk') && !email.endsWith('@vtc.edu.hk')) {
@@ -42,16 +54,22 @@ const AuthComponent = ({ unverifiedUser }) => {
         setError('');
       })
       .catch((error) => {
-        setError(error.message);
+        if (error.code === 'auth/invalid-credential') {
+          setError('Login failed. Please check your email and password.');
+          setMessage('If you were recently added to a class, you might need to set your password first. Use the "Forgot Password" link.');
+        } else {
+          setError(error.message);
+        }
       });
   };
 
   const handleResendVerificationEmail = () => {
-    if (unverifiedUser) {
+    if (unverifiedUser && cooldown === 0) {
       sendEmailVerification(unverifiedUser)
         .then(() => {
           setMessage('A new verification email has been sent. Please check your inbox.');
           setError('');
+          setCooldown(60);
         })
         .catch((error) => {
           setError('Error resending verification email: ' + error.message);
@@ -95,7 +113,13 @@ const AuthComponent = ({ unverifiedUser }) => {
         </div>
         <button onClick={handleForgotPassword} className="forgot-password-button">Forgot Password</button>
         {unverifiedUser && (
-            <button onClick={handleResendVerificationEmail}>Resend Verification Email</button>
+            <button 
+              onClick={handleResendVerificationEmail} 
+              disabled={cooldown > 0}
+              className="resend-verification-button"
+            >
+              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Verification Email'}
+            </button>
         )}
         <div className="message-container">
             {error && <p className="error">{error}</p>}
