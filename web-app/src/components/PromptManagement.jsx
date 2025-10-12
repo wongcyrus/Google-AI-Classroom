@@ -24,10 +24,9 @@ const PromptManagement = () => {
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-        setPrompts([]);
         return;
     }
-    const { uid, email } = currentUser;
+    const { uid } = currentUser;
 
     const unsubscribers = [];
     let publicPrompts = [], privatePrompts = [], sharedPrompts = [];

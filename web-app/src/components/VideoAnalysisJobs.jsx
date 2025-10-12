@@ -1,11 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, limit, startAfter, documentId, doc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId, doc, writeBatch } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
@@ -22,7 +19,8 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
     data: videoAnalysisJobs, 
     loading: analysisJobsLoading, 
     isLastPage, 
-    fetchNextPage 
+    fetchNextPage, 
+    refetch
   } = usePaginatedQuery('videoAnalysisJobs', {
     classId,
     startTime,
@@ -92,8 +90,6 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
       return;
     }
 
-    setAnalysisJobsLoading(true);
-
     try {
       const batch = writeBatch(db);
 
@@ -111,7 +107,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
 
       alert('Job and sub-jobs marked as deleted.');
 
-      setVideoAnalysisJobs(prevJobs => prevJobs.filter(job => job.id !== jobId));
+      refetch();
       if (selectedAnalysisJob?.id === jobId) {
         setSelectedAnalysisJob(null);
         setAiJobs([]);
@@ -119,8 +115,6 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
     } catch (error) {
       console.error("Error deleting analysis job:", error);
       alert(`An error occurred while deleting the job: ${error.message}`);
-    } finally {
-      setAnalysisJobsLoading(false);
     }
   };
 

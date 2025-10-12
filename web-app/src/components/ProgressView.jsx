@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useMemo } from 'react';
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 

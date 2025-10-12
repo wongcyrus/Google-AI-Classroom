@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { db, storage } from '../firebase-config';
+import React, { useState, useEffect } from 'react';
+import { storage } from '../firebase-config';
 import { useParams } from 'react-router-dom';
 import { ref, getDownloadURL } from 'firebase/storage';
 import './SharedViews.css';

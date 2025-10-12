@@ -1,17 +1,12 @@
-import { useState, useEffect } from 'react';
-import { useParams, useOutletContext } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, limit, startAfter, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { useState } from 'react';
+import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
 import Modal from './Modal';
 import VideoPromptSelector from './VideoPromptSelector';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
-
-const PAGE_SIZE = 10;
 
 const formatDuration = (seconds) => {
   if (!seconds) return 'N/A';
@@ -26,7 +21,7 @@ const formatSize = (bytes) => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
-const VideoLibrary = ({ user, classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
+const VideoLibrary = ({ user, classId, startTime, endTime }) => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);

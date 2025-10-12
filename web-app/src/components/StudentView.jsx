@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ref, uploadBytes } from 'firebase/storage';
 import { storage, db, auth } from '../firebase-config';
 import { signOut } from 'firebase/auth';
@@ -17,7 +17,7 @@ const StudentView = ({ user }) => {
   const [isSharing, setIsSharing] = useState(false);
 
   // Schedule-driven class state
-  const { userClasses, currentActiveClassId } = useStudentClassSchedule(user);
+  const { currentActiveClassId } = useStudentClassSchedule(user);
   const activeClass = currentActiveClassId;
   const [frameRate, setFrameRate] = useState(5);
   const [imageQuality, setImageQuality] = useState(0.5);
@@ -27,7 +27,20 @@ const StudentView = ({ user }) => {
   const [recentIrregularities, setRecentIrregularities] = useState([]);
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
-  const [recentMessages, setRecentMessages] = useState([]);
+
+  const recentMessages = useMemo(() => {
+    const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
+    const filteredMessagesForUI = [...directMessages, ...classMessages]
+      .filter(msg => !alertTitles.has(msg.message));
+
+    filteredMessagesForUI.sort((a, b) => {
+      const timeA = a.timestamp?.toMillis() || 0;
+      const timeB = b.timestamp?.toMillis() || 0;
+      return timeB - timeA;
+    });
+
+    return filteredMessagesForUI.slice(0, 5);
+  }, [directMessages, classMessages, recentIrregularities]);
 
   // Refs
   const intervalRef = useRef(null);
@@ -340,22 +353,8 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [user]);
 
-  // Merge messages and handle notifications
+  // Handle notifications
   useEffect(() => {
-    // For UI display, filter out messages that are also alerts
-    const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
-    const filteredMessagesForUI = [...directMessages, ...classMessages]
-      .filter(msg => !alertTitles.has(msg.message));
-
-    filteredMessagesForUI.sort((a, b) => {
-      const timeA = a.timestamp?.toMillis() || 0;
-      const timeB = b.timestamp?.toMillis() || 0;
-      return timeB - timeA;
-    });
-
-    const latestMessagesForUI = filteredMessagesForUI.slice(0, 5);
-    setRecentMessages(latestMessagesForUI);
-
     // For notification, consider all messages, but only recent ones
     const allMessages = [...directMessages, ...classMessages];
     allMessages.sort((a, b) => {
@@ -375,13 +374,14 @@ const StudentView = ({ user }) => {
           lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime() &&
           messageTimestamp > oneHourAgo
         ) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setNotification(latestMessage.message);
           setTimeout(() => showSystemNotification(latestMessage.message), 0);
           lastMessageTimestampRef.current = messageTimestamp;
         }
       }
     }
-  }, [directMessages, classMessages, recentIrregularities, showSystemNotification]);
+  }, [directMessages, classMessages, showSystemNotification]);
 
   useEffect(() => {
     if (!user || !user.uid) return;
