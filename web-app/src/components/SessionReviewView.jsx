@@ -529,37 +529,36 @@ const SessionReviewView = ({ classId, selectedLesson, startTime, endTime }) => {
         <h2>Session Playback</h2>
         <p>Select a student and a time range to begin.</p>
       </div>
-      <div className="actions-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <label htmlFor="student-select">Student: </label>
-            <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
-                <option value="" disabled>Select a student</option>
-                {students.map(student => (
-                    <option key={student.uid} value={student.uid}>{student.email}</option>
-                ))}
-            </select>
-            <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Student</button>
+      <div className="actions-container" style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+        <label htmlFor="student-select">Student: </label>
+        <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
+            <option value="" disabled>Select a student</option>
+            {students.map(student => (
+                <option key={student.uid} value={student.uid}>{student.email}</option>
+            ))}
+        </select>
+        <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Student</button>
 
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span>Status:</span>
-              {['pending', 'processing', 'completed', 'failed'].map(status => (
-                <label key={status} style={{ textTransform: 'capitalize' }}>
-                  <input
+        <span style={{ borderLeft: '1px solid #ccc', height: '24px' }}></span>
+
+        <span>Status:</span>
+        {['pending', 'processing', 'completed', 'failed'].map(status => (
+            <label key={status} style={{ textTransform: 'capitalize', fontWeight: 'normal' }}>
+                <input
                     type="checkbox"
                     checked={statusFilter.includes(status)}
                     onChange={() => handleStatusFilterChange(status)}
-                  />
-                  {status}
-                </label>
-              ))}
-            </div>
-            <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
-            <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
-              Delete Selected ({selectedJobs.size})
-            </button>
-        </div>
+                />
+                {status}
+            </label>
+        ))}
+
+        <span style={{ borderLeft: '1px solid #ccc', height: '24px' }}></span>
+
+        <button onClick={handleCombineAllToVideo} disabled={loading || !selectedLesson}>Combine All Students' Videos</button>
+        <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
+          Delete Selected ({selectedJobs.size})
+        </button>
       </div>
       {notification && (
         <div className={`notification notification-${notification.type}`} style={{ position: 'relative', paddingRight: '40px' }}>
