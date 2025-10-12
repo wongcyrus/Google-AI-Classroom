@@ -7,8 +7,12 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.role == 'teacher';
     }
 
+    function isTeacherInClass(classId) {
+      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.teacherUids;
+    }
+
     function isStudentInClass(classId) {
-      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentUids;
+      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.students;
     }
 
     match /studentProfiles/{userId} {
@@ -29,7 +33,8 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow read: if isTeacher() || (classId in get(/databases/$(database)/documents/studentProfiles/$(request.auth.uid)).data.classes);
+      allow list: if isTeacher();
+      allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
       allow create: if isTeacher() &&
                     (classId == 'demo' ||
                      (request.resource.data.teachers is list &&
@@ -38,16 +43,16 @@ service cloud.firestore {
       allow update, delete: if isTeacher();
 
       match /students/{studentId} {
-        allow read: if isTeacher();
+        allow read: if isTeacherInClass(classId);
       }
 
       match /messages/{messageId} {
         allow create: if isTeacher();
-        allow read: if isTeacher() || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
       }
 
       match /status/{studentUid} {
-        allow read: if isTeacher() || isStudentInClass(classId);
+        allow read: if isTeacher();
         allow write: if isStudentInClass(classId) && request.auth.uid == studentUid;
       }
 
@@ -107,10 +112,10 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      allow read: if isTeacher() && request.auth.token.email == teacherId;
+      allow read: if isTeacher() && request.auth.uid == teacherId;
 
       match /messages/{messageId} {
-        allow read: if isTeacher() && request.auth.token.email == teacherId;
+        allow read: if isTeacher() && request.auth.uid == teacherId;
         allow create: if isTeacher(); 
       }
     }

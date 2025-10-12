@@ -9,6 +9,8 @@ import { useClassSchedule } from '../hooks/useClassSchedule';
 import Modal from './Modal';
 import VideoPromptSelector from './VideoPromptSelector';
 
+import usePaginatedQuery from '../hooks/useCollectionQuery';
+
 const PAGE_SIZE = 10;
 
 const formatDuration = (seconds) => {
@@ -25,8 +27,6 @@ const formatSize = (bytes) => {
 };
 
 const VideoLibrary = ({ user, classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
-  const [videos, setVideos] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);
@@ -38,75 +38,19 @@ const VideoLibrary = ({ user, classId, startTime, endTime, lessons, selectedLess
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
 
-
-
-  useEffect(() => {
-    if (startTime && endTime) {
-      handleSearch();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startTime, endTime, filterField]);
-
-  const [lastVisible, setLastVisible] = useState(null);
-  const [isLastPage, setIsLastPage] = useState(true);
-
-  const handleSearch = () => {
-    if (!startTime || !endTime) {
-      alert('Please select a start and end time.');
-      return;
-    }
-    fetchPage(null); // Fetch first page
-  };
-
-  const handleNext = () => {
-    if (!isLastPage) {
-      fetchPage(lastVisible);
-    }
-  };
-
-  const fetchPage = async (cursor) => {
-    setLoading(true);
-    try {
-      const videoJobsRef = collection(db, 'videoJobs');
-      
-      const effectiveEndTime = new Date(endTime);
-      if (filterField === 'createdAt') {
-        effectiveEndTime.setHours(23, 59, 59, 999);
-      }
-
-      const queryConstraints = [
-        where('status', '==', 'completed'),
-        where('classId', '==', classId),
-        where(filterField, '>=', new Date(startTime)),
-        where(filterField, '<=', effectiveEndTime),
-        orderBy(filterField, 'desc'),
-        limit(PAGE_SIZE)
-      ];
-
-      if (cursor) {
-        queryConstraints.push(startAfter(cursor));
-      }
-
-      const q = query(videoJobsRef, ...queryConstraints);
-      const querySnapshot = await getDocs(q);
-      const videoList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setVideos(videoList);
-
-      if (querySnapshot.docs.length < PAGE_SIZE) {
-        setIsLastPage(true);
-      } else {
-        setIsLastPage(false);
-      }
-
-      const newLastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
-      setLastVisible(newLastVisible);
-
-    } catch (error) {
-      console.error("Error fetching videos:", error);
-      alert("Failed to fetch videos. It's possible the database index is still building.");
-    }
-    setLoading(false);
-  };
+  const { 
+    data: videos, 
+    loading, 
+    isLastPage, 
+    fetchNextPage 
+  } = usePaginatedQuery('videoJobs', {
+    classId,
+    startTime,
+    endTime,
+    filterField,
+    orderByField: filterField,
+    extraClauses: [{ field: 'status', op: '==', value: 'completed' }]
+  });
 
   const handleSelectVideo = (video) => {
     setSelectedVideos(prev => {
@@ -509,8 +453,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, lessons, selectedLess
       </>
 
       <div className="pagination-controls">
-        <button disabled>Previous</button> {/* Previous not implemented */}
-        <button onClick={handleNext} disabled={isLastPage || loading}>
+        <button disabled>Previous</button> {/* Previous not implemented in hook yet */}
+        <button onClick={fetchNextPage} disabled={isLastPage || loading}>
           Next
         </button>
       </div>

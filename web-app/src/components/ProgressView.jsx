@@ -1,65 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../firebase-config';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
+import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const ProgressView = ({ classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
-  const [allProgress, setAllProgress] = useState([]);
-  const [latestProgress, setLatestProgress] = useState({});
+const ProgressView = ({ classId, startTime, endTime }) => {
   const [selectedStudentUid, setSelectedStudentUid] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!classId || !startTime) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
+  // Fetch all progress data within the date range. 
+  // Note: This view summarizes latest progress, so we fetch all items in the range rather than paginating.
+  const { data: allProgress, loading } = usePaginatedQuery('progress', { 
+    classId, 
+    startTime, 
+    endTime, 
+    pageSize: 9999 // Fetch all documents in range
+  });
 
-    const progressRef = collection(db, "progress");
-    const q = query(
-      progressRef,
-      where("classId", "==", classId),
-      where("timestamp", ">=", new Date(startTime)),
-      orderBy("timestamp", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const progressData = [];
-      querySnapshot.forEach((doc) => {
-        progressData.push({ id: doc.id, ...doc.data() });
-      });
-      setAllProgress(progressData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching progress: ", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [classId, startTime]);
-
-  useEffect(() => {
-    if (!endTime) {
-      setLatestProgress({});
-      return;
-    }
+  // This effect calculates the latest progress report for each student from the fetched data.
+  const latestProgress = useMemo(() => {
     const latest = {};
-    const filteredProgress = allProgress.filter(p => p.timestamp.toDate() <= new Date(endTime));
-    filteredProgress.forEach(p => {
+    allProgress.forEach(p => {
       if (!latest[p.studentUid] || p.timestamp.toMillis() > latest[p.studentUid].timestamp.toMillis()) {
         latest[p.studentUid] = p;
       }
     });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLatestProgress(latest);
-  }, [allProgress, endTime]);
+    return latest;
+  }, [allProgress]);
 
   const renderDetailView = () => {
     const studentProgress = allProgress
       .filter(p => p.studentUid === selectedStudentUid)
-      .filter(p => !endTime || p.timestamp.toDate() <= new Date(endTime));
+      .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
 
     const studentEmail = studentProgress.length > 0 ? studentProgress[0].studentEmail : selectedStudentUid;
 

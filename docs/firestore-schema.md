@@ -15,11 +15,8 @@ erDiagram
 
     classes {
         string classId PK
-        array teachers "invited teacher emails"
-        array students "invited student emails"
-        array studentEmails "denormalized student emails"
+        map students "uid:email map"
         array teacherUids "enrolled teacher UIDs"
-        array studentUids "enrolled student UIDs"
         number storageQuota
         object schedule
         array ipRestrictions
@@ -43,12 +40,16 @@ erDiagram
         array classes
     }
 
-    students {
-        string studentUid PK
-    }
-
     teachers {
         string teacherUid PK
+    }
+
+    teachers_messages "messages" {
+        string messageId PK
+        string classId FK
+        string message
+        boolean read
+        timestamp timestamp
     }
 
     screenshots {
@@ -197,11 +198,8 @@ Stores information about each class.
 
 *   **Document ID**: `classId` (string)
 *   **Fields**:
-    *   `teachers`: (array) An array of teacher emails, used for inviting teachers who may not have an account yet.
-    *   `students`: (array) An array of student emails, used for inviting students who may not have an account yet.
-    *   `studentEmails`: (array) A denormalized array of student emails, used for easier querying.
+    *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
     *   `teacherUids`: (array) An array of teacher UIDs who have successfully enrolled in the class.
-    *   `studentUids`: (array) An array of student UIDs who have successfully enrolled in the class.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
     *   `schedule`: (object) An object containing the class schedule.
         *   `startDate`: (string) The start date of the class.

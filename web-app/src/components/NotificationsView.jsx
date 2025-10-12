@@ -6,66 +6,19 @@ import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
 import { useClassSchedule } from '../hooks/useClassSchedule';
 
-const PAGE_SIZE = 10;
+import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const NotificationsView = ({ user, classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
-  const [messages, setMessages] = useState([]);
+const NotificationsView = ({ user, classId, startTime, endTime }) => {
+  const collectionPath = user ? `teachers/${user.uid}/messages` : null;
 
-  const [firstDoc, setFirstDoc] = useState(null);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [isLastPage, setIsLastPage] = useState(false);
-
-
-  const fetchMessages = useCallback(async (direction = 'initial') => {
-    if (!user || !user.uid) return;
-    setLoading(true);
-
-    const messagesRef = collection(db, "teachers", user.uid, "messages");
-    let q = query(messagesRef, where("classId", "==", classId), where("timestamp", ">=", new Date(startTime)), where("timestamp", "<=", new Date(endTime)), orderBy("timestamp", "desc"));
-
-    if (direction === 'initial') {
-        setPage(1);
-        setIsLastPage(false);
-    }
-
-    switch (direction) {
-      case 'next':
-        q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
-        break;
-      case 'prev':
-        q = query(q, endBefore(firstDoc), limitToLast(PAGE_SIZE));
-        break;
-      default: // initial
-        q = query(q, limit(PAGE_SIZE));
-        break;
-    }
-
-    try {
-      const querySnapshot = await getDocs(q);
-      const newMessages = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      if (newMessages.length > 0) {
-        if (direction === 'prev') newMessages.reverse();
-        setMessages(newMessages);
-        setFirstDoc(querySnapshot.docs[0]);
-        setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1]);
-        setIsLastPage(querySnapshot.docs.length < PAGE_SIZE);
-      } else {
-        if (direction === 'initial') setMessages([]);
-        setIsLastPage(true);
-      }
-    } catch (error) {
-      console.error("Error fetching messages: ", error);
-    }
-
-    setLoading(false);
-  }, [user, classId, startTime, endTime, lastDoc, firstDoc]);
-
-  useEffect(() => {
-    fetchMessages('initial');
-  }, [fetchMessages]);
+  const { 
+    data: messages, 
+    loading, 
+    page, 
+    isLastPage, 
+    fetchNextPage, 
+    fetchPrevPage 
+  } = usePaginatedQuery(collectionPath, { classId, startTime, endTime });
 
   const handleNext = () => {
     if (!isLastPage) {
@@ -112,11 +65,11 @@ const NotificationsView = ({ user, classId, startTime, endTime, lessons, selecte
             </table>
         </div>
         <div className="pagination-controls">
-            <button onClick={handlePrev} disabled={loading || page <= 1}>
+            <button onClick={fetchPrevPage} disabled={loading || page <= 1}>
             Previous
             </button>
             <span>Page {page}</span>
-            <button onClick={handleNext} disabled={loading || isLastPage}>
+            <button onClick={fetchNextPage} disabled={loading || isLastPage}>
             Next
             </button>
         </div>

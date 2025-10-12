@@ -14,9 +14,7 @@ import Modal from './Modal';
 import ControlsPanel from './monitor/ControlsPanel';
 import StudentsGrid from './monitor/StudentsGrid';
 
-const MonitorView = ({ classId: propClassId }) => {
-  const { classId: paramClassId } = useParams();
-  const classId = propClassId || paramClassId;
+const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
   const [students, setStudents] = useState([]);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
@@ -32,7 +30,7 @@ const MonitorView = ({ classId: propClassId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
 
-  const { lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone } = useClassSchedule(classId);
+
   const [reviewTime, setReviewTime] = useState(null);
   const [timelineScrubTime, setTimelineScrubTime] = useState(null);
   const timelineDebounceTimer = useRef(null);
@@ -197,7 +195,7 @@ const MonitorView = ({ classId: propClassId }) => {
         const data = docSnap.data();
         console.log('[MonitorView] DEBUG: Raw class data:', JSON.stringify(data, null, 2));
 
-        const studentUids = data.studentUids || [];
+        const studentUids = data.students ? Object.keys(data.students) : [];
         setClassList(studentUids);
 
         const newMap = new Map();

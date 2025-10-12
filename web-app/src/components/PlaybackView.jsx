@@ -8,30 +8,19 @@ import DateRangeFilter from './DateRangeFilter';
 import TimelineSlider from './TimelineSlider';
 import { useClassSchedule } from '../hooks/useClassSchedule';
 
-const PlaybackView = () => {
-  const { classId } = useParams();
+import usePaginatedQuery from '../hooks/useCollectionQuery';
+
+const PlaybackView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange }) => {
   console.log('PlaybackView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
-  
-  const {
-    lessons,
-    selectedLesson,
-    startTime,
-    endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-  } = useClassSchedule(classId);
 
   const [sessionData, setSessionData] = useState(null);
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [videoJobs, setVideoJobs] = useState([]);
   const [lastBatchJobInfo, setLastBatchJobInfo] = useState(null);
-  const [filteredVideoJobs, setFilteredVideoJobs] = useState([]);
   const [statusFilter, setStatusFilter] = useState([]);
   const [selectedJobs, setSelectedJobs] = useState(new Set());
   const [errorModalJob, setErrorModalJob] = useState(null);
@@ -43,35 +32,25 @@ const PlaybackView = () => {
   const [isFetchingUrls, setIsFetchingUrls] = useState(false);
   const urlsFetched = useRef(new Set());
 
-  useEffect(() => {
-    if (!classId) return;
-    const q = query(collection(db, 'videoJobs'), where('classId', '==', classId));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const jobs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
-        setVideoJobs(jobs);
-    });
-    return unsubscribe;
-  }, [classId]);
+  const { data: videoJobsFromHook, loading: videoJobsLoading } = usePaginatedQuery('videoJobs', {
+    classId,
+    startTime,
+    endTime,
+    filterField: 'startTime',
+    orderByField: 'startTime',
+  });
+
+  const [filteredVideoJobs, setFilteredVideoJobs] = useState([]);
 
   useEffect(() => {
-    let jobs = videoJobs;
+    let jobs = videoJobsFromHook;
     if (statusFilter.length > 0) {
       jobs = jobs.filter(job => statusFilter.includes(job.status));
     }
-
-    if (selectedLesson) {
-      const lessonStartTime = new Date(startTime).getTime();
-      const lessonEndTime = new Date(endTime).getTime();
-
-      jobs = jobs.filter(job => {
-        if (!job.startTime) return false;
-        const jobStartTime = job.startTime.toMillis();
-        return jobStartTime >= lessonStartTime && jobStartTime < lessonEndTime;
-      });
-    }
+    // Perform secondary sort on the client
+    jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
     setFilteredVideoJobs(jobs);
-  }, [videoJobs, selectedLesson, startTime, endTime, statusFilter]);
+  }, [videoJobsFromHook, statusFilter]);
 
   // Effect to pre-fetch screenshot URLs in a buffer
   useEffect(() => {
@@ -560,16 +539,7 @@ const PlaybackView = () => {
                 ))}
             </select>
             <button onClick={handleStartPlayback} disabled={loading || !selectedStudent}>Load Student</button>
-            <DateRangeFilter 
-              startTime={startTime}
-              endTime={endTime}
-              onStartTimeChange={setStartTime}
-              onEndTimeChange={setEndTime}
-              loading={loading}
-              lessons={lessons}
-              selectedLesson={selectedLesson}
-              onLessonChange={handleLessonChange}
-            />
+
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

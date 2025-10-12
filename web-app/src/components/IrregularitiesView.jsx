@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db, storage } from '../firebase-config';
 import { useParams } from 'react-router-dom';
-import { collection, query, where, orderBy, limit, getDocs, startAfter, endBefore, limitToLast } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import './SharedViews.css';
-import DateRangeFilter from './DateRangeFilter';
-import { useClassSchedule } from '../hooks/useClassSchedule';
+import usePaginatedQuery from '../hooks/useCollectionQuery';
 
 const MediaPlayer = ({ url, type, onClose }) => {
   if (!url) return null;
@@ -28,18 +26,48 @@ const MediaPlayer = ({ url, type, onClose }) => {
 
 const IrregularitiesView = ({ startTime, endTime }) => {
   const { classId } = useParams();
-  const [irregularities, setIrregularities] = useState([]);
   const [mediaUrls, setMediaUrls] = useState({});
-
-  const lastDocRef = useRef(null);
-  const firstDocRef = useRef(null);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [isLastPage, setIsLastPage] = useState(false);
-
   const [showMediaPlayer, setShowMediaPlayer] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaType, setMediaType] = useState('');
+
+  const { 
+    data: irregularities, 
+    loading, 
+    page, 
+    isLastPage, 
+    fetchNextPage, 
+    fetchPrevPage 
+  } = usePaginatedQuery('irregularities', { classId, startTime, endTime });
+
+  useEffect(() => {
+    const fetchMediaUrls = async () => {
+      const urls = {};
+      for (const item of irregularities) {
+        const mediaPath = item.imageUrl || item.videoUrl;
+        if (mediaPath && !mediaUrls[item.id]) { // Fetch only if not already fetched
+          let type = 'image';
+          if (mediaPath.includes('videos/') || mediaPath.endsWith('.mp4') || mediaPath.endsWith('.webm') || mediaPath.endsWith('.ogv')) {
+            type = 'video';
+          }
+          try {
+            const storageRef = ref(storage, mediaPath);
+            const url = await getDownloadURL(storageRef);
+            urls[item.id] = { url, type };
+          } catch (error) {
+            console.error("Error getting download URL:", error);
+          }
+        }
+      }
+      if (Object.keys(urls).length > 0) {
+        setMediaUrls(prev => ({ ...prev, ...urls }));
+      }
+    };
+
+    if (irregularities.length > 0) {
+      fetchMediaUrls();
+    }
+  }, [irregularities, mediaUrls]);
 
   const openMediaPlayer = (url, type) => {
     setMediaUrl(url);
@@ -47,127 +75,15 @@ const IrregularitiesView = ({ startTime, endTime }) => {
     setShowMediaPlayer(true);
   };
 
-  const PAGE_SIZE = 10;
-
-  const fetchIrregularities = useCallback(async (direction = 'first', newPage = 1) => {
-    if (!classId) return;
-    setLoading(true);
-    const irregularitiesCollectionRef = collection(db, 'irregularities');
-    let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
-
-    q = query(q, where('classId', '==', classId));
-    if (startTime) q = query(q, where('timestamp', '>=', new Date(startTime)));
-    if (endTime) q = query(q, where('timestamp', '<=', new Date(endTime)));
-
-    if (direction === 'first') {
-      setIsLastPage(false);
-    }
-
-    switch (direction) {
-      case 'next':
-        q = query(q, startAfter(lastDocRef.current), limit(PAGE_SIZE));
-        break;
-      case 'prev':
-        q = query(q, endBefore(firstDocRef.current), limitToLast(PAGE_SIZE));
-        break;
-      default: // first
-        q = query(q, limit(PAGE_SIZE));
-        break;
-    }
-
-    try {
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        setPage(newPage);
-        setIsLastPage(snapshot.docs.length < PAGE_SIZE);
-        const irregularitiesData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        if (direction === 'prev') {
-          irregularitiesData.reverse();
-        }
-        setIrregularities(irregularitiesData);
-        firstDocRef.current = snapshot.docs[0];
-        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1];
-
-        const urls = {};
-        for (const item of irregularitiesData) {
-          const mediaPath = item.imageUrl || item.videoUrl;
-          let mediaType = 'image';
-          if (mediaPath) {
-            if (mediaPath.includes('videos/') || mediaPath.endsWith('.mp4') || mediaPath.endsWith('.webm') || mediaPath.endsWith('.ogv')) {
-              mediaType = 'video';
-            }
-            try {
-              const storageRef = ref(storage, mediaPath);
-              const url = await getDownloadURL(storageRef);
-              urls[item.id] = { url, type: mediaType };
-            } catch (error) {
-              console.error("Error getting download URL:", error);
-            }
-          }
-        }
-        setMediaUrls(prev => ({ ...prev, ...urls }));
-      } else {
-        setIrregularities([]);
-        if (direction === 'next') setIsLastPage(true);
-        if (direction === 'first') setPage(1);
-      }
-    } catch (error) {
-      console.error("Error fetching irregularities:", error);
-    }
-    setLoading(false);
-  }, [classId, startTime, endTime]);
-
-  useEffect(() => {
-    if (startTime && endTime) {
-      fetchIrregularities('first', 1);
-    }
-  }, [startTime, endTime, fetchIrregularities]);
-
-  const handleNext = () => {
-    if (!isLastPage) {
-      fetchIrregularities('next', page + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (page > 1) {
-      fetchIrregularities('prev', page - 1);
-    }
-  };
-
-  const fetchAllIrregularities = async () => {
-    if (!classId) return [];
-    setLoading(true);
-    const irregularitiesCollectionRef = collection(db, 'irregularities');
-    let q = query(irregularitiesCollectionRef, orderBy('timestamp', 'desc'));
-
-    q = query(q, where('classId', '==', classId));
-    if (startTime) q = query(q, where('timestamp', '>=', new Date(startTime)));
-    if (endTime) q = query(q, where('timestamp', '<=', new Date(endTime)));
-
-    try {
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      }
-      return [];
-    } catch (error) {
-      console.error("Error fetching all irregularities:", error);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const exportToCSV = async () => {
-    const allIrregularities = await fetchAllIrregularities();
-    if (allIrregularities.length === 0) {
+    if (irregularities.length === 0) {
       alert("No data to export.");
       return;
     }
 
+    // Note: This only exports the current page. A full export would require a separate function.
     const headers = ['Email', 'Title', 'Message', 'Media Path', 'Timestamp'];
-    const rows = allIrregularities.map(item =>
+    const rows = irregularities.map(item =>
       [
         item.email,
         item.title,
@@ -184,7 +100,7 @@ const IrregularitiesView = ({ startTime, endTime }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'irregularities.csv');
+    link.setAttribute('download', 'irregularities_page_' + page + '.csv');
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -240,9 +156,9 @@ const IrregularitiesView = ({ startTime, endTime }) => {
             </tbody>
           </table>
           <div className="pagination">
-            <button onClick={handlePrev} disabled={page <= 1} className="button">Previous</button>
+            <button onClick={fetchPrevPage} disabled={page <= 1} className="button">Previous</button>
             <span>Page {page}</span>
-            <button onClick={handleNext} disabled={isLastPage} className="button">Next</button>
+            <button onClick={fetchNextPage} disabled={isLastPage} className="button">Next</button>
           </div>
         </>
       )}

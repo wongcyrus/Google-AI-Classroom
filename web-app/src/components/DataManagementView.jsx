@@ -9,76 +9,25 @@ import { useClassSchedule } from '../hooks/useClassSchedule';
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
-const PAGE_SIZE = 10;
+import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const DataManagementView = ({ classId, startTime, endTime, lessons, selectedLesson, handleLessonChange }) => {
-
-  // State for pagination
-  const [zipJobs, setZipJobs] = useState([]);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-  const [page, setPage] = useState(1);
-  const [firstDoc, setFirstDoc] = useState(null);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [isLastPage, setIsLastPage] = useState(false);
+const DataManagementView = ({ classId, startTime, endTime }) => {
   const [selectedZipJobs, setSelectedZipJobs] = useState(new Set());
 
-  const fetchJobs = async (direction = 'first', newPage = 1) => {
-    setLoadingJobs(true);
-    const jobsCollectionRef = collection(db, 'zipJobs');
-    let q = query(
-      jobsCollectionRef,
-      where('classId', '==', classId),
-      where('startTime', '>=', new Date(startTime)),
-      where('startTime', '<=', new Date(endTime)),
-      orderBy('startTime', 'desc'),
-      orderBy('createdAt', 'desc')
-    );
-
-    if (direction === 'first') {
-      setIsLastPage(false);
-    }
-
-    switch (direction) {
-      case 'next':
-        q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
-        break;
-      case 'prev':
-        q = query(q, endBefore(firstDoc), limitToLast(PAGE_SIZE));
-        break;
-      default: // first
-        q = query(q, limit(PAGE_SIZE));
-        break;
-    }
-
-    try {
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        setPage(newPage);
-        setIsLastPage(snapshot.docs.length < PAGE_SIZE);
-        const jobsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        if (direction === 'prev') {
-          jobsData.reverse();
-        }
-        setZipJobs(jobsData);
-        setFirstDoc(snapshot.docs[0]);
-        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-      } else {
-        setZipJobs([]);
-        if (direction === 'next') setIsLastPage(true);
-        if (direction === 'first') setPage(1);
-      }
-    } catch (error) {
-      console.error("Error fetching zip jobs:", error);
-    }
-    setLoadingJobs(false);
-  };
-
-  useEffect(() => {
-    if (classId) {
-      fetchJobs('first', 1);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, startTime, endTime]);
+  const { 
+    data: zipJobs, 
+    loading: loadingJobs, 
+    page, 
+    isLastPage, 
+    fetchNextPage, 
+    fetchPrevPage 
+  } = usePaginatedQuery('zipJobs', {
+    classId,
+    startTime,
+    endTime,
+    filterField: 'createdAt',
+    orderByField: 'createdAt'
+  });
 
   const handleNext = () => {
     if (!isLastPage) {
@@ -253,11 +202,11 @@ const DataManagementView = ({ classId, startTime, endTime, lessons, selectedLess
             </table>
         </div>
         <div className="pagination-controls">
-            <button onClick={handlePrev} disabled={page <= 1 || loadingJobs}>
+            <button onClick={fetchPrevPage} disabled={page <= 1 || loadingJobs}>
             Previous
             </button>
             <span>Page {page}</span>
-            <button onClick={handleNext} disabled={isLastPage || loadingJobs}>
+            <button onClick={fetchNextPage} disabled={isLastPage || loadingJobs}>
             Next
             </button>
         </div>

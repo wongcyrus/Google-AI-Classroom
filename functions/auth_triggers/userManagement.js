@@ -26,13 +26,12 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       // Update the user's profile with the classId
       promises.push(userDocRef.set({ classes: firestoreAction(classId) }, { merge: true }));
 
-      // Update the class document with the user's UID
-      const updatePayload = {
-        [uidArrayField]: firestoreAction(userRecord.uid)
-      };
+      const updatePayload = {};
 
-      // Only modify the 'students' map if the user is a student
-      if (userType === 'student') {
+      if (userType === 'teacher') {
+        // For teachers, update the teacherUids array
+        updatePayload.teacherUids = firestoreAction(userRecord.uid);
+      } else { // For students, update the students map
         if (action === 'add') {
           updatePayload[`students.${userRecord.uid}`] = email;
         } else { // action === 'remove'
@@ -112,7 +111,6 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   }
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
-  const emailField = isTeacher ? 'teachers' : 'studentEmails';
   const uidField = isTeacher ? 'teacherUids' : 'studentUids';
 
   logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid}). Checking for pre-enrolled classes.`);

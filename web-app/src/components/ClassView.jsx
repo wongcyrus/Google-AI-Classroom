@@ -80,7 +80,7 @@ const ClassView = ({ user }) => {
     const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange };
     switch (mainTab) {
       case 'monitor':
-        return <MonitorView user={user} classId={classId} />;
+        return <MonitorView {...props} />;
       case 'video':
         switch (videoSubTab) {
           case 'library': return <VideoLibrary {...props} />;
@@ -101,8 +101,6 @@ const ClassView = ({ user }) => {
           case 'notifications': return <NotificationsView user={user} classId={classId} />;
           default: return null;
         }
-      default:
-        return <MonitorView user={user} classId={classId} />;
     }
   };
 

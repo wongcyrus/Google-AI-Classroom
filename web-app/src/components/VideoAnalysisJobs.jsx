@@ -7,14 +7,9 @@ import './SharedViews.css';
 import DateRangeFilter from './DateRangeFilter';
 import { useClassSchedule } from '../hooks/useClassSchedule';
 
-const PAGE_SIZE = 10;
+import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const VideoAnalysisJobs = () => {
-  const { classId } = useParams();
-  const [videoAnalysisJobs, setVideoAnalysisJobs] = useState([]);
-  const [analysisJobsLoading, setAnalysisJobsLoading] = useState(false);
-  const [lastVisible, setLastVisible] = useState(null);
-  const [isLastPage, setIsLastPage] = useState(true);
+const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
   const [aiJobs, setAiJobs] = useState([]);
   const [aiJobsLoading, setAiJobsLoading] = useState(false);
@@ -23,80 +18,25 @@ const VideoAnalysisJobs = () => {
   const [playerLoading, setPlayerLoading] = useState(false);
   const [filterField, setFilterField] = useState('startTime');
 
-  const {
-    lessons,
-    selectedLesson,
+  const { 
+    data: videoAnalysisJobs, 
+    loading: analysisJobsLoading, 
+    isLastPage, 
+    fetchNextPage 
+  } = usePaginatedQuery('videoAnalysisJobs', {
+    classId,
     startTime,
     endTime,
-    setStartTime,
-    setEndTime,
-    handleLessonChange,
-  } = useClassSchedule(classId);
+    filterField,
+    orderByField: filterField,
+    extraClauses: [{ field: 'deleted', op: '==', value: false }]
+  });
 
+  // Reset selection when the main job list changes
   useEffect(() => {
-    if (startTime && endTime) {
-      handleSearch();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLesson, filterField]);
-
-  const handleSearch = () => {
-    if (!startTime || !endTime) {
-      alert('Please select a start and end time.');
-      return;
-    }
-    fetchPage(null); // Fetch first page
-  };
-
-  const handleNext = () => {
-    if (!isLastPage) {
-      fetchPage(lastVisible);
-    }
-  };
-
-  const fetchPage = async (cursor) => {
-    if (!startTime || !endTime) return;
-    setAnalysisJobsLoading(true);
-    setSelectedAnalysisJob(null); // Reset selected job when fetching new list
-    setAiJobs([]); // Clear AI jobs
-    try {
-      const analysisJobsRef = collection(db, 'videoAnalysisJobs');
-      const endDate = new Date(endTime);
-      endDate.setHours(23, 59, 59, 999); // Set to end of day
-
-      const queryConstraints = [
-        where('classId', '==', classId),
-        where('deleted', '==', false),
-        where(filterField, '>=', new Date(startTime)),
-        where(filterField, '<=', endDate),
-        orderBy(filterField, 'desc'),
-        limit(PAGE_SIZE)
-      ];
-
-      if (cursor) {
-        queryConstraints.push(startAfter(cursor));
-      }
-
-      const q = query(analysisJobsRef, ...queryConstraints);
-      const querySnapshot = await getDocs(q);
-      const jobList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setVideoAnalysisJobs(jobList);
-
-      if (querySnapshot.docs.length < PAGE_SIZE) {
-        setIsLastPage(true);
-      } else {
-        setIsLastPage(false);
-      }
-
-      const newLastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
-      setLastVisible(newLastVisible);
-
-    } catch (error) {
-      console.error("Error fetching video analysis jobs:", error);
-      alert("Failed to fetch video analysis jobs. It's possible the database index is still building. Check the browser console for a link to create the required index.");
-    }
-    setAnalysisJobsLoading(false);
-  };
+    setSelectedAnalysisJob(null);
+    setAiJobs([]);
+  }, [videoAnalysisJobs]);
 
   const fetchAiJobs = async (aiJobIds) => {
     setAiJobsLoading(true);
@@ -283,17 +223,7 @@ const VideoAnalysisJobs = () => {
       
       <div className="actions-container" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
         <div className="filter-column">
-          <DateRangeFilter
-            startTime={startTime}
-            endTime={endTime}
-            onStartTimeChange={setStartTime}
-            onEndTimeChange={setEndTime}
-            onSearch={handleSearch}
-            loading={analysisJobsLoading}
-            lessons={lessons}
-            selectedLesson={selectedLesson}
-            onLessonChange={handleLessonChange}
-          />
+
           <div style={{ marginTop: '10px' }}>
             <label htmlFor="filter-field-select" style={{ marginRight: '10px' }}>Filter and Sort by: </label>
             <select 
@@ -399,7 +329,7 @@ const VideoAnalysisJobs = () => {
 
       <div className="pagination-controls">
         <button disabled>Previous</button> {/* Previous not implemented */}
-        <button onClick={handleNext} disabled={isLastPage || analysisJobsLoading}>
+        <button onClick={fetchNextPage} disabled={isLastPage || analysisJobsLoading}>
           Next
         </button>
       </div>
