@@ -108,57 +108,61 @@ const IrregularitiesView = ({ startTime, endTime }) => {
   };
 
   return (
-    <div className="container">
-      <h2 className="header">Irregularities for Class: {classId}</h2>
-      <div className="controls">
-        <button onClick={exportToCSV} className="button">Export to CSV</button>
+    <div className="view-container">
+      <div className="view-header">
+        <h2>Irregularities for Class: {classId}</h2>
+      </div>
+      <div className="actions-container">
+        <button onClick={exportToCSV}>Export to CSV</button>
       </div>
 
       {loading ? <p>Loading...</p> : (
         <>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Timestamp</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Media</th>
-              </tr>
-            </thead>
-            <tbody>
-              {irregularities.map(item => (
-                <tr key={item.id}>
-                  <td>{item.email}</td>
-                  <td>{item.timestamp.toDate().toLocaleString()}</td>
-                  <td>{item.title}</td>
-                  <td>{item.message}</td>
-                  <td>
-                    {mediaUrls[item.id] && (
-                      <div
-                        className="media-thumbnail"
-                        onClick={() => openMediaPlayer(mediaUrls[item.id].url, mediaUrls[item.id].type)}
-                      >
-                        {mediaUrls[item.id].type === 'image' ? (
-                          <img src={mediaUrls[item.id].url} alt="irregularity" />
-                        ) : (
-                          <div className="play-icon-container">
-                            <svg className="play-icon" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Timestamp</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Media</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="pagination">
-            <button onClick={fetchPrevPage} disabled={page <= 1} className="button">Previous</button>
+              </thead>
+              <tbody>
+                {irregularities.map(item => (
+                  <tr key={item.id}>
+                    <td>{item.email}</td>
+                    <td>{item.timestamp.toDate().toLocaleString()}</td>
+                    <td>{item.title}</td>
+                    <td>{item.message}</td>
+                    <td>
+                      {mediaUrls[item.id] && (
+                        <div
+                          className="media-thumbnail"
+                          onClick={() => openMediaPlayer(mediaUrls[item.id].url, mediaUrls[item.id].type)}
+                        >
+                          {mediaUrls[item.id].type === 'image' ? (
+                            <img src={mediaUrls[item.id].url} alt="irregularity" />
+                          ) : (
+                            <div className="play-icon-container">
+                              <svg className="play-icon" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="pagination-controls">
+            <button onClick={fetchPrevPage} disabled={page <= 1}>Previous</button>
             <span>Page {page}</span>
-            <button onClick={fetchNextPage} disabled={isLastPage} className="button">Next</button>
+            <button onClick={fetchNextPage} disabled={isLastPage}>Next</button>
           </div>
         </>
       )}

@@ -1,7 +1,7 @@
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import './SharedViews.css';
 
-const NotificationsView = ({ user, classId, startTime, endTime }) => {
+const MessagesView = ({ user, classId, startTime, endTime }) => {
   const collectionPath = user ? `teachers/${user.uid}/messages` : null;
 
   const { 
@@ -56,4 +56,4 @@ const NotificationsView = ({ user, classId, startTime, endTime }) => {
   );
 };
 
-export default NotificationsView;
+export default MessagesView;

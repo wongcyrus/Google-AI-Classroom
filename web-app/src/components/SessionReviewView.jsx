@@ -7,8 +7,8 @@ import TimelineSlider from './TimelineSlider';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const PlaybackView = ({ classId, selectedLesson, startTime, endTime }) => {
-  console.log('PlaybackView rendered for class:', classId);
+const SessionReviewView = ({ classId, selectedLesson, startTime, endTime }) => {
+  console.log('SessionReviewView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
 
@@ -660,6 +660,7 @@ const PlaybackView = ({ classId, selectedLesson, startTime, endTime }) => {
                                 }} 
                                 style={{ color: 'red', textDecoration: 'underline', cursor: 'pointer' }}
                               >
+                                {job.status}
                               </a>
                             ) : (
                               job.status
@@ -712,4 +713,4 @@ const PlaybackView = ({ classId, selectedLesson, startTime, endTime }) => {
   );
 };
 
-export default PlaybackView;
+export default SessionReviewView;

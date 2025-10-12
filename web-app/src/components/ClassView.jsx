@@ -11,8 +11,8 @@ import DateRangeFilter from './DateRangeFilter';
 import MonitorView from './MonitorView';
 import IrregularitiesView from './IrregularitiesView';
 import ProgressView from './ProgressView';
-import PlaybackView from './PlaybackView';
-import NotificationsView from './NotificationsView';
+import SessionReviewView from './SessionReviewView';
+import MessagesView from './MessagesView';
 import VideoLibrary from './VideoLibrary';
 import VideoAnalysisJobs from './VideoAnalysisJobs';
 import DataManagementView from './DataManagementView';
@@ -85,7 +85,7 @@ const ClassView = ({ user }) => {
       case 'video':
         switch (videoSubTab) {
           case 'library': return <VideoLibrary {...props} />;
-          case 'playback': return <PlaybackView {...props} />;
+          case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
           default: return null;
         }
@@ -99,7 +99,7 @@ const ClassView = ({ user }) => {
       case 'more':
         switch (moreSubTab) {
           case 'data': return <DataManagementView {...props} />;
-          case 'notifications': return <NotificationsView user={user} classId={classId} />;
+          case 'messages': return <MessagesView user={user} classId={classId} />;
           default: return null;
         }
     }
@@ -118,7 +118,7 @@ const ClassView = ({ user }) => {
         {mainTab === 'video' && (
           <>
             <button className={`tab-button ${videoSubTab === 'library' ? 'active' : ''}`} onClick={() => setVideoSubTab('library')}>Video Library</button>
-            <button className={`tab-button ${videoSubTab === 'playback' ? 'active' : ''}`} onClick={() => setVideoSubTab('playback')}>Playback</button>
+            <button className={`tab-button ${videoSubTab === 'review' ? 'active' : ''}`} onClick={() => setVideoSubTab('review')}>Session Review</button>
             <button className={`tab-button ${videoSubTab === 'jobs' ? 'active' : ''}`} onClick={() => setVideoSubTab('jobs')}>Video Analysis Jobs</button>
           </>
         )}
@@ -132,7 +132,7 @@ const ClassView = ({ user }) => {
         {mainTab === 'more' && (
           <>
             <button className={`tab-button ${moreSubTab === 'data' ? 'active' : ''}`} onClick={() => setMoreSubTab('data')}>Data Management</button>
-            <button className={`tab-button ${moreSubTab === 'notifications' ? 'active' : ''}`} onClick={() => setMoreSubTab('notifications')}>Notifications</button>
+            <button className={`tab-button ${moreSubTab === 'messages' ? 'active' : ''}`} onClick={() => setMoreSubTab('messages')}>Messages</button>
           </>
         )}
         </div>

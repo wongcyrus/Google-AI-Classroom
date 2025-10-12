@@ -61,7 +61,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
     });
   };
 
-  const handleDownloadSelected = async () => {
+  const handleRequestZipForSelected = async () => {
     if (selectedVideos.size === 0) return;
 
     setIsZipping(true);
@@ -100,7 +100,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
     setIsZipping(false);
   };
 
-  const handleDownloadAll = async () => {
+  const handleRequestZipForAll = async () => {
     if (!startTime || !endTime) {
         alert("Please select a start and end time to define the range for the zip file.");
         return;
@@ -363,10 +363,10 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       <>
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
 
-          <button onClick={handleDownloadSelected} disabled={selectedVideos.size === 0 || isZipping}>
+          <button onClick={handleRequestZipForSelected} disabled={selectedVideos.size === 0 || isZipping}>
             {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
           </button>
-          <button onClick={handleDownloadAll} disabled={isZipping}>
+          <button onClick={handleRequestZipForAll} disabled={isZipping}>
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
