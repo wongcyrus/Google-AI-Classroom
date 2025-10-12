@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase-config';
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 
+const EMPTY_ARRAY = [];
+
 const usePaginatedQuery = (collectionPath, {
   classId,
   startTime,
@@ -10,7 +12,7 @@ const usePaginatedQuery = (collectionPath, {
   orderByField = 'timestamp',
   orderByDirection = 'desc',
   pageSize = 10,
-  extraClauses = [],
+  extraClauses = EMPTY_ARRAY,
 }) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);

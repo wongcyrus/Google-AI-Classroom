@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
@@ -33,6 +33,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime }) => {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
 
+  const extraClauses = useMemo(() => [{ field: 'status', op: '==', value: 'completed' }], []);
+
   const { 
     data: videos, 
     loading, 
@@ -44,7 +46,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime }) => {
     endTime,
     filterField,
     orderByField: filterField,
-    extraClauses: [{ field: 'status', op: '==', value: 'completed' }]
+    extraClauses,
   });
 
   const handleSelectVideo = (video) => {

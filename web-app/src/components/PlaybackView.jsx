@@ -38,11 +38,17 @@ const PlaybackView = ({ classId, selectedLesson, startTime, endTime }) => {
   });
 
   const filteredVideoJobs = useMemo(() => {
-    let jobs = videoJobsFromHook;
+    if (!videoJobsFromHook) return [];
+    // Create a shallow copy before sorting to avoid mutating the original array
+    const jobs = [...videoJobsFromHook];
+
     if (statusFilter.length > 0) {
-      jobs = jobs.filter(job => statusFilter.includes(job.status));
+      return jobs
+        .filter(job => statusFilter.includes(job.status))
+        .sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
     }
-    // Perform secondary sort on the client
+    
+    // Perform sort on the copied array
     jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
     return jobs;
   }, [videoJobsFromHook, statusFilter]);

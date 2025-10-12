@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, documentId, doc, writeBatch } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
@@ -15,6 +15,8 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
   const [playerLoading, setPlayerLoading] = useState(false);
   const [filterField, setFilterField] = useState('startTime');
 
+  const extraClauses = useMemo(() => [{ field: 'deleted', op: '==', value: false }], []);
+
   const { 
     data: videoAnalysisJobs, 
     loading: analysisJobsLoading, 
@@ -27,7 +29,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime }) => {
     endTime,
     filterField,
     orderByField: filterField,
-    extraClauses: [{ field: 'deleted', op: '==', value: false }]
+    extraClauses,
   });
 
   // Reset selection when the main job list changes
