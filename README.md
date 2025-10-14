@@ -168,7 +168,7 @@ These functions are triggered by Firebase Authentication events.
 *   `ipRestriction.js`: Checks the user's IP address upon login and restricts access based on the class schedule and IP whitelist.
 *   `userManagement.js`:
     *   `beforeUserCreated`: Triggered before a new user is created. It validates the user's email domain, assigns a `student` or `teacher` role via custom claims, and links the new user to any classes they were pre-enrolled in by email.
-    *   `onClassUpdate`: A Firestore trigger that automatically updates user profiles (`studentProfiles`, `teacherProfiles`) when the `studentEmails` or `teachers` array in a `classes` document is modified. It handles both adding and removing users from classes.
+    *   `onClassUpdate`: A Firestore trigger that automatically updates user profiles (`studentProfiles`, `teacherProfiles`) when the `studentEmails` or `teacherEmails` array in a `classes` document is modified. It handles both adding and removing users from classes.
 
 ### Media Processing (`media_processing`)
 

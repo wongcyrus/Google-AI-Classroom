@@ -8,7 +8,7 @@ service cloud.firestore {
     }
 
     function isTeacherInClass(classId) {
-      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.teacherUids;
+      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.teachers;
     }
 
     function isStudentInClass(classId) {
@@ -16,6 +16,10 @@ service cloud.firestore {
     }
 
     match /studentProfiles/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+
+    match /teacherProfiles/{userId} {
       allow read, write: if request.auth.uid == userId;
     }
 
@@ -37,8 +41,8 @@ service cloud.firestore {
       allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
       allow create: if isTeacher() &&
                     (classId == 'demo' ||
-                     (request.resource.data.teachers is list &&
-                      request.auth.token.email in request.resource.data.teachers &&
+                     (request.resource.data.teacherEmails is list &&
+                      request.auth.token.email in request.resource.data.teacherEmails &&
                       classId.size() >= 3));
       allow update, delete: if isTeacher();
 

@@ -69,16 +69,17 @@ const ClassManagement = ({ user }) => {
   useEffect(() => {
     if (!user) return;
 
-    const classesRef = collection(db, 'classes');
-    const q = query(classesRef, where('teacherUids', 'array-contains', user.uid));
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const classesData = [];
-      querySnapshot.forEach((doc) => {
-        classesData.push({ id: doc.id, ...doc.data() });
-      });
-      console.log('Fetched classes:', classesData);
-      setClasses(classesData);
+    const userProfileRef = doc(db, "teacherProfiles", user.uid);
+    const unsubscribe = onSnapshot(userProfileRef, (profileSnap) => {
+      if (profileSnap.exists()) {
+        const profileData = profileSnap.data();
+        const classIds = profileData.classes || [];
+        const classesData = classIds.map(id => ({ id })); // We only need the IDs for the dropdown
+        console.log('Fetched classes:', classesData);
+        setClasses(classesData);
+      } else {
+        setClasses([]);
+      }
     });
 
     return () => unsubscribe();
@@ -108,8 +109,8 @@ const ClassManagement = ({ user }) => {
             setTimeZone('Asia/Hong_Kong');
             setClassSchedules([]);
           }
-          if (classData.teachers) {
-            setTeacherEmails(classData.teachers.join('\n'));
+          if (classData.teacherEmails) {
+            setTeacherEmails(classData.teacherEmails.join('\n'));
           } else {
             setTeacherEmails('');
           }
@@ -279,7 +280,7 @@ const ClassManagement = ({ user }) => {
             timeSlots: classSchedules,
           },
           studentEmails: studentEmailList,
-          teachers: uniqueTeachers,
+          teacherEmails: uniqueTeachers,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
@@ -293,7 +294,7 @@ const ClassManagement = ({ user }) => {
         const uniqueTeachers = [...new Set(initialTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
 
         await setDoc(classRef, {
-          teachers: uniqueTeachers,
+          teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
           storageQuota: storageQuotaBytes,
           schedule: {

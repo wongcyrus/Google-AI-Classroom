@@ -172,15 +172,13 @@ export const sendMessageToTeacher = ai.defineTool(
       }
 
       const classData = classDoc.data();
-      const teacherUid = classData.teacherUids && classData.teacherUids[0];
+      const teacherUids = classData.teachers ? Object.keys(classData.teachers) : [];
 
-      if (!teacherUid) {
-        console.error(`No teacher found for class ${classId}. Class data:`, classData);
-        return `Failed to send message: No teacher found for class ${classId}.`;
+      if (teacherUids.length === 0) {
+        console.error(`No teachers found for class ${classId}. Class data:`, classData);
+        return `Failed to send message: No teachers found for class ${classId}.`;
       }
 
-      const teacherMessagesRef = db.collection('teachers').doc(teacherUid).collection('messages');
-      
       let finalMessage = message;
       if (studentUid) {
         try {
@@ -191,16 +189,21 @@ export const sendMessageToTeacher = ai.defineTool(
         }
       }
 
-      await teacherMessagesRef.add({
-        message: finalMessage,
-        timestamp: FieldValue.serverTimestamp(),
-        classId: classId,
+      const messagePromises = teacherUids.map(teacherUid => {
+        const teacherMessagesRef = db.collection('teachers').doc(teacherUid).collection('messages');
+        return teacherMessagesRef.add({
+          message: finalMessage,
+          timestamp: FieldValue.serverTimestamp(),
+          classId: classId,
+        });
       });
 
-      return `Successfully sent message to the teacher of class ${classId}.`;
+      await Promise.all(messagePromises);
+
+      return `Successfully sent message to all ${teacherUids.length} teachers of class ${classId}.`;
     } catch (error) {
-      console.error('Error sending message to teacher:', error);
-      return `Failed to send message to teacher. Error: ${error.message}`;
+      console.error('Error sending message to teachers:', error);
+      return `Failed to send message to teachers. Error: ${error.message}`;
     }
   }
 );

@@ -16,7 +16,9 @@ erDiagram
     classes {
         string classId PK
         map students "uid:email map"
-        array teacherUids "enrolled teacher UIDs"
+        map teachers "uid:email map"
+        array studentEmails "enrolled student emails"
+        array teacherEmails "enrolled teacher emails"
         number storageQuota
         object schedule
         array ipRestrictions
@@ -198,8 +200,10 @@ Stores information about each class.
 
 *   **Document ID**: `classId` (string)
 *   **Fields**:
+    *   `studentEmails`: (array) An array of student emails used for enrollment.
+    *   `teacherEmails`: (array) An array of teacher emails used for enrollment.
     *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
-    *   `teacherUids`: (array) An array of teacher UIDs who have successfully enrolled in the class.
+    *   `teachers`: (map) A map of teacher UIDs to their email addresses (`{ <teacherUid>: <teacherEmail> }`).
     *   `storageQuota`: (number) The storage limit for the class in bytes.
     *   `schedule`: (object) An object containing the class schedule.
         *   `startDate`: (string) The start date of the class.
@@ -414,7 +418,7 @@ Stores information about zip file creation jobs.
 
 ## Relationships
 
-*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, and a user can be in many classes. This relationship is the core of the authorization system, managed by a cloud function that syncs `studentUids` / `teacherUids` in the `classes` collection with the `classes` array in the respective user profile collections.
+*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, and a user can be in many classes. This relationship is the core of the authorization system, managed by a cloud function that syncs the `students` and `teachers` maps in the `classes` collection with the `classes` array in the respective user profile collections.
 *   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher UIDs, which are used as keys in the `students` and `teachers` collections for direct messaging.
 *   **`screenshots` -> `classes` & `studentProfiles`**: Many-to-one. A screenshot belongs to one class and one student, linked via `studentUid`.
 *   **`videoJobs` -> `classes` & `studentProfiles`**: Many-to-one. A video job belongs to one class and one student, linked via `studentUid`.

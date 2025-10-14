@@ -19,8 +19,8 @@ const endDate = new Date(today.getFullYear(), today.getMonth() + 3, 0); // End o
 const MOCK_CLASS = {
   id: 'demo-class-101',
   name: 'Demonstration Class 101',
-  teachers: MOCK_TEACHERS.map(t => t.email),
-  students: MOCK_STUDENTS.map(s => s.email),
+  teacherEmails: MOCK_TEACHERS.map(t => t.email),
+  studentEmails: MOCK_STUDENTS.map(s => s.email),
   storageQuota: 5 * 1024 * 1024 * 1024, // 5 GB
   schedule: {
     startDate: startDate.toISOString().split('T')[0],
@@ -46,15 +46,17 @@ async function createFirestoreData(db, users) {
     console.log('\nCreating Firestore data...');
 
     const studentMap = new Map(users.studentUsers.map(u => [u.uid, u.email]));
+    const teacherMap = new Map(users.teacherUsers.map(u => [u.uid, u.email]));
 
     // Create class
     try {
-        const { id, students, ...classData } = MOCK_CLASS; // Remove outdated students array
-        const teacherUids = users.teacherUsers.map(u => u.uid);
+        const { id, studentEmails, teacherEmails, ...classData } = MOCK_CLASS;
         await db.collection('classes').doc(id).set({
             ...classData,
-            teacherUids,
-            students: Object.fromEntries(studentMap), // Store students as a map
+            studentEmails,
+            teacherEmails,
+            students: Object.fromEntries(studentMap),
+            teachers: Object.fromEntries(teacherMap),
         });
         await db.collection('classes').doc(id).collection('metadata').doc('storage').set({
             storageUsage: 0,

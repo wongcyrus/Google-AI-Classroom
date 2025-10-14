@@ -23,35 +23,50 @@ const TeacherView = ({ user }) => {
   useEffect(() => {
     if (!user) return;
 
-    const classesRef = collection(db, "classes");
-    const qClasses = query(classesRef, where("teacherUids", "array-contains", user.uid));
-    const unsubscribeClasses = onSnapshot(qClasses, async (querySnapshot) => {
-      const classesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      classesData.sort((a, b) => a.id.localeCompare(b.id));
-      
-      const updatedClasses = await Promise.all(classesData.map(async c => {
-          const storageRef = doc(db, "classes", c.id, "metadata", "storage");
-          const aiMetaRef = doc(db, "classes", c.id, "metadata", "ai");
-          const [storageSnap, aiMetaSnap] = await Promise.all([
-            getDoc(storageRef),
-            getDoc(aiMetaRef)
-          ]);
+    const userProfileRef = doc(db, "teacherProfiles", user.uid);
+    const unsubscribeProfile = onSnapshot(userProfileRef, async (profileSnap) => {
+      if (profileSnap.exists()) {
+        const profileData = profileSnap.data();
+        const classIds = profileData.classes || [];
+        
+        if (classIds.length === 0) {
+          setClasses([]);
+          setLoading(false);
+          return;
+        }
 
-          let mergedData = { ...c };
-          if (storageSnap.exists()) {
-              mergedData = { ...mergedData, ...storageSnap.data() };
-          }
-          if (aiMetaSnap.exists()) {
-              mergedData = { ...mergedData, ...aiMetaSnap.data() };
-          }
-          return mergedData;
-      }));
+        const classPromises = classIds.map(id => getDoc(doc(db, "classes", id)));
+        const classSnaps = await Promise.all(classPromises);
 
-      setClasses(updatedClasses);
+        const classesData = classSnaps.map(snap => ({ id: snap.id, ...snap.data() }));
+        classesData.sort((a, b) => a.id.localeCompare(b.id));
+
+        const updatedClasses = await Promise.all(classesData.map(async c => {
+            const storageRef = doc(db, "classes", c.id, "metadata", "storage");
+            const aiMetaRef = doc(db, "classes", c.id, "metadata", "ai");
+            const [storageSnap, aiMetaSnap] = await Promise.all([
+              getDoc(storageRef),
+              getDoc(aiMetaRef)
+            ]);
+
+            let mergedData = { ...c };
+            if (storageSnap.exists()) {
+                mergedData = { ...mergedData, ...storageSnap.data() };
+            }
+            if (aiMetaSnap.exists()) {
+                mergedData = { ...mergedData, ...aiMetaSnap.data() };
+            }
+            return mergedData;
+        }));
+
+        setClasses(updatedClasses);
+      } else {
+        setClasses([]);
+      }
       setLoading(false);
     });
 
-    return () => unsubscribeClasses();
+    return () => unsubscribeProfile();
   }, [user]);
 
   if (role && role !== 'teacher') {
@@ -84,7 +99,7 @@ const TeacherView = ({ user }) => {
                             return (
                                 <div key={c.id} className="class-card">
                                     <h3>{c.name || c.id}</h3>
-                                    <p>{c.studentUids ? c.studentUids.length : 0} student(s)</p>
+                                    <p>{c.students ? Object.keys(c.students).length : 0} student(s)</p>
                                     <div className="storage-info">
                                         <div className="progress-bar-container">
                                             <div className="progress-bar" style={{ width: `${percentage}%` }}></div>

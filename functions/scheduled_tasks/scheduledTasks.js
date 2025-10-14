@@ -110,7 +110,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
   for (const doc of snapshot.docs) {
     const classData = doc.data();
     const classId = doc.id;
-    const { schedule, studentUids, teacherUids } = classData;
+    const { schedule, students, teachers } = classData;
+    const studentUids = Object.keys(students || {});
+    const teacherUids = Object.keys(teachers || {});
 
     if (!schedule || !schedule.timeZone || !schedule.timeSlots || !studentUids || studentUids.length === 0) {
       logger.warn(`Skipping class ${classId} due to incomplete configuration (schedule, timeZone, timeSlots, or studentUids missing).`);

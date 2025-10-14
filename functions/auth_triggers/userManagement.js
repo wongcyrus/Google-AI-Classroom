@@ -78,8 +78,12 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       const updatePayload = {};
 
       if (userType === 'teacher') {
-        // For teachers, update the teacherUids array
-        updatePayload.teacherUids = firestoreAction(userRecord.uid);
+        // For teachers, update the teachers map
+        if (action === 'add') {
+          updatePayload[`teachers.${userRecord.uid}`] = email;
+        } else { // action === 'remove'
+          updatePayload[`teachers.${userRecord.uid}`] = FieldValue.delete();
+        }
       } else { // For students, update the students map
         if (action === 'add') {
           updatePayload[`students.${userRecord.uid}`] = email;
@@ -113,8 +117,8 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   const removedStudents = [...studentsBefore].filter(email => !studentsAfter.has(email));
 
   // Handle Teachers
-  const teachersBefore = new Set(beforeData.teachers || []);
-  const teachersAfter = new Set(afterData.teachers || []);
+  const teachersBefore = new Set(beforeData.teacherEmails || []);
+  const teachersAfter = new Set(afterData.teacherEmails || []);
   const addedTeachers = [...teachersAfter].filter(email => !teachersBefore.has(email));
   const removedTeachers = [...teachersBefore].filter(email => !teachersAfter.has(email));
 
@@ -156,7 +160,7 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   }
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
-  const emailField = isTeacher ? 'teachers' : 'studentEmails';
+  const emailField = isTeacher ? 'teacherEmails' : 'studentEmails';
 
   logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid}). Checking for pre-enrolled classes.`);
 
@@ -172,7 +176,7 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
       classIds.push(doc.id);
       const classRef = doc.ref;
       if (isTeacher) {
-        batch.update(classRef, { teacherUids: FieldValue.arrayUnion(uid) });
+        batch.update(classRef, { [`teachers.${uid}`]: email });
       } else {
         batch.update(classRef, { [`students.${uid}`]: email });
       }
