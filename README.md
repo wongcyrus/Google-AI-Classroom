@@ -142,59 +142,11 @@ graph TD
 
 All backend logic is implemented as individual, single-purpose Cloud Functions located in the `functions/` directory. The functions are organized into modules based on their trigger type and domain.
 
-### AI-Powered Analysis (`ai_flows`)
+For a detailed breakdown of all Cloud Functions, their triggers, and the data models they interact with, please see the [Cloud Functions Documentation](./docs/functions.md).
 
-This module contains all the core AI logic, powered by Google's Genkit and the Gemini model.
+## Frontend Components
 
-*   **AI Flows**: Defines the logic for analyzing images and videos. 
-    *   `analyzeImageFlow`: Analyzes a single image.
-    *   `analyzeAllImagesFlow`: Analyzes a batch of images.
-    *   `analyzeSingleVideoFlow`: Analyzes a single video.
-*   **AI Tools**: A set of tools that the AI can use to interact with the system.
-    *   `sendMessageToStudent`: Sends a direct message to a student.
-    *   `recordIrregularity`: Records an irregularity activity.
-    *   `recordStudentProgress`: Records a student's work progress.
-    *   `sendMessageToTeacher`: Sends a message to the teacher.
-*   **Cost & Quota Management**: Manages the cost and usage of the AI services.
-    *   `cost.js`: Calculates the cost of AI jobs.
-    *   `quotaManagement.js`: Checks and updates the AI quota for each class.
-    *   `quotaTriggers.js`: A Firestore trigger that updates the AI quota when an AI job is created.
-*   **`triggerAutomaticAnalysis.js`**: An event-driven function that triggers when a `videoJob` is updated. It checks if all video jobs for a class session are complete (or have failed), and if so, creates a `videoAnalysisJob` to start the automatic analysis using the class's configured prompt.
-
-### Authentication Triggers (`auth_triggers`)
-
-These functions are triggered by Firebase Authentication events.
-
-*   `ipRestriction.js`: Checks the user's IP address upon login and restricts access based on the class schedule and IP whitelist.
-*   `userManagement.js`:
-    *   `beforeUserCreated`: Triggered before a new user is created. It validates the user's email domain, assigns a `student` or `teacher` role via custom claims, and links the new user to any classes they were pre-enrolled in by email.
-    *   `onClassUpdate`: A Firestore trigger that automatically updates user profiles (`studentProfiles`, `teacherProfiles`) when the `studentEmails` or `teacherEmails` array in a `classes` document is modified. It handles both adding and removing users from classes.
-
-### Media Processing (`media_processing`)
-
-This module handles the processing of media files.
-
-*   `processVideoJob.js`: A Firestore trigger that creates a video from a series of screenshots when a `videoJobs` document is created.
-*   `processZipJob.js`: A Firestore trigger that creates a zip archive of videos and sends a download link to the requester when a `zipJobs` document is created.
-*   `cleanupStuckJobs.js`: A scheduled function that runs periodically to clean up any video processing jobs that have been stuck in a processing state for too long.
-
-### Scheduled Tasks (`scheduled_tasks`)
-
-These functions are triggered on a schedule.
-
-*   `scheduledTasks.js`:
-    *   `handleAutomaticCapture`: Starts and stops screen capture for classes with `automaticCapture` enabled.
-    *   `handleAutomaticVideoCombination`: Runs shortly after a class ends and creates individual video combination jobs for each student in classes where `automaticCombine` is enabled.
-
-### Storage Triggers (`storage_triggers`)
-
-These functions are triggered by Cloud Storage events.
-
-*   `storageQuota.js`:
-    *   `updateStorageUsageOnUpload`: Updates the storage usage for a class when a file is uploaded and enforces the storage quota.
-    *   `updateStorageUsageOnDelete`: Updates the storage usage for a class when a file is deleted.
-*   `screenshotManagement.js`:
-    *   `deleteScreenshotsByDateRange`: A callable function that allows teachers to delete screenshots within a specific date range.
+The user-facing web application is built with React and Vite. For a detailed breakdown of the main components, please see the [Frontend Components Documentation](./docs/frontend-components.md).
 
 ## Getting Started (Local Development)
 

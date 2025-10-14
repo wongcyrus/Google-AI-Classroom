@@ -86,20 +86,27 @@ erDiagram
     zipJobs {
         string jobId PK
         string classId FK
-        string studentUid FK
-        string studentEmail "denormalized"
+        string requesterUid FK
         timestamp startTime
         timestamp endTime
         string status
         string zipPath
         string error
+        array videos
     }
 
     videoAnalysisJobs {
         string jobId PK
-        string masterJobId
+        string classId FK
+        string requesterUid FK
+        string prompt
         string status
+        timestamp createdAt
+        timestamp startTime
+        timestamp endTime
+        string filterField
         array aiJobIds
+        array videos
     }
 
 aiJobs {
@@ -404,9 +411,22 @@ Stores information about video analysis jobs.
 
 *   **Document ID**: `jobId` (string)
 *   **Fields**:
-    *   `masterJobId`: (string) The ID of the master job.
+    *   `classId`: (string) The ID of the class.
+    *   `requester`: (string) The UID of the user who requested the analysis.
+    *   `videos`: (array) An array of objects, each containing details about a video to be analyzed. This is for jobs on selected videos.
+        *   `studentUid`: (string) The UID of the student.
+        *   `studentEmail`: (string) The student's email.
+        *   `videoPath`: (string) The path to the video in Cloud Storage.
+    *   `prompt`: (string) The AI prompt to be used for the analysis.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
+    *   `createdAt`: (timestamp) When the job was created.
+    *   `startTime`: (timestamp) The start time for the range of videos to be analyzed (for "all videos" jobs).
+    *   `endTime`: (timestamp) The end time for the range of videos to be analyzed (for "all videos" jobs).
+    *   `filterField`: (string) The field to filter by (`startTime` or `createdAt`).
     *   `aiJobIds`: (array) An array of `aiJob` IDs associated with this analysis.
+    *   `completedAt`: (timestamp) When the job was completed.
+    *   `error`: (string) An error message if the job failed.
+    *   `deleted`: (boolean) A flag to mark the job as deleted.
 
 ### `videoJobs`
 
@@ -436,11 +456,17 @@ Stores information about zip file creation jobs.
 *   **Document ID**: `jobId` (string)
 *   **Fields**:
     *   `classId`: (string) The ID of the class the zip file belongs to.
-    *   `studentUid`: (string) The UID of the student.
-    *   `studentEmail`: (string) The student's email, denormalized for easier querying.
-    *   `startTime`: (timestamp) The start time of the zip file.
-    *   `endTime`: (timestamp) The end time of the zip file.
+    *   `requester`: (string) The UID of the user who requested the zip job.
+    *   `videos`: (array) An array of objects, each containing details about a video to be included in the zip.
+        *   `path`: (string) The path to the video in Cloud Storage.
+        *   `classId`: (string) The ID of the class.
+        *   `studentUid`: (string) The UID of the student.
+        *   `studentEmail`: (string) The student's email.
+        *   `startTime`: (timestamp) The start time of the video.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
+    *   `createdAt`: (timestamp) When the job was created.
+    *   `startTime`: (timestamp) The start time for the range of videos to be zipped.
+    *   `endTime`: (timestamp) The end time for the range of videos to be zipped.
     *   `zipPath`: (string) The path to the zip file in Firebase Storage.
     *   `error`: (string) An error message if the job failed.
 
