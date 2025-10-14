@@ -60,6 +60,17 @@ export const processPropertyUpload = onDocumentCreated({
                     emailToUid[user.email.toLowerCase()] = user.uid;
                 }
             });
+
+            userRecords.notFound.forEach(user => {
+                // Assuming the input was an email identifier
+                const notFoundEmail = user.email;
+                if (notFoundEmail) {
+                    const index = emailChunk.findIndex(e => e.toLowerCase() === notFoundEmail.toLowerCase());
+                    if (index !== -1) {
+                        notFoundEmails.push(emailChunk[index]);
+                    }
+                }
+            });
         }
 
         logger.info(`[${jobId}] Matched ${Object.keys(emailToUid).length} emails to user UIDs.`);
