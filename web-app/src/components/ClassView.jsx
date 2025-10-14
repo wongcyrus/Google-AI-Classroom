@@ -17,6 +17,7 @@ import VideoLibrary from './VideoLibrary';
 import VideoAnalysisJobs from './VideoAnalysisJobs';
 import DataManagementView from './DataManagementView';
 import PerformanceAnalyticsView from './PerformanceAnalyticsView';
+import AttendanceView from './AttendanceView';
 
 import './ClassView.css';
 
@@ -89,47 +90,48 @@ const ClassView = ({ user }) => {
           case 'jobs': return <VideoAnalysisJobs {...props} />;
           default: return null;
         }
-      case 'analytics':
-        switch (analyticsSubTab) {
-          case 'performance': return <PerformanceAnalyticsView {...props} />;
-          case 'progress': return <ProgressView {...props} />;
-          case 'irregularities': return <IrregularitiesView {...props} />;
-          default: return null;
-        }
-      case 'more':
-        switch (moreSubTab) {
-          case 'data': return <DataManagementView {...props} />;
-          case 'messages': return <MessagesView user={user} classId={classId} />;
-          default: return null;
-        }
-    }
-  };
-
-  return (
-    <div className="class-view">
-        <div className="tab-nav">
-            <button className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`} onClick={() => setMainTab('monitor')}>Monitor</button>
-            <button className={`tab-button ${mainTab === 'video' ? 'active' : ''}`} onClick={() => setMainTab('video')}>Video</button>
-            <button className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`} onClick={() => setMainTab('analytics')}>Analytics</button>
-            <button className={`tab-button ${mainTab === 'more' ? 'active' : ''}`} onClick={() => setMainTab('more')}>More</button>
-        </div>
-
-        <div className="sub-tab-nav">
-        {mainTab === 'video' && (
-          <>
-            <button className={`tab-button ${videoSubTab === 'library' ? 'active' : ''}`} onClick={() => setVideoSubTab('library')}>Video Library</button>
-            <button className={`tab-button ${videoSubTab === 'review' ? 'active' : ''}`} onClick={() => setVideoSubTab('review')}>Session Review</button>
-            <button className={`tab-button ${videoSubTab === 'jobs' ? 'active' : ''}`} onClick={() => setVideoSubTab('jobs')}>Video Analysis Jobs</button>
-          </>
-        )}
-        {mainTab === 'analytics' && (
-          <>
-            <button className={`tab-button ${analyticsSubTab === 'performance' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('performance')}>Performance</button>
-            <button className={`tab-button ${analyticsSubTab === 'progress' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('progress')}>Progress</button>
-            <button className={`tab-button ${analyticsSubTab === 'irregularities' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('irregularities')}>Irregularities</button>
-          </>
-        )}
-        {mainTab === 'more' && (
+              case 'analytics':
+                switch (analyticsSubTab) {
+                  case 'performance': return <PerformanceAnalyticsView {...props} />;
+                  case 'progress': return <ProgressView {...props} />;
+                  case 'irregularities': return <IrregularitiesView {...props} />;
+                  case 'attendance': return <AttendanceView {...props} />;
+                  default: return null;
+                }
+            case 'more':
+              switch (moreSubTab) {
+                case 'data': return <DataManagementView {...props} />;
+                case 'messages': return <MessagesView user={user} classId={classId} />;
+                default: return null;
+              }
+          }
+        };
+      
+        return (
+          <div className="class-view">
+              <div className="tab-nav">
+                  <button className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`} onClick={() => setMainTab('monitor')}>Monitor</button>
+                  <button className={`tab-button ${mainTab === 'video' ? 'active' : ''}`} onClick={() => setMainTab('video')}>Video</button>
+                  <button className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`} onClick={() => setMainTab('analytics')}>Analytics</button>
+                  <button className={`tab-button ${mainTab === 'more' ? 'active' : ''}`} onClick={() => setMainTab('more')}>More</button>
+              </div>
+      
+              <div className="sub-tab-nav">
+              {mainTab === 'video' && (
+                <>
+                  <button className={`tab-button ${videoSubTab === 'library' ? 'active' : ''}`} onClick={() => setVideoSubTab('library')}>Video Library</button>
+                  <button className={`tab-button ${videoSubTab === 'review' ? 'active' : ''}`} onClick={() => setVideoSubTab('review')}>Session Review</button>
+                  <button className={`tab-button ${videoSubTab === 'jobs' ? 'active' : ''}`} onClick={() => setVideoSubTab('jobs')}>Video Analysis Jobs</button>
+                </>
+              )}
+              {mainTab === 'analytics' && (
+                <>
+                  <button className={`tab-button ${analyticsSubTab === 'performance' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('performance')}>Performance</button>
+                  <button className={`tab-button ${analyticsSubTab === 'progress' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('progress')}>Progress</button>
+                  <button className={`tab-button ${analyticsSubTab === 'irregularities' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('irregularities')}>Irregularities</button>
+                  <button className={`tab-button ${analyticsSubTab === 'attendance' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('attendance')}>Attendance</button>
+                </>
+              )}        {mainTab === 'more' && (
           <>
             <button className={`tab-button ${moreSubTab === 'data' ? 'active' : ''}`} onClick={() => setMoreSubTab('data')}>Data Management</button>
             <button className={`tab-button ${moreSubTab === 'messages' ? 'active' : ''}`} onClick={() => setMoreSubTab('messages')}>Messages</button>

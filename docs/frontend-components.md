@@ -13,3 +13,4 @@ The `web-app/src/components/` directory contains the following main components:
 *   **`DataManagementView.jsx`**: Allows teachers to manage class data, including downloading zipped videos and analysis results.
 *   **`PerformanceAnalyticsView.jsx`**: Provides analytics on student performance.
 *   **`StudentView.jsx`**: The main view for students, showing their screen sharing status and any messages from the teacher. For more details on its internal logic, see the [Student View Logic Documentation](./student-view-logic.md).
+*   **`AttendanceView.jsx`**: Displays a per-minute attendance heatmap for each student in a selected lesson, providing a detailed visualization of their presence throughout the class.
