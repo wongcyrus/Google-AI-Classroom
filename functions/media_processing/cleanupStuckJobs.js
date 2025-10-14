@@ -7,7 +7,7 @@ const db = getFirestore();
 
 const STUCK_JOB_TIMEOUT_MINUTES = 120;
 
-export const cleanupStuckJobs = onSchedule({ schedule: 'every 1 hours', region: FUNCTION_REGION }, async (_event) => {
+export const cleanupStuckJobs = onSchedule({ schedule: 'every 1 hours', region: FUNCTION_REGION }, async () => {
   console.log('Running job to clean up stuck video processing jobs.');
 
   const cutoffTime = new Date(Date.now() - STUCK_JOB_TIMEOUT_MINUTES * 60 * 1000);

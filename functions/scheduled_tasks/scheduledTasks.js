@@ -26,7 +26,7 @@ const scheduleOptions = {
   region: FUNCTION_REGION
 };
 
-export const handleAutomaticCapture = onSchedule(scheduleOptions, async (_event) => {
+export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
   const now = new Date();
   const currentMinutes = now.getMinutes();
 
@@ -90,7 +90,7 @@ const videoCombinationOptions = {
   region: FUNCTION_REGION
 };
 
-export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async (_event) => {
+export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async () => {
   const now = new Date();
   logger.info(`handleAutomaticVideoCombination triggered at ${now.toISOString()}`);
 

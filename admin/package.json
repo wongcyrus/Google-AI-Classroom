@@ -1,6 +1,13 @@
 {
+  "type": "module",
+  "scripts": {
+    "lint": "eslint ."
+  },
   "dependencies": {
     "dotenv": "^17.2.3",
     "firebase-admin": "^13.5.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.37.0"
   }
 }

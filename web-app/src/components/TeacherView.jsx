@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, getDoc, doc } from 'firebase/firestore';
+import { onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';

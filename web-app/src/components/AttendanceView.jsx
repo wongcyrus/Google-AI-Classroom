@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { doc, onSnapshot, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { ResponsiveHeatMap } from '@nivo/heatmap';
 import { CSVLink } from 'react-csv';
@@ -130,7 +130,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   useEffect(() => {
     if (csvData && csvLink.current) {
       csvLink.current.link.click();
-      setCsvData(null);
+      const timer = setTimeout(() => {
+        setCsvData(null);
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [csvData]);
 

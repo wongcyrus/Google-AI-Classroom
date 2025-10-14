@@ -184,7 +184,7 @@ export const sendMessageToTeacher = ai.defineTool(
         try {
           const studentUser = await adminAuth.getUser(studentUid);
           finalMessage = `Regarding ${studentUser.email}: ${message}`;
-        } catch (e) {
+        } catch {
           finalMessage = `Regarding student ${studentUid}: ${message}`;
         }
       }

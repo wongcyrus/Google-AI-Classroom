@@ -1,5 +1,5 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();

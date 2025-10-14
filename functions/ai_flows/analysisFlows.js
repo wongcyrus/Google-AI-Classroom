@@ -4,7 +4,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher } from './aiTools.js';
+import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
@@ -25,7 +25,7 @@ export const analyzeImageFlow = ai.defineFlow(
     }),
     outputSchema: z.record(z.string()),
   },
-  async ({ screenshots, prompt, classId }, _context) => {
+  async ({ screenshots, prompt, classId }) => {
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
       const fullPrompt = [
@@ -214,7 +214,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     }),
     outputSchema: z.string(),
   },
-  async ({ screenshots, prompt, classId }, _context) => {
+  async ({ screenshots, prompt, classId }) => {
     const imageParts = Object.entries(screenshots).flatMap(([studentUid, { url, email }]) => (
       [
         { text: `The following image is the screen shot from ${email} (student UID: ${studentUid}, image URL: ${url}):` },

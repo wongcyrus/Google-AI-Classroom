@@ -84,9 +84,8 @@ async function createFirestoreData(db, users) {
     for (let i = 0; i < 15; i++) {
         try {
             const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
-            const irregularity = irregularityTemplates[i % irregularityTemplates.length];
-                        const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
-                        if (!studentUid) continue;
+                        const irregularity = irregularityTemplates[i % irregularityTemplates.length];
+                        const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];                        if (!studentUid) continue;
                         await db.collection('irregularities').add({
                             classId: MOCK_CLASS.id,
                             studentUid,
@@ -112,7 +111,7 @@ async function createFirestoreData(db, users) {
                 for (const student of MOCK_STUDENTS) {
                     for (let i = 0; i < 2; i++) { // 2 progress reports per student
                         try {
-                            const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+                            const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
                             if (!studentUid) continue;
                             await db.collection('progress').add({
                                 classId: MOCK_CLASS.id,
@@ -126,13 +125,12 @@ async function createFirestoreData(db, users) {
                         }
                     }
                 }
-                console.log('Successfully created progress records.');
             
                 // Create Screenshot Records
                 for (let i = 0; i < 50; i++) {
                     try {
                         const student = MOCK_STUDENTS[i % MOCK_STUDENTS.length];
-                        const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+                        const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
                         if (!studentUid) continue;
                         await db.collection('screenshots').add({
                             classId: MOCK_CLASS.id,
@@ -165,7 +163,7 @@ async function createFirestoreData(db, users) {
             
                     // For students (optional, if students have a similar notification view)
                     for (const student of MOCK_STUDENTS) {
-                         const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+                         const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
                          if (!studentUid) continue;
                          // This assumes a /students/{uid}/messages subcollection, which may not exist.
                          // Commenting out for now as the primary focus is teacher-side mock data.
@@ -197,7 +195,7 @@ async function createFirestoreData(db, users) {
                     
                         // Create Video Jobs
                         const videoJobPromises = MOCK_STUDENTS.map((student, index) => {
-                            const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+                            const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
                             if (!studentUid) return null;
                     
                             const promises = Array.from({ length: 2 }).map((_, i) => {
@@ -237,7 +235,7 @@ async function createFirestoreData(db, users) {
                                                     // Create Analysis and AI Jobs
                                                     const aiJobIds = [];
                                                     const aiJobPromises = MOCK_STUDENTS.slice(0, 3).map(student => {
-                                                        const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+                                                        const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
                                                         if (!studentUid) return null;
                                                 
                                                         const newAiJobRef = db.collection('aiJobs').doc();
@@ -272,7 +270,7 @@ async function createFirestoreData(db, users) {
 
     // Create Student Status Data
     const statusPromises = MOCK_STUDENTS.map(student => {
-        const studentUid = [...studentMap.entries()].find(([uid, email]) => email === student.email)?.[0];
+        const studentUid = [...studentMap.entries()].find(([, email]) => email === student.email)?.[0];
         if (!studentUid) return null;
 
         return db.collection('classes').doc(MOCK_CLASS.id).collection('status').doc(studentUid).set({

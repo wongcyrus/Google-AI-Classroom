@@ -325,6 +325,7 @@ const StudentView = ({ user }) => {
   // Listen for Custom Properties
   useEffect(() => {
     if (!activeClass || !user?.uid) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setClassProperties(null);
         setMyProperties(null);
         return;

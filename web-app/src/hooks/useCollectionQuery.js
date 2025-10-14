@@ -100,6 +100,7 @@ const usePaginatedQuery = (collectionPath, {
   // Effect to fetch data when filters change
   useEffect(() => {
     if (collectionPath) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchFirstPage();
     } else {
       setData([]);

@@ -85,7 +85,8 @@ const ClassManagement = ({ user }) => {
 
   // State for Custom Properties
   const [classProperties, setClassProperties] = useState([{ key: '', value: '' }]);
-  const [studentProperties, setStudentProperties] = useState({}); // { uid: { props } }
+  const [_studentProperties, setStudentProperties] = useState({});
+
   const [propertyUploadJobs, setPropertyUploadJobs] = useState([]);
 
   // State for CSV Download

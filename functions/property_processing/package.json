@@ -1,10 +1,16 @@
 {
   "name": "property-processing",
   "main": "index.mjs",
+  "scripts": {
+    "lint": "eslint ."
+  },
   "dependencies": {
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^6.5.0",
     "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.37.0"
   },
   "type": "module"
 }

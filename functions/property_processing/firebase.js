@@ -2,7 +2,7 @@ import admin from 'firebase-admin';
 
 try {
   admin.initializeApp();
-} catch (e) {
+} catch {
   // console.error('Firebase admin initialization error', e);
 }
 
