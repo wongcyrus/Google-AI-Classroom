@@ -6,6 +6,17 @@ A next-generation classroom assistant designed to proactively support students d
 
 Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor**, a **Technical Support Assistant**, and a **Wellness Coach**, creating a more supportive and effective testing environment.
 
+## Table of Contents
+
+- [Powered by Google Technologies](#powered-by-google-technologies)
+- [Architecture Overview](#architecture-overview)
+- [Architecture Diagram](#architecture-diagram)
+- [Backend Functionality](./docs/functions.md)
+- [Frontend Components](./docs/frontend-components.md)
+- [Getting Started (Local Development)](#getting-started-local-development)
+- [Admin Scripts](#admin-scripts)
+- [Deployment](#deployment)
+
 ## Powered by Google Technologies
 
 This project is a showcase of modern, scalable, and intelligent application development using a suite of powerful Google technologies:
