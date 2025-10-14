@@ -224,11 +224,12 @@ const ClassManagement = ({ user }) => {
         const classData = classSnap.data();
         const studentsMap = classData.students || {};
 
-        // If no students are enrolled, download a template based on the email list textarea
+        // If no students are enrolled, download a template with just the StudentEmail header.
         if (Object.keys(studentsMap).length === 0) {
             const studentEmailList = studentEmails.split(/[\n,]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
             const data = studentEmailList.map(email => ({ StudentEmail: email }));
-            setDownloadProps({ headers: ['StudentEmail'], data });
+            const headers = ['StudentEmail']; // Only StudentEmail header
+            setDownloadProps({ headers, data });
             setTimeout(() => {
                 if (csvLink.current) {
                     csvLink.current.link.click();
@@ -238,14 +239,18 @@ const ClassManagement = ({ user }) => {
             return;
         }
 
-        // If students are enrolled, download their existing properties
+        // If students are enrolled, download their existing, student-specific properties.
+        
+        // 1. Fetch all student-specific properties
         const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
         const propertiesSnapshot = await getDocs(propertiesCollectionRef);
         const studentPropertiesData = {}; // uid -> {prop: value}
         propertiesSnapshot.forEach(doc => {
-            studentPropertiesData[doc.id] = doc.data();
+            // Trim the doc ID to safeguard against whitespace issues.
+            studentPropertiesData[doc.id.trim()] = doc.data();
         });
 
+        // 2. Determine all possible property keys for headers ONLY from student-specific properties.
         const allPropertyKeys = new Set();
         Object.values(studentPropertiesData).forEach(props => {
             Object.keys(props).forEach(key => allPropertyKeys.add(key));
@@ -253,12 +258,15 @@ const ClassManagement = ({ user }) => {
 
         const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];
 
+        // 3. Build data for each student using only their specific properties.
         const data = Object.entries(studentsMap).map(([uid, email]) => {
             const row = { StudentEmail: email };
-            const properties = studentPropertiesData[uid] || {};
+            // Trim the UID from studentsMap to safeguard against whitespace issues.
+            const studentProps = studentPropertiesData[uid.trim()] || {};
+            
             headers.forEach(header => {
                 if (header !== 'StudentEmail') {
-                    row[header] = properties[header] || '';
+                    row[header] = studentProps[header] ?? ''; // Use only student prop, or empty string.
                 }
             });
             return row;
@@ -345,6 +353,20 @@ const ClassManagement = ({ user }) => {
       : timeOptions[timeOptions.length - 1].value;
 
     setNewSchedule({ ...newSchedule, startTime, endTime: finalEndTime });
+  };
+
+  const validateClassId = (id) => {
+    if (!id || id.trim().length === 0) {
+      return 'Class ID cannot be empty.';
+    }
+    if (id.length > 100) {
+      return 'Class ID is too long.';
+    }
+    // Firestore document IDs must not contain slashes.
+    if (id.includes('/')) {
+      return 'Class ID cannot contain slashes.';
+    }
+    return null;
   };
 
   const handleUpdateClass = async () => {
@@ -787,6 +809,12 @@ const ClassManagement = ({ user }) => {
                   {propertyUploadJobs.length > 0 ? propertyUploadJobs.map(job => (
                       <div key={job.id} className="job-item">
                           <span>{job.createdAt?.toDate().toLocaleString()} - <strong>{job.status}</strong></span>
+                          {(job.status === 'completed' || job.status === 'completed_with_errors') && typeof job.totalRows === 'number' && (
+                            <p className="job-details" style={{ margin: '4px 0 0', fontSize: '0.9em', color: '#666' }}>
+                                Processed: {job.processedCount || 0}/{job.totalRows}.
+                                {job.notFoundCount > 0 && ` Not Found: ${job.notFoundCount}.`}
+                            </p>
+                          )}
                           {job.error && <p className="error-message">{job.error}</p>}
                       </div>
                   )) : <p>No recent uploads.</p>}

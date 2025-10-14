@@ -65,6 +65,21 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
   const profileCollection = userType === 'student' ? 'studentProfiles' : 'teacherProfiles';
   const firestoreAction = action === 'add' ? FieldValue.arrayUnion : FieldValue.arrayRemove;
 
+  // Pre-fetch class-wide properties if we are adding students
+  let classProps = {};
+  if (action === 'add' && userType === 'student') {
+      try {
+          const classPropsRef = db.collection('classes').doc(classId).collection('classProperties').doc('config');
+          const classPropsSnap = await classPropsRef.get();
+          if (classPropsSnap.exists) {
+              classProps = classPropsSnap.data();
+              logger.info(`Fetched default properties for class ${classId}.`);
+          }
+      } catch (e) {
+          logger.error(`Could not fetch default properties for class ${classId}`, e);
+      }
+  }
+
   for (const email of emails) {
     const userRecord = await getOrCreateUser(email, userType);
 
@@ -87,6 +102,14 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       } else { // For students, update the students map
         if (action === 'add') {
           updatePayload[`students.${userRecord.uid}`] = email;
+          
+          // Ensure the studentProperties document exists, creating it with defaults if needed.
+          const studentPropsRef = classDocRef.collection('studentProperties').doc(userRecord.uid);
+          // Using set with merge:true ensures we don't overwrite existing student-specific properties
+          // if they were somehow created before this runs. It creates the doc if it's missing.
+          promises.push(studentPropsRef.set(classProps, { merge: true }));
+          logger.info(`Ensured studentProperties document exists for ${userRecord.uid} in class ${classId}.`);
+
         } else { // action === 'remove'
           updatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
         }

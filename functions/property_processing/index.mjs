@@ -60,17 +60,6 @@ export const processPropertyUpload = onDocumentCreated({
                     emailToUid[user.email.toLowerCase()] = user.uid;
                 }
             });
-
-            userRecords.notFound.forEach(user => {
-                // Assuming the input was an email identifier
-                const notFoundEmail = user.email;
-                if (notFoundEmail) {
-                    const index = emailChunk.findIndex(e => e.toLowerCase() === notFoundEmail.toLowerCase());
-                    if (index !== -1) {
-                        notFoundEmails.push(emailChunk[index]);
-                    }
-                }
-            });
         }
 
         logger.info(`[${jobId}] Matched ${Object.keys(emailToUid).length} emails to user UIDs.`);
@@ -93,8 +82,22 @@ export const processPropertyUpload = onDocumentCreated({
                 if (uid) {
                     const properties = { ...row };
                     delete properties.StudentEmail;
+
+                    // Filter out keys with empty string values to prevent them from overwriting existing data.
+                    const finalProperties = {};
+                    for (const key in properties) {
+                        if (properties[key] !== '' && properties[key] != null) {
+                            finalProperties[key] = properties[key];
+                        }
+                    }
+
                     const docRef = db.collection('classes').doc(classId).collection('studentProperties').doc(uid);
-                    batch.set(docRef, properties, { merge: true }); // Use merge to not overwrite existing properties unintentionally
+                    
+                    // Always issue a .set with merge:true. 
+                    // This ensures that a studentProperties document is created for every student in the CSV, even if they have no specific properties defined in this upload.
+                    // If the document already exists, it merges the new properties. If finalProperties is empty, it's a harmless no-op on an existing document.
+                    batch.set(docRef, finalProperties, { merge: true });
+                    
                     processedCount++;
                     batchProcessCount++;
                 } else if (email) {
