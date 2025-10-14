@@ -102,7 +102,7 @@ erDiagram
         array aiJobIds
     }
 
-    aiJobs {
+aiJobs {
         string jobId PK
         string classId FK
         string studentUid FK
@@ -160,6 +160,14 @@ erDiagram
         timestamp createdAt
     }
 
+    propertyUploadJobs {
+        string jobId PK
+        string classId FK
+        string requesterUid FK
+        string status
+        timestamp createdAt
+    }
+
     classes ||--o{ studentProfiles : "many-to-many"
     classes ||--o{ teacherProfiles : "many-to-many"
     classes }o--|| students : "one-to-many"
@@ -175,6 +183,7 @@ erDiagram
     progress }o--|| classes : "many-to-one"
     progress }o--|| studentProfiles : "many-to-one"
     aiJobs }o--|| prompts : "many-to-one"
+    propertyUploadJobs }o--|| classes : "many-to-one"
 
 ```
 
@@ -220,6 +229,9 @@ Stores information about each class.
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
 *   **Subcollections**:
+    *   **`classProperties`**: Stores class-wide custom properties.
+        *   **Document ID**: `config`
+        *   **Fields**: A map of custom key-value pairs.
     *   **`metadata`**: Stores metadata for the class, like usage information.
         *   **Document ID**: Can be `storage` or `ai`.
         *   **If Document ID is `storage`**:
@@ -305,6 +317,22 @@ Stores the AI prompts.
     *   `accessLevel`: (string) The access level of the prompt (`private`, `shared`, `public`).
     *   `owner`: (string) The UID of the user who created the prompt.
     *   `sharedWith`: (array) An array of UIDs with whom the prompt is shared.
+
+### `propertyUploadJobs`
+
+Stores jobs for processing student-specific properties from a CSV upload.
+
+*   **Document ID**: Auto-generated.
+*   **Fields**:
+    *   `classId`: (string) The ID of the class the properties belong to.
+    *   `requesterUid`: (string) The UID of the user who requested the upload.
+    *   `csvData`: (string) The raw CSV content to be processed.
+    *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `completed_with_errors`, `failed`).
+    *   `createdAt`: (timestamp) A timestamp of when the job was created.
+    *   `totalRows`: (number) The total number of data rows in the CSV.
+    *   `processedCount`: (number) The number of rows successfully processed.
+    *   `notFoundCount`: (number) The number of students in the CSV not found in the class.
+    *   `error`: (string) An error message if the job failed.
 
 ### `screenshots`
 
@@ -429,3 +457,4 @@ Stores information about zip file creation jobs.
 *   **`notifications` -> `users` (Firebase Auth)**: Many-to-one. A notification is for a specific user, linked via `userId` (which should be a UID).
 *   **`mails`**: Standalone collection for triggering emails.
 *   **`users`**: A directory for user discovery. It is not directly linked in the authorization flow but is used to look up user UIDs by email for features like sharing.
+*   **`propertyUploadJobs` -> `classes`**: Many-to-one. A property upload job belongs to one class.

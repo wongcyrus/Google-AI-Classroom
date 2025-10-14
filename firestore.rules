@@ -23,7 +23,8 @@ service cloud.firestore {
     }
 
     match /teacherProfiles/{userId} {
-      allow read, write: if request.auth.uid == userId;
+      allow read: if request.auth.uid == userId;
+      allow write: if false; // Managed by a backend function
     }
 
     match /students/{studentUid} {
@@ -40,13 +41,10 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow list: if isTeacher();
-      allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
-      allow create: if isTeacher() &&
-                    (classId == 'demo' ||
-                     (request.resource.data.teacherEmails is list &&
+      allow read: if isTeacher();
+      allow create: if request.resource.data.teacherEmails is list &&
                       request.auth.token.email in request.resource.data.teacherEmails &&
-                      classId.size() >= 3));
+                      classId.size() >= 3;
       allow update, delete: if isTeacher();
 
       match /students/{studentId} {

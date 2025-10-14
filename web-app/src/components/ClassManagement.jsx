@@ -359,6 +359,9 @@ const ClassManagement = ({ user }) => {
     if (!id || id.trim().length === 0) {
       return 'Class ID cannot be empty.';
     }
+    if (id.trim().length < 3) {
+      return 'Class ID must be at least 3 characters long.';
+    }
     if (id.length > 100) {
       return 'Class ID is too long.';
     }
@@ -456,7 +459,10 @@ const ClassManagement = ({ user }) => {
           aiQuota: 10, // Default AI Quota
           aiUsedQuota: 0, // Initialize AI Quota Usage
         });
+
         setSuccessMessage('Successfully created the class!');
+        // Optimistically update the UI with the new class
+        setClasses(prevClasses => [...prevClasses, { id: classId }]);
         setSelectedClass(classId); // Automatically select the new class
       }
     } catch (error) {
