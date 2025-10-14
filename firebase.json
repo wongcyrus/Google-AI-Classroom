@@ -13,6 +13,12 @@
       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     },
     {
+      "source": "functions/property_processing",
+      "codebase": "property-processing",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
       "source": "functions/scheduled_tasks",
       "codebase": "scheduled-tasks",
       "runtime": "nodejs22",

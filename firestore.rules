@@ -8,7 +8,10 @@ service cloud.firestore {
     }
 
     function isTeacherInClass(classId) {
-      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.teachers;
+      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
+      let isTeacherByEmail = request.auth.token.email in classData.teacherEmails;
+      let isTeacherByUid = classData.teachers != null && request.auth.uid in classData.teachers;
+      return isTeacherByEmail || isTeacherByUid;
     }
 
     function isStudentInClass(classId) {
@@ -63,6 +66,12 @@ service cloud.firestore {
       match /metadata/{docId} {
         allow read: if isTeacher();
         allow write: if false; // Only backend functions can write
+      }
+      match /studentProperties/{studentId} {
+        allow read: if isTeacherInClass(classId);
+      }
+      match /classProperties/{docId} {
+        allow read, write: if isTeacherInClass(classId);
       }
     }
 
@@ -129,6 +138,9 @@ service cloud.firestore {
       allow read, update: if request.auth != null && request.auth.uid == resource.data.userId;
       // Creation is handled by backend functions, so client-side creation is disallowed.
       allow create: if false;
+    }
+    match /propertyUploadJobs/{jobId} {
+      allow read, create: if isTeacher();
     }
   }
 }

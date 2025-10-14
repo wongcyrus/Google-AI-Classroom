@@ -5,6 +5,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 cp functions/config.js functions/ai_flows/config.js
 cp functions/config.js functions/auth_triggers/config.js
 cp functions/config.js functions/media_processing/config.js
+cp functions/config.js functions/property_processing/config.js
 cp functions/config.js functions/scheduled_tasks/config.js
 cp functions/config.js functions/storage_triggers/config.js
 

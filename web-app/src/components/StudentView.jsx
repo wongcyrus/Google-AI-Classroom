@@ -28,6 +28,10 @@ const StudentView = ({ user }) => {
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
 
+  // Custom Properties State
+  const [classProperties, setClassProperties] = useState(null);
+  const [myProperties, setMyProperties] = useState(null);
+
   const recentMessages = useMemo(() => {
     const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
     const filteredMessagesForUI = [...directMessages, ...classMessages]
@@ -318,6 +322,32 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [activeClass]);
 
+  // Listen for Custom Properties
+  useEffect(() => {
+    if (!activeClass || !user?.uid) {
+        setClassProperties(null);
+        setMyProperties(null);
+        return;
+    }
+
+    // Listen to class-wide properties
+    const classPropsRef = doc(db, 'classes', activeClass, 'classProperties', 'config');
+    const unsubClassProps = onSnapshot(classPropsRef, (docSnap) => {
+        setClassProperties(docSnap.exists() ? docSnap.data() : null);
+    });
+
+    // Listen to student-specific properties
+    const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+    const unsubStudentProps = onSnapshot(studentPropsRef, (docSnap) => {
+        setMyProperties(docSnap.exists() ? docSnap.data() : null);
+    });
+
+    return () => {
+        unsubClassProps();
+        unsubStudentProps();
+    };
+  }, [activeClass, user]);
+
   // Listen for class-wide messages
   useEffect(() => {
     if (!activeClass) {
@@ -465,6 +495,35 @@ const StudentView = ({ user }) => {
             <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
         </div>
         <div className="student-view-sidebar">
+            <div className="properties-widget">
+                <h2>Class Properties</h2>
+                {classProperties && Object.keys(classProperties).length > 0 ? (
+                    <div className="properties-list">
+                        {Object.entries(classProperties).map(([key, value]) => (
+                            <div key={key} className="property-item">
+                                <p className="property-key">{key}</p>
+                                <p className="property-value">{String(value)}</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p>No class-wide properties defined.</p>
+                )}
+
+                {myProperties && Object.keys(myProperties).length > 0 && (
+                    <>
+                        <h2 style={{ marginTop: '20px' }}>My Properties</h2>
+                        <div className="properties-list">
+                            {Object.entries(myProperties).map(([key, value]) => (
+                                <div key={key} className="property-item">
+                                    <p className="property-key">{key}</p>
+                                    <p className="property-value">{String(value)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </div>
             <div className="alerts-widget">
                 <h2>My Recent Alerts</h2>
                 <div className="alert-list">

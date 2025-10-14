@@ -129,3 +129,49 @@
     font-size: 0.8em;
     color: #777;
 }
+
+.properties-widget {
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.properties-widget h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+.properties-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.property-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    background-color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+
+.property-key {
+    font-weight: bold;
+    color: #555;
+    margin: 0;
+}
+
+.property-value {
+    color: #222;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

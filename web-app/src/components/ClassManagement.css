@@ -136,3 +136,99 @@
   border-radius: 4px;
   text-align: center;
 }
+
+.csv-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.button-like-label {
+  /* Box Model */
+  display: inline-block;
+  box-sizing: border-box;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  margin: 0; /* Let the parent flex container handle spacing */
+
+  /* Font and Text */
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: normal; /* Override parent bolding */
+  line-height: normal;
+  text-align: center;
+  white-space: nowrap;
+
+  /* Appearance */
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.button-like-label:hover {
+  background-color: #0056b3;
+}
+
+/* Override the generic button margin when inside the flex container */
+.csv-buttons > button {
+  margin-right: 0;
+}
+
+/* Custom properties table */
+.properties-table {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.property-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.property-row input {
+    margin-bottom: 0; /* Override default margin */
+}
+
+.property-row button {
+    background-color: #dc3545;
+}
+
+.property-row button:hover {
+    background-color: #c82333;
+}
+
+/* Jobs list */
+.jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.job-item {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.job-item .error-message {
+    font-size: 0.9em;
+    margin-top: 5px;
+    margin-bottom: 0;
+}
+
+/* Override font-weight for the button-like label to counteract the generic .form-group label style */
+.form-group label.button-like-label {
+  font-weight: normal;
+}
