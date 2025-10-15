@@ -69,22 +69,26 @@ export const checkipaddress = beforeUserSignedIn({ region: FUNCTION_REGION }, as
     return;
   }
 
-  const classesRef = db.collection('classes');
-  const qByEmail = classesRef.where('studentEmails', 'array-contains', user.email);
-  const qByUid = classesRef.where('studentUids', 'array-contains', user.uid);
+  const studentProfileRef = db.collection('studentProfiles').doc(user.uid);
+  const studentProfileSnap = await studentProfileRef.get();
 
-  const [snapshotByEmail, snapshotByUid] = await Promise.all([qByEmail.get(), qByUid.get()]);
-
-  const allDocs = new Map();
-  snapshotByEmail.forEach(doc => allDocs.set(doc.id, doc));
-  snapshotByUid.forEach(doc => allDocs.set(doc.id, doc));
-
-  if (allDocs.size === 0) {
+  if (!studentProfileSnap.exists || !studentProfileSnap.data().classes || studentProfileSnap.data().classes.length === 0) {
     console.log(`Exiting: User ${user.email} is not enrolled in any classes.`);
     return;
   }
 
-  console.log(`User ${user.email} is in ${allDocs.size} class(es). Checking for active IP restrictions...`);
+  const classIds = studentProfileSnap.data().classes;
+  const classPromises = classIds.map(id => db.collection('classes').doc(id).get());
+  const classSnapshots = await Promise.all(classPromises);
+
+  const allDocs = classSnapshots.filter(snap => snap.exists);
+
+  if (allDocs.length === 0) {
+    console.log(`Exiting: User ${user.email} is enrolled in classes that may have been deleted.`);
+    return;
+  }
+
+  console.log(`User ${user.email} is in ${allDocs.length} class(es). Checking for active IP restrictions...`);
 
   let allRestrictions = [];
   let restrictionsFound = false;

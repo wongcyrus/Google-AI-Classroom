@@ -340,7 +340,9 @@ const StudentView = ({ user }) => {
   // Listen for Custom Properties
   useEffect(() => {
     if (!activeClass || !user?.uid) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setClassProperties(null);
+         
         setMyProperties(null);
         return;
     }
@@ -372,6 +374,7 @@ const StudentView = ({ user }) => {
   // Listen for class-wide messages
   useEffect(() => {
     if (!activeClass) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setClassMessages([]);
       return;
     }
@@ -427,6 +430,7 @@ const StudentView = ({ user }) => {
           lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime() &&
           messageTimestamp > oneHourAgo
         ) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setNotification(latestMessage.message);
           setTimeout(() => showSystemNotification(latestMessage.message), 0);
           lastMessageTimestampRef.current = messageTimestamp;

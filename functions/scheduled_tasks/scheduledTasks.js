@@ -115,7 +115,7 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
     const teacherUids = Object.keys(teachers || {});
 
     if (!schedule || !schedule.timeZone || !schedule.timeSlots || !studentUids || studentUids.length === 0) {
-      logger.warn(`Skipping class ${classId} due to incomplete configuration (schedule, timeZone, timeSlots, or studentUids missing).`);
+      logger.warn(`Skipping class ${classId} due to incomplete configuration (schedule, timeZone, timeSlots, or students missing).`);
       continue; // Skip if not properly configured
     }
 

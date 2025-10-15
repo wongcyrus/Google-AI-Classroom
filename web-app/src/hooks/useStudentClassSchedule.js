@@ -12,6 +12,7 @@ export const useStudentClassSchedule = (user) => {
   useEffect(() => {
     if (!user || !user.uid) {
       console.log('useStudentClassSchedule: No user, skipping.');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
@@ -39,7 +40,9 @@ export const useStudentClassSchedule = (user) => {
   useEffect(() => {
     if (userClasses.length === 0) {
       console.log('useStudentClassSchedule: No classes for student, schedules empty.');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSchedules({});
+       
       setLoading(false);
       return;
     }

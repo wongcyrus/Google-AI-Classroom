@@ -10,12 +10,15 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const adminAuth = getAuth();
 
-// Helper function to get or create multiple users in bulk
+// Helper function to get or create multiple users in bulk, ensuring one UID per email.
 const getOrCreateUsers = async (emails, userType) => {
     const expectedRole = userType === 'student' ? 'student' : 'teacher';
-    const emailToRoleMap = new Map();
 
-    const validEmails = emails.filter(email => {
+    const promises = [];
+
+    for (const email of emails) {
+        if (!email) continue;
+
         let derivedRole;
         if (email.endsWith('@vtc.edu.hk')) {
             derivedRole = 'teacher';
@@ -23,86 +26,54 @@ const getOrCreateUsers = async (emails, userType) => {
             derivedRole = 'student';
         } else {
             logger.warn(`Invalid email domain for '${email}'. Skipping.`);
-            return false;
+            continue;
         }
 
         if (derivedRole !== expectedRole) {
             logger.warn(`Email '${email}' has a domain for a '${derivedRole}' but was added to a list for '${expectedRole}'. Skipping.`);
-            return false;
+            continue;
         }
-        emailToRoleMap.set(email, derivedRole);
-        return true;
-    });
 
-    if (validEmails.length === 0) {
-        return [];
-    }
-
-    const allUserRecords = [];
-    let emailsToCreate = [];
-
-    // 1. Get existing users in bulk
-    if (validEmails.length > 0) {
-        try {
-            const userIdentifiers = validEmails.map(email => ({ email }));
-            const { users, notFound } = await adminAuth.getUsers(userIdentifiers);
-
-            // Update roles for existing users if needed, in parallel
-            const roleUpdatePromises = users.map(userRecord => {
-                const email = userRecord.email;
-                const derivedRole = emailToRoleMap.get(email);
-                if (userRecord.customClaims?.role !== derivedRole) {
-                    return adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole }).then(() => {
-                        logger.info(`Updated role to '${derivedRole}' for existing user ${email}`);
-                    });
-                }
-                return Promise.resolve();
-            });
-            await Promise.all(roleUpdatePromises);
-
-            allUserRecords.push(...users);
-emailsToCreate = notFound.map(identifier => identifier.email);
-
-        } catch (error) {
-            logger.error('Error fetching users in bulk. Will attempt to create all valid emails as a fallback.', error);
-            emailsToCreate = validEmails;
-        }
-    }
-
-    // 2. Create new users in parallel
-    if (emailsToCreate.length > 0) {
-        logger.info(`Attempting to create ${emailsToCreate.length} new users.`);
-
-        const newUserPromises = emailsToCreate.map(async (email) => {
+        const task = async () => {
             try {
-                const derivedRole = emailToRoleMap.get(email);
-                const userRecord = await adminAuth.createUser({
-                    email,
-                    emailVerified: false,
-                });
-                await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
-                logger.info(`Created new user '${email}' with role '${derivedRole}'.`);
+                // 1. Attempt to fetch the user by email.
+                const userRecord = await adminAuth.getUserByEmail(email);
+                logger.info(`Found existing user for ${email} with UID ${userRecord.uid}.`);
+
+                // 2. Check if the role needs updating.
+                if (userRecord.customClaims?.role !== derivedRole) {
+                    await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
+                    logger.info(`Updated role to '${derivedRole}' for existing user ${email}`);
+                }
                 return userRecord;
-            } catch (creationError) {
-                if (creationError.code === 'auth/email-already-exists') {
-                    logger.warn(`User with email '${email}' already exists. Fetching instead to recover.`);
+            } catch (error) {
+                // 3. If user does not exist, create them.
+                if (error.code === 'auth/user-not-found') {
                     try {
-                        return await adminAuth.getUserByEmail(email);
-                    } catch (fetchError) {
-                        logger.error(`Failed to fetch user '${email}' after creation attempt failed.`, fetchError);
+                        logger.info(`User not found for '${email}'. Creating new user.`);
+                        const newUserRecord = await adminAuth.createUser({
+                            email,
+                            emailVerified: false, // Verification email will be sent by client if needed
+                        });
+                        await adminAuth.setCustomUserClaims(newUserRecord.uid, { role: derivedRole });
+                        logger.info(`Created new user '${email}' with role '${derivedRole}'.`);
+                        return newUserRecord;
+                    } catch (creationError) {
+                        logger.error(`Error creating user '${email}' after not being found:`, creationError);
                         return null;
                     }
                 }
-                logger.error(`Error creating user '${email}':`, creationError);
+                // 4. Handle other errors.
+                logger.error(`Error fetching user '${email}':`, error);
                 return null;
             }
-        });
-
-        const newUsers = (await Promise.all(newUserPromises)).filter(Boolean);
-        allUserRecords.push(...newUsers);
+        };
+        promises.push(task());
     }
 
-    return allUserRecords;
+    // Execute all operations in parallel and filter out any nulls from failures.
+    const results = await Promise.all(promises);
+    return results.filter(Boolean);
 };
 
 

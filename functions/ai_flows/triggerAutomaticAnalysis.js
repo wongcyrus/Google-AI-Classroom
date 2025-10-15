@@ -35,7 +35,7 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   }
 
   const classData = classDoc.data();
-  const { studentUids, afterClassVideoPrompt } = classData;
+  const { students, afterClassVideoPrompt } = classData;
 
   // Check if the class is configured for automatic analysis
   if (!classData.automaticCombine || !afterClassVideoPrompt || !afterClassVideoPrompt.promptText) {
@@ -43,8 +43,9 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
     return;
   }
 
-  if (!studentUids || studentUids.length === 0) {
-    logger.warn(`Class ${classId} has no studentUids configured.`);
+  const studentUids = students ? Object.keys(students) : [];
+  if (studentUids.length === 0) {
+    logger.warn(`Class ${classId} has no students configured.`);
     return;
   }
 
