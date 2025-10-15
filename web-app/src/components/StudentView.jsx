@@ -9,6 +9,8 @@ import './StudentView.css';
 
 import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
 
+import Sidebar from './student/Sidebar';
+
 const StudentView = ({ user }) => {
   // State
   const [ipAddress, setIpAddress] = useState(null);
@@ -522,78 +524,13 @@ const StudentView = ({ user }) => {
             
             <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
         </div>
-        <div className="student-view-sidebar">
-            <div className="properties-widget">
-                <h2>Class Properties</h2>
-                {classProperties && Object.keys(classProperties).length > 0 ? (
-                    <div className="properties-list">
-                        {Object.entries(classProperties).map(([key, value]) => (
-                            <div key={key} className="property-item">
-                                <p className="property-key">{key}</p>
-                                <p className="property-value">{String(value)}</p>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p>No class-wide properties defined.</p>
-                )}
-
-                {myProperties && Object.keys(myProperties).length > 0 && (
-                    <>
-                        <h2 style={{ marginTop: '20px' }}>My Properties</h2>
-                        <div className="properties-list">
-                            {Object.entries(myProperties).map(([key, value]) => (
-                                <div key={key} className="property-item">
-                                    <p className="property-key">{key}</p>
-                                    <p className="property-value">{String(value)}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-            </div>
-            <div className="alerts-widget">
-                <h2>My Recent Alerts</h2>
-                <div className="alert-list">
-                    {recentIrregularities.length > 0 ? (
-                        recentIrregularities.map(item => (
-                            <div key={item.id} className="alert-item">
-                                <p className="alert-title">{item.title}</p>
-                                <span className="alert-time">{item.timestamp ? item.timestamp.toDate().toLocaleString() : ''}</span>
-                            </div>
-                        ))
-                    ) : (
-                        <p>You have no recent alerts.</p>
-                    )}
-                </div>
-                <p style={{
-                    padding: '0 15px 15px',
-                    margin: 0,
-                    fontSize: '0.9rem',
-                    color: '#555',
-                    borderTop: '1px solid #e0e0e0',
-                    paddingTop: '15px',
-                    marginTop: '15px'
-                }}>
-                    IP Address: {ipAddress || 'Fetching...'}
-                </p>
-            </div>
-            <div className="messages-widget">
-                <h2>My Recent Messages</h2>
-                <div className="message-list">
-                    {recentMessages.length > 0 ? (
-                        recentMessages.map(item => (
-                            <div key={item.id} className="message-item">
-                                <p className="message-text">{item.message}</p>
-                                <span className="message-time">{item.timestamp ? item.timestamp.toDate().toLocaleString() : ''}</span>
-                            </div>
-                        ))
-                    ) : (
-                        <p>You have no recent messages.</p>
-                    )}
-                </div>
-            </div>
-        </div>
+        <Sidebar 
+          classProperties={classProperties} 
+          myProperties={myProperties} 
+          recentIrregularities={recentIrregularities} 
+          ipAddress={ipAddress} 
+          recentMessages={recentMessages} 
+        />
       </div>
     </div>
   );

@@ -1,56 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  collection,
-  onSnapshot,
-  query,
-  where,
-  deleteDoc,
-  writeBatch,
-  addDoc,
-  serverTimestamp,
-  orderBy,
-  limit,
-  getDocs,
-} from 'firebase/firestore';
-import { CSVLink } from 'react-csv';
+import { useState, useEffect } from 'react';
+import VideoPromptSelector from './VideoPromptSelector';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
 import Modal from './Modal';
-import VideoPromptSelector from './VideoPromptSelector';
+import CustomPropertiesManager from './CustomPropertiesManager';
 
-const timeZones = [
-    'Asia/Hong_Kong',
-    'America/New_York',
-    'America/Chicago',
-    'America/Denver',
-    'America/Los_Angeles',
-    'Europe/London',
-    'Europe/Paris',
-    'UTC',
-]
-
-const formatTime12Hour = (time24) => {
-  if (!time24) return '';
-  const [h, m] = time24.split(':');
-  const hour = parseInt(h, 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${m} ${ampm}`;
-};
-
-const timeOptions = [];
-for (let h = 0; h < 24; h++) {
-  for (let m = 0; m < 60; m += 30) {
-    const hour = h.toString().padStart(2, '0');
-    const minute = m.toString().padStart(2, '0');
-    const value = `${hour}:${minute}`;
-    timeOptions.push({ value, label: formatTime12Hour(value) });
-  }
-}
+import ScheduleManager from './ScheduleManager';
 
 const ClassManagement = ({ user }) => {
   const [classId, setClassId] = useState('');
@@ -67,11 +23,7 @@ const ClassManagement = ({ user }) => {
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Hong_Kong');
   const [classSchedules, setClassSchedules] = useState([]);
-  const [newSchedule, setNewSchedule] = useState({
-    startTime: '',
-    endTime: '',
-    days: [],
-  });
+
   const [ipRestrictions, setIpRestrictions] = useState('');
   const [automaticCapture, setAutomaticCapture] = useState(false);
   const [automaticCombine, setAutomaticCombine] = useState(false);
@@ -83,15 +35,7 @@ const ClassManagement = ({ user }) => {
   const [modalPrompt, setModalPrompt] = useState(null);
   const [modalPromptText, setModalPromptText] = useState('');
 
-  // State for Custom Properties
-  const [classProperties, setClassProperties] = useState([{ key: '', value: '' }]);
-  const [_studentProperties, setStudentProperties] = useState({});
 
-  const [propertyUploadJobs, setPropertyUploadJobs] = useState([]);
-
-  // State for CSV Download
-  const [downloadProps, setDownloadProps] = useState(null);
-  const csvLink = useRef(null);
 
   useEffect(() => {
     if (!user) return;
@@ -153,18 +97,6 @@ const ClassManagement = ({ user }) => {
           }
           setAutomaticCapture(classData.automaticCapture || false);
           setAutomaticCombine(classData.automaticCombine || false);
-          setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
-
-          // Fetch Custom Properties
-          const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-          const classPropsSnap = await getDoc(classPropsRef);
-          if (classPropsSnap.exists()) {
-              const propsData = classPropsSnap.data();
-              const propsArray = Object.entries(propsData).map(([key, value]) => ({ key, value }));
-              setClassProperties(propsArray.length > 0 ? propsArray : [{ key: '', value: '' }]);
-          } else {
-              setClassProperties([{ key: '', value: '' }]);
-          }
         } else {
             alert(`Could not find data for class: ${selectedClass}. It might have been deleted.`);
             setSelectedClass(null); // This will trigger a re-render and run the outer else block.
@@ -182,179 +114,17 @@ const ClassManagement = ({ user }) => {
         setIpRestrictions('');
         setAutomaticCapture(false);
         setAutomaticCombine(false);
-        setAfterClassVideoPrompt(null);
-        setClassProperties([{ key: '', value: '' }]);
-        setStudentProperties({});
-        setPropertyUploadJobs([]);
+
       }
     };
     fetchClassDetails();
   }, [selectedClass]);
 
-  // Listen for property upload jobs
-  useEffect(() => {
-      if (!selectedClass) {
-          setPropertyUploadJobs([]);
-          return;
-      }
 
-      const jobsRef = collection(db, 'propertyUploadJobs');
-      const q = query(jobsRef, where('classId', '==', selectedClass), orderBy('createdAt', 'desc'), limit(5));
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setPropertyUploadJobs(jobs);
-      });
 
-      return () => unsubscribe();
-  }, [selectedClass]);
 
-  const handleDownloadStudentTemplate = async () => {
-    if (!selectedClass) {
-        alert("Please select a class first.");
-        return;
-    }
 
-    try {
-        // Fetch the class document to get the student list (UID -> email map)
-        const classRef = doc(db, 'classes', selectedClass);
-        const classSnap = await getDoc(classRef);
-        if (!classSnap.exists()) {
-            throw new Error("Could not find the selected class data.");
-        }
-        const classData = classSnap.data();
-        const studentsMap = classData.students || {};
-
-        // If no students are enrolled, download a template with just the StudentEmail header.
-        if (Object.keys(studentsMap).length === 0) {
-            const studentEmailList = studentEmails.split(/[\n,]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
-            const data = studentEmailList.map(email => ({ StudentEmail: email }));
-            const headers = ['StudentEmail']; // Only StudentEmail header
-            setDownloadProps({ headers, data });
-            setTimeout(() => {
-                if (csvLink.current) {
-                    csvLink.current.link.click();
-                    setDownloadProps(null);
-                }
-            }, 100);
-            return;
-        }
-
-        // If students are enrolled, download their existing, student-specific properties.
-        
-        // 1. Fetch all student-specific properties
-        const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
-        const propertiesSnapshot = await getDocs(propertiesCollectionRef);
-        const studentPropertiesData = {}; // uid -> {prop: value}
-        propertiesSnapshot.forEach(doc => {
-            // Trim the doc ID to safeguard against whitespace issues.
-            studentPropertiesData[doc.id.trim()] = doc.data();
-        });
-
-        // 2. Determine all possible property keys for headers ONLY from student-specific properties.
-        const allPropertyKeys = new Set();
-        Object.values(studentPropertiesData).forEach(props => {
-            Object.keys(props).forEach(key => allPropertyKeys.add(key));
-        });
-
-        const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];
-
-        // 3. Build data for each student using only their specific properties.
-        const data = Object.entries(studentsMap).map(([uid, email]) => {
-            const row = { StudentEmail: email };
-            // Trim the UID from studentsMap to safeguard against whitespace issues.
-            const studentProps = studentPropertiesData[uid.trim()] || {};
-            
-            headers.forEach(header => {
-                if (header !== 'StudentEmail') {
-                    row[header] = studentProps[header] ?? ''; // Use only student prop, or empty string.
-                }
-            });
-            return row;
-        });
-
-        // Sort by email before generating the CSV
-        data.sort((a, b) => a.StudentEmail.localeCompare(b.StudentEmail));
-
-        setDownloadProps({ headers, data });
-        setTimeout(() => {
-            if (csvLink.current) {
-                csvLink.current.link.click();
-                setDownloadProps(null);
-            }
-        }, 100);
-
-    } catch (err) {
-        console.error("Error preparing student properties for download:", err);
-        alert("Failed to prepare student properties for download: " + err.message);
-    }
-  };
-
-  const handleDayToggle = (day) => {
-    const days = newSchedule.days.includes(day)
-      ? newSchedule.days.filter((d) => d !== day)
-      : [...newSchedule.days, day];
-    setNewSchedule({ ...newSchedule, days });
-  };
-
-  const addSchedule = () => {
-    setError(null); // Clear previous errors
-    if (!newSchedule.startTime || !newSchedule.endTime || newSchedule.days.length === 0) {
-      setError('Please provide start time, end time, and at least one day for the schedule.');
-      return;
-    }
-
-    const newStart = newSchedule.startTime;
-    const newEnd = newSchedule.endTime;
-
-    if (newStart >= newEnd) {
-      setError('Start time must be before end time.');
-      return;
-    }
-
-    for (const existing of classSchedules) {
-      const hasCommonDay = newSchedule.days.some(day => existing.days.includes(day));
-      if (hasCommonDay) {
-        const existingStart = existing.startTime;
-        const existingEnd = existing.endTime;
-
-        if (newStart <= existingEnd && newEnd >= existingStart) {
-          const commonDays = newSchedule.days.filter(day => existing.days.includes(day));
-          setError(`Schedule overlap or adjacent schedule detected on ${commonDays.join(', ')} with the existing schedule: ${existingStart} - ${existingEnd}.`);
-          return;
-        }
-      }
-    }
-
-    // If no overlap, add the schedule
-    setClassSchedules([...classSchedules, { ...newSchedule, days: [...newSchedule.days].sort() }]);
-    setNewSchedule({ startTime: '', endTime: '', days: [] });
-  };
-
-  const removeSchedule = (index) => {
-    const updatedSchedules = classSchedules.filter((_, i) => i !== index);
-    setClassSchedules(updatedSchedules);
-  };
-
-  const handleStartTimeChange = (e) => {
-    const startTime = e.target.value;
-    // If start time is cleared, do nothing special, just update the state
-    if (!startTime) {
-      setNewSchedule({ ...newSchedule, startTime: '', endTime: '' });
-      return;
-    }
-
-    const [hour, minute] = startTime.split(':').map(Number);
-    const newEndHour = hour + 2;
-    const suggestedEndTime = `${String(newEndHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-
-    // Check if the suggested time is a valid option. If not, use the last available time slot.
-    const finalEndTime = timeOptions.some(option => option.value === suggestedEndTime)
-      ? suggestedEndTime
-      : timeOptions[timeOptions.length - 1].value;
-
-    setNewSchedule({ ...newSchedule, startTime, endTime: finalEndTime });
-  };
 
   const validateClassId = (id) => {
     if (!id || id.trim().length === 0) {
@@ -524,80 +294,7 @@ const ClassManagement = ({ user }) => {
     setShowPromptModal(false);
   };
 
-  // --- Custom Properties Handlers ---
 
-  const handlePropertyChange = (index, field, value) => {
-    const updated = [...classProperties];
-    updated[index][field] = value;
-    setClassProperties(updated);
-  };
-
-  const addPropertyRow = () => {
-    setClassProperties([...classProperties, { key: '', value: '' }]);
-  };
-
-  const removePropertyRow = (index) => {
-    setClassProperties(classProperties.filter((_, i) => i !== index));
-  };
-
-  const handleSaveProperties = async () => {
-    if (!selectedClass) {
-        setError("Please select a class first.");
-        return;
-    }
-    setError(null);
-    setSuccessMessage('');
-
-    try {
-        const batch = writeBatch(db);
-
-        // Save class-wide properties
-        const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-        const classPropsMap = classProperties.reduce((acc, prop) => {
-            if (prop.key.trim()) {
-                acc[prop.key.trim()] = prop.value;
-            }
-            return acc;
-        }, {});
-        batch.set(classPropsRef, classPropsMap);
-
-        await batch.commit();
-        setSuccessMessage("Successfully saved properties!");
-
-    } catch (err) {
-        setError("Failed to save properties: " + err.message);
-        console.error(err);
-    }
-  };
-
-  const handleStudentPropertiesCSVUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    event.target.value = null; // Reset file input
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        const csvData = e.target.result;
-        if (!selectedClass) {
-            setError("Please select a class first.");
-            return;
-        }
-        try {
-            const jobsRef = collection(db, 'propertyUploadJobs');
-            await addDoc(jobsRef, {
-                classId: selectedClass,
-                csvData,
-                requesterUid: auth.currentUser.uid,
-                status: 'pending',
-                createdAt: serverTimestamp(),
-            });
-            setSuccessMessage("CSV uploaded for processing. Properties will be updated in the background.");
-        } catch (err) {
-            setError("Failed to upload CSV for processing. " + err.message);
-        }
-    };
-    reader.readAsText(file);
-  };
 
   return (
     <div className="class-management-container">
@@ -645,55 +342,16 @@ const ClassManagement = ({ user }) => {
         </select>
       </div>
 
-      <div className="form-group">
-        <label>Schedule</label>
-        <div className="schedule-settings">
-            <div className="date-range-inputs">
-                <input type="date" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
-                <span> to </span>
-                                  <input type="date" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />            </div>
-            <select value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
-                {timeZones.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-            </select>
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label>Class Time Slots</label>
-        <div className="schedules-list">
-            {classSchedules.map((schedule, index) => (
-              <div key={index} className="schedule-item">
-                <span>{schedule.days.join(', ')}: {formatTime12Hour(schedule.startTime)} - {formatTime12Hour(schedule.endTime)}</span>
-                <button type="button" onClick={() => removeSchedule(index)}>Remove</button>
-              </div>
-            ))}
-        </div>
-        <div className="add-schedule">
-          <select value={newSchedule.startTime} onChange={handleStartTimeChange}>
-            <option value="" disabled>Start Time</option>
-            {timeOptions.map(time => <option key={time.value} value={time.value}>{time.label}</option>)}
-          </select>
-          <select value={newSchedule.endTime} onChange={(e) => setNewSchedule({...newSchedule, endTime: e.target.value})}>
-            <option value="" disabled>End Time</option>
-            {timeOptions.map(time => <option key={time.value} value={time.value}>{time.label}</option>)}
-          </select>
-          <div className="days-checkboxes">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-              <label key={day}>
-                <input
-                  type="checkbox"
-                  checked={newSchedule.days.includes(day)}
-                  onChange={() => handleDayToggle(day)}
-                /> {day}
-              </label>
-            ))}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', marginTop: '10px' }}>
-            <p className="input-hint">Remember to click "Add Schedule" to save the time slot above.</p>
-            <button type="button" onClick={addSchedule}>Add Schedule</button>
-          </div>
-        </div>
-      </div>
+      <ScheduleManager 
+        scheduleStartDate={scheduleStartDate} 
+        setScheduleStartDate={setScheduleStartDate} 
+        scheduleEndDate={scheduleEndDate} 
+        setScheduleEndDate={setScheduleEndDate} 
+        timeZone={timeZone} 
+        setTimeZone={setTimeZone} 
+        classSchedules={classSchedules} 
+        setClassSchedules={setClassSchedules} 
+      />
 
       <div className="form-group">
         <label>Student Emails</label>
@@ -757,78 +415,13 @@ const ClassManagement = ({ user }) => {
         />
         <p className="input-hint">Leave blank for no IP restrictions. If IPs are entered, students can only log in from these addresses during scheduled class times.</p>
       </div>
+      {selectedClass && <CustomPropertiesManager selectedClass={selectedClass} studentEmails={studentEmails} />}
+
       <button onClick={handleUpdateClass}>Update/Create Class</button>
       {successMessage && <div className="success-message">{successMessage}</div>}
       
       {selectedClass && (
         <div className="manage-selected-class">
-          <hr />
-          <h3>Custom Properties</h3>
-          <div className="form-group">
-              <label>Class-wide Properties</label>
-              <div className="properties-table">
-                  {classProperties.map((prop, index) => (
-                      <div key={index} className="property-row">
-                          <input
-                              type="text"
-                              placeholder="Key"
-                              value={prop.key}
-                              onChange={(e) => handlePropertyChange(index, 'key', e.target.value)}
-                          />
-                          <input
-                              type="text"
-                              placeholder="Value"
-                              value={prop.value}
-                              onChange={(e) => handlePropertyChange(index, 'value', e.target.value)}
-                          />
-                          <button type="button" onClick={() => removePropertyRow(index)}>Remove</button>
-                      </div>
-                  ))}
-              </div>
-              <button type="button" onClick={addPropertyRow}>Add Property</button>
-          </div>
-
-          <div className="form-group">
-              <label>Student-specific Properties (via CSV)</label>
-              <p className="input-hint">
-                  Upload a CSV with `StudentEmail` as the first column header. The system will process it in the background.
-              </p>
-              <div className="csv-buttons">
-                  <button type="button" onClick={handleDownloadStudentTemplate}>Download Existing Properties</button>
-                  {downloadProps && (
-                    <CSVLink
-                        headers={downloadProps.headers}
-                        data={downloadProps.data}
-                        filename={`${selectedClass}-student-properties.csv`}
-                        style={{ display: "none" }}
-                        ref={csvLink}
-                        target="_blank"
-                    />
-                  )}
-                  <label htmlFor="csv-upload" className="button-like-label">Upload CSV</label>
-                  <input id="csv-upload" type="file" accept=".csv" onChange={handleStudentPropertiesCSVUpload} style={{ display: 'none' }} />
-              </div>
-          </div>
-
-          <div className="form-group">
-              <label>Recent Upload Jobs</label>
-              <div className="jobs-list">
-                  {propertyUploadJobs.length > 0 ? propertyUploadJobs.map(job => (
-                      <div key={job.id} className="job-item">
-                          <span>{job.createdAt?.toDate().toLocaleString()} - <strong>{job.status}</strong></span>
-                          {(job.status === 'completed' || job.status === 'completed_with_errors') && typeof job.totalRows === 'number' && (
-                            <p className="job-details" style={{ margin: '4px 0 0', fontSize: '0.9em', color: '#666' }}>
-                                Processed: {job.processedCount || 0}/{job.totalRows}.
-                                {job.notFoundCount > 0 && ` Not Found: ${job.notFoundCount}.`}
-                            </p>
-                          )}
-                          {job.error && <p className="error-message">{job.error}</p>}
-                      </div>
-                  )) : <p>No recent uploads.</p>}
-              </div>
-          </div>
-
-          <button onClick={handleSaveProperties}>Save Properties</button>
           <hr />
           <h3>Manage Selected Class</h3>
           <button onClick={handleDeleteClass}>Delete Class</button>

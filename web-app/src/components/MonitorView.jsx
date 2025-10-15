@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-import { db, storage, auth, functions } from '../firebase-config';
-import { httpsCallable } from 'firebase/functions';
+import { db, storage, auth } from '../firebase-config';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 
@@ -13,8 +12,14 @@ import StudentsGrid from './monitor/StudentsGrid';
 import TimelineSlider from './TimelineSlider';
 import IndividualStudentView from './IndividualStudentView';
 
+import { usePrompts } from '../hooks/usePrompts';
+
+import { useAnalysis } from '../hooks/useAnalysis';
+
 const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
-  const [students, setStudents] = useState([]);
+  const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
+  const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
+  const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
   const [screenshots, setScreenshots] = useState({});
@@ -57,12 +62,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
 
-  const [analysisResults, setAnalysisResults] = useState({});
-  const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [prompts, setPrompts] = useState([]);
-  const [filteredPrompts, setFilteredPrompts] = useState([]);
-  const [promptFilter, setPromptFilter] = useState('all');
+
+
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
@@ -70,106 +71,18 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [samplingRate, setSamplingRate] = useState(5);
   const analysisCounterRef = useRef(0);
   const studentUidMap = useRef(new Map());
-  const uidToEmailMap = useRef(new Map());
+  const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
 
 
 
   const pausedRef = useRef(isPaused);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
 
-  // Refs for stable callbacks
-  const studentsRef = useRef(students);
-  useEffect(() => { studentsRef.current = students; }, [students]);
   const screenshotsRef = useRef(screenshots);
   useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
-  const editablePromptTextRef = useRef(editablePromptText);
-  useEffect(() => { editablePromptTextRef.current = editablePromptText; }, [editablePromptText]);
 
-  const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze) => {
-    if (!editablePromptTextRef.current.trim()) return;
-    console.log(`[${new Date().toISOString()}] Running per-image analysis for:`, Object.keys(screenshotsToAnalyze));
-    const analyzeImage = httpsCallable(functions, 'analyzeImage');
-    try {
-      const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
-      console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
-      setAnalysisResults(prev => ({ ...prev, ...result.data }));
-    } catch (error) {
-      console.error("Error calling analyzeImage function: ", error);
-    }
-  }, [classId]);
 
-  const runAllImagesAnalysis = useCallback(async (screenshotsToAnalyze) => {
-    if (!editablePromptTextRef.current.trim()) return;
-    console.log(`[${new Date().toISOString()}] Running all-images analysis for ${Object.keys(screenshotsToAnalyze).length} images.`);
-    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
-    try {
-      const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptTextRef.current, classId });
-      console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
-      setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
-    } catch (error) {
-      console.error("Error calling analyzeAllImages function: ", error);
-    }
-  }, [classId]);
 
-  // Effect to fetch prompts
-  useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-        setPrompts([]);
-        return;
-    }
-    const { uid } = currentUser;
-
-    const unsubscribers = [];
-    let publicPrompts = [], privatePrompts = [], sharedPrompts = [];
-
-    const combineAndSetPrompts = () => {
-        const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
-        const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
-        const imagePrompts = unique.filter(p => p.category === 'images');
-        imagePrompts.sort((a, b) => a.name.localeCompare(b.name));
-        setPrompts(imagePrompts);
-    };
-
-    const qPublic = query(collection(db, 'prompts'), where('accessLevel', '==', 'public'));
-    unsubscribers.push(onSnapshot(qPublic, snapshot => {
-        publicPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
-
-    const qOwner = query(collection(db, 'prompts'), where('owner', '==', uid));
-    unsubscribers.push(onSnapshot(qOwner, snapshot => {
-        privatePrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
-
-    const qShared = query(collection(db, 'prompts'), where('sharedWith', 'array-contains', uid));
-    unsubscribers.push(onSnapshot(qShared, snapshot => {
-        sharedPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
-
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
-
-  useEffect(() => {
-    const { uid } = auth.currentUser || {};
-    if (!uid) {
-        setFilteredPrompts([]);
-        return;
-    }
-    let newFilteredPrompts = [];
-    if (promptFilter === 'all') {
-        newFilteredPrompts = prompts;
-    } else if (promptFilter === 'public') {
-        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'public');
-    } else if (promptFilter === 'private') {
-        newFilteredPrompts = prompts.filter(p => p.owner === uid && p.accessLevel === 'private');
-    } else if (promptFilter === 'shared') {
-        newFilteredPrompts = prompts.filter(p => p.accessLevel === 'shared');
-    }
-    setFilteredPrompts(newFilteredPrompts);
-  }, [prompts, promptFilter]);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
   const maxImageSizeOptions = [
@@ -204,8 +117,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
             });
         }
         
-        uidToEmailMap.current = newMap;
-        console.log('[MonitorView] DEBUG: uidToEmailMap populated:', uidToEmailMap.current);
+        setUidToEmailMap(newMap);
+        console.log('[MonitorView] DEBUG: uidToEmailMap populated:', newMap);
 
         setFrameRate(prevRate => {
           const newRate = data.frameRate || 5;
@@ -322,24 +235,16 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     fetchScreenshotsForReview();
   }, [reviewTime, classList, classId]);
 
-  useEffect(() => {
-    // classList is now an array of UIDs.
-    const studentsWithStatus = classList.map(uid => {
+  const students = useMemo(() => {
+    return classList.map(uid => {
       const status = studentStatuses.find(s => s.id === uid);
-      const email = uidToEmailMap.current.get(uid) || (status ? status.email : '');
+      const email = uidToEmailMap.get(uid) || (status ? status.email : '');
       return {
         id: uid,
         email: email,
         name: status ? status.name : email, // fallback to email if no name
         isSharing: status ? status.isSharing || false : false,
       };
-    });
-
-    setStudents(prevStudents => {
-      if (JSON.stringify(prevStudents) === JSON.stringify(studentsWithStatus)) {
-        return prevStudents;
-      }
-      return studentsWithStatus;
     });
   }, [classList, studentStatuses, uidToEmailMap]);
 
@@ -372,7 +277,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
               analysisCounterRef.current += 1;
               if (analysisCounterRef.current % samplingRate === 0) {
                 const screenshotsToAnalyze = { [student.id]: { url: url, email: student.email } };
-                runPerImageAnalysis(screenshotsToAnalyze);
+                runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
               }
             }
           } catch (error) {
@@ -382,7 +287,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
               delete newState[student.id];
               return newState;
             });
-          }
+          } 
         } else {
           setScreenshots(prev => {
             const newState = { ...prev };
@@ -395,7 +300,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
     return () => unsubscribes.forEach(unsub => unsub());
 
-  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, reviewTime]);
+  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, reviewTime, editablePromptText]);
 
 
 
@@ -406,7 +311,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
     const intervalId = setInterval(() => {
       const screenshotsToAnalyze = {};
-      for (const student of studentsRef.current) {
+      for (const student of students) {
         if (student.isSharing && screenshotsRef.current[student.id]) {
           screenshotsToAnalyze[student.id] = { url: screenshotsRef.current[student.id].url, email: student.email };
         }
@@ -417,7 +322,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     }, samplingRate * frameRate * 1000);
 
     return () => clearInterval(intervalId);
-  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis]);
+  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis, students]);
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
@@ -457,7 +362,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
     const attendanceData = classList.map(uid => {
-      const email = uidToEmailMap.current.get(uid) || '';
+      const email = uidToEmailMap.get(uid) || '';
       const status = uidToStatusMap.get(uid);
       const isSharing = status ? status.isSharing || false : false;
       return { email, isSharing };
@@ -465,7 +370,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
     const header = ['Email', 'Sharing Screen'];
     const rows = attendanceData.map(s => [
-      `"${s.email.replace(/"/g, '""')}"`,
+      `"${s.email.replace(/"/g, '""')}"`, // Corrected escaping for double quotes within a double-quoted string
       s.isSharing
     ].join(','));
 
@@ -532,18 +437,18 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     setSelectedStudent(student);
   };
 
-  const sharingStudentUids = new Set(
+  const sharingStudentUids = useMemo(() => new Set(
     studentStatuses
       .filter(status => status.isSharing)
       .map(status => status.id)
-  );
+  ), [studentStatuses]);
 
-  const notSharingStudents = classList
+  const notSharingStudents = useMemo(() => classList
     .filter(uid => !sharingStudentUids.has(uid))
     .map(uid => {
-      const email = uidToEmailMap.current.get(uid) || '';
+      const email = uidToEmailMap.get(uid) || '';
       return { id: uid, email: email };
-    });
+    }), [classList, sharingStudentUids, uidToEmailMap]);
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
@@ -577,17 +482,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       }
     }
 
-    setIsAnalyzing(true);
-    const analyzeImage = httpsCallable(functions, 'analyzeImage');
-    try {
-      const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
-      setAnalysisResults(result.data);
-    } catch (error) {
-      console.error("Error calling analyzeImage function: ", error);
-      alert("Error analyzing images: " + error.message);
-    } finally {
-      setIsAnalyzing(false);
-    }
+    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
@@ -623,23 +518,28 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       }
     }
 
-    setIsAnalyzing(true);
-    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
-    try {
-      const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt: editablePromptText, classId });
-      setAnalysisResults({ 'All Images': result.data });
-    } catch (error) {
-      console.error("Error calling analyzeAllImages function: ", error);
-      alert("Error analyzing images: " + error.message);
-    } finally {
-      setIsAnalyzing(false);
-    }
+    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
   };
 
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
+
+  const analysisResultItems = useMemo(() => 
+    Object.entries(analysisResults).map(([studentId, result]) => {
+      const email = uidToEmailMap.get(studentId) || 'Unknown Student';
+      return (
+        <li key={studentId}>
+          <strong>{email}:</strong>
+          {result.error ? (
+            <p style={{ color: 'red' }}>Error: {result.error}</p>
+          ) : (
+            <p>{result.text}</p>
+          )}
+        </li>
+      );
+    }), [analysisResults, uidToEmailMap]);
 
   return (
     <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
@@ -782,12 +682,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       >
         {Object.keys(analysisResults).length > 0 ? (
           <ul>
-            {Object.entries(analysisResults).map(([uid, result]) => {
-              const studentIdentifier = uidToEmailMap.current.get(uid) || (uid === 'All Images' ? 'All Images' : uid);
-              return (
-                <li key={uid}><strong>{studentIdentifier}:</strong> {result}</li>
-              );
-            })}
+            {analysisResultItems}
           </ul>
         ) : (
           <p>No analysis has been run yet.</p>

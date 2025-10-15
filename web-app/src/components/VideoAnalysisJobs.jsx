@@ -5,6 +5,9 @@ import { db } from '../firebase-config';
 import './SharedViews.css';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
+import VideoAnalysisJobsTable from './VideoAnalysisJobsTable';
+import AiJobsTable from './AiJobsTable';
+
 
 const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
@@ -212,7 +215,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
 
   return (
     <div className="view-container">
-      {showPlayer && <VideoPlayerModal />}
+      <VideoPlayerModal show={showPlayer} onClose={() => setShowPlayer(false)} videoUrl={videoUrl} loading={playerLoading} />
       <div className="view-header">
         <h2>Video Analysis Jobs</h2>
       </div>
@@ -230,35 +233,12 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
         ) : videoAnalysisJobs.length === 0 ? (
           <p>No analysis jobs found for the selected criteria.</p>
         ) : (
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Requester</th>
-                  <th>Created At</th>
-                  <th>Status</th>
-                  <th>Prompt</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {videoAnalysisJobs.map(job => (
-                  <tr key={job.id} onClick={() => handleAnalysisJobSelect(job)} style={{ cursor: 'pointer', backgroundColor: selectedAnalysisJob?.id === job.id ? '#eef' : 'transparent' }}>
-                    <td>{job.requester}</td>
-                    <td>{job.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
-                    <td>{job.status}</td>
-                    <td style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{job.prompt}</td>
-                    <td>
-                      <button onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteAnalysisJob(job.id, job.aiJobIds);
-                      }}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <VideoAnalysisJobsTable 
+            jobs={videoAnalysisJobs} 
+            selectedJob={selectedAnalysisJob} 
+            onSelectJob={handleAnalysisJobSelect} 
+            onDeleteJob={handleDeleteAnalysisJob} 
+          />
         )}
 
         {selectedAnalysisJob && (
@@ -274,40 +254,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
               ) : aiJobs.length === 0 ? (
                   <p>No AI jobs found for this analysis job.</p>
               ) : (
-                  <div className="table-container">
-                      <table>
-                          <thead>
-                              <tr>
-                                  <th>Play</th>
-                                  <th>Student</th>
-                                  <th>Status</th>
-                                  <th>Result</th>
-                                  <th>Created At</th>
-                              </tr>
-                          </thead>
-                          <tbody>
-                              {aiJobs.map(job => (
-                                  <tr key={job.id}>
-                                      <td>
-                                          <button onClick={() => handlePlayVideo({ videoPath: job.mediaPaths && job.mediaPaths[0] })} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', padding: 0, lineHeight: 1}}>
-                                              ▶️
-                                          </button>
-                                      </td>
-                                      <td>{job.studentEmail}</td>
-                                      <td>{job.status}</td>
-                                      <td>
-                                          {job.status === 'failed' ? (
-                                              <pre style={{ color: 'red', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{job.errorDetails}</pre>
-                                          ) : (
-                                              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{typeof job.result === 'object' ? JSON.stringify(job.result, null, 2) : job.result}</pre>
-                                          )}
-                                      </td>
-                                      <td>{job.timestamp?.toDate().toLocaleString() || 'N/A'}</td>
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
+                  <AiJobsTable aiJobs={aiJobs} onPlayVideo={handlePlayVideo} />
               )}
           </div>
         )}

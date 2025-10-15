@@ -8,18 +8,8 @@ import VideoPromptSelector from './VideoPromptSelector';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const formatDuration = (seconds) => {
-  if (!seconds) return 'N/A';
-  return new Date(seconds * 1000).toISOString().substr(11, 8);
-};
-
-const formatSize = (bytes) => {
-  if (!bytes) return 'N/A';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-};
+import VideoTable from './VideoTable';
+import VideoPlayerModal from './VideoPlayerModal';
 
 const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
@@ -305,36 +295,11 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
     }
   };
 
-  const VideoPlayerModal = () => (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-      backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
-      justifyContent: 'center', alignItems: 'center', zIndex: 1050
-    }} onClick={() => setShowPlayer(false)}>
-      <div style={{
-        position: 'relative', padding: '20px', background: 'white',
-        borderRadius: '8px', maxWidth: '90vw', maxHeight: '90vh'
-      }} onClick={e => e.stopPropagation()}>
-        <button onClick={() => setShowPlayer(false)} style={{
-          position: 'absolute', top: '10px', right: '10px',
-          background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer'
-        }}>
-          &times;
-        </button>
-        {playerLoading ? (
-          <p>Loading video...</p>
-        ) : (
-          <video controls autoPlay src={videoUrl} style={{ maxWidth: '100%', maxHeight: '80vh' }}>
-            Your browser does not support the video tag.
-          </video>
-        )}
-      </div>
-    </div>
-  );
+
 
   return (
     <div className="view-container">
-      {showPlayer && <VideoPlayerModal />}
+      <VideoPlayerModal show={showPlayer} onClose={() => setShowPlayer(false)} videoUrl={videoUrl} loading={playerLoading} />
       <Modal
           show={showPromptModal}
           onClose={() => {
@@ -387,62 +352,20 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
         ) : videos.length === 0 ? (
           <p>No videos found for the selected criteria.</p>
         ) : (
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th><input type="checkbox" onChange={(e) => {
-                    const newSelection = new Map();
-                    if (e.target.checked) {
-                      videos.forEach(v => newSelection.set(v.id, v));
-                    }
-                    setSelectedVideos(newSelection);
-                  }} /></th>
-                  <th>Play</th>
-                  <th>Student</th>
-                  <th>Start Time</th>
-                  <th>End Time</th>
-                  <th>Duration</th>
-                  <th>Size</th>
-                  <th>Created At</th>
-                  <th>Download</th>
-                </tr>
-              </thead>
-              <tbody>
-                {videos.map(video => (
-                  <tr key={video.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedVideos.has(video.id)}
-                        onChange={() => handleSelectVideo(video)}
-                      />
-                    </td>
-                    <td>
-                      <button onClick={() => handlePlayVideo(video)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', padding: 0, lineHeight: 1}}>
-                        ▶️
-                      </button>
-                    </td>
-                    <td>{video.studentEmail}</td>
-                    <td>{video.startTime?.toDate().toLocaleString() || 'N/A'}</td>
-                    <td>{video.endTime?.toDate().toLocaleString() || 'N/A'}</td>
-                    <td>{formatDuration(video.duration)}</td>
-                    <td>{formatSize(video.size)}</td>
-                    <td>{video.createdAt?.toDate().toLocaleString() || 'N/A'}</td>
-                    <td>
-                      {video.videoPath ? (
-                        <button onClick={() => handleDownload(video)}>
-                          Download
-                        </button>
-                      ) : (
-                        <span>Path Not Found</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <VideoTable 
+            videos={videos} 
+            selectedVideos={selectedVideos} 
+            onSelectVideo={handleSelectVideo} 
+            onPlayVideo={handlePlayVideo} 
+            onDownloadVideo={handleDownload} 
+            onSelectAll={(e) => {
+              const newSelection = new Map();
+              if (e.target.checked) {
+                videos.forEach(v => newSelection.set(v.id, v));
+              }
+              setSelectedVideos(newSelection);
+            }}
+          />
         )}
       </>
 
