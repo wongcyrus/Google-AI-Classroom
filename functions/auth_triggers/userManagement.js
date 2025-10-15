@@ -10,58 +10,108 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const adminAuth = getAuth();
 
-// Helper function to get an existing user or create a new one
-const getOrCreateUser = async (email, userType) => {
-  const expectedRole = userType === 'student' ? 'student' : 'teacher';
-  let derivedRole;
+// Helper function to get or create multiple users in bulk
+const getOrCreateUsers = async (emails, userType) => {
+    const expectedRole = userType === 'student' ? 'student' : 'teacher';
+    const emailToRoleMap = new Map();
 
-  if (email.endsWith('@vtc.edu.hk')) {
-    derivedRole = 'teacher';
-  } else if (email.endsWith('@stu.vtc.edu.hk')) {
-    derivedRole = 'student';
-  } else {
-    logger.warn(`Invalid email domain for '${email}'. Skipping.`);
-    return null;
-  }
+    const validEmails = emails.filter(email => {
+        let derivedRole;
+        if (email.endsWith('@vtc.edu.hk')) {
+            derivedRole = 'teacher';
+        } else if (email.endsWith('@stu.vtc.edu.hk')) {
+            derivedRole = 'student';
+        } else {
+            logger.warn(`Invalid email domain for '${email}'. Skipping.`);
+            return false;
+        }
 
-  if (derivedRole !== expectedRole) {
-    logger.warn(`Email '${email}' has a domain for a '${derivedRole}' but was added to a list for '${expectedRole}'. Skipping.`);
-    return null;
-  }
+        if (derivedRole !== expectedRole) {
+            logger.warn(`Email '${email}' has a domain for a '${derivedRole}' but was added to a list for '${expectedRole}'. Skipping.`);
+            return false;
+        }
+        emailToRoleMap.set(email, derivedRole);
+        return true;
+    });
 
-  try {
-    const userRecord = await adminAuth.getUserByEmail(email);
-    if (userRecord.customClaims?.role !== derivedRole) {
-      await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
-      logger.info(`Updated role to '${derivedRole}' for existing user ${email}`);
+    if (validEmails.length === 0) {
+        return [];
     }
-    return userRecord;
-  } catch (error) {
-    if (error.code === 'auth/user-not-found') {
-      logger.info(`User with email '${email}' not found. Creating a new user.`);
-      try {
-        const userRecord = await adminAuth.createUser({
-          email,
-          emailVerified: false, // User will need to use password reset to login
+
+    const allUserRecords = [];
+    let emailsToCreate = [];
+
+    // 1. Get existing users in bulk
+    if (validEmails.length > 0) {
+        try {
+            const userIdentifiers = validEmails.map(email => ({ email }));
+            const { users, notFound } = await adminAuth.getUsers(userIdentifiers);
+
+            // Update roles for existing users if needed, in parallel
+            const roleUpdatePromises = users.map(userRecord => {
+                const email = userRecord.email;
+                const derivedRole = emailToRoleMap.get(email);
+                if (userRecord.customClaims?.role !== derivedRole) {
+                    return adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole }).then(() => {
+                        logger.info(`Updated role to '${derivedRole}' for existing user ${email}`);
+                    });
+                }
+                return Promise.resolve();
+            });
+            await Promise.all(roleUpdatePromises);
+
+            allUserRecords.push(...users);
+emailsToCreate = notFound.map(identifier => identifier.email);
+
+        } catch (error) {
+            logger.error('Error fetching users in bulk. Will attempt to create all valid emails as a fallback.', error);
+            emailsToCreate = validEmails;
+        }
+    }
+
+    // 2. Create new users in parallel
+    if (emailsToCreate.length > 0) {
+        logger.info(`Attempting to create ${emailsToCreate.length} new users.`);
+
+        const newUserPromises = emailsToCreate.map(async (email) => {
+            try {
+                const derivedRole = emailToRoleMap.get(email);
+                const userRecord = await adminAuth.createUser({
+                    email,
+                    emailVerified: false,
+                });
+                await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
+                logger.info(`Created new user '${email}' with role '${derivedRole}'.`);
+                return userRecord;
+            } catch (creationError) {
+                if (creationError.code === 'auth/email-already-exists') {
+                    logger.warn(`User with email '${email}' already exists. Fetching instead to recover.`);
+                    try {
+                        return await adminAuth.getUserByEmail(email);
+                    } catch (fetchError) {
+                        logger.error(`Failed to fetch user '${email}' after creation attempt failed.`, fetchError);
+                        return null;
+                    }
+                }
+                logger.error(`Error creating user '${email}':`, creationError);
+                return null;
+            }
         });
-        await adminAuth.setCustomUserClaims(userRecord.uid, { role: derivedRole });
-        logger.info(`Created new user '${email}' with role '${derivedRole}'.`);
-        return userRecord;
-      } catch (creationError) {
-        logger.error(`Error creating user '${email}':`, creationError);
-        return null;
-      }
-    } else {
-      logger.error(`Error fetching user '${email}':`, error);
-      return null;
+
+        const newUsers = (await Promise.all(newUserPromises)).filter(Boolean);
+        allUserRecords.push(...newUsers);
     }
-  }
+
+    return allUserRecords;
 };
 
 
-// Helper function to manage user-class associations
+// Helper function to manage user-class associations in bulk
 const updateUserAssociations = async (classId, emails, userType, action) => {
-  const promises = [];
+  if (!emails || emails.length === 0) {
+    return;
+  }
+
   const profileCollection = userType === 'student' ? 'studentProfiles' : 'teacherProfiles';
   const firestoreAction = action === 'add' ? FieldValue.arrayUnion : FieldValue.arrayRemove;
 
@@ -80,49 +130,48 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
       }
   }
 
-  for (const email of emails) {
-    const userRecord = await getOrCreateUser(email, userType);
+  const userRecords = await getOrCreateUsers(emails, userType);
 
-    if (userRecord) {
-      const userDocRef = db.collection(profileCollection).doc(userRecord.uid);
-      const classDocRef = db.collection('classes').doc(classId);
-
-      // Update the user's profile with the classId
-      promises.push(userDocRef.set({ classes: firestoreAction(classId) }, { merge: true }));
-
-      const updatePayload = {};
-
-      if (userType === 'teacher') {
-        // For teachers, update the teachers map
-        if (action === 'add') {
-          updatePayload[`teachers.${userRecord.uid}`] = email;
-        } else { // action === 'remove'
-          updatePayload[`teachers.${userRecord.uid}`] = FieldValue.delete();
-        }
-      } else { // For students, update the students map
-        if (action === 'add') {
-          updatePayload[`students.${userRecord.uid}`] = email;
-          
-          // Ensure the studentProperties document exists, creating it with defaults if needed.
-          const studentPropsRef = classDocRef.collection('studentProperties').doc(userRecord.uid);
-          // Using set with merge:true ensures we don't overwrite existing student-specific properties
-          // if they were somehow created before this runs. It creates the doc if it's missing.
-          promises.push(studentPropsRef.set(classProps, { merge: true }));
-          logger.info(`Ensured studentProperties document exists for ${userRecord.uid} in class ${classId}.`);
-
-        } else { // action === 'remove'
-          updatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
-        }
-      }
-      
-      promises.push(classDocRef.update(updatePayload));
-
-      logger.info(`${action === 'add' ? 'Linked' : 'Unlinked'} class '${classId}' for ${userType} ${userRecord.uid} (${email})`);
-    } else {
-        logger.error(`Could not get or create user for email '${email}'. Skipping association for class '${classId}'.`);
-    }
+  if (userRecords.length === 0) {
+    logger.warn(`No valid user records found for ${userType}s in class ${classId} from the provided list.`);
+    return;
   }
-  return Promise.all(promises);
+
+  const batch = db.batch();
+  const classDocRef = db.collection('classes').doc(classId);
+  const classUpdatePayload = {};
+
+  for (const userRecord of userRecords) {
+    const userDocRef = db.collection(profileCollection).doc(userRecord.uid);
+
+    // Update the user's profile with the classId
+    batch.set(userDocRef, { classes: firestoreAction(classId) }, { merge: true });
+
+    if (userType === 'teacher') {
+      if (action === 'add') {
+        classUpdatePayload[`teachers.${userRecord.uid}`] = userRecord.email;
+      } else {
+        classUpdatePayload[`teachers.${userRecord.uid}`] = FieldValue.delete();
+      }
+    } else { // For students
+      if (action === 'add') {
+        classUpdatePayload[`students.${userRecord.uid}`] = userRecord.email;
+        
+        const studentPropsRef = classDocRef.collection('studentProperties').doc(userRecord.uid);
+        batch.set(studentPropsRef, classProps, { merge: true });
+      } else {
+        classUpdatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
+      }
+    }
+    logger.info(`${action === 'add' ? 'Linked' : 'Unlinked'} class '${classId}' for ${userType} ${userRecord.uid} (${userRecord.email})`);
+  }
+  
+  if (Object.keys(classUpdatePayload).length > 0) {
+    batch.update(classDocRef, classUpdatePayload);
+  }
+
+  await batch.commit();
+  logger.info(`Batch committed for ${userRecords.length} ${userType}(s) association changes in class ${classId}.`);
 };
 
 export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', region: FUNCTION_REGION }, async (event) => {
