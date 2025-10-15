@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { doc, onSnapshot, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, deleteDoc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from '../firebase-config';
 import { ref, deleteObject } from 'firebase/storage';
 
@@ -18,7 +18,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   const [statusFilter, setStatusFilter] = useState([]);
   const [selectedJobs, setSelectedJobs] = useState(new Set());
   const [errorModalJob, setErrorModalJob] = useState(null);
-
+  const [loading, setLoading] = useState(false);
 
 
 
@@ -164,7 +164,64 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
     }
   };
 
+  const handleCombineAllToVideo = async () => {
+    if (students.length === 0) {
+        alert('No students in this class.');
+        return;
+    }
 
+    setLoading(true);
+
+    setNotification({ type: 'info', message: `Checking for existing jobs and initiating video creation for ${students.length} students...` });
+    setLastBatchJobInfo(null);
+
+    try {
+        const createdJobs = [];
+        const skippedJobs = [];
+
+        for (const student of students) {
+            const q = query(
+                collection(db, 'videoJobs'),
+                where('classId', '==', classId),
+                where('studentUid', '==', student.uid),
+                where('startTime', '==', new Date(startTime)),
+                where('endTime', '==', new Date(endTime)),
+                where('status', 'in', ['pending', 'processing', 'completed'])
+            );
+            const existingJobs = await getDocs(q);
+            if (!existingJobs.empty) {
+                console.log(`Job already exists for ${student.email} in this time range.`);
+                skippedJobs.push(student.email);
+                continue;
+            }
+
+            const jobCollectionRef = collection(db, 'videoJobs');
+            const newDocRef = doc(jobCollectionRef);
+            const jobId = newDocRef.id;
+
+            await setDoc(newDocRef, {
+                jobId: jobId,
+                classId: classId,
+                studentUid: student.uid,
+                studentEmail: student.email,
+                startTime: new Date(startTime),
+                endTime: new Date(endTime),
+                status: 'pending',
+                createdAt: serverTimestamp(),
+            });
+            createdJobs.push(student.email);
+        }
+
+        setLastBatchJobInfo({ created: createdJobs, skipped: skippedJobs });
+        setNotification({ type: 'success', message: `Batch job summary: ${createdJobs.length} new jobs created, ${skippedJobs.length} jobs already existed.` });
+
+    } catch (error) {
+        console.error('Error creating video jobs for all students:', error);
+        setNotification({ type: 'error', message: `Error: ${error.message}` });
+    } finally {
+        setLoading(false);
+    }
+  };
 
 
   const handleStartPlayback = () => {
@@ -217,7 +274,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
 
         <span style={{ borderLeft: '1px solid #ccc', height: '24px' }}></span>
 
-
+        <button onClick={handleCombineAllToVideo} disabled={loading}>Combine All Students' Videos</button>
         <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
           Delete Selected ({selectedJobs.size})
         </button>
