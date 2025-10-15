@@ -74,16 +74,18 @@ const StudentView = ({ user }) => {
   const updateSharingStatus = useCallback(async (sharingStatus, classId) => {
     const targetClass = classId || activeClass;
     if (!targetClass || !user || !user.uid) return;
+    const statusRef = doc(db, "classes", targetClass, "status", user.uid);
+    console.log(`Firestore: Updating sharing status for ${user.uid} in ${targetClass} to ${sharingStatus}`);
     try {
-      const statusRef = doc(db, "classes", targetClass, "status", user.uid);
       await setDoc(statusRef, {
         isSharing: sharingStatus,
         email: user.email,
         name: user.displayName || user.email,
         timestamp: serverTimestamp()
       }, { merge: true });
+      console.log(`Firestore: Successfully updated sharing status.`);
     } catch (error) {
-      console.error("Error updating sharing status: ", error);
+      console.error("Firestore: Error updating sharing status: ", error);
     }
   }, [activeClass, user]);
 
@@ -191,6 +193,7 @@ const StudentView = ({ user }) => {
             await uploadBytes(screenshotRef, blob);
             console.log('Screenshot uploaded successfully.');
             const screenshotsColRef = collection(db, 'screenshots');
+            console.log(`Firestore: Adding doc to screenshots collection`);
             await addDoc(screenshotsColRef, {
               classId,
               studentUid: user.uid,
@@ -201,12 +204,13 @@ const StudentView = ({ user }) => {
               deleted: false,
               ipAddress: ipAddress,
             });
-            console.log('Screenshot metadata added to Firestore.');
+            console.log('Firestore: Successfully added screenshot metadata.');
             const statusRef = doc(db, "classes", classId, "status", user.uid);
+            console.log(`Firestore: Updating student status timestamp in ${classId}`);
             await setDoc(statusRef, { timestamp: serverTimestamp() }, { merge: true });
-            console.log('Student status updated.');
+            console.log('Firestore: Successfully updated student status.');
           } catch (err) {
-            console.error("Error uploading screenshot: ", err);
+            console.error("Firestore: Error during screenshot upload process: ", err);
           }
         }
       }, 'image/jpeg', quality);
@@ -285,9 +289,14 @@ const StudentView = ({ user }) => {
       if (ipAddress) {
         statusData.ipAddress = ipAddress;
       }
-      setDoc(statusRef, statusData, { merge: true });
+      console.log(`Firestore: Setting session ID for ${user.uid} in ${activeClass}`);
+      setDoc(statusRef, statusData, { merge: true })
+        .then(() => console.log("Firestore: Session ID set successfully."))
+        .catch(err => console.error("Firestore: Error setting session ID:", err));
 
+      console.log(`Firestore: Subscribing to status for ${user.uid} in ${activeClass}`);
       const unsubscribe = onSnapshot(statusRef, (docSnap) => {
+        console.log("Firestore: Received status snapshot.");
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.sessionId && data.sessionId !== sessionIdRef.current) {
@@ -296,6 +305,8 @@ const StudentView = ({ user }) => {
             signOut(auth);
           }
         }
+      }, (error) => {
+        console.error(`Firestore: Error subscribing to status for ${user.uid}:`, error);
       });
 
       return () => unsubscribe();
@@ -308,7 +319,9 @@ const StudentView = ({ user }) => {
     if (!activeClass) return;
 
     const classRef = doc(db, "classes", activeClass);
+    console.log(`Firestore: Subscribing to class document ${activeClass}`);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
+      console.log("Firestore: Received class document snapshot.");
       if (docSnap.exists()) {
         const data = docSnap.data();
         setFrameRate(data.frameRate || 5);
@@ -317,6 +330,8 @@ const StudentView = ({ user }) => {
         setIsCapturing(data.isCapturing || false);
         setCaptureStartedAt(data.captureStartedAt || null);
       }
+    }, (error) => {
+      console.error(`Firestore: Error subscribing to class document ${activeClass}:`, error);
     });
 
     return () => unsubscribe();
@@ -325,22 +340,27 @@ const StudentView = ({ user }) => {
   // Listen for Custom Properties
   useEffect(() => {
     if (!activeClass || !user?.uid) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setClassProperties(null);
         setMyProperties(null);
         return;
     }
 
-    // Listen to class-wide properties
     const classPropsRef = doc(db, 'classes', activeClass, 'classProperties', 'config');
+    console.log(`Firestore: Subscribing to class properties for ${activeClass}`);
     const unsubClassProps = onSnapshot(classPropsRef, (docSnap) => {
+        console.log("Firestore: Received class properties snapshot.");
         setClassProperties(docSnap.exists() ? docSnap.data() : null);
+    }, (error) => {
+        console.error(`Firestore: Error subscribing to class properties for ${activeClass}:`, error);
     });
 
-    // Listen to student-specific properties
     const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+    console.log(`Firestore: Subscribing to student properties for ${user.uid} in ${activeClass}`);
     const unsubStudentProps = onSnapshot(studentPropsRef, (docSnap) => {
+        console.log("Firestore: Received student properties snapshot.");
         setMyProperties(docSnap.exists() ? docSnap.data() : null);
+    }, (error) => {
+        console.error(`Firestore: Error subscribing to student properties for ${user.uid}:`, error);
     });
 
     return () => {
@@ -352,17 +372,19 @@ const StudentView = ({ user }) => {
   // Listen for class-wide messages
   useEffect(() => {
     if (!activeClass) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setClassMessages([]);
       return;
     }
 
     const messagesRef = collection(db, 'classes', activeClass, 'messages');
     const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(5));
-
+    console.log(`Firestore: Subscribing to class messages for ${activeClass}`);
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      console.log("Firestore: Received class messages snapshot.");
       const messagesData = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, type: 'class' }));
       setClassMessages(messagesData);
+    }, (error) => {
+      console.error(`Firestore: Error subscribing to class messages for ${activeClass}:`, error);
     });
 
     return () => unsubscribe();
@@ -373,12 +395,14 @@ const StudentView = ({ user }) => {
     if (!user || !user.uid) return;
 
     const studentMessagesRef = collection(db, 'students', user.uid, 'messages');
-    // Temporarily remove orderBy to check for indexing issues
     const q = query(studentMessagesRef, limit(5));
-
+    console.log(`Firestore: Subscribing to direct messages for ${user.uid}`);
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      console.log("Firestore: Received direct messages snapshot.");
       const messagesData = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, type: 'direct' }));
       setDirectMessages(messagesData);
+    }, (error) => {
+      console.error(`Firestore: Error subscribing to direct messages for ${user.uid}:`, error);
     });
 
     return () => unsubscribe();
@@ -386,7 +410,6 @@ const StudentView = ({ user }) => {
 
   // Handle notifications
   useEffect(() => {
-    // For notification, consider all messages, but only recent ones
     const allMessages = [...directMessages, ...classMessages];
     allMessages.sort((a, b) => {
       const timeA = a.timestamp?.toMillis() || 0;
@@ -400,12 +423,10 @@ const StudentView = ({ user }) => {
         const messageTimestamp = latestMessage.timestamp.toDate();
         const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000);
 
-        // Is it a new message, and is it recent?
         if (
           lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime() &&
           messageTimestamp > oneHourAgo
         ) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           setNotification(latestMessage.message);
           setTimeout(() => showSystemNotification(latestMessage.message), 0);
           lastMessageTimestampRef.current = messageTimestamp;
@@ -424,10 +445,13 @@ const StudentView = ({ user }) => {
       orderBy("timestamp", "desc"),
       limit(5)
     );
-
+    console.log(`Firestore: Subscribing to irregularities for ${user.uid}`);
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log("Firestore: Received irregularities snapshot.");
       const irregularitiesData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       setRecentIrregularities(irregularitiesData);
+    }, (error) => {
+      console.error(`Firestore: Error subscribing to irregularities for ${user.uid}:`, error);
     });
 
     return () => unsubscribe();
@@ -449,18 +473,17 @@ const StudentView = ({ user }) => {
           captureAndUpload(videoRef.current, activeClass);
         }, frameRate * 1000);
       } else if (isCapturing) {
-        // The capture session time has expired for this student.
-        // Update the student's own status document instead of the class document.
         const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+        console.log(`Firestore: Capture time expired, updating status for ${user.uid}`);
         setDoc(statusRef, { 
             isCapturing: false,
             reason: "Capture time limit reached."
         }, { merge: true })
           .then(() => {
-            console.log("Student capture time expired, updated student status to isCapturing: false.");
+            console.log("Firestore: Successfully updated student status to isCapturing: false.");
           })
           .catch(err => {
-            console.error("Failed to update student status after capture time expired.", err);
+            console.error("Firestore: Failed to update student status after capture time expired.", err);
           });
       }
     }

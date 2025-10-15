@@ -11,20 +11,25 @@ export const useStudentClassSchedule = (user) => {
   // Step 1: Fetch all class IDs for the student in real-time
   useEffect(() => {
     if (!user || !user.uid) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      console.log('useStudentClassSchedule: No user, skipping.');
       setLoading(false);
       return;
     }
 
+    console.log(`useStudentClassSchedule: Subscribing to student profile for ${user.uid}`);
     const userDocRef = doc(db, 'studentProfiles', user.uid);
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const userData = docSnap.data();
         const classes = userData.classes || [];
+        console.log(`useStudentClassSchedule: Student is in classes:`, classes);
         setUserClasses(classes);
       } else {
+        console.log('useStudentClassSchedule: Student profile does not exist.');
         setUserClasses([]);
       }
+    }, (error) => {
+      console.error('useStudentClassSchedule: Error fetching student profile:', error);
     });
 
     return () => unsubscribe();
@@ -33,7 +38,7 @@ export const useStudentClassSchedule = (user) => {
   // Step 2: Fetch the schedule for each class whenever the student's class list changes
   useEffect(() => {
     if (userClasses.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      console.log('useStudentClassSchedule: No classes for student, schedules empty.');
       setSchedules({});
       setLoading(false);
       return;
@@ -41,16 +46,26 @@ export const useStudentClassSchedule = (user) => {
 
     const fetchSchedules = async () => {
       setLoading(true);
+      console.log('useStudentClassSchedule: Fetching schedules for classes:', userClasses);
       const schedulesData = {};
       for (const classId of userClasses) {
-        const classRef = doc(db, 'classes', classId);
-        const classSnap = await getDoc(classRef);
-        if (classSnap.exists()) {
-          schedulesData[classId] = classSnap.data().schedule;
+        try {
+          const classRef = doc(db, 'classes', classId);
+          console.log(`useStudentClassSchedule: Getting document for class ${classId}`);
+          const classSnap = await getDoc(classRef);
+          if (classSnap.exists()) {
+            console.log(`useStudentClassSchedule: Successfully fetched schedule for ${classId}`);
+            schedulesData[classId] = classSnap.data().schedule;
+          } else {
+            console.log(`useStudentClassSchedule: Class document ${classId} does not exist.`);
+          }
+        } catch (error) {
+          console.error(`useStudentClassSchedule: Error fetching schedule for class ${classId}:`, error);
         }
       }
       setSchedules(schedulesData);
       setLoading(false);
+      console.log('useStudentClassSchedule: Finished fetching schedules.', schedulesData);
     };
 
     fetchSchedules();
@@ -64,14 +79,17 @@ export const useStudentClassSchedule = (user) => {
 
       for (const classId in schedules) {
         const schedule = schedules[classId];
-        if (!schedule || !schedule.timeSlots || !schedule.timeZone) continue;
+        if (!schedule || !schedule.timeSlots || !schedule.timeZone || !schedule.startDate || !schedule.endDate) continue;
 
-        const { timeSlots, timeZone } = schedule;
+        const { timeSlots, timeZone, startDate, endDate } = schedule;
 
         try {
             // Get current time and day in the target timezone
             const formatter = new Intl.DateTimeFormat('en-US', {
                 timeZone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
                 weekday: 'short',
                 hour: '2-digit',
                 minute: '2-digit',
@@ -81,16 +99,36 @@ export const useStudentClassSchedule = (user) => {
             const currentDay = parts.find(p => p.type === 'weekday')?.value;
             const currentHour = parts.find(p => p.type === 'hour')?.value;
             const currentMinute = parts.find(p => p.type === 'minute')?.value;
+            
+            const year = parts.find(p => p.type === 'year')?.value;
+            const month = parts.find(p => p.type === 'month')?.value;
+            const day = parts.find(p => p.type === 'day')?.value;
+            
+            if(!currentDay || !currentHour || !currentMinute || !year || !month || !day) continue;
 
-            if(!currentDay || !currentHour || !currentMinute) continue;
+            const currentDate = `${year}-${month}-${day}`;
+
+            // Date check
+            if (currentDate < startDate || currentDate > endDate) {
+                continue;
+            }
 
             const currentTime = `${currentHour}:${currentMinute}`;
 
             for (const slot of timeSlots) {
                 if (slot.days.includes(currentDay)) {
-                    if (currentTime >= slot.startTime && currentTime < slot.endTime) {
-                        activeClass = classId;
-                        break;
+                    const { startTime, endTime } = slot;
+                    // Overnight slot
+                    if (startTime > endTime) {
+                        if (currentTime >= startTime || currentTime < endTime) {
+                            activeClass = classId;
+                            break;
+                        }
+                    } else { // Same day slot
+                        if (currentTime >= startTime && currentTime < endTime) {
+                            activeClass = classId;
+                            break;
+                        }
                     }
                 }
             }
@@ -99,6 +137,7 @@ export const useStudentClassSchedule = (user) => {
         }
         if (activeClass) break;
       }
+      // console.log('useStudentClassSchedule: Determined active class:', activeClass);
       setCurrentActiveClassId(activeClass);
     };
 

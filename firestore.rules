@@ -41,7 +41,7 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow read: if isTeacher();
+      allow read: if isTeacher() || isStudentInClass(classId);
       allow create: if request.resource.data.teacherEmails is list &&
                       request.auth.token.email in request.resource.data.teacherEmails &&
                       classId.size() >= 3;
@@ -57,8 +57,8 @@ service cloud.firestore {
       }
 
       match /status/{studentUid} {
-        allow read: if isTeacher();
-        allow write: if isStudentInClass(classId) && request.auth.uid == studentUid;
+        allow read: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow create, write: if isStudentInClass(classId) && request.auth.uid == studentUid;
       }
 
       match /metadata/{docId} {
@@ -66,10 +66,11 @@ service cloud.firestore {
         allow write: if false; // Only backend functions can write
       }
       match /studentProperties/{studentId} {
-        allow read: if isTeacherInClass(classId);
+        allow read: if isTeacherInClass(classId) || request.auth.uid == studentId;
       }
       match /classProperties/{docId} {
-        allow read, write: if isTeacherInClass(classId);
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacherInClass(classId);
       }
     }
 
