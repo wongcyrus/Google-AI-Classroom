@@ -17,8 +17,8 @@ export const useClassSchedule = (classId) => {
   const [schedule, setSchedule] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [selectedLesson, setSelectedLesson] = useState('');
-  const [startTime, setStartTime] = useState(null);
-  const [endTime, setEndTime] = useState(null);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [timezone, setTimezone] = useState('UTC');
 
   useEffect(() => {
@@ -85,12 +85,16 @@ export const useClassSchedule = (classId) => {
   }, [classId]);
 
   const handleLessonChange = (e) => {
-    const selected = lessons.find(l => l.start.toISOString() === e.target.value);
-    if (selected) {
-      setStartTime(toLocalISOString(selected.start));
-      setEndTime(toLocalISOString(selected.end));
-      setSelectedLesson(e.target.value);
-    }
+    const selectedValue = e.target.value;
+    setSelectedLesson(selectedValue);
+
+    if (selectedValue) {
+      const selected = lessons.find(l => l.start.toISOString() === selectedValue);
+      if (selected) {
+        setStartTime(toLocalISOString(selected.start));
+        setEndTime(toLocalISOString(selected.end));
+      }
+    } 
   };
 
   return { schedule, lessons, selectedLesson, startTime, endTime, setStartTime, setEndTime, handleLessonChange, timezone };

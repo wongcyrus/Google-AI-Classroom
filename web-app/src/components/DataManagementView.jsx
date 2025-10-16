@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { db, storage } from '../firebase-config';
+import { db, storage, functions } from '../firebase-config';
 import { doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
 import './SharedViews.css';
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 
-const DataManagementView = ({ classId, startTime, endTime, filterField }) => {
+const DataManagementView = ({ classId, startTime, endTime, filterField, timezone }) => {
   const [selectedZipJobs, setSelectedZipJobs] = useState(new Set());
 
   const { 
@@ -98,7 +98,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField }) => {
     );
     if (!confirmation) return;
 
-    const functions = getFunctions();
+
     const deleteFunction = httpsCallable(functions, 'deleteScreenshotsByDateRange');
 
     try {
@@ -107,6 +107,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField }) => {
         classId,
         startDate: startTime,
         endDate: endTime,
+        timezone: timezone,
       });
       alert(result.data.message);
     } catch (error) {

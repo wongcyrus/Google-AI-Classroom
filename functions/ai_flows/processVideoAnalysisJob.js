@@ -25,7 +25,8 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
         .where('status', '==', 'completed')
         .where('classId', '==', jobData.classId)
         .where(jobData.filterField, '>=', jobData.startTime)
-        .where(jobData.filterField, '<=', jobData.endTime);
+        .where(jobData.filterField, '<=', jobData.endTime)
+        .orderBy(jobData.filterField, 'desc');
       
       const querySnapshot = await q.get();
       querySnapshot.forEach(doc => {
@@ -40,7 +41,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       try {
         const gsUri = `gs://${bucketName}/${video.videoPath}`;
         
-        const { jobId } = await analyzeSingleVideoFlow({
+        const result = await analyzeSingleVideoFlow({
           videoUrl: gsUri,
           prompt: jobData.prompt,
           classId: jobData.classId,
@@ -51,7 +52,11 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
           endTime: jobData.endTime,
         });
 
-        aiJobIds.push(jobId);
+        if (result && result.jobId) {
+          aiJobIds.push(result.jobId);
+        } else {
+          console.warn(`analyzeSingleVideoFlow did not return a jobId for ${video.studentEmail}. Result:`, result);
+        }
       } catch (e) {
         console.error(`Failed to analyze video for ${video.studentEmail}`, e);
         // The error is already logged inside analyzeSingleVideoFlow

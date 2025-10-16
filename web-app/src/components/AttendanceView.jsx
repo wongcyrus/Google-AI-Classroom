@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { db } from '../firebase-config';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { ResponsiveHeatMap } from '@nivo/heatmap';
 import { CSVLink } from 'react-csv';
 
 const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
-
-  const [heatmapData, setHeatmapData] = useState([]);
+  const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [csvData, setCsvData] = useState(null);
   const csvLink = useRef(null);
@@ -21,51 +18,58 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
     return `${year}-${month}-${day}_${hours}-${minutes}`;
   };
 
-    const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
+  const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
 
-  
-
-    useEffect(() => {
+  useEffect(() => {
     if (!selectedLesson || !classId || !startTime || !endTime) return;
 
+    let active = true;
     const fetchAttendanceData = async () => {
       setLoading(true);
       const functions = getFunctions();
       const getAttendanceData = httpsCallable(functions, 'getAttendanceData');
       try {
         const result = await getAttendanceData({ classId, startTime, endTime });
-        setHeatmapData(result.data.heatmapData);
+        if (active) {
+          setAttendanceData(result.data.attendanceData);
+        }
       } catch (error) {
         console.error("Error fetching attendance data: ", error);
-        setHeatmapData([]);
+        if (active) {
+          setAttendanceData([]);
+        }
       }
-      setLoading(false);
+      if (active) {
+        setLoading(false);
+      }
     };
 
     fetchAttendanceData();
+
+    return () => {
+      active = false;
+    };
   }, [selectedLesson, classId, startTime, endTime]);
 
   const handleExportToCSV = () => {
-    if (heatmapData.length === 0) return;
+    if (attendanceData.length === 0) return;
 
-    const lessonDurationInMinutes = heatmapData[0].data.length;
+    const lessonDurationInMinutes = attendanceData[0].attendance.length;
     const headers = [
       { label: "Student Email", key: "email" },
-      { label: "Total Minutes", key: "total" },
+      { label: "Total Minutes", key: "totalMinutes" },
       { label: "Percentage", key: "percentage" },
-      ...Array.from({ length: lessonDurationInMinutes }, (_, i) => ({ label: `Min ${i}`, key: `min${i}` }))
+      ...Array.from({ length: lessonDurationInMinutes }, (_, i) => ({ label: `Min ${i + 1}`, key: `min${i + 1}` }))
     ];
 
-    const data = heatmapData.map(studentData => {
-      const totalMinutes = studentData.data.reduce((sum, d) => sum + d.y, 0);
-      const percentage = ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%';
+    const data = attendanceData.map(studentData => {
       const row = {
-        email: studentData.id,
-        total: totalMinutes,
-        percentage: percentage,
+        email: studentData.email,
+        totalMinutes: studentData.totalMinutes,
+        percentage: studentData.percentage,
       };
-      studentData.data.forEach((d, i) => {
-        row[`min${i}`] = d.y;
+      studentData.attendance.forEach((present, i) => {
+        row[`min${i + 1}`] = present;
       });
       return row;
     });
@@ -83,12 +87,12 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
     }
   }, [csvData]);
 
-  const minuteKeys = Array.from({ length: Math.round((new Date(endTime) - new Date(startTime)) / 60000) }, (_, i) => `${i}`);
+  const minuteKeys = attendanceData.length > 0 ? Array.from({ length: attendanceData[0].attendance.length }, (_, i) => i + 1) : [];
 
   return (
     <div style={{ height: '600px', width: '100%' }}>
       <h2>
-        Attendance Heatmap
+        Attendance
         <button onClick={handleExportToCSV} style={{ marginLeft: '20px' }}>Export to CSV</button>
       </h2>
       {csvData && (
@@ -102,55 +106,42 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
         />
       )}
       {loading && <p>Loading attendance data...</p>}
-      {heatmapData.length > 0 && (
-        <ResponsiveHeatMap
-          data={heatmapData}
-          keys={minuteKeys}
-          indexBy="id"
-          margin={{ top: 100, right: 60, bottom: 60, left: 150 }}
-          minValue={0}
-          maxValue={1}
-          axisTop={{
-            orient: 'top',
-            tickSize: 5,
-            tickPadding: 5,
-            tickRotation: -90,
-            legend: 'Time (minutes)',
-            legendOffset: -50,
-          }}
-          axisRight={null}
-          axisBottom={null}
-          axisLeft={{
-            orient: 'left',
-            tickSize: 5,
-            tickPadding: 5,
-            tickRotation: 0,
-            legend: 'Student',
-            legendPosition: 'middle',
-            legendOffset: -140,
-          }}
-          colors={{ type: 'sequential', scheme: 'greens' }}
-          cellOpacity={1}
-          cellBorderColor={{ from: 'color', modifiers: [['darker', 0.4]] }}
-          labelTextColor={{ from: 'color', modifiers: [['darker', 1.8]] }}
-          defs={[
-            {
-              id: 'lines',
-              type: 'patternLines',
-              background: 'inherit',
-              color: 'rgba(0, 0, 0, 0.1)',
-              rotation: -45,
-              lineWidth: 4,
-              spacing: 7,
-            },
-          ]}
-          fill={[{ id: 'lines' }]}
-          animate={true}
-          motionStiffness={80}
-          motionDamping={9}
-          hoverTarget="cell"
-          cellHoverOthersOpacity={0.25}
-        />
+      {attendanceData.length > 0 && (
+        <div style={{ overflow: 'auto', height: '100%' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Student</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Total Minutes</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Percentage</th>
+                {minuteKeys.map(minute => (
+                  <th key={minute} style={{ border: '1px solid #ddd', padding: '8px', minWidth: '25px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>{minute}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {attendanceData.map(student => (
+                <tr key={student.email}>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.email}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.totalMinutes}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.percentage}</td>
+                  {student.attendance.map((present, index) => (
+                    <td
+                      key={index}
+                      title={`Min ${index + 1}: ${present ? 'Present' : 'Absent'}`}
+                      style={{
+                        border: '1px solid #ddd',
+                        backgroundColor: present ? '#2ECC71' : '#FADBD8',
+                        width: '25px',
+                        height: '25px',
+                      }}
+                    ></td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

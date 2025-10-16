@@ -1,12 +1,13 @@
 import { onCall } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp } from 'firebase-admin/app';
+import { fromZonedTime } from 'date-fns-tz';
 import { CORS_ORIGINS } from './config.js';
 
 initializeApp();
 const db = getFirestore();
 
-export const getAttendanceData = onCall({ cors: CORS_ORIGINS }, async (request) => {
+export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
   const { classId, startTime, endTime } = request.data;
 
   if (!classId || !startTime || !endTime) {
@@ -24,47 +25,64 @@ export const getAttendanceData = onCall({ cors: CORS_ORIGINS }, async (request) 
   const studentsMap = classData.students || {};
   const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
     uid: uid,
-    email: email.replace(/\s/g, ''),
+    email: email.replace(/\s/g, '').toLowerCase(),
   }));
   studentList.sort((a, b) => a.email.localeCompare(b.email));
 
-  const lessonStartTime = new Date(startTime);
-  const lessonEndTime = new Date(endTime);
+  const timeZone = classData.schedule?.timeZone || 'UTC';
+  const lessonStartTime = fromZonedTime(startTime, timeZone);
+  const lessonEndTime = fromZonedTime(endTime, timeZone);
+
   const lessonDurationInMinutes = Math.round((lessonEndTime - lessonStartTime) / 60000);
 
   if (lessonDurationInMinutes <= 0) {
-    return { heatmapData: [] };
+    return { attendanceData: [] };
   }
 
-  const studentEmails = studentList.map(s => s.email);
-  const heatmapData = studentEmails.map(email => ({
-    id: email,
-    data: Array.from({ length: lessonDurationInMinutes }, (_, i) => ({ x: `${i}`, y: 0 }))
-  }));
+  const attendanceMap = new Map(studentList.map(s => [s.email, Array(lessonDurationInMinutes).fill(0)]));
 
-  const screenshotsRef = db.collection('screenshots');
-  const q = screenshotsRef
-    .where('classId', '==', classId)
-    .where('timestamp', '>=', lessonStartTime)
-    .where('timestamp', '<=', lessonEndTime);
+  const CHUNK_SIZE_MINUTES = 15;
+  for (let i = 0; i < lessonDurationInMinutes; i += CHUNK_SIZE_MINUTES) {
+    const chunkStartTime = new Date(lessonStartTime.getTime() + i * 60000);
+    let chunkEndTime = new Date(lessonStartTime.getTime() + (i + CHUNK_SIZE_MINUTES) * 60000);
+    if (chunkEndTime > lessonEndTime) {
+      chunkEndTime = lessonEndTime;
+    }
 
-  const querySnapshot = await q.get();
+    const q = db.collection('screenshots')
+      .where('classId', '==', classId)
+      .where('timestamp', '>=', chunkStartTime)
+      .where('timestamp', '<=', chunkEndTime);
+    
+    const querySnapshot = await q.get();
 
-  querySnapshot.forEach(doc => {
-    const screenshot = doc.data();
-    const studentEmail = screenshot.email.replace(/\s/g, '');
-    const studentIndex = studentEmails.indexOf(studentEmail);
-
-    if (studentIndex !== -1) {
-      const screenshotTime = screenshot.timestamp.toDate();
-      const minuteIndex = Math.floor((screenshotTime - lessonStartTime) / 60000);
-      if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
-        if (heatmapData[studentIndex] && heatmapData[studentIndex].data[minuteIndex]) {
-          heatmapData[studentIndex].data[minuteIndex].y = 1;
+    querySnapshot.forEach(doc => {
+      const screenshot = doc.data();
+      const studentEmail = screenshot.email.replace(/\s/g, '').toLowerCase();
+      const studentAttendance = attendanceMap.get(studentEmail);
+      if (studentAttendance) {
+        const screenshotTime = screenshot.timestamp.toDate();
+        const minuteIndex = Math.floor((screenshotTime - lessonStartTime) / 60000);
+        if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
+          studentAttendance[minuteIndex] = 1;
         }
       }
-    }
+    });
+  }
+
+  const attendanceData = studentList.map(student => {
+    const email = student.email;
+    const attendance = attendanceMap.get(email) || [];
+    const totalMinutes = attendance.reduce((sum, present) => sum + present, 0);
+    const percentage = lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%';
+
+    return {
+      email,
+      totalMinutes,
+      percentage,
+      attendance,
+    };
   });
 
-  return { heatmapData };
+  return { attendanceData };
 });
