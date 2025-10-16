@@ -20,7 +20,11 @@ const PromptForm = ({
     handleSave,
     handleDuplicate,
     handleDelete,
-    activeTab
+    activeTab,
+    handleOptimize,
+    handleUndo,
+    isOptimizing,
+    originalPromptText
 }) => {
 
   const isPublic = selectedPrompt?.accessLevel === 'public';
@@ -110,6 +114,8 @@ const PromptForm = ({
             {!isPublic && <button onClick={handleSave}>{selectedPrompt ? 'Save Changes' : 'Save Prompt'}</button>}
             {selectedPrompt && <button onClick={handleDuplicate} className="secondary-btn">Duplicate</button>}
             {selectedPrompt && !isPublic && <button onClick={handleDelete} className="delete-btn">Delete</button>}
+            <button onClick={handleOptimize} disabled={isOptimizing}>{isOptimizing ? 'Optimizing...' : 'Optimize'}</button>
+            <button onClick={handleUndo} disabled={!originalPromptText} className="secondary-btn">Undo</button>
         </div>
     </div>
   );

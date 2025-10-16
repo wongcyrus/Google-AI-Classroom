@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import "@uiw/react-md-editor/markdown-editor.css";
 import './SharedViews.css';
 import './PromptManagement.css';
-import { db, auth } from '../firebase-config';
+import { db, auth, app } from '../firebase-config';
+import { getAI, getGenerativeModel, VertexAIBackend } from "firebase/ai";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where, getDocs, documentId, limit } from 'firebase/firestore';
+
 
 const promptsCollectionRef = collection(db, 'prompts');
 
@@ -22,6 +24,8 @@ const PromptManagement = () => {
   const [sharedWithUids, setSharedWithUids] = useState([]);
   const [sharedWithUsers, setSharedWithUsers] = useState([]);
   const [emailInput, setEmailInput] = useState('');
+  const [originalPromptText, setOriginalPromptText] = useState('');
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -100,6 +104,8 @@ const PromptManagement = () => {
     setSharedWithUids([]);
     setSharedWithUsers([]);
     setEmailInput('');
+    setOriginalPromptText('');
+    setIsOptimizing(false);
   };
 
   const handleSave = async () => {
@@ -205,6 +211,37 @@ const PromptManagement = () => {
     setSharedWithUsers(sharedWithUsers.filter(user => user.uid !== uidToRemove));
   };
 
+  const handleOptimize = async () => {
+    if (!promptText) return;
+
+    setOriginalPromptText(promptText);
+    setIsOptimizing(true);
+
+    try {
+      const ai = getAI(app, { backend: new VertexAIBackend() });
+      const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+
+      const optimizerPrompt = `You are an expert in crafting effective prompts. Rewrite the following prompt to be more concise, clear, and effective. Return only the rewritten prompt, without any introductory text or explanation. The prompt to rewrite is: "${promptText}"`;
+
+      const result = await model.generateContent(optimizerPrompt);
+      const optimizedText = result.response.text();
+      setPromptText(optimizedText);
+    } catch (error) {
+      console.error("Error optimizing prompt: ", error);
+      alert(`Error optimizing prompt: ${error.message}`);
+      setOriginalPromptText(''); // Clear original text if optimization fails
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const handleUndo = () => {
+    if (originalPromptText) {
+      setPromptText(originalPromptText);
+      setOriginalPromptText('');
+    }
+  };
+
 
 
 
@@ -244,6 +281,10 @@ const PromptManagement = () => {
                 handleDuplicate={handleDuplicate}
                 handleDelete={handleDelete}
                 activeTab={activeTab}
+                handleOptimize={handleOptimize}
+                handleUndo={handleUndo}
+                isOptimizing={isOptimizing}
+                originalPromptText={originalPromptText}
             />
         </div>
     </div>

@@ -40,4 +40,4 @@ if (import.meta.env.DEV) {
   window.auth = auth;
 }
 
-export { auth, db, storage, functions };
+export { auth, db, storage, functions, app };
