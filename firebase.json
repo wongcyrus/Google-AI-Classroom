@@ -35,6 +35,12 @@
       "codebase": "storage-triggers",
       "runtime": "nodejs22",
       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/attendance",
+      "codebase": "attendance",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     }
   ],
   "firestore": {

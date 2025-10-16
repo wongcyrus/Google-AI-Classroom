@@ -17,7 +17,7 @@ const StudentsGrid = ({
     <div className="students-container">
       {reviewTime
         ? classList.sort((a, b) => a.localeCompare(b)).map(studentUid => { // Changed variable name for clarity
-            const email = uidToEmailMap.current.get(studentUid) || studentUid; // Use uidToEmailMap
+            const email = uidToEmailMap.get(studentUid) || studentUid; // Use uidToEmailMap
             const student = { id: studentUid, email };
 
             let screenshotUrl = null;

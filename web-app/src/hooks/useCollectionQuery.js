@@ -106,7 +106,7 @@ const usePaginatedQuery = (collectionPath, {
       setData([]);
       setLoading(false);
     }
-  }, [collectionPath, startTime, endTime, fetchFirstPage]);
+  }, [collectionPath, classId, startTime, endTime, fetchFirstPage]);
 
   return { data, loading, error, page, isLastPage, fetchNextPage, fetchPrevPage, refetch: fetchFirstPage };
 };

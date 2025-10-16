@@ -91,12 +91,17 @@ graph TD
             F_updateStorageDelete["updateStorageUsageOnDelete (onDelete)"]
             F_deleteScreenshots["deleteScreenshotsByDateRange (onCall)"]
         end
+
+        subgraph "Attendance (`attendance`)"
+            F_getAttendanceData["getAttendanceData (onCall)"]
+        end
     end
 
     %% Client to Firebase
     WebApp -- "HTTPS Calls" --> F_analyzeImage
     WebApp -- "HTTPS Calls" --> F_analyzeAllImages
     WebApp -- "HTTPS Calls" --> F_deleteScreenshots
+    WebApp -- "HTTPS Calls" --> F_getAttendanceData
     WebApp -- "Reads/Writes" --> Firestore
     WebApp -- "Uploads" --> Storage
     WebApp -- "Authenticates with" --> Auth

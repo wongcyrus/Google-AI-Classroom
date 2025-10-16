@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ResponsiveHeatMap } from '@nivo/heatmap';
 import { CSVLink } from 'react-csv';
 
 const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
-  const [students, setStudents] = useState([]);
+
   const [heatmapData, setHeatmapData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [csvData, setCsvData] = useState(null);
@@ -21,83 +21,29 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
     return `${year}-${month}-${day}_${hours}-${minutes}`;
   };
 
-  const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
+    const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
 
+  
 
-  useEffect(() => {
-    if (!classId) return;
-
-    const classRef = doc(db, 'classes', classId);
-    const unsubscribe = onSnapshot(classRef, (classSnap) => {
-      if (classSnap.exists()) {
-        const classData = classSnap.data();
-        const studentsMap = classData.students || {};
-        const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
-          uid: uid,
-          email: email.replace(/\s/g, ''),
-        }));
-        studentList.sort((a, b) => a.email.localeCompare(b.email));
-        setStudents(studentList);
-      } else {
-        setStudents([]);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [classId]);
-
-  useEffect(() => {
-    if (!selectedLesson || students.length === 0) return;
+    useEffect(() => {
+    if (!selectedLesson || !classId || !startTime || !endTime) return;
 
     const fetchAttendanceData = async () => {
       setLoading(true);
-      const lessonStartTime = new Date(startTime);
-      const lessonEndTime = new Date(endTime);
-      const lessonDurationInMinutes = Math.round((lessonEndTime - lessonStartTime) / 60000);
-
-      if (lessonDurationInMinutes <= 0) {
+      const functions = getFunctions();
+      const getAttendanceData = httpsCallable(functions, 'getAttendanceData');
+      try {
+        const result = await getAttendanceData({ classId, startTime, endTime });
+        setHeatmapData(result.data.heatmapData);
+      } catch (error) {
+        console.error("Error fetching attendance data: ", error);
         setHeatmapData([]);
-        setLoading(false);
-        return;
       }
-
-      const studentEmails = students.map(s => s.email);
-      const heatmapData = studentEmails.map(email => ({
-        id: email,
-        data: Array.from({ length: lessonDurationInMinutes }, (_, i) => ({ x: `${i}`, y: 0 }))
-      }));
-
-      const screenshotsRef = collection(db, 'screenshots');
-      const q = query(
-        screenshotsRef,
-        where('classId', '==', classId),
-        where('timestamp', '>=', lessonStartTime),
-        where('timestamp', '<=', lessonEndTime)
-      );
-      const querySnapshot = await getDocs(q);
-
-      querySnapshot.forEach(doc => {
-        const screenshot = doc.data();
-        const studentEmail = screenshot.email.replace(/\s/g, '');
-        const studentIndex = studentEmails.indexOf(studentEmail);
-
-        if (studentIndex !== -1) {
-          const screenshotTime = screenshot.timestamp.toDate();
-          const minuteIndex = Math.floor((screenshotTime - lessonStartTime) / 60000);
-          if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
-            if (heatmapData[studentIndex] && heatmapData[studentIndex].data[minuteIndex]) {
-              heatmapData[studentIndex].data[minuteIndex].y = 1;
-            }
-          }
-        }
-      });
-
-      setHeatmapData(heatmapData);
       setLoading(false);
     };
 
     fetchAttendanceData();
-  }, [selectedLesson, students, classId, startTime, endTime]);
+  }, [selectedLesson, classId, startTime, endTime]);
 
   const handleExportToCSV = () => {
     if (heatmapData.length === 0) return;

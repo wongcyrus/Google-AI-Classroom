@@ -42,3 +42,4 @@ functions/auth_triggers/config.js
 functions/media_processing/config.js
 functions/scheduled_tasks/config.js
 functions/storage_triggers/config.js
+functions/attendance/config.js

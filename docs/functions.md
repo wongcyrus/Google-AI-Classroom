@@ -174,3 +174,17 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 
 -   **`classes/{classId}/metadata/storage`**: A document that stores the aggregated storage usage for a class, broken down by file type (screenshots, videos, zips). This is the primary document read from and written to by the storage trigger functions.
 -   **`screenshots`**: This collection is read by the `deleteScreenshotsByDateRange` function to find files to delete. The function also updates documents in this collection to mark them as deleted.
+
+---
+
+## Attendance
+
+This directory contains the Cloud Function for calculating student attendance.
+
+### Functions
+
+#### Callable Functions
+
+-   **`getAttendanceData`**:
+    -   **Trigger**: `onCall` (callable function).
+    -   **Description**: This function calculates the attendance for a given class and time range. It is called by the `AttendanceView` component to offload the heavy computation from the client. It fetches the list of students in the class, queries all the screenshots for that class within the given time range, and constructs a heatmap data structure representing each student's presence for each minute of the lesson. This data is then returned to the client for rendering.

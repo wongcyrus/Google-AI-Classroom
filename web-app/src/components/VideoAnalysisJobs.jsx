@@ -7,6 +7,7 @@ import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoAnalysisJobsTable from './VideoAnalysisJobsTable';
 import AiJobsTable from './AiJobsTable';
+import VideoPlayerModal from './VideoPlayerModal';
 
 
 const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
@@ -14,7 +15,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const [aiJobs, setAiJobs] = useState([]);
   const [aiJobsLoading, setAiJobsLoading] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState(null);
   const [playerLoading, setPlayerLoading] = useState(false);
 
 
@@ -186,32 +187,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     }
   };
 
-  const VideoPlayerModal = () => (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-      backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex',
-      justifyContent: 'center', alignItems: 'center', zIndex: 1050
-    }} onClick={() => setShowPlayer(false)}>
-      <div style={{
-        position: 'relative', padding: '20px', background: 'white',
-        borderRadius: '8px', maxWidth: '90vw', maxHeight: '90vh'
-      }} onClick={e => e.stopPropagation()}>
-        <button onClick={() => setShowPlayer(false)} style={{
-          position: 'absolute', top: '10px', right: '10px',
-          background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer'
-        }}>
-          &times;
-        </button>
-        {playerLoading ? (
-          <p>Loading video...</p>
-        ) : (
-          <video controls autoPlay src={videoUrl} style={{ maxWidth: '100%', maxHeight: '80vh' }}>
-            Your browser does not support the video tag.
-          </video>
-        )}
-      </div>
-    </div>
-  );
+
 
   return (
     <div className="view-container">
