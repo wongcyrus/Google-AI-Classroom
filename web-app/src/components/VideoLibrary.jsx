@@ -338,10 +338,10 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           {editablePromptText.trim() && (
             <>
               <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis}>
-                {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis'}
+                {isRequestingAnalysis ? 'Requesting...' : `Request Analysis for ${selectedVideos.size} Selected`}
               </button>
               <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis}>
-                {isRequestingAnalysis ? 'Requesting...' : 'Request All Analysis'}
+                {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis for the whole class'}
               </button>
             </>
           )}
