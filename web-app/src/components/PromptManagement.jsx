@@ -221,10 +221,87 @@ const PromptManagement = () => {
       const ai = getAI(app, { backend: new VertexAIBackend() });
       const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
 
-      const optimizerPrompt = `You are an expert in crafting effective prompts. Rewrite the following prompt to be more concise, clear, and effective. Return only the rewritten prompt, without any introductory text or explanation. The prompt to rewrite is: "${promptText}"`;
+      const imageOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **image analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
+
+**Rewrite the following user-provided prompt based on these strict guidelines:**
+
+**User's prompt:** "${promptText}"
+
+---
+
+**REWRITING GUIDELINES (incorporating Google's best practices):**
+
+1.  **Role Definition (Persona):** Start with a clear role for the AI (e.g., "You are an AI invigilator," "Act as a senior software engineer").
+
+2.  **Elaboration & Detail:** If the user's prompt is brief (e.g., "check for cheating"), you **MUST** expand it. Infer the user's intent and generate a complete prompt with specific, unambiguous instructions for analyzing a **single screen capture**.
+
+3.  **Structure and Formatting:**
+    *   Use Markdown for clarity (headings, bolding, lists).
+    *   Create a "## Guidelines" or "## Analysis Guidelines" section detailing what the AI should look for in the image.
+    *   Create an "## Action & Response Protocol" or "## Actions" section with a step-by-step list of actions.
+
+4.  **Incorporate Examples (Few-Shot Prompting):** If the task requires a specific output format, style, or pattern, you **MUST** add 1-2 examples to the prompt to guide the model.
+
+5.  **Chain-of-Thought for Complexity:** If the task is complex or requires reasoning, instruct the model to "think step by step" within the action protocol.
+
+6.  **Tool & Output Specification:**
+    *   Clearly specify any tools that **MUST** be called (e.g., \`recordIrregularity\`).
+    *   Define the exact text for final answers in different scenarios (e.g., "If there are no issues, your final answer MUST be the exact text: 'All systems are stable.'").
+    *   Include an "## Output Guidelines" section for formatting rules, like using 'email (uid)' for students.
+
+7.  **Positive Instructions:** Frame instructions positively. Tell the model what to do, not what to avoid (e.g., use "Ensure the summary is one paragraph" instead of "Do not write more than one paragraph").
+
+**Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
+
+      const videoOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **video analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
+
+**Rewrite the following user-provided prompt based on these strict guidelines:**
+
+**User's prompt:** "${promptText}"
+
+---
+
+**REWRITING GUIDELINES (incorporating Google's best practices):**
+
+1.  **Role Definition (Persona):** Start with a clear role for the AI (e.g., "You are an AI invigilator," "Act as a senior software engineer").
+
+2.  **Elaboration & Detail:** If the user's prompt is brief (e.g., "check for cheating"), you **MUST** expand it. Infer the user's intent and generate a complete prompt with specific, unambiguous instructions.
+
+3.  **Structure and Formatting:**
+    *   Use Markdown for clarity (headings, bolding, lists).
+    *   Create a "## Guidelines" or "## Analysis Guidelines" section detailing what the AI should look for.
+    *   Create an "## Action & Response Protocol" or "## Actions" section with a step-by-step list of actions.
+
+4.  **Incorporate Examples (Few-Shot Prompting):** If the task requires a specific output format, style, or pattern, you **MUST** add 1-2 examples to the prompt to guide the model.
+
+5.  **Chain-of-Thought for Complexity:** If the task is complex or requires reasoning, instruct the model to "think step by step" within the action protocol.
+
+6.  **Tool & Output Specification:**
+    *   Clearly specify any tools that **MUST** be called (e.g., \`recordIrregularity\`).
+    *   Define the exact text for final answers in different scenarios (e.g., "If there are no issues, your final answer MUST be the exact text: 'All systems are stable.'").
+    *   Include an "## Output Guidelines" section for formatting rules, like using 'email (uid)' for students.
+
+7.  **Positive Instructions:** Frame instructions positively. Tell the model what to do, not what to avoid (e.g., use "Ensure the summary is one paragraph" instead of "Do not write more than one paragraph").
+
+8.  **Video Context:** You **MUST** include the standard "## Video Context" section about the time-lapse video.
+    *   "## Video Context
+        *   The video is a fast-forwarded time-lapse created from screenshots of the student's screen. It is not a real-time recording.
+        *   A top bar on each frame displays the actual date and time of the screenshot, along with the class and student's email. Use this information for context."
+
+**Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
+
+      const optimizerPrompt = activeTab === 'videos' ? videoOptimizerPrompt : imageOptimizerPrompt;
 
       const result = await model.generateContent(optimizerPrompt);
-      const optimizedText = result.response.text();
+      let optimizedText = result.response.text();
+
+      // Strip markdown code block if present
+      const markdownBlockRegex = /^```markdown\n([\s\S]*?)\n```$/;
+      const match = optimizedText.match(markdownBlockRegex);
+      if (match) {
+        optimizedText = match[1];
+      }
+
       setPromptText(optimizedText);
     } catch (error) {
       console.error("Error optimizing prompt: ", error);

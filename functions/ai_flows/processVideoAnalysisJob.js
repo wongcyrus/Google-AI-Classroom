@@ -7,7 +7,7 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const storage = getStorage();
 
-export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
+export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 3600, concurrency: 1, maxInstances: 50 }, async (event) => {
   const jobDoc = event.data;
   const masterJobId = event.params.jobId;
   const jobData = jobDoc.data();
@@ -35,39 +35,50 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       });
     }
 
-    const aiJobIds = [];
     const bucketName = storage.bucket().name;
-    for (const video of videosToAnalyze) {
-      try {
-        const gsUri = `gs://${bucketName}/${video.videoPath}`;
-        
-        const result = await analyzeSingleVideoFlow({
-          videoUrl: gsUri,
-          prompt: jobData.prompt,
-          classId: jobData.classId,
-          studentUid: video.studentUid,
-          studentEmail: video.studentEmail,
-          masterJobId,
-          startTime: jobData.startTime,
-          endTime: jobData.endTime,
-        });
+    const BATCH_SIZE = 10; // Process 10 videos concurrently
 
-        if (result && result.jobId) {
-          aiJobIds.push(result.jobId);
-        } else {
-          console.warn(`analyzeSingleVideoFlow did not return a jobId for ${video.studentEmail}. Result:`, result);
-        }
-      } catch (e) {
-        console.error(`Failed to analyze video for ${video.studentEmail}`, e);
-        // The error is already logged inside analyzeSingleVideoFlow
+    for (let i = 0; i < videosToAnalyze.length; i += BATCH_SIZE) {
+      const batch = videosToAnalyze.slice(i, i + BATCH_SIZE);
+      
+      const analysisPromises = batch.map(video => {
+        return (async () => {
+          try {
+            const gsUri = `gs://${bucketName}/${video.videoPath}`;
+            
+            const result = await analyzeSingleVideoFlow({
+              videoUrl: gsUri,
+              prompt: jobData.prompt,
+              classId: jobData.classId,
+              studentUid: video.studentUid,
+              studentEmail: video.studentEmail,
+              masterJobId,
+              startTime: jobData.startTime,
+              endTime: jobData.endTime,
+            });
+
+            if (result && result.jobId) {
+              return result.jobId;
+            } else {
+              console.warn(`analyzeSingleVideoFlow did not return a jobId for ${video.studentEmail}. Result:`, result);
+              return null;
+            }
+          } catch (e) {
+            console.error(`Failed to analyze video for ${video.studentEmail}`, e);
+            // The error is already logged inside analyzeSingleVideoFlow
+            return null;
+          }
+        })();
+      });
+
+      const batchResults = await Promise.all(analysisPromises);
+      const validJobIds = batchResults.filter(id => id);
+      if (validJobIds.length > 0) {
+        await db.collection('videoAnalysisJobs').doc(masterJobId).update({
+          aiJobIds: FieldValue.arrayUnion(...validJobIds),
+        });
       }
     }
-
-    await db.collection('videoAnalysisJobs').doc(masterJobId).update({
-      status: 'completed',
-      aiJobIds: aiJobIds,
-      completedAt: FieldValue.serverTimestamp(),
-    });
 
   } catch (error) {
     console.error('Failed to process video analysis job:', error);
