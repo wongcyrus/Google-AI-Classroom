@@ -83,6 +83,7 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
         filterField: 'startTime',
         prompt: afterClassVideoPrompt.promptText,
         status: 'pending',
+        deleted: false,
         createdAt: FieldValue.serverTimestamp(),
       });
     } else {
