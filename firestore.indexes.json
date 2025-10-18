@@ -545,6 +545,34 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "aiJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "promptHash",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "aiJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "masterJobId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, getDocs, documentId, doc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId, doc, writeBatch, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -17,6 +18,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
   const [playerLoading, setPlayerLoading] = useState(false);
+  const [retryLoading, setRetryLoading] = useState(false);
 
 
   const extraClauses = useMemo(() => [{ field: 'deleted', op: '==', value: false }], []);
@@ -24,9 +26,11 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const { 
     data: videoAnalysisJobs, 
     loading: analysisJobsLoading, 
-    isLastPage, 
-    fetchNextPage, 
-    refetch
+    refetch,
+    fetchNextPage,
+    fetchPrevPage,
+    isLastPage,
+    page
   } = usePaginatedQuery('videoAnalysisJobs', {
     classId,
     startTime,
@@ -78,17 +82,37 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   };
 
   const handleAnalysisJobSelect = (job) => {
-    if (selectedAnalysisJob && selectedAnalysisJob.id === job.id) {
-        setSelectedAnalysisJob(null); // Toggle off if clicking the same job
-        setAiJobs([]);
-    } else {
-        setSelectedAnalysisJob(job);
-        if (job.aiJobIds && job.aiJobIds.length > 0) {
-            fetchAiJobs(job.aiJobIds);
-        } else {
-            setAiJobs([]);
-        }
+    const isSameJob = selectedAnalysisJob && selectedAnalysisJob.id === job.id;
+
+    // To refresh, we must fetch the latest job data.
+    // We do this on every selection to ensure data is fresh.
+    setAiJobsLoading(true);
+    if (!isSameJob) {
+      setSelectedAnalysisJob(job); // Optimistic selection for better UX
     }
+
+    const jobRef = doc(db, 'videoAnalysisJobs', job.id);
+    getDoc(jobRef).then(docSnap => {
+      if (docSnap.exists()) {
+        const freshJob = { id: docSnap.id, ...docSnap.data() };
+        setSelectedAnalysisJob(freshJob);
+        if (freshJob.aiJobIds && freshJob.aiJobIds.length > 0) {
+          fetchAiJobs(freshJob.aiJobIds);
+        } else {
+          setAiJobs([]);
+          setAiJobsLoading(false);
+        }
+      } else {
+        alert('Job not found, it may have been deleted.');
+        setSelectedAnalysisJob(null);
+        setAiJobs([]);
+        setAiJobsLoading(false);
+      }
+    }).catch(error => {
+      console.error("Error fetching job:", error);
+      alert('Failed to fetch job details.');
+      setAiJobsLoading(false);
+    });
   };
 
   const handleDeleteAnalysisJob = async (jobId, aiJobIds) => {
@@ -121,6 +145,33 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     } catch (error) {
       console.error("Error deleting analysis job:", error);
       alert(`An error occurred while deleting the job: ${error.message}`);
+    }
+  };
+
+  const handleRetryFailedJobs = async () => {
+    if (!selectedAnalysisJob) return;
+
+    if (!window.confirm(`This will attempt to retry any failed videos for job ${selectedAnalysisJob.id}. The job status will be updated. Continue?`)) {
+      return;
+    }
+
+    setRetryLoading(true);
+
+    try {
+        const functions = getFunctions();
+        const retryer = httpsCallable(functions, 'retryVideoAnalysisJob');
+        
+        const result = await retryer({ jobId: selectedAnalysisJob.id });
+
+        alert(`Successfully started retry. Server response: ${result.data.result}`);
+      
+        refetch();
+
+    } catch (error) {
+        console.error("Error retrying job:", error);
+        alert(`Failed to retry job: ${error.message}`);
+    } finally {
+        setRetryLoading(false);
     }
   };
 
@@ -187,6 +238,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     }
   };
 
+  const hasFailedSubJobs = useMemo(() => aiJobs.some(j => j.status === 'failed'), [aiJobs]);
 
 
   return (
@@ -209,21 +261,45 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
         ) : videoAnalysisJobs.length === 0 ? (
           <p>No analysis jobs found for the selected criteria.</p>
         ) : (
-          <VideoAnalysisJobsTable 
+          <>
+            <VideoAnalysisJobsTable 
             jobs={videoAnalysisJobs} 
             selectedJob={selectedAnalysisJob} 
             onSelectJob={handleAnalysisJobSelect} 
             onDeleteJob={handleDeleteAnalysisJob} 
           />
+          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem' }}>
+            <button onClick={fetchPrevPage} disabled={page <= 1 || analysisJobsLoading}>
+              Previous
+            </button>
+            <span>Page {page}</span>
+            <button onClick={fetchNextPage} disabled={isLastPage || analysisJobsLoading}>
+              Next
+            </button>
+          </div>
+          </>
         )}
 
         {selectedAnalysisJob && (
           <div style={{ marginTop: '30px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3>AI Jobs for Analysis Job: {selectedAnalysisJob.id}</h3>
-                {aiJobs.length > 0 && (
-                    <button onClick={handleExportAiJobs}>Export AI Jobs</button>
-                )}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setSelectedAnalysisJob(null)}>Close</button>
+                  {((
+                    selectedAnalysisJob.status === 'partial_failure' || 
+                    selectedAnalysisJob.status === 'failed'
+                  ) || (
+                    selectedAnalysisJob.status === 'processing' && hasFailedSubJobs
+                  )) && (
+                    <button onClick={handleRetryFailedJobs} disabled={retryLoading}>
+                      {retryLoading ? 'Retrying...' : 'Retry Failed Jobs'}
+                    </button>
+                  )}
+                  {aiJobs.length > 0 && (
+                      <button onClick={handleExportAiJobs}>Export AI Jobs</button>
+                  )}
+                </div>
               </div>
               {aiJobsLoading ? (
                   <p>Loading AI jobs...</p>
@@ -236,12 +312,6 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
         )}
       </>
 
-      <div className="pagination-controls">
-        <button disabled>Previous</button> {/* Previous not implemented */}
-        <button onClick={fetchNextPage} disabled={isLastPage || analysisJobsLoading}>
-          Next
-        </button>
-      </div>
     </div>
   );
 };

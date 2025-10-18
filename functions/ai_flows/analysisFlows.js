@@ -133,6 +133,9 @@ The video was recorded between ${startDate} and ${endDate}.
 Please analyze the video based on the user's prompt: "${prompt}"
 If you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
+    const crypto = await import('crypto');
+    const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
+
     const fullPrompt = [
       { media: { url: videoUrl, contentType: 'video/mp4' } },
       { text: promptText },
@@ -150,6 +153,7 @@ If you mention specific moments in the video, please provide timestamps in the f
         jobType: 'analyzeSingleVideo',
         status: 'blocked-by-quota',
         promptText: fullPrompt.find(p => p.text)?.text,
+        promptHash,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
         masterJobId,
@@ -176,6 +180,7 @@ If you mention specific moments in the video, please provide timestamps in the f
         jobType: 'analyzeSingleVideo',
         status: 'completed',
         promptText: fullPrompt.find(p => p.text)?.text,
+        promptHash,
         mediaPaths: media.map(m => m.media.url),
         usage: {
           inputTokens: usage.inputTokens,
@@ -194,6 +199,7 @@ If you mention specific moments in the video, please provide timestamps in the f
         jobType: 'analyzeSingleVideo',
         status: 'failed',
         promptText: fullPrompt.find(p => p.text)?.text,
+        promptHash,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
         errorDetails: error.message,
