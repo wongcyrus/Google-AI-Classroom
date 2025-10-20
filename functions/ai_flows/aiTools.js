@@ -207,3 +207,173 @@ export const sendMessageToTeacher = ai.defineTool(
     }
   }
 );
+
+export const recordActualWorkingTime = ai.defineTool(
+  {
+    name: 'recordActualWorkingTime',
+    description: "Records the actual working time in minutes for a student for a specific lesson.",
+    inputSchema: z.object({
+      studentUid: z.string().describe('The UID of the student.'),
+      classId: z.string().describe('The ID of the class.'),
+      startTime: z.string().describe('The start time of the lesson, as an ISO 8601 string.'),
+      endTime: z.string().describe('The end time of the lesson, as an ISO 8601 string.'),
+      workingMinutes: z.number().describe('The number of minutes the student was working.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordActualWorkingTime input:', input);
+    const { studentUid, classId, startTime, endTime, workingMinutes } = input;
+    try {
+      const startDate = new Date(startTime);
+      const endDate = new Date(endTime);
+      const lessonStartTimeISO = startDate.toISOString();
+      const lessonEndTimeISO = endDate.toISOString();
+
+      const crypto = await import('crypto');
+      const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+
+      const db = getFirestore();
+      const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+      await db.runTransaction(async (transaction) => {
+        const lessonDoc = await transaction.get(lessonRef);
+        if (!lessonDoc.exists) {
+          transaction.set(lessonRef, {
+            startTime: startDate,
+            endTime: endDate,
+            students: {
+              [studentUid]: {
+                workingMinutes: workingMinutes
+              }
+            }
+          });
+        } else {
+          const studentPath = `students.${studentUid}.workingMinutes`;
+          transaction.update(lessonRef, {
+            [studentPath]: FieldValue.increment(workingMinutes)
+          });
+        }
+      });
+
+      return `Successfully recorded ${workingMinutes} working minutes for student ${studentUid} in lesson.`;
+    } catch (error) {
+      console.error('Error recording actual working time:', error);
+      return `Failed to record actual working time. Error: ${error.message}`;
+    }
+  }
+);
+
+export const recordLessonFeedback = ai.defineTool(
+  {
+    name: 'recordLessonFeedback',
+    description: 'Records feedback for a specific lesson.',
+    inputSchema: z.object({
+      classId: z.string().describe('The ID of the class.'),
+      startTime: z.string().describe('The start time of the lesson, as an ISO 8601 string.'),
+      endTime: z.string().describe('The end time of the lesson, as an ISO 8601 string.'),
+      studentUid: z.string().optional().describe('The UID of the student this feedback is for.'),
+      feedback: z.string().describe('The feedback text.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    const { classId, startTime, endTime, feedback, studentUid } = input;
+    try {
+      const startDate = new Date(startTime);
+      const endDate = new Date(endTime);
+      const lessonStartTimeISO = startDate.toISOString();
+      const lessonEndTimeISO = endDate.toISOString();
+
+      const crypto = await import('crypto');
+      const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+      const db = getFirestore();
+      const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+      await db.runTransaction(async (transaction) => {
+        const lessonDoc = await transaction.get(lessonRef);
+        if (!lessonDoc.exists) {
+            transaction.set(lessonRef, {
+                startTime: startDate,
+                endTime: endDate,
+            });
+        }
+      });
+
+      if (studentUid) {
+        await lessonRef.set({
+            students: {
+                [studentUid]: {
+                    feedback: FieldValue.arrayUnion(feedback)
+                }
+            }
+        }, { merge: true });
+      } else {
+        await lessonRef.set({
+            generalFeedback: FieldValue.arrayUnion(feedback)
+        }, { merge: true });
+      }
+      return `Successfully recorded feedback for lesson.`;
+    } catch (error) {
+      console.error('Error recording lesson feedback:', error);
+      return `Failed to record lesson feedback. Error: ${error.message}`;
+    }
+  }
+);
+
+export const recordLessonSummary = ai.defineTool(
+  {
+    name: 'recordLessonSummary',
+    description: 'Records a summary for a specific lesson.',
+    inputSchema: z.object({
+      classId: z.string().describe('The ID of the class.'),
+      startTime: z.string().describe('The start time of the lesson, as an ISO 8601 string.'),
+      endTime: z.string().describe('The end time of the lesson, as an ISO 8601 string.'),
+      summary: z.string().describe('The summary text.'),
+      studentUid: z.string().optional().describe('The UID of the student this summary is for.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    const { classId, startTime, endTime, summary, studentUid } = input;
+    try {
+      const startDate = new Date(startTime);
+      const endDate = new Date(endTime);
+      const lessonStartTimeISO = startDate.toISOString();
+      const lessonEndTimeISO = endDate.toISOString();
+
+      const crypto = await import('crypto');
+      const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+      const db = getFirestore();
+      const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+      await db.runTransaction(async (transaction) => {
+        const lessonDoc = await transaction.get(lessonRef);
+        if (!lessonDoc.exists) {
+            transaction.set(lessonRef, {
+                startTime: startDate,
+                endTime: endDate,
+            });
+        }
+      });
+
+      if (studentUid) {
+        await lessonRef.set({
+            students: {
+                [studentUid]: {
+                    summary: summary
+                }
+            }
+        }, { merge: true });
+      } else {
+        await lessonRef.set({
+            generalSummary: summary
+        }, { merge: true });
+      }
+      return `Successfully recorded summary for lesson.`;
+    } catch (error) {
+      console.error('Error recording lesson summary:', error);
+      return `Failed to record lesson summary. Error: ${error.message}`;
+    }
+  }
+);

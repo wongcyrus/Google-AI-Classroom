@@ -144,6 +144,7 @@ graph TD
     F_updateStorageDelete -- "Reads/Writes" --> Firestore
     F_deleteScreenshots -- "Reads/Writes" --> Firestore
     F_deleteScreenshots -- "Deletes from" --> Storage
+    F_getAttendanceData -- "Writes" --> Firestore
     F_analyzeImage -- "Calls" --> VertexAI
     F_analyzeImage -- "Writes" --> Firestore
     F_analyzeAllImages -- "Calls" --> VertexAI

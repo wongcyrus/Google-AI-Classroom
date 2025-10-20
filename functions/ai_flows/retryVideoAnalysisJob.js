@@ -139,24 +139,32 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cpu: 2, m
                         const crypto = await import('crypto');
                         const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
 
-                        // Idempotency Check: Reuse existing completed jobs only if they have a valid result.
-                        // NOTE: This query requires a composite index in Firestore on (promptHash, status).
+                        // Idempotency Check: Look for an existing job to prevent duplicates.
                         const existingJobsQuery = db.collection('aiJobs')
                             .where('mediaPaths', 'array-contains', gsUri)
                             .where('promptHash', '==', promptHash)
-                            .where('status', '==', 'completed')
+                            .orderBy('timestamp', 'desc')
                             .limit(1);
-                        
+
                         const existingJobsSnapshot = await existingJobsQuery.get();
 
                         if (!existingJobsSnapshot.empty) {
                             const existingJobDoc = existingJobsSnapshot.docs[0];
                             const existingJobData = existingJobDoc.data();
-                            // Also check that the result is not empty.
-                            if (existingJobData.result) {
+
+                            if (existingJobData.status === 'completed' && existingJobData.result) {
                                 console.log(`Reusing completed job '${existingJobDoc.id}' for video '${video.videoPath}'.`);
                                 return { status: 'success', jobId: existingJobDoc.id };
                             }
+
+                            if (existingJobData.status === 'processing') {
+                                console.log(`Skipping job creation for video '${video.videoPath}' as job '${existingJobDoc.id}' is already processing.`);
+                                return { status: 'success', jobId: existingJobDoc.id }; // Return existing job to monitor
+                            }
+
+                            // For any other status (failed, blocked, etc.), do not create a new job.
+                            console.log(`Skipping job creation for video '${video.videoPath}' as existing job '${existingJobDoc.id}' has a non-actionable status: '${existingJobData.status}'.`);
+                            return { status: 'failure', video: video, error: `Existing job ${existingJobDoc.id} has status '${existingJobData.status}'. Use retry.` };
                         }
 
                         // If no valid existing job, proceed with analysis.

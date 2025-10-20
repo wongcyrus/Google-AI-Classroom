@@ -23,6 +23,6 @@ echo "Building web app..."
 (cd web-app && npm install && npm run build)
 
 echo "Deploying to Firebase..."
-firebase deploy
+FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy
 
 echo "Deployment successful!"

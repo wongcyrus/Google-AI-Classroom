@@ -11,6 +11,24 @@ import { formatInTimeZone } from 'date-fns-tz';
 const db = getFirestore();
 const storage = getStorage();
 
+function getISOString(date) {
+  if (!date) return null;
+  if (typeof date.toDate === 'function') { // Firestore Timestamp
+    return date.toDate().toISOString();
+  }
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  // For strings or other types, try to create a Date object
+  const d = new Date(date);
+  if (!isNaN(d)) {
+    return d.toISOString();
+  }
+  return null;
+}
+
+
+
 export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 1, memory: '2GiB', timeoutSeconds: 3600, concurrency: 1, maxInstances: 5 }, async (event) => {
   const jobDoc = event.data;
   const masterJobId = event.params.jobId;
@@ -67,8 +85,8 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     const classRef = db.collection('classes').doc(jobData.classId);
     const classDoc = await classRef.get();
     const timezone = classDoc.exists ? classDoc.data().schedule?.timeZone || 'UTC' : 'UTC';
-    const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
-    const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
+    const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
+    const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
 
     const promptTemplate = (video) => `The following video is from a student.\nEmail: ${video.studentEmail}\nStudent UID: ${video.studentUid}\nClass ID: ${jobData.classId}\nThe video was recorded between ${startDate} and ${endDate}.\nPlease analyze the video based on the user's prompt: "${jobData.prompt}"\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
@@ -119,24 +137,32 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
             const crypto = await import('crypto');
             const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
 
-            // Idempotency Check: Reuse existing completed jobs only if they have a valid result.
-            // NOTE: This query requires a composite index in Firestore on (promptHash, status).
+            // Idempotency Check: Look for an existing job to prevent duplicates.
             const existingJobsQuery = db.collection('aiJobs')
                 .where('mediaPaths', 'array-contains', gsUri)
                 .where('promptHash', '==', promptHash)
-                .where('status', '==', 'completed')
+                .orderBy('timestamp', 'desc')
                 .limit(1);
-            
+
             const existingJobsSnapshot = await existingJobsQuery.get();
 
             if (!existingJobsSnapshot.empty) {
                 const existingJobDoc = existingJobsSnapshot.docs[0];
                 const existingJobData = existingJobDoc.data();
-                // Also check that the result is not empty.
-                if (existingJobData.result) {
+
+                if (existingJobData.status === 'completed' && existingJobData.result) {
                     console.log(`Reusing completed job '${existingJobDoc.id}' for video '${video.videoPath}'.`);
                     return { status: 'success', jobId: existingJobDoc.id };
                 }
+
+                if (existingJobData.status === 'processing') {
+                    console.log(`Skipping job creation for video '${video.videoPath}' as job '${existingJobDoc.id}' is already processing.`);
+                    return { status: 'success', jobId: existingJobDoc.id }; // Return existing job to monitor
+                }
+
+                // For any other status (failed, blocked, etc.), do not create a new job.
+                console.log(`Skipping job creation for video '${video.videoPath}' as existing job '${existingJobDoc.id}' has a non-actionable status: '${existingJobData.status}'.`);
+                return { status: 'failure', video: video, error: `Existing job ${existingJobDoc.id} has status '${existingJobData.status}'. Use retry.` };
             }
 
             // If no valid existing job, proceed with analysis.
@@ -147,8 +173,8 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
               studentUid: video.studentUid,
               studentEmail: video.studentEmail,
               masterJobId,
-              startTime: jobData.startTime,
-              endTime: jobData.endTime,
+              startTime: getISOString(jobData.startTime),
+              endTime: getISOString(jobData.endTime),
             });
 
             if (result && result.jobId) {

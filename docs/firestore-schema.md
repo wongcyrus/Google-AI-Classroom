@@ -236,6 +236,19 @@ Stores information about each class.
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
 *   **Subcollections**:
+    *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
+        *   **Document ID**: A hash of the lesson's start and end times.
+        *   **Fields**:
+            *   `startTime`: (timestamp) The start time of the lesson.
+            *   `endTime`: (timestamp) The end time of the lesson.
+            *   `generalFeedback`: (array) An array of strings containing AI-generated feedback for the whole class.
+            *   `generalSummary`: (string) An AI-generated summary for the whole class.
+            *   `students`: (map) A map where each key is a `studentUid`.
+                *   `workingMinutes`: (number) AI-estimated working minutes.
+                *   `sharedScreenMinutes`: (number) Minutes calculated from screen sharing.
+                *   `attendance`: (array) A per-minute array of 0s and 1s representing attendance.
+                *   `feedback`: (array) An array of strings containing student-specific AI feedback.
+                *   `summary`: (string) A student-specific AI-generated summary.
     *   **`classProperties`**: Stores class-wide custom properties.
         *   **Document ID**: `config`
         *   **Fields**: A map of custom key-value pairs.

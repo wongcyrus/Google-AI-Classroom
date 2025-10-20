@@ -84,5 +84,42 @@ export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }
     };
   });
 
+  const crypto = await import('crypto');
+  const lessonStartTimeISO = lessonStartTime.toISOString();
+  const lessonEndTimeISO = lessonEndTime.toISOString();
+  const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+  const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const lessonDoc = await transaction.get(lessonRef);
+      if (!lessonDoc.exists) {
+        transaction.set(lessonRef, {
+          startTime: lessonStartTime,
+          endTime: lessonEndTime,
+        });
+      }
+    });
+
+    const batch = db.batch();
+    attendanceData.forEach(data => {
+      const student = studentList.find(s => s.email === data.email);
+      if (student) {
+        batch.set(lessonRef, {
+            students: {
+                [student.uid]: {
+                    sharedScreenMinutes: data.totalMinutes,
+                    attendance: data.attendance
+                }
+            }
+        }, { merge: true });
+      }
+    });
+    await batch.commit();
+  } catch (error) {
+    console.error('Error persisting attendance data:', error);
+    // Decide if you want to throw an error back to the client
+  }
+
   return { attendanceData };
 });

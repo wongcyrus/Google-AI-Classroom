@@ -72,6 +72,10 @@ service cloud.firestore {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacherInClass(classId);
       }
+
+      match /lessons/{lessonId} {
+        allow read, write: if isTeacherInClass(classId);
+      }
     }
 
     match /screenshots/{screenshotId} {

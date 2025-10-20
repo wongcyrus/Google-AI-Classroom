@@ -4,15 +4,19 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis } from './aiTools.js';
+import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
 
 const db = getFirestore();
 
-function getTools() {
+function getToolsForImageAnalysis() {
   return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
+}
+
+function getToolsForVideoAnalysis(withTime = false) {
+  return [recordIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
 }
 
 export const analyzeImageFlow = ai.defineFlow(
@@ -57,7 +61,7 @@ export const analyzeImageFlow = ai.defineFlow(
           temperature: AI_TEMPERATURE,
           topP: AI_TOP_P,
           prompt: fullPrompt,
-          tools: getTools(),
+          tools: getToolsForImageAnalysis(),
           maxToolRoundtrips: 10,
         });
         console.log('AI response usage:', response.usage);
@@ -109,8 +113,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       studentUid: z.string(),
       studentEmail: z.string(),
       masterJobId: z.string().optional(),
-      startTime: z.any(),
-      endTime: z.any(),
+      startTime: z.string({ description: "The start time of the class in ISO 8601 format." }),
+      endTime: z.string({ description: "The end time of the class in ISO 8601 format." }),
     }),
     outputSchema: z.object({
       result: z.string(),
@@ -118,21 +122,12 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     }),
   },
   async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime }) => {
-    const classRef = db.collection('classes').doc(classId);
-    const classDoc = await classRef.get();
-    const timezone = classDoc.exists ? classDoc.data().schedule?.timeZone || 'UTC' : 'UTC';
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
 
-    const startDate = startTime ? formatInTimeZone(startTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
-    const endDate = endTime ? formatInTimeZone(endTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
+    const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nPlease analyze the video based on the user\'s prompt: "${prompt}"\n\nWhen you need to record information about the lesson, use the provided \'Lesson Start Time\' and \'Lesson End Time\' for the \'startTime\' and \'endTime\' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
-    const promptText = `The following video is from a student.
-Email: ${studentEmail}
-Student UID: ${studentUid}
-Class ID: ${classId}
-The video was recorded between ${startDate} and ${endDate}.
-Please analyze the video based on the user's prompt: "${prompt}"
-If you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
-
+  
     const crypto = await import('crypto');
     const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
 
@@ -162,11 +157,13 @@ If you mention specific moments in the video, please provide timestamps in the f
     }
 
     try {
+      const tools = getToolsForVideoAnalysis();
+
       const response = await ai.generate({
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
-        tools: getTools(),
+        tools: tools,
         maxToolRoundtrips: 10,
       });
       console.log('AI response usage:', response.usage);
@@ -258,7 +255,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
-        tools: getTools(),
+        tools: getToolsForImageAnalysis(),
         maxToolRoundtrips,
       });
       console.log('AI response usage:', response.usage);
