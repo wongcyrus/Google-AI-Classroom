@@ -36,10 +36,10 @@ export const sendMessageToStudent = ai.defineTool(
   }
 );
 
-export const recordIrregularity = ai.defineTool(
+export const recordImageIrregularity = ai.defineTool(
   {
-    name: 'recordIrregularity',
-    description: 'Records an irregularity activity.',
+    name: 'recordImageIrregularity',
+    description: 'Records an irregularity activity from an image.',
     inputSchema: z.object({
       studentUid: z.string().describe('The UID of the student.'),
       studentEmail: z.string().describe('The email of the student (denormalized).'),
@@ -51,7 +51,7 @@ export const recordIrregularity = ai.defineTool(
     outputSchema: z.string(),
   },
   async (input) => {
-    console.log('recordIrregularity input:', input);
+    console.log('recordImageIrregularity input:', input);
     const { studentUid, studentEmail, title, message, imageUrl, classId } = input;
     try {
       const db = getFirestore();
@@ -69,14 +69,52 @@ export const recordIrregularity = ai.defineTool(
         email: studentEmail, // Keep email field for compatibility/display
         title,
         message,
+        type: 'image',
         imageUrl: imagePath,
         timestamp: FieldValue.serverTimestamp(),
         classId: classId,
       });
-      return `Successfully recorded irregularity for ${studentEmail}.`;
+      return `Successfully recorded image irregularity for ${studentEmail}.`;
     } catch (error) {
-      console.error('Error recording irregularity:', error);
-      return `Failed to record irregularity for ${studentEmail}. Error: ${error.message}`;
+      console.error('Error recording image irregularity:', error);
+      return `Failed to record image irregularity for ${studentEmail}. Error: ${error.message}`;
+    }
+  }
+);
+
+export const recordVideoIrregularity = ai.defineTool(
+  {
+    name: 'recordVideoIrregularity',
+    description: 'Records an irregularity activity from a video.',
+    inputSchema: z.object({
+      studentUid: z.string().describe('The UID of the student.'),
+      studentEmail: z.string().describe('The email of the student (denormalized).'),
+      title: z.string().describe('The title of the irregularity.'),
+      message: z.string().describe('The description of the irregularity.'),
+      classId: z.string().describe('The ID of the class.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordVideoIrregularity input:', input);
+    const { studentUid, studentEmail, title, message, classId } = input;
+    try {
+      const db = getFirestore();
+      const irregularitiesRef = db.collection('irregularities');
+
+      await irregularitiesRef.add({
+        studentUid,
+        email: studentEmail, // Keep email field for compatibility/display
+        title,
+        message,
+        type: 'video',
+        timestamp: FieldValue.serverTimestamp(),
+        classId: classId,
+      });
+      return `Successfully recorded video irregularity for ${studentEmail}.`;
+    } catch (error) {
+      console.error('Error recording video irregularity:', error);
+      return `Failed to record video irregularity for ${studentEmail}. Error: ${error.message}`;
     }
   }
 );

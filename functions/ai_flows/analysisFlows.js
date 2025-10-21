@@ -2,7 +2,7 @@ import './firebase.js';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary } from './aiTools.js';
+import { sendMessageToStudent, recordImageIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
@@ -10,11 +10,11 @@ import { logJob } from './jobLogger.js';
 
 
 function getToolsForImageAnalysis() {
-  return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
+  return [sendMessageToStudent, recordImageIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
 }
 
 function getToolsForVideoAnalysis() {
-  return [recordIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
+  return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
 }
 
 export const analyzeImageFlow = ai.defineFlow(

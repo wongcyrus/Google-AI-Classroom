@@ -18,7 +18,8 @@ const bucket = storage.bucket();
 export const processZipJob = onDocumentCreated({
   document: 'zipJobs/{jobId}',
   region: FUNCTION_REGION,
-  memory: '1GiB', // Start with 1GiB, can be increased
+  cpu: 2,
+  memory: '8GiB', 
   timeoutSeconds: 540
 }, async (event) => {
   const snap = event.data;
