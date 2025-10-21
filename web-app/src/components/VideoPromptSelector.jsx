@@ -24,7 +24,7 @@ const VideoPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
   }, [prompts, promptFilter, user]);
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
         <label><input type="radio" value="all" name="promptFilter" checked={promptFilter === 'all'} onChange={(e) => setPromptFilter(e.target.value)} /> All</label>
         <label><input type="radio" value="public" name="promptFilter" checked={promptFilter === 'public'} onChange={(e) => setPromptFilter(e.target.value)} /> Public</label>
@@ -49,7 +49,7 @@ const VideoPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
           value={promptText}
           onChange={(e) => onTextChange(e.target.value)}
           placeholder="Select a prompt or enter text here..."
-          style={{ width: '100%', height: '150px', boxSizing: 'border-box' }}
+          style={{ width: '100%', flexGrow: 1, boxSizing: 'border-box', marginTop: '10px' }}
       />
     </div>
   );

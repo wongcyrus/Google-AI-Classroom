@@ -1,6 +1,4 @@
 import './firebase.js';
-import { getFirestore } from 'firebase-admin/firestore';
-import { formatInTimeZone } from 'date-fns-tz';
 import { ai } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
@@ -9,13 +7,13 @@ import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
 
-const db = getFirestore();
+
 
 function getToolsForImageAnalysis() {
   return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
 }
 
-function getToolsForVideoAnalysis(withTime = false) {
+function getToolsForVideoAnalysis() {
   return [recordIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
 }
 
@@ -125,7 +123,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
 
-    const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nPlease analyze the video based on the user\'s prompt: "${prompt}"\n\nWhen you need to record information about the lesson, use the provided \'Lesson Start Time\' and \'Lesson End Time\' for the \'startTime\' and \'endTime\' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
+    const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nPlease analyze the video based on the user's prompt: "${prompt}"\n\nWhen you need to record information about the lesson, use the provided 'Lesson Start Time' and 'Lesson End Time' for the 'startTime' and 'endTime' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
   
     const crypto = await import('crypto');

@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { analyzeSingleVideoFlow } from './analysisFlows.js';
-import { FUNCTION_REGION } from './config.js';
+import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { estimateCost } from './cost.js';
 import { checkQuota } from './quotaManagement.js';
 import { logJob } from './jobLogger.js';
@@ -11,7 +11,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 const db = getFirestore();
 const storage = getStorage();
 
-export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 3600 }, async (request) => {
+export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: CORS_ORIGINS, cpu: 2, memory: '8GiB', timeoutSeconds: 3600 }, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }

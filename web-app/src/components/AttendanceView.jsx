@@ -12,13 +12,43 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [csvData, setCsvData] = useState(null);
   const csvLink = useRef(null);
-  const [combinedData, setCombinedData] = useState([]);
 
   const lessonDurationInMinutes = useMemo(() => {
     if (!startTime || !endTime) return 0;
     const duration = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
     return duration > 0 ? duration : 0;
   }, [startTime, endTime]);
+
+  const combinedData = useMemo(() => {
+    const lessonStudents = lessonData?.students || [];
+    
+    if (attendanceData.length === 0 && lessonStudents.length === 0) {
+        return [];
+    }
+
+    const allStudentEmails = new Set([
+        ...attendanceData.map(s => s.email),
+        ...lessonStudents.map(s => s.email)
+    ]);
+
+    const mergedData = Array.from(allStudentEmails).map(email => {
+        const attStudent = attendanceData.find(s => s.email === email);
+        const lessonStudent = lessonStudents.find(s => s.email === email);
+
+        return {
+            email: email,
+            uid: lessonStudent?.uid || null,
+            totalMinutes: attStudent?.totalMinutes,
+            percentage: attStudent?.percentage,
+            attendance: attStudent?.attendance || Array(lessonDurationInMinutes).fill(0),
+            workingMinutes: lessonStudent?.workingMinutes,
+            summary: lessonStudent?.summary,
+            feedback: lessonStudent?.feedback,
+        };
+    });
+
+    return mergedData;
+  }, [attendanceData, lessonData, lessonDurationInMinutes]);
 
   const formatFilenameDate = (date) => {
     const d = new Date(date);
@@ -110,38 +140,6 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
     fetchLessonData();
   }, [selectedLesson, classId, startTime, endTime, lessonDurationInMinutes]);
 
-  useEffect(() => {
-    const lessonStudents = lessonData?.students || [];
-    
-    if (attendanceData.length === 0 && lessonStudents.length === 0) {
-        setCombinedData([]);
-        return;
-    }
-
-    const allStudentEmails = new Set([
-        ...attendanceData.map(s => s.email),
-        ...lessonStudents.map(s => s.email)
-    ]);
-
-    const mergedData = Array.from(allStudentEmails).map(email => {
-        const attStudent = attendanceData.find(s => s.email === email);
-        const lessonStudent = lessonStudents.find(s => s.email === email);
-
-        return {
-            email: email,
-            uid: lessonStudent?.uid || null,
-            totalMinutes: attStudent?.totalMinutes,
-            percentage: attStudent?.percentage,
-            attendance: attStudent?.attendance || Array(lessonDurationInMinutes).fill(0),
-            workingMinutes: lessonStudent?.workingMinutes,
-            summary: lessonStudent?.summary,
-            feedback: lessonStudent?.feedback,
-        };
-    });
-
-    setCombinedData(mergedData);
-  }, [attendanceData, lessonData, lessonDurationInMinutes]);
-
   const handleExportToCSV = () => {
     if (combinedData.length === 0) return;
 
@@ -159,7 +157,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
     ];
 
     const data = combinedData.map(studentData => {
-      const sanitize = (str) => str ? str.replace(/[,\n]/g, ' ') : '';
+      const sanitize = (str) => str ? str.replace(/,/g, ' ').replace(/\n/g, ' ') : '';
       const row = {
         email: studentData.email,
         totalMinutes: studentData.totalMinutes ?? 'N/A',

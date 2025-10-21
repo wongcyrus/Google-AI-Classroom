@@ -267,13 +267,13 @@ export const recordActualWorkingTime = ai.defineTool(
 export const recordLessonFeedback = ai.defineTool(
   {
     name: 'recordLessonFeedback',
-    description: 'Records feedback for a specific lesson.',
+    description: 'Records a piece of feedback for a specific lesson. Multiple feedbacks can be recorded, and they will be appended to a list.',
     inputSchema: z.object({
       classId: z.string().describe('The ID of the class.'),
       startTime: z.string().describe('The start time of the lesson, as an ISO 8601 string.'),
       endTime: z.string().describe('The end time of the lesson, as an ISO 8601 string.'),
       studentUid: z.string().optional().describe('The UID of the student this feedback is for.'),
-      feedback: z.string().describe('The feedback text.'),
+      feedback: z.string().describe('A piece of feedback text. This will be added to a list of feedbacks.'),
     }),
     outputSchema: z.string(),
   },
@@ -324,18 +324,18 @@ export const recordLessonFeedback = ai.defineTool(
 export const recordLessonSummary = ai.defineTool(
   {
     name: 'recordLessonSummary',
-    description: 'Records a summary for a specific lesson.',
+    description: 'Records a summary for a specific lesson. This will overwrite any existing summary.',
     inputSchema: z.object({
       classId: z.string().describe('The ID of the class.'),
       startTime: z.string().describe('The start time of the lesson, as an ISO 8601 string.'),
       endTime: z.string().describe('The end time of the lesson, as an ISO 8601 string.'),
-      summary: z.string().describe('The summary text.'),
+      feedback: z.string().describe('The summary text.'),
       studentUid: z.string().optional().describe('The UID of the student this summary is for.'),
     }),
     outputSchema: z.string(),
   },
   async (input) => {
-    const { classId, startTime, endTime, summary, studentUid } = input;
+    const { classId, startTime, endTime, feedback, studentUid } = input;
     try {
       const startDate = new Date(startTime);
       const endDate = new Date(endTime);
@@ -361,13 +361,13 @@ export const recordLessonSummary = ai.defineTool(
         await lessonRef.set({
             students: {
                 [studentUid]: {
-                    summary: summary
+                    summary: feedback
                 }
             }
         }, { merge: true });
       } else {
         await lessonRef.set({
-            generalSummary: summary
+            generalSummary: feedback
         }, { merge: true });
       }
       return `Successfully recorded summary for lesson.`;

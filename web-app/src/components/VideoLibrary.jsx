@@ -187,6 +187,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
 
       alert(`Your analysis request for ${videos.length} videos has been submitted. You can find the results in the Data Management view once it is ready.`);
       setSelectedVideos(new Map());
+      setShowPromptModal(false);
 
     } catch (error) {
       console.error('Error creating analysis job:', error);
@@ -224,6 +225,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       });
 
       alert(`Your analysis request for all videos in the selected range has been submitted. You can find the results in the Data Management view once it is ready.`);
+      setShowPromptModal(false);
 
     } catch (error) {
       console.error('Error creating analysis job for all videos:', error);
@@ -317,6 +319,14 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             promptText={editablePromptText}
             onTextChange={setEditablePromptText}
           />
+          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis || !editablePromptText.trim()}>
+                {isRequestingAnalysis ? 'Requesting...' : `Request Analysis for Selected ${selectedVideos.size > 0 ? `(${selectedVideos.size})` : ''}`}
+              </button>
+              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis || !editablePromptText.trim()} style={{ marginLeft: '10px' }}>
+                {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis for the whole class'}
+              </button>
+          </div>
       </Modal>
 
       <div className="view-header">
@@ -329,22 +339,12 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
 
           <button onClick={handleRequestZipForSelected} disabled={selectedVideos.size === 0 || isZipping}>
-            {isZipping ? 'Submitting...' : `Request ${selectedVideos.size} Selected as ZIP`}
+            {isZipping ? 'Submitting...' : `Request Selected as ZIP ${selectedVideos.size > 0 ? `(${selectedVideos.size})` : ''}`}
           </button>
           <button onClick={handleRequestZipForAll} disabled={isZipping}>
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
-          {editablePromptText.trim() && (
-            <>
-              <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis}>
-                {isRequestingAnalysis ? 'Requesting...' : `Request Analysis for ${selectedVideos.size} Selected`}
-              </button>
-              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis}>
-                {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis for the whole class'}
-              </button>
-            </>
-          )}
         </div>
 
         {loading ? (
