@@ -11,6 +11,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   console.log('SessionReviewView rendered for class:', classId);
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
 
   const [sessionData, setSessionData] = useState(null);
   const [notification, setNotification] = useState(null);
@@ -250,9 +251,18 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       </div>
       <div className="actions-container" style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
         <label htmlFor="student-select">Student: </label>
+        <input
+          type="text"
+          placeholder="Search student..."
+          value={studentSearch}
+          onChange={(e) => setStudentSearch(e.target.value)}
+          style={{ marginRight: '10px' }}
+        />
         <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
             <option value="" disabled>Select a student</option>
-            {students.map(student => (
+            {students
+              .filter(student => student.email.toLowerCase().includes(studentSearch.toLowerCase()))
+              .map(student => (
                 <option key={student.uid} value={student.uid}>{student.email}</option>
             ))}
         </select>
