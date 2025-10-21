@@ -8,8 +8,10 @@ export const ai = genkit({
   plugins: [
     vertexAI({
       projectId: process.env.GCLOUD_PROJECT,
-      location: process.env.GCLOUD_LOCATION,
+      location: 'global',
     }),
   ],
   model: vertexAI.model('gemini-2.5-flash'),
 });
+// Global region is known bug.
+// https://github.com/firebase/genkit/issues/3651

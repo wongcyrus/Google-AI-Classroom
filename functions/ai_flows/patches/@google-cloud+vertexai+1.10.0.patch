@@ -1,0 +1,13 @@
+diff --git a/node_modules/@google-cloud/vertexai/build/src/functions/post_request.js b/node_modules/@google-cloud/vertexai/build/src/functions/post_request.js
+index 33ac5ec..65a3cd2 100644
+--- a/node_modules/@google-cloud/vertexai/build/src/functions/post_request.js
++++ b/node_modules/@google-cloud/vertexai/build/src/functions/post_request.js
+@@ -31,7 +31,7 @@ const constants = require("../util/constants");
+  * @ignore
+  */
+ async function postRequest({ region, resourcePath, resourceMethod, token, data, apiEndpoint, requestOptions, apiVersion = 'v1', }) {
+-    const vertexBaseEndpoint = apiEndpoint !== null && apiEndpoint !== void 0 ? apiEndpoint : `${region}-${API_BASE_PATH}`;
++    const vertexBaseEndpoint = apiEndpoint !== null && apiEndpoint !== void 0 ? apiEndpoint : region === 'global' ? API_BASE_PATH : `${region}-${API_BASE_PATH}`;
+     let vertexEndpoint = `https://${vertexBaseEndpoint}/${apiVersion}/${resourcePath}:${resourceMethod}`;
+     // Use server sent events for streamGenerateContent
+     if (resourceMethod === constants.STREAMING_GENERATE_CONTENT_METHOD) {
