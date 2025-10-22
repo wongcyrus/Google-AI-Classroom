@@ -31,7 +31,7 @@ export const useAnalysis = (classId) => {
       setIsAnalyzing(true);
       const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt, classId });
       console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
-      setAnalysisResults(prev => ({ ...prev, 'All Images': result.data }));
+      setAnalysisResults(prev => ({ ...prev, ...result.data }));
     } catch (error) {
       console.error("Error calling analyzeAllImages function: ", error);
     } finally {

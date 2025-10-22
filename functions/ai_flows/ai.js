@@ -8,7 +8,7 @@ export const ai = genkit({
   plugins: [
     vertexAI({
       projectId: process.env.GCLOUD_PROJECT,
-      location: 'global',
+      location: process.env.GCLOUD_LOCATION,
     }),
   ],
   model: vertexAI.model('gemini-2.5-flash'),
