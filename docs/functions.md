@@ -140,14 +140,10 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
     -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour.
     -   **Description**: This function automates the process of creating video compilation jobs after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any of their scheduled time slots have recently concluded. If so, it creates a new `videoJobs` document for each student enrolled in that class session. This, in turn, triggers the `processVideoJob` function to begin compiling the screenshots into a video. It also creates a notification for the teachers of the class to inform them that the process has started.
 
--   **`handleDailyDataCleanup`**:
-    -   **Trigger**: Scheduled daily at 02:00 UTC (`0 2 * * *`).
-    -   **Description**: A time-budgeted data sweeper (8-minute internal safety budget, 500-item chunk batches) that prunes expired screenshot records (`expireAt <= now`) and old completed/failed video jobs (> 30 days old). Prevents container timeouts while ensuring continuous cleanup.
-
 ### Data Models
 
 -   **`classes`**: This function reads class documents to check the `automaticCapture`, `automaticCombine`, and `schedule` properties. It also updates the `isCapturing` flag.
--   **`videoJobs`**: This function creates new documents in this collection to trigger the video processing workflow, and prunes old completed/failed records during daily cleanup.
+-   **`videoJobs`**: This function creates new documents in this collection to trigger the video processing workflow.
 -   **`notifications`**: This function creates documents in this collection to inform teachers that the automatic video combination process has begun.
 
 ---
@@ -164,13 +160,21 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
     -   **Trigger**: `onDocumentDeleted` in `screenshots/{screenshotId}`.
     -   **Description**: Automatically deletes the physical Cloud Storage file referenced by `imagePath` when a screenshot Firestore document is removed (whether by manual UI action, admin script, or Firestore TTL). Prevents dangling orphaned storage blobs.
 
+-   **`onVideoJobDocDeleted`**:
+    -   **Trigger**: `onDocumentDeleted` in `videoJobs/{jobId}`.
+    -   **Description**: Automatically deletes the physical `.mp4` video from Cloud Storage (`videos/{classId}/...`) when a video job document is removed.
+
+-   **`onZipJobDocDeleted`**:
+    -   **Trigger**: `onDocumentDeleted` in `zipJobs/{jobId}`.
+    -   **Description**: Automatically deletes the physical `.zip` archive from Cloud Storage (`zips/{classId}/...`) when a zip export job document is removed.
+
 -   **`onClassDocDeleted`**:
     -   **Trigger**: `onDocumentDeleted` in `classes/{classId}`.
     -   **Description**: Automatically purges all associated Storage folders (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`) when an entire class is deleted.
 
 -   **`onClassRetentionUpdated`**:
     -   **Trigger**: `onDocumentUpdated` in `classes/{classId}`.
-    -   **Description**: Triggered when a teacher modifies `retentionDays` in Class Management. Retroactively recalculates `expireAt` across the class's existing screenshots in 500-item chunks. Immediately deletes screenshots that are now older than the new retention limit.
+    -   **Description**: Triggered when a teacher modifies `retentionDays` or `videoRetentionDays` in Class Management. Retroactively recalculates `expireAt` across the class's existing screenshots and videoJobs in 500-item chunks. Immediately deletes records that are now older than the new retention limit.
 
 #### Storage Triggers
 

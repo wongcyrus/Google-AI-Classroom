@@ -85,18 +85,12 @@ This document provides a comprehensive technical reference for the automated dat
 * **Behavior**:
   * Automatically cascades and purges all storage folders under `screenshots/{classId}/`, `videos/{classId}/`, and `zips/{classId}/`.
 
----
+## ⚡ 3. Real-Time Autonomous TTL Lifecycle
 
-## 🧹 3. Time-Budgeted Daily Sweeper (`functions/scheduled_tasks/`)
-
-### `handleDailyDataCleanup`
-* **Schedule**: `0 2 * * *` (Daily at 02:00 AM UTC)
-* **Timeout Limit**: `timeoutSeconds: 540` (9 minutes - Gen 2 max)
-* **Internal Runtime Budget (`MAX_RUNTIME_MS`)**: `480,000 ms` (8 minutes)
-
-### Why the 8-Minute Safety Budget is Critical:
-* **Prevents Hard Container SIGKILL**: If a function runs up to the strict 540s cutoff, Google Cloud forcefully kills the container, leaving open transactions in an uncertain state and emitting false `TIMEOUT` alerts.
-* **Graceful Exit (60s buffer)**: At 8 minutes, the sweeper cleanly commits any active 500-item batch, logs performance metrics, and exits with `200 OK`. Any leftover backlog is picked up in the next scheduled cycle.
+Since all documents (`screenshots`, `videoJobs`, `zipJobs`) are timestamped with an exact `expireAt` at creation time:
+1. **Firestore TTL** automatically deletes expired documents natively in the background without needing scheduled cron sweepers.
+2. **Deletion Triggers** (`onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted`) immediately catch the document removals and purge physical files from Cloud Storage in real-time.
+3. **No Scheduled Sweeper Overhead**: Eliminates scheduled function invocations, runtime timeouts, and polling queries.
 
 ---
 
