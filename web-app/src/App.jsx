@@ -1,21 +1,43 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { auth, db } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
-import AuthComponent from './components/AuthComponent';
-import TeacherView from './components/TeacherView';
-import StudentView from './components/StudentView';
-import ClassManagement from './components/ClassManagement';
-import MailboxView from './components/MailboxView';
-import EmailDetailView from './components/EmailDetailView';
-import PromptManagement from './components/PromptManagement';
-import ClassView from './components/ClassView';
 import ChangePasswordModal from './components/ChangePasswordModal';
-
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
+
+// Failsafe lazy import: if a dynamic chunk fails to fetch due to a new deployment, auto-reload once
+const lazyWithRetry = (componentImport) =>
+  lazy(async () => {
+    const pageHasBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page-has-been-force-refreshed') || 'false'
+    );
+
+    try {
+      const component = await componentImport();
+      window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
+      return component;
+    } catch (error) {
+      if (!pageHasBeenForceRefreshed) {
+        window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
+        window.location.reload();
+        return { default: () => null };
+      }
+      throw error;
+    }
+  });
+
+// Lazy-loaded route components
+const AuthComponent = lazyWithRetry(() => import('./components/AuthComponent'));
+const TeacherView = lazyWithRetry(() => import('./components/TeacherView'));
+const StudentView = lazyWithRetry(() => import('./components/StudentView'));
+const ClassManagement = lazyWithRetry(() => import('./components/ClassManagement'));
+const MailboxView = lazyWithRetry(() => import('./components/MailboxView'));
+const EmailDetailView = lazyWithRetry(() => import('./components/EmailDetailView'));
+const PromptManagement = lazyWithRetry(() => import('./components/PromptManagement'));
+const ClassView = lazyWithRetry(() => import('./components/ClassView'));
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -54,17 +76,24 @@ const App = () => {
       <div className="app-container">
         {user && <MainHeader onLogout={handleLogout} user={user} role={role} />}
         <main className="main-content">
-          <Routes>
-            <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
-            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
-            <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
-            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
-            <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
-            <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
-            <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
-            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
-            <Route path="*" element={<Navigate to="/login" />} />
-          </Routes>
+          <Suspense fallback={
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '0.75rem', color: '#64748b' }}>
+              <div style={{ width: '32px', height: '32px', border: '3px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: '0.9rem' }}>Loading view...</span>
+            </div>
+          }>
+            <Routes>
+              <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
+              <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
+              <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
+              <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
+              <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
+              <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
+              <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
+              <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
+              <Route path="*" element={<Navigate to="/login" />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </Router>
