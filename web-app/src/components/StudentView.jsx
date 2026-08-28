@@ -208,8 +208,12 @@ const StudentView = ({ user }) => {
             });
             console.log('Firestore: Successfully added screenshot metadata.');
             const statusRef = doc(db, "classes", classId, "status", user.uid);
-            console.log(`Firestore: Updating student status timestamp in ${classId}`);
-            await setDoc(statusRef, { timestamp: serverTimestamp() }, { merge: true });
+            console.log(`Firestore: Updating student status timestamp and latestImagePath in ${classId}`);
+            await setDoc(statusRef, {
+              timestamp: serverTimestamp(),
+              latestImagePath: screenshotRef.fullPath,
+              email: user.email.toLowerCase()
+            }, { merge: true });
             console.log('Firestore: Successfully updated student status.');
           } catch (err) {
             console.error("Firestore: Error during screenshot upload process: ", err);

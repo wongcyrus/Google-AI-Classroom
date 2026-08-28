@@ -80,6 +80,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
   const screenshotsRef = useRef(screenshots);
   useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
+  const urlCacheRef = useRef(new Map());
 
 
 
@@ -251,56 +252,44 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   useEffect(() => {
     if (reviewTime || students.length === 0 || pausedRef.current) return;
 
-    const unsubscribes = students.map(student => {
-      if (student.id === student.email) return () => { };
+    // Consolidate live screenshot URL resolution from single status collection
+    studentStatuses.forEach(async (status) => {
+      const studentUid = status.id;
+      if (!studentUid || !status.latestImagePath) return;
 
-      const screenshotsQuery = query(
-        collection(db, 'screenshots'),
-        where('classId', '==', classId),
-        where('studentUid', '==', student.id),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      );
-
-      return onSnapshot(screenshotsQuery, async (snapshot) => {
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          const screenshotData = doc.data();
-          try {
-            const url = await getDownloadURL(ref(storage, screenshotData.imagePath));
-            setScreenshots(prev => ({
-              ...prev,
-              [student.id]: { url, timestamp: screenshotData.timestamp, imagePath: screenshotData.imagePath }
-            }));
-
-            if (isPerImageAnalysisRunning && isCapturing) {
-              analysisCounterRef.current += 1;
-              if (analysisCounterRef.current % samplingRate === 0) {
-                const screenshotsToAnalyze = { [student.id]: { url: url, email: student.email } };
-                runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
-              }
-            }
-          } catch (error) {
-            console.error("Error getting download URL: ", error);
-            setScreenshots(prev => {
-              const newState = { ...prev };
-              delete newState[student.id];
-              return newState;
-            });
-          } 
-        } else {
-          setScreenshots(prev => {
-            const newState = { ...prev };
-            delete newState[student.id];
-            return newState;
-          });
+      let resolvedUrl = urlCacheRef.current.get(status.latestImagePath);
+      if (!resolvedUrl) {
+        try {
+          resolvedUrl = await getDownloadURL(ref(storage, status.latestImagePath));
+          urlCacheRef.current.set(status.latestImagePath, resolvedUrl);
+        } catch (error) {
+          console.error(`Error getting download URL for ${status.latestImagePath}: `, error);
+          return;
         }
+      }
+
+      setScreenshots(prev => {
+        if (prev[studentUid]?.imagePath === status.latestImagePath) return prev;
+        return {
+          ...prev,
+          [studentUid]: {
+            url: resolvedUrl,
+            timestamp: status.timestamp,
+            imagePath: status.latestImagePath
+          }
+        };
       });
+
+      if (isPerImageAnalysisRunning && isCapturing) {
+        analysisCounterRef.current += 1;
+        if (analysisCounterRef.current % samplingRate === 0) {
+          const studentEmail = uidToEmailMap.get(studentUid) || status.email;
+          const screenshotsToAnalyze = { [studentUid]: { url: resolvedUrl, email: studentEmail } };
+          runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
+        }
+      }
     });
-
-    return () => unsubscribes.forEach(unsub => unsub());
-
-  }, [students, classId, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, reviewTime, editablePromptText]);
+  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, editablePromptText, uidToEmailMap, students.length]);
 
 
 
