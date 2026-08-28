@@ -9,5 +9,9 @@
     "test:functions": "npm --prefix functions/ai_flows test && npm --prefix functions/media_processing test",
     "test:smoke": "node admin/scripts/smoke_test.mjs",
     "test:coverage": "npm --prefix web-app run test:coverage && npm --prefix functions/ai_flows run test:coverage && npm --prefix functions/media_processing run test:coverage && npm run test:smoke"
+  },
+  "devDependencies": {
+    "firebase": "^12.18.0",
+    "firebase-admin": "^14.3.0"
   }
 }
