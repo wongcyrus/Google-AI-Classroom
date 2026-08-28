@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { auth, db } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/firestore";
@@ -12,6 +12,7 @@ import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
 import PromptManagement from './components/PromptManagement';
 import ClassView from './components/ClassView';
+import ChangePasswordModal from './components/ChangePasswordModal';
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -74,7 +75,20 @@ const MainHeader = ({ onLogout, user, role }) => {
   const location = useLocation();
   const [className, setClassName] = useState('');
   const [unreadMailCount, setUnreadMailCount] = useState(0);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showChangePwdModal, setShowChangePwdModal] = useState(false);
+  const menuRef = useRef(null);
   const isClassPage = location.pathname.startsWith('/class/');
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     let classId = null;
@@ -154,14 +168,60 @@ const MainHeader = ({ onLogout, user, role }) => {
           </nav>
         )}
 
-        <div className="header-right">
-          <div className="user-badge">
-            <span>{user.email}</span>
-            <span className="user-role-pill">{role}</span>
+        <div className="header-right" ref={menuRef}>
+          <div 
+            className="user-profile-trigger"
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            role="button"
+            tabIndex={0}
+            title="Account Menu"
+          >
+            <div className="user-badge">
+              <span className="user-email-text">{user.email}</span>
+              <span className="user-role-pill">{role}</span>
+            </div>
+            <span className={`dropdown-arrow ${showProfileMenu ? 'open' : ''}`}>▾</span>
           </div>
-          <button onClick={onLogout} className="logout-btn">Sign Out</button>
+
+          {showProfileMenu && (
+            <div className="user-profile-menu">
+              <div className="profile-menu-header">
+                <span className="profile-menu-email">{user.email}</span>
+                <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
+              </div>
+              <div className="profile-menu-divider" />
+              <button 
+                type="button"
+                className="profile-menu-item"
+                onClick={() => {
+                  setShowProfileMenu(false);
+                  setShowChangePwdModal(true);
+                }}
+              >
+                <span className="menu-item-icon">🔑</span>
+                <span>Change Password</span>
+              </button>
+              <div className="profile-menu-divider" />
+              <button 
+                type="button"
+                className="profile-menu-item profile-menu-logout"
+                onClick={() => {
+                  setShowProfileMenu(false);
+                  onLogout();
+                }}
+              >
+                <span className="menu-item-icon">🚪</span>
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
+
+      <ChangePasswordModal 
+        show={showChangePwdModal} 
+        onClose={() => setShowChangePwdModal(false)} 
+      />
 
       {/* Dynamic Context Breadcrumb for subpages */}
       {role === 'teacher' && location.pathname !== '/teacher' && (

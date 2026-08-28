@@ -100,9 +100,24 @@ body, html, #root {
 }
 
 .header-right {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 1rem;
+}
+
+.user-profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.4rem 0.2rem 0.2rem;
+  border-radius: 24px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.user-profile-trigger:hover {
+  background-color: var(--color-surface-hover, #f1f5f9);
 }
 
 .user-badge {
@@ -110,39 +125,125 @@ body, html, #root {
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.75rem;
-  background-color: var(--color-surface-hover);
-  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-hover, #f8fafc);
+  border: 1px solid var(--color-border, #e2e8f0);
   border-radius: 20px;
   font-size: 0.85rem;
-  color: var(--color-text-main);
+  color: var(--color-text-main, #0f172a);
+}
+
+.user-email-text {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #64748b);
+  transition: transform 0.2s ease;
+  padding-right: 0.25rem;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
 }
 
 .user-role-pill {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  background-color: var(--color-primary-light);
-  color: var(--color-primary);
+  background-color: var(--color-primary-light, #e0e7ff);
+  color: var(--color-primary, #4338ca);
   padding: 0.15rem 0.45rem;
   border-radius: 12px;
 }
 
-.logout-btn {
-  padding: 0.45rem 0.9rem;
-  border-radius: var(--radius-sm);
-  background-color: transparent;
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  font-size: 0.85rem;
-  font-weight: 500;
+/* User Profile Floating Menu */
+.user-profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  background-color: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  padding: 0.4rem;
+  z-index: 1000;
+  animation: menuFadeIn 0.15s ease-out;
 }
 
-.logout-btn:hover {
-  background-color: var(--color-danger-light);
-  color: var(--color-danger);
-  border-color: #fecaca;
-  transform: none;
-  box-shadow: none;
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.profile-menu-header {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.profile-menu-email {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-main, #0f172a);
+  word-break: break-all;
+}
+
+.profile-menu-role {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.profile-menu-divider {
+  height: 1px;
+  background-color: var(--color-border, #e2e8f0);
+  margin: 0.3rem 0;
+}
+
+.profile-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-text-main, #334155);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+
+.profile-menu-item:hover {
+  background-color: var(--color-surface-hover, #f1f5f9);
+  color: var(--color-text-main, #0f172a);
+}
+
+.menu-item-icon {
+  font-size: 1rem;
+}
+
+.profile-menu-logout {
+  color: var(--color-danger, #ef4444);
+}
+
+.profile-menu-logout:hover {
+  background-color: var(--color-danger-light, #fef2f2);
+  color: var(--color-danger, #dc2626);
 }
 
 /* Main Content Area */
