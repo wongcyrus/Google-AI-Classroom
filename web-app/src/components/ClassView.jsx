@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase-config';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 
 // Refactored Imports
 import { useClassSchedule } from '../hooks/useClassSchedule';
@@ -18,15 +18,21 @@ import VideoAnalysisJobs from './VideoAnalysisJobs';
 import DataManagementView from './DataManagementView';
 import PerformanceAnalyticsView from './PerformanceAnalyticsView';
 import AttendanceView from './AttendanceView';
+import ClassManagement from './ClassManagement';
 
 import './ClassView.css';
 
 const ClassView = ({ user }) => {
   const { classId } = useParams();
-  const [mainTab, setMainTab] = useState('monitor');
-  const [videoSubTab, setVideoSubTab] = useState('library');
-  const [analyticsSubTab, setAnalyticsSubTab] = useState('irregularities');
-  const [moreSubTab, setMoreSubTab] = useState('data');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL-synced tab state
+  const mainTab = searchParams.get('tab') || 'monitor';
+  const subTab = searchParams.get('sub') || (mainTab === 'video' ? 'library' : mainTab === 'analytics' ? 'irregularities' : '');
+
+  const [classInfo, setClassInfo] = useState(null);
+  const [teacherClasses, setTeacherClasses] = useState([]);
   const [filterField, setFilterField] = useState('startTime');
 
   // Centralized schedule and date range management
@@ -78,91 +84,251 @@ const ClassView = ({ user }) => {
     return () => unsubscribe();
   }, [user, classId]);
 
+  // Fetch current class details
+  useEffect(() => {
+    if (!classId) return;
+    const classRef = doc(db, 'classes', classId);
+    const unsubscribe = onSnapshot(classRef, (snap) => {
+      if (snap.exists()) {
+        setClassInfo({ id: snap.id, ...snap.data() });
+      } else {
+        setClassInfo(null);
+      }
+    });
+    return () => unsubscribe();
+  }, [classId]);
+
+  // Fetch teacher's enrolled classes for the quick switcher
+  useEffect(() => {
+    if (!user) return;
+    const profileRef = doc(db, 'teacherProfiles', user.uid);
+    getDoc(profileRef).then(async (snap) => {
+      if (snap.exists()) {
+        const classIds = snap.data().classes || [];
+        const snaps = await Promise.all(classIds.map(id => getDoc(doc(db, 'classes', id))));
+        const list = snaps.map(s => ({ id: s.id, name: s.data()?.name || s.id }));
+        list.sort((a, b) => a.id.localeCompare(b.id));
+        setTeacherClasses(list);
+      }
+    }).catch(err => console.error('Error fetching teacher classes:', err));
+  }, [user]);
+
+  // Tab change handlers
+  const setTab = (newMainTab, defaultSub = '') => {
+    const params = { tab: newMainTab };
+    if (newMainTab === 'video') {
+      params.sub = defaultSub || 'library';
+    } else if (newMainTab === 'analytics') {
+      params.sub = defaultSub || 'irregularities';
+    }
+    setSearchParams(params);
+  };
+
+  const setSub = (newSubTab) => {
+    setSearchParams({ tab: mainTab, sub: newSubTab });
+  };
+
+  const handleClassSwitch = (e) => {
+    const targetClassId = e.target.value;
+    if (targetClassId && targetClassId !== classId) {
+      navigate(`/class/${targetClassId}?tab=${mainTab}${subTab ? `&sub=${subTab}` : ''}`);
+    }
+  };
+
   const renderContent = () => {
     const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange, filterField };
     switch (mainTab) {
       case 'monitor':
         return <MonitorView {...props} />;
       case 'video':
-        switch (videoSubTab) {
+        switch (subTab) {
           case 'library': return <VideoLibrary {...props} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
-          default: return null;
+          default: return <VideoLibrary {...props} />;
         }
-              case 'analytics':
-                switch (analyticsSubTab) {
-                  case 'performance': return <PerformanceAnalyticsView {...props} />;
-                  case 'progress': return <ProgressView {...props} />;
-                  case 'irregularities': return <IrregularitiesView {...props} />;
-                  case 'attendance': return <AttendanceView {...props} />;
-                  default: return null;
-                }
-            case 'more':
-              switch (moreSubTab) {
-                case 'data': return <DataManagementView {...props} />;
-                case 'messages': return <MessagesView user={user} classId={classId} />;
-                default: return null;
-              }
-          }
-        };
-      
-        return (
-          <div className="class-view">
-              <div className="tab-nav">
-                  <button className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`} onClick={() => setMainTab('monitor')}>Monitor</button>
-                  <button className={`tab-button ${mainTab === 'video' ? 'active' : ''}`} onClick={() => setMainTab('video')}>Video</button>
-                  <button className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`} onClick={() => setMainTab('analytics')}>Analytics</button>
-                  <button className={`tab-button ${mainTab === 'more' ? 'active' : ''}`} onClick={() => setMainTab('more')}>More</button>
-              </div>
-      
-              <div className="sub-tab-nav">
-              {mainTab === 'video' && (
-                <>
-                  <button className={`tab-button ${videoSubTab === 'library' ? 'active' : ''}`} onClick={() => setVideoSubTab('library')}>Video Library</button>
-                  <button className={`tab-button ${videoSubTab === 'review' ? 'active' : ''}`} onClick={() => setVideoSubTab('review')}>Session Review</button>
-                  <button className={`tab-button ${videoSubTab === 'jobs' ? 'active' : ''}`} onClick={() => setVideoSubTab('jobs')}>Video Analysis Jobs</button>
-                </>
-              )}
-              {mainTab === 'analytics' && (
-                <>
-                  <button className={`tab-button ${analyticsSubTab === 'performance' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('performance')}>Performance</button>
-                  <button className={`tab-button ${analyticsSubTab === 'progress' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('progress')}>Progress</button>
-                  <button className={`tab-button ${analyticsSubTab === 'irregularities' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('irregularities')}>Irregularities</button>
-                  <button className={`tab-button ${analyticsSubTab === 'attendance' ? 'active' : ''}`} onClick={() => setAnalyticsSubTab('attendance')}>Attendance</button>
-                </>
-              )}        {mainTab === 'more' && (
-          <>
-            <button className={`tab-button ${moreSubTab === 'data' ? 'active' : ''}`} onClick={() => setMoreSubTab('data')}>Data Management</button>
-            <button className={`tab-button ${moreSubTab === 'messages' ? 'active' : ''}`} onClick={() => setMoreSubTab('messages')}>Messages</button>
-          </>
-        )}
+      case 'analytics':
+        switch (subTab) {
+          case 'irregularities': return <IrregularitiesView {...props} />;
+          case 'progress': return <ProgressView {...props} />;
+          case 'attendance': return <AttendanceView {...props} />;
+          case 'performance': return <PerformanceAnalyticsView {...props} />;
+          default: return <IrregularitiesView {...props} />;
+        }
+      case 'messages':
+        return <MessagesView user={user} classId={classId} />;
+      case 'data':
+        return <DataManagementView {...props} />;
+      case 'settings':
+        return <ClassManagement user={user} embeddedClassId={classId} />;
+      default:
+        return <MonitorView {...props} />;
+    }
+  };
+
+  const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab);
+
+  return (
+    <div className="class-view">
+      {/* Class Hub Context Banner */}
+      <div className="class-hub-header">
+        <div className="class-hub-title-area">
+          <div className="class-hub-icon">🏫</div>
+          <div>
+            <h1 className="class-hub-title">
+              {classInfo?.name || classId}
+              <span className="class-hub-code-pill">{classId}</span>
+            </h1>
+            <small style={{ color: '#64748b' }}>
+              {classInfo?.students ? `${Object.keys(classInfo.students).length} enrolled students` : 'Active Classroom Hub'}
+            </small>
+          </div>
         </div>
 
-        {mainTab !== 'monitor' && (
-          <div className="shared-date-filter-container" style={{ padding: '10px 20px', borderBottom: '1px solid #ccc' }}>
-            <DateRangeFilter
-              lessons={lessons}
-              selectedLesson={selectedLesson}
-              onLessonChange={handleLessonChange}
-              startTime={startTime}
-              endTime={endTime}
-              onStartTimeChange={setStartTime}
-              onEndTimeChange={setEndTime}
-              timezone={timezone}
-              filterField={filterField}
-              onFilterFieldChange={setFilterField}
-              filterFieldOptions={[
-                { value: 'startTime', label: 'Lesson Start Time' },
-                { value: 'createdAt', label: 'Job Creation Time' },
-              ]}
-            />
+        {teacherClasses.length > 1 && (
+          <div className="class-switcher-wrapper">
+            <label htmlFor="class-switcher" className="class-switcher-label">Switch Class:</label>
+            <select
+              id="class-switcher"
+              value={classId}
+              onChange={handleClassSwitch}
+              className="class-switcher-select"
+            >
+              {teacherClasses.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name ? `${c.name} (${c.id})` : c.id}
+                </option>
+              ))}
+            </select>
           </div>
         )}
+      </div>
 
-        <div className="tab-content">
-            {renderContent()}
+      {/* Primary Workflow Tabs */}
+      <nav className="tab-nav" aria-label="Classroom Sections">
+        <button
+          className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`}
+          onClick={() => setTab('monitor')}
+        >
+          <span>📡</span> Live Monitor
+        </button>
+
+        <button
+          className={`tab-button ${mainTab === 'video' ? 'active' : ''}`}
+          onClick={() => setTab('video', 'library')}
+        >
+          <span>🎬</span> Recordings & Sessions
+        </button>
+
+        <button
+          className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setTab('analytics', 'irregularities')}
+        >
+          <span>📊</span> AI Analytics & Insights
+        </button>
+
+        <button
+          className={`tab-button ${mainTab === 'messages' ? 'active' : ''}`}
+          onClick={() => setTab('messages')}
+        >
+          <span>💬</span> Live Alerts & Messages
+        </button>
+
+        <button
+          className={`tab-button ${mainTab === 'data' ? 'active' : ''}`}
+          onClick={() => setTab('data')}
+        >
+          <span>🗄️</span> Data & Archives
+        </button>
+
+        <button
+          className={`tab-button ${mainTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setTab('settings')}
+        >
+          <span>⚙️</span> Class Settings & Roster
+        </button>
+      </nav>
+
+      {/* Secondary Sub-Tabs for Video Module */}
+      {mainTab === 'video' && (
+        <nav className="sub-tab-nav" aria-label="Video Sub-sections">
+          <button
+            className={`tab-button ${subTab === 'library' ? 'active' : ''}`}
+            onClick={() => setSub('library')}
+          >
+            <span>📁</span> Video Library
+          </button>
+          <button
+            className={`tab-button ${subTab === 'review' ? 'active' : ''}`}
+            onClick={() => setSub('review')}
+          >
+            <span>⏱️</span> Timeline Session Review
+          </button>
+          <button
+            className={`tab-button ${subTab === 'jobs' ? 'active' : ''}`}
+            onClick={() => setSub('jobs')}
+          >
+            <span>🤖</span> AI Video Analysis Jobs
+          </button>
+        </nav>
+      )}
+
+      {/* Secondary Sub-Tabs for Analytics Module */}
+      {mainTab === 'analytics' && (
+        <nav className="sub-tab-nav" aria-label="Analytics Sub-sections">
+          <button
+            className={`tab-button ${subTab === 'irregularities' ? 'active' : ''}`}
+            onClick={() => setSub('irregularities')}
+          >
+            <span>⚠️</span> Irregularities
+          </button>
+          <button
+            className={`tab-button ${subTab === 'progress' ? 'active' : ''}`}
+            onClick={() => setSub('progress')}
+          >
+            <span>📈</span> Progress Summary
+          </button>
+          <button
+            className={`tab-button ${subTab === 'attendance' ? 'active' : ''}`}
+            onClick={() => setSub('attendance')}
+          >
+            <span>📅</span> Attendance
+          </button>
+          <button
+            className={`tab-button ${subTab === 'performance' ? 'active' : ''}`}
+            onClick={() => setSub('performance')}
+          >
+            <span>🎯</span> Performance Metrics
+          </button>
+        </nav>
+      )}
+
+      {/* Shared Date Range Filter */}
+      {showDateFilter && (
+        <div className="shared-date-filter-container">
+          <DateRangeFilter
+            lessons={lessons}
+            selectedLesson={selectedLesson}
+            onLessonChange={handleLessonChange}
+            startTime={startTime}
+            endTime={endTime}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+            timezone={timezone}
+            filterField={filterField}
+            onFilterFieldChange={setFilterField}
+            showFilterField={mainTab === 'video' || mainTab === 'data'}
+            filterFieldOptions={[
+              { value: 'startTime', label: 'Lesson Start Time' },
+              { value: 'createdAt', label: 'Job Creation Time' },
+            ]}
+          />
         </div>
+      )}
+
+      <div className="tab-content">
+        {renderContent()}
+      </div>
     </div>
   );
 };

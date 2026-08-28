@@ -1,105 +1,332 @@
 .teacher-dashboard {
-    padding: 20px;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 2rem;
+  width: 100%;
 }
 
-.dashboard-header {
-    margin-bottom: 30px;
+/* Dashboard Header & Hero */
+.dashboard-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1.5rem;
 }
 
-.dashboard-header h1 {
-    margin: 0 0 5px 0;
+.dashboard-hero-title h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+  margin-bottom: 0.25rem;
 }
 
-.dashboard-header p {
-    margin: 0;
-    color: #666;
-    font-size: 1.1em;
+.dashboard-hero-title p {
+  color: var(--color-text-muted);
+  margin: 0;
+  font-size: 0.95rem;
 }
 
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 30px;
+.dashboard-hero-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
-.dashboard-widget {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.create-class-btn {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
-.dashboard-widget h2 {
-    margin-top: 0;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 10px;
-    margin-bottom: 20px;
+.create-class-btn:hover {
+  background-color: var(--color-primary-hover);
 }
 
-/* Classes Widget */
+/* Stats Overview KPI Grid */
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2.25rem;
+}
+
+.kpi-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.kpi-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.kpi-icon.blue { background-color: var(--color-primary-light); color: var(--color-primary); }
+.kpi-icon.emerald { background-color: var(--color-success-light); color: var(--color-success); }
+.kpi-icon.amber { background-color: var(--color-warning-light); color: var(--color-warning); }
+.kpi-icon.purple { background-color: #f3e8ff; color: #9333ea; }
+
+.kpi-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-main);
+  line-height: 1.1;
+}
+
+.kpi-subtext {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
+}
+
+/* Classes Section Header & Controls */
+.classes-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.classes-section-header h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.classes-search-box {
+  position: relative;
+  min-width: 280px;
+}
+
+.classes-search-box input {
+  width: 100%;
+  padding-left: 2.25rem;
+}
+
+.search-icon-placeholder {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-light);
+  pointer-events: none;
+  font-size: 0.9rem;
+}
+
+/* Class Cards Grid */
 .class-card-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
 }
 
 .class-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.class-card h3 {
-    margin: 0 0 10px 0;
-    font-size: 1.2em;
+.class-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e1;
 }
 
-.class-card p {
-    margin: 0 0 15px 0;
-    color: #555;
-    flex-grow: 1;
+.class-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  gap: 0.75rem;
 }
 
-.view-class-link {
-    display: block;
-    text-align: center;
-    padding: 10px;
-    background-color: #007bff;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    transition: background-color 0.2s;
+.class-card-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-main);
 }
 
-.view-class-link:hover {
-    background-color: #0056b3;
+.student-count-badge {
+  background-color: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
-/* Storage Quota Styles */
-.storage-info {
-    margin-bottom: 15px;
+.class-schedule-preview {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.progress-bar-container {
-    height: 10px;
-    width: 100%;
-    background-color: #e9ecef;
-    border-radius: 5px;
-    margin-bottom: 5px;
+/* Resource Meters */
+.class-resources {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.progress-bar {
-    height: 100%;
-    background-color: #007bff;
-    border-radius: 5px;
-    transition: width 0.5s ease-in-out;
+.meter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 0.35rem;
 }
 
-.storage-text {
-    font-size: 0.8em;
-    color: #666;
-    text-align: center;
-    margin: 0 !important; /* Override other p margins */
+.meter-track {
+  height: 6px;
+  width: 100%;
+  background-color: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
 }
+
+.meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.meter-fill.storage { background-color: #3b82f6; }
+.meter-fill.ai { background-color: #8b5cf6; }
+
+.meter-breakdown {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
+}
+
+/* Quick Action Shortcuts Grid */
+.class-action-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.shortcut-link {
+  padding: 0.45rem 0.65rem;
+  background-color: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-main);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+
+.shortcut-link:hover {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  border-color: #c7d2fe;
+}
+
+.open-workspace-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  background-color: var(--color-primary);
+  color: white;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  margin-top: auto;
+  transition: background-color 0.15s ease;
+}
+
+.open-workspace-btn:hover {
+  background-color: var(--color-primary-hover);
+}
+
+/* Empty State */
+.empty-dashboard-state {
+  background-color: var(--color-surface);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 3.5rem 2rem;
+  text-align: center;
+  max-width: 600px;
+  margin: 2rem auto;
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-dashboard-state h3 {
+  font-size: 1.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.empty-dashboard-state p {
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+

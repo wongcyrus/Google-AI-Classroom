@@ -1,27 +1,31 @@
+import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 
-const admin = require('firebase-admin');
-const serviceAccount = require('../sp.json');
+const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'it114115-dev-2026';
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+initializeApp({ projectId });
+const auth = getAuth();
 
-const emails = ['t-cywong1@stu.vtc.edu.hk']; // Add more emails to this list
+// Add emails to verify here or pass via command line arguments
+const defaultEmails = ['cywong@vtc.edu.hk', 't-cywong@stu.vtc.edu.hk'];
+const emails = process.argv.slice(2).length > 0 ? process.argv.slice(2) : defaultEmails;
 
-emails.forEach(email => {
-  admin.auth().getUserByEmail(email)
-    .then((userRecord) => {
+console.log(`Verifying users on project: ${projectId}`);
+
+Promise.all(
+  emails.map(async (email) => {
+    try {
+      const userRecord = await auth.getUserByEmail(email);
       if (userRecord.emailVerified) {
-        console.log(`Email ${email} is already verified.`);
+        console.log(`✅ Email ${email} is already verified.`);
         return;
       }
-      return admin.auth().updateUser(userRecord.uid, {
-        emailVerified: true
-      }).then(() => {
-        console.log(`Successfully verified email for user: ${email}`);
-      });
-    })
-    .catch((error) => {
-      console.error(`Error verifying user with email ${email}:`, error);
-    });
+      await auth.updateUser(userRecord.uid, { emailVerified: true });
+      console.log(`✅ Successfully verified email for: ${email}`);
+    } catch (error) {
+      console.error(`❌ Error verifying user ${email}:`, error.message);
+    }
+  })
+).then(() => {
+  console.log('Done!');
 });

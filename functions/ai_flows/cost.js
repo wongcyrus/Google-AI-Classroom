@@ -1,7 +1,7 @@
 
-// Pricing for Gemini 1.5 Flash in USD per 1 million tokens
-const INPUT_PRICE_PER_MILLION_TOKENS = 0.35;
-const OUTPUT_PRICE_PER_MILLION_TOKENS = 1.05;
+// Pricing for Gemini 2.5 Flash in USD per 1 million tokens
+const INPUT_PRICE_PER_MILLION_TOKENS = 0.075;
+const OUTPUT_PRICE_PER_MILLION_TOKENS = 0.30;
 
 // A rough estimate of characters per token. This will be refined after research.
 const CHARS_PER_TOKEN_ESTIMATE = 4;

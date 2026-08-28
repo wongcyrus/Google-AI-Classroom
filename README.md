@@ -233,42 +233,40 @@ The `/admin` directory contains scripts for managing user roles and AI prompts.
         node scripts/seed_prompts.js
         ```
 
-## Deployment
+## Deployment & Infrastructure
 
-To deploy the project to Firebase, simply run the deployment script from the project root:
+The project uses a fully automated **Infrastructure-as-Code (Terraform) + Firebase CLI** pipeline with **Zero UI clicks** required.
+
+For complete details on infrastructure, environments, and multi-codebase architecture, see the **[Deployment & Infrastructure Guide](./docs/deployment-and-infrastructure.md)**.
+
+### Quick Start: Provisioning a New Environment
+
+To create and deploy a brand-new project from scratch in a single command:
 
 ```bash
-./deploy.sh
+./setup-new-project.sh <PROJECT_ID> [BILLING_ACCOUNT_ID]
 ```
-
-This script handles all the necessary steps automatically:
-1.  Builds the frontend application.
-2.  Ensures the necessary IAM permissions are granted for Cloud Functions to create signed URLs.
-3.  Deploys all services (Hosting, Functions, Firestore rules, etc.) to Firebase.
-
-**Prerequisites:** Before running the script, make sure you have the [Firebase CLI](https://firebase.google.com/docs/cli) and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated with your project.
-
-### Deployment Best Practices
-
-To ensure stable and predictable deployments, please follow these important configuration practices.
-
-#### 1. Explicitly Define Function Regions
-
-The Firestore database for this project is located in `nam5` (a US multi-region). To prevent trigger failures and minimize latency, all Cloud Functions should be deployed to the `us-central1` region.
-
-You should explicitly set this in the definition of every function.
 
 **Example:**
-```javascript
-// In any function file, e.g., functions/media_processing/processVideoJob.js
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
-
-export const processVideoJob = onDocumentCreated({
-  document: 'videoJobs/{jobId}',
-  region: 'us-central1', // <-- Add this line
-  // ... other options
-}, async (event) => {
-  // ... function body
-});
+```bash
+./setup-new-project.sh it114115-dev-2026 01C74C-667DFE-538DBC
 ```
+
+### Switching & Deploying Routine Updates
+
+- **Deploying to Production (`it114115-2627`):**
+  ```bash
+  firebase use it114115-2627
+  ./deploy.sh
+  ```
+
+- **Deploying to Development (`it114115-dev-2026`):**
+  ```bash
+  firebase use it114115-dev-2026
+  ./deploy.sh
+  ```
+
+### Multi-Codebase Architecture
+
+All Cloud Functions run as Gen 2 serverless functions distributed across **7 isolated codebases** (`ai_flows`, `media_processing`, `auth_triggers`, `storage_triggers`, `scheduled_tasks`, `property_processing`, `attendance`) to ensure high availability, fast builds, and dependency isolation.
 `

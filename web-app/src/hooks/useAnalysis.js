@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase-config';
@@ -15,9 +14,14 @@ export const useAnalysis = (classId) => {
       setIsAnalyzing(true);
       const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt, classId });
       console.log(`[${new Date().toISOString()}] Per-image analysis result for ${Object.keys(screenshotsToAnalyze)}:`, result.data);
-      setAnalysisResults(prev => ({ ...prev, ...result.data }));
+      if (result.data && typeof result.data === 'object') {
+        setAnalysisResults(prev => ({ ...prev, ...result.data }));
+      } else {
+        setAnalysisResults({ result: result.data });
+      }
     } catch (error) {
       console.error("Error calling analyzeImage function: ", error);
+      setAnalysisResults({ error: error.message || 'Analysis failed' });
     } finally {
       setIsAnalyzing(false);
     }
@@ -31,9 +35,14 @@ export const useAnalysis = (classId) => {
       setIsAnalyzing(true);
       const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt, classId });
       console.log(`[${new Date().toISOString()}] All-images analysis result:`, result.data);
-      setAnalysisResults(prev => ({ ...prev, ...result.data }));
+      if (typeof result.data === 'string') {
+        setAnalysisResults({ 'All Students (Class Summary)': result.data });
+      } else if (result.data && typeof result.data === 'object') {
+        setAnalysisResults(prev => ({ ...prev, ...result.data }));
+      }
     } catch (error) {
       console.error("Error calling analyzeAllImages function: ", error);
+      setAnalysisResults({ error: error.message || 'Analysis failed' });
     } finally {
       setIsAnalyzing(false);
     }

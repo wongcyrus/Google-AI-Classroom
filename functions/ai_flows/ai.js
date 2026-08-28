@@ -1,17 +1,16 @@
 import { genkit } from 'genkit';
-import { vertexAI } from '@genkit-ai/vertexai';
+import { vertexAI } from '@genkit-ai/google-genai';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
+import { AI_MODEL } from './config.js';
 
 enableFirebaseTelemetry();
 
 export const ai = genkit({
   plugins: [
     vertexAI({
-      projectId: process.env.GCLOUD_PROJECT,
-      location: process.env.GCLOUD_LOCATION,
+      projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
+      location: process.env.VERTEX_AI_LOCATION || 'asia-southeast1',
     }),
   ],
-  model: vertexAI.model('gemini-2.5-flash'),
+  model: vertexAI.model(AI_MODEL),
 });
-// Global region is known bug.
-// https://github.com/firebase/genkit/issues/3651

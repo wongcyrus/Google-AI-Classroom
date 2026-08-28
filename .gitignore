@@ -1,45 +1,65 @@
 # Dependencies
-**/node_modules
+**/node_modules/
+.pnp
+.pnp.js
 
+# Build artifacts & distribution
+dist/
+build/
+web-app/dist/
 
-# Build artifacts
-/web-app/dist
-
-# Logs
+# Logs & Debug
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+pubsub-debug.log*
 
-# Service account files
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 sp.json
 admin/sp.json
+service-account*.json
+serviceAccountKey.json
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Firebase runtime & cache
+.firebase/
+.firebaserc.local
+.genkit/
 
-# IDE directories
-.idx/
-.idea/
-.vscode/
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/*.tfvars.json
+terraform/.terraform.tfstate.lock.info
+terraform/crash.log
 
-# OS-specific
-.DS_Store
-Thumbs.db
-
-# Firebase cache
-/.firebase
-firebase-debug.log
-web-app/.env.production
-
-# Ignore copied config files in function directories
+# Function copied config files
 functions/ai_flows/config.js
 functions/auth_triggers/config.js
 functions/media_processing/config.js
+functions/property_processing/config.js
 functions/scheduled_tasks/config.js
 functions/storage_triggers/config.js
 functions/attendance/config.js
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+.idx/

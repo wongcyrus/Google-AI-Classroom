@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "ai-invigilator-hkiit"
-  }
+    "default": "it114115-dev-2026"
+  },
+  "targets": {},
+  "etags": {}
 }

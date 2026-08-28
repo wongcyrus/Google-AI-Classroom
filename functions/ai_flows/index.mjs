@@ -6,11 +6,10 @@ import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 
-// Force deployment
 const callOptions = {
   region: FUNCTION_REGION,
   cors: CORS_ORIGINS,
-  enforceAppCheck: true,
+  enforceAppCheck: false,
   memory: '1GiB',
   timeoutSeconds: 180,
 };
@@ -18,14 +17,14 @@ const callOptions = {
 export const analyzeImage = onCallGenkit({
     ...callOptions,    
     authPolicy: (auth) => {
-        return auth?.token?.email_verified && auth?.token?.role === 'teacher';
+        return auth?.token?.role === 'teacher';
     },
 }, analyzeImageFlow);
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.email_verified && auth?.token?.role === 'teacher';
+        return auth?.token?.role === 'teacher';
     },
 }, analyzeAllImagesFlow);
 

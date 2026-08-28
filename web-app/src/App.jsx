@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from "firebase/firestore";
-import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
+import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/firestore";
+import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
 import AuthComponent from './components/AuthComponent';
 import TeacherView from './components/TeacherView';
@@ -12,7 +12,6 @@ import MailboxView from './components/MailboxView';
 import EmailDetailView from './components/EmailDetailView';
 import PromptManagement from './components/PromptManagement';
 import ClassView from './components/ClassView';
-
 
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -40,7 +39,13 @@ const App = () => {
   const handleLogout = () => signOut(auth);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '1rem', color: '#64748b' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <span>Loading workspace...</span>
+      </div>
+    );
   }
 
   return (
@@ -56,9 +61,7 @@ const App = () => {
             <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
             <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
-
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
-
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
         </main>
@@ -70,6 +73,7 @@ const App = () => {
 const MainHeader = ({ onLogout, user, role }) => {
   const location = useLocation();
   const [className, setClassName] = useState('');
+  const [unreadMailCount, setUnreadMailCount] = useState(0);
   const isClassPage = location.pathname.startsWith('/class/');
 
   useEffect(() => {
@@ -85,43 +89,101 @@ const MainHeader = ({ onLogout, user, role }) => {
       const classRef = doc(db, "classes", classId);
       getDoc(classRef).then(docSnap => {
         if (docSnap.exists()) {
-          setClassName(docSnap.data().name);
+          setClassName(docSnap.data().name || classId);
+        } else {
+          setClassName(classId);
         }
-      });
+      }).catch(() => setClassName(classId));
     }
   }, [location.pathname, isClassPage]);
 
-  let title = "Gemini AI Classroom Assistant";
-  if (isClassPage) {
-    const pathParts = location.pathname.split('/');
-    const classId = pathParts.length > 2 ? pathParts[2] : '';
-    title = `Class: ${className || classId}`;
-  } else if (role === 'student') {
-    title = `Student Dashboard`;
-  }
-  
+  // Listen for unread mails for teacher
+  useEffect(() => {
+    if (!user || role !== 'teacher') return;
+    const q = query(
+      collection(db, 'mails'),
+      where('to', '==', user.email),
+      where('read', '==', false)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadMailCount(snapshot.size);
+    }, (err) => console.error("Mail listener error:", err));
+    return () => unsubscribe();
+  }, [user, role]);
+
   return (
+    <>
       <header className="main-header">
-          <div className="header-left">
-              <img src={hkiitLogo} alt="HKIIT Logo" style={{ height: '40px' }} />
-              <span className="header-title">{title}</span>
+        <div className="header-left">
+          <Link to={role === 'teacher' ? '/teacher' : '/student'} className="brand-link">
+            <img src={hkiitLogo} alt="HKIIT Logo" className="header-logo-img" />
+            <div className="header-title-wrapper">
+              <span className="header-title">Gemini AI Classroom</span>
+              <span className="header-subtitle">Intelligent Teaching Assistant</span>
+            </div>
+          </Link>
+        </div>
+
+        {role === 'teacher' && (
+          <nav className="teacher-main-nav">
+            <NavLink to="/teacher" end>
+              <span>📊 Dashboard</span>
+            </NavLink>
+            <NavLink to="/class-management">
+              <span>⚙️ Class Manager</span>
+            </NavLink>
+            <NavLink to="/mailbox">
+              <span>📬 Mailbox</span>
+              {unreadMailCount > 0 && (
+                <span style={{
+                  background: '#ef4444',
+                  color: 'white',
+                  borderRadius: '10px',
+                  padding: '1px 6px',
+                  fontSize: '0.7rem',
+                  fontWeight: 'bold',
+                  marginLeft: '2px'
+                }}>
+                  {unreadMailCount}
+                </span>
+              )}
+            </NavLink>
+            <NavLink to="/manage-prompts">
+              <span>💡 AI Prompts</span>
+            </NavLink>
+          </nav>
+        )}
+
+        <div className="header-right">
+          <div className="user-badge">
+            <span>{user.email}</span>
+            <span className="user-role-pill">{role}</span>
           </div>
-          {role === 'teacher' && (
-            <nav className="teacher-main-nav">
-                <NavLink to="/teacher" end>Dashboard</NavLink>
-                <NavLink to="/class-management">Class Management</NavLink>
-                <NavLink to="/mailbox">Mailbox</NavLink>
-                <NavLink to="/manage-prompts">Manage Prompts</NavLink>
-            </nav>
-          )}
-          <div className="header-right">
-              {user && role === 'student' && <span style={{margin: "0 10px"}}>{user.email}</span>}
-              <button onClick={onLogout} className="logout-btn">Logout</button>
-          </div>
+          <button onClick={onLogout} className="logout-btn">Sign Out</button>
+        </div>
       </header>
+
+      {/* Dynamic Context Breadcrumb for subpages */}
+      {role === 'teacher' && location.pathname !== '/teacher' && (
+        <div className="breadcrumb-bar">
+          <Link to="/teacher">Dashboard</Link>
+          <span className="breadcrumb-separator">/</span>
+          {isClassPage ? (
+            <>
+              <span className="breadcrumb-current">Class: {className || 'Loading...'}</span>
+            </>
+          ) : location.pathname.startsWith('/class-management') ? (
+            <span className="breadcrumb-current">Class Management</span>
+          ) : location.pathname.startsWith('/mailbox') ? (
+            <span className="breadcrumb-current">Mailbox</span>
+          ) : location.pathname.startsWith('/manage-prompts') ? (
+            <span className="breadcrumb-current">Prompt Management</span>
+          ) : null}
+        </div>
+      )}
+    </>
   );
-}
-
-
+};
 
 export default App;
+

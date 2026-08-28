@@ -5,19 +5,19 @@ import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
 import Modal from './Modal';
 import CustomPropertiesManager from './CustomPropertiesManager';
-
 import ScheduleManager from './ScheduleManager';
 
-const ClassManagement = ({ user }) => {
-  const [classId, setClassId] = useState('');
+const ClassManagement = ({ user, embeddedClassId }) => {
+  const [classId, setClassId] = useState(embeddedClassId || '');
+  const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [classes, setClasses] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedClass, setSelectedClass] = useState(embeddedClassId || null);
 
-  // New state for class details
+  // Class settings state
   const [storageLimit, setStorageLimit] = useState('5'); // In GB
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
@@ -34,19 +34,24 @@ const ClassManagement = ({ user }) => {
   // Temp state for modal editing
   const [modalPrompt, setModalPrompt] = useState(null);
   const [modalPromptText, setModalPromptText] = useState('');
-
-
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (embeddedClassId) {
+      setSelectedClass(embeddedClassId);
+      setClassId(embeddedClassId);
+    }
+  }, [embeddedClassId]);
+
+  useEffect(() => {
+    if (!user || embeddedClassId) return;
 
     const userProfileRef = doc(db, "teacherProfiles", user.uid);
     const unsubscribe = onSnapshot(userProfileRef, (profileSnap) => {
       if (profileSnap.exists()) {
         const profileData = profileSnap.data();
         const classIds = profileData.classes || [];
-        const classesData = classIds.map(id => ({ id })); // We only need the IDs for the dropdown
-        console.log('Fetched classes:', classesData);
+        const classesData = classIds.map(id => ({ id }));
         setClasses(classesData);
       } else {
         setClasses([]);
@@ -54,16 +59,18 @@ const ClassManagement = ({ user }) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, embeddedClassId]);
 
   useEffect(() => {
     const fetchClassDetails = async () => {
-      if (selectedClass) {
-        const classRef = doc(db, 'classes', selectedClass);
+      const activeId = embeddedClassId || selectedClass;
+      if (activeId) {
+        const classRef = doc(db, 'classes', activeId);
         const classSnap = await getDoc(classRef);
         if (classSnap.exists()) {
           const classData = classSnap.data();
-          setClassId(selectedClass);
+          setClassId(activeId);
+          setClassName(classData.name || '');
           if (classData.storageQuota) {
             setStorageLimit((classData.storageQuota / (1024 * 1024 * 1024)).toString());
           } else {
@@ -97,13 +104,17 @@ const ClassManagement = ({ user }) => {
           }
           setAutomaticCapture(classData.automaticCapture || false);
           setAutomaticCombine(classData.automaticCombine || false);
+          setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
         } else {
-            alert(`Could not find data for class: ${selectedClass}. It might have been deleted.`);
-            setSelectedClass(null); // This will trigger a re-render and run the outer else block.
+          if (!embeddedClassId) {
+            alert(`Could not find data for class: ${activeId}.`);
+            setSelectedClass(null);
+          }
         }
       } else {
         // Reset form if no class is selected
         setClassId('');
+        setClassName('');
         setStorageLimit('5');
         setScheduleStartDate('');
         setScheduleEndDate('');
@@ -114,17 +125,11 @@ const ClassManagement = ({ user }) => {
         setIpRestrictions('');
         setAutomaticCapture(false);
         setAutomaticCombine(false);
-
+        setAfterClassVideoPrompt(null);
       }
     };
     fetchClassDetails();
-  }, [selectedClass]);
-
-
-
-
-
-
+  }, [selectedClass, embeddedClassId]);
 
   const validateClassId = (id) => {
     if (!id || id.trim().length === 0) {
@@ -136,7 +141,6 @@ const ClassManagement = ({ user }) => {
     if (id.length > 100) {
       return 'Class ID is too long.';
     }
-    // Firestore document IDs must not contain slashes.
     if (id.includes('/')) {
       return 'Class ID cannot contain slashes.';
     }
@@ -144,13 +148,13 @@ const ClassManagement = ({ user }) => {
   };
 
   const handleUpdateClass = async () => {
-    const validationError = validateClassId(classId);
+    const targetClassId = (classId || '').trim().toLowerCase();
+    const validationError = validateClassId(targetClassId);
     if (validationError) {
       setError(validationError);
       return;
     }
 
-    // Validate that the end date is not before the start date
     if (scheduleStartDate && scheduleEndDate && scheduleEndDate < scheduleStartDate) {
       setError('Schedule end date cannot be before the start date.');
       return;
@@ -165,19 +169,21 @@ const ClassManagement = ({ user }) => {
       setError('You must be logged in to manage classes.');
       return;
     }
-    setError(null); // Clear previous errors
-    setSuccessMessage(''); // Clear previous success messages
 
-    const classRef = doc(db, 'classes', classId);
+    setError(null);
+    setSuccessMessage('');
+    setSaving(true);
+
+    const classRef = doc(db, 'classes', targetClassId);
     const classSnap = await getDoc(classRef);
     const studentEmailList = studentEmails
-      .split(/[\n,]+/) // Corrected regex for splitting by newline or comma
+      .split(/[\n,]+/)
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
     
     const teacherEmailList = teacherEmails
       .replace(/\n/g, ' ')
-      .split(/[, ]+/) // Corrected regex for splitting by comma or space
+      .split(/[, ]+/)
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
 
@@ -186,11 +192,11 @@ const ClassManagement = ({ user }) => {
 
     try {
       if (classSnap.exists()) {
-        // The class exists, so we update it.
         const updatedTeachers = [auth.currentUser.email, ...teacherEmailList];
         const uniqueTeachers = [...new Set(updatedTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
 
         const updateData = {
+          name: className.trim() || targetClassId,
           storageQuota: storageQuotaBytes,
           schedule: {
             startDate: scheduleStartDate,
@@ -203,16 +209,16 @@ const ClassManagement = ({ user }) => {
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
-          afterClassVideoPrompt,
+          afterClassVideoPrompt: afterClassVideoPrompt || null,
         };
         await updateDoc(classRef, updateData);
-        setSuccessMessage('Successfully updated the class!');
+        setSuccessMessage('Class settings successfully updated!');
       } else {
-        // The class does not exist, so create it with the current user as the teacher.
         const initialTeachers = [auth.currentUser.email, ...teacherEmailList];
         const uniqueTeachers = [...new Set(initialTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
 
         await setDoc(classRef, {
+          name: className.trim() || targetClassId,
           teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
           storageQuota: storageQuotaBytes,
@@ -222,45 +228,47 @@ const ClassManagement = ({ user }) => {
             timeZone: timeZone,
             timeSlots: classSchedules,
           },
-          storageUsage: 0, // Initialize storage usage
+          storageUsage: 0,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
-          afterClassVideoPrompt,
-          aiQuota: 10, // Default AI Quota
-          aiUsedQuota: 0, // Initialize AI Quota Usage
+          afterClassVideoPrompt: afterClassVideoPrompt || null,
+          aiQuota: 10,
+          aiUsedQuota: 0,
         });
 
-        setSuccessMessage('Successfully created the class!');
-        // Optimistically update the UI with the new class
-        setClasses(prevClasses => [...prevClasses, { id: classId }]);
-        setSelectedClass(classId); // Automatically select the new class
+        setSuccessMessage('Class successfully created!');
+        if (!embeddedClassId) {
+          setClasses(prev => [...prev, { id: targetClassId }]);
+          setSelectedClass(targetClassId);
+        }
       }
-    } catch (error) {
-      console.error('Error updating or creating class: ', error);
-      setError(error.message);
+    } catch (err) {
+      console.error('Error updating or creating class:', err);
+      setError(err.message || 'Failed to save class.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDeleteClass = async () => {
-    if (!selectedClass) {
+    const activeId = embeddedClassId || selectedClass;
+    if (!activeId) {
       alert('Please select a class to delete.');
       return;
     }
 
-    if (confirm('Are you sure you want to delete the class ' + selectedClass + '? This action cannot be undone.')) {
+    if (window.confirm(`Are you sure you want to delete class "${activeId}"? This action cannot be undone.`)) {
       try {
-        const classRef = doc(db, 'classes', selectedClass);
+        const classRef = doc(db, 'classes', activeId);
         await deleteDoc(classRef);
-
-        // Note: The cleanup of the student's class subcollection is removed for now
-        // to prevent crashes and will be addressed in a future update.
-
-        setSelectedClass(null); // Reset selection
-        console.log('Class deleted successfully.');
-      } catch (error) {
-        console.error('Error deleting class: ', error);
-        alert('Error deleting class: ' + error.message);
+        alert('Class deleted successfully.');
+        if (!embeddedClassId) {
+          setSelectedClass(null);
+        }
+      } catch (err) {
+        console.error('Error deleting class:', err);
+        alert('Error deleting class: ' + err.message);
       }
     }
   };
@@ -273,158 +281,256 @@ const ClassManagement = ({ user }) => {
 
   const handleSetPrompt = () => {
     if (modalPrompt) {
-        const isModified = modalPrompt.promptText !== modalPromptText;
-        const finalPrompt = {
-            ...modalPrompt,
-            promptText: modalPromptText,
-            name: isModified && modalPrompt.name ? `${modalPrompt.name} (Customized)` : (modalPrompt.name || 'Custom Prompt'),
-            originalId: modalPrompt.id || modalPrompt.originalId,
-        };
-        if (finalPrompt.id) delete finalPrompt.id;
-        setAfterClassVideoPrompt(finalPrompt);
+      const isModified = modalPrompt.promptText !== modalPromptText;
+      const finalPrompt = {
+        ...modalPrompt,
+        promptText: modalPromptText,
+        name: isModified && modalPrompt.name ? `${modalPrompt.name} (Customized)` : (modalPrompt.name || 'Custom Prompt'),
+        originalId: modalPrompt.id || modalPrompt.originalId,
+      };
+      if (finalPrompt.id) delete finalPrompt.id;
+      setAfterClassVideoPrompt(finalPrompt);
     } else if (modalPromptText.trim()) {
-        setAfterClassVideoPrompt({
-            name: 'Custom Prompt',
-            promptText: modalPromptText,
-            category: 'videos',
-        });
+      setAfterClassVideoPrompt({
+        name: 'Custom Prompt',
+        promptText: modalPromptText,
+        category: 'videos',
+      });
     } else {
-        setAfterClassVideoPrompt(null);
+      setAfterClassVideoPrompt(null);
     }
     setShowPromptModal(false);
   };
 
-
-
   return (
     <div className="class-management-container">
-      <Modal show={showPromptModal} onClose={() => setShowPromptModal(false)} title="Set After Class Video Prompt">
-          <VideoPromptSelector
-              user={user}
-              selectedPrompt={modalPrompt}
-              onSelectPrompt={(p) => {
-                setModalPrompt(p);
-                setModalPromptText(p ? p.promptText : '');
-              }}
-              promptText={modalPromptText}
-              onTextChange={setModalPromptText}
-          />
-          <button onClick={handleSetPrompt}>Set Prompt</button>
-          <button onClick={() => { setAfterClassVideoPrompt(null); setShowPromptModal(false); }} style={{marginLeft: '10px'}}>Clear and Close</button>
+      {/* Video Prompt Modal */}
+      <Modal show={showPromptModal} onClose={() => setShowPromptModal(false)} title="Select After-Class Video Prompt">
+        <VideoPromptSelector
+          user={user}
+          selectedPrompt={modalPrompt}
+          onSelectPrompt={(p) => {
+            setModalPrompt(p);
+            setModalPromptText(p ? p.promptText : '');
+          }}
+          promptText={modalPromptText}
+          onTextChange={setModalPromptText}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button type="button" className="secondary-btn" onClick={() => { setAfterClassVideoPrompt(null); setShowPromptModal(false); }}>
+            Clear Prompt
+          </button>
+          <button type="button" onClick={handleSetPrompt}>
+            Save Prompt Selection
+          </button>
+        </div>
       </Modal>
 
-      <h2>Class Management</h2>
+      {!embeddedClassId && (
+        <div className="class-management-header">
+          <h2>Class Management & Configuration</h2>
+        </div>
+      )}
 
-      <h3>Select a Class to Manage or Create a New One</h3>
-      <select onChange={(e) => setSelectedClass(e.target.value)} value={selectedClass || ''}>
-        <option value="" disabled>Select a class to edit</option>
-        {classes.map(c => (
-          <option key={c.id} value={c.id}>{c.id}</option>
-        ))}
-      </select>
-      <p>Or, to create a new class, type a new Class ID below and fill out the details.</p>
+      {/* Class Selector for standalone mode */}
+      {!embeddedClassId && (
+        <div className="class-selector-card">
+          <label htmlFor="select-class-to-manage">Select a Class to Edit or Configure:</label>
+          <select
+            id="select-class-to-manage"
+            onChange={(e) => setSelectedClass(e.target.value)}
+            value={selectedClass || ''}
+          >
+            <option value="">-- Create a New Class --</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.id}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
-      <input
-        type="text"
-        placeholder="Class ID"
-        value={classId}
-        onChange={(e) => setClassId(e.target.value.toLowerCase())}
-        disabled={!!selectedClass} // Disable if a class is selected for editing
-      />
-      <p className="input-hint">Class ID will be converted to lowercase.</p>
-      {error && <div className="error-message">{error}</div>}
+      {error && <div className="error-message">⚠️ {error}</div>}
+      {successMessage && <div className="success-message">✓ {successMessage}</div>}
 
-      <div className="form-group">
-        <label>Storage Limit</label>
-        <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
-          <option value="5">5 GB</option>
-          <option value="10">10 GB</option>
-        </select>
+      {/* Section 1: Basic Information & Storage */}
+      <div className="settings-section-card">
+        <h3>📋 1. Basic Information & Storage Quota</h3>
+        
+        <div className="form-row-2col">
+          <div className="form-group">
+            <label>Class ID / Course Code <span style={{ color: '#ef4444' }}>*</span></label>
+            <input
+              type="text"
+              placeholder="e.g. it114115-2026-s1"
+              value={classId}
+              onChange={(e) => setClassId(e.target.value.toLowerCase())}
+              disabled={!!selectedClass || !!embeddedClassId}
+            />
+            <p className="input-hint">Unique identifier, lowercase.</p>
+          </div>
+
+          <div className="form-group">
+            <label>Class Display Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Cloud Architecture Lab"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Storage Limit Allotment</label>
+          <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
+            <option value="5">5 GB (Standard)</option>
+            <option value="10">10 GB (Extended)</option>
+            <option value="20">20 GB (Large Course)</option>
+          </select>
+        </div>
       </div>
 
-      <ScheduleManager 
-        scheduleStartDate={scheduleStartDate} 
-        setScheduleStartDate={setScheduleStartDate} 
-        scheduleEndDate={scheduleEndDate} 
-        setScheduleEndDate={setScheduleEndDate} 
-        timeZone={timeZone} 
-        setTimeZone={setTimeZone} 
-        classSchedules={classSchedules} 
-        setClassSchedules={setClassSchedules} 
-      />
-
-      <div className="form-group">
-        <label>Student Emails</label>
-        <textarea
-          placeholder="Add student emails (one per line)"
-          value={studentEmails}
-          onChange={(e) => setStudentEmails(e.target.value)}
-          rows="6"
+      {/* Section 2: Timetable & Schedule */}
+      <div className="settings-section-card">
+        <h3>📅 2. Class Timetable & Schedule</h3>
+        <ScheduleManager 
+          scheduleStartDate={scheduleStartDate} 
+          setScheduleStartDate={setScheduleStartDate} 
+          scheduleEndDate={scheduleEndDate} 
+          setScheduleEndDate={setScheduleEndDate} 
+          timeZone={timeZone} 
+          setTimeZone={setTimeZone} 
+          classSchedules={classSchedules} 
+          setClassSchedules={setClassSchedules} 
         />
       </div>
 
-      <div className="form-group">
-        <label>Teacher Emails</label>
-        <textarea
-          placeholder="Add teacher emails (one per line)"
-          value={teacherEmails}
-          onChange={(e) => setTeacherEmails(e.target.value)}
-          rows="3"
-        />
-      </div>
-
-      <div className="form-group">
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <input
-            type="checkbox"
-            checked={automaticCapture}
-            onChange={(e) => setAutomaticCapture(e.target.checked)}
+      {/* Section 3: Student Roster & Properties */}
+      <div className="settings-section-card">
+        <h3>👥 3. Student Roster</h3>
+        <div className="form-group">
+          <label>Student Email Addresses</label>
+          <textarea
+            placeholder="Enter student emails (one per line or comma separated)..."
+            value={studentEmails}
+            onChange={(e) => setStudentEmails(e.target.value)}
+            rows="5"
           />
-          Automatic Capture
-        </label>
-        <p className="input-hint">Start capturing 5 mins before class starts and stop 5 mins after it ends.</p>
+          <p className="input-hint">Students with these emails will gain access to this class.</p>
+        </div>
+
+        {(selectedClass || embeddedClassId) && (
+          <div style={{ marginTop: '1.25rem' }}>
+            <label style={{ fontWeight: '600', display: 'block', marginBottom: '0.5rem' }}>
+              Custom Student Properties (CSV Upload / Edit):
+            </label>
+            <CustomPropertiesManager selectedClass={embeddedClassId || selectedClass} studentEmails={studentEmails} />
+          </div>
+        )}
       </div>
 
-      <div className="form-group">
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <input
-            type="checkbox"
-            checked={automaticCombine}
-            onChange={(e) => setAutomaticCombine(e.target.checked)}
+      {/* Section 4: Teaching Team */}
+      <div className="settings-section-card">
+        <h3>👨‍🏫 4. Teaching Team (Co-Instructors)</h3>
+        <div className="form-group">
+          <label>Co-Teacher Email Addresses</label>
+          <textarea
+            placeholder="Enter co-teacher emails (one per line or space separated)..."
+            value={teacherEmails}
+            onChange={(e) => setTeacherEmails(e.target.value)}
+            rows="3"
           />
-          Automatic Combine Image to Video
-        </label>
-        <p className="input-hint">Automatically generate a video recording for each student after the class session ends.</p>
+          <p className="input-hint">Your email is automatically included as a lead instructor.</p>
+        </div>
       </div>
 
-      <div className="form-group">
-        <label>After Class Video Prompt</label>
-        <button type="button" onClick={handleOpenPromptModal}>
-            {afterClassVideoPrompt ? afterClassVideoPrompt.name || 'Custom Prompt' : 'Select Prompt'}
+      {/* Section 5: Automation & AI Video Prompts */}
+      <div className="settings-section-card">
+        <h3>🤖 5. Automation & AI Prompts</h3>
+        <div className="form-group">
+          <label className="checkbox-toggle-label">
+            <input
+              type="checkbox"
+              checked={automaticCapture}
+              onChange={(e) => setAutomaticCapture(e.target.checked)}
+            />
+            <span>Automatic Live Capture</span>
+          </label>
+          <p className="input-hint">Starts capturing student screens 5 minutes before lesson starts and ends 5 minutes after.</p>
+        </div>
+
+        <div className="form-group">
+          <label className="checkbox-toggle-label">
+            <input
+              type="checkbox"
+              checked={automaticCombine}
+              onChange={(e) => setAutomaticCombine(e.target.checked)}
+            />
+            <span>Automatic Video Compilation</span>
+          </label>
+          <p className="input-hint">Generates a session video recording for each student when the class concludes.</p>
+        </div>
+
+        <div className="form-group">
+          <label>After-Class Video Analysis Prompt</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button type="button" className="secondary-btn" onClick={handleOpenPromptModal}>
+              {afterClassVideoPrompt ? `Selected: ${afterClassVideoPrompt.name || 'Custom Prompt'}` : 'Select AI Prompt'}
+            </button>
+            {afterClassVideoPrompt && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setAfterClassVideoPrompt(null)}
+                style={{ color: '#ef4444' }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {afterClassVideoPrompt && (
+            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+              <strong>Prompt preview:</strong> {afterClassVideoPrompt.promptText.substring(0, 120)}...
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Section 6: Security & Access Restrictions */}
+      <div className="settings-section-card">
+        <h3>🔒 6. Security & IP Restrictions</h3>
+        <div className="form-group">
+          <label>Allowed Classroom IP Addresses</label>
+          <textarea
+            placeholder="e.g. 202.125.10.0/24 (one per line)..."
+            value={ipRestrictions}
+            onChange={(e) => setIpRestrictions(e.target.value)}
+            rows="3"
+          />
+          <p className="input-hint">Optional. If set, students can only log in from these approved IP addresses during scheduled hours.</p>
+        </div>
+      </div>
+
+      {/* Save Actions Bar */}
+      <div className="settings-actions-bar">
+        <div>
+          <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+            Make sure to save your changes before leaving this page.
+          </span>
+        </div>
+        <button className="save-settings-btn" onClick={handleUpdateClass} disabled={saving}>
+          {saving ? 'Saving Changes...' : (selectedClass || embeddedClassId ? 'Save Class Settings' : 'Create Class')}
         </button>
-        {afterClassVideoPrompt && <p className="input-hint">{afterClassVideoPrompt.promptText.substring(0, 100)}...</p>}
       </div>
 
-      <div className="form-group">
-        <label>IP Address Restrictions</label>
-        <textarea
-          placeholder="Allowed IP addresses or ranges (one per line)"
-          value={ipRestrictions}
-          onChange={(e) => setIpRestrictions(e.target.value)}
-          rows="4"
-        />
-        <p className="input-hint">Leave blank for no IP restrictions. If IPs are entered, students can only log in from these addresses during scheduled class times.</p>
-      </div>
-      {selectedClass && <CustomPropertiesManager selectedClass={selectedClass} studentEmails={studentEmails} />}
-
-      <button onClick={handleUpdateClass}>Update/Create Class</button>
-      {successMessage && <div className="success-message">{successMessage}</div>}
-      
-      {selectedClass && (
-        <div className="manage-selected-class">
-          <hr />
-          <h3>Manage Selected Class</h3>
-          <button onClick={handleDeleteClass}>Delete Class</button>
+      {/* Danger Zone */}
+      {(selectedClass || embeddedClassId) && (
+        <div className="danger-zone-card">
+          <h3>⚠️ Danger Zone</h3>
+          <p>Deleting this class permanently removes its configuration. Associated storage archives can still be managed in Data Management.</p>
+          <button className="danger-btn" onClick={handleDeleteClass}>
+            Delete This Class
+          </button>
         </div>
       )}
     </div>
@@ -432,3 +538,4 @@ const ClassManagement = ({ user }) => {
 };
 
 export default ClassManagement;
+

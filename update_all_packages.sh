@@ -14,8 +14,10 @@ npm i -g npm-check-updates
 PROJECT_DIRS=(
     "admin"
     "functions/ai_flows"
+    "functions/attendance"
     "functions/auth_triggers"
     "functions/media_processing"
+    "functions/property_processing"
     "functions/scheduled_tasks"
     "functions/storage_triggers"
     "web-app"

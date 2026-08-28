@@ -1,15 +1,23 @@
-
 [
   {
     "origin": [
-      "https://*.cloudworkstations.dev",
-      "https://ai-invigilator-hkiit.web.app"
-      ],
+      "https://it114115-dev-2026.web.app",
+      "https://it114115-dev-2026.firebaseapp.com",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:3000",
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174",
+      "http://127.0.0.1:3000"
+    ],
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+    "maxAgeSeconds": 3600,
     "responseHeader": [
       "Content-Type",
-      "Access-Control-Allow-Origin"
-    ],
-    "maxAgeSeconds": 3600
+      "Authorization",
+      "Content-Length",
+      "User-Agent",
+      "x-goog-resumable"
+    ]
   }
 ]

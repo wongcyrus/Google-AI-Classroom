@@ -29,7 +29,7 @@ function getISOString(date) {
 
 
 
-export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 1, memory: '2GiB', timeoutSeconds: 3600, concurrency: 1, maxInstances: 5 }, async (event) => {
+export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 1, memory: '2GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 5 }, async (event) => {
   const jobDoc = event.data;
   const masterJobId = event.params.jobId;
   const jobData = jobDoc.data();

@@ -1,13 +1,16 @@
 // Centralized configuration for Cloud Functions
-
 export const FUNCTION_REGION = 'asia-east2';
 
 // CORS origins for callable functions
 export const CORS_ORIGINS = [
-    "https://9000-firebase-ai-invigilator-1757825283554.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev",
-    /https:\/\/.*\.cloudworkstations\.dev/,
-    "https://ai-invigilator-hkiit.web.app",
-    /https:\/\/.*--ai-invigilator-hkiit\.web\.app/,
+  'https://it114115-dev-2026.web.app',
+  'https://it114115-dev-2026.firebaseapp.com',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:3000'
 ];
 
 // Genkit AI Model parameters

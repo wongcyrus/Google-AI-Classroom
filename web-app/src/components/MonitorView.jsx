@@ -482,10 +482,9 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       }
     }
 
-    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
-
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
+    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
   };
 
   const handleRunAllImagesAnalysis = async () => {
@@ -518,28 +517,46 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       }
     }
 
-    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
-
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
+    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
   };
 
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
 
   const analysisResultItems = useMemo(() => 
     Object.entries(analysisResults).map(([studentId, result]) => {
-      const email = uidToEmailMap.get(studentId) || 'Unknown Student';
+      const studentObj = students.find(s => s.id === studentId);
+      const email = studentObj?.email || uidToEmailMap.get(studentId) || studentId;
+      
+      let textContent = '';
+      let isError = false;
+
+      if (typeof result === 'string') {
+        textContent = result;
+        isError = result.startsWith('Error:');
+      } else if (result && typeof result === 'object') {
+        if (result.error) {
+          textContent = `Error: ${result.error}`;
+          isError = true;
+        } else {
+          textContent = result.text || result.result || JSON.stringify(result, null, 2);
+        }
+      } else {
+        textContent = String(result ?? '');
+      }
+
       return (
-        <li key={studentId}>
-          <strong>{email}:</strong>
-          {result.error ? (
-            <p style={{ color: 'red' }}>Error: {result.error}</p>
-          ) : (
-            <p>{result.text}</p>
-          )}
+        <li key={studentId} style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #e0e0e0', listStyle: 'none' }}>
+          <strong style={{ display: 'block', marginBottom: '6px', color: '#1976d2', fontSize: '1.05em' }}>
+            {email}
+          </strong>
+          <div style={{ color: isError ? '#d32f2f' : '#2c3e50', whiteSpace: 'pre-wrap', lineHeight: '1.6', background: isError ? '#ffebee' : '#f8f9fa', padding: '10px 14px', borderRadius: '6px' }}>
+            {textContent}
+          </div>
         </li>
       );
-    }), [analysisResults, uidToEmailMap]);
+    }), [analysisResults, uidToEmailMap, students]);
 
   return (
     <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
@@ -678,14 +695,21 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       <Modal
         show={showAnalysisResultsModal}
         onClose={() => setShowAnalysisResultsModal(false)}
-        title="Analysis Results"
+        title="AI Analysis Results"
       >
-        {Object.keys(analysisResults).length > 0 ? (
-          <ul>
+        {isAnalyzing ? (
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <p style={{ fontSize: '1.1em', fontWeight: '500', color: '#1976d2' }}>
+              🤖 Gemini AI is analyzing the student screen(s)...
+            </p>
+            <p style={{ color: '#666', fontSize: '0.9em' }}>Please wait a moment.</p>
+          </div>
+        ) : Object.keys(analysisResults).length > 0 ? (
+          <ul style={{ padding: 0, margin: 0, maxHeight: '60vh', overflowY: 'auto' }}>
             {analysisResultItems}
           </ul>
         ) : (
-          <p>No analysis has been run yet.</p>
+          <p>No analysis results available.</p>
         )}
       </Modal>
     </div>
