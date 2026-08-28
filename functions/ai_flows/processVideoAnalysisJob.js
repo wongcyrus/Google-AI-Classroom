@@ -77,7 +77,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     }
 
     const bucketName = storage.bucket().name;
-    const BATCH_SIZE = 10; // Process 10 videos concurrently
+    const BATCH_SIZE = 4; // Process 4 videos concurrently to avoid Gemini API 429 rate limit spikes
     
     let totalSuccesses = 0;
     let totalFailures = 0;

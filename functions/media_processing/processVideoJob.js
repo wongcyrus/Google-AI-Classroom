@@ -82,8 +82,10 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
     console.log(`Downloading and processing ${screenshots.length} images to ${tempDir}`);
 
-    // WARNING: A high batch size can lead to out-of-memory errors. Recommended: 5-10.
-    const BATCH_SIZE = 50;
+    // BATCH_SIZE of 15 provides optimal throughput without memory pressure
+    const BATCH_SIZE = 15;
+    const MAX_WIDTH = 1920;
+
     for (let i = 0; i < screenshots.length; i += BATCH_SIZE) {
       const batch = screenshots.slice(i, i + BATCH_SIZE);
       console.log(`Processing batch of ${batch.length} images...`);
@@ -98,6 +100,12 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
         let width = metadata.width;
         let height = metadata.height;
+
+        // Cap maximum width to 1080p width (1920) preserving aspect ratio
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
 
         // Ensure dimensions are even for ffmpeg
         if (width % 2 !== 0) width--;
@@ -124,7 +132,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
             .composite([
                 { input: svgBuffer, gravity: 'north' }
             ])
-            .jpeg()
+            .jpeg({ quality: 85 })
             .toFile(tempOutputPath);
 
         // Overwrite original file
@@ -143,7 +151,14 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       let lastPercent = -1;
       ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
         .inputOptions(['-framerate', VIDEO_FRAME_RATE])
-        .outputOptions(['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', '28'])
+        .outputOptions([
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-preset', 'fast',
+          '-crf', '30',
+          '-tune', 'stillimage',
+          '-movflags', '+faststart'
+        ])
         .on('progress', (progress) => {
           if (progress.frames) {
             const totalFrames = screenshots.length;

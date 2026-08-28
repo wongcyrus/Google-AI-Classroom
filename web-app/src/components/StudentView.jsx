@@ -119,11 +119,19 @@ const StudentView = ({ user }) => {
       return;
     }
     console.log('Capturing screenshot...');
+    const MAX_CAPTURE_WIDTH = 1920;
+    let targetWidth = videoElement.videoWidth;
+    let targetHeight = videoElement.videoHeight;
+    if (targetWidth > MAX_CAPTURE_WIDTH) {
+      targetHeight = Math.round((targetHeight * MAX_CAPTURE_WIDTH) / targetWidth);
+      targetWidth = MAX_CAPTURE_WIDTH;
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = videoElement.videoWidth;
-    canvas.height = videoElement.videoHeight;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
     
     const { width, height } = canvas;
     if (width > 1 && height > 1) {
