@@ -21,7 +21,9 @@ resource "google_storage_bucket" "gcf_v2_sources" {
   project                     = var.project_id
   location                    = var.region
   uniform_bucket_level_access = true
-  force_destroy               = false
+  lifecycle {
+    ignore_changes = all
+  }
 
   depends_on = [
     google_project_service.apis,

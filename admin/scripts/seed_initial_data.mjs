@@ -134,10 +134,11 @@ async function main() {
   };
 
   await db.collection('classes').doc(classId).set(classData, { merge: true });
-  await db.collection('teacherProfiles').doc(teacher1.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
-  await db.collection('teacherProfiles').doc(teacher2.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
+  for (const tUid of Object.keys(teacherMap)) {
+    await db.collection('teacherProfiles').doc(tUid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
+  }
   await db.collection('studentProfiles').doc(student.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
-  console.log(`✅ Demo class '${classId}' configured with 24/7 active schedule.`);
+  console.log(`✅ Demo class '${classId}' configured with 24/7 active schedule for all teachers.`);
 
   await seedPrompts();
 

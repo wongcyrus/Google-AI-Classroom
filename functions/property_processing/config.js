@@ -3,8 +3,8 @@ export const FUNCTION_REGION = 'asia-east2';
 
 // CORS origins for callable functions
 export const CORS_ORIGINS = [
-  'https://it114115-dev-2026.web.app',
-  'https://it114115-dev-2026.firebaseapp.com',
+  'https://it114115-2627.web.app',
+  'https://it114115-2627.firebaseapp.com',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
@@ -14,6 +14,7 @@ export const CORS_ORIGINS = [
 ];
 
 // Genkit AI Model parameters
+export const AI_MODEL = 'gemini-2.5-flash';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;
 
