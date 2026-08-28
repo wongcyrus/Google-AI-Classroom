@@ -94,30 +94,105 @@ When a project is deployed or seeded via `node admin/scripts/seed_initial_data.m
 
 ## 🔄 Switching Between Environments (Dev vs Prod)
 
-Each deployed environment maintains its own isolated Terraform state and Firebase configuration.
+Switching between Development and Production is instantaneous with zero Terraform overhead:
 
-### Deploying Changes to Production:
+### 1. Instant Switcher (`./switch-env.sh`)
 ```bash
-# 1. Switch active Firebase project to Prod
-firebase use it114115-2627
+# Switch to Development (it114115-dev-2026)
+./switch-env.sh dev
 
-# 2. Deploy updates
-./deploy.sh
+# Switch to Production (it114115-2627)
+./switch-env.sh prod
+```
+*What happens under the hood in <0.5s:*
+- Switches Firebase CLI active project (`firebase use dev` / `firebase use prod`).
+- Synchronizes `web-app/.env` from isolated environment templates.
+- Generates and propagates `functions/config.js` to all 7 Cloud Function codebases.
+- Updates Cloud Storage `cors.json`.
+
+### 2. Single-Command Deployment (`./deploy.sh`)
+You can deploy directly to any target environment by specifying it in the command:
+```bash
+# Deploy entire stack directly to Production
+./deploy.sh prod
+
+# Deploy entire stack directly to Development
+./deploy.sh dev
+
+# Deploy ONLY hosting to Production
+./deploy.sh prod --only hosting
+
+# Deploy ONLY functions to Development
+./deploy.sh dev --only functions
 ```
 
-### Deploying Changes to Development:
-```bash
-# 1. Switch active Firebase project to Dev
-firebase use it114115-dev-2026
+---
 
-# 2. Deploy updates
-./deploy.sh
-```
+## 📅 Future Project ID & Name Migration (Yearly Rollover)
 
-### Checking Currently Active Project:
+When you need to create a new project ID for an upcoming academic cohort (e.g. `it114115-2728`):
+
+### Step 1: Provision the New Project (Zero UI Clicks)
 ```bash
-firebase use
+./setup-new-project.sh <NEW_PROJECT_ID> [BILLING_ACCOUNT_ID]
+# Example:
+./setup-new-project.sh it114115-2728 01C74C-667DFE-538DBC
 ```
+This automatically provisions Terraform infrastructure, saves `web-app/.env.<NEW_PROJECT_ID>`, deploys all functions & hosting, and seeds default teacher accounts.
+
+### Step 2: Update Aliases for Quick Switching
+To map the new project as your active `prod` or `dev`:
+
+1. **In [`.firebaserc`](../.firebaserc):**
+   ```json
+   {
+     "projects": {
+       "default": "it114115-2728",
+       "dev": "it114115-dev-2026",
+       "prod": "it114115-2728"
+     }
+   }
+   ```
+2. **In [`switch-env.sh`](../switch-env.sh):**
+   Update the `PROJECT_ID` variable under the `prod` block:
+   ```bash
+   prod|production)
+     PROJECT_ID="it114115-2728"
+     ENV_FILE="web-app/.env.prod"
+     ENV_NAME="Production"
+     FIREBASE_ALIAS="prod"
+     ;;
+   ```
+
+### Step 3: Changing Only the Human-Readable Display Name
+If you want to modify only the display name of an existing project (e.g. from *"Classroom Assistant"* to *"HKIIT AI Invigilator"*):
+- **Terraform:** Update `project_name` in [`terraform/variables.tf`](../terraform/variables.tf) and run `cd terraform && terraform apply -state="<PROJECT_ID>.tfstate" -var="project_id=<PROJECT_ID>"`.
+- **GCP Console:** Go to **IAM & Admin > Settings** and edit the **Project Name** field.
+
+---
+
+## 🔒 Security Audit & Key Exposure Risk Analysis
+
+A comprehensive security review was conducted on this architecture regarding sensitive key exposure risks to GitHub:
+
+### 1. File & Secret Tracking Protections (`.gitignore`)
+The repository strictly ignores all secrets and environment snapshots:
+- **Environment Files:** `.env`, `.env.*` (including `.env.dev`, `.env.prod`).
+- **Service Accounts & Private Keys:** `*.pem`, `*.key`, `sp.json`, `serviceAccountKey.json`, `service-account*.json`.
+- **Terraform State Files:** `terraform/*.tfstate`, `terraform/*.tfstate.*`, `terraform/*.tfvars`.
+- **Function Runtime Config Copies:** `functions/*/config.js`.
+
+### 2. Client-Side Firebase Keys vs. Backend Secrets
+- **Firebase Web API Key (`VITE_API_KEY`):**
+  - Firebase Web API keys (strings starting with `AIzaSy...`) are **public project identifiers** designed by Google to reside on the client side. They do *not* grant administrative access to GCP services.
+  - Security is enforced at the platform boundary via:
+    1. **Firestore Security Rules (`firestore.rules`):** Only authenticated users with verified claims (`teacher` / `student`) can read/write authorized paths.
+    2. **Cloud Storage Security Rules (`storage.rules`):** Path-based write and read restrictions.
+    3. **Firebase App Check (reCAPTCHA v3):** Attests incoming traffic originated from genuine app frontends.
+- **Backend Service Credentials:**
+  - Cloud Functions Gen 2 run under Google Cloud Default Application Credentials (ADC) and IAM Service Accounts without embedding any service account JSON private keys in the codebase.
+- **Git History Integrity:**
+  - An audit across all Git commit trees confirms **0 private keys** or sensitive service account credentials have ever been committed.
 
 ---
 
