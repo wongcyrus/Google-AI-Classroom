@@ -28,20 +28,62 @@ const ControlsPanel = ({
         {/* Broadcast Message */}
         <div className="control-section">
             <h4 className="control-section-header">📢 Class Broadcast</h4>
+            
+            {/* Pre-defined Message Template Dropdown */}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)', display: 'block', marginBottom: '3px' }}>
+                Pre-defined Message Templates:
+              </label>
+              <select
+                aria-label="Pre-defined message templates"
+                style={{ width: '100%', fontSize: '0.78rem', padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--color-border, #cbd5e1)' }}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setMessage(e.target.value);
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>Select a pre-defined template...</option>
+                <optgroup label="⏰ Time Remaining">
+                  <option value="⏰ 15 minutes remaining in test/class.">⏰ 15 minutes remaining</option>
+                  <option value="⏰ 10 minutes remaining. Please begin wrapping up.">⏰ 10 minutes remaining</option>
+                  <option value="⏰ 5 minutes remaining! Double check your answers.">⏰ 5 minutes remaining</option>
+                  <option value="⏰ Time is up! Please submit your work immediately.">⏰ Time is up - submit now</option>
+                </optgroup>
+                <optgroup label="💻 Screen & Compliance">
+                  <option value="💻 Please turn on your screen sharing now.">💻 Please start screen sharing</option>
+                  <option value="⚠️ Please close all unauthorized browser tabs and windows.">⚠️ Close unauthorized tabs/apps</option>
+                  <option value="🔇 Please ensure your microphone is muted.">🔇 Please mute microphone</option>
+                </optgroup>
+                <optgroup label="👍 Motivation & Assistance">
+                  <option value="👍 Great work everyone, keep going!">👍 Great work, keep going!</option>
+                  <option value="✋ Please raise your hand if you need any assistance.">✋ Raise hand for help</option>
+                  <option value="⏸️ Feel free to take a 1-minute stretch break.">⏸️ 1-minute stretch break</option>
+                </optgroup>
+              </select>
+            </div>
+
             <div className="broadcast-input-group">
               <input 
                 type="text" 
                 value={message} 
                 onChange={(e) => setMessage(e.target.value)} 
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Type message to class..." 
+                placeholder="Type message or pick template..." 
               />
               <button onClick={() => handleSendMessage()} className="primary-action-btn">Send</button>
             </div>
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-              {['⏰ 5m left', '💻 Share screen', '👍 Great work!'].map(chip => (
+              {[
+                { label: '⏰ 5m left', text: '⏰ 5 minutes remaining!' },
+                { label: '💻 Share screen', text: '💻 Please turn on your screen sharing now.' },
+                { label: '⚠️ Close tabs', text: '⚠️ Please close unauthorized tabs/apps.' },
+                { label: '👍 Great work!', text: '👍 Great work, keep going!' },
+                { label: '⏰ Time up!', text: '⏰ Time is up! Please submit your work.' }
+              ].map(chip => (
                 <button
-                  key={chip}
+                  key={chip.label}
                   type="button"
                   style={{
                     padding: '2px 6px',
@@ -52,10 +94,10 @@ const ControlsPanel = ({
                     cursor: 'pointer',
                     color: 'var(--color-text-main, #334155)'
                   }}
-                  onClick={() => handleSendMessage(chip)}
-                  title={`Click to broadcast "${chip}"`}
+                  onClick={() => handleSendMessage(chip.text)}
+                  title={`Click to immediately broadcast "${chip.text}"`}
                 >
-                  {chip}
+                  {chip.label}
                 </button>
               ))}
             </div>

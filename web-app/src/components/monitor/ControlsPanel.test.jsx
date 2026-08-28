@@ -43,13 +43,21 @@ describe('ControlsPanel Component', () => {
     aiUsedQuota: 2.5
   };
 
-  it('renders broadcast section, chips, and send button', () => {
-    render(<ControlsPanel {...defaultProps} />);
+  it('renders broadcast section, template dropdown, chips, and send button', () => {
+    const setMessage = vi.fn();
+    render(<ControlsPanel {...defaultProps} setMessage={setMessage} />);
     
-    expect(screen.getByPlaceholderText('Type message to class...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Type message or pick template...')).toBeInTheDocument();
     expect(screen.getByText('Send')).toBeInTheDocument();
     expect(screen.getByText('⏰ 5m left')).toBeInTheDocument();
     expect(screen.getByText('💻 Share screen')).toBeInTheDocument();
+    expect(screen.getByText('⚠️ Close tabs')).toBeInTheDocument();
+    expect(screen.getByText('⏰ Time up!')).toBeInTheDocument();
+
+    // Select pre-defined template
+    const templateSelect = screen.getByLabelText('Pre-defined message templates');
+    fireEvent.change(templateSelect, { target: { value: '⏰ 15 minutes remaining in test/class.' } });
+    expect(setMessage).toHaveBeenCalledWith('⏰ 15 minutes remaining in test/class.');
   });
 
   it('triggers handleSendMessage when clicking quick broadcast chips', () => {
@@ -57,7 +65,7 @@ describe('ControlsPanel Component', () => {
     render(<ControlsPanel {...defaultProps} handleSendMessage={handleSendMessage} />);
 
     fireEvent.click(screen.getByText('⏰ 5m left'));
-    expect(handleSendMessage).toHaveBeenCalledWith('⏰ 5m left');
+    expect(handleSendMessage).toHaveBeenCalledWith('⏰ 5 minutes remaining!');
   });
 
   it('renders capturing toggle button and switches state on click', () => {
@@ -86,14 +94,14 @@ describe('ControlsPanel Component', () => {
     );
 
     const selects = screen.getAllByRole('combobox');
-    expect(selects.length).toBeGreaterThanOrEqual(2);
+    expect(selects.length).toBeGreaterThanOrEqual(3);
 
-    // Frame rate select
-    fireEvent.change(selects[0], { target: { value: '5' } });
+    // Frame rate select (selects[1] following template dropdown selects[0])
+    fireEvent.change(selects[1], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
     // Max image size select
-    fireEvent.change(selects[1], { target: { value: String(500 * 1024) } });
+    fireEvent.change(selects[2], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 

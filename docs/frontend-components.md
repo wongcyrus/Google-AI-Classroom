@@ -21,7 +21,7 @@ The `web-app/src/components/` directory contains all the React components that m
 
 ## Real-time & Session Views
 
-*   **`MonitorView.jsx`**: Provides a real-time grid view of all students' screens during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status` (eliminating $N$ parallel Firestore queries down to 1 consolidated channel with `urlCacheRef` Storage URL caching) and an optimized **single-write class broadcast channel** (`classes/{classId}/messages`) with quick preset chips (`⏰ 5m left`, `💻 Share screen`, `👍 Great work!`).
+*   **`MonitorView.jsx`**: Provides a real-time grid view of all students' screens during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status` (eliminating $N$ parallel Firestore queries down to 1 consolidated channel with `urlCacheRef` Storage URL caching) and an optimized **single-write class broadcast channel** (`classes/{classId}/messages`) with pre-defined message template selectors (Time Reminders, Screen Compliance, Motivation & Assistance) and 1-click preset broadcast chips (`⏰ 5m left`, `💻 Share screen`, `⚠️ Close tabs`, `👍 Great work!`, `⏰ Time up!`).
 *   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's screen, name, and sharing status.
 *   **`IndividualStudentView.jsx`**: A modal overlay that shows a larger view of a single student's screen and allows the teacher to send a private 1-to-1 direct message or share screenshot.
 *   **`SessionReviewView.jsx`**: A view for reviewing a student's completed session, including their screen recording and any detected irregularities.
