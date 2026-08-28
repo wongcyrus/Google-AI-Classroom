@@ -166,6 +166,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                   return;
                 }
 
+                const videoRetentionDays = classData.videoRetentionDays || classData.retentionDays || 90;
+                const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
+
                 const newDocRef = videoJobsRef.doc();
                 logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId}`);
                 return newDocRef.set({
@@ -177,6 +180,7 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                   endTime: lessonEndDateTimeInZone,
                   status: 'pending',
                   createdAt: FieldValue.serverTimestamp(),
+                  expireAt: videoExpireAt,
                 });
               } catch (e) {
                 logger.error(`Failed to get user record for UID ${studentUid}`, e);
@@ -259,28 +263,26 @@ export const handleDailyDataCleanup = onSchedule(cleanupScheduleOptions, async (
     if (expiredSnap.size < BATCH_SIZE) break;
   }
 
-  // 2. Clean up old completed/failed videoJobs (> 30 days old)
-  const jobExpiryThreshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  // 2. Clean up expired videoJobs (where expireAt <= now)
   while (Date.now() - startTime < MAX_RUNTIME_MS) {
-    const oldJobsSnap = await db.collection('videoJobs')
-      .where('status', 'in', ['completed', 'failed'])
-      .where('createdAt', '<', jobExpiryThreshold)
+    const expiredJobsSnap = await db.collection('videoJobs')
+      .where('expireAt', '<=', now)
       .limit(BATCH_SIZE)
       .get();
 
-    if (oldJobsSnap.empty) {
-      logger.info('No old videoJobs to clean up.');
+    if (expiredJobsSnap.empty) {
+      logger.info('No expired videoJobs to clean up.');
       break;
     }
 
     const batch = db.batch();
-    oldJobsSnap.docs.forEach(doc => batch.delete(doc.ref));
+    expiredJobsSnap.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
 
-    totalVideoJobsDeleted += oldJobsSnap.size;
-    logger.info(`Deleted batch of ${oldJobsSnap.size} old videoJobs (Total: ${totalVideoJobsDeleted}).`);
+    totalVideoJobsDeleted += expiredJobsSnap.size;
+    logger.info(`Deleted batch of ${expiredJobsSnap.size} expired videoJobs (Total: ${totalVideoJobsDeleted}).`);
 
-    if (oldJobsSnap.size < BATCH_SIZE) break;
+    if (expiredJobsSnap.size < BATCH_SIZE) break;
   }
 
   const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);

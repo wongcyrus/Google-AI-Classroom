@@ -19,7 +19,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
   // Class settings state
   const [storageLimit, setStorageLimit] = useState('5'); // In GB
-  const [retentionDays, setRetentionDays] = useState('30'); // In Days
+  const [retentionDays, setRetentionDays] = useState('30'); // In Days (Screenshots)
+  const [videoRetentionDays, setVideoRetentionDays] = useState('90'); // In Days (Videos)
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Hong_Kong');
@@ -73,6 +74,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setClassId(activeId);
           setClassName(classData.name || '');
           setRetentionDays((classData.retentionDays || 30).toString());
+          setVideoRetentionDays((classData.videoRetentionDays || 90).toString());
           if (classData.storageQuota) {
             setStorageLimit((classData.storageQuota / (1024 * 1024 * 1024)).toString());
           } else {
@@ -119,6 +121,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setClassName('');
         setStorageLimit('5');
         setRetentionDays('30');
+        setVideoRetentionDays('90');
         setScheduleStartDate('');
         setScheduleEndDate('');
         setTimeZone('Asia/Hong_Kong');
@@ -245,6 +248,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     const storageQuotaBytes = parseInt(storageLimit) * 1024 * 1024 * 1024;
     const retentionDaysNum = parseInt(retentionDays, 10) > 0 ? parseInt(retentionDays, 10) : 30;
+    const videoRetentionDaysNum = parseInt(videoRetentionDays, 10) > 0 ? parseInt(videoRetentionDays, 10) : 90;
     const ipList = ipRestrictions.split('\n').map(ip => ip.trim()).filter(Boolean);
 
     try {
@@ -256,6 +260,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           name: className.trim() || targetClassId,
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
+          videoRetentionDays: videoRetentionDaysNum,
           schedule: {
             startDate: scheduleStartDate,
             endDate: scheduleEndDate,
@@ -281,6 +286,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           studentEmails: studentEmailList,
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
+          videoRetentionDays: videoRetentionDaysNum,
           schedule: {
             startDate: scheduleStartDate,
             endDate: scheduleEndDate,
@@ -439,7 +445,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
         </div>
 
-        <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+        <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
           <div className="form-group">
             <label>Storage Limit Allotment</label>
             <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
@@ -447,10 +453,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               <option value="10">10 GB (Extended)</option>
               <option value="20">20 GB (Large Course)</option>
             </select>
+            <p className="input-hint">Maximum storage cap for this class.</p>
           </div>
 
           <div className="form-group">
-            <label>Data Retention Period (Days)</label>
+            <label>Screenshot Retention (Days)</label>
             <select value={retentionDays} onChange={(e) => setRetentionDays(e.target.value)}>
               <option value="7">7 Days (Short Workshop)</option>
               <option value="14">14 Days (Standard)</option>
@@ -460,7 +467,21 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               <option value="180">180 Days (Half Year)</option>
               <option value="365">365 Days (1 Year)</option>
             </select>
-            <p className="input-hint">Screenshots older than this period are automatically recycled to free storage.</p>
+            <p className="input-hint">Raw screen capture frames older than this are recycled.</p>
+          </div>
+
+          <div className="form-group">
+            <label>Video Retention (Days)</label>
+            <select value={videoRetentionDays} onChange={(e) => setVideoRetentionDays(e.target.value)}>
+              <option value="14">14 Days (2 Weeks)</option>
+              <option value="30">30 Days (1 Month)</option>
+              <option value="60">60 Days (2 Months)</option>
+              <option value="90">90 Days (1 Semester)</option>
+              <option value="180">180 Days (Half Year)</option>
+              <option value="365">365 Days (1 Year)</option>
+              <option value="730">730 Days (2 Years)</option>
+            </select>
+            <p className="input-hint">Compiled lesson playback videos (.mp4) retention period.</p>
           </div>
         </div>
       </div>

@@ -79,62 +79,161 @@ export const onClassRetentionUpdated = onDocumentUpdated({
   const afterData = event.data?.after?.data();
   if (!beforeData || !afterData) return;
 
-  const oldDays = beforeData.retentionDays || 30;
-  const newDays = afterData.retentionDays || 30;
-
-  if (oldDays === newDays) return;
+  const oldScreenshotDays = beforeData.retentionDays || 30;
+  const newScreenshotDays = afterData.retentionDays || 30;
+  const oldVideoDays = beforeData.videoRetentionDays || 90;
+  const newVideoDays = afterData.videoRetentionDays || 90;
 
   const classId = event.params.classId;
-  logger.info(`Class ${classId} retention changed from ${oldDays} to ${newDays} days. Recalculating expireAt...`);
-
   const now = Date.now();
-  const retentionMs = newDays * 24 * 60 * 60 * 1000;
   const BATCH_SIZE = 500;
-  let updatedCount = 0;
-  let deletedCount = 0;
 
-  // Process existing screenshots for this class in 500-item chunks
-  let lastDoc = null;
-  let hasMore = true;
+  // 1. Handle Screenshot Retention Updates
+  if (oldScreenshotDays !== newScreenshotDays) {
+    logger.info(`Class ${classId} screenshot retention changed from ${oldScreenshotDays} to ${newScreenshotDays} days.`);
+    const retentionMs = newScreenshotDays * 24 * 60 * 60 * 1000;
+    let updatedCount = 0;
+    let deletedCount = 0;
+    let lastDoc = null;
+    let hasMore = true;
 
-  while (hasMore) {
-    let query = db.collection('screenshots')
-      .where('classId', '==', classId)
-      .limit(BATCH_SIZE);
+    while (hasMore) {
+      let query = db.collection('screenshots')
+        .where('classId', '==', classId)
+        .limit(BATCH_SIZE);
 
-    if (lastDoc) {
-      query = query.startAfter(lastDoc);
-    }
-
-    const snapshot = await query.get();
-    if (snapshot.empty) break;
-
-    const batch = db.batch();
-
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const docDate = data.timestamp ? data.timestamp.toDate() : new Date();
-      const newExpireAt = new Date(docDate.getTime() + retentionMs);
-
-      if (newExpireAt.getTime() <= now) {
-        // Document is already expired under the new retention policy -> Delete it
-        batch.delete(doc.ref);
-        deletedCount++;
-      } else {
-        // Update to new future expiration date
-        batch.update(doc.ref, { expireAt: newExpireAt });
-        updatedCount++;
+      if (lastDoc) {
+        query = query.startAfter(lastDoc);
       }
-    });
 
-    await batch.commit();
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
 
-    if (snapshot.size < BATCH_SIZE) {
-      hasMore = false;
-    } else {
-      lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const docDate = data.timestamp ? data.timestamp.toDate() : new Date();
+        const newExpireAt = new Date(docDate.getTime() + retentionMs);
+
+        if (newExpireAt.getTime() <= now) {
+          batch.delete(doc.ref);
+          deletedCount++;
+        } else {
+          batch.update(doc.ref, { expireAt: newExpireAt });
+          updatedCount++;
+        }
+      });
+
+      await batch.commit();
+
+      if (snapshot.size < BATCH_SIZE) {
+        hasMore = false;
+      } else {
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
     }
+    logger.info(`Class ${classId} screenshot retention sync complete. Updated: ${updatedCount}, Pruned: ${deletedCount}`);
   }
 
-  logger.info(`Class ${classId} retention update complete. Updated: ${updatedCount}, Pruned: ${deletedCount}`);
+  // 2. Handle Video Retention Updates
+  if (oldVideoDays !== newVideoDays) {
+    logger.info(`Class ${classId} video retention changed from ${oldVideoDays} to ${newVideoDays} days.`);
+    const videoRetentionMs = newVideoDays * 24 * 60 * 60 * 1000;
+    let updatedVideos = 0;
+    let deletedVideos = 0;
+    let lastVideoDoc = null;
+    let hasMoreVideos = true;
+
+    while (hasMoreVideos) {
+      let query = db.collection('videoJobs')
+        .where('classId', '==', classId)
+        .limit(BATCH_SIZE);
+
+      if (lastVideoDoc) {
+        query = query.startAfter(lastVideoDoc);
+      }
+
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
+
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const docDate = data.createdAt ? data.createdAt.toDate() : (data.startTime ? data.startTime.toDate() : new Date());
+        const newExpireAt = new Date(docDate.getTime() + videoRetentionMs);
+
+        if (newExpireAt.getTime() <= now) {
+          batch.delete(doc.ref);
+          deletedVideos++;
+        } else {
+          batch.update(doc.ref, { expireAt: newExpireAt });
+          updatedVideos++;
+        }
+      });
+
+      await batch.commit();
+
+      if (snapshot.size < BATCH_SIZE) {
+        hasMoreVideos = false;
+      } else {
+        lastVideoDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
+    }
+    logger.info(`Class ${classId} video retention sync complete. Updated: ${updatedVideos}, Pruned: ${deletedVideos}`);
+  }
 });
+
+/**
+ * Triggered whenever a videoJob document is deleted in Firestore.
+ * Automatically deletes the physical .mp4 video from Cloud Storage.
+ */
+export const onVideoJobDocDeleted = onDocumentDeleted({
+  document: 'videoJobs/{jobId}',
+  region: FUNCTION_REGION,
+}, async (event) => {
+  const docData = event.data?.data();
+  if (!docData) return;
+
+  const videoPath = docData.videoPath || docData.resultVideoPath;
+  if (!videoPath) {
+    logger.info(`VideoJob doc ${event.params.jobId} deleted but had no videoPath.`);
+    return;
+  }
+
+  try {
+    logger.info(`Deleting physical video Storage object: ${videoPath}`);
+    const bucket = storage.bucket();
+    await bucket.file(videoPath).delete({ ignoreNotFound: true });
+    logger.info(`Successfully deleted video Storage object: ${videoPath}`);
+  } catch (error) {
+    logger.error(`Error deleting video storage file ${videoPath}:`, error);
+  }
+});
+
+/**
+ * Triggered whenever a zipJob document is deleted in Firestore.
+ * Automatically deletes the physical .zip archive from Cloud Storage.
+ */
+export const onZipJobDocDeleted = onDocumentDeleted({
+  document: 'zipJobs/{jobId}',
+  region: FUNCTION_REGION,
+}, async (event) => {
+  const docData = event.data?.data();
+  if (!docData) return;
+
+  const zipPath = docData.zipPath || docData.destinationPath;
+  if (!zipPath) {
+    logger.info(`ZipJob doc ${event.params.jobId} deleted but had no zipPath.`);
+    return;
+  }
+
+  try {
+    logger.info(`Deleting physical zip Storage object: ${zipPath}`);
+    const bucket = storage.bucket();
+    await bucket.file(zipPath).delete({ ignoreNotFound: true });
+    logger.info(`Successfully deleted zip Storage object: ${zipPath}`);
+  } catch (error) {
+    logger.error(`Error deleting zip storage file ${zipPath}:`, error);
+  }
+});
+

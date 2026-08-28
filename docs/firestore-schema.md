@@ -221,7 +221,8 @@ Stores information about each class.
     *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
     *   `teachers`: (map) A map of teacher UIDs to their email addresses (`{ <teacherUid>: <teacherEmail> }`).
     *   `storageQuota`: (number) The storage limit for the class in bytes.
-    *   `retentionDays`: (number) The data retention period in days (e.g., 7, 14, 30, 90). Screenshots older than this duration are automatically purged.
+    *   `retentionDays`: (number) The screenshot data retention period in days (e.g., 7, 14, 30, 90). Screenshots older than this duration are automatically purged.
+    *   `videoRetentionDays`: (number) The video retention period in days (e.g., 30, 90, 180, 365). Compiled lesson videos older than this duration are automatically purged.
     *   `schedule`: (object) An object containing the class schedule.
         *   `startDate`: (string) The start date of the class.
         *   `endDate`: (string) The end date of the class.
@@ -465,6 +466,7 @@ Stores information about video processing jobs.
     *   `videoPath`: (string) The path to the processed video in Firebase Storage.
     *   `duration`: (number) The duration of the video in seconds.
     *   `size`: (number) The size of the video in bytes.
+    *   `expireAt`: (timestamp) The exact expiration date calculated from class `videoRetentionDays`, used by Firestore TTL and delete triggers.
     *   `error`: (string) An error message if the job failed.
     *   `errorStack`: (string) The stack trace of the error.
     *   `ffmpegError`: (string) The error from ffmpeg if it failed.

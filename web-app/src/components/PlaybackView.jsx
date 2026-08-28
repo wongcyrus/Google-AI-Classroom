@@ -200,6 +200,7 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
         endTime: new Date(sessionData.end),
         status: 'pending',
         createdAt: serverTimestamp(),
+        expireAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       });
 
       setActiveJobId(jobId);

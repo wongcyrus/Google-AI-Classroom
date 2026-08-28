@@ -42,25 +42,17 @@ This document provides a comprehensive technical reference for the automated dat
 
 ---
 
-## ⚙️ 1. Per-Class Retention Configuration
+## ⚙️ 1. Per-Class Dual Retention Configuration
 
 ### Data Model (`classes/{classId}`)
-* **`retentionDays`** `(number)`: Specifies how many days screenshots are kept before recycling.
-* Supported Presets:
-  * `7 Days` (Short Workshop / Intensive)
-  * `14 Days` (Standard Two-Week Window)
-  * `30 Days` (1 Month - Default)
-  * `60 Days` (2 Months)
-  * `90 Days` (1 Academic Semester)
-  * `180 Days` (Half Year)
-  * `365 Days` (1 Full Year)
+* **`retentionDays`** `(number)`: Specifies how many days **raw screenshots** are kept before recycling (e.g., 7, 14, 30, 60, 90, 180, 365 days).
+* **`videoRetentionDays`** `(number)`: Specifies how many days **compiled lesson videos** (`.mp4`) are kept (e.g., 14, 30, 60, 90, 180, 365, 730 days).
 
-### Ingestion Stamping (`StudentView.jsx`)
-When a student's screen is captured and uploaded:
-1. The client subscribes to the class configuration (`classes/{classId}`).
-2. Calculates `expireAt`:
-   $$\text{expireAt} = \text{new Date}(\text{Date.now}() + \text{retentionDays} \times 86,400,000\text{ ms})$$
-3. Saves `expireAt` directly into the `screenshots` metadata document in Firestore.
+### Ingestion Stamping
+* **Screenshots (`StudentView.jsx`)**:
+  $$\text{expireAt} = \text{new Date}(\text{Date.now}() + \text{retentionDays} \times 86,400,000\text{ ms})$$
+* **Videos (`scheduledTasks.js` / `PlaybackView.jsx`)**:
+  $$\text{expireAt} = \text{new Date}(\text{Date.now}() + \text{videoRetentionDays} \times 86,400,000\text{ ms})$$
 
 ---
 
@@ -68,25 +60,24 @@ When a student's screen is captured and uploaded:
 
 ### `onScreenshotDocDeleted`
 * **Trigger**: `onDocumentDeleted('screenshots/{screenshotId}')`
-* **Execution Region**: `FUNCTION_REGION` (`us-central1` / `asia-east2`)
-* **Behavior**:
-  1. Extracts `imagePath` from `event.data.data()`.
-  2. Executes `storage.bucket().file(imagePath).delete({ ignoreNotFound: true })`.
-  3. Guarantees that whether a document is deleted via:
-     * Manual teacher UI click
-     * Automatic Firestore TTL
-     * Daily Sweeper function
-     * Admin batch script
-     The physical image file is **instantly purged from Cloud Storage**, eliminating orphan blobs.
+* **Behavior**: Extracts `imagePath` and executes `storage.bucket().file(imagePath).delete({ ignoreNotFound: true })`.
+
+### `onVideoJobDocDeleted`
+* **Trigger**: `onDocumentDeleted('videoJobs/{jobId}')`
+* **Behavior**: Extracts `videoPath` (e.g. `videos/{classId}/{outputVideoName}.mp4`) and automatically deletes the `.mp4` file from Cloud Storage.
+
+### `onZipJobDocDeleted`
+* **Trigger**: `onDocumentDeleted('zipJobs/{jobId}')`
+* **Behavior**: Extracts `zipPath` (e.g. `zips/{classId}/{archiveName}.zip`) and automatically deletes the `.zip` archive from Cloud Storage.
 
 ### `onClassRetentionUpdated`
 * **Trigger**: `onDocumentUpdated('classes/{classId}')`
 * **Timeout**: 300 seconds | **Memory**: 512MiB
 * **Behavior**:
-  1. Detects changes: `before.retentionDays !== after.retentionDays`.
-  2. Queries all screenshots belonging to `classId` in **500-item chunks**.
-  3. Computes: $\text{newExpireAt} = \text{doc.timestamp} + (\text{newDays} \times 86.4\text{M ms})$.
-  4. If $\text{newExpireAt} \le \text{now}$: Deletes the document immediately (triggering `onScreenshotDocDeleted` to free up storage).
+  1. Detects changes to `retentionDays` or `videoRetentionDays`.
+  2. Queries screenshots or videoJobs for `classId` in **500-item chunks**.
+  3. Computes $\text{newExpireAt} = \text{doc.timestamp} + (\text{newDays} \times 86.4\text{M ms})$.
+  4. If $\text{newExpireAt} \le \text{now}$: Deletes the document immediately (triggering storage deletion triggers).
   5. If $\text{newExpireAt} > \text{now}$: Updates `expireAt` with the new expiration date.
 
 ### `onClassDocDeleted`
