@@ -313,36 +313,31 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     return () => clearInterval(intervalId);
   }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText]);
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-
-    const onlineStudents = students.filter(s => s.isSharing);
-    if (onlineStudents.length === 0) {
-      alert("No students are online to receive the message.");
-      return;
-    }
+  const handleSendMessage = async (customText = null) => {
+    const textToSend = typeof customText === 'string' ? customText : message;
+    if (!textToSend.trim()) return;
 
     const senderUid = auth.currentUser?.uid;
     if (!senderUid) {
-      console.error("Sender UID not available.");
       alert("Could not send message: user not authenticated.");
       return;
     }
 
     try {
-      for (const student of onlineStudents) {
-        const studentMessagesRef = collection(db, 'students', student.id, 'messages');
-        await addDoc(studentMessagesRef, {
-          message,
-          timestamp: serverTimestamp(),
-          senderUid: senderUid,
-          classId: classId,
-        });
-      }
+      // Optimized: 1 single Firestore write to class-wide messages stream
+      const classMessagesRef = collection(db, 'classes', classId, 'messages');
+      await addDoc(classMessagesRef, {
+        message: textToSend.trim(),
+        timestamp: serverTimestamp(),
+        senderUid: senderUid,
+        senderEmail: auth.currentUser?.email || '',
+        classId: classId,
+      });
+
       setMessage('');
-      alert(`Message sent to ${onlineStudents.length} student(s).`);
+      alert("📢 Broadcast message sent to the class!");
     } catch (error) {
-      console.error("Error sending message to students: ", error);
+      console.error("Error sending class broadcast message: ", error);
       alert("An error occurred while sending the message.");
     }
   };

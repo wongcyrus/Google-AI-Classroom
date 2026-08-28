@@ -27,7 +27,7 @@ const ControlsPanel = ({
 
         {/* Broadcast Message */}
         <div className="control-section">
-            <h4 className="control-section-header">Broadcast Message</h4>
+            <h4 className="control-section-header">📢 Class Broadcast</h4>
             <div className="broadcast-input-group">
               <input 
                 type="text" 
@@ -36,7 +36,28 @@ const ControlsPanel = ({
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 placeholder="Type message to class..." 
               />
-              <button onClick={handleSendMessage} className="primary-action-btn">Send</button>
+              <button onClick={() => handleSendMessage()} className="primary-action-btn">Send</button>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+              {['⏰ 5m left', '💻 Share screen', '👍 Great work!'].map(chip => (
+                <button
+                  key={chip}
+                  type="button"
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '0.72rem',
+                    background: 'var(--color-bg-secondary, #f1f5f9)',
+                    border: '1px solid var(--color-border, #cbd5e1)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-main, #334155)'
+                  }}
+                  onClick={() => handleSendMessage(chip)}
+                  title={`Click to broadcast "${chip}"`}
+                >
+                  {chip}
+                </button>
+              ))}
             </div>
         </div>
 
