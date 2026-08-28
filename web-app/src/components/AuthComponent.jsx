@@ -27,7 +27,8 @@ const AuthComponent = ({ unverifiedUser }) => {
     };
   }, [cooldown]);
 
-  const handleRegister = () => {
+  const handleRegister = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!email.endsWith('@stu.vtc.edu.hk') && !email.endsWith('@vtc.edu.hk')) {
       setError('Only emails ending with @stu.vtc.edu.hk or @vtc.edu.hk are allowed.');
       return;
@@ -47,8 +48,9 @@ const AuthComponent = ({ unverifiedUser }) => {
       });
   };
 
-  const handleLogin = () => {
-    signInWithEmailAndPassword(auth, email, password)
+  const handleLogin = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    signInWithEmailAndPassword(auth, email.trim(), password)
       .then(() => {
         setMessage('');
         setError('');
@@ -63,7 +65,8 @@ const AuthComponent = ({ unverifiedUser }) => {
       });
   };
 
-  const handleResendVerificationEmail = () => {
+  const handleResendVerificationEmail = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (unverifiedUser && cooldown === 0) {
       sendEmailVerification(unverifiedUser)
         .then(() => {
@@ -77,12 +80,13 @@ const AuthComponent = ({ unverifiedUser }) => {
     }
   };
 
-  const handleForgotPassword = () => {
+  const handleForgotPassword = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!email) {
       setError('Please enter your email address to reset your password.');
       return;
     }
-    sendPasswordResetEmail(auth, email)
+    sendPasswordResetEmail(auth, email.trim())
       .then(() => {
         setMessage('Password reset email sent. Please check your inbox.');
       })
