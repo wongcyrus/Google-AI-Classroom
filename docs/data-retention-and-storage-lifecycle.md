@@ -1,6 +1,6 @@
-# 🔄 Data Retention & Storage Lifecycle Architecture
+# 🔄 Data Retention & Autonomous Media Lifecycle Architecture
 
-This document provides a comprehensive technical reference for the automated data retention, Firestore event triggers, Cloud Storage auto-cleanup, and daily time-budgeted sweepers in the AI Classroom Assistant.
+This document provides a comprehensive technical reference for the real-time data retention, autonomous Firestore TTL lifecycle, Storage event-driven deletion triggers, and cascading class removal in the Gemini AI Classroom Assistant.
 
 ---
 
@@ -9,35 +9,40 @@ This document provides a comprehensive technical reference for the automated dat
 ```
                       ┌────────────────────────────────────────────────────────┐
                       │              Class Management UI                       │
-                      │       Teacher configures: retentionDays (e.g. 14)      │
+                      │  Teacher configures:                                   │
+                      │   - Screenshot Retention: 7 to 365 Days                │
+                      │   - Video Retention:      14 to 730 Days               │
                       └───────────────────────────┬────────────────────────────┘
                                                   │
                                                   ▼
                         ┌──────────────────────────────────────────────────┐
-                        │            Student Screenshot Ingestion          │
-                        │   expireAt = timestamp + (retentionDays * 86.4M) │
+                        │             Asset Ingestion & Stamping           │
+                        │   Screenshots: expireAt = now + retentionDays    │
+                        │   VideoJobs:   expireAt = now + videoRetention   │
+                        │   ZipJobs:     expireAt = now + 7 Days (export)  │
                         └─────────────────────────┬────────────────────────┘
                                                   │
-                ┌─────────────────────────────────┴─────────────────────────────────┐
-                ▼                                                                   ▼
-    ┌───────────────────────────────┐                               ┌───────────────────────────────┐
-    │     Firestore TTL Engine      │                               │    Daily Sweeper Function     │
-    │ (Auto-deletes docs at scale)  │                               │ (Bounded 8m batch safety net) │
-    └───────────────┬───────────────┘                               └───────────────┬───────────────┘
-                    │                                                               │
-                    └───────────────────────────────┬───────────────────────────────┘
-                                                    │ (Document Deleted Event)
-                                                    ▼
+                                                  ▼
                                     ┌───────────────────────────────┐
-                                    │    ⚡ onScreenshotDocDeleted   │
-                                    │   (Deletes physical GCS file) │
+                                    │     Firestore TTL Engine      │
+                                    │  (Native Background Removal)  │
                                     └───────────────┬───────────────┘
-                                                    │ (Storage Deleted Event)
+                                                    │ (onDocumentDeleted Event)
                                                     ▼
-                                    ┌───────────────────────────────┐
-                                    │     ⚡ onObjectDeleted        │
-                                    │  (Decrements class storage)   │
-                                    └───────────────────────────────┘
+                ┌───────────────────────────────────┼───────────────────────────────────┐
+                ▼                                   ▼                                   ▼
+    ┌───────────────────────┐           ┌───────────────────────┐           ┌───────────────────────┐
+    │onScreenshotDocDeleted │           │  onVideoJobDocDeleted │           │   onZipJobDocDeleted  │
+    │ Deletes .jpg from GCS │           │ Deletes .mp4 from GCS │           │ Deletes .zip from GCS │
+    └───────────┬───────────┘           └───────────┬───────────┘           └───────────┬───────────┘
+                │                                   │                                   │
+                └───────────────────────────────────┼───────────────────────────────────┘
+                                                    │ (Cloud Storage Deleted Event)
+                                                    ▼
+                                        ┌───────────────────────┐
+                                        │    onObjectDeleted    │
+                                        │ Decrements class quota│
+                                        └───────────────────────┘
 ```
 
 ---
@@ -45,76 +50,127 @@ This document provides a comprehensive technical reference for the automated dat
 ## ⚙️ 1. Per-Class Dual Retention Configuration
 
 ### Data Model (`classes/{classId}`)
-* **`retentionDays`** `(number)`: Specifies how many days **raw screenshots** are kept before recycling (e.g., 7, 14, 30, 60, 90, 180, 365 days).
-* **`videoRetentionDays`** `(number)`: Specifies how many days **compiled lesson videos** (`.mp4`) are kept (e.g., 14, 30, 60, 90, 180, 365, 730 days).
+* **`retentionDays`** `(number)`: Configurable retention period for **raw screen captures** (Presets: 7, 14, 30, 60, 90, 180, 365 days; Default: 30 days).
+* **`videoRetentionDays`** `(number)`: Configurable retention period for **compiled lesson videos** (`.mp4`) (Presets: 14, 30, 60, 90, 180, 365, 730 days; Default: 90 days).
 
-### Ingestion Stamping
+### Ingestion Stamping (`expireAt`)
+Every generated document is stamped with a deterministic UTC expiration timestamp at creation time:
 * **Screenshots (`StudentView.jsx`)**:
-  $$\text{expireAt} = \text{new Date}(\text{Date.now}() + \text{retentionDays} \times 86,400,000\text{ ms})$$
-* **Videos (`scheduledTasks.js` / `PlaybackView.jsx`)**:
-  $$\text{expireAt} = \text{new Date}(\text{Date.now}() + \text{videoRetentionDays} \times 86,400,000\text{ ms})$$
+  `expireAt = new Date(Date.now() + retentionDays * 86,400,000 ms)`
+* **Video Jobs (`scheduledTasks.js` / `PlaybackView.jsx`)**:
+  `expireAt = new Date(Date.now() + videoRetentionDays * 86,400,000 ms)`
+* **Zip Export Jobs (`VideoLibrary.jsx`)**:
+  `expireAt = new Date(Date.now() + 7 * 86,400,000 ms)` (Standard 7-day export window)
 
 ---
 
-## ⚡ 2. Event-Driven Deletion Triggers (`functions/storage_triggers/`)
+## ⚡ 2. Real-Time Event-Driven Deletion Triggers (`functions/storage_triggers/`)
 
 ### `onScreenshotDocDeleted`
 * **Trigger**: `onDocumentDeleted('screenshots/{screenshotId}')`
-* **Behavior**: Extracts `imagePath` and executes `storage.bucket().file(imagePath).delete({ ignoreNotFound: true })`.
+* **Behavior**: Extracts `imagePath` and immediately deletes the physical image blob from Cloud Storage (`bucket.file(imagePath).delete({ ignoreNotFound: true })`).
+* **Guarantee**: Eliminates orphaned image files when documents are removed by Firestore TTL, teacher manual delete, or class deletion.
 
 ### `onVideoJobDocDeleted`
 * **Trigger**: `onDocumentDeleted('videoJobs/{jobId}')`
-* **Behavior**: Extracts `videoPath` (e.g. `videos/{classId}/{outputVideoName}.mp4`) and automatically deletes the `.mp4` file from Cloud Storage.
+* **Behavior**: Extracts `videoPath` (e.g., `videos/{classId}/{jobId}.mp4`) and deletes the compiled video file from Cloud Storage.
 
 ### `onZipJobDocDeleted`
 * **Trigger**: `onDocumentDeleted('zipJobs/{jobId}')`
-* **Behavior**: Extracts `zipPath` (e.g. `zips/{classId}/{archiveName}.zip`) and automatically deletes the `.zip` archive from Cloud Storage.
+* **Behavior**: Extracts `zipPath` (e.g., `zips/{classId}/{jobId}.zip`) and deletes the temporary ZIP archive from Cloud Storage.
 
 ### `onClassRetentionUpdated`
 * **Trigger**: `onDocumentUpdated('classes/{classId}')`
 * **Timeout**: 300 seconds | **Memory**: 512MiB
 * **Behavior**:
-  1. Detects changes to `retentionDays` or `videoRetentionDays`.
-  2. Queries screenshots or videoJobs for `classId` in **500-item chunks**.
-  3. Computes $\text{newExpireAt} = \text{doc.timestamp} + (\text{newDays} \times 86.4\text{M ms})$.
-  4. If $\text{newExpireAt} \le \text{now}$: Deletes the document immediately (triggering storage deletion triggers).
-  5. If $\text{newExpireAt} > \text{now}$: Updates `expireAt` with the new expiration date.
-
-### `onClassDocDeleted`
-* **Trigger**: `onDocumentDeleted('classes/{classId}')`
-* **Behavior**:
-  * Automatically cascades and purges all storage folders under `screenshots/{classId}/`, `videos/{classId}/`, and `zips/{classId}/`.
-
-## ⚡ 3. Real-Time Autonomous TTL Lifecycle
-
-Since all documents (`screenshots`, `videoJobs`, `zipJobs`) are timestamped with an exact `expireAt` at creation time:
-1. **Firestore TTL** automatically deletes expired documents natively in the background without needing scheduled cron sweepers.
-2. **Deletion Triggers** (`onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted`) immediately catch the document removals and purge physical files from Cloud Storage in real-time.
-3. **No Scheduled Sweeper Overhead**: Eliminates scheduled function invocations, runtime timeouts, and polling queries.
+  1. Detects changes when a teacher alters `retentionDays` or `videoRetentionDays`.
+  2. Queries existing `screenshots` and `videoJobs` for that class in **500-item chunks**.
+  3. Computes `newExpireAt = doc.timestamp + (newDays * 86.4M ms)`.
+  4. If `newExpireAt <= now`: Deletes the document immediately (cascading to storage deletion).
+  5. If `newExpireAt > now`: Updates the `expireAt` field with the new future timestamp.
 
 ---
 
-## 📊 4. Storage Quota Auto-Adjustment (`storageQuota.js`)
+## 🗑️ 3. Comprehensive Cascading Class Deletion (`onClassDocDeleted`)
 
-* **Trigger**: `onObjectDeleted` (Cloud Storage Event)
-* **Behavior**:
-  * When an image blob is deleted (by `onScreenshotDocDeleted` or GCS Lifecycle), it detects the file path prefix (`screenshots/{classId}/...`).
-  * Atomically decrements `classes/{classId}/metadata/storage`:
-    ```javascript
-    storageRef.update({
-      storageUsage: FieldValue.increment(-fileSize),
-      storageUsageScreenShots: FieldValue.increment(-fileSize)
-    });
-    ```
-  * Keeps class quota metrics 100% accurate without manual re-indexing.
+When a teacher deletes a class in the UI (`ClassManagement.jsx`), only one quick Firestore operation is executed:
+```javascript
+await deleteDoc(doc(db, 'classes', classId));
+```
+
+The Cloud Function **`onClassDocDeleted`** (`functions/storage_triggers/cleanupTriggers.js`) is triggered and executes a **4-stage cascading purge**:
+
+```mermaid
+flowchart TD
+    A[Teacher Deletes Class in UI] -->|deleteDoc 'classes/classId'| B[(Firestore)]
+    B -->|Trigger Event| C[onClassDocDeleted Function]
+    
+    subgraph S1 [Stage 1: Cloud Storage Purge]
+        C --> St1[Purge screenshots/classId/*]
+        C --> St2[Purge videos/classId/*]
+        C --> St3[Purge zips/classId/*]
+    end
+    
+    subgraph S2 [Stage 2: Firestore Batch Purge in 500s]
+        C --> F1[screenshots where classId == id]
+        C --> F2[videoJobs where classId == id]
+        C --> F3[zipJobs where classId == id]
+        C --> F4[videoAnalysisJobs where classId == id]
+        C --> F5[irregularities & progress where classId == id]
+        C --> F6[propertyUploadJobs where classId == id]
+    end
+    
+    subgraph S3 [Stage 3: Subcollection Cleanup]
+        C --> M1[Delete classes/classId/metadata/storage]
+    end
+    
+    subgraph S4 [Stage 4: Profile Unlinking]
+        C --> P1[FieldValue.arrayRemove classId from teacherProfiles]
+        C --> P2[FieldValue.arrayRemove classId from studentProfiles]
+    end
+```
+
+### Stage Details:
+1. **Stage 1 (Cloud Storage Purge)**:
+   Purges all file prefixes under the class directory (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`).
+2. **Stage 2 (Firestore Collection Batch Purge)**:
+   Queries and batch-deletes all documents linked by `classId` in 500-item chunks across:
+   * `screenshots`
+   * `videoJobs`
+   * `zipJobs`
+   * `videoAnalysisJobs`
+   * `irregularities`
+   * `progress`
+   * `propertyUploadJobs`
+3. **Stage 3 (Subcollection Purge)**:
+   Deletes `classes/{classId}/metadata/storage` tracking doc.
+4. **Stage 4 (User Profile Unlinking)**:
+   Queries `teacherProfiles` and `studentProfiles` where `classes` array contains `classId` and calls `FieldValue.arrayRemove(classId)`.
 
 ---
 
-## 🛡️ Verification & Security Summary
+## 🛡️ 4. Data Safety & Isolation Model
 
-| Feature | Protection Mechanism |
-| :--- | :--- |
-| **No Orphan Blobs** | Every Firestore delete event cascades to physical Cloud Storage deletion. |
-| **No Function Timeouts** | Sweepers enforce an 8-minute runtime ceiling with 500-item chunking. |
-| **No Client Secrets** | File deletion is handled securely by backend triggers without exposing Storage admin permissions to browser clients. |
-| **Zero UI Lag** | UI deletions only touch Firestore; all storage deletions execute asynchronously in the background. |
+| Entity | Impact on Class Deletion | Why It Is Safe |
+| :--- | :--- | :--- |
+| **Teacher Accounts** | **Preserved** | Auth accounts & profile documents remain intact. Only the deleted `classId` is removed from their `classes` array. |
+| **Student Accounts** | **Preserved** | Students can continue logging in. Other enrolled courses remain active and unaffected. |
+| **Other Classes** | **Isolated & Untouched** | Storage folders are strictly scoped (`.../{classId}/`) and queries use exact `.where('classId', '==', classId)` filters. |
+| **Quota Metrics** | **Auto-Adjusted** | Storage deletions automatically trigger `onObjectDeleted` to keep system storage calculations accurate. |
+
+---
+
+## ⚙️ 5. Firestore Native TTL Policy Setup
+
+To ensure Firestore automatically prunes expired documents natively, enable TTL on the `expireAt` field for the relevant collections:
+
+```bash
+# Enable TTL on screenshots
+gcloud firestore fields ttls update expireAt --collection-group=screenshots --enable-ttl
+
+# Enable TTL on videoJobs
+gcloud firestore fields ttls update expireAt --collection-group=videoJobs --enable-ttl
+
+# Enable TTL on zipJobs
+gcloud firestore fields ttls update expireAt --collection-group=zipJobs --enable-ttl
+```
