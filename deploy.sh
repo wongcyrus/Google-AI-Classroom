@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status.
 
+# Check if first argument is an environment selector (dev, prod, or custom project)
+if [ "$1" = "dev" ] || [ "$1" = "development" ] || [ "$1" = "prod" ] || [ "$1" = "production" ] || [[ "$1" =~ ^[a-z0-9-]+-202[0-9]$|^[a-z0-9-]+-2627$ ]]; then
+    ENV_ARG="$1"
+    shift
+    ./switch-env.sh "$ENV_ARG"
+fi
+
 # Copy the central config file to all function directories
 for d in functions/*/ ; do
     cp functions/config.js "$d/config.js"

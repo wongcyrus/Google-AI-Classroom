@@ -31,6 +31,9 @@ terraform apply -auto-approve \
 
 cd ..
 
+# Snapshot .env for this project
+cp web-app/.env "web-app/.env.${PROJECT_ID}"
+
 echo "=========================================================="
 echo "🚀 Step 2: Deploying Multi-Codebase Functions & Hosting"
 echo "=========================================================="

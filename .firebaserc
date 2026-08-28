@@ -1,6 +1,8 @@
 {
   "projects": {
-    "default": "it114115-dev-2026"
+    "default": "it114115-dev-2026",
+    "dev": "it114115-dev-2026",
+    "prod": "it114115-2627"
   },
   "targets": {},
   "etags": {}
