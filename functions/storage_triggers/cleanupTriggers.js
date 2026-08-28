@@ -1,5 +1,5 @@
 import { onDocumentDeleted, onDocumentUpdated } from 'firebase-functions/v2/firestore';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { logger } from 'firebase-functions';
 import { FUNCTION_REGION } from './config.js';
@@ -8,7 +8,50 @@ const db = getFirestore();
 const storage = getStorage();
 
 /**
- * Triggered whenever a screenshot document is deleted in Firestore.
+ * Helper to delete all documents in a collection matching classId in 500-item chunks.
+ */
+async function deleteCollectionByClassId(collectionName, classId) {
+  const BATCH_SIZE = 500;
+  let totalDeleted = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const snap = await db.collection(collectionName)
+      .where('classId', '==', classId)
+      .limit(BATCH_SIZE)
+      .get();
+
+    if (snap.empty) break;
+
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    totalDeleted += snap.size;
+    if (snap.size < BATCH_SIZE) hasMore = false;
+  }
+  return totalDeleted;
+}
+
+/**
+ * Helper to unassign deleted class from user profiles (teacherProfiles & studentProfiles).
+ */
+async function removeClassFromProfiles(collectionName, classId) {
+  const snap = await db.collection(collectionName)
+    .where('classes', 'array-contains', classId)
+    .get();
+
+  if (snap.empty) return;
+
+  const batch = db.batch();
+  snap.docs.forEach(doc => {
+    batch.update(doc.ref, { classes: FieldValue.arrayRemove(classId) });
+  });
+  await batch.commit();
+}
+
+/**
+ * Triggered whenever an entire class document is deleted in Firestore.
  * Automatically deletes the physical image blob from Cloud Storage,
  * ensuring no orphaned files remain regardless of whether the delete
  * came from the UI, a CLI script, or Firestore TTL.
@@ -38,15 +81,22 @@ export const onScreenshotDocDeleted = onDocumentDeleted({
 
 /**
  * Triggered whenever an entire class document is deleted in Firestore.
- * Purges all associated Storage folders (screenshots, videos, zips) for that class.
+ * Performs a comprehensive cascade delete:
+ * 1. Purges all physical Cloud Storage files under screenshots/, videos/, and zips/.
+ * 2. Purges all Firestore documents matching classId (screenshots, videoJobs, zipJobs, irregularities, progress, etc.).
+ * 3. Deletes subcollections (metadata/storage).
+ * 4. Unlinks the class from teacherProfiles and studentProfiles.
  */
 export const onClassDocDeleted = onDocumentDeleted({
   document: 'classes/{classId}',
   region: FUNCTION_REGION,
+  timeoutSeconds: 540,
+  memory: '512MiB',
 }, async (event) => {
   const classId = event.params.classId;
-  logger.info(`Class ${classId} was deleted. Purging associated Storage assets...`);
+  logger.info(`Class ${classId} was deleted. Commencing complete cascading purge...`);
 
+  // 1. Purge all Cloud Storage assets
   const bucket = storage.bucket();
   const prefixes = [
     `screenshots/${classId}/`,
@@ -62,6 +112,44 @@ export const onClassDocDeleted = onDocumentDeleted({
       logger.warn(`Could not purge prefix ${prefix}:`, error);
     }
   }
+
+  // 2. Purge related Firestore collections in batches
+  const collectionsToClean = [
+    'screenshots',
+    'videoJobs',
+    'zipJobs',
+    'videoAnalysisJobs',
+    'irregularities',
+    'progress',
+    'propertyUploadJobs'
+  ];
+
+  for (const col of collectionsToClean) {
+    try {
+      const count = await deleteCollectionByClassId(col, classId);
+      logger.info(`Purged ${count} documents from collection '${col}' for class ${classId}.`);
+    } catch (error) {
+      logger.warn(`Error purging collection '${col}' for class ${classId}:`, error);
+    }
+  }
+
+  // 3. Purge subcollections
+  try {
+    await db.doc(`classes/${classId}/metadata/storage`).delete();
+  } catch (err) {
+    logger.warn(`Could not delete storage metadata for class ${classId}:`, err);
+  }
+
+  // 4. Unlink class from teacher & student profiles
+  try {
+    await removeClassFromProfiles('teacherProfiles', classId);
+    await removeClassFromProfiles('studentProfiles', classId);
+    logger.info(`Unlinked class ${classId} from teacher and student profiles.`);
+  } catch (err) {
+    logger.warn(`Error unlinking profiles for class ${classId}:`, err);
+  }
+
+  logger.info(`Cascade cleanup for class ${classId} completed successfully.`);
 });
 
 /**
