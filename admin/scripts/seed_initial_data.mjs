@@ -19,7 +19,7 @@ async function getOrCreateUser(email, role, displayName, defaultPassword = 'Pass
     const existing = await auth.getUserByEmail(email);
     console.log(`ℹ️ User ${email} exists (UID: ${existing.uid}). Updating claims...`);
     await auth.setCustomUserClaims(existing.uid, { role });
-    await auth.updateUser(existing.uid, { emailVerified: true, displayName });
+    await auth.updateUser(existing.uid, { emailVerified: true, displayName, password: defaultPassword });
     return existing;
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
