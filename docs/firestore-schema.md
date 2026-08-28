@@ -261,12 +261,14 @@ Stores information about each class.
             *   `storageUsageZips`: (number) Storage used by zips.
         *   **If Document ID is `ai`**:
             *   `aiUsedQuota`: (number) The used AI processing quota.
-    *   **`status`**: Stores the real-time status of students in the class.
+    *   **`status`**: Stores the real-time status and live preview metadata of students in the class.
         *   **Document ID**: `studentUid` (string)
         *   **Fields**:
             *   `isSharing`: (boolean) A boolean indicating if the student is currently sharing their screen.
             *   `email`: (string) The student's email.
             *   `name`: (string) The student's name.
+            *   `latestImagePath`: (string) The Cloud Storage path of the student's latest captured screenshot (e.g. `screenshots/{classId}/{studentUid}/{timestamp}.jpg`), enabling single-stream real-time monitoring across the class.
+            *   `timestamp`: (timestamp) A timestamp of the last heartbeat / screenshot update.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.
             *   `ipAddress`: (string) The student's IP address.

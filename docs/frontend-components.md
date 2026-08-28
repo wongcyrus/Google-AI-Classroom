@@ -2,9 +2,11 @@
 
 The `web-app/src/components/` directory contains all the React components that make up the user interface. Below is a breakdown of the main components and their roles.
 
-## Core Layout & Navigation
+## Core Layout, Authentication & Performance
 
-*   **`Layout.jsx`**: Provides the main application structure, including the header with the application title and logo, a notification center, and the main content area.
+*   **`App.jsx`**: The root application component configured with **Dynamic Route Code-Splitting** (`React.lazy` and `Suspense`) via a custom `lazyWithRetry` wrapper. This reduces the initial bundle size by over 99% (from 2.5MB down to ~3–17KB for initial view chunks) and features auto-retry for seamless client-side recovery across production deployments.
+*   **`Layout.jsx`**: Provides the main application structure, including the header with application title, logo, notification center, profile dropdown (with user email, role badge, Change Password trigger, and logout), and the main content area.
+*   **`ChangePasswordModal.jsx` (Modal in `App.jsx`)**: A lightweight dialog allowing authenticated users to securely update their Firebase Auth password with confirmation and validation, without occupying header real estate.
 *   **`AuthComponent.jsx`**: Handles user authentication, displaying login and logout interfaces.
 *   **`TeacherView.jsx`**: The main dashboard for teachers, showing a list of their classes and high-level statistics like storage and AI usage.
 *   **`StudentView.jsx`**: The main view for students, which shows their screen sharing status and any messages from the teacher. For more details on its internal logic, see the [Student View Logic Documentation](./student-view-logic.md).
@@ -19,8 +21,8 @@ The `web-app/src/components/` directory contains all the React components that m
 
 ## Real-time & Session Views
 
-*   **`MonitorView.jsx`**: Provides a real-time grid view of all students' screens during a live session, allowing teachers to monitor the class at a glance.
-*   **`StudentScreen.jsx`**: A small component used within `MonitorView.jsx` to display a single student's screen, name, and sharing status.
+*   **`MonitorView.jsx`**: Provides a real-time grid view of all students' screens during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status`, eliminating $N$ parallel Firestore queries down to 1 consolidated channel with client-side Storage URL caching (`urlCacheRef`).
+*   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's screen, name, and sharing status.
 *   **`IndividualStudentView.jsx`**: A modal overlay that shows a larger view of a single student's screen and allows the teacher to send them a direct message.
 *   **`SessionReviewView.jsx`**: A view for reviewing a student's completed session, including their screen recording and any detected irregularities.
 *   **`PlaybackView.jsx`**: A component for replaying a student's session as a sequence of screenshots, with controls for playback speed and a timeline.
