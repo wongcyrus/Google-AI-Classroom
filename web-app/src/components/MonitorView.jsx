@@ -317,12 +317,12 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         }
       }
       if (Object.keys(screenshotsToAnalyze).length > 0) {
-        runAllImagesAnalysis(screenshotsToAnalyze);
+        runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
       }
     }, samplingRate * frameRate * 1000);
 
     return () => clearInterval(intervalId);
-  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis, students]);
+  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText]);
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;

@@ -8,11 +8,11 @@ const adminAuth = getAuth();
 export const sendMessageToStudent = ai.defineTool(
   {
     name: 'sendMessageToStudent',
-    description: 'Sends a direct message to a specific student.',
+    description: 'Sends a direct message or warning to a specific student.',
     inputSchema: z.object({
       studentUid: z.string().describe('The UID of the student to send the message to.'),
-      message: z.string().describe('The content of the message.'),
-      classId: z.string().describe('The ID of the class.'),
+      message: z.string().describe('The content of the message or warning.'),
+      classId: z.string().optional().describe('The ID of the class.'),
     }),
     outputSchema: z.string(),
   },
@@ -25,9 +25,10 @@ export const sendMessageToStudent = ai.defineTool(
       const messageData = {
         message: message,
         timestamp: FieldValue.serverTimestamp(),
-        classId: classId,
+        classId: classId || '',
       };
       await studentMessagesRef.add(messageData);
+      console.log(`✅ Sent direct message/warning to student ${studentUid}: "${message}"`);
       return `Successfully sent message to student ${studentUid}.`;
     } catch (error) {
       console.error('Error sending message:', error);
@@ -36,48 +37,51 @@ export const sendMessageToStudent = ai.defineTool(
   }
 );
 
-export const recordImageIrregularity = ai.defineTool(
+export const recordIrregularity = ai.defineTool(
   {
-    name: 'recordImageIrregularity',
-    description: 'Records an irregularity activity from an image.',
+    name: 'recordIrregularity',
+    description: 'Records an irregularity or distraction activity for a student (e.g. non-exam app, phone use, gaming).',
     inputSchema: z.object({
       studentUid: z.string().describe('The UID of the student.'),
-      studentEmail: z.string().describe('The email of the student (denormalized).'),
-      title: z.string().describe('The title of the irregularity.'),
-      message: z.string().describe('The description of the irregularity.'),
-      imageUrl: z.string().describe('The URL of the image associated with the irregularity.'),
-      classId: z.string().describe('The ID of the class.'),
+      studentEmail: z.string().optional().describe('The email of the student.'),
+      title: z.string().describe('The short title of the irregularity (e.g., Off-task browsing, Significant Distraction).'),
+      message: z.string().describe('The description of what the student was doing.'),
+      imageUrl: z.string().optional().describe('The URL of the image associated with the irregularity.'),
+      classId: z.string().optional().describe('The ID of the class.'),
     }),
     outputSchema: z.string(),
   },
   async (input) => {
-    console.log('recordImageIrregularity input:', input);
+    console.log('recordIrregularity input:', input);
     const { studentUid, studentEmail, title, message, imageUrl, classId } = input;
     try {
       const db = getFirestore();
       const irregularitiesRef = db.collection('irregularities');
 
-      const pathRegex = /o\/(.*?)\?alt=media/;
-      const match = imageUrl.match(pathRegex);
-      let imagePath = imageUrl;
-      if (match && match[1]) {
-        imagePath = decodeURIComponent(match[1]);
+      let imagePath = imageUrl || '';
+      if (imageUrl) {
+        const pathRegex = /o\/(.*?)\?alt=media/;
+        const match = imageUrl.match(pathRegex);
+        if (match && match[1]) {
+          imagePath = decodeURIComponent(match[1]);
+        }
       }
 
       await irregularitiesRef.add({
         studentUid,
-        email: studentEmail, // Keep email field for compatibility/display
-        title,
-        message,
+        email: studentEmail || '',
+        title: title || 'Distraction / Irregularity Detected',
+        message: message || '',
         type: 'image',
         imageUrl: imagePath,
         timestamp: FieldValue.serverTimestamp(),
-        classId: classId,
+        classId: classId || '',
       });
-      return `Successfully recorded image irregularity for ${studentEmail}.`;
+      console.log(`✅ Recorded irregularity for student ${studentUid}: "${title}"`);
+      return `Successfully recorded irregularity for student ${studentUid}.`;
     } catch (error) {
-      console.error('Error recording image irregularity:', error);
-      return `Failed to record image irregularity for ${studentEmail}. Error: ${error.message}`;
+      console.error('Error recording irregularity:', error);
+      return `Failed to record irregularity. Error: ${error.message}`;
     }
   }
 );

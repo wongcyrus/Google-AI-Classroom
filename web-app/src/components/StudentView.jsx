@@ -400,7 +400,7 @@ const StudentView = ({ user }) => {
     if (!user || !user.uid) return;
 
     const studentMessagesRef = collection(db, 'students', user.uid, 'messages');
-    const q = query(studentMessagesRef, limit(5));
+    const q = query(studentMessagesRef, orderBy('timestamp', 'desc'), limit(10));
     console.log(`Firestore: Subscribing to direct messages for ${user.uid}`);
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       console.log("Firestore: Received direct messages snapshot.");
@@ -413,33 +413,37 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [user]);
 
-  // Handle notifications
+  // Handle notifications & warnings
   useEffect(() => {
-    const allMessages = [...directMessages, ...classMessages];
-    allMessages.sort((a, b) => {
-      const timeA = a.timestamp?.toMillis() || 0;
-      const timeB = b.timestamp?.toMillis() || 0;
+    const allAlerts = [
+      ...directMessages.map(m => ({ text: m.message, timestamp: m.timestamp, id: m.id })),
+      ...classMessages.map(m => ({ text: `📢 ${m.message}`, timestamp: m.timestamp, id: m.id })),
+      ...recentIrregularities.map(ir => ({ text: `⚠️ Warning: ${ir.title || 'Irregularity Detected'}${ir.message ? ` — ${ir.message}` : ''}`, timestamp: ir.timestamp, id: ir.id }))
+    ];
+
+    allAlerts.sort((a, b) => {
+      const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp?.seconds ? a.timestamp.seconds * 1000 : 0);
+      const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp?.seconds ? b.timestamp.seconds * 1000 : 0);
       return timeB - timeA;
     });
 
-    if (allMessages.length > 0) {
-      const latestMessage = allMessages[0];
-      if (latestMessage.timestamp) {
-        const messageTimestamp = latestMessage.timestamp.toDate();
+    if (allAlerts.length > 0) {
+      const latestAlert = allAlerts[0];
+      if (latestAlert.timestamp) {
+        const alertTimestamp = latestAlert.timestamp.toDate ? latestAlert.timestamp.toDate() : new Date(latestAlert.timestamp.seconds * 1000);
         const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000);
 
         if (
-          lastMessageTimestampRef.current?.getTime() !== messageTimestamp.getTime() &&
-          messageTimestamp > oneHourAgo
+          lastMessageTimestampRef.current?.getTime() !== alertTimestamp.getTime() &&
+          alertTimestamp > oneHourAgo
         ) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setNotification(latestMessage.message);
-          setTimeout(() => showSystemNotification(latestMessage.message), 0);
-          lastMessageTimestampRef.current = messageTimestamp;
+          setNotification(latestAlert.text);
+          setTimeout(() => showSystemNotification(latestAlert.text), 0);
+          lastMessageTimestampRef.current = alertTimestamp;
         }
       }
     }
-  }, [directMessages, classMessages, showSystemNotification]);
+  }, [directMessages, classMessages, recentIrregularities, showSystemNotification]);
 
   useEffect(() => {
     if (!user || !user.uid) return;
@@ -449,7 +453,7 @@ const StudentView = ({ user }) => {
       irregularitiesRef,
       where("studentUid", "==", user.uid),
       orderBy("timestamp", "desc"),
-      limit(5)
+      limit(10)
     );
     console.log(`Firestore: Subscribing to irregularities for ${user.uid}`);
     const unsubscribe = onSnapshot(q, (snapshot) => {
