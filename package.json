@@ -1,0 +1,12 @@
+{
+  "name": "gemini-ai-classroom-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:frontend && npm run test:functions && npm run test:smoke",
+    "test:frontend": "npm --prefix web-app test",
+    "test:functions": "npm --prefix functions/ai_flows test && npm --prefix functions/media_processing test",
+    "test:smoke": "node admin/scripts/smoke_test.mjs"
+  }
+}
