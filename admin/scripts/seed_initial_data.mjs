@@ -86,19 +86,32 @@ async function main() {
   console.log(`🌱 Seeding Initial Demo Data for Project: ${projectId}`);
   console.log(`==========================================================`);
 
-  const teacher1 = await getOrCreateUser('cywong@vtc.edu.hk', 'teacher', 'CY Wong');
-  const teacher2 = await getOrCreateUser('cy.gdoc@gmail.com', 'teacher', 'CY Wong (Google)');
+  const allTeacherEmails = [
+    'cywong@vtc.edu.hk',
+    'cy.gdoc@gmail.com',
+    'kcheung@vtc.edu.hk',
+    'rontam@vtc.edu.hk',
+    'hli852@vtc.edu.hk',
+    'kakaleung@vtc.edu.hk',
+    'james.chan@vtc.edu.hk',
+    'ngmanyiu@vtc.edu.hk',
+    'alanpo@vtc.edu.hk'
+  ];
+
+  const teacherMap = {};
+  for (const tEmail of allTeacherEmails) {
+    const tUser = await getOrCreateUser(tEmail, 'teacher', tEmail.split('@')[0]);
+    teacherMap[tUser.uid] = tEmail;
+  }
+
   const student = await getOrCreateUser('t-cywong@stu.vtc.edu.hk', 'student', 'Test Student');
 
   const classId = 'IT114115-Demo';
   const classData = {
     name: 'IT114115 Demo Class',
-    teacherEmails: ['cywong@vtc.edu.hk', 'cy.gdoc@gmail.com'],
+    teacherEmails: allTeacherEmails,
     studentEmails: ['t-cywong@stu.vtc.edu.hk'],
-    teachers: { 
-      [teacher1.uid]: 'cywong@vtc.edu.hk',
-      [teacher2.uid]: 'cy.gdoc@gmail.com'
-    },
+    teachers: teacherMap,
     students: { [student.uid]: 't-cywong@stu.vtc.edu.hk' },
     storageQuota: 5 * 1024 * 1024 * 1024,
     aiQuota: 1000,

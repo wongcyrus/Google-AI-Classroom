@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatBytes } from '../../utils/formatters';
+import { formatBytes, formatAiCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
 const ControlsPanel = ({ 
@@ -14,117 +14,178 @@ const ControlsPanel = ({
     storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips,
     aiQuota, aiUsedQuota
 }) => {
-    const storagePercentage = storageQuota > 0 ? (storageUsage / storageQuota) * 100 : 0;
-    const aiPercentage = aiQuota > 0 ? (aiUsedQuota / aiQuota) * 100 : 0;
+    const storagePercentage = storageQuota > 0 ? Math.min((storageUsage / storageQuota) * 100, 100) : 0;
+    const aiPercentage = aiQuota > 0 ? Math.min((aiUsedQuota / aiQuota) * 100, 100) : 0;
 
     return (
     <div className="monitor-controls-sidebar">
-        <div className="control-item"><button onClick={() => setShowControls(false)} className="hide-controls-btn">Hide Controls</button></div>
+        <div className="sidebar-top-action">
+          <button onClick={() => setShowControls(false)} className="hide-controls-btn">
+            ◀ Hide Controls
+          </button>
+        </div>
+
+        {/* Broadcast Message */}
         <div className="control-section">
-            <div className="control-item">
-              <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Broadcast a message" />
+            <h4 className="control-section-header">Broadcast Message</h4>
+            <div className="broadcast-input-group">
+              <input 
+                type="text" 
+                value={message} 
+                onChange={(e) => setMessage(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Type message to class..." 
+              />
+              <button onClick={handleSendMessage} className="primary-action-btn">Send</button>
             </div>
-            <div className="control-item"><button onClick={handleSendMessage}>Send</button></div>
         </div>
+
+        {/* Capture Configuration */}
         <div className="control-section">
-            <div className="control-item">
-              <label>Frame Rate (seconds):</label>
-              <select value={frameRate} onChange={handleFrameRateChange}>
-                {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}</option>)}
-              </select>
+            <h4 className="control-section-header">Stream Settings</h4>
+            <div className="control-form-grid">
+              <div className="control-item">
+                <label>Frame Interval:</label>
+                <select value={frameRate} onChange={handleFrameRateChange}>
+                  {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}s</option>)}
+                </select>
+              </div>
+              <div className="control-item">
+                <label>Max Resolution:</label>
+                <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
+                  {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </div>
             </div>
-            <div className="control-item">
-              <label>Max Image Size:</label>
-              <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
-                {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+        </div>
+
+        {/* Live Controls */}
+        <div className="control-section">
+            <h4 className="control-section-header">Session Controls</h4>
+            <div className="button-vertical-stack">
+                <button 
+                  onClick={toggleCapture} 
+                  className={isCapturing ? "danger-action-btn" : "success-action-btn"}
+                >
+                  {isCapturing ? '⏹ Stop Capture' : '▶ Start Capture'}
+                </button>
+                <button 
+                  onClick={() => setIsPaused(!isPaused)} 
+                  className="secondary-action"
+                >
+                  {isPaused ? '▶ Resume Stream' : '⏸ Pause Stream'}
+                </button>
+                <button onClick={() => setShowPromptModal(true)} className="secondary-action">
+                  ⚙️ Active Prompt
+                </button>
             </div>
         </div>
+
+        {/* Quick Actions */}
         <div className="control-section">
-            <div className="control-item"><button onClick={toggleCapture}>{isCapturing ? 'Stop Capture' : 'Start Capture'}</button></div>
-            <div className="control-item"><button onClick={() => setIsPaused(!isPaused)}>{isPaused ? 'Resume' : 'Pause'}</button></div>
-            <div className="control-item"><button onClick={() => setShowPromptModal(true)} className="secondary-action">Prompt</button></div>
+            <h4 className="control-section-header">Attendance & Status</h4>
+            <div className="button-vertical-stack">
+                <button onClick={() => setShowNotSharingModal(true)} className="outline-action-btn">
+                  👀 Not Sharing ({notSharingStudents.length})
+                </button>
+                <button onClick={handleDownloadAttendance} className="outline-action-btn">
+                  📥 Download Attendance
+                </button>
+            </div>
         </div>
+
+        {/* Resource Usage */}
         <div className="control-section">
-            <div className="control-item"><button onClick={() => setShowNotSharingModal(true)} className="secondary-action">Show Students Not Sharing ({notSharingStudents.length})</button></div>
-            <div className="control-item"><button onClick={handleDownloadAttendance} className="secondary-action">Download Attendance</button></div>
-        </div>
-        <div className="control-section">
-            <div className="control-item" style={{width: '100%'}}>
-                <label>Storage Usage:</label>
-                <div className="storage-info" style={{ width: '100%' }}>
-                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
-                        <div className="progress-bar" style={{ width: `${storagePercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
-                    </div>
-                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
-                        {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} used` : `${formatBytes(storageUsage)} used`}
-                    </p>
-                    <div className="storage-breakdown" style={{ fontSize: '0.7em', marginTop: '5px', textAlign: 'center' }}>
-                        <p style={{ margin: '2px 0' }}>Screenshots: {formatBytes(storageUsageScreenShots)}</p>
-                        <p style={{ margin: '2px 0' }}>Videos: {formatBytes(storageUsageVideos)}</p>
-                        <p style={{ margin: '2px 0' }}>Zips: {formatBytes(storageUsageZips)}</p>
-                    </div>
+            <h4 className="control-section-header">Usage & Quotas</h4>
+            <div className="quota-block">
+                <div className="quota-header-row">
+                  <span>Storage:</span>
+                  <span className="quota-percent">{storagePercentage.toFixed(1)}%</span>
+                </div>
+                <div className="progress-bar-container">
+                    <div 
+                      className="progress-bar" 
+                      style={{ 
+                        width: `${storagePercentage}%`,
+                        backgroundColor: storagePercentage > 85 ? '#ef4444' : '#10b981'
+                      }}
+                    ></div>
+                </div>
+                <p className="storage-text">
+                    {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)}` : `${formatBytes(storageUsage)} used`}
+                </p>
+                <div className="storage-breakdown">
+                    <span>Screenshots: {formatBytes(storageUsageScreenShots)}</span>
+                    <span>Videos: {formatBytes(storageUsageVideos)}</span>
+                    <span>Zips: {formatBytes(storageUsageZips)}</span>
                 </div>
             </div>
-        </div>
-        <div className="control-section">
-            <div className="control-item" style={{width: '100%'}}>
-                <label>AI Budget:</label>
-                <div className="storage-info" style={{ width: '100%' }}>
-                    <div className="progress-bar-container" style={{ width: '100%', backgroundColor: '#e0e0e0', borderRadius: '4px', height: '10px', overflow: 'hidden' }}>
-                        <div className="progress-bar" style={{ width: `${aiPercentage}%`, backgroundColor: '#4caf50', height: '10px' }}></div>
-                    </div>
-                    <p className="storage-text" style={{ fontSize: '0.8em', textAlign: 'center', marginTop: '4px' }}>
-                        {`$${aiUsedQuota.toFixed(2)} of $${aiQuota.toFixed(2)} used`}
-                    </p>
+
+            <div className="quota-block" style={{ marginTop: '1rem' }}>
+                <div className="quota-header-row">
+                  <span>AI Budget:</span>
+                  <span className="quota-percent">{aiPercentage.toFixed(1)}%</span>
                 </div>
+                <div className="progress-bar-container">
+                    <div 
+                      className="progress-bar" 
+                      style={{ 
+                        width: `${aiPercentage}%`,
+                        backgroundColor: aiPercentage > 85 ? '#ef4444' : '#6366f1'
+                      }}
+                    ></div>
+                </div>
+                <p className="storage-text">
+                    {`${formatAiCost(aiUsedQuota)} of $${aiQuota.toFixed(2)} used`}
+                </p>
             </div>
         </div>
+
+        {/* AI Analysis Control */}
         {editablePromptText && (
-            <div className="control-section">
-              <div className="control-item">
-              {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
-                <>
-                  <button onClick={() => setIsPerImageAnalysisRunning(true)}>
-                    Start Per Image Analysis
+            <div className="control-section highlight-section">
+              <h4 className="control-section-header">AI Invigilation / Analysis</h4>
+              <div className="button-vertical-stack">
+                {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
+                  <>
+                    <button onClick={() => setIsPerImageAnalysisRunning(true)} className="ai-action-btn">
+                      ✨ Start Per-Image Analysis
+                    </button>
+                    <button onClick={() => setIsAllImagesAnalysisRunning(true)} className="ai-action-btn">
+                      ⚡ Start All-Images Analysis
+                    </button>
+                  </>
+                )}
+                {isPerImageAnalysisRunning && (
+                  <button onClick={() => setIsPerImageAnalysisRunning(false)} className="danger-action-btn">
+                    ⏹ Stop Per-Image Analysis
                   </button>
-                  <button onClick={() => setIsAllImagesAnalysisRunning(true)}>
-                    Start All Images Analysis
+                )}
+                {isAllImagesAnalysisRunning && (
+                  <button onClick={() => setIsAllImagesAnalysisRunning(false)} className="danger-action-btn">
+                    ⏹ Stop All-Images Analysis
                   </button>
-                </>
-              )}
+                )}
               </div>
-              <div className="control-item">
-              {isPerImageAnalysisRunning && (
-                <button onClick={() => setIsPerImageAnalysisRunning(false)}>
-                  Stop Per Image Analysis
-                </button>
-              )}
-              </div>
-              <div className="control-item">
-              {isAllImagesAnalysisRunning && (
-                <button onClick={() => setIsAllImagesAnalysisRunning(false)}>
-                  Stop All Images Analysis
-                </button>
-              )}
-              </div>
-              <div className="control-item">
-              <label>
-                Analysis Interval:
+
+              <div className="interval-slider-group" style={{ marginTop: '0.85rem' }}>
+                <label className="slider-label">
+                  <span>Analysis Cycle:</span>
+                  <strong>{samplingRate}s</strong>
+                </label>
                 <input
                   type="range"
                   min="1"
                   max="10"
                   value={samplingRate}
                   onChange={(e) => setSamplingRate(Number(e.target.value))}
+                  className="interval-slider"
                 />
-                {samplingRate}
-              </label>
               </div>
             </div>
-          )}
+        )}
     </div>
-    )}
-;
+    );
+};
 
 export default React.memo(ControlsPanel);

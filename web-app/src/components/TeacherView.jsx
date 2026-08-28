@@ -4,7 +4,7 @@ import { db } from '../firebase-config';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import './TeacherView.css';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, formatAiCost } from '../utils/formatters';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
@@ -229,7 +229,7 @@ const TeacherView = ({ user }) => {
           <div className="kpi-icon purple">🤖</div>
           <div className="kpi-content">
             <span className="kpi-label">AI Budget Used</span>
-            <span className="kpi-value">${stats.totalAiUsed.toFixed(2)}</span>
+            <span className="kpi-value">{formatAiCost(stats.totalAiUsed)}</span>
             <span className="kpi-subtext">of ${stats.totalAiQuota.toFixed(2)} total budget</span>
           </div>
         </div>
@@ -302,7 +302,7 @@ const TeacherView = ({ user }) => {
                   <div>
                     <div className="meter-header">
                       <span>AI Budget</span>
-                      <span>${aiUsed.toFixed(2)} / ${aiQuota.toFixed(2)}</span>
+                      <span>{formatAiCost(aiUsed)} / ${aiQuota.toFixed(2)}</span>
                     </div>
                     <div className="meter-track">
                       <div className="meter-fill ai" style={{ width: `${aiPercent}%` }} />

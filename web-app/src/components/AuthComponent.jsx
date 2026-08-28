@@ -94,40 +94,77 @@ const AuthComponent = ({ unverifiedUser }) => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Login / Register</h2>
-        <input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Enter your password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <div className="button-group">
-          <button onClick={handleLogin}>Login</button>
-          <button onClick={handleRegister}>Register</button>
+        <div className="auth-header">
+          <div className="auth-icon-badge">🔐</div>
+          <h2>Welcome Back</h2>
+          <p className="auth-subtitle">Sign in to your classroom account or register</p>
         </div>
-        <button onClick={handleForgotPassword} className="forgot-password-button">Forgot Password</button>
-        {unverifiedUser && (
+        
+        <form className="auth-form" onSubmit={handleLogin}>
+          <div className="auth-field">
+            <label htmlFor="auth-email">Email Address</label>
+            <input
+              id="auth-email"
+              type="email"
+              placeholder="user@stu.vtc.edu.hk or @vtc.edu.hk"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="auth-password">Password</label>
+            <input
+              id="auth-password"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="auth-buttons-stack">
+            <div className="auth-primary-actions">
+              <button type="submit" className="auth-submit-btn">
+                Sign In
+              </button>
+              <button type="button" onClick={handleRegister} className="auth-register-btn secondary-btn">
+                Register
+              </button>
+            </div>
+
             <button 
-              onClick={handleResendVerificationEmail} 
-              disabled={cooldown > 0}
-              className="resend-verification-button"
+              type="button" 
+              onClick={handleForgotPassword} 
+              className="forgot-password-button"
             >
-              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Verification Email'}
+              Forgot Password?
             </button>
+
+            {unverifiedUser && (
+              <button 
+                type="button"
+                onClick={handleResendVerificationEmail} 
+                disabled={cooldown > 0}
+                className="resend-verification-button"
+              >
+                {cooldown > 0 ? `Resend Verification (${cooldown}s)` : 'Resend Verification Email'}
+              </button>
+            )}
+          </div>
+        </form>
+
+        {(error || message) && (
+          <div className="message-container">
+            {error && <div className="auth-alert error-alert">⚠️ {error}</div>}
+            {message && <div className="auth-alert info-alert">ℹ️ {message}</div>}
+          </div>
         )}
-        <div className="message-container">
-            {error && <p className="error">{error}</p>}
-            {message && <p className="message">{message}</p>}
-        </div>
       </div>
     </div>
   );
-}
+};
 
 export default AuthComponent;

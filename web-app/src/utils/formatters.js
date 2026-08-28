@@ -10,4 +10,15 @@ export const formatBytes = (bytes, decimals = 2) => {
     }
 
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
+};
+
+export const formatAiCost = (amount) => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
+    const num = Number(amount);
+    if (num === 0) return '$0.00';
+    if (num < 0.01) {
+        // High precision formatting for micro-transactions (e.g. $0.0038)
+        return `$${num.toFixed(4)}`;
+    }
+    return `$${num.toFixed(2)}`;
+};
