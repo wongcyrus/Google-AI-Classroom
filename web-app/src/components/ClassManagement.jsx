@@ -147,6 +147,59 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     return null;
   };
 
+  const handleImportEmailsFromFile = (event, type = 'students') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result || '';
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const matchedEmails = content.match(emailRegex) || [];
+      const cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
+
+      if (cleanUnique.length === 0) {
+        alert('No valid email addresses found in the uploaded file.');
+        return;
+      }
+
+      if (type === 'students') {
+        const existing = studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+        const merged = [...new Set([...existing, ...cleanUnique])];
+        setStudentEmails(merged.join('\n'));
+        alert(`Successfully imported ${cleanUnique.length} student email(s)!`);
+      } else {
+        const existing = teacherEmails.replace(/\n/g, ' ').split(/[, ]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+        const merged = [...new Set([...existing, ...cleanUnique])];
+        setTeacherEmails(merged.join('\n'));
+        alert(`Successfully imported ${cleanUnique.length} teacher email(s)!`);
+      }
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExportEmailsToCSV = (type = 'students') => {
+    const emails = type === 'students'
+      ? studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean)
+      : teacherEmails.replace(/\n/g, ' ').split(/[, ]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    if (emails.length === 0) {
+      alert(`No ${type} emails to export.`);
+      return;
+    }
+
+    const header = type === 'students' ? 'StudentEmail,ClassID\n' : 'TeacherEmail,ClassID\n';
+    const rows = emails.map(email => `"${email}","${classId || 'class'}"`).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${(classId || 'class').toLowerCase()}_${type}_roster.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleUpdateClass = async () => {
     const targetClassId = (classId || '').trim().toLowerCase();
     const validationError = validateClassId(targetClassId);
@@ -409,7 +462,28 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       <div className="settings-section-card">
         <h3>👥 3. Student Roster</h3>
         <div className="form-group">
-          <label>Student Email Addresses</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <label style={{ margin: 0 }}>Student Email Addresses</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                📥 Import (CSV/TXT)
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleImportEmailsFromFile(e, 'students')}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={() => handleExportEmailsToCSV('students')}
+              >
+                📤 Export CSV
+              </button>
+            </div>
+          </div>
           <textarea
             placeholder="Enter student emails (one per line or comma separated)..."
             value={studentEmails}
@@ -433,7 +507,28 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       <div className="settings-section-card">
         <h3>👨‍🏫 4. Teaching Team (Co-Instructors)</h3>
         <div className="form-group">
-          <label>Co-Teacher Email Addresses</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <label style={{ margin: 0 }}>Co-Teacher Email Addresses</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                📥 Import (CSV/TXT)
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleImportEmailsFromFile(e, 'teachers')}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={() => handleExportEmailsToCSV('teachers')}
+              >
+                📤 Export CSV
+              </button>
+            </div>
+          </div>
           <textarea
             placeholder="Enter co-teacher emails (one per line or space separated)..."
             value={teacherEmails}
