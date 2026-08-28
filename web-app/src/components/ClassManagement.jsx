@@ -536,12 +536,21 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <p className="input-hint">Students with these emails will gain access to this class.</p>
         </div>
 
-        {(selectedClass || embeddedClassId) && (
+        {(selectedClass || embeddedClassId) ? (
           <div style={{ marginTop: '1.25rem' }}>
-            <label style={{ fontWeight: '600', display: 'block', marginBottom: '0.5rem' }}>
-              Custom Student Properties (CSV Upload / Edit):
-            </label>
             <CustomPropertiesManager selectedClass={embeddedClassId || selectedClass} studentEmails={studentEmails} />
+          </div>
+        ) : (
+          <div style={{ marginTop: '1.25rem', padding: '0.9rem 1.25rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', border: '1px dashed var(--color-border, #cbd5e1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '1.2rem' }}>ℹ️</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.88rem', color: 'var(--color-text-main, #334155)' }}>
+                Custom Student Properties & CSV Upload
+              </p>
+              <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted, #64748b)' }}>
+                Custom class-wide properties and student CSV upload controls become available after creating and selecting this class.
+              </p>
+            </div>
           </div>
         )}
       </div>

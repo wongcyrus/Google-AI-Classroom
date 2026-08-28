@@ -205,76 +205,154 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   };
 
   return (
-    <div className="manage-selected-class">
-        {error && <div className="error-message">{error}</div>}
-        {successMessage && <div className="success-message">{successMessage}</div>}
-      <hr />
-      <h3>Custom Properties</h3>
-      <div className="form-group">
-          <label>Class-wide Properties</label>
-          <div className="properties-table">
-              {classProperties.map((prop, index) => (
-                  <div key={index} className="property-row">
-                      <input
-                          type="text"
-                          placeholder="Key"
-                          value={prop.key}
-                          onChange={(e) => handlePropertyChange(index, 'key', e.target.value)}
-                      />
-                      <input
-                          type="text"
-                          placeholder="Value"
-                          value={prop.value}
-                          onChange={(e) => handlePropertyChange(index, 'value', e.target.value)}
-                      />
-                      <button type="button" onClick={() => removePropertyRow(index)}>Remove</button>
-                  </div>
-              ))}
-          </div>
-          <button type="button" onClick={addPropertyRow}>Add Property</button>
+    <div className="manage-selected-class-properties" style={{ marginTop: '1rem', borderTop: '1px solid var(--color-border, #e2e8f0)', paddingTop: '1rem' }}>
+      {error && <div className="error-banner" style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '6px', fontSize: '0.9rem' }}>⚠️ {error}</div>}
+      {successMessage && <div className="success-banner" style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '6px', fontSize: '0.9rem' }}>✅ {successMessage}</div>}
+
+      {/* Class-wide Properties */}
+      <div style={{ marginBottom: '1.5rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border, #e2e8f0)' }}>
+        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-text-main, #1e293b)' }}>
+          🏷️ Class-wide Custom Properties
+        </h4>
+        <p className="input-hint" style={{ marginBottom: '0.75rem' }}>
+          Key-value pairs applicable to all students and AI prompts for this class.
+        </p>
+        <div className="properties-table">
+          {classProperties.map((prop, index) => (
+            <div key={index} className="property-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Property Key (e.g., CourseCode)"
+                value={prop.key}
+                onChange={(e) => handlePropertyChange(index, 'key', e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <input
+                type="text"
+                placeholder="Value (e.g., CS101)"
+                value={prop.value}
+                onChange={(e) => handlePropertyChange(index, 'value', e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: '#fca5a5' }}
+                onClick={() => removePropertyRow(index)}
+                title="Remove Property"
+              >
+                🗑️
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+            onClick={addPropertyRow}
+          >
+            ➕ Add Property Field
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem', fontWeight: 600 }}
+            onClick={handleSaveProperties}
+          >
+            💾 Save Class-wide Properties
+          </button>
+        </div>
       </div>
 
-      <div className="form-group">
-          <label>Student-specific Properties (via CSV)</label>
-          <p className="input-hint">
-              Upload a CSV with `StudentEmail` as the first column header. The system will process it in the background.
-          </p>
-          <div className="csv-buttons">
-              <button type="button" onClick={handleDownloadStudentTemplate}>Download Existing Properties</button>
-              {downloadProps && (
-                <CSVLink
-                    headers={downloadProps.headers}
-                    data={downloadProps.data}
-                    filename={`${selectedClass}-student-properties.csv`}
-                    style={{ display: "none" }}
-                    ref={csvLink}
-                    target="_blank"
-                />
-              )}
-              <label htmlFor="csv-upload" className="button-like-label">Upload CSV</label>
-              <input id="csv-upload" type="file" accept=".csv" onChange={handleStudentPropertiesCSVUpload} style={{ display: 'none' }} />
-          </div>
-      </div>
+      {/* Student-specific Properties via CSV */}
+      <div style={{ backgroundColor: 'var(--color-bg-secondary, #f8fafc)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border, #e2e8f0)' }}>
+        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-text-main, #1e293b)' }}>
+          📊 Student-specific Properties (CSV Upload / Export)
+        </h4>
+        <p className="input-hint" style={{ marginBottom: '0.75rem' }}>
+          Upload a CSV with <code>StudentEmail</code> as the first column header to assign custom properties per student (e.g. <code>Group</code>, <code>DeskId</code>, <code>SpecialNeeds</code>).
+        </p>
+        
+        <div className="csv-buttons" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.45rem 0.9rem' }}
+            onClick={handleDownloadStudentTemplate}
+          >
+            📥 Export / Download Existing CSV
+          </button>
+          {downloadProps && (
+            <CSVLink
+              headers={downloadProps.headers}
+              data={downloadProps.data}
+              filename={`${selectedClass}-student-properties.csv`}
+              style={{ display: "none" }}
+              ref={csvLink}
+              target="_blank"
+            />
+          )}
 
-      <div className="form-group">
-          <label>Recent Upload Jobs</label>
-          <div className="jobs-list">
-              {propertyUploadJobs.length > 0 ? propertyUploadJobs.map(job => (
-                  <div key={job.id} className="job-item">
-                      <span>{job.createdAt?.toDate().toLocaleString()} - <strong>{job.status}</strong></span>
-                      {(job.status === 'completed' || job.status === 'completed_with_errors') && typeof job.totalRows === 'number' && (
-                        <p className="job-details" style={{ margin: '4px 0 0', fontSize: '0.9em', color: '#666' }}>
-                            Processed: {job.processedCount || 0}/{job.totalRows}.
-                            {job.notFoundCount > 0 && ` Not Found: ${job.notFoundCount}.`}
-                        </p>
-                      )}
-                      {job.error && <p className="error-message">{job.error}</p>}
-                  </div>
-              )) : <p>No recent uploads.</p>}
-          </div>
-      </div>
+          <label
+            htmlFor="student-csv-upload-input"
+            className="btn-secondary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.85rem',
+              padding: '0.45rem 0.9rem',
+              cursor: 'pointer',
+              margin: 0,
+              backgroundColor: 'var(--color-primary, #6366f1)',
+              color: 'white',
+              borderColor: 'transparent'
+            }}
+          >
+            📤 Choose CSV to Upload
+            <input
+              id="student-csv-upload-input"
+              type="file"
+              accept=".csv"
+              onChange={handleStudentPropertiesCSVUpload}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
 
-      <button onClick={handleSaveProperties}>Save Properties</button>
+        {/* Recent Upload Jobs */}
+        <div style={{ marginTop: '1rem', borderTop: '1px dashed var(--color-border, #cbd5e1)', paddingTop: '0.75rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>Recent Upload Jobs:</label>
+          <div className="jobs-list" style={{ marginTop: '0.35rem' }}>
+            {propertyUploadJobs.length > 0 ? propertyUploadJobs.map(job => (
+              <div key={job.id} style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', backgroundColor: 'var(--color-surface, #ffffff)', borderRadius: '4px', border: '1px solid var(--color-border, #e2e8f0)', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{job.createdAt?.toDate ? job.createdAt.toDate().toLocaleString() : 'Just now'}</span>
+                  <span style={{
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    backgroundColor: job.status === 'completed' ? '#dcfce7' : job.status === 'failed' ? '#fee2e2' : '#e0e7ff',
+                    color: job.status === 'completed' ? '#166534' : job.status === 'failed' ? '#991b1b' : '#3730a3'
+                  }}>
+                    {job.status}
+                  </span>
+                </div>
+                {(job.status === 'completed' || job.status === 'completed_with_errors') && typeof job.totalRows === 'number' && (
+                  <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted, #64748b)' }}>
+                    Processed: {job.processedCount || 0}/{job.totalRows}.
+                    {job.notFoundCount > 0 && ` (${job.notFoundCount} emails not enrolled)`}
+                  </p>
+                )}
+                {job.error && <p style={{ margin: '4px 0 0', color: '#b91c1c', fontSize: '0.78rem' }}>Error: {job.error}</p>}
+              </div>
+            )) : <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted, #94a3b8)', margin: '0.2rem 0' }}>No recent upload jobs.</p>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
