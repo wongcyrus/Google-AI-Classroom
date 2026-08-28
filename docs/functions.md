@@ -140,19 +140,37 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
     -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour.
     -   **Description**: This function automates the process of creating video compilation jobs after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any of their scheduled time slots have recently concluded. If so, it creates a new `videoJobs` document for each student enrolled in that class session. This, in turn, triggers the `processVideoJob` function to begin compiling the screenshots into a video. It also creates a notification for the teachers of the class to inform them that the process has started.
 
+-   **`handleDailyDataCleanup`**:
+    -   **Trigger**: Scheduled daily at 02:00 UTC (`0 2 * * *`).
+    -   **Description**: A time-budgeted data sweeper (8-minute internal safety budget, 500-item chunk batches) that prunes expired screenshot records (`expireAt <= now`) and old completed/failed video jobs (> 30 days old). Prevents container timeouts while ensuring continuous cleanup.
+
 ### Data Models
 
 -   **`classes`**: This function reads class documents to check the `automaticCapture`, `automaticCombine`, and `schedule` properties. It also updates the `isCapturing` flag.
--   **`videoJobs`**: This function creates new documents in this collection to trigger the video processing workflow.
+-   **`videoJobs`**: This function creates new documents in this collection to trigger the video processing workflow, and prunes old completed/failed records during daily cleanup.
 -   **`notifications`**: This function creates documents in this collection to inform teachers that the automatic video combination process has begun.
 
 ---
 
 ## Storage Triggers
 
-This directory contains Cloud Functions that are triggered by events in Cloud Storage, as well as callable functions for managing stored files.
+This directory contains Cloud Functions that are triggered by events in Cloud Storage, as well as callable functions and Firestore delete/update triggers for automated data lifecycle and quota management.
 
 ### Functions
+
+#### Firestore Triggers
+
+-   **`onScreenshotDocDeleted`**:
+    -   **Trigger**: `onDocumentDeleted` in `screenshots/{screenshotId}`.
+    -   **Description**: Automatically deletes the physical Cloud Storage file referenced by `imagePath` when a screenshot Firestore document is removed (whether by manual UI action, admin script, or Firestore TTL). Prevents dangling orphaned storage blobs.
+
+-   **`onClassDocDeleted`**:
+    -   **Trigger**: `onDocumentDeleted` in `classes/{classId}`.
+    -   **Description**: Automatically purges all associated Storage folders (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`) when an entire class is deleted.
+
+-   **`onClassRetentionUpdated`**:
+    -   **Trigger**: `onDocumentUpdated` in `classes/{classId}`.
+    -   **Description**: Triggered when a teacher modifies `retentionDays` in Class Management. Retroactively recalculates `expireAt` across the class's existing screenshots in 500-item chunks. Immediately deletes screenshots that are now older than the new retention limit.
 
 #### Storage Triggers
 
@@ -173,7 +191,7 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 ### Data Models
 
 -   **`classes/{classId}/metadata/storage`**: A document that stores the aggregated storage usage for a class, broken down by file type (screenshots, videos, zips). This is the primary document read from and written to by the storage trigger functions.
--   **`screenshots`**: This collection is read by the `deleteScreenshotsByDateRange` function to find files to delete. The function also updates documents in this collection to mark them as deleted.
+-   **`screenshots`**: This collection is monitored by `onScreenshotDocDeleted` and the daily sweeper to manage file lifecycles and physical blob deletion.
 
 ---
 

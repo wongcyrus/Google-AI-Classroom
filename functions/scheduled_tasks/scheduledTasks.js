@@ -212,3 +212,77 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
 
   await Promise.all(notificationPromises);
 });
+
+const cleanupScheduleOptions = {
+  schedule: '0 2 * * *', // Daily at 02:00 AM UTC
+  memory: '512MB',
+  timeoutSeconds: 540,
+  region: FUNCTION_REGION
+};
+
+/**
+ * Daily time-budgeted data sweeper.
+ * Acts as a resilient safety guard to clean up expired screenshots,
+ * completed video jobs, and old ephemeral status documents.
+ * Deleting screenshot documents triggers `onScreenshotDocDeleted` to purge storage files.
+ */
+export const handleDailyDataCleanup = onSchedule(cleanupScheduleOptions, async () => {
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 480 * 1000; // 8 minutes safety budget
+  const BATCH_SIZE = 500;
+  const now = new Date();
+
+  logger.info(`Starting daily bounded data cleanup at ${now.toISOString()}`);
+
+  let totalScreenshotsDeleted = 0;
+  let totalVideoJobsDeleted = 0;
+
+  // 1. Clean up expired screenshots (where expireAt <= now)
+  while (Date.now() - startTime < MAX_RUNTIME_MS) {
+    const expiredSnap = await db.collection('screenshots')
+      .where('expireAt', '<=', now)
+      .limit(BATCH_SIZE)
+      .get();
+
+    if (expiredSnap.empty) {
+      logger.info('No more expired screenshots found.');
+      break;
+    }
+
+    const batch = db.batch();
+    expiredSnap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    totalScreenshotsDeleted += expiredSnap.size;
+    logger.info(`Deleted batch of ${expiredSnap.size} expired screenshots (Total: ${totalScreenshotsDeleted}).`);
+
+    if (expiredSnap.size < BATCH_SIZE) break;
+  }
+
+  // 2. Clean up old completed/failed videoJobs (> 30 days old)
+  const jobExpiryThreshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  while (Date.now() - startTime < MAX_RUNTIME_MS) {
+    const oldJobsSnap = await db.collection('videoJobs')
+      .where('status', 'in', ['completed', 'failed'])
+      .where('createdAt', '<', jobExpiryThreshold)
+      .limit(BATCH_SIZE)
+      .get();
+
+    if (oldJobsSnap.empty) {
+      logger.info('No old videoJobs to clean up.');
+      break;
+    }
+
+    const batch = db.batch();
+    oldJobsSnap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    totalVideoJobsDeleted += oldJobsSnap.size;
+    logger.info(`Deleted batch of ${oldJobsSnap.size} old videoJobs (Total: ${totalVideoJobsDeleted}).`);
+
+    if (oldJobsSnap.size < BATCH_SIZE) break;
+  }
+
+  const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+  logger.info(`Daily cleanup finished in ${elapsedSec}s. Screenshots pruned: ${totalScreenshotsDeleted}, VideoJobs pruned: ${totalVideoJobsDeleted}`);
+});

@@ -221,6 +221,7 @@ Stores information about each class.
     *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
     *   `teachers`: (map) A map of teacher UIDs to their email addresses (`{ <teacherUid>: <teacherEmail> }`).
     *   `storageQuota`: (number) The storage limit for the class in bytes.
+    *   `retentionDays`: (number) The data retention period in days (e.g., 7, 14, 30, 90). Screenshots older than this duration are automatically purged.
     *   `schedule`: (object) An object containing the class schedule.
         *   `startDate`: (string) The start date of the class.
         *   `endDate`: (string) The end date of the class.
@@ -371,6 +372,7 @@ Stores metadata for each screenshot.
     *   `imagePath`: (string) The path to the screenshot image in Firebase Storage.
     *   `size`: (number) The size of the screenshot in bytes.
     *   `timestamp`: (timestamp) A timestamp of when the screenshot was taken.
+    *   `expireAt`: (timestamp) The exact expiration date calculated from class `retentionDays`, used by Firestore TTL and delete triggers.
     *   `deleted`: (boolean) A boolean indicating if the screenshot has been deleted.
 
 ### `studentProfiles`

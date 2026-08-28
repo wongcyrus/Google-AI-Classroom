@@ -26,6 +26,7 @@ const StudentView = ({ user }) => {
   const [maxImageSize, setMaxImageSize] = useState(1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
+  const [retentionDays, setRetentionDays] = useState(30);
   const [recentIrregularities, setRecentIrregularities] = useState([]);
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
@@ -195,7 +196,7 @@ const StudentView = ({ user }) => {
             await uploadBytes(screenshotRef, blob);
             console.log('Screenshot uploaded successfully.');
             const screenshotsColRef = collection(db, 'screenshots');
-            console.log(`Firestore: Adding doc to screenshots collection`);
+            const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
             await addDoc(screenshotsColRef, {
               classId,
               studentUid: user.uid,
@@ -203,10 +204,11 @@ const StudentView = ({ user }) => {
               imagePath: screenshotRef.fullPath,
               size: blob.size,
               timestamp: serverTimestamp(),
+              expireAt: expireAtDate,
               deleted: false,
               ipAddress: ipAddress,
             });
-            console.log('Firestore: Successfully added screenshot metadata.');
+            console.log('Firestore: Successfully added screenshot metadata with expireAt.');
             const statusRef = doc(db, "classes", classId, "status", user.uid);
             console.log(`Firestore: Updating student status timestamp and latestImagePath in ${classId}`);
             await setDoc(statusRef, {
@@ -335,6 +337,7 @@ const StudentView = ({ user }) => {
         setMaxImageSize(data.maxImageSize || 1024 * 1024);
         setIsCapturing(data.isCapturing || false);
         setCaptureStartedAt(data.captureStartedAt || null);
+        setRetentionDays(data.retentionDays || 30);
       }
     }, (error) => {
       console.error(`Firestore: Error subscribing to class document ${activeClass}:`, error);

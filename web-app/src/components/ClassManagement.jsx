@@ -19,6 +19,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
   // Class settings state
   const [storageLimit, setStorageLimit] = useState('5'); // In GB
+  const [retentionDays, setRetentionDays] = useState('30'); // In Days
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Hong_Kong');
@@ -71,6 +72,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           const classData = classSnap.data();
           setClassId(activeId);
           setClassName(classData.name || '');
+          setRetentionDays((classData.retentionDays || 30).toString());
           if (classData.storageQuota) {
             setStorageLimit((classData.storageQuota / (1024 * 1024 * 1024)).toString());
           } else {
@@ -116,6 +118,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setClassId('');
         setClassName('');
         setStorageLimit('5');
+        setRetentionDays('30');
         setScheduleStartDate('');
         setScheduleEndDate('');
         setTimeZone('Asia/Hong_Kong');
@@ -241,6 +244,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       .filter(Boolean);
 
     const storageQuotaBytes = parseInt(storageLimit) * 1024 * 1024 * 1024;
+    const retentionDaysNum = parseInt(retentionDays, 10) > 0 ? parseInt(retentionDays, 10) : 30;
     const ipList = ipRestrictions.split('\n').map(ip => ip.trim()).filter(Boolean);
 
     try {
@@ -251,6 +255,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         const updateData = {
           name: className.trim() || targetClassId,
           storageQuota: storageQuotaBytes,
+          retentionDays: retentionDaysNum,
           schedule: {
             startDate: scheduleStartDate,
             endDate: scheduleEndDate,
@@ -275,6 +280,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
           storageQuota: storageQuotaBytes,
+          retentionDays: retentionDaysNum,
           schedule: {
             startDate: scheduleStartDate,
             endDate: scheduleEndDate,
@@ -433,13 +439,29 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
         </div>
 
-        <div className="form-group">
-          <label>Storage Limit Allotment</label>
-          <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
-            <option value="5">5 GB (Standard)</option>
-            <option value="10">10 GB (Extended)</option>
-            <option value="20">20 GB (Large Course)</option>
-          </select>
+        <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+          <div className="form-group">
+            <label>Storage Limit Allotment</label>
+            <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
+              <option value="5">5 GB (Standard)</option>
+              <option value="10">10 GB (Extended)</option>
+              <option value="20">20 GB (Large Course)</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Data Retention Period (Days)</label>
+            <select value={retentionDays} onChange={(e) => setRetentionDays(e.target.value)}>
+              <option value="7">7 Days (Short Workshop)</option>
+              <option value="14">14 Days (Standard)</option>
+              <option value="30">30 Days (1 Month)</option>
+              <option value="60">60 Days (2 Months)</option>
+              <option value="90">90 Days (1 Semester)</option>
+              <option value="180">180 Days (Half Year)</option>
+              <option value="365">365 Days (1 Year)</option>
+            </select>
+            <p className="input-hint">Screenshots older than this period are automatically recycled to free storage.</p>
+          </div>
         </div>
       </div>
 
