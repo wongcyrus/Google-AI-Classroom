@@ -14,6 +14,7 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 - [Backend Functionality](./docs/functions.md)
 - [Frontend Components](./docs/frontend-components.md)
 - [Getting Started (Local Development)](#getting-started-local-development)
+- [Testing & Quality Assurance](#-testing--quality-assurance)
 - [Admin Scripts](#admin-scripts)
 - [Deployment](#deployment)
 
@@ -206,6 +207,25 @@ npm run dev
 ```
 
 The application should now be running locally, typically at `http://localhost:5173`.
+
+## 🧪 Testing & Quality Assurance
+
+The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests:
+
+```bash
+# Run all test suites (Frontend + Functions + System Smoke Tests)
+npm test
+
+# Run all test suites with V8 code coverage report
+npm run test:coverage
+
+# Run specific sub-suites
+npm run test:frontend   # React component & utility unit tests (Vitest)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest)
+npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin)
+```
+
+For complete architectural details, test matrices, and coverage reports, see the **[Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.
 
 ## Admin Scripts
 
