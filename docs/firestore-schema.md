@@ -272,11 +272,14 @@ Stores information about each class.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.
             *   `ipAddress`: (string) The student's IP address.
-    *   **`messages`**: Stores class-wide messages.
+    *   **`messages`**: Stores real-time class-wide broadcast messages from teachers to all enrolled students in the class.
         *   **Document ID**: Auto-generated.
         *   **Fields**:
-            *   `message`: (string) The message content.
+            *   `message`: (string) The broadcast message content.
             *   `timestamp`: (timestamp) A timestamp of when the message was sent.
+            *   `senderUid`: (string) The UID of the teacher who broadcasted the message.
+            *   `senderEmail`: (string) The email of the teacher who broadcasted the message.
+            *   `classId`: (string) The ID of the class.
 
 ### `irregularities`
 
