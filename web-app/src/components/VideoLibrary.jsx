@@ -74,6 +74,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             videos: videosToZip,
             status: 'pending',
             createdAt: serverTimestamp(),
+            expireAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days retention for ZIP exports
             startTime: new Date(startTime),
             endTime: new Date(endTime),
             prompt: editablePromptText,
@@ -139,6 +140,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             videos: videosToZip,
             status: 'pending',
             createdAt: serverTimestamp(),
+            expireAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days retention for ZIP exports
             startTime: new Date(startTime),
             endTime: new Date(endTime),
             prompt: editablePromptText,

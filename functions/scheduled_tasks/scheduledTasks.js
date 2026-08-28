@@ -285,6 +285,30 @@ export const handleDailyDataCleanup = onSchedule(cleanupScheduleOptions, async (
     if (expiredJobsSnap.size < BATCH_SIZE) break;
   }
 
+  // 3. Clean up expired zipJobs (where expireAt <= now or older than 7 days)
+  let totalZipJobsDeleted = 0;
+  const zipThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  while (Date.now() - startTime < MAX_RUNTIME_MS) {
+    const expiredZipsSnap = await db.collection('zipJobs')
+      .where('createdAt', '<', zipThreshold)
+      .limit(BATCH_SIZE)
+      .get();
+
+    if (expiredZipsSnap.empty) {
+      logger.info('No expired zipJobs found.');
+      break;
+    }
+
+    const batch = db.batch();
+    expiredZipsSnap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    totalZipJobsDeleted += expiredZipsSnap.size;
+    logger.info(`Deleted batch of ${expiredZipsSnap.size} expired zipJobs (Total: ${totalZipJobsDeleted}).`);
+
+    if (expiredZipsSnap.size < BATCH_SIZE) break;
+  }
+
   const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-  logger.info(`Daily cleanup finished in ${elapsedSec}s. Screenshots pruned: ${totalScreenshotsDeleted}, VideoJobs pruned: ${totalVideoJobsDeleted}`);
+  logger.info(`Daily cleanup finished in ${elapsedSec}s. Screenshots: ${totalScreenshotsDeleted}, VideoJobs: ${totalVideoJobsDeleted}, ZipJobs: ${totalZipJobsDeleted}`);
 });

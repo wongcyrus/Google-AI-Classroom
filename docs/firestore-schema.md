@@ -490,6 +490,7 @@ Stores information about zip file creation jobs.
     *   `startTime`: (timestamp) The start time for the range of videos to be zipped.
     *   `endTime`: (timestamp) The end time for the range of videos to be zipped.
     *   `zipPath`: (string) The path to the zip file in Firebase Storage.
+    *   `expireAt`: (timestamp) The expiration timestamp (7 days post-creation) used by Firestore TTL and `onZipJobDocDeleted`.
     *   `error`: (string) An error message if the job failed.
 
 ## Relationships
