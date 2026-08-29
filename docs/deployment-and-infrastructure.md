@@ -246,8 +246,8 @@ To ensure high availability, prevent circular dependencies, and isolate build fa
 
 The AI engine uses Google's latest **`@genkit-ai/google-genai`** SDK (migrated from the deprecated `@genkit-ai/vertexai`):
 
-- **Model:** `gemini-3.7-flash`
-- **Location:** `asia-east2`
+- **Model:** `gemini-3.5-flash-lite`
+- **Location:** `global`
 - **Configuration File:** [`functions/ai_flows/ai.js`](../functions/ai_flows/ai.js)
 
 ```javascript
@@ -261,10 +261,10 @@ export const ai = genkit({
   plugins: [
     vertexAI({
       projectId: process.env.GCLOUD_PROJECT,
-      location: process.env.GCLOUD_LOCATION || 'asia-east2',
+      location: 'global',
     }),
   ],
-  model: vertexAI.model('gemini-3.7-flash'),
+  model: vertexAI.model('gemini-3.5-flash-lite'),
 });
 ```
 

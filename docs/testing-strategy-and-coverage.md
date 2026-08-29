@@ -58,7 +58,7 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
 * **Framework**: `vitest` with Node.js 22 runtime.
 * **Covered Modules**:
-  * `functions/ai_flows/cost.test.js`: Verifies exact token-to-USD pricing equations for Gemini 3.7 Flash input/output tokens and multimodal media inputs.
+  * `functions/ai_flows/cost.test.js`: Verifies exact token-to-USD pricing equations for Gemini 3.5 Flash-Lite input/output tokens and multimodal media inputs.
   * `functions/media_processing/videoEncoding.test.js`: Verifies FFmpeg output options, 1 FPS screencast timelapses, and text banner overlay string construction.
 
 ### 3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)
