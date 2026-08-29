@@ -292,7 +292,7 @@ const StudentView = ({ user }) => {
     }
   }, [activeClass, isWebcamSharing, showSystemNotification, stopScreen, updateCaptureStatus]);
 
-  const captureVideoElement = useCallback((videoElement, channelName, targetClass) => {
+  const captureVideoElement = useCallback(async (videoElement, channelName, targetClass) => {
     if (!user || !user.uid || !videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
       return;
     }
@@ -309,7 +309,26 @@ const StudentView = ({ user }) => {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+
+    let frameDrawn = false;
+    // Prefer ImageCapture API on Chromium/Edge to grab frame directly from hardware track even if browser is in background
+    if (typeof window !== 'undefined' && 'ImageCapture' in window && videoElement.srcObject) {
+      try {
+        const tracks = videoElement.srcObject.getVideoTracks();
+        if (tracks.length > 0 && tracks[0].readyState === 'live') {
+          const imageCapture = new window.ImageCapture(tracks[0]);
+          const bitmap = await imageCapture.grabFrame();
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          frameDrawn = true;
+        }
+      } catch {
+        // Fallback to videoElement draw
+      }
+    }
+
+    if (!frameDrawn) {
+      ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+    }
 
     // Screen solid color verification
     if (channelName === 'screen' && canvas.width > 1 && canvas.height > 1) {
@@ -332,7 +351,7 @@ const StudentView = ({ user }) => {
         return true;
       };
 
-      if (isSolid()) {
+      if (isSolid() && !frameDrawn) {
         console.warn("Screen capture appears to be a solid black frame.");
         return;
       }
@@ -618,11 +637,33 @@ const StudentView = ({ user }) => {
 
   const lastCaptureTimeRef = useRef(0);
 
+  // Screen Wake Lock API to prevent system / display sleep during active exam session
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isSharing) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.warn('Wake Lock request failed:', err);
+        }
+      }
+    };
+    if (isSharing) {
+      requestWakeLock();
     }
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+    };
+  }, [isSharing]);
+
+  // Capture interval driven by an inline Web Worker (immune to Edge / background tab throttling)
+  useEffect(() => {
+    let worker = null;
+    let fallbackInterval = null;
 
     if (isSharing && isCapturing && activeClass) {
       const now = Date.now();
@@ -638,10 +679,44 @@ const StudentView = ({ user }) => {
           captureAndUploadAllChannelsRef.current(activeClass);
         }
 
-        intervalRef.current = setInterval(() => {
+        const handleTick = () => {
           lastCaptureTimeRef.current = Date.now();
           captureAndUploadAllChannelsRef.current(activeClass);
-        }, intervalMs);
+        };
+
+        // Initialize inline Web Worker for throttling-free execution in background / minimized tabs
+        try {
+          if (typeof window !== 'undefined' && window.Worker && typeof Blob !== 'undefined') {
+            const blob = new Blob([`
+              let timerId = null;
+              self.onmessage = function(e) {
+                if (e.data && e.data.action === 'start') {
+                  if (timerId) clearInterval(timerId);
+                  timerId = setInterval(function() {
+                    self.postMessage('tick');
+                  }, e.data.interval);
+                } else if (e.data && e.data.action === 'stop') {
+                  if (timerId) {
+                    clearInterval(timerId);
+                    timerId = null;
+                  }
+                }
+              };
+            `], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            worker = new Worker(blobUrl);
+            worker.onmessage = (e) => {
+              if (e.data === 'tick') {
+                handleTick();
+              }
+            };
+            worker.postMessage({ action: 'start', interval: intervalMs });
+          } else {
+            fallbackInterval = setInterval(handleTick, intervalMs);
+          }
+        } catch {
+          fallbackInterval = setInterval(handleTick, intervalMs);
+        }
       } else if (isCapturing && user?.uid) {
         const statusRef = doc(db, "classes", activeClass, "status", user.uid);
         console.log(`Firestore: Capture time expired, updating status for ${user.uid}`);
@@ -659,9 +734,14 @@ const StudentView = ({ user }) => {
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (worker) {
+        worker.postMessage({ action: 'stop' });
+        worker.terminate();
+        worker = null;
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
       }
     };
   }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, user?.uid]);
