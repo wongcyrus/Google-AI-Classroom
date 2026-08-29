@@ -37,11 +37,15 @@ This project is a showcase of modern, scalable, and intelligent application deve
 
 The project is a monorepo composed of three main parts:
 
-*   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students and teachers. It uses Firebase for authentication and all real-time communication.
-*   **`functions/`**: A Node.js backend using Firebase Functions. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
-*   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles and managing AI prompts.
+*   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students and teachers. It uses Firebase for authentication and all real-time communication. Key capabilities include:
+    *   **Dual-Channel Split Streams:** Independent live screen sharing and webcam capture with multi-camera selection and stream swapping.
+    *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
+    *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
+    *   **Live Teacher Monitor:** Space-optimized compact channel selector (`🔲 Dual View`, `🖥️ Screen`, `📷 Webcam`), atomic real-time updates, and high-detail student inspection modals.
+*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
+*   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
-For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md).
+For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
 
 ## Architecture Diagram
 
