@@ -84,9 +84,9 @@ const ControlsPanel = ({
               <div className="control-item">
                 <label>View Channel:</label>
                 <select value={selectedChannel} onChange={(e) => setSelectedChannel && setSelectedChannel(e.target.value)}>
-                  <option value="both">Dual (Both Feeds)</option>
-                  <option value="screen">Screen Only</option>
-                  <option value="webcam">Webcam Only</option>
+                  <option value="both">Dual View (Screen + Webcam)</option>
+                  <option value="screen">🖥️ Screen Only</option>
+                  <option value="webcam">📷 Webcam Only</option>
                 </select>
               </div>
               <div className="control-item">

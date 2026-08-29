@@ -10,7 +10,11 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
   const isDual = selectedChannel === 'both' && showScreen && showWebcam;
 
   return (
-    <div className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} onClick={onClick}>
+    <div 
+      className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} 
+      onClick={onClick}
+      title={`Click to inspect ${student.name || student.email} in detail modal`}
+    >
       <div className="student-header">
         <h2>{student.name || student.email}</h2>
         <div className="header-status-group">
