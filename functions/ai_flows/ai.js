@@ -9,8 +9,10 @@ export const ai = genkit({
   plugins: [
     vertexAI({
       projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
-      location: process.env.VERTEX_AI_LOCATION || VERTEX_AI_LOCATION || 'us-central1',
+      location: process.env.VERTEX_AI_LOCATION || VERTEX_AI_LOCATION || 'global',
     }),
   ],
   model: vertexAI.model(AI_MODEL),
 });
+
+export { vertexAI };

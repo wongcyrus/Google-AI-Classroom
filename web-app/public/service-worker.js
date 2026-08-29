@@ -1,4 +1,3 @@
-
 self.addEventListener('install', () => {
   console.log('Service worker installed');
   self.skipWaiting();
@@ -30,19 +29,20 @@ self.addEventListener('notificationclick', (event) => {
   console.log('On notification click: ', event.notification.tag);
   event.notification.close();
 
-  // This looks for an open window with the app and focuses it.
-  event.waitUntil(self.clients.matchAll({
-    type: "window"
-  }).then((clientList) => {
-    // If a client is already open, focus it.
-    for (const client of clientList) {
-      if ('focus' in client) {
-        return client.focus();
+  // Find existing window client and focus it, preventing unwanted duplicate tabs
+  event.waitUntil(
+    self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
+        }
       }
-    }
-    // Otherwise, open a new window.
-    if (self.clients.openWindow) {
-      return self.clients.openWindow('/');
-    }
-  }));
+      if (self.clients.openWindow) {
+        return self.clients.openWindow('/');
+      }
+    })
+  );
 });

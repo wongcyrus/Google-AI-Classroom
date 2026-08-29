@@ -92,16 +92,16 @@ describe('ControlsPanel Component', () => {
     const selects = screen.getAllByRole('combobox');
     expect(selects.length).toBeGreaterThanOrEqual(4);
 
-    // Channel select (selects[1])
-    fireEvent.change(selects[1], { target: { value: 'screen' } });
+    // Channel select (selects[0])
+    fireEvent.change(selects[0], { target: { value: 'screen' } });
     expect(setSelectedChannel).toHaveBeenCalledWith('screen');
 
-    // Frame rate select (selects[2])
-    fireEvent.change(selects[2], { target: { value: '5' } });
+    // Frame rate select (selects[1])
+    fireEvent.change(selects[1], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
-    // Max image size select (selects[3])
-    fireEvent.change(selects[3], { target: { value: String(500 * 1024) } });
+    // Max image size select (selects[2])
+    fireEvent.change(selects[2], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 
@@ -112,5 +112,41 @@ describe('ControlsPanel Component', () => {
     expect(screen.getByText(/50 MB of 500 MB/i)).toBeInTheDocument();
     // Check that AI text is rendered
     expect(screen.getByText(/\$2.50 of \$10.00 used/i)).toBeInTheDocument();
+  });
+
+  it('renders Gaze & Invigilation controls and opens configuration modal', () => {
+    const handleSaveGazeSettings = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        enableClientAi={true}
+        gazeSensitivity="standard"
+        faceDebounceSeconds={3}
+        handleSaveGazeSettings={handleSaveGazeSettings}
+      />
+    );
+
+    expect(screen.getByText(/AI & Invigilation/i)).toBeInTheDocument();
+    expect(screen.getByText(/Client AI/i)).toBeInTheDocument();
+    
+    // Open the modal
+    const configButton = screen.getByRole('button', { name: /Configure Gaze & Mode/i });
+    expect(configButton).toBeInTheDocument();
+    fireEvent.click(configButton);
+
+    // Check modal contents
+    expect(screen.getByText(/Gaze & Invigilation AI Configuration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Gaze & Head Orientation Sensitivity Mode:/i)).toBeInTheDocument();
+
+    // Click Save & Apply
+    const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    fireEvent.click(saveButton);
+
+    expect(handleSaveGazeSettings).toHaveBeenCalledWith(expect.objectContaining({
+      enableClientAi: true,
+      gazeSensitivity: 'standard',
+      faceDebounceSeconds: 3,
+    }));
   });
 });

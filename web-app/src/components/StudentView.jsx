@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import './StudentView.css';
 
 import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
+import useFaceMonitor from '../hooks/useFaceMonitor';
 
 import Sidebar from './student/Sidebar';
 
@@ -27,6 +28,8 @@ const StudentView = ({ user }) => {
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [captureMode, setCaptureMode] = useState('dual');
+  const [requireFullScreenOnly, setRequireFullScreenOnly] = useState(true);
+  const displaySurfaceRef = useRef(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
   const [retentionDays, setRetentionDays] = useState(30);
@@ -51,6 +54,7 @@ const StudentView = ({ user }) => {
     return 'granted';
   });
   const [dismissNotificationBanner, setDismissNotificationBanner] = useState(false);
+  const [isSessionDisplaced, setIsSessionDisplaced] = useState(false);
 
   const requestNotificationPermission = useCallback(async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -81,14 +85,70 @@ const StudentView = ({ user }) => {
     return filteredMessagesForUI.slice(0, 5);
   }, [directMessages, classMessages, recentIrregularities]);
 
+  const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
+  const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
+  const [enableClientAi, setEnableClientAi] = useState(true);
+  const [gazeSensitivity, setGazeSensitivity] = useState('standard');
+  const [customYawAngle, setCustomYawAngle] = useState(25);
+  const [customPitchDownAngle, setCustomPitchDownAngle] = useState(-22);
+  const [customPitchUpAngle, setCustomPitchUpAngle] = useState(26);
+  const [enableCloudFallback, setEnableCloudFallback] = useState(false);
+  const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
+  const [showMeshOverlay, setShowMeshOverlay] = useState(true);
+
   // Refs
   const intervalRef = useRef(null);
   const screenVideoRef = useRef(null);
   const webcamVideoRef = useRef(null);
+  const overlayCanvasRef = useRef(null);
   const screenStreamRef = useRef(null);
   const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
+
+  // MediaPipe Face & Gaze AI Monitor
+  const {
+    faceStatus,
+    clientAiStatus,
+    yawAngle,
+    pitchAngle,
+    metricDistance,
+    activeViolation,
+  } = useFaceMonitor({
+    webcamVideoRef,
+    screenVideoRef,
+    overlayCanvasRef,
+    activeClass,
+    user,
+    isWebcamSharing,
+    isScreenSharing,
+    isCapturing,
+    aiMonitoringMode,
+    enableClientAi,
+    gazeSensitivity,
+    customYawAngle,
+    customPitchDownAngle,
+    customPitchUpAngle,
+    debounceSeconds: faceDebounceSeconds,
+    enableCloudFallback,
+    cloudFallbackRate,
+    showMeshOverlay,
+  });
+
+  // Sync real-time face & gaze telemetry to student status doc
+  useEffect(() => {
+    if (activeClass && user && user.uid && isWebcamSharing) {
+      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+      setDoc(statusRef, {
+        faceStatus,
+        clientAiStatus,
+        yawAngle,
+        pitchAngle,
+        metricDistance: metricDistance || 55,
+        activeViolation: activeViolation || null,
+      }, { merge: true }).catch(err => console.debug("Error updating face status:", err));
+    }
+  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, yawAngle, pitchAngle, metricDistance, activeViolation]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -119,6 +179,7 @@ const StudentView = ({ user }) => {
       await setDoc(statusRef, {
         isSharing: activeStreams.length > 0,
         activeStreams: activeStreams,
+        displaySurface: activeStreams.includes('screen') ? (displaySurfaceRef.current || 'monitor') : null,
         email: user.email,
         name: user.displayName || user.email,
         timestamp: serverTimestamp()
@@ -129,6 +190,7 @@ const StudentView = ({ user }) => {
   }, [activeClass, user]);
 
   const stopScreen = useCallback(async () => {
+    displaySurfaceRef.current = null;
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       screenStreamRef.current = null;
@@ -272,7 +334,73 @@ const StudentView = ({ user }) => {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const displayMediaOptions = {
+        video: {
+          displaySurface: 'monitor',
+        },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      const videoTrack = stream.getVideoTracks()[0];
+      const trackSettings = videoTrack && typeof videoTrack.getSettings === 'function' ? videoTrack.getSettings() : {};
+      const surface = trackSettings.displaySurface;
+
+      // Enforcement: Reject single application window or browser tab sharing
+      if (requireFullScreenOnly && surface && surface !== 'monitor') {
+        videoTrack.stop();
+        stream.getTracks().forEach(t => t.stop());
+        setIsScreenSharing(false);
+        displaySurfaceRef.current = null;
+
+        // Log irregularity for instructor audit trail only when class is actively capturing / test started
+        if (isCapturing && activeClass && user?.uid) {
+          let webcamProofUrl = null;
+          if (webcamVideoRef.current && isWebcamSharing) {
+            try {
+              const canvas = document.createElement('canvas');
+              const v = webcamVideoRef.current;
+              if (v.videoWidth > 0) {
+                canvas.width = v.videoWidth;
+                canvas.height = v.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(v, 0, 0);
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+                if (blob) {
+                  const proofRef = ref(storage, `irregularities/${activeClass}/${user.uid}/${Date.now()}_screen_reject_webcam.jpg`);
+                  const s = await uploadBytes(proofRef, blob);
+                  webcamProofUrl = await getDownloadURL(s.ref);
+                }
+              }
+            } catch (e) {
+              console.debug("Could not grab webcam proof for screen violation:", e);
+            }
+          }
+
+          try {
+            await addDoc(collection(db, 'irregularities'), {
+              classId: activeClass,
+              studentUid: user.uid,
+              studentEmail: user.email || '',
+              type: 'non_fullscreen_screen_share_attempt',
+              message: `Attempted to share a single window or tab ('${surface}') instead of Entire Screen during required full-screen test mode.`,
+              timestamp: serverTimestamp(),
+              startedAt: serverTimestamp(),
+              status: 'flagged',
+              webcamUrl: webcamProofUrl || null,
+              imageUrl: webcamProofUrl || null,
+            });
+          } catch (err) {
+            console.error("Error logging non-fullscreen irregularity:", err);
+          }
+        }
+
+        alert(`⚠️ Entire Screen Required\n\nYou selected a ${surface === 'window' ? 'single Application Window' : 'single Browser Tab'} ('${surface}').\n\nFor test and exam compliance, you MUST share your "Entire Screen".\n\nPlease click "Start Screen Share" again and choose the "Entire Screen" tab.`);
+        return;
+      }
+
+      displaySurfaceRef.current = surface || 'monitor';
+
       if (screenVideoRef.current) {
         screenVideoRef.current.srcObject = stream;
       }
@@ -288,9 +416,10 @@ const StudentView = ({ user }) => {
     } catch (error) {
       console.error("Error starting screen sharing:", error);
       setIsScreenSharing(false);
+      displaySurfaceRef.current = null;
       alert("Could not start screen sharing. Please grant permission.");
     }
-  }, [activeClass, isWebcamSharing, showSystemNotification, stopScreen, updateCaptureStatus]);
+  }, [activeClass, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
 
   const isUploadingScreenRef = useRef(false);
   const isUploadingWebcamRef = useRef(false);
@@ -473,6 +602,20 @@ const StudentView = ({ user }) => {
     }
   }, []);
 
+  const handleResumeSession = useCallback(() => {
+    if (!user || !activeClass) return;
+    const newSessionId = uuidv4();
+    sessionIdRef.current = newSessionId;
+    setIsSessionDisplaced(false);
+    const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+    const statusData = { sessionId: newSessionId };
+    if (ipAddress) {
+      statusData.ipAddress = ipAddress;
+    }
+    setDoc(statusRef, statusData, { merge: true })
+      .catch(err => console.error("Firestore: Error updating session ID:", err));
+  }, [activeClass, ipAddress, user]);
+
   useEffect(() => {
     if (user && activeClass) {
       const newSessionId = uuidv4();
@@ -489,9 +632,11 @@ const StudentView = ({ user }) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.sessionId && data.sessionId !== sessionIdRef.current) {
-            alert("Another session has started. You will be logged out.");
+            console.warn("Classroom session moved to another tab or device.");
             stopAllStreams();
-            signOut(auth);
+            setIsSessionDisplaced(true);
+          } else if (data.sessionId && data.sessionId === sessionIdRef.current) {
+            setIsSessionDisplaced(false);
           }
         }
       }, (error) => {
@@ -513,6 +658,16 @@ const StudentView = ({ user }) => {
         setImageQuality(prev => (data.imageQuality !== undefined && data.imageQuality !== prev ? data.imageQuality : (prev || 0.5)));
         setMaxImageSize(prev => (data.maxImageSize !== undefined && data.maxImageSize !== prev ? data.maxImageSize : (prev || 0.1 * 1024 * 1024)));
         setCaptureMode(prev => (data.captureMode && data.captureMode !== prev ? data.captureMode : (prev || 'dual')));
+        setRequireFullScreenOnly(prev => (data.requireFullScreenOnly !== undefined ? data.requireFullScreenOnly : true));
+        setFaceDebounceSeconds(prev => (data.faceDebounceSeconds !== undefined ? data.faceDebounceSeconds : (prev || 3)));
+        setAiMonitoringMode(prev => (data.aiMonitoringMode && data.aiMonitoringMode !== prev ? data.aiMonitoringMode : (prev || 'hybrid')));
+        setEnableClientAi(prev => (data.enableClientAi !== undefined ? data.enableClientAi : true));
+        setGazeSensitivity(prev => (data.gazeSensitivity && data.gazeSensitivity !== prev ? data.gazeSensitivity : (prev || 'standard')));
+        setCustomYawAngle(prev => (data.customYawAngle !== undefined ? data.customYawAngle : (prev || 25)));
+        setCustomPitchDownAngle(prev => (data.customPitchDownAngle !== undefined ? data.customPitchDownAngle : (prev || -22)));
+        setCustomPitchUpAngle(prev => (data.customPitchUpAngle !== undefined ? data.customPitchUpAngle : (prev || 26)));
+        setEnableCloudFallback(prev => (data.enableCloudFallback !== undefined ? data.enableCloudFallback : false));
+        setCloudFallbackRate(prev => (data.cloudFallbackRate !== undefined ? data.cloudFallbackRate : (prev || 3)));
         setIsCapturing(prev => (data.isCapturing !== undefined && data.isCapturing !== prev ? data.isCapturing : (prev || false)));
         setCaptureStartedAt(prev => {
           if (!data.captureStartedAt) return null;
@@ -814,6 +969,47 @@ const StudentView = ({ user }) => {
         </div>
       )}
 
+      {isSessionDisplaced && (
+        <div style={{
+          background: '#fef2f2',
+          border: '1px solid #f87171',
+          color: '#991b1b',
+          padding: '12px 16px',
+          borderRadius: '8px',
+          margin: '12px 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+            <div>
+              <strong>Classroom session active in another tab or device.</strong>
+              <div style={{ fontSize: '0.85rem', color: '#b91c1c' }}>
+                Streaming in this tab is paused to prevent dual-streaming conflicts.
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={handleResumeSession}
+            style={{
+              background: '#dc2626',
+              color: '#fff',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Resume Here
+          </button>
+        </div>
+      )}
+
       <div className="student-view-content">
         <div className="student-view-main">
             <div className="student-view-controls">
@@ -929,18 +1125,41 @@ const StudentView = ({ user }) => {
                   </div>
                 )}
                 <video ref={webcamVideoRef} autoPlay muted playsInline className="video-preview" />
+                <canvas ref={overlayCanvasRef} className="webcam-mesh-overlay" />
+                {isWebcamSharing && (
+                  <div className={`ai-face-hud ${faceStatus}`}>
+                    {faceStatus === 'normal' && <span>🟢 Face Centered {metricDistance ? `(~${metricDistance}cm)` : ''}</span>}
+                    {faceStatus === 'no_face' && <span>🔴 No Face Detected</span>}
+                    {faceStatus === 'looking_away' && <span>🟡 Please Face Screen (Looking Away)</span>}
+                    {faceStatus === 'multiple_faces' && <span>🔴 Multiple People in Frame</span>}
+                    {faceStatus === 'cloud_fallback' && <span>☁️ AI Cloud Fallback Active</span>}
+                    {faceStatus === 'unsupported' && <span>⚠️ Local AI Unsupported (Cloud Fallback Disabled)</span>}
+                    {faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
+                  </div>
+                )}
               </div>
 
               {/* Stage Top Right Action Controls */}
-              {isSharing && isScreenSharing && isWebcamSharing && (
+              {isSharing && (
                 <div className="stage-actions-overlay">
-                  <button
-                    onClick={handleSwapFeeds}
-                    className="stage-action-btn"
-                    title="Swap Main and PiP Feeds"
-                  >
-                    🔄 Swap Focus
-                  </button>
+                  {isScreenSharing && isWebcamSharing && (
+                    <button
+                      onClick={handleSwapFeeds}
+                      className="stage-action-btn"
+                      title="Swap Main and PiP Feeds"
+                    >
+                      🔄 Swap Focus
+                    </button>
+                  )}
+                  {isWebcamSharing && (
+                    <button
+                      onClick={() => setShowMeshOverlay(prev => !prev)}
+                      className={`ai-mesh-toggle-btn ${showMeshOverlay ? 'active' : ''}`}
+                      title="Toggle AI Face Detection Mesh & Gaze Points Overlay"
+                    >
+                      🕸️ AI Mesh: {showMeshOverlay ? 'ON' : 'OFF'}
+                    </button>
+                  )}
                 </div>
               )}
 

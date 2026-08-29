@@ -130,7 +130,7 @@ async function main() {
     retentionDays: 30,
     videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024,
-    aiQuota: 1000,
+    aiQuota: 50,
     schedule: {
       startDate: '2026-01-01',
       endDate: '2027-12-31',
@@ -146,6 +146,11 @@ async function main() {
     imageQuality: 50,
     maxImageSize: 0.1 * 1024 * 1024,
     captureMode: 'dual',
+    aiModel: 'gemini-3.5-flash-lite',
+    requireFullScreenOnly: true,
+    faceDebounceSeconds: 3,
+    enableCloudFallback: false,
+    cloudFallbackRate: 3,
     isCapturing: true,
     captureStartedAt: FieldValue.serverTimestamp()
   };

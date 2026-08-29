@@ -84,7 +84,9 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
 
     const classRef = db.collection('classes').doc(jobData.classId);
     const classDoc = await classRef.get();
-    const timezone = classDoc.exists ? classDoc.data().schedule?.timeZone || 'UTC' : 'UTC';
+    const classData = classDoc.exists ? classDoc.data() : {};
+    const modelToUse = jobData.model || classData.aiModel || 'gemini-3.5-flash-lite';
+    const timezone = classData.schedule?.timeZone || 'UTC';
     const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
     const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
 
@@ -97,7 +99,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       for (const video of batch) {
           const promptText = promptTemplate(video);
           const media = [{ media: { url: `gs://${bucketName}/${video.videoPath}`, contentType: 'video/mp4' } }];
-          batchEstimatedCost += estimateCost(promptText, media);
+          batchEstimatedCost += estimateCost(promptText, media, modelToUse);
       }
 
       const hasQuota = await checkQuota(jobData.classId, batchEstimatedCost);
@@ -175,6 +177,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
               masterJobId,
               startTime: getISOString(jobData.startTime),
               endTime: getISOString(jobData.endTime),
+              model: modelToUse,
             });
 
             if (result && result.jobId) {
@@ -202,7 +205,9 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       totalFailures += failedJobs.length;
 
       const isLastBatch = (i + batch.length) >= videosToAnalyze.length;
-      const updatePayload = {};
+      const updatePayload = {
+        modelUsed: modelToUse,
+      };
 
       if (successfulJobs.length > 0) {
         updatePayload.aiJobIds = FieldValue.arrayUnion(...successfulJobs.map(j => j.jobId));

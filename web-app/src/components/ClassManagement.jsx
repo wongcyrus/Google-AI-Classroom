@@ -30,6 +30,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [automaticCapture, setAutomaticCapture] = useState(false);
   const [automaticCombine, setAutomaticCombine] = useState(false);
   const [captureMode, setCaptureMode] = useState('dual');
+  const [aiModel, setAiModel] = useState('gemini-3.5-flash-lite');
+  const [requireFullScreenOnly, setRequireFullScreenOnly] = useState(true);
+  const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
+  const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
+  const [enableClientAi, setEnableClientAi] = useState(true);
+  const [gazeSensitivity, setGazeSensitivity] = useState('standard');
+  const [customYawAngle, setCustomYawAngle] = useState(25);
+  const [customPitchDownAngle, setCustomPitchDownAngle] = useState(-22);
+  const [customPitchUpAngle, setCustomPitchUpAngle] = useState(26);
+  const [enableCloudFallback, setEnableCloudFallback] = useState(false);
+  const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
   
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
@@ -110,6 +121,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setAutomaticCapture(classData.automaticCapture || false);
           setAutomaticCombine(classData.automaticCombine || false);
           setCaptureMode(classData.captureMode || 'dual');
+          setAiModel(classData.aiModel || 'gemini-3.5-flash-lite');
+          setRequireFullScreenOnly(classData.requireFullScreenOnly !== false);
+          setFaceDebounceSeconds(classData.faceDebounceSeconds || 3);
+          
+          let derivedMode = classData.aiMonitoringMode;
+          if (!derivedMode) {
+            if (classData.enableClientAi === false && !classData.enableCloudFallback) derivedMode = 'disabled';
+            else if (classData.enableClientAi === false && classData.enableCloudFallback) derivedMode = 'cloud_only';
+            else if (classData.enableClientAi !== false && !classData.enableCloudFallback) derivedMode = 'client_only';
+            else derivedMode = 'hybrid';
+          }
+          setAiMonitoringMode(derivedMode);
+          setEnableClientAi(derivedMode === 'hybrid' || derivedMode === 'client_only');
+          setEnableCloudFallback(derivedMode === 'hybrid' || derivedMode === 'cloud_only');
+
+          setGazeSensitivity(classData.gazeSensitivity || 'standard');
+          setCustomYawAngle(classData.customYawAngle !== undefined ? classData.customYawAngle : 25);
+          setCustomPitchDownAngle(classData.customPitchDownAngle !== undefined ? classData.customPitchDownAngle : -22);
+          setCustomPitchUpAngle(classData.customPitchUpAngle !== undefined ? classData.customPitchUpAngle : 26);
+          setCloudFallbackRate(classData.cloudFallbackRate || 3);
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
         } else {
           if (!embeddedClassId) {
@@ -134,6 +165,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAutomaticCapture(false);
         setAutomaticCombine(false);
         setCaptureMode('dual');
+        setRequireFullScreenOnly(true);
+        setFaceDebounceSeconds(3);
+        setEnableCloudFallback(false);
+        setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
       }
     };
@@ -276,6 +311,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
           captureMode: captureMode || 'dual',
+          aiModel: aiModel || 'gemini-3.5-flash-lite',
+          requireFullScreenOnly: requireFullScreenOnly !== false,
+          faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
+          aiMonitoringMode: aiMonitoringMode || 'hybrid',
+          enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
+          gazeSensitivity: gazeSensitivity || 'standard',
+          customYawAngle: parseInt(customYawAngle, 10) || 25,
+          customPitchDownAngle: parseInt(customPitchDownAngle, 10) || -22,
+          customPitchUpAngle: parseInt(customPitchUpAngle, 10) || 26,
+          enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
+          cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
         };
         await updateDoc(classRef, updateData);
@@ -302,6 +348,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
           captureMode: captureMode || 'dual',
+          aiModel: aiModel || 'gemini-3.5-flash-lite',
+          requireFullScreenOnly: requireFullScreenOnly !== false,
+          faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
+          aiMonitoringMode: aiMonitoringMode || 'hybrid',
+          enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
+          gazeSensitivity: gazeSensitivity || 'standard',
+          customYawAngle: parseInt(customYawAngle, 10) || 25,
+          customPitchDownAngle: parseInt(customPitchDownAngle, 10) || -22,
+          customPitchUpAngle: parseInt(customPitchUpAngle, 10) || 26,
+          enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
+          cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
           aiQuota: 10,
           aiUsedQuota: 0,
@@ -608,6 +665,162 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </select>
           <p className="input-hint">Configure which visual streams students in this class stream to the instructor.</p>
         </div>
+
+        <div className="form-group">
+          <label>Preferred Gemini AI Model</label>
+          <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}>
+            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest & Most Economical — $0.30 / $2.50 per 1M)</option>
+            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash (High Accuracy & Balanced — $0.75 / $3.75 per 1M)</option>
+            <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro (Deep Reasoning & Analytics — $3.00 / $15.00 per 1M)</option>
+          </select>
+          <p className="input-hint">Default Gemini model used for live invigilation and video analyses for this class.</p>
+        </div>
+
+        <div className="form-group">
+          <label className="checkbox-toggle-label">
+            <input
+              type="checkbox"
+              checked={requireFullScreenOnly}
+              onChange={(e) => setRequireFullScreenOnly(e.target.checked)}
+            />
+            <span>Require Entire Screen (Forbid Single Window or Tab Sharing)</span>
+          </label>
+          <p className="input-hint">Ensures test and exam integrity by rejecting single application windows or browser tabs and forcing students to share their entire desktop.</p>
+        </div>
+
+        <div className="form-group">
+          <label>AI Face & Gaze Monitoring Mode</label>
+          <select 
+            value={aiMonitoringMode} 
+            onChange={(e) => {
+              const newMode = e.target.value;
+              setAiMonitoringMode(newMode);
+              setEnableClientAi(newMode === 'hybrid' || newMode === 'client_only');
+              setEnableCloudFallback(newMode === 'hybrid' || newMode === 'cloud_only');
+            }}
+          >
+            <option value="hybrid">⚡ Client-side, then fallback to Cloud (Recommended — On-device MediaPipe, fallback to Cloud Gemini)</option>
+            <option value="cloud_only">☁️ Just Cloud (Periodic Cloud Gemini Vision frame inspections)</option>
+            <option value="client_only">💻 Just Client-side (100% Free on-device MediaPipe, zero Cloud quota)</option>
+            <option value="disabled">🚫 Disable it (Turn off all face/gaze AI monitoring)</option>
+          </select>
+          <p className="input-hint">
+            {aiMonitoringMode === 'hybrid' && 'Runs real-time face presence and gaze tracking on student machines for free, automatically falling back to Cloud Gemini AI if a student device cannot run local AI.'}
+            {aiMonitoringMode === 'cloud_only' && 'Webcam frames are analyzed periodically using Cloud Gemini Vision. Client-side MediaPipe is deactivated.'}
+            {aiMonitoringMode === 'client_only' && 'Runs real-time face presence and gaze tracking exclusively on student machines. No cloud vision AI calls or quotas are consumed.'}
+            {aiMonitoringMode === 'disabled' && 'Face & Gaze AI monitoring is completely deactivated for this class.'}
+          </p>
+        </div>
+
+        {(aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only') && (
+          <>
+            <div className="form-group">
+              <label>Gaze & Head Orientation Sensitivity</label>
+              <select 
+                value={gazeSensitivity} 
+                onChange={(e) => setGazeSensitivity(e.target.value)}
+              >
+                <option value="relaxed">🟢 Relaxed / Low Sensitivity (High Tolerance — Yaw ±28°, Pitch -26°/+30°)</option>
+                <option value="standard">🟡 Standard / Balanced Default (Yaw ±22°, Pitch -20°/+26°)</option>
+                <option value="strict">🔴 Strict / High Sensitivity (Yaw ±16°, Pitch -16°/+22°)</option>
+                <option value="custom">⚙️ Custom Manual Angles (Specify exact Yaw & Pitch degrees)</option>
+              </select>
+              <p className="input-hint">Controls how strictly head rotation and eye deviation off-screen trigger an incident. Use "Relaxed" if students are writing on paper desks or multi-screen setups.</p>
+            </div>
+
+            {gazeSensitivity === 'custom' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#1e293b' }}>📐 Custom Angle Limits</h4>
+                
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Horizontal Yaw Angle Limit (Turn Left / Right)</span>
+                    <strong>±{customYawAngle}°</strong>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="10" 
+                    max="50" 
+                    value={customYawAngle} 
+                    onChange={(e) => setCustomYawAngle(parseInt(e.target.value, 10))}
+                    style={{ width: '100%' }}
+                  />
+                  <p className="input-hint">Flags student when head turns more than {customYawAngle}° left or right.</p>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Pitch Down Angle Limit (Looking Down)</span>
+                    <strong>{customPitchDownAngle}°</strong>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="-45" 
+                    max="-10" 
+                    value={customPitchDownAngle} 
+                    onChange={(e) => setCustomPitchDownAngle(parseInt(e.target.value, 10))}
+                    style={{ width: '100%' }}
+                  />
+                  <p className="input-hint">Flags student when head tilts below {customPitchDownAngle}° (e.g. looking down at lap or phones).</p>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '4px' }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Pitch Up Angle Limit (Looking Up)</span>
+                    <strong>+{customPitchUpAngle}°</strong>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="10" 
+                    max="45" 
+                    value={customPitchUpAngle} 
+                    onChange={(e) => setCustomPitchUpAngle(parseInt(e.target.value, 10))}
+                    style={{ width: '100%' }}
+                  />
+                  <p className="input-hint">Flags student when head tilts above +{customPitchUpAngle}° (looking up away from screen).</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {aiMonitoringMode !== 'disabled' && (
+          <div className="form-group">
+            <label>AI Gaze & Absence Debounce Gate</label>
+            <select 
+              value={faceDebounceSeconds} 
+              onChange={(e) => setFaceDebounceSeconds(parseInt(e.target.value, 10))}
+            >
+              <option value={2}>⏱️ 2s (Strict — Rapid Flagging)</option>
+              <option value={3}>⏱️ 3s (Standard — Default Balanced)</option>
+              <option value={5}>⏱️ 5s (Relaxed — Tolerates Brief Glances)</option>
+              <option value={8}>⏱️ 8s (Very Relaxed)</option>
+              <option value={10}>⏱️ 10s (High Tolerance)</option>
+            </select>
+            <p className="input-hint">Duration a student must continuously look away or step away from camera before registering an irregularity.</p>
+          </div>
+        )}
+
+        {(aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only') && (
+          <div className="form-group">
+            <label>{aiMonitoringMode === 'cloud_only' ? 'Cloud AI Analysis Interval' : 'Cloud Fallback Analysis Interval'}</label>
+            <select 
+              value={cloudFallbackRate} 
+              onChange={(e) => setCloudFallbackRate(parseInt(e.target.value, 10))}
+            >
+              <option value={1}>⚡ Every 1 round (~5s) — Maximum Responsiveness</option>
+              <option value={2}>⚡ Every 2 rounds (~10s) — Balanced</option>
+              <option value={3}>⚡ Every 3 rounds (~15s) — Default Recommended</option>
+              <option value={5}>⚡ Every 5 rounds (~25s) — Quota Saver</option>
+              <option value={10}>⚡ Every 10 rounds (~50s) — Low Quota Consumption</option>
+            </select>
+            <p className="input-hint">
+              {aiMonitoringMode === 'cloud_only'
+                ? 'Interval between Cloud Gemini multimodal video frame inspections.'
+                : 'Analysis frequency for students whose client devices cannot run MediaPipe locally and require cloud Gemini verification.'}
+            </p>
+          </div>
+        )}
 
         <div className="form-group">
           <label className="checkbox-toggle-label">

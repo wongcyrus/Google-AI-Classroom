@@ -25,6 +25,16 @@ erDiagram
         boolean automaticCapture
         boolean automaticCombine
         number aiQuota
+        string aiModel
+        string aiMonitoringMode
+        boolean enableClientAi
+        string gazeSensitivity
+        number customYawAngle
+        number customPitchDownAngle
+        number customPitchUpAngle
+        number faceDebounceSeconds
+        boolean enableCloudFallback
+        number cloudFallbackRate
         number frameRate
         number imageQuality
         number maxImageSize
@@ -233,10 +243,21 @@ Stores information about each class.
     *   `ipRestrictions`: (array) An array of allowed IP addresses.
     *   `automaticCapture`: (boolean) A boolean indicating if automatic screen capture is enabled.
     *   `automaticCombine`: (boolean) A boolean indicating if automatic video combination is enabled.
-    *   `aiQuota`: (number) The AI processing quota for the class.
-    *   `frameRate`: (number) The frame rate for screen capture.
+    *   `aiQuota`: (number) The AI processing quota for the class in USD (e.g. `50` for demo class).
+    *   `aiModel`: (string) Gemini model for multimodal analysis (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`).
+    *   `aiMonitoringMode`: (string) Face and gaze invigilation mode (`hybrid`, `cloud_only`, `client_only`, `disabled`).
+    *   `enableClientAi`: (boolean) Whether client-side on-device MediaPipe monitoring is active.
+    *   `gazeSensitivity`: (string) Sensitivity preset (`relaxed`, `standard`, `strict`, `custom`).
+    *   `customYawAngle`: (number) Custom left/right yaw deviation threshold in degrees.
+    *   `customPitchDownAngle`: (number) Custom look-down pitch threshold in degrees (e.g. `-22`).
+    *   `customPitchUpAngle`: (number) Custom look-up pitch threshold in degrees (e.g. `26`).
+    *   `faceDebounceSeconds`: (number) Sustained seconds of deviation before registering looking away irregularity (e.g. `3`).
+    *   `enableCloudFallback`: (boolean) Whether to trigger Cloud Gemini Vision inspections on client detection anomalies or failure.
+    *   `cloudFallbackRate`: (number) Fallback cadence factor for cloud inspection intervals.
+    *   `frameRate`: (number) The frame rate for screen capture (in seconds per frame).
     *   `imageQuality`: (number) The image quality for screen capture.
-    *   `maxImageSize`: (number) The maximum image size for screen capture.
+    *   `maxImageSize`: (number) The maximum image size for screen capture in bytes.
+    *   `captureMode`: (string) Default stream capture mode (`dual`, `screen`, `webcam`).
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
 *   **Subcollections**:
@@ -276,6 +297,13 @@ Stores information about each class.
             *   `latestImagePath`: (string) Primary screenshot path for backward compatibility.
             *   `latestScreenPath`: (string) Cloud Storage path of student's latest screen capture (`screenshots/{classId}/{studentUid}/screen_{timestamp}.jpg`).
             *   `latestWebcamPath`: (string) Cloud Storage path of student's latest webcam capture (`screenshots/{classId}/{studentUid}/webcam_{timestamp}.jpg`).
+            *   `faceStatus`: (string) Real-time AI face tracking status (`normal`, `looking_away`, `no_face`, `multiple_faces`, `loading`, `error`, `disabled`).
+            *   `faceStatusReason`: (string) Human-readable explanation of the face tracking state.
+            *   `gazeYaw`: (number) Head yaw angle in degrees.
+            *   `gazePitch`: (number) Head pitch angle in degrees.
+            *   `gazeDirection`: (string) Primary gaze orientation (`forward`, `left`, `right`, `down`, `up`).
+            *   `metricDistance`: (number) Estimated metric distance in cm via depth-from-iris calculation.
+            *   `irisGazeAway`: (boolean) Boolean indicating pupil deviation away from screen center.
             *   `timestamp`: (timestamp) A timestamp of the last heartbeat / screenshot update.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.

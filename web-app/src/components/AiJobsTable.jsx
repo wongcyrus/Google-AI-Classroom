@@ -9,6 +9,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo }) => {
                 <tr>
                     <th>Play</th>
                     <th>Student</th>
+                    <th>Model</th>
                     <th>Status</th>
                     <th>Result</th>
                     <th>Created At</th>
@@ -23,6 +24,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo }) => {
                             </button>
                         </td>
                         <td>{job.studentEmail}</td>
+                        <td><span style={{ fontSize: '0.85em', padding: '2px 6px', background: '#e0f2fe', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>{job.modelUsed || 'gemini-3.5-flash-lite'}</span></td>
                         <td>{job.status}</td>
                         <td>
                             {job.status === 'failed' ? (

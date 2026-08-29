@@ -10,8 +10,10 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 
 #### Callable Functions
 
--   **`analyzeImage`**: A callable function restricted to users with a 'teacher' role. It triggers the `analyzeImageFlow` Genkit flow to perform AI analysis on a single image.
+-   **`analyzeImage`**: A callable function restricted to users with a 'teacher' role. It triggers the `analyzeImageFlow` Genkit flow to perform AI multimodal analysis on a single image.
 -   **`analyzeAllImages`**: A callable function for teachers that triggers the `analyzeAllImagesFlow` Genkit flow, which analyzes all images associated with a specific student within a given context.
+-   **`analyzeFaceFallback`**: A high-efficiency callable function triggering `analyzeFaceFallbackFlow` using `gemini-3.5-flash-lite` with structured JSON output and temperature 0.1. Used for cloud-assisted face and gaze invigilation when classes operate in `hybrid` or `cloud_only` modes, or when a student browser cannot execute client-side WebGL/MediaPipe.
+-   **`retryVideoAnalysisJob`**: A callable function allowing teachers to retry failed video analysis jobs idempotently.
 
 #### Firestore Triggers
 

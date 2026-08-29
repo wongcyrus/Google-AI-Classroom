@@ -181,10 +181,11 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
       return;
     }
 
-    const headers = ['Student', 'Status', 'Result', 'Error Details', 'Created At', 'Video Path'];
+    const headers = ['Student', 'Model', 'Status', 'Result', 'Error Details', 'Created At', 'Video Path'];
     
     const csvRows = aiJobs.map(job => {
       const student = job.studentEmail || '';
+      const model = job.modelUsed || selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite';
       const status = job.status || '';
       const result = (job.result && typeof job.result === 'object') ? JSON.stringify(job.result) : (job.result || '');
       const errorDetails = job.errorDetails || '';
@@ -195,6 +196,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
 
       return [
         escape(student),
+        escape(model),
         escape(status),
         escape(result),
         escape(errorDetails),

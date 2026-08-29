@@ -67,6 +67,16 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
+  const [selectedAiModel, setSelectedAiModel] = useState('gemini-3.5-flash-lite');
+  const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
+  const [enableClientAi, setEnableClientAi] = useState(true);
+  const [gazeSensitivity, setGazeSensitivity] = useState('standard');
+  const [customYawAngle, setCustomYawAngle] = useState(25);
+  const [customPitchDownAngle, setCustomPitchDownAngle] = useState(-22);
+  const [customPitchUpAngle, setCustomPitchUpAngle] = useState(26);
+  const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
+  const [enableCloudFallback, setEnableCloudFallback] = useState(false);
+  const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
   const [samplingRate, setSamplingRate] = useState(5);
@@ -74,7 +84,86 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const studentUidMap = useRef(new Map());
   const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
 
+  const handleAiModelChange = async (newModel) => {
+    setSelectedAiModel(newModel);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, "classes", classId), { aiModel: newModel });
+      } catch (e) {
+        console.error("Failed to persist aiModel to class:", e);
+      }
+    }
+  };
 
+  const handleSaveGazeSettings = async (settings) => {
+    if (!classId) return;
+    try {
+      const mode = settings.aiMonitoringMode || 'hybrid';
+      const clientAllowed = mode === 'hybrid' || mode === 'client_only';
+      const cloudAllowed = mode === 'hybrid' || mode === 'cloud_only';
+
+      const payload = {
+        aiMonitoringMode: mode,
+        enableClientAi: clientAllowed,
+        gazeSensitivity: settings.gazeSensitivity || 'standard',
+        customYawAngle: parseInt(settings.customYawAngle, 10) || 25,
+        customPitchDownAngle: parseInt(settings.customPitchDownAngle, 10) || -22,
+        customPitchUpAngle: parseInt(settings.customPitchUpAngle, 10) || 26,
+        faceDebounceSeconds: parseInt(settings.faceDebounceSeconds, 10) || 3,
+        enableCloudFallback: cloudAllowed,
+        cloudFallbackRate: parseInt(settings.cloudFallbackRate, 10) || 3,
+      };
+      setAiMonitoringMode(payload.aiMonitoringMode);
+      setEnableClientAi(payload.enableClientAi);
+      setGazeSensitivity(payload.gazeSensitivity);
+      setCustomYawAngle(payload.customYawAngle);
+      setCustomPitchDownAngle(payload.customPitchDownAngle);
+      setCustomPitchUpAngle(payload.customPitchUpAngle);
+      setFaceDebounceSeconds(payload.faceDebounceSeconds);
+      setEnableCloudFallback(payload.enableCloudFallback);
+      setCloudFallbackRate(payload.cloudFallbackRate);
+
+      await updateDoc(doc(db, "classes", classId), payload);
+    } catch (e) {
+      console.error("Failed to update class gaze settings:", e);
+      alert("Failed to update gaze settings: " + e.message);
+    }
+  };
+
+  const handleFaceDebounceChange = async (val) => {
+    const num = parseInt(val, 10) || 3;
+    setFaceDebounceSeconds(num);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, "classes", classId), { faceDebounceSeconds: num });
+      } catch (e) {
+        console.error("Failed to update faceDebounceSeconds:", e);
+      }
+    }
+  };
+
+  const handleEnableCloudFallbackChange = async (enabled) => {
+    setEnableCloudFallback(enabled);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, "classes", classId), { enableCloudFallback: enabled });
+      } catch (e) {
+        console.error("Failed to update enableCloudFallback:", e);
+      }
+    }
+  };
+
+  const handleCloudFallbackRateChange = async (val) => {
+    const num = parseInt(val, 10) || 3;
+    setCloudFallbackRate(num);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, "classes", classId), { cloudFallbackRate: num });
+      } catch (e) {
+        console.error("Failed to update cloudFallbackRate:", e);
+      }
+    }
+  };
 
   const pausedRef = useRef(isPaused);
   useEffect(() => { pausedRef.current = isPaused; }, [isPaused]);
@@ -82,9 +171,6 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const screenshotsRef = useRef(screenshots);
   useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
   const urlCacheRef = useRef(new Map());
-
-
-
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
   const maxImageSizeOptions = [
@@ -122,6 +208,10 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         setUidToEmailMap(newMap);
         console.log('[MonitorView] DEBUG: uidToEmailMap populated:', newMap);
 
+        if (data.aiModel) {
+          setSelectedAiModel(data.aiModel);
+        }
+
         setFrameRate(prevRate => {
           const newRate = data.frameRate || 15;
           return newRate === prevRate ? prevRate : newRate;
@@ -131,6 +221,33 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           return newSize === prevSize ? prevSize : newSize;
         });
         setIsCapturing(data.isCapturing || false);
+        if (data.aiMonitoringMode !== undefined) {
+          setAiMonitoringMode(data.aiMonitoringMode);
+        }
+        if (data.enableClientAi !== undefined) {
+          setEnableClientAi(data.enableClientAi);
+        }
+        if (data.gazeSensitivity !== undefined) {
+          setGazeSensitivity(data.gazeSensitivity);
+        }
+        if (data.customYawAngle !== undefined) {
+          setCustomYawAngle(data.customYawAngle);
+        }
+        if (data.customPitchDownAngle !== undefined) {
+          setCustomPitchDownAngle(data.customPitchDownAngle);
+        }
+        if (data.customPitchUpAngle !== undefined) {
+          setCustomPitchUpAngle(data.customPitchUpAngle);
+        }
+        if (data.faceDebounceSeconds !== undefined) {
+          setFaceDebounceSeconds(data.faceDebounceSeconds);
+        }
+        if (data.enableCloudFallback !== undefined) {
+          setEnableCloudFallback(data.enableCloudFallback);
+        }
+        if (data.cloudFallbackRate !== undefined) {
+          setCloudFallbackRate(data.cloudFallbackRate);
+        }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
         setAiUsedQuota(data.aiUsedQuota || 0);
@@ -271,6 +388,10 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         email: email,
         name: status ? status.name : email,
         isSharing: status ? status.isSharing || false : false,
+        faceStatus: status ? status.faceStatus : null,
+        clientAiStatus: status ? status.clientAiStatus : null,
+        yawAngle: status ? status.yawAngle : null,
+        pitchAngle: status ? status.pitchAngle : null,
       };
     });
   }, [classList, studentStatuses, uidToEmailMap]);
@@ -332,7 +453,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           imagePath: primaryPath
         };
 
-        if (isPerImageAnalysisRunning && isCapturing && primaryUrl) {
+        if (isPerImageAnalysisRunning && primaryUrl) {
           analysisQueue.push({ studentUid, status, targetUrl: primaryUrl });
         }
       }
@@ -342,9 +463,9 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
         for (const item of analysisQueue) {
           analysisCounterRef.current += 1;
-          if (analysisCounterRef.current % samplingRate === 0) {
+          if (analysisCounterRef.current % (samplingRate || 5) === 0) {
             const studentEmail = uidToEmailMap.get(item.studentUid) || item.status.email;
-            runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText);
+            runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText, selectedAiModel);
           }
         }
       }
@@ -355,29 +476,43 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     return () => {
       isCancelled = true;
     };
-  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, editablePromptText, uidToEmailMap, students.length]);
-
-
+  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, samplingRate, runPerImageAnalysis, editablePromptText, selectedAiModel, uidToEmailMap, students.length]);
 
   useEffect(() => {
-    if (!isAllImagesAnalysisRunning || !isCapturing) {
+    if (!isAllImagesAnalysisRunning) {
       return;
     }
 
-    const intervalId = setInterval(() => {
+    if (!editablePromptText || !editablePromptText.trim()) {
+      console.warn('[MonitorView] Cannot run all-images analysis without a prompt.');
+      return;
+    }
+
+    const performAllImagesAnalysis = () => {
       const screenshotsToAnalyze = {};
       for (const student of students) {
-        if (student.isSharing && screenshotsRef.current[student.id]) {
-          screenshotsToAnalyze[student.id] = { url: screenshotsRef.current[student.id].url, email: student.email };
+        const studentScreenshot = screenshotsRef.current[student.id];
+        const studentUrl = studentScreenshot?.url || studentScreenshot?.screen?.url;
+        if (studentUrl) {
+          screenshotsToAnalyze[student.id] = { url: studentUrl, email: student.email };
         }
       }
       if (Object.keys(screenshotsToAnalyze).length > 0) {
-        runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
+        console.log(`[MonitorView] Triggering all-images analysis (${Object.keys(screenshotsToAnalyze).length} screens) using model:`, selectedAiModel);
+        runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
+      } else {
+        console.warn('[MonitorView] No student screenshots available to analyze yet.');
       }
-    }, samplingRate * frameRate * 1000);
+    };
+
+    // Run immediately on activation
+    performAllImagesAnalysis();
+
+    const intervalMs = Math.max((samplingRate || 5) * (frameRate || 5) * 1000, 5000);
+    const intervalId = setInterval(performAllImagesAnalysis, intervalMs);
 
     return () => clearInterval(intervalId);
-  }, [isAllImagesAnalysisRunning, isCapturing, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText]);
+  }, [isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedAiModel]);
 
   const handleSendMessage = async (customText = null) => {
     const textToSend = typeof customText === 'string' ? customText : message;
@@ -534,7 +669,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
-    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
+    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
   };
 
   const handleRunAllImagesAnalysis = async () => {
@@ -569,7 +704,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
-    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText);
+    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
   };
 
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
@@ -645,6 +780,21 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         storageUsageZips={storageUsageZips}
         aiQuota={aiQuota}
         aiUsedQuota={aiUsedQuota}
+        selectedAiModel={selectedAiModel}
+        handleAiModelChange={handleAiModelChange}
+        aiMonitoringMode={aiMonitoringMode}
+        enableClientAi={enableClientAi}
+        gazeSensitivity={gazeSensitivity}
+        customYawAngle={customYawAngle}
+        customPitchDownAngle={customPitchDownAngle}
+        customPitchUpAngle={customPitchUpAngle}
+        faceDebounceSeconds={faceDebounceSeconds}
+        handleFaceDebounceChange={handleFaceDebounceChange}
+        enableCloudFallback={enableCloudFallback}
+        handleEnableCloudFallbackChange={handleEnableCloudFallbackChange}
+        cloudFallbackRate={cloudFallbackRate}
+        handleCloudFallbackRateChange={handleCloudFallbackRateChange}
+        handleSaveGazeSettings={handleSaveGazeSettings}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -751,10 +901,25 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           value={editablePromptText}
           onChange={(e) => setEditablePromptText(e.target.value)}
           placeholder="Select a prompt or enter text here..."
-          style={{ width: '100%', flexGrow: 1, marginBottom: '10px', boxSizing: 'border-box' }}
+          style={{ width: '100%', minHeight: '100px', marginBottom: '12px', boxSizing: 'border-box' }}
         />
 
-        <div style={{ marginTop: '10px' }}>
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', marginBottom: '4px' }}>
+            Select Gemini Model:
+          </label>
+          <select
+            value={selectedAiModel}
+            onChange={(e) => handleAiModelChange(e.target.value)}
+            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--color-border, #cbd5e1)', fontSize: '0.88rem' }}
+          >
+            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens)</option>
+            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens)</option>
+            <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens)</option>
+          </select>
+        </div>
+
+        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
           {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
           {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
             <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
@@ -762,7 +927,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
             </button>
           )}
           {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
-            <button onClick={handleRunAllImagesAnalysis} style={{ marginLeft: '10px' }} disabled={isAnalyzing}>
+            <button onClick={handleRunAllImagesAnalysis} disabled={isAnalyzing}>
               {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
             </button>
           )}

@@ -36,7 +36,7 @@ async function seed() {
     retentionDays: 30,
     videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024, // 5 GB
-    aiQuota: 1000,
+    aiQuota: 50,
     schedule: {
       startDate,
       endDate,

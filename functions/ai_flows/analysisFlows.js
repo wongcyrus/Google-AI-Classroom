@@ -1,11 +1,14 @@
 import './firebase.js';
-import { ai } from './ai.js';
+import { getFirestore } from 'firebase-admin/firestore';
+import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
-import { AI_TEMPERATURE, AI_TOP_P } from './config.js';
+import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL } from './config.js';
 import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
+
+const db = getFirestore();
 
 function getToolsForImageAnalysis() {
   return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
@@ -22,10 +25,12 @@ export const analyzeImageFlow = ai.defineFlow(
       screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
       prompt: z.string(),
       classId: z.string(),
+      model: z.string().optional(),
     }),
     outputSchema: z.record(z.string()),
   },
-  async ({ screenshots, prompt, classId }) => {
+  async ({ screenshots, prompt, classId, model }) => {
+    const activeModel = model || AI_MODEL;
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
       const fullPrompt = [
@@ -34,7 +39,7 @@ export const analyzeImageFlow = ai.defineFlow(
       ];
       const media = [{ media: { url } }];
 
-      const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
+      const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media, activeModel);
       const hasQuota = await checkQuota(classId, estimatedCost);
 
       if (!hasQuota) {
@@ -47,6 +52,7 @@ export const analyzeImageFlow = ai.defineFlow(
           promptText: fullPrompt.find(p => p.text)?.text,
           mediaPaths: media.map(m => m.media.url),
           cost: 0,
+          modelUsed: activeModel,
         });
         analysisResults[studentUid] = 'Error: Insufficient quota.';
         continue;
@@ -54,15 +60,16 @@ export const analyzeImageFlow = ai.defineFlow(
 
       try {
         const response = await ai.generate({
+          model: vertexAI.model(activeModel),
           temperature: AI_TEMPERATURE,
           topP: AI_TOP_P,
           prompt: fullPrompt,
           tools: getToolsForImageAnalysis(),
           maxToolRoundtrips: 10,
         });
-        console.log('AI response usage:', response.usage);
+        console.log(`AI response usage (${activeModel}):`, response.usage);
         const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
 
         await logJob({
           classId,
@@ -77,6 +84,7 @@ export const analyzeImageFlow = ai.defineFlow(
             outputTokens: usage.outputTokens,
           },
           cost,
+          modelUsed: activeModel,
           result: response.text,
         });
         analysisResults[studentUid] = response.text;
@@ -90,6 +98,7 @@ export const analyzeImageFlow = ai.defineFlow(
           promptText: fullPrompt.find(p => p.text)?.text,
           mediaPaths: media.map(m => m.media.url),
           cost: 0,
+          modelUsed: activeModel,
           errorDetails: error.message,
         });
         analysisResults[studentUid] = `Error: ${error.message}`;
@@ -111,19 +120,20 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       masterJobId: z.string().optional(),
       startTime: z.string({ description: "The start time of the class in ISO 8601 format." }),
       endTime: z.string({ description: "The end time of the class in ISO 8601 format." }),
+      model: z.string().optional(),
     }),
     outputSchema: z.object({
       result: z.string(),
       jobId: z.string(),
     }),
   },
-  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime }) => {
+  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime, model }) => {
+    const activeModel = model || AI_MODEL;
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
 
     const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nPlease analyze the video based on the user's prompt: "${prompt}"\n\nWhen you need to record information about the lesson, use the provided 'Lesson Start Time' and 'Lesson End Time' for the 'startTime' and 'endTime' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
-  
     const crypto = await import('crypto');
     const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
 
@@ -133,7 +143,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     ];
     const media = [{ media: { url: videoUrl, contentType: 'video/mp4' } }];
 
-    const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
+    const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media, activeModel);
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
@@ -147,6 +157,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
         promptHash,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
+        modelUsed: activeModel,
         masterJobId,
       });
       return { result: 'Error: Insufficient quota.', jobId };
@@ -156,15 +167,16 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       const tools = getToolsForVideoAnalysis();
 
       const response = await ai.generate({
+        model: vertexAI.model(activeModel),
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
         tools: tools,
         maxToolRoundtrips: 10,
       });
-      console.log('AI response usage:', response.usage);
+      console.log(`AI video response usage (${activeModel}):`, response.usage);
       const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
 
       const jobId = await logJob({
         classId,
@@ -180,6 +192,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
           outputTokens: usage.outputTokens,
         },
         cost,
+        modelUsed: activeModel,
         result: response.text,
         masterJobId,
       });
@@ -195,6 +208,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
         promptHash,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
+        modelUsed: activeModel,
         errorDetails: error.message,
         masterJobId,
       });
@@ -210,10 +224,12 @@ export const analyzeAllImagesFlow = ai.defineFlow(
       screenshots: z.record(z.object({ url: z.string(), email: z.string() })),
       prompt: z.string(),
       classId: z.string(),
+      model: z.string().optional(),
     }),
     outputSchema: z.string(),
   },
-  async ({ screenshots, prompt, classId }) => {
+  async ({ screenshots, prompt, classId, model }) => {
+    const activeModel = model || AI_MODEL;
     const imageParts = Object.entries(screenshots).flatMap(([studentUid, { url, email }]) => (
       [
         { text: `The following image is the screen shot from ${email} (student UID: ${studentUid}, image URL: ${url}):` },
@@ -228,7 +244,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
 
     const media = Object.values(screenshots).map(s => ({ media: { url: s.url } }));
 
-    const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media);
+    const estimatedCost = estimateCost(fullPrompt.find(p => p.text)?.text, media, activeModel);
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
@@ -239,6 +255,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
         promptText: fullPrompt.find(p => p.text)?.text,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
+        modelUsed: activeModel,
       });
       return 'Error: Insufficient quota.';
     }
@@ -248,15 +265,16 @@ export const analyzeAllImagesFlow = ai.defineFlow(
       const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
       const response = await ai.generate({
+        model: vertexAI.model(activeModel),
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
         tools: getToolsForImageAnalysis(),
         maxToolRoundtrips,
       });
-      console.log('AI response usage:', response.usage);
+      console.log(`AI all-images response usage (${activeModel}):`, response.usage);
       const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens });
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
 
       await logJob({
         classId,
@@ -269,6 +287,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
           outputTokens: usage.outputTokens,
         },
         cost,
+        modelUsed: activeModel,
         result: response.text,
       });
 
@@ -281,9 +300,149 @@ export const analyzeAllImagesFlow = ai.defineFlow(
         promptText: fullPrompt.find(p => p.text)?.text,
         mediaPaths: media.map(m => m.media.url),
         cost: 0,
+        modelUsed: activeModel,
         errorDetails: error.message,
       });
       return `Error: ${error.message}`;
+    }
+  }
+);
+
+export const analyzeFaceFallbackFlow = ai.defineFlow(
+  {
+    name: 'analyzeFaceFallbackFlow',
+    inputSchema: z.object({
+      classId: z.string(),
+      studentUid: z.string(),
+      studentEmail: z.string(),
+      webcamUrl: z.string(),
+      screenUrl: z.string().optional(),
+      model: z.string().optional(),
+    }),
+    outputSchema: z.object({
+      faceStatus: z.string(),
+      confidence: z.number().optional(),
+      reason: z.string().optional(),
+      cost: z.number().optional(),
+      error: z.string().optional(),
+    }),
+  },
+  async ({ classId, studentUid, studentEmail, webcamUrl, screenUrl, model }) => {
+    const classDoc = await db.collection('classes').doc(classId).get();
+    if (!classDoc.exists) {
+      return { faceStatus: 'error', error: `Class ${classId} does not exist.` };
+    }
+    const classData = classDoc.data();
+    if (!classData.enableCloudFallback) {
+      return {
+        faceStatus: 'disabled',
+        reason: 'Cloud Fallback is disabled by the teacher for this class.',
+      };
+    }
+
+    const activeModel = model || classData.aiModel || AI_MODEL;
+    const media = [{ media: { url: webcamUrl } }];
+    const promptText = `Analyze this classroom invigilation webcam photo of student ${studentEmail} (UID: ${studentUid}, class: ${classId}).
+Determine the student's face presence and gaze orientation.
+Rules:
+1. Is there a human face present? If no face is visible, status is 'no_face'.
+2. Are multiple faces present? If more than 1 person is in frame, status is 'multiple_faces'.
+3. Is the student looking forward/centered at their computer screen? If their head or gaze is turned significantly away (left, right, looking at another device, looking away from exam), status is 'looking_away'.
+4. If the student is sitting normally facing their screen/work, status is 'normal'.
+
+Respond ONLY with valid JSON in this exact structure:
+{
+  "faceStatus": "normal" | "looking_away" | "no_face" | "multiple_faces",
+  "confidence": 0.95,
+  "reason": "Brief explanation"
+}`;
+
+    const fullPrompt = [
+      { text: promptText },
+      { media: { url: webcamUrl } }
+    ];
+
+    const estimatedCost = estimateCost(promptText, media, activeModel);
+    const hasQuota = await checkQuota(classId, estimatedCost);
+
+    if (!hasQuota) {
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'cloudFallbackFaceAnalysis',
+        status: 'blocked-by-quota',
+        promptText,
+        mediaPaths: [webcamUrl],
+        cost: 0,
+        modelUsed: activeModel,
+      });
+      return { faceStatus: 'quota_exceeded', error: 'Insufficient AI Quota.' };
+    }
+
+    try {
+      const response = await ai.generate({
+        model: vertexAI.model(activeModel),
+        temperature: 0.1,
+        topP: 0.9,
+        prompt: fullPrompt,
+      });
+
+      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+
+      let parsed = { faceStatus: 'normal', confidence: 1.0, reason: 'OK' };
+      try {
+        const text = response.text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        console.warn("Could not parse JSON response from Gemini, text:", response.text);
+        if (response.text.toLowerCase().includes('looking_away') || response.text.toLowerCase().includes('looking away')) {
+          parsed = { faceStatus: 'looking_away', confidence: 0.8, reason: response.text };
+        } else if (response.text.toLowerCase().includes('no_face') || response.text.toLowerCase().includes('no face')) {
+          parsed = { faceStatus: 'no_face', confidence: 0.8, reason: response.text };
+        } else if (response.text.toLowerCase().includes('multiple')) {
+          parsed = { faceStatus: 'multiple_faces', confidence: 0.8, reason: response.text };
+        }
+      }
+
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'cloudFallbackFaceAnalysis',
+        status: 'completed',
+        promptText,
+        mediaPaths: [webcamUrl],
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+        cost,
+        modelUsed: activeModel,
+        result: JSON.stringify(parsed),
+      });
+
+      return {
+        faceStatus: parsed.faceStatus || 'normal',
+        confidence: parsed.confidence || 1.0,
+        reason: parsed.reason || '',
+        cost,
+      };
+    } catch (error) {
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'cloudFallbackFaceAnalysis',
+        status: 'failed',
+        promptText,
+        mediaPaths: [webcamUrl],
+        cost: 0,
+        modelUsed: activeModel,
+        errorDetails: error.message,
+      });
+      return { faceStatus: 'error', error: error.message };
     }
   }
 );

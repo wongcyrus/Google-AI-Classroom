@@ -22,6 +22,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
 
   const extraClauses = useMemo(() => [{ field: 'status', op: '==', value: 'completed' }], []);
 
@@ -180,6 +181,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           requester: user.uid,
           videos: videos,
           prompt: editablePromptText,
+          model: selectedModel,
           status: 'pending',
           createdAt: serverTimestamp(),
           startTime: new Date(startTime),
@@ -221,6 +223,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           endTime: new Date(endTime),
           filterField: filterField,
           prompt: editablePromptText,
+          model: selectedModel,
           status: 'pending',
           createdAt: serverTimestamp(),
           deleted: false,
@@ -321,11 +324,26 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             promptText={editablePromptText}
             onTextChange={setEditablePromptText}
           />
-          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: '12px', marginBottom: '8px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', marginBottom: '4px' }}>
+              Select Gemini Model:
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--color-border, #cbd5e1)', fontSize: '0.88rem' }}
+            >
+              <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens)</option>
+              <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens)</option>
+              <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens)</option>
+            </select>
+          </div>
+
+          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis || !editablePromptText.trim()}>
                 {isRequestingAnalysis ? 'Requesting...' : `Request Analysis for Selected ${selectedVideos.size > 0 ? `(${selectedVideos.size})` : ''}`}
               </button>
-              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis || !editablePromptText.trim()} style={{ marginLeft: '10px' }}>
+              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis || !editablePromptText.trim()}>
                 {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis for the whole class'}
               </button>
           </div>

@@ -15,7 +15,10 @@ service cloud.firestore {
     }
 
     function isStudentInClass(classId) {
-      return request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.students;
+      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
+      let isStudentByEmail = classData.studentEmails != null && request.auth.token.email in classData.studentEmails;
+      let isStudentByUid = classData.students != null && request.auth.uid in classData.students;
+      return isStudentByEmail || isStudentByUid;
     }
 
     match /studentProfiles/{userId} {
@@ -90,8 +93,10 @@ service cloud.firestore {
     }
 
     match /irregularities/{irregularityId} {
-      allow read: if isTeacher() || request.auth.uid == resource.data.studentUid;
-      allow create: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
+      allow create: if isTeacher() || (request.auth != null && request.auth.uid == request.resource.data.studentUid && isStudentInClass(request.resource.data.classId));
+      allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
+      allow delete: if isTeacher();
     }
 
     match /progress/{progressId} {

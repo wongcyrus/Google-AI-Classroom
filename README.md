@@ -38,11 +38,12 @@ This project is a showcase of modern, scalable, and intelligent application deve
 The project is a monorepo composed of three main parts:
 
 *   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students and teachers. It uses Firebase for authentication and all real-time communication. Key capabilities include:
+    *   **On-Device AI Invigilation (MediaPipe Face & Iris):** High-efficiency browser inference (~15–30 FPS, 0 cloud quota) computing head yaw/pitch angles and depth-from-iris distance, with 4 flexible modes (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`).
     *   **Dual-Channel Split Streams:** Independent live screen sharing and webcam capture with multi-camera selection and stream swapping.
     *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
     *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
-    *   **Live Teacher Monitor:** Space-optimized compact channel selector (`🔲 Dual View`, `🖥️ Screen`, `📷 Webcam`), atomic real-time updates, and high-detail student inspection modals.
-*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic for analyzing student screen captures, powered by Google's Genkit and the Gemini model.
+    *   **Live Teacher Monitor:** Action-oriented streamlined ControlsPanel, space-optimized channel selector (`🔲 Dual View`, `🖥️ Screen`, `📷 Webcam`), atomic real-time updates, and high-detail student inspection modals.
+*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
 For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
@@ -52,7 +53,7 @@ For a detailed breakdown of the Firestore data model, please see the [Firestore 
 ```mermaid
 graph TD
     subgraph "Client"
-        WebApp["Web App (React)"]
+        WebApp["Web App (React + MediaPipe FaceLandmarker)"]
     end
 
     subgraph "Firebase"
@@ -63,13 +64,14 @@ graph TD
     end
 
     subgraph "Google Cloud"
-        VertexAI["Vertex AI (Gemini)"]
+        VertexAI["Google GenAI (Gemini 3 Series)"]
     end
 
     subgraph "Cloud Functions"
         subgraph "AI Flows (`ai_flows`)"
             F_analyzeImage["analyzeImage (onCall)"]
             F_analyzeAllImages["analyzeAllImages (onCall)"]
+            F_analyzeFaceFallback["analyzeFaceFallback (onCall)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]

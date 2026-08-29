@@ -88,6 +88,8 @@ When a project is deployed or seeded via `node admin/scripts/seed_initial_data.m
 ### Pre-enrolled Demo Class:
 - **Class ID:** `IT114115-Demo`
 - **Class Name:** `IT114115 Demo Class`
+- **AI Budget:** `$50.00 USD` (`aiQuota: 50`)
+- **Default AI Invigilation Mode:** `hybrid` (`⚡ Client AI + Fallback`)
 - **Schedule:** 24/7 (`00:00 - 23:59`, Monday through Sunday) so screen capturing and testing work anytime.
 
 ---

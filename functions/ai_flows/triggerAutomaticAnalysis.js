@@ -82,6 +82,7 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
         endTime: endTime,
         filterField: 'startTime',
         prompt: afterClassVideoPrompt.promptText,
+        model: classData.aiModel || 'gemini-3.5-flash-lite',
         status: 'pending',
         deleted: false,
         createdAt: FieldValue.serverTimestamp(),

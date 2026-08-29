@@ -99,4 +99,34 @@ The student interface supports independent screen sharing (`getDisplayMedia`) an
    - **Inline Web Worker Timer:** Drives frame capture ticks using an isolated Web Worker thread, immune to Chromium's background timer throttling (which would otherwise throttle `setInterval` down to 1 minute or suspend tabs via Edge Sleeping Tabs).
    - **Screen Wake Lock API:** Automatically acquires a `screen` wake lock (`navigator.wakeLock.request('screen')`) during active capture sessions to prevent OS/browser power-saving suspension.
 
+---
+
+## Real-Time On-Device Face & Gaze Tracking (`useFaceMonitor.js`)
+
+The student client embeds an on-device AI invigilation pipeline powered by **MediaPipe FaceLandmarker with Iris Tracking**:
+
+### 1. 4 AI Monitoring Modes
+- **`hybrid` (⚡ Client AI + Fallback)**: Real-time on-device MediaPipe inference on the student's browser at ~15-30 FPS with zero cloud cost. If detection confidence is low or irregularities persist, it triggers periodic Cloud Gemini Vision fallbacks (`analyzeFaceFallback`).
+- **`cloud_only` (☁️ Cloud AI Only)**: Deactivates client-side MediaPipe WASM. The teacher receives periodic Cloud Gemini Vision inspections directly.
+- **`client_only` (💻 Client AI Only)**: 100% on-device MediaPipe processing. Zero Cloud Gemini quota consumed.
+- **`disabled` (🚫 AI Disabled)**: Completely turns off face and gaze tracking.
+
+### 2. Iris Tracking & Depth Estimation
+- Utilizes MediaPipe Iris landmarks (Landmarks `468–472` for left eye, `473–477` for right eye).
+- **Metric Distance:** Computes accurate metric distance in cm using the known anatomical human iris diameter (~11.7 mm).
+- **Pupil Gaze Ratio:** Evaluates horizontal and vertical iris displacement within eye contours to detect subtle looking-away gestures before head rotation occurs.
+
+### 3. Head Pose & Angle Calibration
+- Extracts 3D facial landmarks to calculate head rotation angles:
+  - **Yaw** (Left / Right turn)
+  - **Pitch** (Look Up / Down)
+  - **Roll** (Head Tilt)
+- Configurable preset thresholds (`standard`, `relaxed`, `strict`, `custom`) with custom yaw and asymmetric pitch up/down boundaries.
+
+### 4. Debounce & Anomaly Gate
+- Deviations must be sustained for the teacher-configured debounce threshold (e.g., 3 consecutive seconds) before triggering a `looking_away` irregularity, eliminating transient glance false positives.
+- State telemetry is mirrored atomically to `classes/{classId}/status/{studentUid}`:
+  - `faceStatus`: `normal` | `looking_away` | `no_face` | `multiple_faces` | `loading` | `disabled`
+  - `gazeYaw`, `gazePitch`, `gazeDirection`, `metricDistance`, `irisGazeAway`.
+
 

@@ -34,7 +34,7 @@ const MOCK_CLASS = {
   ipRestrictions: [],
   automaticCapture: true,
   automaticCombine: true,
-  aiQuota: 1000,
+  aiQuota: 50,
   frameRate: 1,
   imageQuality: 80,
   maxImageSize: 1024,

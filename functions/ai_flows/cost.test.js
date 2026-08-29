@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateCost, estimateCost } from './cost.js';
+import { calculateCost, estimateCost, MODEL_PRICING } from './cost.js';
 
 describe('calculateCost', () => {
   it('should return 0 when usageMetadata is missing or null', () => {
@@ -7,13 +7,31 @@ describe('calculateCost', () => {
     expect(calculateCost(undefined)).toBe(0);
   });
 
-  it('should correctly compute exact USD cost from input and output tokens', () => {
+  it('should correctly compute exact USD cost for default gemini-3.5-flash-lite', () => {
     const usage = {
       promptTokenCount: 1000000, // 1M tokens @ $0.30
       candidatesTokenCount: 1000000, // 1M tokens @ $2.50
     };
-    const cost = calculateCost(usage);
+    const cost = calculateCost(usage, 'gemini-3.5-flash-lite');
     expect(cost).toBeCloseTo(2.80, 4);
+  });
+
+  it('should correctly compute exact USD cost for gemini-3.7-flash', () => {
+    const usage = {
+      promptTokenCount: 1000000, // 1M tokens @ $0.75
+      candidatesTokenCount: 1000000, // 1M tokens @ $3.75
+    };
+    const cost = calculateCost(usage, 'gemini-3.7-flash');
+    expect(cost).toBeCloseTo(4.50, 4);
+  });
+
+  it('should correctly compute exact USD cost for gemini-3.7-pro', () => {
+    const usage = {
+      promptTokenCount: 1000000, // 1M tokens @ $3.00
+      candidatesTokenCount: 1000000, // 1M tokens @ $15.00
+    };
+    const cost = calculateCost(usage, 'gemini-3.7-pro');
+    expect(cost).toBeCloseTo(18.00, 4);
   });
 
   it('should handle small token amounts with high precision', () => {
@@ -30,20 +48,21 @@ describe('calculateCost', () => {
 });
 
 describe('estimateCost', () => {
-  it('should estimate cost for text prompt only', () => {
+  it('should estimate cost for text prompt with specified model', () => {
     const prompt = 'a'.repeat(400); // 400 chars / 4 = 100 tokens
-    const cost = estimateCost(prompt, []);
+    const costLite = estimateCost(prompt, [], 'gemini-3.5-flash-lite');
     // (100 / 1M) * 0.30 = 0.000030
-    expect(cost).toBeCloseTo(0.000030, 7);
+    expect(costLite).toBeCloseTo(0.000030, 7);
+
+    const costPro = estimateCost(prompt, [], 'gemini-3.7-pro');
+    // (100 / 1M) * 3.00 = 0.000300
+    expect(costPro).toBeCloseTo(0.000300, 7);
   });
 
   it('should estimate cost including multimodal image/video tokens', () => {
     const prompt = 'Analyze this video frame';
     const media = [{ url: 'gs://bucket/test.mp4' }, { url: 'gs://bucket/test2.mp4' }];
-    // Prompt chars: 24 chars -> 6 tokens
-    // Media: 2 items * 258 = 516 tokens
-    // Total = 522 tokens
-    const cost = estimateCost(prompt, media);
+    const cost = estimateCost(prompt, media, 'gemini-3.7-flash');
     expect(cost).toBeGreaterThan(0);
   });
 });

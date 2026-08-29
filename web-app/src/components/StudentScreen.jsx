@@ -20,6 +20,11 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         <div className="header-status-group">
           {screenshotData?.screen?.url && <span className="stream-pill" title="Screen Feed Active">🖥️</span>}
           {screenshotData?.webcam?.url && <span className="stream-pill" title="Webcam Feed Active">📷</span>}
+          {student?.faceStatus === 'normal' && <span className="ai-status-badge normal" title="Face Centered & Active">🟢</span>}
+          {student?.faceStatus === 'looking_away' && <span className="ai-status-badge warn" title={`Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || ''}°)`}>🟡</span>}
+          {student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
+          {student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
+          {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title="Cloud AI Fallback Active">☁️</span>}
           <span className={`status-indicator ${isSharing ? 'on' : 'off'}`}></span>
         </div>
       </div>
@@ -67,6 +72,14 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
               {isSharing ? 'No Webcam Stream' : 'Not Sharing'}
             </div>
           )
+        )}
+        {student?.faceStatus && student.faceStatus !== 'normal' && isSharing && (
+          <div className={`screen-ai-alert ${student.faceStatus}`}>
+            {student.faceStatus === 'looking_away' && `👀 Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || 0}°)`}
+            {student.faceStatus === 'no_face' && '⚠️ No Face'}
+            {student.faceStatus === 'multiple_faces' && '⚠️ Multiple People'}
+            {student.faceStatus === 'cloud_fallback' && '☁️ Cloud Fallback'}
+          </div>
         )}
       </div>
     </div>
