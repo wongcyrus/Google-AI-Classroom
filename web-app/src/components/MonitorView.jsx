@@ -278,21 +278,24 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   useEffect(() => {
     if (reviewTime || students.length === 0 || pausedRef.current) return;
 
-    studentStatuses.forEach(async (status) => {
-      const studentUid = status.id;
-      if (!studentUid) return;
+    let isCancelled = false;
 
-      const screenPath = status.latestScreenPath || status.latestImagePath;
-      const webcamPath = status.latestWebcamPath;
+    const resolveAllStatuses = async () => {
+      const updates = {};
+      const analysisQueue = [];
 
-      if (!screenPath && !webcamPath) return;
+      for (const status of studentStatuses) {
+        const studentUid = status.id;
+        if (!studentUid) continue;
 
-      let resolvedScreenUrl = null;
-      let resolvedWebcamUrl = null;
+        const screenPath = status.latestScreenPath || status.latestImagePath;
+        const webcamPath = status.latestWebcamPath;
+        if (!screenPath && !webcamPath) continue;
 
-      if (screenPath) {
-        resolvedScreenUrl = urlCacheRef.current.get(screenPath);
-        if (!resolvedScreenUrl) {
+        let resolvedScreenUrl = screenPath ? urlCacheRef.current.get(screenPath) : null;
+        let resolvedWebcamUrl = webcamPath ? urlCacheRef.current.get(webcamPath) : null;
+
+        if (screenPath && !resolvedScreenUrl) {
           try {
             resolvedScreenUrl = await getDownloadURL(ref(storage, screenPath));
             urlCacheRef.current.set(screenPath, resolvedScreenUrl);
@@ -300,11 +303,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
             console.error(`Error getting download URL for screen ${screenPath}: `, error);
           }
         }
-      }
 
-      if (webcamPath) {
-        resolvedWebcamUrl = urlCacheRef.current.get(webcamPath);
-        if (!resolvedWebcamUrl) {
+        if (webcamPath && !resolvedWebcamUrl) {
           try {
             resolvedWebcamUrl = await getDownloadURL(ref(storage, webcamPath));
             urlCacheRef.current.set(webcamPath, resolvedWebcamUrl);
@@ -312,52 +312,49 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
             console.error(`Error getting download URL for webcam ${webcamPath}: `, error);
           }
         }
-      }
-
-      setScreenshots(prev => {
-        const prevEntry = prev[studentUid];
-        if (
-          prevEntry?.screen?.imagePath === screenPath &&
-          prevEntry?.webcam?.imagePath === webcamPath
-        ) {
-          return prev;
-        }
 
         const primaryUrl = resolvedScreenUrl || resolvedWebcamUrl;
         const primaryPath = screenPath || webcamPath;
 
-        return {
-          ...prev,
-          [studentUid]: {
-            screen: resolvedScreenUrl ? {
-              url: resolvedScreenUrl,
-              timestamp: status.timestamp,
-              imagePath: screenPath
-            } : null,
-            webcam: resolvedWebcamUrl ? {
-              url: resolvedWebcamUrl,
-              timestamp: status.timestamp,
-              imagePath: webcamPath
-            } : null,
-            url: primaryUrl,
+        updates[studentUid] = {
+          screen: resolvedScreenUrl ? {
+            url: resolvedScreenUrl,
             timestamp: status.timestamp,
-            imagePath: primaryPath
-          }
+            imagePath: screenPath
+          } : null,
+          webcam: resolvedWebcamUrl ? {
+            url: resolvedWebcamUrl,
+            timestamp: status.timestamp,
+            imagePath: webcamPath
+          } : null,
+          url: primaryUrl,
+          timestamp: status.timestamp,
+          imagePath: primaryPath
         };
-      });
 
-      if (isPerImageAnalysisRunning && isCapturing) {
-        analysisCounterRef.current += 1;
-        if (analysisCounterRef.current % samplingRate === 0) {
-          const studentEmail = uidToEmailMap.get(studentUid) || status.email;
-          const targetUrl = resolvedScreenUrl || resolvedWebcamUrl;
-          if (targetUrl) {
-            const screenshotsToAnalyze = { [studentUid]: { url: targetUrl, email: studentEmail } };
-            runPerImageAnalysis(screenshotsToAnalyze, editablePromptText);
+        if (isPerImageAnalysisRunning && isCapturing && primaryUrl) {
+          analysisQueue.push({ studentUid, status, targetUrl: primaryUrl });
+        }
+      }
+
+      if (!isCancelled && Object.keys(updates).length > 0) {
+        setScreenshots(prev => ({ ...prev, ...updates }));
+
+        for (const item of analysisQueue) {
+          analysisCounterRef.current += 1;
+          if (analysisCounterRef.current % samplingRate === 0) {
+            const studentEmail = uidToEmailMap.get(item.studentUid) || item.status.email;
+            runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText);
           }
         }
       }
-    });
+    };
+
+    resolveAllStatuses();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, isCapturing, samplingRate, runPerImageAnalysis, editablePromptText, uidToEmailMap, students.length]);
 
 

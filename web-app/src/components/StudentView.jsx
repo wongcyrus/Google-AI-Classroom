@@ -292,130 +292,155 @@ const StudentView = ({ user }) => {
     }
   }, [activeClass, isWebcamSharing, showSystemNotification, stopScreen, updateCaptureStatus]);
 
+  const isUploadingScreenRef = useRef(false);
+  const isUploadingWebcamRef = useRef(false);
+
   const captureVideoElement = useCallback(async (videoElement, channelName, targetClass) => {
     if (!user || !user.uid || !videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
       return;
     }
 
-    const MAX_CAPTURE_WIDTH = 1920;
-    let targetWidth = videoElement.videoWidth;
-    let targetHeight = videoElement.videoHeight;
-    if (targetWidth > MAX_CAPTURE_WIDTH) {
-      targetHeight = Math.round((targetHeight * MAX_CAPTURE_WIDTH) / targetWidth);
-      targetWidth = MAX_CAPTURE_WIDTH;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-    const ctx = canvas.getContext('2d');
-
-    let frameDrawn = false;
-    // Prefer ImageCapture API on Chromium/Edge to grab frame directly from hardware track even if browser is in background
-    if (typeof window !== 'undefined' && 'ImageCapture' in window && videoElement.srcObject) {
-      try {
-        const tracks = videoElement.srcObject.getVideoTracks();
-        if (tracks.length > 0 && tracks[0].readyState === 'live') {
-          const imageCapture = new window.ImageCapture(tracks[0]);
-          const bitmap = await imageCapture.grabFrame();
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-          frameDrawn = true;
-        }
-      } catch {
-        // Fallback to videoElement draw
-      }
-    }
-
-    if (!frameDrawn) {
-      ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
-    }
-
-    // Screen solid color verification
-    if (channelName === 'screen' && canvas.width > 1 && canvas.height > 1) {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      const isSolid = () => {
-        const r = data[0], g = data[1], b = data[2];
-        const points = [
-          0,
-          (canvas.width - 1) * 4,
-          (canvas.height - 1) * canvas.width * 4,
-          ((canvas.height - 1) * canvas.width + (canvas.width - 1)) * 4,
-          (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4
-        ];
-        for (const pt of points) {
-          if (pt < data.length && (data[pt] !== r || data[pt+1] !== g || data[pt+2] !== b)) {
-            return false;
-          }
-        }
-        return true;
-      };
-
-      if (isSolid() && !frameDrawn) {
-        console.warn("Screen capture appears to be a solid black frame.");
+    // Guard: Prevent stacking/queuing uploads if previous upload is still in-flight
+    if (channelName === 'screen') {
+      if (isUploadingScreenRef.current) {
+        console.debug("Screen upload still in flight, skipping frame to avoid lag.");
         return;
       }
+      isUploadingScreenRef.current = true;
+    } else if (channelName === 'webcam') {
+      if (isUploadingWebcamRef.current) {
+        console.debug("Webcam upload still in flight, skipping frame to avoid lag.");
+        return;
+      }
+      isUploadingWebcamRef.current = true;
     }
 
-    const MAX_SIZE_BYTES = maxImageSize;
+    try {
+      const MAX_CAPTURE_WIDTH = 1920;
+      let targetWidth = videoElement.videoWidth;
+      let targetHeight = videoElement.videoHeight;
+      if (targetWidth > MAX_CAPTURE_WIDTH) {
+        targetHeight = Math.round((targetHeight * MAX_CAPTURE_WIDTH) / targetWidth);
+        targetWidth = MAX_CAPTURE_WIDTH;
+      }
 
-    const attemptUpload = (currentCanvas, quality) => {
-      currentCanvas.toBlob(async (blob) => {
-        if (!blob) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
 
-        if (blob.size > MAX_SIZE_BYTES) {
-          if (quality > 0.2) {
-            attemptUpload(currentCanvas, quality - 0.1);
-          } else {
-            const scale = Math.sqrt(MAX_SIZE_BYTES / blob.size) * 0.9;
-            const newCanvas = document.createElement('canvas');
-            newCanvas.width = currentCanvas.width * scale;
-            newCanvas.height = currentCanvas.height * scale;
-            const newCtx = newCanvas.getContext('2d');
-            newCtx.drawImage(currentCanvas, 0, 0, newCanvas.width, newCanvas.height);
-            attemptUpload(newCanvas, 0.9);
+      let frameDrawn = false;
+      // Prefer ImageCapture API on Chromium/Edge to grab frame directly from hardware track even if browser is in background
+      if (typeof window !== 'undefined' && 'ImageCapture' in window && videoElement.srcObject) {
+        try {
+          const tracks = videoElement.srcObject.getVideoTracks();
+          if (tracks.length > 0 && tracks[0].readyState === 'live') {
+            const imageCapture = new window.ImageCapture(tracks[0]);
+            const bitmap = await imageCapture.grabFrame();
+            ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+            frameDrawn = true;
           }
-        } else {
-          const timestamp = Date.now();
-          const screenshotRef = ref(storage, `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`);
-          try {
-            await uploadBytes(screenshotRef, blob);
-            const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
-            await addDoc(collection(db, 'screenshots'), {
-              classId: targetClass,
-              studentUid: user.uid,
-              email: user.email.toLowerCase(),
-              channel: channelName,
-              imagePath: screenshotRef.fullPath,
-              size: blob.size,
-              timestamp: serverTimestamp(),
-              expireAt: expireAtDate,
-              deleted: false,
-              ipAddress: ipAddress,
-            });
-
-            const statusRef = doc(db, "classes", targetClass, "status", user.uid);
-            const statusUpdate = {
-              isSharing: true,
-              email: user.email.toLowerCase(),
-              name: user.displayName || user.email,
-              timestamp: serverTimestamp()
-            };
-            if (channelName === 'screen') {
-              statusUpdate.latestScreenPath = screenshotRef.fullPath;
-              statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
-            } else {
-              statusUpdate.latestWebcamPath = screenshotRef.fullPath;
-            }
-            await setDoc(statusRef, statusUpdate, { merge: true });
-          } catch (err) {
-            console.error(`Error uploading ${channelName} snapshot:`, err);
-          }
+        } catch {
+          // Fallback to videoElement draw
         }
-      }, 'image/jpeg', quality);
-    };
+      }
 
-    attemptUpload(canvas, imageQuality);
+      if (!frameDrawn) {
+        ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+      }
+
+      // Screen solid color verification
+      if (channelName === 'screen' && canvas.width > 1 && canvas.height > 1) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const isSolid = () => {
+          const r = data[0], g = data[1], b = data[2];
+          const points = [
+            0,
+            (canvas.width - 1) * 4,
+            (canvas.height - 1) * canvas.width * 4,
+            ((canvas.height - 1) * canvas.width + (canvas.width - 1)) * 4,
+            (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4
+          ];
+          for (const pt of points) {
+            if (pt < data.length && (data[pt] !== r || data[pt+1] !== g || data[pt+2] !== b)) {
+              return false;
+            }
+          }
+          return true;
+        };
+
+        if (isSolid() && !frameDrawn) {
+          console.warn("Screen capture appears to be a solid black frame.");
+          return;
+        }
+      }
+
+      const MAX_SIZE_BYTES = maxImageSize;
+
+      const getBlob = (c, q) => new Promise(resolve => c.toBlob(resolve, 'image/jpeg', q));
+
+      let currentCanvas = canvas;
+      let quality = imageQuality;
+      let blob = await getBlob(currentCanvas, quality);
+
+      if (blob && blob.size > MAX_SIZE_BYTES) {
+        if (quality > 0.2) {
+          blob = await getBlob(currentCanvas, quality - 0.1);
+        }
+        if (blob && blob.size > MAX_SIZE_BYTES) {
+          const scale = Math.sqrt(MAX_SIZE_BYTES / blob.size) * 0.9;
+          const newCanvas = document.createElement('canvas');
+          newCanvas.width = currentCanvas.width * scale;
+          newCanvas.height = currentCanvas.height * scale;
+          const newCtx = newCanvas.getContext('2d');
+          newCtx.drawImage(currentCanvas, 0, 0, newCanvas.width, newCanvas.height);
+          blob = await getBlob(newCanvas, 0.9);
+        }
+      }
+
+      if (blob) {
+        const timestamp = Date.now();
+        const screenshotRef = ref(storage, `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`);
+        await uploadBytes(screenshotRef, blob);
+        const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
+        await addDoc(collection(db, 'screenshots'), {
+          classId: targetClass,
+          studentUid: user.uid,
+          email: user.email.toLowerCase(),
+          channel: channelName,
+          imagePath: screenshotRef.fullPath,
+          size: blob.size,
+          timestamp: serverTimestamp(),
+          expireAt: expireAtDate,
+          deleted: false,
+          ipAddress: ipAddress,
+        });
+
+        const statusRef = doc(db, "classes", targetClass, "status", user.uid);
+        const statusUpdate = {
+          isSharing: true,
+          email: user.email.toLowerCase(),
+          name: user.displayName || user.email,
+          timestamp: serverTimestamp()
+        };
+        if (channelName === 'screen') {
+          statusUpdate.latestScreenPath = screenshotRef.fullPath;
+          statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
+        } else {
+          statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+        }
+        await setDoc(statusRef, statusUpdate, { merge: true });
+      }
+    } catch (err) {
+      console.error(`Error uploading ${channelName} snapshot:`, err);
+    } finally {
+      if (channelName === 'screen') {
+        isUploadingScreenRef.current = false;
+      } else if (channelName === 'webcam') {
+        isUploadingWebcamRef.current = false;
+      }
+    }
   }, [user, maxImageSize, imageQuality, retentionDays, ipAddress]);
 
   const captureAndUploadAllChannels = useCallback((targetClass) => {
