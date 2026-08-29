@@ -643,19 +643,47 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
         <div className="timeline-controls" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
-            {!showControls && <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
-            <select value={selectedLesson} onChange={handleLessonChange}>
-              {lessons.map(lesson => (
-                <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                  {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
-                </option>              ))}
-            </select>
-            <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
-                        {timezone && timezone !== 'UTC' && <span style={{ fontStyle: 'italic', color: '#555', marginLeft: '15px' }}>Timezone: {timezone.replace(/_/g, ' ')}</span>}
-            <span style={{ marginLeft: '15px' }}>
-              {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {!showControls && <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
+              <select value={selectedLesson} onChange={handleLessonChange}>
+                {lessons.map(lesson => (
+                  <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
+                    {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
+              {timezone && timezone !== 'UTC' && <span style={{ fontStyle: 'italic', color: '#555' }}>Timezone: {timezone.replace(/_/g, ' ')}</span>}
+              <span>
+                {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
+              </span>
+            </div>
+
+            {/* Quick Grid View Channel Selector */}
+            <div className="grid-channel-toggle-group" title="Class View Level Channel Display">
+              <button
+                type="button"
+                className={`channel-toggle-btn ${selectedChannel === 'both' ? 'active' : ''}`}
+                onClick={() => setSelectedChannel('both')}
+              >
+                🔲 Dual View
+              </button>
+              <button
+                type="button"
+                className={`channel-toggle-btn ${selectedChannel === 'screen' ? 'active' : ''}`}
+                onClick={() => setSelectedChannel('screen')}
+              >
+                🖥️ Screen
+              </button>
+              <button
+                type="button"
+                className={`channel-toggle-btn ${selectedChannel === 'webcam' ? 'active' : ''}`}
+                onClick={() => setSelectedChannel('webcam')}
+              >
+                📷 Webcam
+              </button>
+            </div>
           </div>
           {startTime && endTime && (
             <TimelineSlider
