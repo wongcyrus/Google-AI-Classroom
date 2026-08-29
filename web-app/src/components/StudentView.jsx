@@ -38,19 +38,9 @@ const StudentView = ({ user }) => {
   const [availableWebcams, setAvailableWebcams] = useState([]);
   const [selectedWebcamId, setSelectedWebcamId] = useState('');
   const [primaryStream, setPrimaryStream] = useState('screen'); // 'screen' | 'webcam'
-  const stageRef = useRef(null);
 
   const handleSwapFeeds = useCallback(() => {
     setPrimaryStream(prev => (prev === 'screen' ? 'webcam' : 'screen'));
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!stageRef.current) return;
-    if (!document.fullscreenElement) {
-      stageRef.current.requestFullscreen().catch(err => console.error("Error attempting fullscreen:", err));
-    } else {
-      document.exitFullscreen().catch(err => console.error("Error exiting fullscreen:", err));
-    }
   }, []);
 
   // Notification Permission State
@@ -775,7 +765,7 @@ const StudentView = ({ user }) => {
               </p>
             )}
             
-            <div className="preview-stage" ref={stageRef}>
+            <div className="preview-stage">
               {/* Screen Stream Element */}
               <div
                 className={`stream-feed-wrapper ${
@@ -835,23 +825,14 @@ const StudentView = ({ user }) => {
               </div>
 
               {/* Stage Top Right Action Controls */}
-              {isSharing && (
+              {isSharing && isScreenSharing && isWebcamSharing && (
                 <div className="stage-actions-overlay">
-                  {isScreenSharing && isWebcamSharing && (
-                    <button
-                      onClick={handleSwapFeeds}
-                      className="stage-action-btn"
-                      title="Swap Main and PiP Feeds"
-                    >
-                      🔄 Swap Focus
-                    </button>
-                  )}
                   <button
-                    onClick={toggleFullscreen}
+                    onClick={handleSwapFeeds}
                     className="stage-action-btn"
-                    title="Toggle Fullscreen"
+                    title="Swap Main and PiP Feeds"
                   >
-                    ⛶ Fullscreen
+                    🔄 Swap Focus
                   </button>
                 </div>
               )}
