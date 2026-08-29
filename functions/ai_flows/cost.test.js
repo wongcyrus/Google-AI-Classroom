@@ -9,11 +9,11 @@ describe('calculateCost', () => {
 
   it('should correctly compute exact USD cost from input and output tokens', () => {
     const usage = {
-      promptTokenCount: 1000000, // 1M tokens @ $0.075
-      candidatesTokenCount: 1000000, // 1M tokens @ $0.30
+      promptTokenCount: 1000000, // 1M tokens @ $0.75
+      candidatesTokenCount: 1000000, // 1M tokens @ $3.75
     };
     const cost = calculateCost(usage);
-    expect(cost).toBeCloseTo(0.375, 4);
+    expect(cost).toBeCloseTo(4.50, 4);
   });
 
   it('should handle small token amounts with high precision', () => {
@@ -21,11 +21,11 @@ describe('calculateCost', () => {
       promptTokenCount: 1000,
       candidatesTokenCount: 500,
     };
-    // Input: (1000 / 1M) * 0.075 = 0.000075
-    // Output: (500 / 1M) * 0.30 = 0.00015
-    // Total = 0.000225
+    // Input: (1000 / 1M) * 0.75 = 0.00075
+    // Output: (500 / 1M) * 3.75 = 0.001875
+    // Total = 0.002625
     const cost = calculateCost(usage);
-    expect(cost).toBeCloseTo(0.000225, 6);
+    expect(cost).toBeCloseTo(0.002625, 6);
   });
 });
 
@@ -33,8 +33,8 @@ describe('estimateCost', () => {
   it('should estimate cost for text prompt only', () => {
     const prompt = 'a'.repeat(400); // 400 chars / 4 = 100 tokens
     const cost = estimateCost(prompt, []);
-    // (100 / 1M) * 0.075 = 0.0000075
-    expect(cost).toBeCloseTo(0.0000075, 7);
+    // (100 / 1M) * 0.75 = 0.000075
+    expect(cost).toBeCloseTo(0.000075, 7);
   });
 
   it('should estimate cost including multimodal image/video tokens', () => {
