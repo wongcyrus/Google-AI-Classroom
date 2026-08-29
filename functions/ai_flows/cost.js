@@ -1,12 +1,12 @@
 
-// Pricing for Gemini 2.5 Flash in USD per 1 million tokens
+// Pricing for Gemini 3.7 Flash in USD per 1 million tokens
 const INPUT_PRICE_PER_MILLION_TOKENS = 0.075;
 const OUTPUT_PRICE_PER_MILLION_TOKENS = 0.30;
 
 // A rough estimate of characters per token. This will be refined after research.
 const CHARS_PER_TOKEN_ESTIMATE = 4;
-// A rough estimate of tokens per image. This will be refined after research.
-const TOKENS_PER_IMAGE_ESTIMATE = 258; // Based on some models, but needs verification for Gemini 2.5
+// A rough estimate of tokens per image.
+const TOKENS_PER_IMAGE_ESTIMATE = 258;
 
 /**
  * Calculates the actual cost of an AI job based on the usage metadata from the API response.

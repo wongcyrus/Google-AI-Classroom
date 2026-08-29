@@ -14,7 +14,7 @@ export const CORS_ORIGINS = [
 ];
 
 // Genkit AI Model parameters
-export const AI_MODEL = 'gemini-2.5-flash';
+export const AI_MODEL = 'gemini-3.7-flash';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;
 

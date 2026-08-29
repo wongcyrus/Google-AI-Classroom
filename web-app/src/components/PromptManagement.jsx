@@ -219,7 +219,7 @@ const PromptManagement = () => {
 
     try {
       const ai = getAI(app, { backend: new VertexAIBackend() });
-      const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+      const model = getGenerativeModel(ai, { model: "gemini-3.7-flash" });
 
       const imageOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **image analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
 
