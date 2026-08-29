@@ -255,10 +255,6 @@ const StudentView = ({ user }) => {
       await updateCaptureStatus(activeStreams, activeClass);
       showSystemNotification("Screen recording has started.");
 
-      if (captureMode === 'dual' && !isWebcamSharing) {
-        await startWebcam();
-      }
-
       stream.getVideoTracks()[0].onended = () => {
         stopScreen();
       };
@@ -267,7 +263,7 @@ const StudentView = ({ user }) => {
       setIsScreenSharing(false);
       alert("Could not start screen sharing. Please grant permission.");
     }
-  }, [activeClass, captureMode, isWebcamSharing, showSystemNotification, startWebcam, stopScreen, updateCaptureStatus]);
+  }, [activeClass, isWebcamSharing, showSystemNotification, stopScreen, updateCaptureStatus]);
 
   const captureVideoElement = useCallback((videoElement, channelName, targetClass) => {
     if (!user || !user.uid || !videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
