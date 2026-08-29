@@ -43,29 +43,23 @@ describe('ControlsPanel Component', () => {
     aiUsedQuota: 2.5
   };
 
-  it('renders broadcast section, template dropdown, chips, and send button', () => {
+  it('renders broadcast section, template dropdown, input, and send button', () => {
     const setMessage = vi.fn();
-    render(<ControlsPanel {...defaultProps} setMessage={setMessage} />);
+    const handleSendMessage = vi.fn();
+    render(<ControlsPanel {...defaultProps} setMessage={setMessage} handleSendMessage={handleSendMessage} />);
     
     expect(screen.getByPlaceholderText('Type message or pick template...')).toBeInTheDocument();
-    expect(screen.getByText('Send')).toBeInTheDocument();
-    expect(screen.getByText('⏰ 5m left')).toBeInTheDocument();
-    expect(screen.getByText('💻 Share screen')).toBeInTheDocument();
-    expect(screen.getByText('⚠️ Close tabs')).toBeInTheDocument();
-    expect(screen.getByText('⏰ Time up!')).toBeInTheDocument();
+    const sendBtn = screen.getByText('Send');
+    expect(sendBtn).toBeInTheDocument();
 
     // Select pre-defined template
     const templateSelect = screen.getByLabelText('Pre-defined message templates');
     fireEvent.change(templateSelect, { target: { value: '⏰ 15 minutes remaining in test/class.' } });
     expect(setMessage).toHaveBeenCalledWith('⏰ 15 minutes remaining in test/class.');
-  });
 
-  it('triggers handleSendMessage when clicking quick broadcast chips', () => {
-    const handleSendMessage = vi.fn();
-    render(<ControlsPanel {...defaultProps} handleSendMessage={handleSendMessage} />);
-
-    fireEvent.click(screen.getByText('⏰ 5m left'));
-    expect(handleSendMessage).toHaveBeenCalledWith('⏰ 5 minutes remaining!');
+    // Click Send
+    fireEvent.click(sendBtn);
+    expect(handleSendMessage).toHaveBeenCalled();
   });
 
   it('renders capturing toggle button and switches state on click', () => {

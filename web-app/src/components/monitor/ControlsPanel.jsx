@@ -74,33 +74,6 @@ const ControlsPanel = ({
               />
               <button onClick={() => handleSendMessage()} className="primary-action-btn">Send</button>
             </div>
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-              {[
-                { label: '⏰ 5m left', text: '⏰ 5 minutes remaining!' },
-                { label: '💻 Share screen', text: '💻 Please turn on your screen sharing now.' },
-                { label: '⚠️ Close tabs', text: '⚠️ Please close unauthorized tabs/apps.' },
-                { label: '👍 Great work!', text: '👍 Great work, keep going!' },
-                { label: '⏰ Time up!', text: '⏰ Time is up! Please submit your work.' }
-              ].map(chip => (
-                <button
-                  key={chip.label}
-                  type="button"
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: '0.72rem',
-                    background: 'var(--color-bg-secondary, #f1f5f9)',
-                    border: '1px solid var(--color-border, #cbd5e1)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-main, #334155)'
-                  }}
-                  onClick={() => handleSendMessage(chip.text)}
-                  title={`Click to immediately broadcast "${chip.text}"`}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
         </div>
 
         {/* Capture Configuration */}
