@@ -440,13 +440,18 @@ const StudentView = ({ user }) => {
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setFrameRate(data.frameRate || 15);
-        setImageQuality(data.imageQuality || 0.5);
-        setMaxImageSize(data.maxImageSize || 0.1 * 1024 * 1024);
-        setCaptureMode(data.captureMode || 'dual');
-        setIsCapturing(data.isCapturing || false);
-        setCaptureStartedAt(data.captureStartedAt || null);
-        setRetentionDays(data.retentionDays || 30);
+        setFrameRate(prev => (data.frameRate !== undefined && data.frameRate !== prev ? data.frameRate : (prev || 15)));
+        setImageQuality(prev => (data.imageQuality !== undefined && data.imageQuality !== prev ? data.imageQuality : (prev || 0.5)));
+        setMaxImageSize(prev => (data.maxImageSize !== undefined && data.maxImageSize !== prev ? data.maxImageSize : (prev || 0.1 * 1024 * 1024)));
+        setCaptureMode(prev => (data.captureMode && data.captureMode !== prev ? data.captureMode : (prev || 'dual')));
+        setIsCapturing(prev => (data.isCapturing !== undefined && data.isCapturing !== prev ? data.isCapturing : (prev || false)));
+        setCaptureStartedAt(prev => {
+          if (!data.captureStartedAt) return null;
+          const prevMs = prev?.toMillis ? prev.toMillis() : (prev?.seconds ? prev.seconds * 1000 : null);
+          const newMs = data.captureStartedAt.toMillis ? data.captureStartedAt.toMillis() : (data.captureStartedAt.seconds ? data.captureStartedAt.seconds * 1000 : null);
+          return prevMs === newMs ? prev : data.captureStartedAt;
+        });
+        setRetentionDays(prev => (data.retentionDays !== undefined && data.retentionDays !== prev ? data.retentionDays : (prev || 30)));
       }
     }, (error) => {
       console.error(`Firestore: Error subscribing to class document ${activeClass}:`, error);
@@ -583,6 +588,13 @@ const StudentView = ({ user }) => {
     return () => unsubscribe();
   }, [user]);
 
+  const captureAndUploadAllChannelsRef = useRef(captureAndUploadAllChannels);
+  useEffect(() => {
+    captureAndUploadAllChannelsRef.current = captureAndUploadAllChannels;
+  }, [captureAndUploadAllChannels]);
+
+  const lastCaptureTimeRef = useRef(0);
+
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -591,16 +603,23 @@ const StudentView = ({ user }) => {
 
     if (isSharing && isCapturing && activeClass) {
       const now = Date.now();
-      const startTime = captureStartedAt ? captureStartedAt.toDate().getTime() : now;
+      const startTime = captureStartedAt ? (captureStartedAt.toMillis ? captureStartedAt.toMillis() : (captureStartedAt.toDate ? captureStartedAt.toDate().getTime() : now)) : now;
       const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
 
       if (now - startTime < twoAndAHalfHours) {
-        // Immediate capture when triggered
-        captureAndUploadAllChannels(activeClass);
+        const intervalMs = Math.max(1, (frameRate || 15)) * 1000;
+
+        // Perform capture if enough time has passed since last capture or on first run
+        if (now - lastCaptureTimeRef.current >= intervalMs) {
+          lastCaptureTimeRef.current = now;
+          captureAndUploadAllChannelsRef.current(activeClass);
+        }
+
         intervalRef.current = setInterval(() => {
-          captureAndUploadAllChannels(activeClass);
-        }, frameRate * 1000);
-      } else if (isCapturing) {
+          lastCaptureTimeRef.current = Date.now();
+          captureAndUploadAllChannelsRef.current(activeClass);
+        }, intervalMs);
+      } else if (isCapturing && user?.uid) {
         const statusRef = doc(db, "classes", activeClass, "status", user.uid);
         console.log(`Firestore: Capture time expired, updating status for ${user.uid}`);
         setDoc(statusRef, { 
@@ -619,9 +638,10 @@ const StudentView = ({ user }) => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, captureAndUploadAllChannels, user.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, user?.uid]);
 
   return (
     <div className="student-view-container">
