@@ -168,10 +168,19 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         }
       });
 
+      const getTs = (obj) => {
+        if (!obj?.timestamp) return 0;
+        if (typeof obj.timestamp.toMillis === 'function') return obj.timestamp.toMillis();
+        if (obj.timestamp.seconds) return obj.timestamp.seconds * 1000;
+        if (obj.timestamp instanceof Date) return obj.timestamp.getTime();
+        if (typeof obj.timestamp === 'number') return obj.timestamp;
+        return 0;
+      };
+
       const latestStatuses = Object.values(statuses.reduce((acc, curr) => {
         if (!curr.id) return acc; // Use UID as the key
-        const existingTs = acc[curr.id]?.timestamp?.toMillis() || 0;
-        const currentTs = curr.timestamp?.toMillis() || 0;
+        const existingTs = getTs(acc[curr.id]);
+        const currentTs = getTs(curr);
 
         if (currentTs >= existingTs) {
           acc[curr.id] = curr;

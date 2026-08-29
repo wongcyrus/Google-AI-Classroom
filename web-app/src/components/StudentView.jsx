@@ -396,8 +396,10 @@ const StudentView = ({ user }) => {
 
             const statusRef = doc(db, "classes", targetClass, "status", user.uid);
             const statusUpdate = {
-              timestamp: serverTimestamp(),
-              email: user.email.toLowerCase()
+              isSharing: true,
+              email: user.email.toLowerCase(),
+              name: user.displayName || user.email,
+              timestamp: serverTimestamp()
             };
             if (channelName === 'screen') {
               statusUpdate.latestScreenPath = screenshotRef.fullPath;
