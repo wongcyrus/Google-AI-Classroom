@@ -53,6 +53,26 @@ const StudentView = ({ user }) => {
     }
   }, []);
 
+  // Notification Permission State
+  const [notificationPermission, setNotificationPermission] = useState(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return window.Notification.permission;
+    }
+    return 'granted';
+  });
+  const [dismissNotificationBanner, setDismissNotificationBanner] = useState(false);
+
+  const requestNotificationPermission = useCallback(async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const result = await window.Notification.requestPermission();
+        setNotificationPermission(result);
+      } catch (err) {
+        console.error("Error requesting notification permission:", err);
+      }
+    }
+  }, []);
+
   // Custom Properties State
   const [classProperties, setClassProperties] = useState(null);
   const [myProperties, setMyProperties] = useState(null);
@@ -659,6 +679,44 @@ const StudentView = ({ user }) => {
   return (
     <div className="student-view-container">
       <Banner message={notification} onClose={handleCloseNotification} />
+
+      {/* Notification Permission Prompt Banner */}
+      {!dismissNotificationBanner && notificationPermission !== 'granted' && (
+        <div className={`notification-permission-banner ${notificationPermission === 'denied' ? 'blocked' : 'prompt'}`}>
+          <div className="notification-banner-content">
+            <span className="notification-banner-icon">
+              {notificationPermission === 'denied' ? '⚠️' : '🔔'}
+            </span>
+            <div className="notification-banner-text">
+              {notificationPermission === 'denied' ? (
+                <>
+                  <strong>Notifications are blocked:</strong> Click the lock/info icon (🔒) in your browser address bar and change <em>Notifications</em> to <strong>Allow</strong> to receive live warnings and instructions.
+                </>
+              ) : (
+                <>
+                  <strong>Enable Notifications:</strong> Allow browser notifications so you never miss real-time alerts or instructions from your instructor.
+                </>
+              )}
+            </div>
+          </div>
+          <div className="notification-banner-actions">
+            {notificationPermission === 'default' && (
+              <button onClick={requestNotificationPermission} className="allow-notifications-btn">
+                🔔 Allow Notifications
+              </button>
+            )}
+            <button 
+              onClick={() => setDismissNotificationBanner(true)} 
+              className="dismiss-banner-btn"
+              title="Dismiss banner"
+              aria-label="Dismiss banner"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="student-view-content">
         <div className="student-view-main">
             <div className="student-view-controls">
