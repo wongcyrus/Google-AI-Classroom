@@ -666,30 +666,18 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
               </span>
             </div>
 
-            {/* Quick Grid View Channel Selector */}
-            <div className="grid-channel-toggle-group" title="Class View Level Channel Display">
-              <button
-                type="button"
-                className={`channel-toggle-btn ${selectedChannel === 'both' ? 'active' : ''}`}
-                onClick={() => setSelectedChannel('both')}
-              >
-                🔲 Dual View
-              </button>
-              <button
-                type="button"
-                className={`channel-toggle-btn ${selectedChannel === 'screen' ? 'active' : ''}`}
-                onClick={() => setSelectedChannel('screen')}
-              >
-                🖥️ Screen
-              </button>
-              <button
-                type="button"
-                className={`channel-toggle-btn ${selectedChannel === 'webcam' ? 'active' : ''}`}
-                onClick={() => setSelectedChannel('webcam')}
-              >
-                📷 Webcam
-              </button>
-            </div>
+            {/* Compact Grid View Channel Selector */}
+            <select
+              aria-label="Grid view channel"
+              className="channel-select-compact"
+              value={selectedChannel}
+              onChange={(e) => setSelectedChannel(e.target.value)}
+              title="Class View Channel"
+            >
+              <option value="both">🔲 Dual View</option>
+              <option value="screen">🖥️ Screen</option>
+              <option value="webcam">📷 Webcam</option>
+            </select>
           </div>
           {startTime && endTime && (
             <TimelineSlider
