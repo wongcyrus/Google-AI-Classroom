@@ -14,9 +14,10 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 - [Backend Functionality](./docs/functions.md)
 - [Frontend Components](./docs/frontend-components.md)
 - [Getting Started (Local Development)](#getting-started-local-development)
+- [Demo Users & Pre-Seeded Class](#-demo-users--pre-seeded-class)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
-- [Admin Scripts](#admin-scripts)
-- [Deployment](#deployment)
+- [Environment Reset & Admin Scripts](#-environment-reset--admin-scripts)
+- [Deployment & Infrastructure](#deployment--infrastructure)
 
 ## Powered by Google Technologies
 
@@ -208,6 +209,20 @@ npm run dev
 
 The application should now be running locally, typically at `http://localhost:5173`.
 
+### 👥 Demo Users & Pre-Seeded Class
+
+The default development environment (`it114115-dev-2026`) comes pre-seeded with an active 24/7 demo class (`IT114115-Demo`) and pre-configured user accounts:
+
+| Role | Email Address | Password | Enrolled / Assigned Class |
+| :--- | :--- | :--- | :--- |
+| **👨‍🏫 Lead Teacher** | `teacher1@vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Instructor) |
+| **👨‍🏫 Co-Teacher** | `teacher2@vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Co-Instructor) |
+| **🧑‍🎓 Student 1** | `student1@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+| **🧑‍🎓 Student 2** | `student2@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+| **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+
+---
+
 ## 🧪 Testing & Quality Assurance
 
 The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests:
@@ -227,31 +242,29 @@ npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin)
 
 For complete architectural details, test matrices, and coverage reports, see the **[Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.
 
-## Admin Scripts
+## 🧹 Environment Reset & Admin Scripts
 
-The `/admin` directory contains scripts for managing user roles and AI prompts.
+The `/admin/scripts` directory provides administrative management tools supporting Google Cloud Application Default Credentials (ADC):
 
-1.  **Setup:**
-    *   Navigate to the directory: `cd admin`
-    *   Install dependencies: `npm install`
-    *   **Authentication:** You need to provide service account credentials to the Admin SDK.
-        1.  In your Firebase project settings, go to **Service Accounts**.
-        2.  Click **Generate new private key**.
-        3.  Save the downloaded JSON file in the `admin/` directory as `sp.json`.
+### 1. Complete Environment Reset & Re-seeding
+To wipe all Firestore collections/subcollections and Storage media files, then automatically restore default AI prompts and demo accounts:
 
-2.  **Usage:**
-    *   **To grant a user teacher privileges:**
-        ```bash
-        node scripts/grantTeacherRole.js
-        ```
-    *   **To manually verify a user's email:**
-        ```bash
-        node scripts/verifyUser.js
-        ```
-    *   **To seed the database with default AI prompts:**
-        ```bash
-        node scripts/seed_prompts.js
-        ```
+```bash
+# Reset active environment and restore default demo seed data
+npm run reset:env
+
+# Reset a specific Firebase project
+node admin/scripts/reset_environment.mjs it114115-dev-2026
+
+# Reset including wiping all Firebase Authentication user accounts
+node admin/scripts/reset_environment.mjs it114115-dev-2026 --delete-users
+```
+
+### 2. User & Prompt Management
+* **Grant Teacher Role**: `node admin/scripts/grantTeacherRole.js <email>`
+* **Verify User Email**: `node admin/scripts/verifyUser.js <email>`
+* **Seed AI Prompts**: `node admin/scripts/seed_prompts.cjs`
+* **Seed Demo Class**: `node admin/scripts/seed_demo_class.js`
 
 ## Deployment & Infrastructure
 
