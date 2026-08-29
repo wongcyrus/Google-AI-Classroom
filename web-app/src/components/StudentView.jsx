@@ -86,16 +86,18 @@ const StudentView = ({ user }) => {
   };
 
   const showSystemNotification = useCallback((message) => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
 
     if (window.Notification.permission === 'granted') {
       navigator.serviceWorker.ready.then((registration) => {
-        registration.active.postMessage({
-          type: 'show-notification',
-          title: 'New Message',
-          body: message,
-        });
-      });
+        if (registration && registration.active) {
+          registration.active.postMessage({
+            type: 'show-notification',
+            title: 'New Message',
+            body: message,
+          });
+        }
+      }).catch(err => console.debug("ServiceWorker notification skipped:", err));
     }
   }, []);
 
@@ -246,7 +248,7 @@ const StudentView = ({ user }) => {
   };
 
   const startScreen = useCallback(async () => {
-    if ('Notification' in window && window.Notification.permission !== 'granted') {
+    if ('Notification' in window && window.Notification.permission === 'default') {
       try {
         await window.Notification.requestPermission();
       } catch (err) {
