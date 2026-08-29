@@ -11,11 +11,17 @@ const auth = getAuth();
 async function seed() {
   console.log(`Seeding demo class on ${projectId}...`);
 
-  const teacherEmail = 'cywong@vtc.edu.hk';
-  const studentEmail = 't-cywong@stu.vtc.edu.hk';
+  const teacherEmails = ['teacher1@vtc.edu.hk', 'teacher2@vtc.edu.hk'];
+  const studentEmails = ['student1@stu.vtc.edu.hk', 'student2@stu.vtc.edu.hk', 'student3@stu.vtc.edu.hk'];
 
-  const teacherUser = await auth.getUserByEmail(teacherEmail);
-  const studentUser = await auth.getUserByEmail(studentEmail);
+  const teacherUsers = await Promise.all(teacherEmails.map(email => auth.getUserByEmail(email)));
+  const studentUsers = await Promise.all(studentEmails.map(email => auth.getUserByEmail(email)));
+
+  const teacherMap = {};
+  teacherUsers.forEach(u => { teacherMap[u.uid] = u.email; });
+
+  const studentMap = {};
+  studentUsers.forEach(u => { studentMap[u.uid] = u.email; });
 
   const classId = 'IT114115-Demo';
   const startDate = '2026-01-01';
@@ -23,14 +29,12 @@ async function seed() {
 
   const classData = {
     name: 'IT114115 Demo Class',
-    teacherEmails: [teacherEmail],
-    studentEmails: [studentEmail],
-    teachers: {
-      [teacherUser.uid]: teacherEmail
-    },
-    students: {
-      [studentUser.uid]: studentEmail
-    },
+    teacherEmails,
+    studentEmails,
+    teachers: teacherMap,
+    students: studentMap,
+    retentionDays: 30,
+    videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024, // 5 GB
     aiQuota: 1000,
     schedule: {
@@ -55,15 +59,19 @@ async function seed() {
   console.log(`✅ Class ${classId} created.`);
 
   // Update teacher and student profiles
-  await db.collection('teacherProfiles').doc(teacherUser.uid).set({
-    classes: FieldValue.arrayUnion(classId)
-  }, { merge: true });
+  for (const tUser of teacherUsers) {
+    await db.collection('teacherProfiles').doc(tUser.uid).set({
+      classes: FieldValue.arrayUnion(classId)
+    }, { merge: true });
+  }
 
-  await db.collection('studentProfiles').doc(studentUser.uid).set({
-    classes: FieldValue.arrayUnion(classId)
-  }, { merge: true });
+  for (const sUser of studentUsers) {
+    await db.collection('studentProfiles').doc(sUser.uid).set({
+      classes: FieldValue.arrayUnion(classId)
+    }, { merge: true });
+  }
 
-  console.log(`✅ Enrolled teacher ${teacherEmail} and student ${studentEmail} into ${classId}.`);
+  console.log(`✅ Enrolled co-teachers and students into ${classId}.`);
 }
 
 seed().catch(console.error);

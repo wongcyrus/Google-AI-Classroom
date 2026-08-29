@@ -64,11 +64,8 @@ async function resetFirestore() {
       }
 
       console.log(`   • Purging ${collectionName}...`);
-      // Use recursiveDelete to safely clean all documents and nested subcollections
-      const allDocs = await colRef.listDocuments();
-      for (const docRef of allDocs) {
-        await db.recursiveDelete(docRef);
-      }
+      // Use recursiveDelete to safely and quickly clean all documents and nested subcollections
+      await db.recursiveDelete(colRef);
       console.log(`     ✅ ${collectionName} purged successfully.`);
     } catch (err) {
       console.warn(`     ⚠️ Warning purging ${collectionName}:`, err.message);

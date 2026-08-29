@@ -86,7 +86,9 @@ async function main() {
   console.log(`🌱 Seeding Initial Demo Data for Project: ${projectId}`);
   console.log(`==========================================================`);
 
-  const allTeacherEmails = [
+  const demoTeacherEmails = [
+    'teacher1@vtc.edu.hk',
+    'teacher2@vtc.edu.hk',
     'cywong@vtc.edu.hk',
     'cy.gdoc@gmail.com',
     'kcheung@vtc.edu.hk',
@@ -98,21 +100,35 @@ async function main() {
     'alanpo@vtc.edu.hk'
   ];
 
+  const demoStudentEmails = [
+    'student1@stu.vtc.edu.hk',
+    'student2@stu.vtc.edu.hk',
+    'student3@stu.vtc.edu.hk'
+  ];
+
   const teacherMap = {};
-  for (const tEmail of allTeacherEmails) {
+  for (const tEmail of demoTeacherEmails) {
     const tUser = await getOrCreateUser(tEmail, 'teacher', tEmail.split('@')[0]);
     teacherMap[tUser.uid] = tEmail;
   }
 
-  const student = await getOrCreateUser('t-cywong@stu.vtc.edu.hk', 'student', 'Test Student');
+  const studentMap = {};
+  const studentUsers = [];
+  for (const sEmail of demoStudentEmails) {
+    const sUser = await getOrCreateUser(sEmail, 'student', sEmail.split('@')[0]);
+    studentMap[sUser.uid] = sEmail;
+    studentUsers.push(sUser);
+  }
 
   const classId = 'IT114115-Demo';
   const classData = {
     name: 'IT114115 Demo Class',
-    teacherEmails: allTeacherEmails,
-    studentEmails: ['t-cywong@stu.vtc.edu.hk'],
+    teacherEmails: demoTeacherEmails,
+    studentEmails: demoStudentEmails,
     teachers: teacherMap,
-    students: { [student.uid]: 't-cywong@stu.vtc.edu.hk' },
+    students: studentMap,
+    retentionDays: 30,
+    videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024,
     aiQuota: 1000,
     schedule: {
@@ -137,15 +153,18 @@ async function main() {
   for (const tUid of Object.keys(teacherMap)) {
     await db.collection('teacherProfiles').doc(tUid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
   }
-  await db.collection('studentProfiles').doc(student.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
-  console.log(`✅ Demo class '${classId}' configured with 24/7 active schedule for all teachers.`);
+  for (const sUser of studentUsers) {
+    await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
+  }
+  console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 3 students (student1..3).`);
 
   await seedPrompts();
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
-  console.log(`👨‍🏫 Teacher: cywong@vtc.edu.hk     (Password: Password123!)`);
-  console.log(`🧑‍🎓 Student: t-cywong@stu.vtc.edu.hk (Password: Password123!)`);
+  console.log(`👨‍🏫 Teachers: teacher1@vtc.edu.hk, teacher2@vtc.edu.hk (Co-teaching)`);
+  console.log(`🧑‍🎓 Students: student1@stu.vtc.edu.hk, student2@stu.vtc.edu.hk, student3@stu.vtc.edu.hk`);
+  console.log(`🔑 Default Password: Password123!`);
   console.log(`==========================================================\n`);
 }
 
