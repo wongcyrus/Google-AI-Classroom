@@ -56,10 +56,13 @@ To minimize upload bandwidth, storage quota, and video compilation latency, imag
 ## ⚙️ 2. Video Processing Function (`functions/media_processing/processVideoJob.js`)
 
 * **Runtime Specs**: `cpu: 2`, `memory: 8GiB`, `timeoutSeconds: 540`, `concurrency: 1`.
+* **Channel Filtering**:
+  * Supports `jobData.channel` (`'screen'`, `'webcam'`, or `'all'`).
+  * When specified, queries Firestore screenshots matching `where('channel', '==', jobData.channel)`.
 * **Batch Processing**:
   * `BATCH_SIZE = 15` (Downloads and processes 15 images concurrently to avoid memory thrashing).
-* **Metadata Overlay**:
-  * A 40px top banner is dynamically stamped using `sharp` containing `Date`, `Time`, `Class`, and `Student Email`.
+* **Metadata Overlay & Dimension Alignment**:
+  * A 40px top banner is dynamically stamped using `sharp` containing `Date`, `Time`, `Class`, `Student Email`, and channel tag (e.g. `[SCREEN]` or `[WEBCAM]`).
   * Guarantees even dimensions (`width % 2 === 0`, `height % 2 === 0`) required for H.264 encoders.
 
 ---

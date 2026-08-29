@@ -51,6 +51,7 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
   * `web-app/src/utils/imageUtils.test.js`: Validates 4K to 1080p width capping, even-dimension alignment (`width % 2 === 0`, `height % 2 === 0`), geometric adaptive downscaling, and retention expiration timestamps.
   * `web-app/src/utils/formatters.test.js`: Validates byte conversion and micro-cent AI pricing formats (`$0.0042`).
   * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests broadcast messaging, chip quick-actions, frame rate/size selectors, and start/stop capture toggles.
+  * `web-app/src/components/StudentView.test.jsx`: Tests student stream controls, multi-camera device enumeration, conditional camera selector dropdown rendering, and live camera switching.
   * `web-app/src/components/StudentScreen.test.jsx`: Tests student grid states (`Not Sharing`, `Connecting...`, live screenshot display).
   * `web-app/src/components/Banner.test.jsx`: Tests notification visibility and close event handling.
 

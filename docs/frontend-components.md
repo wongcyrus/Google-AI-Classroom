@@ -9,23 +9,23 @@ The `web-app/src/components/` directory contains all the React components that m
 *   **`ChangePasswordModal.jsx` (Modal in `App.jsx`)**: A lightweight dialog allowing authenticated users to securely update their Firebase Auth password with confirmation and validation, without occupying header real estate.
 *   **`AuthComponent.jsx`**: Handles user authentication, displaying login and logout interfaces.
 *   **`TeacherView.jsx`**: The main dashboard for teachers, showing a list of their classes and high-level statistics like storage and AI usage.
-*   **`StudentView.jsx`**: The main view for students, which shows their screen sharing status and any messages from the teacher. For more details on its internal logic, see the [Student View Logic Documentation](./student-view-logic.md).
+*   **`StudentView.jsx`**: The main view for students. Supports independent dual-channel streaming for screen sharing (`getDisplayMedia`) and webcam streaming (`getUserMedia`), multi-camera enumeration with automatic camera picker dropdown when multiple webcams are available, live camera hot-plugging (`devicechange`), and schedule-driven automatic class association. For more details on its internal logic, see the [Student View Logic Documentation](./student-view-logic.md).
 *   **`ClassView.jsx`**: The primary view for managing a single class, containing a tabbed interface to navigate between different management functionalities like monitoring, video library, and attendance.
 
 ## Class & User Management
 
-*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
+*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features configurable **Default Capture Mode** (`dual`, `screen`, `webcam`), one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
 *   **`ScheduleManager.jsx`**: A sub-component of `ClassManagement.jsx` for setting up the class schedule, including start/end dates, time zones, and recurring time slots.
 *   **`CustomPropertiesManager.jsx`**: A sub-component of `ClassManagement.jsx` for managing class-wide custom metadata and student-specific custom properties. Features one-click **CSV Template Download / Export Existing Properties**, asynchronous **CSV Property Upload** with real-time job processing badges (`completed`, `processing`, `failed`), and custom key-value field editors.
 *   **`PromptManagement.jsx`**: A view for creating, editing, and managing AI prompts. It supports different access levels (private, shared, public) and categories (for images or videos).
 
 ## Real-time & Session Views
 
-*   **`MonitorView.jsx`**: Provides a real-time grid view of all students' screens during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status` (eliminating $N$ parallel Firestore queries down to 1 consolidated channel with `urlCacheRef` Storage URL caching) and an optimized **single-write class broadcast channel** (`classes/{classId}/messages`) with pre-defined message template selectors (Time Reminders, Screen Compliance, Motivation & Assistance) and 1-click preset broadcast chips (`⏰ 5m left`, `💻 Share screen`, `⚠️ Close tabs`, `👍 Great work!`, `⏰ Time up!`).
-*   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's screen, name, and sharing status.
-*   **`IndividualStudentView.jsx`**: A modal overlay that shows a larger view of a single student's screen and allows the teacher to send a private 1-to-1 direct message or share screenshot.
+*   **`MonitorView.jsx`**: Provides a real-time grid view of all students during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status` (with dual-channel URL resolution and `urlCacheRef` Storage URL caching), multi-channel view toggling (`Dual View`, `Screen Only`, `Webcam Only`), and an optimized **single-write class broadcast channel** (`classes/{classId}/messages`) with pre-defined message template selectors (Time Reminders, Screen Compliance, Motivation & Assistance) and 1-click preset broadcast chips (`⏰ 5m left`, `💻 Share screen`, `⚠️ Close tabs`, `👍 Great work!`, `⏰ Time up!`).
+*   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's status, supporting split-dual viewports (side-by-side feeds) or single channel views with channel badges (🖥️ / 📷).
+*   **`IndividualStudentView.jsx`**: A modal overlay for inspecting an individual student's live streams in high detail with a multi-tab interface (`Dual View`, `🖥️ Screen Feed`, `📷 Webcam Feed`), and tools to send private 1-to-1 direct messages or share screenshots.
 *   **`SessionReviewView.jsx`**: A view for reviewing a student's completed session, including their screen recording and any detected irregularities.
-*   **`PlaybackView.jsx`**: A component for replaying a student's session as a sequence of screenshots, with controls for playback speed and a timeline.
+*   **`PlaybackView.jsx`**: A component for replaying a student's session as a sequence of screenshots with channel filtering (`All Channels`, `🖥️ Screen Only`, `📷 Webcam Only`), custom timeline scrubber, and channel-targeted video compilation.
 *   **`TimelineSlider.jsx`**: A custom slider used in `PlaybackView.jsx` to navigate the screenshot timeline and show buffered content.
 
 ## Data & Analysis Views
