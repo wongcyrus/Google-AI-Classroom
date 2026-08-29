@@ -34,9 +34,24 @@ const StudentView = ({ user }) => {
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
 
-  // Multi-camera selection
+  // Multi-camera selection & Layout State
   const [availableWebcams, setAvailableWebcams] = useState([]);
   const [selectedWebcamId, setSelectedWebcamId] = useState('');
+  const [primaryStream, setPrimaryStream] = useState('screen'); // 'screen' | 'webcam'
+  const stageRef = useRef(null);
+
+  const handleSwapFeeds = useCallback(() => {
+    setPrimaryStream(prev => (prev === 'screen' ? 'webcam' : 'screen'));
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!stageRef.current) return;
+    if (!document.fullscreenElement) {
+      stageRef.current.requestFullscreen().catch(err => console.error("Error attempting fullscreen:", err));
+    } else {
+      document.exitFullscreen().catch(err => console.error("Error exiting fullscreen:", err));
+    }
+  }, []);
 
   // Custom Properties State
   const [classProperties, setClassProperties] = useState(null);
@@ -700,19 +715,95 @@ const StudentView = ({ user }) => {
               </p>
             )}
             
-            <div className="video-previews-container">
-              <div className="video-preview-wrapper" style={{ display: isScreenSharing ? 'block' : 'none' }}>
+            <div className="preview-stage" ref={stageRef}>
+              {/* Screen Stream Element */}
+              <div
+                className={`stream-feed-wrapper ${
+                  !isScreenSharing
+                    ? 'hidden-stream'
+                    : isWebcamSharing && primaryStream === 'webcam'
+                    ? 'pip-stream'
+                    : 'hero-stream'
+                }`}
+                onClick={
+                  isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
+                    ? handleSwapFeeds
+                    : undefined
+                }
+                title={
+                  isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
+                    ? 'Click to make Screen main feed'
+                    : undefined
+                }
+              >
                 <span className="video-preview-tag">🖥️ Screen</span>
+                {isScreenSharing && isWebcamSharing && primaryStream === 'webcam' && (
+                  <div className="pip-swap-overlay">
+                    <span>🔄 Click to Swap</span>
+                  </div>
+                )}
                 <video ref={screenVideoRef} autoPlay muted playsInline className="video-preview" />
               </div>
-              <div className="video-preview-wrapper" style={{ display: isWebcamSharing ? 'block' : 'none' }}>
+
+              {/* Webcam Stream Element */}
+              <div
+                className={`stream-feed-wrapper ${
+                  !isWebcamSharing
+                    ? 'hidden-stream'
+                    : isScreenSharing && primaryStream === 'screen'
+                    ? 'pip-stream'
+                    : 'hero-stream'
+                }`}
+                onClick={
+                  isScreenSharing && isWebcamSharing && primaryStream === 'screen'
+                    ? handleSwapFeeds
+                    : undefined
+                }
+                title={
+                  isScreenSharing && isWebcamSharing && primaryStream === 'screen'
+                    ? 'Click to make Webcam main feed'
+                    : undefined
+                }
+              >
                 <span className="video-preview-tag">📷 Webcam</span>
+                {isScreenSharing && isWebcamSharing && primaryStream === 'screen' && (
+                  <div className="pip-swap-overlay">
+                    <span>🔄 Click to Swap</span>
+                  </div>
+                )}
                 <video ref={webcamVideoRef} autoPlay muted playsInline className="video-preview" />
               </div>
+
+              {/* Stage Top Right Action Controls */}
+              {isSharing && (
+                <div className="stage-actions-overlay">
+                  {isScreenSharing && isWebcamSharing && (
+                    <button
+                      onClick={handleSwapFeeds}
+                      className="stage-action-btn"
+                      title="Swap Main and PiP Feeds"
+                    >
+                      🔄 Swap Focus
+                    </button>
+                  )}
+                  <button
+                    onClick={toggleFullscreen}
+                    className="stage-action-btn"
+                    title="Toggle Fullscreen"
+                  >
+                    ⛶ Fullscreen
+                  </button>
+                </div>
+              )}
+
+              {/* Inactive Placeholder */}
               {!isSharing && (
-                <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--color-text-muted, #64748b)', gridColumn: '1 / -1' }}>
-                  <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Streams Inactive</p>
-                  <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>Click "Share Screen" or "Start Webcam" above to begin streaming to your instructor.</p>
+                <div className="inactive-streams-placeholder">
+                  <div className="placeholder-icon">📡</div>
+                  <p className="placeholder-title">Streams Inactive</p>
+                  <p className="placeholder-subtitle">
+                    Click "Share Screen" or "Start Webcam" above to begin streaming to your instructor.
+                  </p>
                 </div>
               )}
             </div>

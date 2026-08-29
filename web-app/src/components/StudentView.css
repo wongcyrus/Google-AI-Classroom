@@ -1,5 +1,5 @@
 .student-view-container {
-  max-width: 1200px;
+  max-width: 1540px;
   margin: 0 auto;
   padding: 1.5rem 2rem;
 }
@@ -22,7 +22,7 @@
 }
 
 .student-view-sidebar {
-  width: 340px;
+  width: 360px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -128,41 +128,185 @@
   gap: 0.5rem;
 }
 
-.video-previews-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+/* Hero + Picture-in-Picture Stage */
+.preview-stage {
+  position: relative;
   width: 100%;
+  min-height: 440px;
+  background: #020617;
+  border-radius: var(--radius-md, 12px);
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-.video-preview-wrapper {
+.stream-feed-wrapper.hero-stream {
   position: relative;
-  background-color: #0f172a;
-  border-radius: var(--radius-md, 10px);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+}
+
+.stream-feed-wrapper.hero-stream .video-preview {
+  width: 100%;
+  max-height: 720px;
+  aspect-ratio: 16/9;
+  object-fit: contain;
+  display: block;
+}
+
+.stream-feed-wrapper.pip-stream {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 280px;
+  aspect-ratio: 16/9;
+  background: #000000;
+  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--color-border, #cbd5e1);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stream-feed-wrapper.pip-stream:hover {
+  transform: scale(1.05);
+  border-color: var(--color-primary, #6366f1);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.85);
+}
+
+.stream-feed-wrapper.pip-stream .video-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stream-feed-wrapper.hidden-stream {
+  display: none !important;
+}
+
+.pip-swap-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 5;
+}
+
+.stream-feed-wrapper.pip-stream:hover .pip-swap-overlay {
+  opacity: 1;
+}
+
+.pip-swap-overlay span {
+  background: var(--color-primary, #4f46e5);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
 .video-preview-tag {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  background: rgba(15, 23, 42, 0.75);
+  top: 10px;
+  left: 10px;
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(4px);
-  color: #fff;
+  color: #ffffff;
   font-size: 0.75rem;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  z-index: 2;
+  padding: 3px 10px;
+  border-radius: 6px;
+  z-index: 6;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.video-preview {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16/9;
-  object-fit: contain;
-  display: block;
+.stage-actions-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 12;
+}
+
+.stage-action-btn {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stage-action-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.inactive-streams-placeholder {
+  text-align: center;
+  padding: 5rem 2rem;
+  color: #94a3b8;
+}
+
+.placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.8;
+}
+
+.placeholder-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.placeholder-subtitle {
+  margin: 0.5rem auto 0;
+  font-size: 0.95rem;
+  max-width: 420px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+@media (max-width: 1024px) {
+  .student-view-content {
+    flex-direction: column;
+  }
+  .student-view-sidebar {
+    width: 100%;
+  }
+  .stream-feed-wrapper.pip-stream {
+    width: 200px;
+    bottom: 12px;
+    right: 12px;
+  }
 }
 
 /* Sidebar Widgets */
