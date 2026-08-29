@@ -24,7 +24,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [studentStatuses, setStudentStatuses] = useState([]);
   const [screenshots, setScreenshots] = useState({});
   const [message, setMessage] = useState('');
-  const [frameRate, setFrameRate] = useState(5);
+  const [frameRate, setFrameRate] = useState(15);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
@@ -122,18 +122,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         console.log('[MonitorView] DEBUG: uidToEmailMap populated:', newMap);
 
         setFrameRate(prevRate => {
-          const newRate = data.frameRate || 5;
-          return newRate === prevRate ? prevRate : newRate;
-        });
-        setMaxImageSize(prevSize => {
-          const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
-          return newSize === prevSize ? prevSize : newSize;
-        });
-        setIsCapturing(data.isCapturing || false);
-        setStorageQuota(data.storageQuota || 0);
-        setAiQuota(data.aiQuota || 0);
-        setFrameRate(prevRate => {
-          const newRate = data.frameRate || 5;
+          const newRate = data.frameRate || 15;
           return newRate === prevRate ? prevRate : newRate;
         });
         setMaxImageSize(prevSize => {

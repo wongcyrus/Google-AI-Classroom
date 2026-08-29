@@ -142,9 +142,9 @@ async function main() {
     ipRestrictions: [],
     automaticCapture: true,
     automaticCombine: true,
-    frameRate: 5,
+    frameRate: 15,
     imageQuality: 50,
-    maxImageSize: 1024 * 1024,
+    maxImageSize: 0.1 * 1024 * 1024,
     isCapturing: true,
     captureStartedAt: FieldValue.serverTimestamp()
   };

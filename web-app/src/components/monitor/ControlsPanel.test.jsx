@@ -9,15 +9,15 @@ describe('ControlsPanel Component', () => {
     setMessage: vi.fn(),
     handleSendMessage: vi.fn(),
     setShowControls: vi.fn(),
-    frameRate: 10,
+    frameRate: 15,
     handleFrameRateChange: vi.fn(),
-    frameRateOptions: [1, 5, 10, 15, 20],
-    maxImageSize: 250 * 1024,
+    frameRateOptions: [1, 5, 10, 15, 20, 25, 30],
+    maxImageSize: 0.1 * 1024 * 1024,
     handleMaxImageSizeChange: vi.fn(),
     maxImageSizeOptions: [
-      { label: '0.1MB', value: 100 * 1024 },
-      { label: '0.25MB', value: 250 * 1024 },
-      { label: '0.5MB', value: 500 * 1024 }
+      { label: '0.1MB', value: 0.1 * 1024 * 1024 },
+      { label: '0.25MB', value: 0.25 * 1024 * 1024 },
+      { label: '0.5MB', value: 0.5 * 1024 * 1024 }
     ],
     isCapturing: false,
     toggleCapture: vi.fn(),

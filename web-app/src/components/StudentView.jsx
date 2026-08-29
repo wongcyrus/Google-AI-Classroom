@@ -21,9 +21,9 @@ const StudentView = ({ user }) => {
   // Schedule-driven class state
   const { currentActiveClassId } = useStudentClassSchedule(user);
   const activeClass = currentActiveClassId;
-  const [frameRate, setFrameRate] = useState(5);
+  const [frameRate, setFrameRate] = useState(15);
   const [imageQuality, setImageQuality] = useState(0.5);
-  const [maxImageSize, setMaxImageSize] = useState(1024 * 1024);
+  const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
   const [retentionDays, setRetentionDays] = useState(30);
@@ -340,9 +340,9 @@ const StudentView = ({ user }) => {
       console.log("Firestore: Received class document snapshot.");
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setFrameRate(data.frameRate || 5);
+        setFrameRate(data.frameRate || 15);
         setImageQuality(data.imageQuality || 0.5);
-        setMaxImageSize(data.maxImageSize || 1024 * 1024);
+        setMaxImageSize(data.maxImageSize || 0.1 * 1024 * 1024);
         setIsCapturing(data.isCapturing || false);
         setCaptureStartedAt(data.captureStartedAt || null);
         setRetentionDays(data.retentionDays || 30);
