@@ -145,6 +145,7 @@ async function main() {
     frameRate: 15,
     imageQuality: 50,
     maxImageSize: 0.1 * 1024 * 1024,
+    captureMode: 'dual',
     isCapturing: true,
     captureStartedAt: FieldValue.serverTimestamp()
   };

@@ -66,12 +66,50 @@
   transform: translateY(-1px);
 }
 
-.student-view-button.stop {
+.student-view-button.active {
   background-color: var(--color-danger, #ef4444);
 }
 
-.student-view-button.stop:hover {
+.student-view-button.active:hover {
   background-color: #dc2626;
+}
+
+.stream-controls-group {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.webcam-controls-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.webcam-select-dropdown {
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-border, #cbd5e1);
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #0f172a);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  max-width: 200px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webcam-select-dropdown:hover {
+  border-color: var(--color-primary, #4f46e5);
+}
+
+.webcam-select-dropdown:focus {
+  border-color: var(--color-primary, #4f46e5);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
 
 .recording-indicator {
@@ -90,13 +128,41 @@
   gap: 0.5rem;
 }
 
+.video-previews-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.video-preview-wrapper {
+  position: relative;
+  background-color: #0f172a;
+  border-radius: var(--radius-md, 10px);
+  overflow: hidden;
+  border: 1px solid var(--color-border, #cbd5e1);
+}
+
+.video-preview-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  z-index: 2;
+}
+
 .video-preview {
   width: 100%;
-  border-radius: var(--radius-md, 10px);
-  border: 1px solid var(--color-border, #cbd5e1);
-  background-color: #0f172a;
-  max-height: 520px;
+  height: auto;
+  aspect-ratio: 16/9;
   object-fit: contain;
+  display: block;
 }
 
 /* Sidebar Widgets */

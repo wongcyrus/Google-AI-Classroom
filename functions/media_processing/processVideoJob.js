@@ -61,9 +61,15 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     const timezone = classData.schedule?.timeZone || 'UTC';
 
     const screenshotsRef = db.collection('screenshots');
-    const q = screenshotsRef
+    let q = screenshotsRef
       .where('classId', '==', classId)
-      .where('studentUid', '==', studentUid)
+      .where('studentUid', '==', studentUid);
+
+    if (jobData.channel && jobData.channel !== 'all') {
+      q = q.where('channel', '==', jobData.channel);
+    }
+
+    q = q
       .where('timestamp', '>=', startTime)
       .where('timestamp', '<=', endTime)
       .where('deleted', '==', false)
@@ -114,7 +120,8 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const timestamp = screenshot.timestamp.toDate();
         const date = formatInTimeZone(timestamp, timezone, 'yyyy-MM-dd');
         const time = formatInTimeZone(timestamp, timezone, 'HH:mm:ss');
-        const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${studentEmail}`;
+        const channelTag = screenshot.channel ? ` [${screenshot.channel.toUpperCase()}]` : '';
+        const text = `Date: ${date}, Time: ${time}, Class: ${classId}, Email: ${studentEmail}${channelTag}`;
 
         const textHeight = 40;
 

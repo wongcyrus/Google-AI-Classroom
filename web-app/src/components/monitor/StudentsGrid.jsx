@@ -5,51 +5,54 @@ import './StudentsGrid.css';
 const StudentsGrid = ({
   reviewTime,
   classList,
-  uidToEmailMap, // Changed from studentUidMap
+  uidToEmailMap,
   screenshots,
   frameRate,
   students,
   now,
   isPaused,
+  selectedChannel = 'both',
   handleStudentClick,
 }) => {
   return (
     <div className="students-container">
       {reviewTime
-        ? classList.sort((a, b) => a.localeCompare(b)).map(studentUid => { // Changed variable name for clarity
-            const email = uidToEmailMap.get(studentUid) || studentUid; // Use uidToEmailMap
+        ? classList.sort((a, b) => a.localeCompare(b)).map(studentUid => {
+            const email = uidToEmailMap.get(studentUid) || studentUid;
             const student = { id: studentUid, email };
 
-            let screenshotUrl = null;
-            const screenshotData = screenshots[studentUid]; // Use studentUid directly
+            const screenshotData = screenshots[studentUid];
+            let isFresh = false;
             if (screenshotData && screenshotData.timestamp) {
-                const screenshotTime = screenshotData.timestamp.toDate();
+                const screenshotTime = screenshotData.timestamp.toDate ? screenshotData.timestamp.toDate() : new Date(screenshotData.timestamp);
                 const reviewTimeDate = new Date(reviewTime);
                 const secondsDiff = (reviewTimeDate.getTime() - screenshotTime.getTime()) / 1000;
                 if (secondsDiff >= 0 && secondsDiff < frameRate) {
-                  screenshotUrl = screenshotData.url;
+                  isFresh = true;
                 }
             }
 
             return (
               <StudentScreen
-                key={studentUid} // Use studentUid for key
+                key={studentUid}
                 student={student}
-                isSharing={!!screenshotUrl}
-                screenshotUrl={screenshotUrl}
+                isSharing={isFresh || !!screenshotData}
+                screenshotData={screenshotData}
+                screenshotUrl={screenshotData?.url}
+                selectedChannel={selectedChannel}
                 onClick={() => handleStudentClick(student)}
               />
             );
           })
         : students.filter(student => student.isSharing).sort((a, b) => a.email.localeCompare(b.email)).map(student => {
             const screenshotData = screenshots[student.id];
-            let screenshotUrl = null;
+            let isFresh = false;
 
             if (screenshotData && screenshotData.timestamp) {
-              const screenshotTime = screenshotData.timestamp.toDate();
+              const screenshotTime = screenshotData.timestamp.toDate ? screenshotData.timestamp.toDate() : new Date(screenshotData.timestamp);
               const secondsDiff = (now.getTime() - screenshotTime.getTime()) / 1000;
               if (isPaused || secondsDiff <= frameRate) {
-                screenshotUrl = screenshotData.url;
+                isFresh = true;
               }
             }
 
@@ -58,7 +61,9 @@ const StudentsGrid = ({
                 key={student.id}
                 student={student}
                 isSharing={student.isSharing}
-                screenshotUrl={screenshotUrl}
+                screenshotData={screenshotData}
+                screenshotUrl={screenshotData?.url}
+                selectedChannel={selectedChannel}
                 onClick={() => handleStudentClick(student)}
               />
             );

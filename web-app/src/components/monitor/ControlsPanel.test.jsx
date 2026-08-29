@@ -78,24 +78,30 @@ describe('ControlsPanel Component', () => {
   it('renders frameRate and maxImageSize select dropdowns', () => {
     const handleFrameRateChange = vi.fn();
     const handleMaxImageSizeChange = vi.fn();
+    const setSelectedChannel = vi.fn();
 
     render(
       <ControlsPanel 
         {...defaultProps} 
+        setSelectedChannel={setSelectedChannel}
         handleFrameRateChange={handleFrameRateChange}
         handleMaxImageSizeChange={handleMaxImageSizeChange}
       />
     );
 
     const selects = screen.getAllByRole('combobox');
-    expect(selects.length).toBeGreaterThanOrEqual(3);
+    expect(selects.length).toBeGreaterThanOrEqual(4);
 
-    // Frame rate select (selects[1] following template dropdown selects[0])
-    fireEvent.change(selects[1], { target: { value: '5' } });
+    // Channel select (selects[1])
+    fireEvent.change(selects[1], { target: { value: 'screen' } });
+    expect(setSelectedChannel).toHaveBeenCalledWith('screen');
+
+    // Frame rate select (selects[2])
+    fireEvent.change(selects[2], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
-    // Max image size select
-    fireEvent.change(selects[2], { target: { value: String(500 * 1024) } });
+    // Max image size select (selects[3])
+    fireEvent.change(selects[3], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 

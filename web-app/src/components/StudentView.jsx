@@ -16,7 +16,9 @@ const StudentView = ({ user }) => {
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
 
-  const [isSharing, setIsSharing] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isWebcamSharing, setIsWebcamSharing] = useState(false);
+  const isSharing = isScreenSharing || isWebcamSharing;
 
   // Schedule-driven class state
   const { currentActiveClassId } = useStudentClassSchedule(user);
@@ -24,12 +26,17 @@ const StudentView = ({ user }) => {
   const [frameRate, setFrameRate] = useState(15);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
+  const [captureMode, setCaptureMode] = useState('dual');
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStartedAt, setCaptureStartedAt] = useState(null);
   const [retentionDays, setRetentionDays] = useState(30);
   const [recentIrregularities, setRecentIrregularities] = useState([]);
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
+
+  // Multi-camera selection
+  const [availableWebcams, setAvailableWebcams] = useState([]);
+  const [selectedWebcamId, setSelectedWebcamId] = useState('');
 
   // Custom Properties State
   const [classProperties, setClassProperties] = useState(null);
@@ -51,7 +58,10 @@ const StudentView = ({ user }) => {
 
   // Refs
   const intervalRef = useRef(null);
-  const videoRef = useRef(null);
+  const screenVideoRef = useRef(null);
+  const webcamVideoRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
 
@@ -74,51 +84,196 @@ const StudentView = ({ user }) => {
     }
   }, []);
 
-  const updateSharingStatus = useCallback(async (sharingStatus, classId) => {
+  const updateCaptureStatus = useCallback(async (activeStreams, classId) => {
     const targetClass = classId || activeClass;
     if (!targetClass || !user || !user.uid) return;
     const statusRef = doc(db, "classes", targetClass, "status", user.uid);
-    console.log(`Firestore: Updating sharing status for ${user.uid} in ${targetClass} to ${sharingStatus}`);
     try {
       await setDoc(statusRef, {
-        isSharing: sharingStatus,
+        isSharing: activeStreams.length > 0,
+        activeStreams: activeStreams,
         email: user.email,
         name: user.displayName || user.email,
         timestamp: serverTimestamp()
       }, { merge: true });
-      console.log(`Firestore: Successfully updated sharing status.`);
     } catch (error) {
-      console.error("Firestore: Error updating sharing status: ", error);
+      console.error("Firestore: Error updating capture status: ", error);
     }
   }, [activeClass, user]);
 
-  const stopSharing = useCallback(async () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+  const stopScreen = useCallback(async () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
     }
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = null;
+    }
+    setIsScreenSharing(false);
+    const activeStreams = isWebcamSharing ? ['webcam'] : [];
+    await updateCaptureStatus(activeStreams);
+    showSystemNotification("Screen sharing has stopped.");
+  }, [isWebcamSharing, updateCaptureStatus, showSystemNotification]);
+
+  const stopWebcam = useCallback(async () => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+    }
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = null;
+    }
+    setIsWebcamSharing(false);
+    const activeStreams = isScreenSharing ? ['screen'] : [];
+    await updateCaptureStatus(activeStreams);
+    showSystemNotification("Webcam stream has stopped.");
+  }, [isScreenSharing, updateCaptureStatus, showSystemNotification]);
+
+  const stopAllStreams = useCallback(async () => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    setIsSharing(false);
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
     }
-    await updateSharingStatus(false);
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+    }
+    if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+    if (webcamVideoRef.current) webcamVideoRef.current.srcObject = null;
+    setIsScreenSharing(false);
+    setIsWebcamSharing(false);
+    await updateCaptureStatus([]);
+  }, [updateCaptureStatus]);
 
-    showSystemNotification("Screen recording has stopped.");
-  }, [updateSharingStatus, showSystemNotification]);
+  const refreshWebcams = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices
+        .filter(device => device.kind === 'videoinput')
+        .map((device, index) => ({
+          deviceId: device.deviceId,
+          label: device.label || `Camera ${index + 1}`
+        }));
+      setAvailableWebcams(videoDevices);
+      if (videoDevices.length > 0) {
+        setSelectedWebcamId(prev => {
+          if (prev && videoDevices.some(d => d.deviceId === prev)) return prev;
+          return videoDevices[0].deviceId;
+        });
+      }
+    } catch (err) {
+      console.error("Error enumerating video devices:", err);
+    }
+  }, []);
 
-  const captureAndUpload = useCallback((videoElement, classId) => {
-    if (!user || !user.uid) {
-      console.error('Capture skipped: user not available.');
+  useEffect(() => {
+    refreshWebcams();
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', refreshWebcams);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', refreshWebcams);
+      };
+    }
+  }, [refreshWebcams]);
+
+  const startWebcam = useCallback(async (targetDeviceId) => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Webcam is not supported by your browser.");
       return;
     }
-    if (!videoElement || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
-      console.log('Capture skipped: video element not ready.');
+
+    // Stop existing webcam track if any
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+    }
+
+    const deviceIdToUse = targetDeviceId || selectedWebcamId;
+    const constraints = {
+      video: deviceIdToUse ? { deviceId: { exact: deviceIdToUse } } : true
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = stream;
+      }
+      webcamStreamRef.current = stream;
+      setIsWebcamSharing(true);
+      if (deviceIdToUse) setSelectedWebcamId(deviceIdToUse);
+
+      // Re-enumerate to get human-readable labels now that camera permission is granted
+      refreshWebcams();
+
+      const activeStreams = ['webcam', ...(isScreenSharing ? ['screen'] : [])];
+      await updateCaptureStatus(activeStreams);
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopWebcam();
+      };
+    } catch (err) {
+      console.error("Error starting webcam:", err);
+      alert("Could not start webcam. Please grant camera permission.");
+    }
+  }, [selectedWebcamId, isScreenSharing, updateCaptureStatus, stopWebcam, refreshWebcams]);
+
+  const handleWebcamChange = (e) => {
+    const newDeviceId = e.target.value;
+    setSelectedWebcamId(newDeviceId);
+    if (isWebcamSharing) {
+      startWebcam(newDeviceId);
+    }
+  };
+
+  const startScreen = useCallback(async () => {
+    if ('Notification' in window && window.Notification.permission !== 'granted') {
+      try {
+        await window.Notification.requestPermission();
+      } catch (err) {
+        console.error('Error requesting notification permission:', err);
+      }
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert("Screen sharing is not supported by your browser. Please use Chrome, Firefox, or Edge.");
       return;
     }
-    console.log('Capturing screenshot...');
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = stream;
+      }
+      screenStreamRef.current = stream;
+      setIsScreenSharing(true);
+      const activeStreams = ['screen', ...(isWebcamSharing ? ['webcam'] : [])];
+      await updateCaptureStatus(activeStreams, activeClass);
+      showSystemNotification("Screen recording has started.");
+
+      if (captureMode === 'dual' && !isWebcamSharing) {
+        await startWebcam();
+      }
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopScreen();
+      };
+    } catch (error) {
+      console.error("Error starting screen sharing:", error);
+      setIsScreenSharing(false);
+      alert("Could not start screen sharing. Please grant permission.");
+    }
+  }, [activeClass, captureMode, isWebcamSharing, showSystemNotification, startWebcam, stopScreen, updateCaptureStatus]);
+
+  const captureVideoElement = useCallback((videoElement, channelName, targetClass) => {
+    if (!user || !user.uid || !videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
+      return;
+    }
+
     const MAX_CAPTURE_WIDTH = 1920;
     let targetWidth = videoElement.videoWidth;
     let targetHeight = videoElement.videoHeight;
@@ -132,83 +287,63 @@ const StudentView = ({ user }) => {
     canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
-    
-    const { width, height } = canvas;
-    if (width > 1 && height > 1) {
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        
-        const isSolidColor = () => {
-            const firstPixelR = data[0];
-            const firstPixelG = data[1];
-            const firstPixelB = data[2];
 
-            // Check a few strategic pixels to see if they are the same
-            const pointsToCheck = [
-                0, // top-left
-                (width - 1) * 4, // top-right
-                (height - 1) * width * 4, // bottom-left
-                ((height - 1) * width + (width - 1)) * 4, // bottom-right
-                (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4 // center
-            ];
-
-            for (const i of pointsToCheck) {
-                if (i < data.length && (data[i] !== firstPixelR || data[i+1] !== firstPixelG || data[i+2] !== firstPixelB)) {
-                    return false;
-                }
-            }
-            return true;
-        };
-
-        if (isSolidColor()) {
-            console.error("Screen capture appears to be a solid color. This might be an issue with the browser or screen sharing permissions.");
-            stopSharing();
-            alert("Screen sharing has been stopped because the output appears to be a solid color (e.g., a black screen). This can happen with older browsers or if the wrong screen was selected. Please try again with a newer browser.");
-            return;
+    // Screen solid color verification
+    if (channelName === 'screen' && canvas.width > 1 && canvas.height > 1) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const isSolid = () => {
+        const r = data[0], g = data[1], b = data[2];
+        const points = [
+          0,
+          (canvas.width - 1) * 4,
+          (canvas.height - 1) * canvas.width * 4,
+          ((canvas.height - 1) * canvas.width + (canvas.width - 1)) * 4,
+          (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4
+        ];
+        for (const pt of points) {
+          if (pt < data.length && (data[pt] !== r || data[pt+1] !== g || data[pt+2] !== b)) {
+            return false;
+          }
         }
+        return true;
+      };
+
+      if (isSolid()) {
+        console.warn("Screen capture appears to be a solid black frame.");
+        return;
+      }
     }
 
     const MAX_SIZE_BYTES = maxImageSize;
 
-    // Function to attempt upload, resizing if necessary
     const attemptUpload = (currentCanvas, quality) => {
       currentCanvas.toBlob(async (blob) => {
-        if (!blob) {
-          console.error("Canvas toBlob returned null.");
-          return;
-        }
+        if (!blob) return;
 
         if (blob.size > MAX_SIZE_BYTES) {
           if (quality > 0.2) {
-            // If size is too large, first try reducing quality
-            console.log(`Image size is too large (${(blob.size / MAX_SIZE_BYTES).toFixed(2)}MB). Reducing quality.`);
             attemptUpload(currentCanvas, quality - 0.1);
           } else {
-            // If quality is already low, resize the image dimensions
-            console.log(`Image size is still too large (${(blob.size / MAX_SIZE_BYTES).toFixed(2)}MB). Resizing image.`);
             const scale = Math.sqrt(MAX_SIZE_BYTES / blob.size) * 0.9;
-            const newWidth = currentCanvas.width * scale;
-            const newHeight = currentCanvas.height * scale;
             const newCanvas = document.createElement('canvas');
-            newCanvas.width = newWidth;
-            newCanvas.height = newHeight;
+            newCanvas.width = currentCanvas.width * scale;
+            newCanvas.height = currentCanvas.height * scale;
             const newCtx = newCanvas.getContext('2d');
-            newCtx.drawImage(currentCanvas, 0, 0, newWidth, newHeight);
-            attemptUpload(newCanvas, 0.9); // try with high quality on resized image
+            newCtx.drawImage(currentCanvas, 0, 0, newCanvas.width, newCanvas.height);
+            attemptUpload(newCanvas, 0.9);
           }
         } else {
-          // If size is acceptable, upload
-          const screenshotRef = ref(storage, `screenshots/${classId}/${user.uid}/${Date.now()}.jpg`);
+          const timestamp = Date.now();
+          const screenshotRef = ref(storage, `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`);
           try {
-            console.log(`Uploading screenshot... Size: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
             await uploadBytes(screenshotRef, blob);
-            console.log('Screenshot uploaded successfully.');
-            const screenshotsColRef = collection(db, 'screenshots');
             const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
-            await addDoc(screenshotsColRef, {
-              classId,
+            await addDoc(collection(db, 'screenshots'), {
+              classId: targetClass,
               studentUid: user.uid,
               email: user.email.toLowerCase(),
+              channel: channelName,
               imagePath: screenshotRef.fullPath,
               size: blob.size,
               timestamp: serverTimestamp(),
@@ -216,65 +351,38 @@ const StudentView = ({ user }) => {
               deleted: false,
               ipAddress: ipAddress,
             });
-            console.log('Firestore: Successfully added screenshot metadata with expireAt.');
-            const statusRef = doc(db, "classes", classId, "status", user.uid);
-            console.log(`Firestore: Updating student status timestamp and latestImagePath in ${classId}`);
-            await setDoc(statusRef, {
+
+            const statusRef = doc(db, "classes", targetClass, "status", user.uid);
+            const statusUpdate = {
               timestamp: serverTimestamp(),
-              latestImagePath: screenshotRef.fullPath,
               email: user.email.toLowerCase()
-            }, { merge: true });
-            console.log('Firestore: Successfully updated student status.');
+            };
+            if (channelName === 'screen') {
+              statusUpdate.latestScreenPath = screenshotRef.fullPath;
+              statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
+            } else {
+              statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+            }
+            await setDoc(statusRef, statusUpdate, { merge: true });
           } catch (err) {
-            console.error("Firestore: Error during screenshot upload process: ", err);
+            console.error(`Error uploading ${channelName} snapshot:`, err);
           }
         }
       }, 'image/jpeg', quality);
     };
 
     attemptUpload(canvas, imageQuality);
-  }, [imageQuality, user, maxImageSize, ipAddress, stopSharing]);
+  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress]);
 
-  const startSharing = useCallback(async () => {
-    if ('Notification' in window && window.Notification.permission !== 'granted') {
-      try {
-        const permission = await window.Notification.requestPermission();
-        if (permission === 'granted') {
-          showSystemNotification('Notifications have been enabled!');
-        } else {
-          alert('You have disabled notifications. Please enable them in your browser settings to receive important messages.');
-        }
-      } catch (error) {
-        console.error('Error requesting notification permission:', error);
-      }
+  const captureAndUploadAllChannels = useCallback((targetClass) => {
+    if (!targetClass) return;
+    if (isScreenSharing && screenVideoRef.current) {
+      captureVideoElement(screenVideoRef.current, 'screen', targetClass);
     }
-
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert("Screen sharing is not supported by your browser. Please use a modern browser like Chrome, Firefox, or Edge.");
-        return;
-      }
-      const displayMedia = await navigator.mediaDevices.getDisplayMedia({ video: true });
-
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = displayMedia;
-      }
-
-      setIsSharing(true);
-      await updateSharingStatus(true, activeClass);
-
-      showSystemNotification("Screen recording has started.");
-
-      displayMedia.getVideoTracks()[0].onended = () => {
-        stopSharing();
-      };
-    } catch (error) {
-      console.error("Error starting screen sharing:", error);
-      setIsSharing(false);
-      alert("Could not start screen sharing. Please ensure you grant permission and are using a modern browser. If the problem persists, try restarting your browser.");
+    if (isWebcamSharing && webcamVideoRef.current) {
+      captureVideoElement(webcamVideoRef.current, 'webcam', targetClass);
     }
-  }, [activeClass, showSystemNotification, stopSharing, updateSharingStatus]);
+  }, [isScreenSharing, isWebcamSharing, captureVideoElement]);
 
   // Effects
   useEffect(() => {
@@ -305,19 +413,15 @@ const StudentView = ({ user }) => {
       if (ipAddress) {
         statusData.ipAddress = ipAddress;
       }
-      console.log(`Firestore: Setting session ID for ${user.uid} in ${activeClass}`);
       setDoc(statusRef, statusData, { merge: true })
-        .then(() => console.log("Firestore: Session ID set successfully."))
         .catch(err => console.error("Firestore: Error setting session ID:", err));
 
-      console.log(`Firestore: Subscribing to status for ${user.uid} in ${activeClass}`);
       const unsubscribe = onSnapshot(statusRef, (docSnap) => {
-        console.log("Firestore: Received status snapshot.");
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.sessionId && data.sessionId !== sessionIdRef.current) {
             alert("Another session has started. You will be logged out.");
-            stopSharing();
+            stopAllStreams();
             signOut(auth);
           }
         }
@@ -327,22 +431,19 @@ const StudentView = ({ user }) => {
 
       return () => unsubscribe();
     }
-  }, [user, activeClass, ipAddress, stopSharing]);
-
-
+  }, [user, activeClass, ipAddress, stopAllStreams]);
 
   useEffect(() => {
     if (!activeClass) return;
 
     const classRef = doc(db, "classes", activeClass);
-    console.log(`Firestore: Subscribing to class document ${activeClass}`);
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
-      console.log("Firestore: Received class document snapshot.");
       if (docSnap.exists()) {
         const data = docSnap.data();
         setFrameRate(data.frameRate || 15);
         setImageQuality(data.imageQuality || 0.5);
         setMaxImageSize(data.maxImageSize || 0.1 * 1024 * 1024);
+        setCaptureMode(data.captureMode || 'dual');
         setIsCapturing(data.isCapturing || false);
         setCaptureStartedAt(data.captureStartedAt || null);
         setRetentionDays(data.retentionDays || 30);
@@ -488,14 +589,16 @@ const StudentView = ({ user }) => {
       intervalRef.current = null;
     }
 
-    if (isSharing && isCapturing && videoRef.current && activeClass) {
+    if (isSharing && isCapturing && activeClass) {
       const now = Date.now();
       const startTime = captureStartedAt ? captureStartedAt.toDate().getTime() : now;
       const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
 
       if (now - startTime < twoAndAHalfHours) {
+        // Immediate capture when triggered
+        captureAndUploadAllChannels(activeClass);
         intervalRef.current = setInterval(() => {
-          captureAndUpload(videoRef.current, activeClass);
+          captureAndUploadAllChannels(activeClass);
         }, frameRate * 1000);
       } else if (isCapturing) {
         const statusRef = doc(db, "classes", activeClass, "status", user.uid);
@@ -518,7 +621,7 @@ const StudentView = ({ user }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, captureAndUpload, user.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, captureAndUploadAllChannels, user.uid]);
 
   return (
     <div className="student-view-container">
@@ -526,22 +629,77 @@ const StudentView = ({ user }) => {
       <div className="student-view-content">
         <div className="student-view-main">
             <div className="student-view-controls">
-            {activeClass ? (
-                <p>Class: <strong>{activeClass}</strong></p>
-            ) : (
-                <p>No active class.</p>
-            )}
-
-            {isSharing ? (
-                <button onClick={stopSharing} className="student-view-button stop">Stop Sharing</button>
+              <div>
+                {activeClass ? (
+                    <p>Class: <strong>{activeClass}</strong></p>
                 ) : (
-                <button onClick={startSharing} className="student-view-button">Share Screen</button>
-            )}
+                    <p>No active class.</p>
+                )}
+              </div>
+
+              <div className="stream-controls-group">
+                {isScreenSharing ? (
+                  <button onClick={stopScreen} className="student-view-button active">
+                    ⏹️ Stop Screen
+                  </button>
+                ) : (
+                  <button onClick={startScreen} className="student-view-button">
+                    🖥️ Share Screen
+                  </button>
+                )}
+
+                <div className="webcam-controls-container">
+                  {isWebcamSharing ? (
+                    <button onClick={stopWebcam} className="student-view-button active">
+                      ⏹️ Stop Webcam
+                    </button>
+                  ) : (
+                    <button onClick={() => startWebcam()} className="student-view-button">
+                      📷 Start Webcam
+                    </button>
+                  )}
+
+                  {availableWebcams.length > 1 && (
+                    <select
+                      value={selectedWebcamId}
+                      onChange={handleWebcamChange}
+                      className="webcam-select-dropdown"
+                      aria-label="Select Webcam"
+                      title="Select Webcam"
+                    >
+                      {availableWebcams.map((cam, index) => (
+                        <option key={cam.deviceId || index} value={cam.deviceId}>
+                          📷 {cam.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {isCapturing && isSharing && <p className="recording-indicator">Your screen is being recorded, and please don't do anything sensitive!</p>}
+            {isCapturing && isSharing && (
+              <p className="recording-indicator">
+                🔴 Live invigilation active: Capturing every {frameRate}s (Quality optimized).
+              </p>
+            )}
             
-            <video ref={videoRef} autoPlay muted className="video-preview" style={{ display: isSharing ? 'block' : 'none' }} />
+            <div className="video-previews-container">
+              <div className="video-preview-wrapper" style={{ display: isScreenSharing ? 'block' : 'none' }}>
+                <span className="video-preview-tag">🖥️ Screen</span>
+                <video ref={screenVideoRef} autoPlay muted playsInline className="video-preview" />
+              </div>
+              <div className="video-preview-wrapper" style={{ display: isWebcamSharing ? 'block' : 'none' }}>
+                <span className="video-preview-tag">📷 Webcam</span>
+                <video ref={webcamVideoRef} autoPlay muted playsInline className="video-preview" />
+              </div>
+              {!isSharing && (
+                <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--color-text-muted, #64748b)', gridColumn: '1 / -1' }}>
+                  <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Streams Inactive</p>
+                  <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem' }}>Click "Share Screen" or "Start Webcam" above to begin streaming to your instructor.</p>
+                </div>
+              )}
+            </div>
         </div>
         <Sidebar 
           classProperties={classProperties} 

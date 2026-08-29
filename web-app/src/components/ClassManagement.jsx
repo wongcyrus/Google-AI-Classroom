@@ -29,6 +29,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [ipRestrictions, setIpRestrictions] = useState('');
   const [automaticCapture, setAutomaticCapture] = useState(false);
   const [automaticCombine, setAutomaticCombine] = useState(false);
+  const [captureMode, setCaptureMode] = useState('dual');
   
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
@@ -108,6 +109,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           }
           setAutomaticCapture(classData.automaticCapture || false);
           setAutomaticCombine(classData.automaticCombine || false);
+          setCaptureMode(classData.captureMode || 'dual');
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
         } else {
           if (!embeddedClassId) {
@@ -131,6 +133,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setIpRestrictions('');
         setAutomaticCapture(false);
         setAutomaticCombine(false);
+        setCaptureMode('dual');
         setAfterClassVideoPrompt(null);
       }
     };
@@ -272,6 +275,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
+          captureMode: captureMode || 'dual',
           afterClassVideoPrompt: afterClassVideoPrompt || null,
         };
         await updateDoc(classRef, updateData);
@@ -297,6 +301,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
           automaticCombine: automaticCombine,
+          captureMode: captureMode || 'dual',
           afterClassVideoPrompt: afterClassVideoPrompt || null,
           aiQuota: 10,
           aiUsedQuota: 0,
@@ -594,6 +599,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       {/* Section 5: Automation & AI Video Prompts */}
       <div className="settings-section-card">
         <h3>🤖 5. Automation & AI Prompts</h3>
+        <div className="form-group">
+          <label>Default Capture Mode</label>
+          <select value={captureMode} onChange={(e) => setCaptureMode(e.target.value)}>
+            <option value="dual">Dual Channel (Screen + Webcam)</option>
+            <option value="screen">Screen Only</option>
+            <option value="webcam">Webcam Only</option>
+          </select>
+          <p className="input-hint">Configure which visual streams students in this class stream to the instructor.</p>
+        </div>
+
         <div className="form-group">
           <label className="checkbox-toggle-label">
             <input

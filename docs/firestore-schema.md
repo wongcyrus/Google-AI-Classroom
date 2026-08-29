@@ -28,6 +28,7 @@ erDiagram
         number frameRate
         number imageQuality
         number maxImageSize
+        string captureMode
         boolean isCapturing
         timestamp captureStartedAt
     }
@@ -59,6 +60,7 @@ erDiagram
         string classId FK
         string studentUid FK
         string email "denormalized"
+        string channel "screen | webcam"
         string imagePath
         number size
         timestamp timestamp
@@ -266,10 +268,14 @@ Stores information about each class.
     *   **`status`**: Stores the real-time status and live preview metadata of students in the class.
         *   **Document ID**: `studentUid` (string)
         *   **Fields**:
-            *   `isSharing`: (boolean) A boolean indicating if the student is currently sharing their screen.
+            *   `isSharing`: (boolean) A boolean indicating if the student is actively sharing any stream (screen or webcam).
+            *   `isScreenSharing`: (boolean) A boolean indicating if the student is actively sharing screen.
+            *   `isWebcamSharing`: (boolean) A boolean indicating if the student is actively sharing webcam.
             *   `email`: (string) The student's email.
             *   `name`: (string) The student's name.
-            *   `latestImagePath`: (string) The Cloud Storage path of the student's latest captured screenshot (e.g. `screenshots/{classId}/{studentUid}/{timestamp}.jpg`), enabling single-stream real-time monitoring across the class.
+            *   `latestImagePath`: (string) Primary screenshot path for backward compatibility.
+            *   `latestScreenPath`: (string) Cloud Storage path of student's latest screen capture (`screenshots/{classId}/{studentUid}/screen_{timestamp}.jpg`).
+            *   `latestWebcamPath`: (string) Cloud Storage path of student's latest webcam capture (`screenshots/{classId}/{studentUid}/webcam_{timestamp}.jpg`).
             *   `timestamp`: (timestamp) A timestamp of the last heartbeat / screenshot update.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.
@@ -370,6 +376,7 @@ Stores metadata for each screenshot.
     *   `classId`: (string) The ID of the class the screenshot belongs to.
     *   `studentUid`: (string) The UID of the student who took the screenshot.
     *   `email`: (string) The student's email, denormalized for easier querying.
+    *   `channel`: (string) The capture channel: `'screen'` or `'webcam'`.
     *   `imagePath`: (string) The path to the screenshot image in Firebase Storage.
     *   `size`: (number) The size of the screenshot in bytes.
     *   `timestamp`: (timestamp) A timestamp of when the screenshot was taken.

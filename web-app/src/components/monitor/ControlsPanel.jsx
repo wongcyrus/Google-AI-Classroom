@@ -6,6 +6,7 @@ const ControlsPanel = ({
     message, setMessage, handleSendMessage, setShowControls, 
     frameRate, handleFrameRateChange, frameRateOptions, 
     maxImageSize, handleMaxImageSizeChange, maxImageSizeOptions,
+    selectedChannel = 'both', setSelectedChannel,
     isCapturing, toggleCapture, isPaused, setIsPaused, 
     setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
@@ -81,12 +82,20 @@ const ControlsPanel = ({
             <h4 className="control-section-header">Stream Settings</h4>
             <div className="control-form-grid">
               <div className="control-item">
+                <label>View Channel:</label>
+                <select value={selectedChannel} onChange={(e) => setSelectedChannel && setSelectedChannel(e.target.value)}>
+                  <option value="both">Dual (Both Feeds)</option>
+                  <option value="screen">Screen Only</option>
+                  <option value="webcam">Webcam Only</option>
+                </select>
+              </div>
+              <div className="control-item">
                 <label>Frame Interval:</label>
                 <select value={frameRate} onChange={handleFrameRateChange}>
                   {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}s</option>)}
                 </select>
               </div>
-              <div className="control-item">
+              <div className="control-item" style={{ gridColumn: 'span 2' }}>
                 <label>Max Resolution:</label>
                 <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
                   {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}

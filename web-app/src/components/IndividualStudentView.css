@@ -4,7 +4,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -12,46 +13,198 @@
 }
 
 .individual-student-view-content {
-  background-color: white;
-  padding: 20px;
-  border-radius: 8px;
-  width: 90vw;
+  background-color: #ffffff;
+  padding: 1.5rem;
+  border-radius: 12px;
+  width: 92vw;
+  max-width: 1300px;
   height: 90vh;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
 }
 
 .individual-student-view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 10px;
-  margin-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .individual-student-view-header h2 {
-  white-space: nowrap;
+  margin: 0;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.student-subemail {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.channel-tab-group {
+  display: flex;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 4px;
+}
+
+.channel-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.channel-tab-btn.active {
+  background: #ffffff;
+  color: #4f46e5;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.channel-tab-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .message-sender {
   display: flex;
-  flex-grow: 1;
-  margin: 0 20px;
+  flex: 1;
+  max-width: 380px;
+  gap: 6px;
 }
 
 .message-sender input {
-  flex-grow: 1;
-  margin-right: 10px;
+  flex: 1;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.btn-send {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+}
+
+.btn-close {
+  background: #f1f5f9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #64748b;
+  cursor: pointer;
 }
 
 .individual-student-view-body {
-  flex-grow: 1;
+  flex: 1;
   overflow-y: auto;
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 0.75rem;
 }
 
-.individual-student-view-body img {
+.individual-dual-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  height: 100%;
+}
+
+.individual-feed-card {
+  background: #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-card-header {
+  padding: 0.5rem 0.75rem;
+  background: #334155;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-mini {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.individual-feed-card img {
   width: 100%;
   height: auto;
+  flex: 1;
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.feed-card-empty, .no-feed-text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-style: italic;
+  padding: 2rem;
+}
+
+.individual-single-feed {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.individual-single-feed img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }

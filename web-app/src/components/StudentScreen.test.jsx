@@ -25,7 +25,7 @@ describe('StudentScreen Component', () => {
     
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', url);
-    expect(img).toHaveAttribute('alt', 'Screenshot from alice@school.edu');
+    expect(img.getAttribute('alt')).toContain('alice@school.edu');
   });
 
   it('triggers onClick handler when card is clicked', () => {

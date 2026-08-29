@@ -46,6 +46,7 @@ async function runSmokeTests() {
       videoRetentionDays: 60,
       frameRate: 10,
       maxImageSize: 250 * 1024,
+      captureMode: 'dual',
       teacherEmails: [testTeacherEmail],
       teachers: [testTeacherUid],
       students: { [testStudentUid]: testStudentEmail },
@@ -56,29 +57,48 @@ async function runSmokeTests() {
     assert(classSnap.exists, 'Class document created successfully');
     assert(classSnap.data().retentionDays === 14, 'retentionDays correctly saved as 14');
     assert(classSnap.data().videoRetentionDays === 60, 'videoRetentionDays correctly saved as 60');
+    assert(classSnap.data().captureMode === 'dual', 'captureMode correctly saved as dual');
 
     // ----------------------------------------------------
-    // TEST 2: Student Screenshot Ingestion & TTL Stamping
+    // TEST 2: Student Screenshot Ingestion & Dual Channel Stamping
     // ----------------------------------------------------
-    console.log(`\n▶ Test 2: Screenshot Ingestion & expireAt TTL Stamping`);
+    console.log(`\n▶ Test 2: Dual Channel Ingestion & expireAt TTL Stamping`);
     const now = Date.now();
     const expectedExpireAt = new Date(now + 14 * 24 * 60 * 60 * 1000);
-    const screenshotRef = db.collection('screenshots').doc(`smoke-shot-${now}`);
+    const screenShotRef = db.collection('screenshots').doc(`smoke-screen-${now}`);
+    const webcamShotRef = db.collection('screenshots').doc(`smoke-webcam-${now}`);
     
-    await screenshotRef.set({
+    await screenShotRef.set({
       classId: testClassId,
       studentUid: testStudentUid,
       email: testStudentEmail,
-      imagePath: `screenshots/${testClassId}/${testStudentUid}/${now}.jpg`,
+      channel: 'screen',
+      imagePath: `screenshots/${testClassId}/${testStudentUid}/screen_${now}.jpg`,
       size: 150000,
       timestamp: new Date(now),
       expireAt: expectedExpireAt,
       deleted: false,
     });
 
-    const shotSnap = await screenshotRef.get();
-    assert(shotSnap.exists, 'Screenshot document created with metadata');
-    assert(shotSnap.data().expireAt.toDate().getTime() === expectedExpireAt.getTime(), 'expireAt accurately stamped for Firestore TTL');
+    await webcamShotRef.set({
+      classId: testClassId,
+      studentUid: testStudentUid,
+      email: testStudentEmail,
+      channel: 'webcam',
+      imagePath: `screenshots/${testClassId}/${testStudentUid}/webcam_${now}.jpg`,
+      size: 80000,
+      timestamp: new Date(now),
+      expireAt: expectedExpireAt,
+      deleted: false,
+    });
+
+    const screenSnap = await screenShotRef.get();
+    const webcamSnap = await webcamShotRef.get();
+    assert(screenSnap.exists, 'Screen screenshot document created');
+    assert(screenSnap.data().channel === 'screen', 'Screen channel correctly stamped as screen');
+    assert(webcamSnap.exists, 'Webcam screenshot document created');
+    assert(webcamSnap.data().channel === 'webcam', 'Webcam channel correctly stamped as webcam');
+    assert(screenSnap.data().expireAt.toDate().getTime() === expectedExpireAt.getTime(), 'expireAt accurately stamped for Firestore TTL');
 
     // ----------------------------------------------------
     // TEST 3: Video Job Payload & Retention Stamping

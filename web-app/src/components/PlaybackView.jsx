@@ -8,6 +8,7 @@ import TimelineSlider from './TimelineSlider';
 
 const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
   const [screenshots, setScreenshots] = useState([]);
+  const [channelFilter, setChannelFilter] = useState('all'); // 'all' | 'screen' | 'webcam'
   const [loading, setLoading] = useState(false);
   const [activeJobId, setActiveJobId] = useState(null);
   const [notification, setNotification] = useState(null);
@@ -196,6 +197,7 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
         classId: classId,
         studentUid: sessionData.studentUid,
         studentEmail: sessionData.studentEmail,
+        channel: channelFilter,
         startTime: new Date(sessionData.start),
         endTime: new Date(sessionData.end),
         status: 'pending',
@@ -212,18 +214,24 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
     }
   };
 
-  const currentTimestamp = screenshots[currentIndex]?.timestamp.toDate().toLocaleString();
-  const currentImageUrl = screenshots[currentIndex]?.imagePath ? screenshotImageUrls[screenshots[currentIndex].imagePath] : null;
+  const displayedScreenshots = useMemo(() => {
+    if (channelFilter === 'all') return screenshots;
+    return screenshots.filter(s => (s.channel || 'screen') === channelFilter);
+  }, [screenshots, channelFilter]);
+
+  const currentScreenshot = displayedScreenshots[currentIndex];
+  const currentTimestamp = currentScreenshot?.timestamp?.toDate ? currentScreenshot.timestamp.toDate().toLocaleString() : '';
+  const currentImageUrl = currentScreenshot?.imagePath ? screenshotImageUrls[currentScreenshot.imagePath] : null;
 
   const bufferedRanges = useMemo(() => {
-    if (screenshots.length === 0) return [];
+    if (displayedScreenshots.length === 0) return [];
 
     const ranges = [];
     let inRange = false;
     let start = 0;
 
-    for (let i = 0; i < screenshots.length; i++) {
-      const screenshot = screenshots[i];
+    for (let i = 0; i < displayedScreenshots.length; i++) {
+      const screenshot = displayedScreenshots[i];
       const hasUrl = screenshot && screenshotImageUrls[screenshot.imagePath];
 
       if (hasUrl && !inRange) {
@@ -236,21 +244,39 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
     }
 
     if (inRange) {
-      ranges.push({ start, end: screenshots.length - 1 });
+      ranges.push({ start, end: displayedScreenshots.length - 1 });
     }
 
     return ranges;
-  }, [screenshots, screenshotImageUrls]);
+  }, [displayedScreenshots, screenshotImageUrls]);
 
   return (
     <div className="view-container playback-player">
         <div className="view-header">
           <h3>Playback for: {sessionData.studentEmail}</h3>
         </div>
-        <button onClick={onBack}>Back to Selection</button>
-        <button onClick={handleCombineToVideo} disabled={activeJobId || screenshots.length === 0}>
-          {activeJobId ? 'Processing...' : 'Combine to Video'}
-        </button>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <button onClick={onBack}>Back to Selection</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Channel:</label>
+            <select 
+              value={channelFilter} 
+              onChange={(e) => {
+                setChannelFilter(e.target.value);
+                setCurrentIndex(0);
+              }}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+            >
+              <option value="all">All Channels</option>
+              <option value="screen">🖥️ Screen Only</option>
+              <option value="webcam">📷 Webcam Only</option>
+            </select>
+          </div>
+          <button onClick={handleCombineToVideo} disabled={activeJobId || displayedScreenshots.length === 0}>
+            {activeJobId ? 'Processing...' : `Combine to Video (${channelFilter.toUpperCase()})`}
+          </button>
+        </div>
         
         {notification && (
           <div className={`notification notification-${notification.type}`}>
@@ -262,18 +288,18 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
         )}
 
         <div className="player-controls">
-            <button onClick={() => setCurrentIndex(0)} disabled={screenshots.length === 0}>First</button>
-            <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={screenshots.length === 0}>Prev</button>
-            <button className="play-pause" onClick={() => setIsPlaying(!isPlaying)} disabled={screenshots.length === 0}>
+            <button onClick={() => setCurrentIndex(0)} disabled={displayedScreenshots.length === 0}>First</button>
+            <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={displayedScreenshots.length === 0}>Prev</button>
+            <button className="play-pause" onClick={() => setIsPlaying(!isPlaying)} disabled={displayedScreenshots.length === 0}>
                 {isPlaying ? 'Pause' : 'Play'}
             </button>
-            <button onClick={() => setCurrentIndex(prev => Math.min(screenshots.length - 1, prev + 1))} disabled={screenshots.length === 0}>Next</button>
-            <button onClick={() => setCurrentIndex(screenshots.length - 1)} disabled={screenshots.length === 0}>Last</button>
+            <button onClick={() => setCurrentIndex(prev => Math.min(displayedScreenshots.length - 1, prev + 1))} disabled={displayedScreenshots.length === 0}>Next</button>
+            <button onClick={() => setCurrentIndex(displayedScreenshots.length - 1)} disabled={displayedScreenshots.length === 0}>Last</button>
         </div>
         <div className="timeline-controls">
             <TimelineSlider
                 min={0}
-                max={screenshots.length > 0 ? screenshots.length - 1 : 0}
+                max={displayedScreenshots.length > 0 ? displayedScreenshots.length - 1 : 0}
                 value={currentIndex}
                 onChange={e => setCurrentIndex(Number(e.target.value))}
                 bufferedRanges={bufferedRanges}
@@ -286,18 +312,34 @@ const PlaybackView = ({ sessionData, onBack, classId, startTime, endTime }) => {
                 <option value="4">4x</option>
             </select>
         </div>
-        <div className="player-main">
+        <div className="player-main" style={{ position: 'relative' }}>
+            {currentScreenshot?.channel && (
+              <div style={{
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                background: 'rgba(15, 23, 42, 0.75)',
+                color: '#fff',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                zIndex: 5
+              }}>
+                {currentScreenshot.channel === 'screen' ? '🖥️ Screen' : '📷 Webcam'}
+              </div>
+            )}
             {loading ? (
                 <p>Loading session...</p>
-            ) : screenshots.length > 0 ? (
+            ) : displayedScreenshots.length > 0 ? (
                 <img src={currentImageUrl} alt={`Screenshot for ${sessionData.studentEmail}`} />
             ) : (
-                <p>No screenshots found for the selected student and time range.</p>
+                <p>No screenshots found for the selected channel and time range.</p>
             )}
         </div>
         <div className="player-info">
             <span>{currentTimestamp || 'N/A'}</span>
-            <span>Frame: {currentIndex + 1} / {screenshots.length}</span>
+            <span>Frame: {displayedScreenshots.length > 0 ? currentIndex + 1 : 0} / {displayedScreenshots.length}</span>
         </div>
     </div>
   );
