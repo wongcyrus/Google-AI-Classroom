@@ -28,11 +28,18 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
               {student?.isMultiSpeaker || (student?.speakerCount > 1) ? '👥⚠️' : student?.audioStatus === 'speaking' ? '🔊' : '🎙️'}
             </span>
           )}
-          {student?.faceStatus === 'normal' && <span className="ai-status-badge normal" title="Face Centered & Active">🟢</span>}
+          {student?.clientAiStatus === 'initializing' && (
+            <span className="ai-status-badge initializing" title={`AI Model Loading (${student?.loadingProgress || 0}%)`}>
+              ⏳ {student?.loadingProgress || 0}%
+            </span>
+          )}
+          {student?.clientAiStatus === 'ready' && student?.faceStatus === 'normal' && (
+            <span className="ai-status-badge normal" title={`On-Device AI Ready (${student?.delegateUsed || 'GPU'})`}>🟢</span>
+          )}
           {student?.faceStatus === 'looking_away' && <span className="ai-status-badge warn" title={`Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || ''}°)`}>🟡</span>}
           {student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
           {student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
-          {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title="Cloud AI Fallback Active">☁️</span>}
+          {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title={`Cloud AI Fallback Active ${student?.fallbackReason ? `(${student.fallbackReason})` : ''}`}>☁️</span>}
           <span className={`status-indicator ${isSharing ? 'on' : 'off'}`}></span>
         </div>
       </div>
@@ -81,9 +88,16 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             </div>
           )
         )}
-        {student?.faceStatus && student.faceStatus !== 'normal' && isSharing && (
+        {student?.clientAiStatus === 'initializing' && isSharing && (
+          <div className="screen-ai-alert initializing">
+            ⏳ AI Loading ({student?.loadingProgress || 0}%)
+          </div>
+        )}
+        {student?.faceStatus && student.faceStatus !== 'normal' && isSharing && student?.clientAiStatus !== 'initializing' && (
           <div className={`screen-ai-alert ${student.faceStatus}`}>
             {student.faceStatus === 'looking_away' && `👀 Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || 0}°)`}
+            {student.faceStatus === 'eyes_closed' && '😴 Eyes Closed / Sleeping'}
+            {student.faceStatus === 'talking' && '🗣️ Talking / Whispering'}
             {student.faceStatus === 'no_face' && '⚠️ No Face'}
             {student.faceStatus === 'multiple_faces' && '⚠️ Multiple People'}
             {student.faceStatus === 'cloud_fallback' && '☁️ Cloud Fallback'}

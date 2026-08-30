@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FilesetResolver, FaceLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
+import { DrawingUtils, FaceLandmarker } from '@mediapipe/tasks-vision';
+import {
+  initFaceLandmarkerWithProgress,
+  isModelCached,
+  fetchModelWithProgress,
+  calculateEAR,
+  calculateMAR,
+  DEFAULT_FACE_MODEL_PATH,
+} from '../utils/webAiModelLoader';
 import { db, storage, functions } from '../firebase-config';
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -18,6 +26,7 @@ export const useFaceMonitor = ({
   aiMonitoringMode = 'hybrid', // 'hybrid' | 'client_only' | 'cloud_only' | 'disabled'
   enableClientAi, // optional backward-compat
   enableCloudFallback, // optional backward-compat
+  preloadClientAi = false, // Teacher preload trigger
   gazeSensitivity = 'standard',
   customYawAngle = 25,
   customPitchDownAngle = -22,
@@ -38,16 +47,29 @@ export const useFaceMonitor = ({
   const isClientAiAllowed = effectiveMode === 'hybrid' || effectiveMode === 'client_only';
   const isCloudFallbackAllowed = effectiveMode === 'hybrid' || effectiveMode === 'cloud_only';
 
-  const [faceStatus, setFaceStatus] = useState('normal'); // 'normal' | 'no_face' | 'looking_away' | 'multiple_faces' | 'cloud_fallback' | 'unsupported' | 'quota_exceeded' | 'disabled'
+  const [faceStatus, setFaceStatus] = useState('normal'); // 'normal' | 'no_face' | 'looking_away' | 'eyes_closed' | 'talking' | 'multiple_faces' | 'cloud_fallback' | 'unsupported' | 'quota_exceeded' | 'disabled'
   const [clientAiStatus, setClientAiStatus] = useState('initializing'); // 'ready' | 'cloud_fallback' | 'unsupported' | 'disabled'
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isCached, setIsCached] = useState(false);
+  const [fallbackReason, setFallbackReason] = useState(null);
+  const [delegateUsed, setDelegateUsed] = useState(null);
+  const [isPreloading, setIsPreloading] = useState(false);
+
   const [yawAngle, setYawAngle] = useState(0);
   const [pitchAngle, setPitchAngle] = useState(0);
+  const [earValue, setEarValue] = useState(0.30);
+  const [marValue, setMarValue] = useState(0.15);
   const [metricDistance, setMetricDistance] = useState(55); // Estimated distance in cm (Depth-from-Iris)
+  const [isCalibrated, setIsCalibrated] = useState(false);
   const [activeViolation, setActiveViolation] = useState(null);
 
   const landmarkerRef = useRef(null);
   const requestAnimationRef = useRef(null);
+  const videoFrameCallbackIdRef = useRef(null);
   const isRunningRef = useRef(false);
+  const baselineOffsetRef = useRef({ yaw: 0, pitch: 0 });
+  const rawYawRef = useRef(0);
+  const rawPitchRef = useRef(0);
 
   // Anti-flooding / Incident session tracking refs
   const anomalyStartRef = useRef(null);
@@ -55,6 +77,55 @@ export const useFaceMonitor = ({
   const activeIncidentDocRef = useRef(null);
   const lastResolvedTimeRef = useRef(0);
   const isUploadingIncidentRef = useRef(false);
+
+  // Calibration functions
+  const calibrateBaseline = useCallback(() => {
+    baselineOffsetRef.current = {
+      yaw: rawYawRef.current || 0,
+      pitch: rawPitchRef.current || 0,
+    };
+    setIsCalibrated(true);
+    return baselineOffsetRef.current;
+  }, []);
+
+  const resetCalibration = useCallback(() => {
+    baselineOffsetRef.current = { yaw: 0, pitch: 0 };
+    setIsCalibrated(false);
+  }, []);
+
+  // Check initial cache status
+  useEffect(() => {
+    let isMounted = true;
+    isModelCached(DEFAULT_FACE_MODEL_PATH).then((cached) => {
+      if (isMounted) setIsCached(cached);
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  // Preload function that can be triggered by student button or teacher signal
+  const preloadModel = useCallback(async () => {
+    if (isCached || landmarkerRef.current || isPreloading) return;
+    setIsPreloading(true);
+    try {
+      await fetchModelWithProgress(DEFAULT_FACE_MODEL_PATH, ({ percent, fromCache }) => {
+        setLoadingProgress(percent);
+        if (fromCache) setIsCached(true);
+      });
+      setIsCached(true);
+      setLoadingProgress(100);
+    } catch (err) {
+      console.warn('[useFaceMonitor] Preload failed:', err);
+    } finally {
+      setIsPreloading(false);
+    }
+  }, [isCached, isPreloading]);
+
+  // Listen to teacher preload broadcast
+  useEffect(() => {
+    if (preloadClientAi && !isCached && isClientAiAllowed) {
+      preloadModel();
+    }
+  }, [preloadClientAi, isCached, isClientAiAllowed, preloadModel]);
 
   // Initialize MediaPipe Face Landmarker
   useEffect(() => {
@@ -83,40 +154,31 @@ export const useFaceMonitor = ({
     async function initLandmarker() {
       try {
         setClientAiStatus('initializing');
+        setLoadingProgress(0);
         
-        // Try local wasm first, fallback to CDN
-        let vision;
-        try {
-          vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
-        } catch {
-          vision = await FilesetResolver.forVisionTasks(
-            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-          );
-        }
-
-        if (!isMounted) return;
-
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: '/mediapipe/models/face_landmarker.task',
-            delegate: 'GPU',
+        const { landmarker, delegateUsed: dUsed, fromCache } = await initFaceLandmarkerWithProgress({
+          onProgress: ({ percent, fromCache: cached }) => {
+            if (isMounted) {
+              setLoadingProgress(percent);
+              if (cached) setIsCached(true);
+            }
           },
-          runningMode: 'VIDEO',
-          numFaces: 3,
-          minFaceDetectionConfidence: 0.45,
-          minFacePresenceConfidence: 0.45,
-          minTrackingConfidence: 0.45,
-          outputFaceBlendshapes: false,
+          preferredDelegate: 'GPU',
         });
 
         if (!isMounted) return;
 
         landmarkerRef.current = landmarker;
+        setDelegateUsed(dUsed);
+        setIsCached(true);
+        setLoadingProgress(100);
         setClientAiStatus('ready');
-        console.log('MediaPipe Face Landmarker initialized successfully on client.');
+        setFallbackReason(null);
+        console.log(`MediaPipe Face Landmarker initialized successfully on client using ${dUsed} delegate.`);
       } catch (err) {
         console.warn('Client MediaPipe unavailable on this device.', err);
         if (isMounted) {
+          setFallbackReason(err?.message || 'initialization_error');
           if (isCloudFallbackAllowed) {
             setClientAiStatus('cloud_fallback');
             setFaceStatus('cloud_fallback');
@@ -577,14 +639,27 @@ export const useFaceMonitor = ({
               const dRight = Math.hypot(nose.x - rightEyeOuter.x, nose.y - rightEyeOuter.y);
               const yawRatio = (dLeft - dRight) / (dLeft + dRight);
               
-              const calculatedYaw = Math.round(yawRatio * 100);
-              setYawAngle(calculatedYaw);
+              const rawYaw = Math.round(yawRatio * 100);
+              rawYawRef.current = rawYaw;
 
               const dNoseChin = chin.y - nose.y;
               const dNoseForehead = nose.y - forehead.y;
               const pitchRatio = (dNoseChin - dNoseForehead) / (dNoseChin + dNoseForehead);
-              const calculatedPitch = Math.round(pitchRatio * 100);
+              const rawPitch = Math.round(pitchRatio * 100);
+              rawPitchRef.current = rawPitch;
+
+              // Apply adaptive neutral baseline calibration offset
+              const calculatedYaw = rawYaw - (baselineOffsetRef.current?.yaw || 0);
+              const calculatedPitch = rawPitch - (baselineOffsetRef.current?.pitch || 0);
+
+              setYawAngle(calculatedYaw);
               setPitchAngle(calculatedPitch);
+
+              // Calculate Eye Aspect Ratio (EAR) & Mouth Aspect Ratio (MAR)
+              const ear = calculateEAR(landmarks);
+              const mar = calculateMAR(landmarks);
+              setEarValue(ear);
+              setMarValue(mar);
 
               // MediaPipe Iris: Eye-Gaze Ratio (Iris position within eye aperture)
               let irisGazeAway = false;
@@ -605,8 +680,16 @@ export const useFaceMonitor = ({
                 }
               }
 
-              // Responsive & Accurate Gaze & Distance Thresholds
-              if (Math.abs(calculatedYaw) >= yawThresh) {
+              // Responsive & Accurate Multi-Signal Anomaly Checks
+              if (ear < 0.18) {
+                currentAnomaly = 'eyes_closed';
+                detailsMessage = `Student eyes are closed / possible drowsiness (EAR: ${ear}).`;
+                setFaceStatus('eyes_closed');
+              } else if (mar > 0.58) {
+                currentAnomaly = 'talking';
+                detailsMessage = `Student mouth is open / possible talking or whispering (MAR: ${mar}).`;
+                setFaceStatus('talking');
+              } else if (Math.abs(calculatedYaw) >= yawThresh) {
                 currentAnomaly = 'looking_away';
                 const direction = calculatedYaw > 0 ? 'right' : 'left';
                 detailsMessage = `Student is looking away to the ${direction} (Head Yaw: ${calculatedYaw}°).`;
@@ -666,15 +749,29 @@ export const useFaceMonitor = ({
         }
       }
 
-      requestAnimationRef.current = requestAnimationFrame(detectFrame);
+      // Hardware Frame Sync: Use requestVideoFrameCallback if supported, fallback to requestAnimationFrame
+      const videoEl = webcamVideoRef.current;
+      if (videoEl && typeof videoEl.requestVideoFrameCallback === 'function') {
+        videoFrameCallbackIdRef.current = videoEl.requestVideoFrameCallback(detectFrame);
+      } else {
+        requestAnimationRef.current = requestAnimationFrame(detectFrame);
+      }
     };
 
-    requestAnimationRef.current = requestAnimationFrame(detectFrame);
+    const videoEl = webcamVideoRef.current;
+    if (videoEl && typeof videoEl.requestVideoFrameCallback === 'function') {
+      videoFrameCallbackIdRef.current = videoEl.requestVideoFrameCallback(detectFrame);
+    } else {
+      requestAnimationRef.current = requestAnimationFrame(detectFrame);
+    }
 
     return () => {
       isRunningRef.current = false;
       if (requestAnimationRef.current) {
         cancelAnimationFrame(requestAnimationRef.current);
+      }
+      if (videoFrameCallbackIdRef.current && webcamVideoRef.current && typeof webcamVideoRef.current.cancelVideoFrameCallback === 'function') {
+        try { webcamVideoRef.current.cancelVideoFrameCallback(videoFrameCallbackIdRef.current); } catch {}
       }
       if (activeIncidentDocRef.current) {
         resolveIncident();
@@ -685,8 +782,19 @@ export const useFaceMonitor = ({
   return {
     faceStatus,
     clientAiStatus,
+    loadingProgress,
+    isModelCached: isCached,
+    isPreloading,
+    preloadModel,
+    fallbackReason,
+    delegateUsed,
     yawAngle,
     pitchAngle,
+    earValue,
+    marValue,
+    isCalibrated,
+    calibrateBaseline,
+    resetCalibration,
     metricDistance,
     activeViolation,
   };

@@ -312,4 +312,20 @@ describe('ControlsPanel Full Component Suite', () => {
       expect(handleMaxImageSizeChange).toHaveBeenCalled();
     }
   });
+
+  it('triggers handleBroadcastPreloadAi when Preload AI for All Students is clicked', async () => {
+    const handleBroadcastPreloadAi = vi.fn().mockResolvedValue();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        aiMonitoringMode="hybrid"
+        handleBroadcastPreloadAi={handleBroadcastPreloadAi}
+      />
+    );
+
+    const preloadBtn = screen.getByRole('button', { name: /Preload AI for All Students/i });
+    expect(preloadBtn).toBeInTheDocument();
+    fireEvent.click(preloadBtn);
+    expect(handleBroadcastPreloadAi).toHaveBeenCalledTimes(1);
+  });
 });

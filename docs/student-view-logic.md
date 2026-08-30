@@ -144,14 +144,38 @@ The student client embeds an on-device AI invigilation pipeline powered by **Med
 - Extracts 3D facial landmarks to calculate head rotation angles:
   - **Yaw** (Left / Right turn)
   - **Pitch** (Look Up / Down)
-  - **Roll** (Head Tilt)
-- Configurable preset thresholds (`standard`, `relaxed`, `strict`, `custom`) with custom yaw and asymmetric pitch up/down boundaries.
+- **Adaptive Neutral Baseline Calibration (`🎯 Calibrate View`)**:
+  - Allows students to baseline their natural gaze and physical camera mounting angle by capturing a snapshot of raw yaw/pitch offsets (`baselineOffsetRef`).
+  - Calibrated angles subtract this baseline offset (`calculatedYaw = rawYaw - baselineYaw`), preventing false positives caused by off-center monitors or angled laptop webcams.
+  - Can be toggled or reset instantly from the student toolbar.
 
-### 4. Debounce & Anomaly Gate
-- Deviations must be sustained for the teacher-configured debounce threshold (e.g., 3 consecutive seconds) before triggering a `looking_away` irregularity, eliminating transient glance false positives.
+### 4. Multi-Signal Anomaly Detection & Debounce Gate
+- **Multi-Signal Telemetry**:
+  - `eyes_closed`: Eye Aspect Ratio ($\text{EAR} < 0.18$) detects drowsiness, sleeping, or prolonged eye closure.
+  - `talking`: Mouth Aspect Ratio ($\text{MAR} > 0.58$) detects mouth movement, whispering, or talking.
+  - `looking_away`: Sustained head yaw/pitch angles exceeding sensitivity thresholds or lateral iris shift.
+  - `no_face`: Zero facial landmark detections.
+  - `multiple_faces`: Multiple individuals detected in frame.
+- **Hardware Frame Sync (`requestVideoFrameCallback`)**:
+  - Uses native `video.requestVideoFrameCallback` to execute inference precisely when a new camera frame is decoded by the GPU, eliminating wasted CPU cycles and frame drops.
+- **Debounce & Anomaly Gate**:
+  - Deviations must be sustained for the teacher-configured debounce threshold (e.g., 3 consecutive seconds) before triggering an incident, eliminating transient glance false positives.
 - State telemetry is mirrored atomically to `classes/{classId}/status/{studentUid}`:
-  - `faceStatus`: `normal` | `looking_away` | `no_face` | `multiple_faces` | `loading` | `disabled`
-  - `gazeYaw`, `gazePitch`, `gazeDirection`, `metricDistance`, `irisGazeAway`.
+  - `faceStatus`: `normal` | `looking_away` | `eyes_closed` | `talking` | `no_face` | `multiple_faces` | `loading` | `disabled`
+  - `yawAngle`, `pitchAngle`, `ear`, `mar`, `isCalibrated`, `metricDistance`, `activeViolation`.
+
+### 5. On-Device AI Model Preloading, Cache API Storage & Worker Architecture (`webAiModelLoader.js` & `faceLandmarker.worker.js`)
+
+To eliminate network bandwidth bottlenecks, prevent exam start latency, and avoid running multi-gigabyte models locally on student devices, the client uses a streamlined edge loading pipeline:
+
+* **Lightweight Edge Footprint (~3.8 MB)**: Utilizes the highly optimized MediaPipe `FaceLandmarker` with Iris binary weights (~3.8 MB total) for in-browser real-time tracking, avoiding large local LLM downloads (e.g. 2.5GB Gemma).
+* **Dedicated Web Worker Engine (`faceLandmarker.worker.js`)**: Runs vision tasks and geometric processing in a background Web Worker thread using `ImageBitmap` zero-copy transfers, keeping the React UI thread completely fluid (zero input lag or typing jank).
+* **Persistent Cache API Storage (`webai-models-v1`)**: Checks `window.caches` before making any network requests. On the first download, model weights are stored in the browser's Cache Storage for instant $(<500\text{ms})$ subsequent loads without consuming student bandwidth.
+* **Streamed Progress Tracking**: Uses `fetch()` with `ReadableStream` chunk counting to compute and report byte-level progress ($0\% \to 100\%$) directly to the student UI (`⏳ Loading AI (45%)`) and teacher dashboard.
+* **Student-Side Preload Button**: Students can pre-download the model ahead of time via the **"📥 Preload AI (~3.8 MB)"** button in the dashboard controls.
+* **Teacher Remote Preload Trigger**: Teachers can broadcast a preload command (`preloadClientAi`) from `ControlsPanel.jsx`, triggering simultaneous background caching across all connected student devices before starting the exam.
+* **Hardware Delegate Fallback**: Automatically requests the `GPU` delegate (WebGL / WebGPU); if initialization fails or shaders are unsupported on the student's hardware, it gracefully falls back to the `CPU` WASM delegate, and finally transitions to Cloud Gemini Fallback (`analyzeFaceFallback`) if local execution is completely unavailable.
+* **Real-Time Telemetry Sync**: Syncs `clientAiStatus` (`ready`, `initializing`, `cloud_fallback`, `unsupported`), `loadingProgress`, `isModelCached`, `delegateUsed`, `ear`, `mar`, `isCalibrated`, and `fallbackReason` directly to `classes/{classId}/status/{studentUid}`.
 
 ---
 

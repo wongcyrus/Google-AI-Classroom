@@ -526,6 +526,13 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+.ai-face-hud.initializing {
+  background: rgba(79, 70, 229, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: pulse-warn 1.8s infinite;
+}
+
 .ai-face-hud.looking_away {
   background: rgba(245, 158, 11, 0.9);
   color: #ffffff;
@@ -545,6 +552,75 @@
   background: rgba(100, 116, 139, 0.85);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.ai-face-hud.unsupported {
+  background: rgba(220, 38, 38, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* AI Preload UI Controls */
+.ai-preload-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.student-view-pill.ai-ready {
+  background: #065f46;
+  color: #34d399;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-preload-btn {
+  background: #047857;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.ai-preload-btn:hover {
+  background: #059669;
+}
+
+.ai-preload-progress-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #1e293b;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  min-width: 140px;
+}
+
+.ai-progress-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.ai-progress-track {
+  width: 100%;
+  height: 4px;
+  background: #334155;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ai-progress-bar {
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 2px;
+  transition: width 0.2s ease;
 }
 
 .ai-mesh-toggle-btn {

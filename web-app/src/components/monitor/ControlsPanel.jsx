@@ -28,10 +28,12 @@ const ControlsPanel = ({
     enableCloudFallback = false, handleEnableCloudFallbackChange,
     cloudFallbackRate = 3, handleCloudFallbackRateChange,
     handleSaveGazeSettings,
+    handleBroadcastPreloadAi,
     classId
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
+    const [isPreloadSent, setIsPreloadSent] = useState(false);
 
     // Derive current mode with fallback
     const currentMode = (() => {
@@ -272,6 +274,40 @@ const ControlsPanel = ({
             >
               ⚙️ Configure Gaze & Mode
             </button>
+
+            {(currentMode === 'hybrid' || currentMode === 'client_only') && (
+              <button
+                type="button"
+                className="action-btn preload-broadcast-btn"
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  background: isPreloadSent ? '#059669' : '#0d9488',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  marginBottom: '10px',
+                  transition: 'background 0.2s ease'
+                }}
+                onClick={async () => {
+                  if (handleBroadcastPreloadAi) {
+                    await handleBroadcastPreloadAi();
+                    setIsPreloadSent(true);
+                    setTimeout(() => setIsPreloadSent(false), 3000);
+                  }
+                }}
+                title="Broadcast preload signal to all enrolled student browsers to download and cache on-device AI model"
+              >
+                {isPreloadSent ? '✅ AI Preload Broadcasted' : '⚡ Preload AI for All Students'}
+              </button>
+            )}
 
             {/* Cloud Gemini Multimodal Analysis Controls */}
             <div style={{ paddingTop: '8px', borderTop: '1px solid #e0e7ff' }}>

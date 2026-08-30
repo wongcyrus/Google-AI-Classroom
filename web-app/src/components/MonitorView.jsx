@@ -565,6 +565,18 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     }
   };
 
+  const handleBroadcastPreloadAi = useCallback(async () => {
+    if (!classId) return;
+    try {
+      const classRef = doc(db, 'classes', classId);
+      await updateDoc(classRef, {
+        preloadClientAi: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Error broadcasting preloadClientAi:', err);
+    }
+  }, [classId]);
+
   const handleDownloadAttendance = () => {
     const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
@@ -863,6 +875,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         cloudFallbackRate={cloudFallbackRate}
         handleCloudFallbackRateChange={handleCloudFallbackRateChange}
         handleSaveGazeSettings={handleSaveGazeSettings}
+        handleBroadcastPreloadAi={handleBroadcastPreloadAi}
         classId={classId}
       />}
 

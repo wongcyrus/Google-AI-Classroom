@@ -25,6 +25,34 @@ const createMockLandmarks = (yawOffset = 0, pitchOffset = 0) => {
 };
 
 let mockDetectForVideo = vi.fn().mockReturnValue({ faceLandmarks: [createMockLandmarks()] });
+let mockLandmarkerInstance = {
+  detectForVideo: mockDetectForVideo,
+  close: vi.fn(),
+};
+
+const { mockCalculateEAR, mockCalculateMAR } = vi.hoisted(() => ({
+  mockCalculateEAR: vi.fn().mockReturnValue(0.30),
+  mockCalculateMAR: vi.fn().mockReturnValue(0.15),
+}));
+
+vi.mock('../utils/webAiModelLoader', () => ({
+  DEFAULT_FACE_MODEL_PATH: '/mediapipe/models/face_landmarker.task',
+  isModelCached: vi.fn().mockResolvedValue(false),
+  fetchModelWithProgress: vi.fn().mockImplementation(async (url, onProgress) => {
+    onProgress?.({ loaded: 3758596, total: 3758596, percent: 100, fromCache: false });
+    return new ArrayBuffer(8);
+  }),
+  initFaceLandmarkerWithProgress: vi.fn().mockImplementation(async ({ onProgress } = {}) => {
+    onProgress?.({ loaded: 3758596, total: 3758596, percent: 100, fromCache: false });
+    return {
+      landmarker: mockLandmarkerInstance,
+      delegateUsed: 'GPU',
+      fromCache: false,
+    };
+  }),
+  calculateEAR: mockCalculateEAR,
+  calculateMAR: mockCalculateMAR,
+}));
 
 vi.mock('@mediapipe/tasks-vision', () => ({
   FilesetResolver: {
@@ -37,10 +65,7 @@ vi.mock('@mediapipe/tasks-vision', () => ({
     FACE_LANDMARKS_RIGHT_IRIS: [],
     FACE_LANDMARKS_LEFT_IRIS: [],
     FACE_LANDMARKS_FACE_OVAL: [],
-    createFromOptions: vi.fn().mockImplementation(async () => ({
-      detectForVideo: mockDetectForVideo,
-      close: vi.fn(),
-    })),
+    createFromOptions: vi.fn().mockImplementation(async () => mockLandmarkerInstance),
   },
   DrawingUtils: class MockDrawingUtils {
     constructor(ctx) {
@@ -288,4 +313,150 @@ describe('useFaceMonitor Hook', () => {
 
     expect(result.current.clientAiStatus).toBe('ready');
   });
+
+  it('provides loadingProgress, isModelCached, and preloadModel trigger', async () => {
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: false,
+        aiMonitoringMode: 'hybrid',
+      })
+    );
+
+    await act(async () => {
+      await result.current.preloadModel();
+    });
+
+    expect(result.current.loadingProgress).toBe(100);
+    expect(result.current.isModelCached).toBe(true);
+  });
+
+  it('supports adaptive baseline calibration and offset subtraction', async () => {
+    mockDetectForVideo.mockReturnValue({
+      faceLandmarks: [createMockLandmarks(0.12, 0.05)],
+    });
+
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    expect(result.current.isCalibrated).toBe(false);
+
+    act(() => {
+      result.current.calibrateBaseline();
+    });
+
+    expect(result.current.isCalibrated).toBe(true);
+
+    act(() => {
+      result.current.resetCalibration();
+    });
+
+    expect(result.current.isCalibrated).toBe(false);
+  });
+
+  it('uses requestVideoFrameCallback when available on video element', async () => {
+    const mockRvf = vi.fn().mockReturnValue(999);
+    const mockCancelRvf = vi.fn();
+    mockWebcamVideoRef.current.requestVideoFrameCallback = mockRvf;
+    mockWebcamVideoRef.current.cancelVideoFrameCallback = mockCancelRvf;
+
+    const { unmount } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+    expect(mockRvf).toHaveBeenCalled();
+
+    unmount();
+    expect(mockCancelRvf).toHaveBeenCalledWith(999);
+  });
+
+  it('detects eyes_closed when EAR is below 0.18', async () => {
+    mockCalculateEAR.mockReturnValue(0.12);
+
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.faceStatus).toBe('eyes_closed');
+    mockCalculateEAR.mockReturnValue(0.30);
+  });
+
+  it('detects talking when MAR is above 0.58', async () => {
+    mockCalculateMAR.mockReturnValue(0.65);
+
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.faceStatus).toBe('talking');
+    mockCalculateMAR.mockReturnValue(0.15);
+  });
 });
+

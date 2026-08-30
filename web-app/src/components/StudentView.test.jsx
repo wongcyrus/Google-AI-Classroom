@@ -75,21 +75,31 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
+const mockPreloadModel = vi.fn();
+const mockCalibrateBaseline = vi.fn();
+const mockResetCalibration = vi.fn();
+let mockFaceMonitorReturn = {
+  isFaceModelLoading: false,
+  clientAiStatus: 'ready',
+  loadingProgress: 100,
+  isModelCached: true,
+  isPreloading: false,
+  preloadModel: mockPreloadModel,
+  calibrateBaseline: mockCalibrateBaseline,
+  resetCalibration: mockResetCalibration,
+  isCalibrated: false,
+  earValue: 0.30,
+  marValue: 0.15,
+  delegateUsed: 'GPU',
+  faceStatus: 'normal',
+  faceColor: 'green',
+  gazeComplianceScore: 95,
+  gazeStatus: 'Looking at Screen',
+};
+
 vi.mock('../hooks/useFaceMonitor', () => ({
-  default: () => ({
-    isFaceModelLoading: false,
-    faceStatus: 'Face Verified',
-    faceColor: 'green',
-    gazeComplianceScore: 95,
-    gazeStatus: 'Looking at Screen',
-  }),
-  useFaceMonitor: () => ({
-    isFaceModelLoading: false,
-    faceStatus: 'Face Verified',
-    faceColor: 'green',
-    gazeComplianceScore: 95,
-    gazeStatus: 'Looking at Screen',
-  }),
+  default: () => mockFaceMonitorReturn,
+  useFaceMonitor: () => mockFaceMonitorReturn,
 }));
 
 vi.mock('../hooks/useAudioRecorder', () => ({
@@ -306,5 +316,107 @@ describe('StudentView Component Extended Test Suite', () => {
       fireEvent.click(logoutBtn);
       expect(mockSignOut).toHaveBeenCalled();
     }
+  });
+
+  it('renders Preload AI button when model is not cached and triggers preload on click', async () => {
+    mockFaceMonitorReturn = {
+      ...mockFaceMonitorReturn,
+      clientAiStatus: 'idle',
+      isModelCached: false,
+      isPreloading: false,
+      loadingProgress: 0,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    const preloadBtn = screen.getByRole('button', { name: /Preload AI \(~3.8 MB\)/i });
+    expect(preloadBtn).toBeInTheDocument();
+
+    fireEvent.click(preloadBtn);
+    expect(mockPreloadModel).toHaveBeenCalled();
+  });
+
+  it('renders loading progress indicator when model is downloading or initializing', async () => {
+    mockFaceMonitorReturn = {
+      ...mockFaceMonitorReturn,
+      clientAiStatus: 'initializing',
+      isModelCached: false,
+      isPreloading: true,
+      loadingProgress: 45,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    expect(screen.getByText(/⏳ Loading AI \(45%\)/i)).toBeInTheDocument();
+  });
+
+  it('renders AI Ready badge when model is cached and ready', async () => {
+    mockFaceMonitorReturn = {
+      ...mockFaceMonitorReturn,
+      clientAiStatus: 'ready',
+      isModelCached: true,
+      isPreloading: false,
+      loadingProgress: 100,
+      delegateUsed: 'GPU',
+      isCalibrated: false,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    expect(screen.getByText(/⚡ AI Ready/i)).toBeInTheDocument();
+  });
+
+  it('renders Calibrate View button and calls calibrateNeutralBaseline when clicked', async () => {
+    mockFaceMonitorReturn = {
+      ...mockFaceMonitorReturn,
+      clientAiStatus: 'ready',
+      isModelCached: true,
+      isPreloading: false,
+      isCalibrated: false,
+    };
+
+    const mockStream = {
+      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
+    fireEvent.click(startWebcamBtn);
+
+    const calibrateBtn = await screen.findByRole('button', { name: /🎯 Calibrate View/i });
+    expect(calibrateBtn).toBeInTheDocument();
+
+    fireEvent.click(calibrateBtn);
+    expect(mockCalibrateBaseline).toHaveBeenCalled();
+  });
+
+  it('renders Calibrated indicator when isCalibrated is true and calls resetCalibration on click', async () => {
+    mockFaceMonitorReturn = {
+      ...mockFaceMonitorReturn,
+      clientAiStatus: 'ready',
+      isModelCached: true,
+      isPreloading: false,
+      isCalibrated: true,
+    };
+
+    const mockStream = {
+      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
+    fireEvent.click(startWebcamBtn);
+
+    const calibratedBtn = await screen.findByRole('button', { name: /🎯 Calibrated/i });
+    expect(calibratedBtn).toBeInTheDocument();
+
+    fireEvent.click(calibratedBtn);
+    expect(mockResetCalibration).toHaveBeenCalled();
   });
 });

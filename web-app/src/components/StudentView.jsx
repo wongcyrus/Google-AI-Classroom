@@ -153,6 +153,7 @@ const StudentView = ({ user }) => {
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
   const [enableClientAi, setEnableClientAi] = useState(true);
+  const [preloadClientAi, setPreloadClientAi] = useState(false);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
   const [customYawAngle, setCustomYawAngle] = useState(25);
   const [customPitchDownAngle, setCustomPitchDownAngle] = useState(-22);
@@ -221,8 +222,19 @@ const StudentView = ({ user }) => {
   const {
     faceStatus,
     clientAiStatus,
+    loadingProgress,
+    isModelCached,
+    isPreloading,
+    preloadModel,
+    fallbackReason,
+    delegateUsed,
     yawAngle,
     pitchAngle,
+    earValue,
+    marValue,
+    isCalibrated,
+    calibrateBaseline,
+    resetCalibration,
     metricDistance,
     activeViolation,
   } = useFaceMonitor({
@@ -236,6 +248,7 @@ const StudentView = ({ user }) => {
     isCapturing,
     aiMonitoringMode,
     enableClientAi,
+    preloadClientAi,
     gazeSensitivity,
     customYawAngle,
     customPitchDownAngle,
@@ -254,8 +267,15 @@ const StudentView = ({ user }) => {
       if (isWebcamSharing) {
         updateData.faceStatus = faceStatus;
         updateData.clientAiStatus = clientAiStatus;
+        updateData.loadingProgress = loadingProgress;
+        updateData.isModelCached = isModelCached;
+        updateData.fallbackReason = fallbackReason || null;
+        updateData.delegateUsed = delegateUsed || null;
         updateData.yawAngle = yawAngle;
         updateData.pitchAngle = pitchAngle;
+        updateData.ear = earValue;
+        updateData.mar = marValue;
+        updateData.isCalibrated = isCalibrated;
         updateData.metricDistance = metricDistance || 55;
         updateData.activeViolation = activeViolation || null;
       }
@@ -268,7 +288,7 @@ const StudentView = ({ user }) => {
         setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
       }
     }
-  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, yawAngle, pitchAngle, metricDistance, activeViolation, enableAudioCapture, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -802,6 +822,7 @@ const StudentView = ({ user }) => {
         setFaceDebounceSeconds(prev => (data.faceDebounceSeconds !== undefined ? data.faceDebounceSeconds : (prev || 3)));
         setAiMonitoringMode(prev => (data.aiMonitoringMode && data.aiMonitoringMode !== prev ? data.aiMonitoringMode : (prev || 'hybrid')));
         setEnableClientAi(prev => (data.enableClientAi !== undefined ? data.enableClientAi : true));
+        setPreloadClientAi(prev => (data.preloadClientAi !== undefined ? data.preloadClientAi : false));
         setGazeSensitivity(prev => (data.gazeSensitivity && data.gazeSensitivity !== prev ? data.gazeSensitivity : (prev || 'standard')));
         setCustomYawAngle(prev => (data.customYawAngle !== undefined ? data.customYawAngle : (prev || 25)));
         setCustomPitchDownAngle(prev => (data.customPitchDownAngle !== undefined ? data.customPitchDownAngle : (prev || -22)));
@@ -1229,6 +1250,52 @@ const StudentView = ({ user }) => {
                   </div>
                 )}
 
+                {/* AI Model Preload & Calibration Controls (if AI monitoring is enabled) */}
+                {aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && (
+                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {clientAiStatus === 'ready' || isModelCached ? (
+                      <>
+                        <span className="student-view-pill ai-ready" title={`On-device AI model cached in browser storage (${delegateUsed || 'GPU'} active)`}>
+                          ⚡ AI Ready
+                        </span>
+                        {isWebcamSharing && (
+                          <button
+                            type="button"
+                            onClick={isCalibrated ? resetCalibration : calibrateBaseline}
+                            className="student-view-button"
+                            style={{
+                              padding: '5px 9px',
+                              fontSize: '0.8rem',
+                              backgroundColor: isCalibrated ? '#059669' : '#334155',
+                              color: '#ffffff',
+                              border: 'none',
+                            }}
+                            title={isCalibrated ? "Calibrated to current neutral head angle. Click to reset." : "Click while looking comfortably at center screen to calibrate neutral head angle."}
+                          >
+                            {isCalibrated ? '🎯 Calibrated' : '🎯 Calibrate View'}
+                          </button>
+                        )}
+                      </>
+                    ) : isPreloading || clientAiStatus === 'initializing' ? (
+                      <div className="ai-preload-progress-box" title="Downloading lightweight on-device AI model (~3.8 MB)">
+                        <span className="ai-progress-label">⏳ Loading AI ({loadingProgress}%)</span>
+                        <div className="ai-progress-track">
+                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, loadingProgress)}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={preloadModel}
+                        className="student-view-button ai-preload-btn"
+                        title="Download & cache lightweight on-device AI model (~3.8 MB) in advance"
+                      >
+                        📥 Preload AI (~3.8 MB)
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setIsReadinessWizardOpen(true)}
@@ -1306,14 +1373,15 @@ const StudentView = ({ user }) => {
                 <video ref={webcamVideoRef} autoPlay muted playsInline className="video-preview" />
                 <canvas ref={overlayCanvasRef} className="webcam-mesh-overlay" />
                 {isWebcamSharing && (
-                  <div className={`ai-face-hud ${faceStatus}`}>
-                    {faceStatus === 'normal' && <span>🟢 Face Centered {metricDistance ? `(~${metricDistance}cm)` : ''}</span>}
-                    {faceStatus === 'no_face' && <span>🔴 No Face Detected</span>}
-                    {faceStatus === 'looking_away' && <span>🟡 Please Face Screen (Looking Away)</span>}
-                    {faceStatus === 'multiple_faces' && <span>🔴 Multiple People in Frame</span>}
-                    {faceStatus === 'cloud_fallback' && <span>☁️ AI Cloud Fallback Active</span>}
-                    {faceStatus === 'unsupported' && <span>⚠️ Local AI Unsupported (Cloud Fallback Disabled)</span>}
-                    {faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
+                  <div className={`ai-face-hud ${clientAiStatus === 'initializing' ? 'initializing' : faceStatus}`}>
+                    {clientAiStatus === 'initializing' && <span>⏳ Initializing AI ({loadingProgress}%)...</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'normal' && <span>🟢 Face Centered {metricDistance ? `(~${metricDistance}cm)` : ''}</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'no_face' && <span>🔴 No Face Detected</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'looking_away' && <span>🟡 Please Face Screen (Looking Away)</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'multiple_faces' && <span>🔴 Multiple People in Frame</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'cloud_fallback' && <span>☁️ AI Cloud Fallback Active {fallbackReason ? `(${fallbackReason})` : ''}</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'unsupported' && <span>⚠️ Local AI Unsupported (Cloud Fallback Disabled)</span>}
+                    {clientAiStatus !== 'initializing' && faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
                   </div>
                 )}
               </div>

@@ -126,6 +126,24 @@ describe('StudentScreen Component', () => {
       />
     );
     expect(screen.getByText(/⚠️ Multiple People/i)).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, faceStatus: 'eyes_closed' }}
+        isSharing={true}
+        screenshotUrl="test.jpg"
+      />
+    );
+    expect(screen.getByText(/😴 Eyes Closed \/ Sleeping/i)).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, faceStatus: 'talking' }}
+        isSharing={true}
+        screenshotUrl="test.jpg"
+      />
+    );
+    expect(screen.getByText(/🗣️ Talking \/ Whispering/i)).toBeInTheDocument();
   });
 
   it('renders audio badges for speaking and multi-voice warnings', () => {
@@ -141,5 +159,19 @@ describe('StudentScreen Component', () => {
     );
 
     expect(screen.getByText('👥⚠️')).toBeInTheDocument();
+  });
+
+  it('renders AI initializing loading indicator when model is downloading', () => {
+    const studentLoading = {
+      ...mockStudent,
+      clientAiStatus: 'initializing',
+      loadingProgress: 65,
+    };
+    render(
+      <StudentScreen student={studentLoading} isSharing={true} screenshotUrl="test.jpg" />
+    );
+
+    expect(screen.getByText(/⏳ 65%/i)).toBeInTheDocument();
+    expect(screen.getByText(/⏳ AI Loading \(65%\)/i)).toBeInTheDocument();
   });
 });
