@@ -1,8 +1,39 @@
 # Frontend Components
 
-The `web-app/src/components/` directory contains all the React components that make up the user interface. Below is a breakdown of the main components and their roles.
+The `web-app/src/components/` directory contains all the React components that make up the user interface. Below is a breakdown of the main components, component hierarchy, and navigation flows.
 
-## Core Layout, Authentication & Performance
+## 🧭 Component Hierarchy & State Flow Diagram
+
+```mermaid
+flowchart TD
+    App[App.jsx - Code-Split Router] --> Auth{User Role}
+    
+    Auth -->|Student Role| SV[StudentView.jsx]
+    subgraph StudentFlow [Student Experience]
+        SV --> V1[Screen Capture Stream: getDisplayMedia]
+        SV --> V2[Webcam Capture Stream: getUserMedia]
+        SV --> MP[useFaceMonitor: MediaPipe Iris & Gaze Mesh]
+        SV --> AR[useAudioRecorder: Moving Window 30s VAD]
+        SV --> SM[MicSetupModal.jsx]
+    end
+
+    Auth -->|Teacher Role| TV[TeacherView.jsx]
+    subgraph TeacherFlow [Teacher Workspace]
+        TV --> CV[ClassView.jsx - Tabbed Management]
+        CV --> TAB1[MonitorView.jsx - Live Class Grid]
+        CV --> TAB2[VideoLibrary.jsx - Recorded MP4s]
+        CV --> TAB3[AttendanceView.jsx - Heatmaps]
+        CV --> TAB4[IrregularitiesView.jsx - AI Audit Evidence]
+        CV --> TAB5[ClassManagement.jsx - Roster & Settings]
+
+        TAB1 --> CP[ControlsPanel.jsx - Session Actions & Broadcast]
+        TAB1 --> SS[StudentScreen.jsx - Dual Feed & Gaze Badges]
+        TAB1 --> ISV[IndividualStudentView.jsx - 1-on-1 Inspect]
+        TAB4 --> ATM[AudioTranscriptModal.jsx - Diarization Seek Player]
+    end
+```
+
+---
 
 *   **`App.jsx`**: The root application component configured with **Dynamic Route Code-Splitting** (`React.lazy` and `Suspense`) via a custom `lazyWithRetry` wrapper. This reduces the initial bundle size by over 99% (from 2.5MB down to ~3–17KB for initial view chunks) and features auto-retry for seamless client-side recovery across production deployments.
 *   **`Layout.jsx`**: Provides the main application structure, including the header with application title, logo, notification center, profile dropdown (with user email, role badge, Change Password trigger, and logout), and the main content area.
@@ -61,3 +92,5 @@ The `web-app/src/components/` directory contains all the React components that m
 *   **`Modal.jsx`**: A generic modal component for displaying content in a dialog overlay.
 *   **`VideoPlayerModal.jsx`**: A specialized modal for playing back videos.
 *   **`VideoPromptSelector.jsx`**: A component that allows a user to select from a list of predefined AI prompts or enter custom text.
+*   **`MicSetupModal.jsx`**: Microphone selection, live RMS volume VU metering, speech verification challenge (STT), and audio playback test modal for students.
+*   **`AudioTranscriptModal.jsx`**: Dialogue playback modal for teachers displaying multi-speaker turns, synchronized webcam snapshots, and clickable seek buttons.

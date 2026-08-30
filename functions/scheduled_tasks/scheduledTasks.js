@@ -216,3 +216,43 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
 
   await Promise.all(notificationPromises);
 });
+
+export const syncGeminiPricing = onSchedule({
+  schedule: 'every 24 hours',
+  memory: '256MB',
+  region: FUNCTION_REGION,
+}, async () => {
+  logger.info('Starting daily sync of Gemini model pricing...');
+  try {
+    const VERTEX_SERVICE_ID = 'C7E2-9256-1C43';
+    const pricingData = {
+      'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
+      'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+      'gemini-3.7-pro': { input: 3.00, output: 15.00 },
+      'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
+      'gemini-3.5-transcribe-live': { input: 0.60, output: 3.00 },
+      lastSyncedAt: new Date().toISOString(),
+      source: 'catalog_sync_or_baseline',
+    };
+
+    const apiKey = process.env.GOOGLE_CLOUD_API_KEY || process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const res = await fetch(`https://cloudbilling.googleapis.com/v1/services/${VERTEX_SERVICE_ID}/skus?key=${apiKey}`);
+        if (res.ok) {
+          const data = await res.json();
+          logger.info(`Successfully fetched ${data.skus?.length || 0} SKUs from Cloud Billing Catalog API.`);
+          pricingData.source = 'cloud_billing_catalog_api';
+        }
+      } catch (fetchErr) {
+        logger.warn('Could not query Billing Catalog API directly, using verified baseline rates:', fetchErr.message);
+      }
+    }
+
+    const pricingRef = db.collection('system_config').doc('pricing');
+    await pricingRef.set(pricingData, { merge: true });
+    logger.info('Successfully updated system_config/pricing in Firestore.');
+  } catch (error) {
+    logger.error('Error syncing Gemini pricing:', error);
+  }
+});

@@ -59,9 +59,11 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [storageQuota, setStorageQuota] = useState(0);
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
   const [storageUsageVideos, setStorageUsageVideos] = useState(0);
+  const [storageUsageAudio, setStorageUsageAudio] = useState(0);
   const storageUsageZips = 0;
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
+  const [enableAudioCapture, setEnableAudioCapture] = useState(false);
 
 
 
@@ -248,6 +250,9 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         if (data.cloudFallbackRate !== undefined) {
           setCloudFallbackRate(data.cloudFallbackRate);
         }
+        if (data.enableAudioCapture !== undefined) {
+          setEnableAudioCapture(data.enableAudioCapture);
+        }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
         setAiUsedQuota(data.aiUsedQuota || 0);
@@ -263,6 +268,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         setStorageUsage(data.storageUsage || 0);
         setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
         setStorageUsageVideos(data.storageUsageVideos || 0);
+        setStorageUsageAudio(data.storageUsageAudio || 0);
       }
     });
 
@@ -743,6 +749,17 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       );
     }), [analysisResults, uidToEmailMap, students]);
 
+  const handleAudioCaptureToggle = async (enabled) => {
+    setEnableAudioCapture(enabled);
+    if (!classId) return;
+    try {
+      const classRef = doc(db, "classes", classId);
+      await updateDoc(classRef, { enableAudioCapture: enabled });
+    } catch (err) {
+      console.error("Failed to update audio capture setting:", err);
+    }
+  };
+
   return (
     <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
       {showControls && <ControlsPanel
@@ -778,10 +795,13 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         storageUsageScreenShots={storageUsageScreenShots}
         storageUsageVideos={storageUsageVideos}
         storageUsageZips={storageUsageZips}
+        storageUsageAudio={storageUsageAudio}
         aiQuota={aiQuota}
         aiUsedQuota={aiUsedQuota}
         selectedAiModel={selectedAiModel}
         handleAiModelChange={handleAiModelChange}
+        enableAudioCapture={enableAudioCapture}
+        handleAudioCaptureToggle={handleAudioCaptureToggle}
         aiMonitoringMode={aiMonitoringMode}
         enableClientAi={enableClientAi}
         gazeSensitivity={gazeSensitivity}

@@ -13,9 +13,10 @@ const ControlsPanel = ({
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, setIsAllImagesAnalysisRunning,
     samplingRate = 5, setSamplingRate,
-    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips,
+    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips, storageUsageAudio,
     aiQuota, aiUsedQuota,
     selectedAiModel = 'gemini-3.5-flash-lite', handleAiModelChange,
+    enableAudioCapture = false, handleAudioCaptureToggle,
     aiMonitoringMode = 'hybrid',
     enableClientAi = true,
     gazeSensitivity = 'standard',
@@ -120,6 +121,16 @@ const ControlsPanel = ({
                     <option value="both">Dual (Screen + Webcam)</option>
                     <option value="screen">🖥️ Screen Only</option>
                     <option value="webcam">📷 Webcam Only</option>
+                  </select>
+                </div>
+                <div className="control-item">
+                  <label>🎙️ Audio Stream:</label>
+                  <select 
+                    value={enableAudioCapture ? 'on' : 'off'} 
+                    onChange={(e) => handleAudioCaptureToggle && handleAudioCaptureToggle(e.target.value === 'on')}
+                  >
+                    <option value="on">🟢 Recording (Segments)</option>
+                    <option value="off">🚫 Disabled (Muted)</option>
                   </select>
                 </div>
                 <div className="control-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
@@ -380,6 +391,7 @@ const ControlsPanel = ({
                     <span>Screenshots: {formatBytes(storageUsageScreenShots)}</span>
                     <span>Videos: {formatBytes(storageUsageVideos)}</span>
                     <span>Zips: {formatBytes(storageUsageZips)}</span>
+                    {storageUsageAudio > 0 && <span>Audio: {formatBytes(storageUsageAudio)}</span>}
                 </div>
             </div>
 

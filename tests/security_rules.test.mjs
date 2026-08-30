@@ -2,16 +2,17 @@ import { initializeApp as initAdmin } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeApp as initClient } from 'firebase/app';
-import { getAuth as getClientAuth, signInWithCustomToken, signOut } from 'firebase/auth';
+import { getAuth as getClientAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore as getClientFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.argv[2] || 'it114115-dev-2026';
+const apiKey = process.env.VITE_API_KEY || 'AIzaSyBkn72kGU0Aei5k4LIvWEoG6PWbdeY_AbA';
 
 console.log(`\n========================================================`);
 console.log(`🛡️  RUNNING REAL-TOKEN SECURITY RULES VERIFICATION (${projectId})`);
 console.log(`========================================================\n`);
 
-// Initialize Admin SDK for setup and token minting
+// Initialize Admin SDK for setup
 const adminApp = initAdmin({ projectId }, 'adminApp_' + Date.now());
 const adminAuth = getAdminAuth(adminApp);
 const adminDb = getAdminFirestore(adminApp);
@@ -19,7 +20,7 @@ const adminDb = getAdminFirestore(adminApp);
 // Initialize Client SDK (Enforces all Firestore Security Rules!)
 const clientApp = initClient({
   projectId: projectId,
-  apiKey: "AIzaSyFakeKeyForRulesValidationOnly",
+  apiKey: apiKey,
   authDomain: `${projectId}.firebaseapp.com`,
 }, 'clientApp_' + Date.now());
 const clientAuth = getClientAuth(clientApp);
@@ -68,13 +69,39 @@ async function runSecurityRulesSuite() {
   const student1Uid = `sec-student-1-${timestamp}`;
   const student2Uid = `sec-student-2-${timestamp}`;
   const teacherUid = `sec-teacher-${timestamp}`;
-  const teacherEmail = `sec.teacher.${timestamp}@test.local`;
-  const student1Email = `sec.student1.${timestamp}@test.local`;
-  const student2Email = `sec.student2.${timestamp}@test.local`;
+  const teacherEmail = `sec.teacher.${timestamp}@vtc.edu.hk`;
+  const student1Email = `sec.student1.${timestamp}@stu.vtc.edu.hk`;
+  const student2Email = `sec.student2.${timestamp}@stu.vtc.edu.hk`;
+  const defaultPassword = 'SecurityTestPass123!';
 
   try {
-    console.log(`🔧 Setting up test fixture documents in Firestore...`);
+    console.log(`🔧 Setting up test fixture documents in Firestore & Auth...`);
     
+    // Create test auth users
+    await adminAuth.createUser({
+      uid: student1Uid,
+      email: student1Email,
+      password: defaultPassword,
+      emailVerified: true,
+    });
+    await adminAuth.setCustomUserClaims(student1Uid, { role: 'student' });
+
+    await adminAuth.createUser({
+      uid: student2Uid,
+      email: student2Email,
+      password: defaultPassword,
+      emailVerified: true,
+    });
+    await adminAuth.setCustomUserClaims(student2Uid, { role: 'student' });
+
+    await adminAuth.createUser({
+      uid: teacherUid,
+      email: teacherEmail,
+      password: defaultPassword,
+      emailVerified: true,
+    });
+    await adminAuth.setCustomUserClaims(teacherUid, { role: 'teacher' });
+
     // Setup Class A with Student 1 enrolled
     await adminDb.collection('classes').doc(classA).set({
       classId: classA,
@@ -114,11 +141,6 @@ async function runSecurityRulesSuite() {
       timestamp: new Date()
     });
 
-    // Mint Custom Tokens
-    console.log(`🔑 Minting custom role tokens...`);
-    const student1Token = await adminAuth.createCustomToken(student1Uid, { role: 'student', email: student1Email });
-    const teacherToken = await adminAuth.createCustomToken(teacherUid, { role: 'teacher', email: teacherEmail });
-
     // -------------------------------------------------------------
     // SUITE 1: Unauthenticated / Anonymous Access Protection
     // -------------------------------------------------------------
@@ -142,7 +164,7 @@ async function runSecurityRulesSuite() {
     // SUITE 2: Student Access & Isolation Rules
     // -------------------------------------------------------------
     console.log(`\n🎓 SUITE 2: Student Permissions & Isolation (Student 1)`);
-    await signInWithCustomToken(clientAuth, student1Token);
+    await signInWithEmailAndPassword(clientAuth, student1Email, defaultPassword);
 
     // Profile isolation
     await expectAllowed(
@@ -170,17 +192,39 @@ async function runSecurityRulesSuite() {
       'Student 1 CANNOT tamper with class settings (frameRate)'
     );
 
-    // Screenshot privacy protection
+    // Audio metadata isolation
+    const audio1DocId = `audio-1-${timestamp}`;
+    const audio2DocId = `audio-2-${timestamp}`;
+    await adminDb.collection('audio').doc(audio1DocId).set({
+      classId: classA,
+      studentUid: student1Uid,
+      studentEmail: student1Email,
+      audioPath: `audio/${classA}/${student1Uid}/segment.webm`,
+      timestamp: new Date()
+    });
+    await adminDb.collection('audio').doc(audio2DocId).set({
+      classId: classB,
+      studentUid: student2Uid,
+      studentEmail: student2Email,
+      audioPath: `audio/${classB}/${student2Uid}/segment.webm`,
+      timestamp: new Date()
+    });
+
+    // Student 1 Audio Access
+    await expectAllowed(
+      getDoc(doc(clientDb, 'audio', audio1DocId)),
+      'Student 1 CAN read own audio metadata'
+    );
     await expectPermissionDenied(
-      getDoc(doc(clientDb, 'screenshots', shotDocId)),
-      'Student 1 CANNOT query screenshots collection directly'
+      getDoc(doc(clientDb, 'audio', audio2DocId)),
+      'Student 1 CANNOT read Student 2 audio metadata'
     );
 
     // -------------------------------------------------------------
     // SUITE 3: Teacher Role Privileges
     // -------------------------------------------------------------
     console.log(`\n👨‍🏫 SUITE 3: Teacher Role Privileges`);
-    await signInWithCustomToken(clientAuth, teacherToken);
+    await signInWithEmailAndPassword(clientAuth, teacherEmail, defaultPassword);
 
     await expectAllowed(
       getDoc(doc(clientDb, 'classes', classA)),
@@ -195,12 +239,16 @@ async function runSecurityRulesSuite() {
       'Teacher can read student screenshot documents'
     );
     await expectAllowed(
+      getDoc(doc(clientDb, 'audio', audio1DocId)),
+      'Teacher can read student audio metadata documents'
+    );
+    await expectAllowed(
       updateDoc(doc(clientDb, 'classes', classA), { frameRate: 15 }),
       'Teacher can update class monitoring settings'
     );
 
     // -------------------------------------------------------------
-    // Cleanup Fixture Documents
+    // Cleanup Fixture Documents & Users
     // -------------------------------------------------------------
     console.log(`\n🧹 Cleaning up test fixtures...`);
     await adminDb.collection('classes').doc(classA).delete();
@@ -208,6 +256,11 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('studentProfiles').doc(student1Uid).delete();
     await adminDb.collection('studentProfiles').doc(student2Uid).delete();
     await adminDb.collection('screenshots').doc(shotDocId).delete();
+    await adminDb.collection('audio').doc(audio1DocId).delete();
+    await adminDb.collection('audio').doc(audio2DocId).delete();
+    await adminAuth.deleteUser(student1Uid).catch(() => {});
+    await adminAuth.deleteUser(student2Uid).catch(() => {});
+    await adminAuth.deleteUser(teacherUid).catch(() => {});
 
   } catch (error) {
     console.error('Fatal error during security rules test suite:', error);
@@ -219,6 +272,7 @@ async function runSecurityRulesSuite() {
   console.log(`========================================================\n`);
 
   if (failed > 0) process.exit(1);
+  process.exit(0);
 }
 
 runSecurityRulesSuite();

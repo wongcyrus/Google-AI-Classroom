@@ -123,6 +123,74 @@ export const recordVideoIrregularity = ai.defineTool(
   }
 );
 
+export const recordAudioIrregularity = ai.defineTool(
+  {
+    name: 'recordAudioIrregularity',
+    description: 'Records an audio irregularity (e.g. unauthorized collaboration, secondary speaker present, whispering answers, exam chat).',
+    inputSchema: z.object({
+      studentUid: z.string().describe('The UID of the student.'),
+      studentEmail: z.string().optional().describe('The email of the student.'),
+      title: z.string().describe('The title of the audio irregularity (e.g., Unauthorized Collaboration, Multiple Voices Detected).'),
+      message: z.string().describe('Detailed explanation of the conversation or acoustic evidence.'),
+      transcriptSnippet: z.string().optional().describe('The relevant spoken transcript snippet with speaker tags.'),
+      audioPath: z.string().optional().describe('Cloud storage path of the audio snippet.'),
+      imageUrl: z.string().optional().describe('URL or path to the corresponding student webcam/screen image.'),
+      speakerCount: z.number().optional().describe('Number of distinct speakers identified.'),
+      riskLevel: z.enum(['none', 'low', 'medium', 'high']).optional().describe('Risk severity level.'),
+      classId: z.string().optional().describe('The ID of the class.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordAudioIrregularity input:', input);
+    const {
+      studentUid,
+      studentEmail = '',
+      title,
+      message,
+      transcriptSnippet = '',
+      audioPath = '',
+      imageUrl = '',
+      speakerCount = 1,
+      riskLevel = 'medium',
+      classId = '',
+    } = input;
+    try {
+      const db = getFirestore();
+      const irregularitiesRef = db.collection('irregularities');
+
+      let resolvedImagePath = imageUrl;
+      if (imageUrl) {
+        const pathRegex = /o\/(.*?)\?alt=media/;
+        const match = imageUrl.match(pathRegex);
+        if (match && match[1]) {
+          resolvedImagePath = decodeURIComponent(match[1]);
+        }
+      }
+
+      await irregularitiesRef.add({
+        studentUid,
+        email: studentEmail,
+        title: title || 'Audio Irregularity Detected',
+        message: message || '',
+        transcriptSnippet,
+        audioPath,
+        imageUrl: resolvedImagePath,
+        speakerCount,
+        riskLevel,
+        type: 'audio',
+        timestamp: FieldValue.serverTimestamp(),
+        classId: classId || '',
+      });
+      console.log(`✅ Recorded audio irregularity for student ${studentUid}: "${title}"`);
+      return `Successfully recorded audio irregularity for student ${studentUid}.`;
+    } catch (error) {
+      console.error('Error recording audio irregularity:', error);
+      return `Failed to record audio irregularity for student ${studentUid}. Error: ${error.message}`;
+    }
+  }
+);
+
 export const recordStudentProgress = ai.defineTool(
   {
     name: 'recordStudentProgress',
@@ -419,3 +487,49 @@ export const recordLessonSummary = ai.defineTool(
     }
   }
 );
+
+export const recordAudioAudit = ai.defineTool(
+  {
+    name: 'recordAudioAudit',
+    description: 'Saves full audio audit transcript, diarization speaker turns, and integrity rating for an exam session.',
+    inputSchema: z.object({
+      classId: z.string().describe('The ID of the class.'),
+      studentUid: z.string().describe('The UID of the student.'),
+      studentEmail: z.string().optional().describe('Student email.'),
+      verdict: z.enum(['clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive']).describe('Overall audio integrity verdict.'),
+      speakerCount: z.number().describe('Total number of distinct human speakers detected.'),
+      summary: z.string().describe('Comprehensive evaluation of audio analysis.'),
+      transcript: z.string().describe('Full transcript with speaker labels and timestamps.'),
+      audioUrl: z.string().optional().describe('URL or path to audio source file.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordAudioAudit input:', input);
+    const { classId, studentUid, studentEmail, verdict, speakerCount, summary, transcript, audioUrl } = input;
+    try {
+      const db = getFirestore();
+      const auditRef = db.collection('classes').doc(classId).collection('audio_audits').doc(studentUid);
+
+      const auditData = {
+        classId,
+        studentUid,
+        studentEmail: studentEmail || '',
+        verdict,
+        speakerCount,
+        summary,
+        transcript,
+        audioUrl: audioUrl || '',
+        analyzedAt: FieldValue.serverTimestamp(),
+      };
+
+      await auditRef.set(auditData, { merge: true });
+      console.log(`✅ Saved audio audit report for student ${studentUid} in class ${classId}: verdict=${verdict}`);
+      return `Successfully saved audio audit for student ${studentUid}.`;
+    } catch (error) {
+      console.error('Error saving audio audit:', error);
+      return `Failed to save audio audit. Error: ${error.message}`;
+    }
+  }
+);
+

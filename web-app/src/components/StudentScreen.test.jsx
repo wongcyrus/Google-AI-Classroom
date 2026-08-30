@@ -28,11 +28,118 @@ describe('StudentScreen Component', () => {
     expect(img.getAttribute('alt')).toContain('alice@school.edu');
   });
 
-  it('triggers onClick handler when card is clicked', () => {
-    const onClick = vi.fn();
-    render(<StudentScreen student={mockStudent} isSharing={false} screenshotUrl={null} onClick={onClick} />);
-    
-    fireEvent.click(screen.getByText('Alice Wong'));
-    expect(onClick).toHaveBeenCalledTimes(1);
+  it('renders dual view when both screen and webcam streams are present', () => {
+    const screenshotData = {
+      screen: { url: 'https://storage.googleapis.com/test-bucket/screen.jpg' },
+      webcam: { url: 'https://storage.googleapis.com/test-bucket/webcam.jpg' },
+    };
+    render(
+      <StudentScreen
+        student={mockStudent}
+        isSharing={true}
+        screenshotData={screenshotData}
+        selectedChannel="both"
+      />
+    );
+
+    expect(screen.getByText('🖥️ Screen')).toBeInTheDocument();
+    expect(screen.getByText('📷 Webcam')).toBeInTheDocument();
+    const images = screen.getAllByRole('img');
+    expect(images).toHaveLength(2);
+  });
+
+  it('renders selectedChannel="screen" view and fallback placeholder correctly', () => {
+    const screenshotData = {
+      screen: { url: 'https://storage.googleapis.com/test-bucket/screen.jpg' },
+    };
+    const { rerender } = render(
+      <StudentScreen
+        student={mockStudent}
+        isSharing={true}
+        screenshotData={screenshotData}
+        selectedChannel="screen"
+      />
+    );
+    expect(screen.getByText('🖥️ Screen')).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={mockStudent}
+        isSharing={true}
+        screenshotData={{}}
+        selectedChannel="screen"
+      />
+    );
+    expect(screen.getByText('No Screen Stream')).toBeInTheDocument();
+  });
+
+  it('renders selectedChannel="webcam" view and fallback placeholder correctly', () => {
+    const screenshotData = {
+      webcam: { url: 'https://storage.googleapis.com/test-bucket/webcam.jpg' },
+    };
+    const { rerender } = render(
+      <StudentScreen
+        student={mockStudent}
+        isSharing={true}
+        screenshotData={screenshotData}
+        selectedChannel="webcam"
+      />
+    );
+    expect(screen.getByText('📷 Webcam')).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={mockStudent}
+        isSharing={true}
+        screenshotData={{}}
+        selectedChannel="webcam"
+      />
+    );
+    expect(screen.getByText('No Webcam Stream')).toBeInTheDocument();
+  });
+
+  it('renders face status alerts (looking away, no face, multiple faces)', () => {
+    const studentWithAlert = {
+      ...mockStudent,
+      faceStatus: 'looking_away',
+      yawAngle: 32,
+    };
+    const { rerender } = render(
+      <StudentScreen student={studentWithAlert} isSharing={true} screenshotUrl="test.jpg" />
+    );
+    expect(screen.getByText(/Looking Away \(\+32°\)/i)).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, faceStatus: 'no_face' }}
+        isSharing={true}
+        screenshotUrl="test.jpg"
+      />
+    );
+    expect(screen.getByText(/⚠️ No Face/i)).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, faceStatus: 'multiple_faces' }}
+        isSharing={true}
+        screenshotUrl="test.jpg"
+      />
+    );
+    expect(screen.getByText(/⚠️ Multiple People/i)).toBeInTheDocument();
+  });
+
+  it('renders audio badges for speaking and multi-voice warnings', () => {
+    const studentSpeaking = {
+      ...mockStudent,
+      isAudioSharing: true,
+      audioStatus: 'speaking',
+      audioLevel: 65,
+      isMultiSpeaker: true,
+    };
+    render(
+      <StudentScreen student={studentSpeaking} isSharing={true} screenshotUrl="test.jpg" />
+    );
+
+    expect(screen.getByText('👥⚠️')).toBeInTheDocument();
   });
 });

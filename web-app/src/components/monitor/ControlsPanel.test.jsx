@@ -79,6 +79,7 @@ describe('ControlsPanel Component', () => {
     const handleFrameRateChange = vi.fn();
     const handleMaxImageSizeChange = vi.fn();
     const setSelectedChannel = vi.fn();
+    const handleAudioCaptureToggle = vi.fn();
 
     render(
       <ControlsPanel 
@@ -86,6 +87,7 @@ describe('ControlsPanel Component', () => {
         setSelectedChannel={setSelectedChannel}
         handleFrameRateChange={handleFrameRateChange}
         handleMaxImageSizeChange={handleMaxImageSizeChange}
+        handleAudioCaptureToggle={handleAudioCaptureToggle}
       />
     );
 
@@ -96,12 +98,16 @@ describe('ControlsPanel Component', () => {
     fireEvent.change(selects[0], { target: { value: 'screen' } });
     expect(setSelectedChannel).toHaveBeenCalledWith('screen');
 
-    // Frame rate select (selects[1])
-    fireEvent.change(selects[1], { target: { value: '5' } });
+    // Audio stream select (selects[1])
+    fireEvent.change(selects[1], { target: { value: 'on' } });
+    expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
+
+    // Frame rate select (selects[2])
+    fireEvent.change(selects[2], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
-    // Max image size select (selects[2])
-    fireEvent.change(selects[2], { target: { value: String(500 * 1024) } });
+    // Max image size select (selects[3])
+    fireEvent.change(selects[3], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 
@@ -148,5 +154,62 @@ describe('ControlsPanel Component', () => {
       gazeSensitivity: 'standard',
       faceDebounceSeconds: 3,
     }));
+  });
+
+  it('handles pause/resume toggle, prompt modal open, and attendance download', () => {
+    const setIsPaused = vi.fn();
+    const setShowPromptModal = vi.fn();
+    const handleDownloadAttendance = vi.fn();
+    const setShowNotSharingModal = vi.fn();
+
+    const { rerender } = render(
+      <ControlsPanel
+        {...defaultProps}
+        isCapturing={true}
+        isPaused={false}
+        setIsPaused={setIsPaused}
+        setShowPromptModal={setShowPromptModal}
+        handleDownloadAttendance={handleDownloadAttendance}
+        notSharingStudents={[{ uid: 's1', email: 's1@test.local' }]}
+        setShowNotSharingModal={setShowNotSharingModal}
+      />
+    );
+
+    // Pause button (when capturing is active)
+    const pauseBtn = screen.getByRole('button', { name: /Pause/i });
+    fireEvent.click(pauseBtn);
+    expect(setIsPaused).toHaveBeenCalledWith(true);
+
+    // Rerender paused
+    rerender(
+      <ControlsPanel
+        {...defaultProps}
+        isCapturing={true}
+        isPaused={true}
+        setIsPaused={setIsPaused}
+        setShowPromptModal={setShowPromptModal}
+        handleDownloadAttendance={handleDownloadAttendance}
+        notSharingStudents={[{ uid: 's1', email: 's1@test.local' }]}
+        setShowNotSharingModal={setShowNotSharingModal}
+      />
+    );
+    const resumeBtn = screen.getByRole('button', { name: /Resume/i });
+    fireEvent.click(resumeBtn);
+    expect(setIsPaused).toHaveBeenCalledWith(false);
+
+    // AI Prompt Modal button
+    const promptBtn = screen.getByRole('button', { name: /Select Analysis Prompt/i });
+    fireEvent.click(promptBtn);
+    expect(setShowPromptModal).toHaveBeenCalledWith(true);
+
+    // Attendance download button
+    const attendanceBtn = screen.getByRole('button', { name: /Download CSV/i });
+    fireEvent.click(attendanceBtn);
+    expect(handleDownloadAttendance).toHaveBeenCalled();
+
+    // Not sharing modal button
+    const notSharingBtn = screen.getByRole('button', { name: /Not Sharing/i });
+    fireEvent.click(notSharingBtn);
+    expect(setShowNotSharingModal).toHaveBeenCalledWith(true);
   });
 });

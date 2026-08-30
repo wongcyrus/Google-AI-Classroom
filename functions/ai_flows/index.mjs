@@ -1,7 +1,7 @@
 import './firebase.js';
 
 import { onCallGenkit } from "firebase-functions/v2/https";
-import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow } from "./analysisFlows.js";
+import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyzeAudioFlow } from "./analysisFlows.js";
 import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
@@ -34,6 +34,13 @@ export const analyzeFaceFallback = onCallGenkit({
         return !!auth?.uid;
     },
 }, analyzeFaceFallbackFlow);
+
+export const analyzeAudio = onCallGenkit({
+    ...callOptions,
+    authPolicy: (auth) => {
+        return auth?.token?.role === 'teacher';
+    },
+}, analyzeAudioFlow);
 
 export { onAiJobCreated };
 export * from './processVideoAnalysisJob.js';

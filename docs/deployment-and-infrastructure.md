@@ -8,38 +8,34 @@ This document provides a comprehensive overview of the automated infrastructure 
 
 The project employs a 3-stage automated provisioning, deployment, and data seeding architecture:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  STAGE 1: 100% Terraform (Cloud Infrastructure as Code)               │
-├────────────────────────────────────────────────────────────────────────┤
-│  • Google Cloud Project Creation & Billing Account Linkage             │
-│  • 16 Google Cloud APIs Activation                                     │
-│  • Cloud Firestore Native Database (asia-east2)                        │
-│  • Cloud Storage Bucket & Custom CORS Configuration                    │
-│  • IAM Roles & Service Agent Token Permissions                         │
-│  • Identity Platform Configuration (Email/Password Auth)               │
-│  • Auto-generation of web-app/.env and functions/config.js             │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│  STAGE 2: Firebase CLI / deploy.sh (Application & Functions Runtime)   │
-├────────────────────────────────────────────────────────────────────────┤
-│  • 14 Cloud Functions Gen 2 across 7 isolated codebases                │
-│  • Genkit AI Flow integration with @genkit-ai/google-genai             │
-│  • Firestore Security Rules & Composite Indexes (18 indexes)           │
-│  • Cloud Storage Security Rules                                        │
-│  • Vite + React Frontend Build & Firebase Hosting Release              │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│  STAGE 3: Automated Demo Seeding (admin/scripts/seed_initial_data.mjs) │
-├────────────────────────────────────────────────────────────────────────┤
-│  • Auto-provisioning of Demo Teacher & Student Accounts                │
-│  • 24/7 Active Class (IT114115-Demo) Creation and User Enrolment       │
-│  • Automatic Seeding of 13 AI System Prompts                           │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph S1 [STAGE 1: 100% Terraform Infrastructure as Code]
+        direction TB
+        TF1[Project Creation & Billing Link] --> TF2[17 Google Cloud APIs Activation]
+        TF2 --> TF3[Cloud Firestore Native DB in asia-east2]
+        TF3 --> TF4[Cloud Storage Bucket & Custom CORS]
+        TF4 --> TF5[IAM Roles & Service Agent Token Permissions]
+        TF5 --> TF6[Identity Platform Email/Password Auth]
+        TF6 --> TF7[Auto-generate web-app/.env and functions/config.js]
+    end
+
+    subgraph S2 [STAGE 2: Firebase CLI / deploy.sh]
+        direction TB
+        FB1[Build React Vite Frontend Bundle] --> FB2[Deploy Firestore Rules & 18 Indexes]
+        FB2 --> FB3[Deploy Cloud Storage Security Rules]
+        FB3 --> FB4[Deploy 14 Cloud Functions Gen 2 across 6 Codebases]
+        FB4 --> FB5[Release Static Assets to Firebase Hosting]
+    end
+
+    subgraph S3 [STAGE 3: Automated Demo Seeding]
+        direction TB
+        SD1[Auto-provision Demo Teacher & Student Accounts] --> SD2[Create 24/7 Active Class IT114115-Demo]
+        SD2 --> SD3[Enroll Users & Link Firestore Profiles]
+        SD3 --> SD4[Seed 13 Gemini AI System Prompts & Rate Matrix]
+    end
+
+    S1 --> S2 --> S3
 ```
 
 ---

@@ -42,6 +42,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [enableCloudFallback, setEnableCloudFallback] = useState(false);
   const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
   
+  // Audio Monitoring settings
+  const [enableAudioCapture, setEnableAudioCapture] = useState(false);
+  const [audioCaptureMode, setAudioCaptureMode] = useState('mandatory');
+  const [audioSegmentDuration, setAudioSegmentDuration] = useState(30);
+  const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
+  const [enableSegmentTranscription, setEnableSegmentTranscription] = useState(false);
+  const [enableCombinedLongAudio, setEnableCombinedLongAudio] = useState(false);
+  const [audioMovingWindowDuration, setAudioMovingWindowDuration] = useState(30);
+  const [audioMovingWindowStride, setAudioMovingWindowStride] = useState(15);
+  
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
   
@@ -142,6 +152,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setCustomPitchUpAngle(classData.customPitchUpAngle !== undefined ? classData.customPitchUpAngle : 26);
           setCloudFallbackRate(classData.cloudFallbackRate || 3);
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
+          setEnableAudioCapture(classData.enableAudioCapture || false);
+          setAudioCaptureMode(classData.audioCaptureMode || 'mandatory');
+          setAudioSegmentDuration(classData.audioSegmentDuration || 30);
+          setAudioSilenceSuppression(classData.audioSilenceSuppression !== false);
+          setEnableSegmentTranscription(classData.enableSegmentTranscription || false);
+          setEnableCombinedLongAudio(classData.enableCombinedLongAudio || false);
+          setAudioMovingWindowDuration(classData.audioMovingWindowDuration || 30);
+          setAudioMovingWindowStride(classData.audioMovingWindowStride || 15);
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);
@@ -168,6 +186,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setRequireFullScreenOnly(true);
         setFaceDebounceSeconds(3);
         setEnableCloudFallback(false);
+        setEnableAudioCapture(false);
+        setAudioCaptureMode('mandatory');
+        setAudioSegmentDuration(30);
+        setAudioSilenceSuppression(true);
         setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
       }
@@ -323,6 +345,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
+          enableAudioCapture: enableAudioCapture || false,
+          audioCaptureMode: audioCaptureMode || 'mandatory',
+          audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
+          audioSilenceSuppression: audioSilenceSuppression !== false,
+          enableSegmentTranscription: enableSegmentTranscription || false,
+          enableCombinedLongAudio: enableCombinedLongAudio || false,
+          audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
+          audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
         };
         await updateDoc(classRef, updateData);
         setSuccessMessage('Class settings successfully updated!');
@@ -360,7 +390,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
-          aiQuota: 10,
+          enableAudioCapture: enableAudioCapture || false,
+          audioCaptureMode: audioCaptureMode || 'mandatory',
+          audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
+          audioSilenceSuppression: audioSilenceSuppression !== false,
+          enableSegmentTranscription: enableSegmentTranscription || false,
+          enableCombinedLongAudio: enableCombinedLongAudio || false,
+          audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
+          audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
+          aiQuota: 50,
           aiUsedQuota: 0,
         });
 
@@ -871,9 +909,120 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
       </div>
 
-      {/* Section 6: Security & Access Restrictions */}
+      {/* Section 6: Audio & Microphone Monitoring */}
       <div className="settings-section-card">
-        <h3>🔒 6. Security & IP Restrictions</h3>
+        <h3>🎙️ 6. Audio & Microphone Monitoring</h3>
+        <div className="form-group">
+          <label className="checkbox-toggle-label">
+            <input
+              type="checkbox"
+              checked={enableAudioCapture}
+              onChange={(e) => setEnableAudioCapture(e.target.checked)}
+            />
+            <span>Enable Audio Segment Recording for this Class</span>
+          </label>
+          <p className="input-hint">Continuously captures and saves microphone audio chunks from connected students for acoustic invigilation.</p>
+        </div>
+
+        {enableAudioCapture && (
+          <>
+            <div className="form-group">
+              <label>Microphone Requirement</label>
+              <select value={audioCaptureMode} onChange={(e) => setAudioCaptureMode(e.target.value)}>
+                <option value="mandatory">🔒 Mandatory (Students must verify and activate microphone to participate)</option>
+                <option value="optional">🔓 Optional (Students can choose to enable or keep microphone muted)</option>
+              </select>
+              <p className="input-hint">Mandatory mode prompts student with pre-flight microphone & Speech-to-Text verification before taking the test.</p>
+            </div>
+
+            <div className="form-group">
+              <label className="checkbox-toggle-label">
+                <input
+                  type="checkbox"
+                  checked={audioSilenceSuppression}
+                  onChange={(e) => setAudioSilenceSuppression(e.target.checked)}
+                />
+                <span>Silence Suppression (Skip uploading silent segments)</span>
+              </label>
+              <p className="input-hint">Automatically discards quiet chunks where no talking is detected, saving up to 80% of storage quota and network bandwidth.</p>
+            </div>
+
+            {/* Mode 1: Moving Window Real-Time Transcription */}
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b' }}>
+                ⚡ Mode 1: Moving Window Real-Time Transcription (gemini-3.5-transcribe)
+              </h4>
+              <div className="form-group">
+                <label className="checkbox-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={enableSegmentTranscription}
+                    onChange={(e) => setEnableSegmentTranscription(e.target.checked)}
+                  />
+                  <span>Enable Moving Window Real-Time Transcription & Multi-Speaker Alerts</span>
+                </label>
+                <p className="input-hint">
+                  Transcribes audio in rolling moving windows (50% overlap), stitching sentences seamlessly with Gemini and flagging unauthorized collaboration in real time.
+                </p>
+              </div>
+
+              {enableSegmentTranscription && (
+                <div className="form-row-2col" style={{ marginTop: '10px' }}>
+                  <div className="form-group">
+                    <label>Window Duration</label>
+                    <select
+                      value={audioMovingWindowDuration}
+                      onChange={(e) => setAudioMovingWindowDuration(parseInt(e.target.value, 10))}
+                    >
+                      <option value={20}>⏱️ 20 Seconds</option>
+                      <option value={30}>⏱️ 30 Seconds (Recommended Standard)</option>
+                      <option value={45}>⏱️ 45 Seconds (Wider Context)</option>
+                    </select>
+                    <p className="input-hint">Audio chunk length analyzed by Gemini.</p>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Sliding Stride (Overlap)</label>
+                    <select
+                      value={audioMovingWindowStride}
+                      onChange={(e) => setAudioMovingWindowStride(parseInt(e.target.value, 10))}
+                    >
+                      <option value={10}>⚡ 10s Stride (Rapid rolling updates)</option>
+                      <option value={15}>⚡ 15s Stride (50% Overlap — Balanced)</option>
+                      <option value={20}>⚡ 20s Stride</option>
+                    </select>
+                    <p className="input-hint">Interval between rolling transcript updates.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mode 2: Full Session Combined Long Audio Diarization */}
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b' }}>
+                📜 Mode 2: Full Session Combined Long Audio Audit (gemini-3.5-transcribe)
+              </h4>
+              <div className="form-group">
+                <label className="checkbox-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={enableCombinedLongAudio}
+                    onChange={(e) => setEnableCombinedLongAudio(e.target.checked)}
+                  />
+                  <span>Enable Full-Session Combined Audio Diarization & Chat Audit</span>
+                </label>
+                <p className="input-hint">
+                  Stitches all audio segments at the end of class into a single master track for deep multi-speaker attribution and a holistic exam integrity audit report.
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Section 7: Security & Access Restrictions */}
+      <div className="settings-section-card">
+        <h3>🔒 7. Security & IP Restrictions</h3>
         <div className="form-group">
           <label>Allowed Classroom IP Addresses</label>
           <textarea

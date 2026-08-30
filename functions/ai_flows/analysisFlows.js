@@ -2,8 +2,8 @@ import './firebase.js';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
-import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary } from './aiTools.js';
+import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL, AI_TRANSCRIBE_MODEL } from './config.js';
+import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary, recordAudioIrregularity, recordAudioAudit } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
@@ -16,6 +16,10 @@ function getToolsForImageAnalysis() {
 
 function getToolsForVideoAnalysis() {
   return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
+}
+
+function getToolsForAudioAnalysis() {
+  return [recordAudioIrregularity, recordAudioAudit, sendMessageToStudent, sendMessageToTeacher];
 }
 
 export const analyzeImageFlow = ai.defineFlow(
@@ -443,6 +447,112 @@ Respond ONLY with valid JSON in this exact structure:
         errorDetails: error.message,
       });
       return { faceStatus: 'error', error: error.message };
+    }
+  }
+);
+
+export const analyzeAudioFlow = ai.defineFlow(
+  {
+    name: 'analyzeAudioFlow',
+    inputSchema: z.object({
+      audioUrl: z.string().describe('URL or storage path of the audio recording'),
+      classId: z.string(),
+      studentUid: z.string(),
+      studentEmail: z.string().optional(),
+      prompt: z.string().optional(),
+      model: z.string().optional(),
+      diarization: z.boolean().optional().default(true),
+    }),
+    outputSchema: z.object({
+      transcript: z.string().optional(),
+      cost: z.number().optional(),
+      error: z.string().optional(),
+    }),
+  },
+  async ({ audioUrl, classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
+    const activeModel = model || AI_TRANSCRIBE_MODEL;
+    const defaultPromptText = `You are an AI Classroom invigilator analyzing student audio recording.
+Audio Source: ${audioUrl}. Class ID: ${classId}. Student UID: ${studentUid}. Student Email: ${studentEmail}.
+Instructions:
+1. Transcribe the audio recording with speaker diarization (e.g., Speaker 1, Speaker 2).
+2. Detect if there are multiple distinct speakers or unauthorized whispering/collaboration.
+3. If suspicious multi-speaker discussion, unauthorized talking, or exam answer recitation is detected, call the 'recordAudioIrregularity' tool with title, message, risk level ('low', 'medium', 'high'), and timestamp offsets.
+4. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').
+${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
+
+    const fullPrompt = [
+      { text: defaultPromptText },
+      { media: { url: audioUrl } },
+    ];
+    const media = [{ media: { url: audioUrl } }];
+
+    const estimatedCost = estimateCost(defaultPromptText, media, activeModel);
+    const hasQuota = await checkQuota(classId, estimatedCost);
+
+    if (!hasQuota) {
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeAudio',
+        status: 'blocked-by-quota',
+        promptText: defaultPromptText,
+        mediaPaths: [audioUrl],
+        cost: 0,
+        modelUsed: activeModel,
+      });
+      return { error: 'Insufficient quota.' };
+    }
+
+    try {
+      const response = await ai.generate({
+        model: vertexAI.model(activeModel),
+        temperature: AI_TEMPERATURE,
+        topP: AI_TOP_P,
+        prompt: fullPrompt,
+        tools: getToolsForAudioAnalysis(),
+        maxToolRoundtrips: 10,
+      });
+
+      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
+      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeAudio',
+        status: 'completed',
+        promptText: defaultPromptText,
+        mediaPaths: [audioUrl],
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+        cost,
+        modelUsed: activeModel,
+        result: response.text,
+      });
+
+      return {
+        transcript: response.text,
+        cost,
+      };
+    } catch (error) {
+      console.error('Error in analyzeAudioFlow:', error);
+      await logJob({
+        classId,
+        studentUid,
+        studentEmail,
+        jobType: 'analyzeAudio',
+        status: 'failed',
+        promptText: defaultPromptText,
+        mediaPaths: [audioUrl],
+        cost: 0,
+        modelUsed: activeModel,
+        errorDetails: error.message,
+      });
+      return { error: error.message };
     }
   }
 );

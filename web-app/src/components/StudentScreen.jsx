@@ -20,6 +20,14 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         <div className="header-status-group">
           {screenshotData?.screen?.url && <span className="stream-pill" title="Screen Feed Active">🖥️</span>}
           {screenshotData?.webcam?.url && <span className="stream-pill" title="Webcam Feed Active">📷</span>}
+          {student?.isAudioSharing && (
+            <span 
+              className={`stream-pill ${student?.audioStatus === 'speaking' ? 'speaking-active' : ''} ${student?.isMultiSpeaker || (student?.speakerCount > 1) ? 'multi-voice-warn' : ''}`} 
+              title={`Audio Active (Level: ${student?.audioLevel || 0}%)${student?.isMultiSpeaker ? ' - ⚠️ Multiple Speakers Detected' : ''}`}
+            >
+              {student?.isMultiSpeaker || (student?.speakerCount > 1) ? '👥⚠️' : student?.audioStatus === 'speaking' ? '🔊' : '🎙️'}
+            </span>
+          )}
           {student?.faceStatus === 'normal' && <span className="ai-status-badge normal" title="Face Centered & Active">🟢</span>}
           {student?.faceStatus === 'looking_away' && <span className="ai-status-badge warn" title={`Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || ''}°)`}>🟡</span>}
           {student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}

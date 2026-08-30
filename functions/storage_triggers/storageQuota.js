@@ -22,6 +22,8 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     usageField = 'storageUsageVideos';
   } else if (filePath.startsWith('zips/')) {
     usageField = 'storageUsageZips';
+  } else if (filePath.startsWith('audio/')) {
+    usageField = 'storageUsageAudio';
   }
 
   if (!usageField) {
@@ -129,6 +131,8 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
     usageField = 'storageUsageVideos';
   } else if (filePath.startsWith('zips/')) {
     usageField = 'storageUsageZips';
+  } else if (filePath.startsWith('audio/')) {
+    usageField = 'storageUsageAudio';
   }
 
   if (!usageField) {

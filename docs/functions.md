@@ -1,8 +1,54 @@
 # Cloud Functions
 
-This document provides an overview of all the backend Cloud Functions used in the AI Invigilator application. The functions are organized by their functional area.
+This document provides an overview of all the backend Cloud Functions used in the AI Invigilator application. The functions are organized across 6 isolated Gen 2 runtime modules.
 
-## AI Flows
+## ⚡ Cloud Functions Architecture & Event Matrix
+
+```mermaid
+flowchart TD
+    subgraph Triggers [Event Ingestion & Triggers]
+        T_Auth[Identity Platform Auth Events]
+        T_Call[Direct HTTPS onCall Invocations]
+        T_Sched[Cloud Scheduler Cron Jobs]
+        T_Store[Cloud Storage Object Finalized / Deleted]
+        T_Doc[Firestore onDocumentCreated / Deleted]
+    end
+
+    subgraph AuthModule [auth_triggers]
+        T_Auth -->|beforeUserCreated| BUC[beforeusercreated: Role Provisioning & Auto-Link]
+        T_Auth -->|beforeUserSignedIn| BSI[checkipaddress: CIDR & Time-Gated Login]
+    end
+
+    subgraph AIModule [ai_flows - Genkit AI Engine]
+        T_Call -->|analyzeAudio| AA[Gemini 3.5 Transcribe Diarization]
+        T_Call -->|analyzeFaceFallback| AFF[Gemini 3.5 Flash-Lite Gaze Estimation]
+        T_Call -->|analyzeImage / analyzeAll| AI[Gemini 3.7 Flash Multimodal Analysis]
+        T_Doc -->|videoAnalysisJobs created| PJA[processVideoAnalysisJob Flow]
+    end
+
+    subgraph MediaModule [media_processing]
+        T_Doc -->|videoJobs created| CVM[createVideoMetadata: FFmpeg Screencast Encoding]
+        T_Doc -->|zipJobs created| CJ[createZipJob: Multi-Stream Archive]
+    end
+
+    subgraph StorageModule [storage_triggers]
+        T_Store -->|Object Finalized| SOF[onObjectFinalized: Tracks Byte Usage]
+        T_Doc -->|Document Deleted| ODD[onScreenshotDocDeleted / onVideoJobDocDeleted]
+        ODD -->|Purges Blob from GCS| SOD[onObjectDeleted: Auto-Decrements Quotas]
+        T_Doc -->|classes deleted| CAD[onClassDocDeleted: 4-Stage Cascading Purge]
+    end
+
+    subgraph SchedModule [scheduled_tasks]
+        T_Sched -->|5,25,35,55 * * * *| HAC[handleAutomaticCapture: Start/Stop Streams]
+        T_Sched -->|0 3 * * *| SGP[syncGeminiPricing: Google Cloud Billing Rates]
+    end
+
+    subgraph AttendModule [attendance]
+        T_Call -->|getAttendanceData| GAD[Lesson Heatmap & Minute Aggregator]
+    end
+```
+
+---
 
 This directory contains all the Cloud Functions related to AI-powered analysis, including image and video analysis, quota management, and performance metrics aggregation.
 
@@ -13,6 +59,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`analyzeImage`**: A callable function restricted to users with a 'teacher' role. It triggers the `analyzeImageFlow` Genkit flow to perform AI multimodal analysis on a single image.
 -   **`analyzeAllImages`**: A callable function for teachers that triggers the `analyzeAllImagesFlow` Genkit flow, which analyzes all images associated with a specific student within a given context.
 -   **`analyzeFaceFallback`**: A high-efficiency callable function triggering `analyzeFaceFallbackFlow` using `gemini-3.5-flash-lite` with structured JSON output and temperature 0.1. Used for cloud-assisted face and gaze invigilation when classes operate in `hybrid` or `cloud_only` modes, or when a student browser cannot execute client-side WebGL/MediaPipe.
+-   **`analyzeAudio`**: A callable function for teachers triggering `analyzeAudioFlow` powered by `gemini-3.5-transcribe`. Performs multi-speaker diarization, conversational exam cheating detection, whisper identification, and quota-protected execution.
 -   **`retryVideoAnalysisJob`**: A callable function allowing teachers to retry failed video analysis jobs idempotently.
 
 #### Firestore Triggers
@@ -141,6 +188,10 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
 -   **`handleAutomaticVideoCombination`**:
     -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour.
     -   **Description**: This function automates the process of creating video compilation jobs after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any of their scheduled time slots have recently concluded. If so, it creates a new `videoJobs` document for each student enrolled in that class session. This, in turn, triggers the `processVideoJob` function to begin compiling the screenshots into a video. It also creates a notification for the teachers of the class to inform them that the process has started.
+
+-   **`syncGeminiPricing`**:
+    -   **Trigger**: Scheduled to run once every 24 hours (`schedule: 'every 24 hours'`).
+    -   **Description**: Automatically synchronizes live model token prices from the Google Cloud Billing Catalog API (`services/C7E2-9256-1C43`) for all Gemini models (Flash, Pro, Transcribe), saving the latest rate matrix to `system_config/pricing` in Firestore for warm in-memory caching.
 
 ### Data Models
 

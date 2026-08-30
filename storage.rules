@@ -8,21 +8,35 @@ service firebase.storage {
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
                       request.resource.size < 2097152 && // 2 MB, configured in functions/config.js
-                      request.resource.contentType == 'image/jpeg';
+                      request.resource.contentType.matches('image/.*');
 
-      // Allow authenticated teachers to read any screenshot.
-      allow read: if request.auth != null && request.auth.token.role == 'teacher';
+      // Allow authenticated teachers to read any screenshot, or the student themselves.
+      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);
+
+      // Allow authenticated teachers to delete.
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+    }
+
+    match /audio/{classId}/{userId}/{fileName} {
+      // Allow authenticated students to upload audio segments to their own folder within a class.
+      allow write: if request.auth != null &&
+                      request.auth.uid == userId &&
+                      request.resource.size < 5242880 && // 5 MB
+                      request.resource.contentType.matches('audio/.*');
+
+      // Allow authenticated teachers to read any audio file, or the student themselves.
+      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);
 
       // Allow authenticated teachers to delete.
       allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
 
     match /irregularities/{classId}/{userId}/{fileName} {
-      // Allow authenticated students to upload incident evidence screenshots
+      // Allow authenticated students to upload incident evidence screenshots and audio snippets
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
                       request.resource.size < 5242880 && // 5 MB
-                      request.resource.contentType.matches('image/.*');
+                      (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
 
       // Teachers can read all, students can read their own
       allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);

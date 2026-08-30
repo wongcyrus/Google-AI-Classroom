@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:frontend && npm run test:functions && npm run test:smoke",
+    "test": "npm run test:frontend && npm run test:functions && npm run test:smoke && npm run test:security",
     "test:frontend": "npm --prefix web-app test",
-    "test:functions": "npm --prefix functions/ai_flows test && npm --prefix functions/media_processing test",
+    "test:functions": "npm --prefix functions/ai_flows test && npm --prefix functions/media_processing test && npm --prefix functions/auth_triggers test && npm --prefix functions/storage_triggers test && npm --prefix functions/scheduled_tasks test && npm --prefix functions/attendance test",
     "test:smoke": "node admin/scripts/smoke_test.mjs",
-    "test:coverage": "npm --prefix web-app run test:coverage && npm --prefix functions/ai_flows run test:coverage && npm --prefix functions/media_processing run test:coverage && npm run test:smoke",
+    "test:security": "node tests/security_rules.test.mjs",
+    "test:integration": "npm run test:smoke && npm run test:security",
+    "test:coverage": "npm --prefix web-app run test:coverage && npm --prefix functions/ai_flows run test:coverage && npm --prefix functions/media_processing run test:coverage && npm --prefix functions/auth_triggers run test:coverage && npm --prefix functions/storage_triggers run test:coverage && npm --prefix functions/scheduled_tasks run test:coverage && npm --prefix functions/attendance run test:coverage && npm run test:integration",
     "reset:env": "node admin/scripts/reset_environment.mjs"
   },
   "devDependencies": {

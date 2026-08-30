@@ -7,7 +7,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 
 const DualMediaPlayer = ({ data, onClose }) => {
   if (!data) return null;
-  const { screenUrl, webcamUrl, videoUrl, singleUrl, title, message, studentEmail, timestamp } = data;
+  const { screenUrl, webcamUrl, videoUrl, audioUrl, transcriptSnippet, singleUrl, title, message, studentEmail, timestamp } = data;
 
   return (
     <div className="media-player-modal" onClick={onClose}>
@@ -20,6 +20,23 @@ const DualMediaPlayer = ({ data, onClose }) => {
           <strong>{studentEmail}</strong> &bull; {timestamp}
           {message ? ` — ${message}` : ''}
         </p>
+
+        {transcriptSnippet && (
+          <div style={{ background: '#f1f5f9', padding: '10px 14px', borderRadius: '6px', marginBottom: '12px', borderLeft: '4px solid #ef4444', fontSize: '0.9rem', fontStyle: 'italic' }}>
+            <strong>💬 Transcript Evidence:</strong> "{transcriptSnippet}"
+          </div>
+        )}
+
+        {audioUrl && (
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+              🔊 Incident Audio Recording:
+            </label>
+            <audio controls src={audioUrl} style={{ width: '100%' }}>
+              Your browser does not support audio playback.
+            </audio>
+          </div>
+        )}
 
         {screenUrl && webcamUrl ? (
           <div className="dual-evidence-grid">
@@ -38,7 +55,9 @@ const DualMediaPlayer = ({ data, onClose }) => {
             Your browser does not support the video tag.
           </video>
         ) : (
-          <img src={screenUrl || webcamUrl || singleUrl} alt="Incident Evidence" style={{ maxWidth: '100%', maxHeight: '70vh' }} />
+          (screenUrl || webcamUrl || singleUrl) && (
+            <img src={screenUrl || webcamUrl || singleUrl} alt="Incident Evidence" style={{ maxWidth: '100%', maxHeight: '70vh' }} />
+          )
         )}
       </div>
     </div>
@@ -82,12 +101,14 @@ const IrregularitiesView = ({ startTime, endTime }) => {
           const screenUrl = await resolveUrl(item.screenUrl || (!item.webcamUrl ? item.imageUrl : null));
           const webcamUrl = await resolveUrl(item.webcamUrl);
           const videoUrl = await resolveUrl(item.videoUrl);
+          const audioUrl = await resolveUrl(item.audioPath || item.audioUrl);
 
           urls[item.id] = {
             screenUrl,
             webcamUrl,
             videoUrl,
-            singleUrl: screenUrl || webcamUrl || videoUrl,
+            audioUrl,
+            singleUrl: screenUrl || webcamUrl || videoUrl || audioUrl,
             hasDual: !!(screenUrl && webcamUrl)
           };
         }
@@ -109,6 +130,8 @@ const IrregularitiesView = ({ startTime, endTime }) => {
       screenUrl: media.screenUrl,
       webcamUrl: media.webcamUrl,
       videoUrl: media.videoUrl,
+      audioUrl: media.audioUrl,
+      transcriptSnippet: item.transcriptSnippet || item.transcript || '',
       singleUrl: media.singleUrl,
       title: item.title || item.type || 'Incident',
       message: item.message || item.details || '',
@@ -241,6 +264,11 @@ const IrregularitiesView = ({ startTime, endTime }) => {
                                     <path d="M8 5v14l11-7z" />
                                   </svg>
                                 </div>
+                              </div>
+                            ) : media.audioUrl && (!media.screenUrl && !media.webcamUrl) ? (
+                              <div className="media-thumbnail" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1px solid #fca5a5', padding: '6px' }} title="Click to listen to audio incident">
+                                <span style={{ fontSize: '1.2rem' }}>🎙️</span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', marginLeft: '4px' }}>Audio Clip</span>
                               </div>
                             ) : media.singleUrl ? (
                               <div className="media-thumbnail" title="Click to view evidence">

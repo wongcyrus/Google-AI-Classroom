@@ -6,43 +6,27 @@ This document provides a comprehensive technical reference for the real-time dat
 
 ## 🏛️ System Architecture Overview
 
-```
-                      ┌────────────────────────────────────────────────────────┐
-                      │              Class Management UI                       │
-                      │  Teacher configures:                                   │
-                      │   - Screenshot Retention: 7 to 365 Days                │
-                      │   - Video Retention:      14 to 730 Days               │
-                      └───────────────────────────┬────────────────────────────┘
-                                                  │
-                                                  ▼
-                        ┌──────────────────────────────────────────────────┐
-                        │             Asset Ingestion & Stamping           │
-                        │   Screenshots: expireAt = now + retentionDays    │
-                        │   VideoJobs:   expireAt = now + videoRetention   │
-                        │   ZipJobs:     expireAt = now + 7 Days (export)  │
-                        └─────────────────────────┬────────────────────────┘
-                                                  │
-                                                  ▼
-                                    ┌───────────────────────────────┐
-                                    │     Firestore TTL Engine      │
-                                    │  (Native Background Removal)  │
-                                    └───────────────┬───────────────┘
-                                                    │ (onDocumentDeleted Event)
-                                                    ▼
-                ┌───────────────────────────────────┼───────────────────────────────────┐
-                ▼                                   ▼                                   ▼
-    ┌───────────────────────┐           ┌───────────────────────┐           ┌───────────────────────┐
-    │onScreenshotDocDeleted │           │  onVideoJobDocDeleted │           │   onZipJobDocDeleted  │
-    │ Deletes .jpg from GCS │           │ Deletes .mp4 from GCS │           │ Deletes .zip from GCS │
-    └───────────┬───────────┘           └───────────┬───────────┘           └───────────┬───────────┘
-                │                                   │                                   │
-                └───────────────────────────────────┼───────────────────────────────────┘
-                                                    │ (Cloud Storage Deleted Event)
-                                                    ▼
-                                        ┌───────────────────────┐
-                                        │    onObjectDeleted    │
-                                        │ Decrements class quota│
-                                        └───────────────────────┘
+```mermaid
+flowchart TD
+    UI[Class Management UI: Teacher Configures Retention Days] -->|1. Stamping at Ingestion| Stamping[Asset Ingestion & Expiration Stamping]
+
+    subgraph Ingestion [Ingestion expireAt Stamping]
+        Stamping --> S1[Screenshots: expireAt = now + retentionDays]
+        Stamping --> S2[VideoJobs: expireAt = now + videoRetentionDays]
+        Stamping --> S3[ZipJobs: expireAt = now + 7 Days]
+        Stamping --> S4[Audio Chunks: expireAt = now + retentionDays]
+    end
+
+    Ingestion -->|2. Background Firestore Expiry| TTL[Firestore Native TTL Engine]
+    TTL -->|3. onDocumentDeleted Events| Triggers[Storage Event Triggers]
+
+    subgraph Triggers [Event-Driven Cloud Storage Cleanup]
+        Triggers --> T1[onScreenshotDocDeleted: Deletes .jpg from GCS]
+        Triggers --> T2[onVideoJobDocDeleted: Deletes .mp4 from GCS]
+        Triggers --> T3[onZipJobDocDeleted: Deletes .zip from GCS]
+    end
+
+    Triggers -->|4. Cloud Storage Object Deleted Event| Quota[onObjectDeleted: Auto-Decrements Class Storage Quota]
 ```
 
 ---

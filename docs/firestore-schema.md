@@ -10,7 +10,7 @@ erDiagram
         string uid PK
         string email
         string name
-        string role
+        string role "teacher | student"
     }
 
     classes {
@@ -19,45 +19,53 @@ erDiagram
         map teachers "uid:email map"
         array studentEmails "enrolled student emails"
         array teacherEmails "enrolled teacher emails"
-        number storageQuota
-        object schedule
-        array ipRestrictions
+        number storageQuota "Storage limit in bytes"
+        number retentionDays "Raw screenshots TTL days"
+        number videoRetentionDays "Compiled MP4 TTL days"
+        object schedule "TimeSlots and TimeZone"
+        array ipRestrictions "Allowed CIDR IP subnets"
         boolean automaticCapture
         boolean automaticCombine
-        number aiQuota
-        string aiModel
-        string aiMonitoringMode
-        boolean enableClientAi
-        string gazeSensitivity
-        number customYawAngle
-        number customPitchDownAngle
-        number customPitchUpAngle
-        number faceDebounceSeconds
-        boolean enableCloudFallback
-        number cloudFallbackRate
-        number frameRate
-        number imageQuality
-        number maxImageSize
-        string captureMode
+        number aiQuota "AI budget limit in USD"
+        string aiModel "Gemini model name"
+        string aiMonitoringMode "hybrid | cloud_only | client_only | disabled"
+        boolean enableClientAi "MediaPipe face tracking"
+        string gazeSensitivity "relaxed | standard | strict | custom"
+        number customYawAngle "Custom yaw degrees"
+        number customPitchDownAngle "Custom look-down pitch"
+        number customPitchUpAngle "Custom look-up pitch"
+        number faceDebounceSeconds "Deviation debounce seconds"
+        boolean enableCloudFallback "Cloud Gemini fallback"
+        boolean enableAudioCapture "Continuous microphone capture"
+        string audioCaptureMode "mandatory | optional"
+        boolean audioSilenceSuppression "Discard quiet chunks"
+        boolean enableSegmentTranscription "Moving window STT"
+        boolean enableCombinedLongAudio "Full-session diarization"
+        number audioMovingWindowDuration "Rolling window seconds"
+        number audioMovingWindowStride "Sliding stride seconds"
+        number frameRate "Capture interval in seconds"
+        number imageQuality "JPEG quality"
+        number maxImageSize "Max byte size limit"
+        string captureMode "screen | dual | webcam"
         boolean isCapturing
         timestamp captureStartedAt
     }
 
     teacherProfiles {
         string teacherUid PK
-        array classes
+        array classes "Enrolled class IDs"
     }
 
     studentProfiles {
         string studentUid PK
-        array classes
+        array classes "Enrolled class IDs"
     }
 
     teachers {
         string teacherUid PK
     }
 
-    teachers_messages "messages" {
+    teachers_messages "messages (teacher private)" {
         string messageId PK
         string classId FK
         string message
@@ -71,10 +79,44 @@ erDiagram
         string studentUid FK
         string email "denormalized"
         string channel "screen | webcam"
-        string imagePath
-        number size
+        string imagePath "GCS storage path"
+        number size "File size in bytes"
         timestamp timestamp
+        timestamp expireAt "Firestore TTL expiration"
         boolean deleted
+    }
+
+    audio {
+        string audioId PK
+        string classId FK
+        string studentUid FK
+        string email "denormalized"
+        string audioPath "GCS storage path"
+        number duration "Window duration in seconds"
+        number strideDuration "Sliding stride in seconds"
+        number strideIndex "Stride index sequence"
+        boolean isSlidingWindow
+        number windowStartSec "Session start offset"
+        number peakVolume "Peak RMS volume"
+        number averageVolume "Average RMS volume"
+        boolean isSilenceSuppressed
+        number size "File size in bytes"
+        timestamp timestamp
+        timestamp expireAt "Firestore TTL expiration"
+        boolean deleted
+    }
+
+    audio_audits {
+        string auditId PK
+        string classId FK
+        string studentUid FK
+        string studentEmail "denormalized"
+        string verdict "clean_exam | suspicious_collaboration"
+        number speakerCount "Total distinct voices"
+        string summary "Forensic audio summary"
+        string transcript "Full session transcript"
+        string audioUrl "Stitched master audio GCS path"
+        timestamp timestamp
     }
 
     videoJobs {
@@ -84,15 +126,16 @@ erDiagram
         string studentEmail "denormalized"
         timestamp startTime
         timestamp endTime
-        string status
+        string status "pending | processing | completed | failed"
         timestamp startedAt
         timestamp finishedAt
-        string videoPath
-        number duration
-        number size
+        string videoPath "GCS compiled video path"
+        number duration "Video duration in seconds"
+        number size "File size in bytes"
         string error
         string errorStack
         string ffmpegError
+        timestamp expireAt "Firestore TTL expiration"
     }
 
     zipJobs {
@@ -101,10 +144,11 @@ erDiagram
         string requesterUid FK
         timestamp startTime
         timestamp endTime
-        string status
-        string zipPath
+        string status "pending | processing | completed | failed"
+        string zipPath "GCS zip archive path"
         string error
-        array videos
+        array videos "Included video paths"
+        timestamp expireAt "7-day retention expiration"
     }
 
     videoAnalysisJobs {
@@ -112,7 +156,7 @@ erDiagram
         string classId FK
         string requesterUid FK
         string prompt
-        string status
+        string status "pending | processing | completed | failed"
         timestamp createdAt
         timestamp startTime
         timestamp endTime
@@ -121,14 +165,15 @@ erDiagram
         array videos
     }
 
-aiJobs {
+    aiJobs {
         string jobId PK
         string classId FK
         string studentUid FK
         string studentEmail "denormalized"
         string prompt
-        string status
-        string result
+        string status "pending | processing | completed | failed"
+        string result "AI structured analysis output"
+        number costUsd "Calculated token cost in USD"
         timestamp createdAt
     }
 
@@ -137,22 +182,26 @@ aiJobs {
         string classId FK
         string studentUid FK
         string email "denormalized"
+        string type "visual | audio"
         string title
         string message
-        string imageUrl
+        string imageUrl "Webcam/screen snapshot URL"
+        string audioPath "GCS audio snippet path"
+        number speakerCount "Distinct speakers identified"
+        string riskLevel "none | low | medium | high"
         timestamp timestamp
     }
 
     mails {
         string mailId PK
-        string to
+        string to "Recipient email"
         string subject
-        string html
+        string html "Email HTML body"
     }
 
     notifications {
         string notificationId PK
-        string userId
+        string userId "Target user UID"
         string message
         boolean read
         timestamp timestamp
@@ -163,19 +212,19 @@ aiJobs {
         string classId FK
         string studentUid FK
         string studentEmail "denormalized"
-        string progress
+        string progress "Progress report content"
         timestamp timestamp
     }
 
     prompts {
         string promptId PK
         string name
-        string category
+        string category "image | video | audio"
         string prompt
         array applyTo
-        string accessLevel
-        string owner
-        array sharedWith
+        string accessLevel "private | shared | public"
+        string owner "Creator UID"
+        array sharedWith "User UIDs or Emails"
         timestamp createdAt
     }
 
@@ -183,27 +232,35 @@ aiJobs {
         string jobId PK
         string classId FK
         string requesterUid FK
-        string status
+        string status "pending | processing | completed | failed"
         timestamp createdAt
     }
 
-    classes ||--o{ studentProfiles : "many-to-many"
-    classes ||--o{ teacherProfiles : "many-to-many"
-    classes }o--|| students : "one-to-many"
-    classes }o--|| teachers : "one-to-many"
-    screenshots }o--|| classes : "many-to-one"
-    screenshots }o--|| studentProfiles : "many-to-one"
-    videoJobs }o--|| classes : "many-to-one"
-    videoJobs }o--|| studentProfiles : "many-to-one"
-    videoAnalysisJobs ||--|| videoJobs : "one-to-one"
-    aiJobs }o--|| videoAnalysisJobs : "many-to-one"
-    irregularities }o--|| classes : "many-to-one"
-    irregularities }o--|| studentProfiles : "many-to-one"
-    progress }o--|| classes : "many-to-one"
-    progress }o--|| studentProfiles : "many-to-one"
-    aiJobs }o--|| prompts : "many-to-one"
-    propertyUploadJobs }o--|| classes : "many-to-one"
+    system_config_pricing "system_config/pricing" {
+        string id PK
+        map rates "Live Google Cloud Gemini SKU rates"
+        timestamp lastSyncedAt "Daily sync timestamp"
+    }
 
+    classes ||--o{ studentProfiles : "enrolled in"
+    classes ||--o{ teacherProfiles : "managed by"
+    classes }o--|| users : "created by teachers"
+    screenshots }o--|| classes : "captured in"
+    screenshots }o--|| studentProfiles : "captured for"
+    audio }o--|| classes : "recorded in"
+    audio }o--|| studentProfiles : "spoken by"
+    audio_audits }o--|| classes : "audited in"
+    audio_audits }o--|| studentProfiles : "audits student"
+    videoJobs }o--|| classes : "compiled for"
+    videoJobs }o--|| studentProfiles : "belongs to"
+    videoAnalysisJobs ||--|| videoJobs : "analyzes"
+    aiJobs }o--|| videoAnalysisJobs : "generates"
+    aiJobs }o--|| prompts : "uses prompt"
+    irregularities }o--|| classes : "flagged in"
+    irregularities }o--|| studentProfiles : "attributed to"
+    progress }o--|| classes : "tracks student in"
+    progress }o--|| studentProfiles : "evaluates"
+    propertyUploadJobs }o--|| classes : "imports properties for"
 ```
 
 ## Collections
@@ -221,6 +278,29 @@ Stores information about AI processing jobs.
     *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
     *   `result`: (string) The result of the AI job.
     *   `createdAt`: (timestamp) A timestamp of when the job was created.
+
+### `audio`
+
+Stores metadata for recorded audio segments and sliding moving windows.
+
+*   **Document ID**: Auto-generated (`audioId`).
+*   **Fields**:
+    *   `audioId`: (string) Document ID.
+    *   `classId`: (string) The ID of the class the audio segment belongs to.
+    *   `studentUid`: (string) The UID of the student who recorded the segment.
+    *   `studentEmail`: (string) The student's email, denormalized for easier querying.
+    *   `audioPath`: (string) The path to the audio file in Firebase Storage (`audio/{classId}/{studentUid}/{fileName}`).
+    *   `duration`: (number) The duration of the recorded window in seconds (e.g., `30`).
+    *   `strideDuration`: (number) The sliding stride interval in seconds (e.g., `15`).
+    *   `strideIndex`: (number) Sequential index of the stride window.
+    *   `isSlidingWindow`: (boolean) Indicates if the segment is an overlapping sliding window.
+    *   `windowStartSec`: (number) Absolute session second offset when this window began.
+    *   `peakVolume`: (number) Peak audio volume level (0-100%).
+    *   `averageVolume`: (number) Average audio volume level (0-100%).
+    *   `isSilenceSuppressed`: (boolean) Whether silence suppression is enabled.
+    *   `timestamp`: (timestamp) Server timestamp when the segment was uploaded.
+    *   `expireAt`: (timestamp) Expiration timestamp based on class `retentionDays`, purged by automated TTL/cleanup triggers.
+    *   `deleted`: (boolean) Soft delete flag.
 
 ### `classes`
 
@@ -253,7 +333,13 @@ Stores information about each class.
     *   `customPitchUpAngle`: (number) Custom look-up pitch threshold in degrees (e.g. `26`).
     *   `faceDebounceSeconds`: (number) Sustained seconds of deviation before registering looking away irregularity (e.g. `3`).
     *   `enableCloudFallback`: (boolean) Whether to trigger Cloud Gemini Vision inspections on client detection anomalies or failure.
-    *   `cloudFallbackRate`: (number) Fallback cadence factor for cloud inspection intervals.
+    *   `enableAudioCapture`: (boolean) Whether continuous microphone audio capture is enabled for the class.
+    *   `audioCaptureMode`: (string) Microphone requirement (`mandatory`, `optional`).
+    *   `audioSilenceSuppression`: (boolean) Automatically discards silent audio chunks (saves >80% bandwidth & quota).
+    *   `enableSegmentTranscription`: (boolean) Mode 1: Moving Window Real-Time AI Transcription (`gemini-3.5-transcribe`).
+    *   `enableCombinedLongAudio`: (boolean) Mode 2: Full Session Combined Long Audio Diarization & Chat Audit (`gemini-3.5-transcribe`).
+    *   `audioMovingWindowDuration`: (number) Rolling audio window duration in seconds (default `30`s).
+    *   `audioMovingWindowStride`: (number) Sliding stride overlap in seconds (default `15`s, 50% overlap).
     *   `frameRate`: (number) The frame rate for screen capture (in seconds per frame).
     *   `imageQuality`: (number) The image quality for screen capture.
     *   `maxImageSize`: (number) The maximum image size for screen capture in bytes.
@@ -304,6 +390,12 @@ Stores information about each class.
             *   `gazeDirection`: (string) Primary gaze orientation (`forward`, `left`, `right`, `down`, `up`).
             *   `metricDistance`: (number) Estimated metric distance in cm via depth-from-iris calculation.
             *   `irisGazeAway`: (boolean) Boolean indicating pupil deviation away from screen center.
+            *   `isAudioSharing`: (boolean) Whether microphone stream is active and transmitting.
+            *   `audioStatus`: (string) Acoustic activity state (`speaking`, `quiet`, `muted`).
+            *   `audioLevel`: (number) Current RMS volume percentage (0-100%).
+            *   `isMultiSpeaker`: (boolean) Flag when multiple simultaneous speakers are detected by Gemini.
+            *   `speakerCount`: (number) Number of distinct speakers identified in recent window.
+            *   `audioRiskLevel`: (string) Audio integrity classification severity (`none`, `low`, `medium`, `high`).
             *   `timestamp`: (timestamp) A timestamp of the last heartbeat / screenshot update.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.
@@ -319,16 +411,23 @@ Stores information about each class.
 
 ### `irregularities`
 
-Stores information about any irregularities detected.
+Stores information about any irregularities detected across visual and acoustic monitoring streams.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `classId`: (string) The ID of the class where the irregularity occurred.
     *   `studentUid`: (string) The UID of the student involved.
     *   `email`: (string) The student's email, denormalized for display.
-    *   `title`: (string) A title for the irregularity.
-    *   `message`: (string) A description of the irregularity.
-    *   `imageUrl`: (string) The URL of the image associated with the irregularity.
+    *   `title`: (string) A title for the irregularity (e.g. `Unauthorized Collaboration`, `Looking Away`, `Phone In Hand`).
+    *   `message`: (string) A description or explanation of the irregularity.
+    *   `type`: (string) Incident stream type (`image`, `video`, `audio`, `looking_away`, `no_face`, `multiple_faces`).
+    *   `imageUrl`: (string) Cloud Storage path or URL of the image associated with the irregularity.
+    *   `audioPath`: (string) Cloud Storage path of the audio snippet associated with the incident.
+    *   `transcriptSnippet`: (string) Spoken dialogue quote with speaker attribution labels.
+    *   `speakerCount`: (number) Number of distinct speakers detected.
+    *   `riskLevel`: (string) Risk classification severity (`none`, `low`, `medium`, `high`).
+    *   `status`: (string) Incident status (`active`, `resolved`).
+    *   `durationSeconds`: (number) Sustained seconds of the irregularity before resolution.
     *   `timestamp`: (timestamp) A timestamp of when the irregularity occurred.
 
 ### `mails`

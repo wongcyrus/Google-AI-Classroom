@@ -80,10 +80,37 @@ export const onScreenshotDocDeleted = onDocumentDeleted({
 });
 
 /**
+ * Triggered whenever an audio document is deleted in Firestore.
+ * Automatically deletes the physical audio blob (.webm) from Cloud Storage.
+ */
+export const onAudioDocDeleted = onDocumentDeleted({
+  document: 'audio/{audioId}',
+  region: FUNCTION_REGION,
+}, async (event) => {
+  const docData = event.data?.data();
+  if (!docData) return;
+
+  const audioPath = docData.audioPath || docData.storagePath;
+  if (!audioPath) {
+    logger.info(`Audio doc ${event.params.audioId} deleted but had no audioPath.`);
+    return;
+  }
+
+  try {
+    logger.info(`Deleting physical Storage audio object: ${audioPath}`);
+    const bucket = storage.bucket();
+    await bucket.file(audioPath).delete({ ignoreNotFound: true });
+    logger.info(`Successfully deleted Storage audio object: ${audioPath}`);
+  } catch (error) {
+    logger.error(`Error deleting storage audio file ${audioPath}:`, error);
+  }
+});
+
+/**
  * Triggered whenever an entire class document is deleted in Firestore.
  * Performs a comprehensive cascade delete:
- * 1. Purges all physical Cloud Storage files under screenshots/, videos/, and zips/.
- * 2. Purges all Firestore documents matching classId (screenshots, videoJobs, zipJobs, irregularities, progress, etc.).
+ * 1. Purges all physical Cloud Storage files under screenshots/, videos/, zips/, and audio/.
+ * 2. Purges all Firestore documents matching classId (screenshots, audio, videoJobs, zipJobs, irregularities, progress, etc.).
  * 3. Deletes subcollections (metadata/storage).
  * 4. Unlinks the class from teacherProfiles and studentProfiles.
  */
@@ -101,7 +128,8 @@ export const onClassDocDeleted = onDocumentDeleted({
   const prefixes = [
     `screenshots/${classId}/`,
     `videos/${classId}/`,
-    `zips/${classId}/`
+    `zips/${classId}/`,
+    `audio/${classId}/`
   ];
 
   for (const prefix of prefixes) {
@@ -116,6 +144,7 @@ export const onClassDocDeleted = onDocumentDeleted({
   // 2. Purge related Firestore collections in batches
   const collectionsToClean = [
     'screenshots',
+    'audio',
     'videoJobs',
     'zipJobs',
     'videoAnalysisJobs',

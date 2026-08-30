@@ -6,36 +6,28 @@ This document details the complete end-to-end architecture, technical optimizati
 
 ## 🏛️ Pipeline Architecture
 
-```
-┌────────────────────────────────────────────────────────┐
-│               Teacher Monitoring View                  │
-│       Controls: frameRate (10s), maxImageSize (250KB)  │
-└───────────────────────────┬────────────────────────────┘
-                            │ (Real-time Firestore Sync)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│               Student Browser Capture                  │
-│  1. Resolution Cap: Max 1920px (1080p width)           │
-│  2. Format & Quality: JPEG Quality 0.85                │
-│  3. Dynamic Scaling: Geometric downscale if > maxSize  │
-└───────────────────────────┬────────────────────────────┘
-                            │ (Uploads .jpg to Cloud Storage)
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             Video Job Trigger (videoJobs/{id})         │
-│             Cloud Function: processVideoJob            │
-│  1. Memory-bounded batching (BATCH_SIZE = 15)          │
-│  2. Sharp SVG timestamp bar & dimension even-alignment │
-│  3. High-efficiency FFmpeg H.264 compression           │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│          Output Lesson Video (videos/{classId}/*.mp4)   │
-│  - Code & Text: 100% Crisp                             │
-│  - File Size: ~5MB to 8MB per hour                     │
-│  - Encoding Time: ~12 to 15 seconds                    │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Teacher[Teacher Monitoring Controls: frameRate, maxImageSize, captureMode] -->|Firestore Sync| Student[Student Browser Capture Engine]
+
+    subgraph Client [Student Browser Pre-Standardization]
+        Student --> C1[1. Resolution Cap: Max 1920px 1080p width]
+        Student --> C2[2. Format & Quality: JPEG 0.85]
+        Student --> C3[3. Geometric Downscale if blob > maxImageSize]
+        C1 & C2 & C3 --> Upload[Uploads .jpg to Cloud Storage]
+    end
+
+    Upload --> Job[Video Job Trigger: videoJobs/jobId]
+
+    subgraph Backend [media_processing Cloud Function]
+        Job --> F1[1. Memory-bounded batching BATCH_SIZE=15]
+        Job --> F2[2. Dynamic SVG Timestamp Banner Overlay]
+        Job --> F3[3. Even-dimension width/height alignment: pad or scale2ref]
+        Job --> F4[4. FFmpeg H.264 High-Efficiency Encode at 1 FPS]
+    end
+
+    Backend --> Out[Output MP4: gs://bucket/videos/classId/jobId.mp4]
+    Out --> UI[VideoLibrary.jsx & PlaybackView.jsx Player]
 ```
 
 ---

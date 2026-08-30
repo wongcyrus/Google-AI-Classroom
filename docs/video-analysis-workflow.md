@@ -53,7 +53,42 @@ sequenceDiagram
 
 ## 1. Initial Job Creation (`processVideoAnalysisJob`)
 
-When a teacher requests a new analysis, a document is created in the `videoAnalysisJobs` collection. This triggers the `processVideoAnalysisJob` Cloud Function, which orchestrates the entire process.
+When a teacher requests a new analysis, a document is created in the `videoAnalysisJobs` collection. This triggers the `processVideoAnalysisJob` Cloud Function, which orchestrates the entire process with 4 layers of safety guardrails:
+
+```mermaid
+flowchart TD
+    Req[Teacher Requests Video Analysis] --> Doc[Firestore: videoAnalysisJobs/jobId Created]
+    Doc --> Trig[processVideoAnalysisJob Cloud Function]
+
+    subgraph S1 [Safeguard 1: De-duplication]
+        Trig --> Dedupe[Extract unique videoPath Map]
+    end
+
+    subgraph S2 [Safeguard 2: Job Size Limiting]
+        Dedupe --> CapCheck{Unique Videos > 100?}
+        CapCheck -->|Yes| Trunc[Slice to First 100 Videos + Stamp Job Notes]
+        CapCheck -->|No| BatchGroup[Group into Batches of 5]
+        Trunc --> BatchGroup
+    end
+
+    subgraph S3 [Safeguard 3: Batch Quota Pre-Flight]
+        BatchGroup --> EstCost[Compute Estimated Gemini Cost for Batch]
+        EstCost --> QuotaCheck{Class Remaining AI Quota >= Cost?}
+        QuotaCheck -->|No| SkipBatch[Mark Batch as blocked-by-quota & Continue]
+        QuotaCheck -->|Yes| S4Flow[Dispatch to AnalyzeSingleVideoFlow]
+    end
+
+    subgraph S4 [Safeguard 4: SHA-256 Idempotency Check]
+        S4Flow --> HashCalc[Generate SHA-256 of Prompt & Target GCS Video]
+        HashCalc --> DBQuery{Existing aiJobs with same Hash & Status==completed?}
+        DBQuery -->|Found Result| Reuse[Reuse Existing aiJobId - Zero Extra Cost]
+        DBQuery -->|Not Found| CallAI[Invoke Gemini Multimodal Vision API]
+        CallAI --> WriteResult[Create aiJobs Record & Deduct AI Quota]
+    end
+
+    Reuse --> UpdateMaster[Update videoAnalysisJobs Status & aiJobIds]
+    WriteResult --> UpdateMaster
+```
 
 ### Safeguard 1: De-duplication
 

@@ -1,13 +1,30 @@
-// Pricing lookup table for Gemini models in USD per 1 million tokens (Input / Output)
+// Default baseline pricing lookup table for Gemini models in USD per 1 million tokens (Input / Output)
 export const MODEL_PRICING = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-3.7-flash': { input: 0.75, output: 3.75 },
   'gemini-3.7-pro': { input: 3.00, output: 15.00 },
+  'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
+  'gemini-3.5-transcribe-live': { input: 0.60, output: 3.00 },
 };
 
 export const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 
+// In-memory warm cache to avoid network round-trips on hot invocations
+let dynamicPricingCache = null;
+let lastCacheFetchTime = 0;
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+export function setDynamicPricingCache(pricingData) {
+  if (pricingData && typeof pricingData === 'object') {
+    dynamicPricingCache = pricingData;
+    lastCacheFetchTime = Date.now();
+  }
+}
+
 export function getModelPricing(model = DEFAULT_MODEL) {
+  if (dynamicPricingCache && dynamicPricingCache[model]) {
+    return dynamicPricingCache[model];
+  }
   return MODEL_PRICING[model] || MODEL_PRICING[DEFAULT_MODEL];
 }
 

@@ -67,6 +67,10 @@
         "function": "analyzeAllImages"
       },
       {
+        "source": "/api/analyzeAudio",
+        "function": "analyzeAudio"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

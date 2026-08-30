@@ -107,7 +107,7 @@ const ClassView = ({ user }) => {
         const classIds = snap.data().classes || [];
         const snaps = await Promise.all(classIds.map(id => getDoc(doc(db, 'classes', id))));
         const list = snaps.map(s => ({ id: s.id, name: s.data()?.name || s.id }));
-        list.sort((a, b) => a.id.localeCompare(b.id));
+        list.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
         setTeacherClasses(list);
       }
     }).catch(err => console.error('Error fetching teacher classes:', err));

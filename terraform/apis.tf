@@ -16,7 +16,9 @@ locals {
     "firebaseextensions.googleapis.com",
     "aiplatform.googleapis.com",
     "generativelanguage.googleapis.com",
-    "appengine.googleapis.com"
+    "appengine.googleapis.com",
+    "cloudbilling.googleapis.com",
+    "bigquery.googleapis.com"
   ]
 }
 

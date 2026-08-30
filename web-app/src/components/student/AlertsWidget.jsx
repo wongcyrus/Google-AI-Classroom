@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const AlertsWidget = ({ recentIrregularities, ipAddress }) => {
+const AlertsWidget = ({ recentIrregularities = [], ipAddress = '' }) => {
   return (
     <div className="alerts-widget">
         <h2>My Recent Alerts</h2>

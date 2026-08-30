@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const MessagesWidget = ({ recentMessages }) => {
+const MessagesWidget = ({ recentMessages = [] }) => {
   return (
     <div className="messages-widget">
         <h2>My Recent Messages</h2>

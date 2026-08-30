@@ -9,6 +9,8 @@ import './StudentView.css';
 
 import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
 import useFaceMonitor from '../hooks/useFaceMonitor';
+import useAudioRecorder from '../hooks/useAudioRecorder';
+import MicSetupModal from './MicSetupModal';
 
 import Sidebar from './student/Sidebar';
 
@@ -96,6 +98,18 @@ const StudentView = ({ user }) => {
   const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
   const [showMeshOverlay, setShowMeshOverlay] = useState(true);
 
+  // Audio Recording & Mic Setup State
+  const [enableAudioCapture, setEnableAudioCapture] = useState(false);
+  const [audioCaptureMode, setAudioCaptureMode] = useState('mandatory');
+  const [audioSegmentDuration, setAudioSegmentDuration] = useState(30);
+  const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
+  const [enableSegmentTranscription, setEnableSegmentTranscription] = useState(false);
+  const [audioMovingWindowDuration, setAudioMovingWindowDuration] = useState(30);
+  const [audioMovingWindowStride, setAudioMovingWindowStride] = useState(15);
+  const [isMicSetupOpen, setIsMicSetupOpen] = useState(false);
+  const [selectedMicDeviceId, setSelectedMicDeviceId] = useState('');
+  const [isAudioUserEnabled, setIsAudioUserEnabled] = useState(true);
+
   // Refs
   const intervalRef = useRef(null);
   const screenVideoRef = useRef(null);
@@ -105,6 +119,26 @@ const StudentView = ({ user }) => {
   const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
+
+  // Segmented Audio Recording Hook with Moving Window
+  const {
+    isRecording: isAudioRecording,
+    audioLevel,
+    isSpeaking,
+    hasMicPermission,
+  } = useAudioRecorder({
+    classId: activeClass,
+    studentUid: user?.uid,
+    studentEmail: user?.email,
+    enabled: isSharing && isCapturing && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
+    segmentDuration: audioSegmentDuration,
+    windowDuration: audioMovingWindowDuration,
+    strideDuration: audioMovingWindowStride,
+    enableMovingWindow: enableSegmentTranscription || true,
+    silenceSuppression: audioSilenceSuppression,
+    retentionDays: retentionDays,
+    deviceId: selectedMicDeviceId,
+  });
 
   // MediaPipe Face & Gaze AI Monitor
   const {
@@ -135,20 +169,29 @@ const StudentView = ({ user }) => {
     showMeshOverlay,
   });
 
-  // Sync real-time face & gaze telemetry to student status doc
+  // Sync real-time face, gaze, and audio telemetry to student status doc
   useEffect(() => {
-    if (activeClass && user && user.uid && isWebcamSharing) {
+    if (activeClass && user && user.uid) {
       const statusRef = doc(db, "classes", activeClass, "status", user.uid);
-      setDoc(statusRef, {
-        faceStatus,
-        clientAiStatus,
-        yawAngle,
-        pitchAngle,
-        metricDistance: metricDistance || 55,
-        activeViolation: activeViolation || null,
-      }, { merge: true }).catch(err => console.debug("Error updating face status:", err));
+      const updateData = {};
+      if (isWebcamSharing) {
+        updateData.faceStatus = faceStatus;
+        updateData.clientAiStatus = clientAiStatus;
+        updateData.yawAngle = yawAngle;
+        updateData.pitchAngle = pitchAngle;
+        updateData.metricDistance = metricDistance || 55;
+        updateData.activeViolation = activeViolation || null;
+      }
+      if (enableAudioCapture) {
+        updateData.isAudioSharing = isAudioRecording;
+        updateData.audioLevel = Math.round(audioLevel * 100);
+        updateData.audioStatus = isSpeaking ? 'speaking' : 'idle';
+      }
+      if (Object.keys(updateData).length > 0) {
+        setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
+      }
     }
-  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, yawAngle, pitchAngle, metricDistance, activeViolation]);
+  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, yawAngle, pitchAngle, metricDistance, activeViolation, enableAudioCapture, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -669,6 +712,13 @@ const StudentView = ({ user }) => {
         setEnableCloudFallback(prev => (data.enableCloudFallback !== undefined ? data.enableCloudFallback : false));
         setCloudFallbackRate(prev => (data.cloudFallbackRate !== undefined ? data.cloudFallbackRate : (prev || 3)));
         setIsCapturing(prev => (data.isCapturing !== undefined && data.isCapturing !== prev ? data.isCapturing : (prev || false)));
+        setEnableAudioCapture(prev => (data.enableAudioCapture !== undefined && data.enableAudioCapture !== prev ? data.enableAudioCapture : (prev || false)));
+        setAudioCaptureMode(prev => (data.audioCaptureMode && data.audioCaptureMode !== prev ? data.audioCaptureMode : (prev || 'mandatory')));
+        setAudioSegmentDuration(prev => (data.audioSegmentDuration !== undefined && data.audioSegmentDuration !== prev ? data.audioSegmentDuration : (prev || 30)));
+        setAudioSilenceSuppression(prev => (data.audioSilenceSuppression !== undefined && data.audioSilenceSuppression !== prev ? data.audioSilenceSuppression : (prev !== undefined ? prev : true)));
+        setEnableSegmentTranscription(prev => (data.enableSegmentTranscription !== undefined && data.enableSegmentTranscription !== prev ? data.enableSegmentTranscription : (prev || false)));
+        setAudioMovingWindowDuration(prev => (data.audioMovingWindowDuration !== undefined && data.audioMovingWindowDuration !== prev ? data.audioMovingWindowDuration : (prev || 30)));
+        setAudioMovingWindowStride(prev => (data.audioMovingWindowStride !== undefined && data.audioMovingWindowStride !== prev ? data.audioMovingWindowStride : (prev || 15)));
         setCaptureStartedAt(prev => {
           if (!data.captureStartedAt) return null;
           const prevMs = prev?.toMillis ? prev.toMillis() : (prev?.seconds ? prev.seconds * 1000 : null);
@@ -1059,6 +1109,28 @@ const StudentView = ({ user }) => {
                     </select>
                   )}
                 </div>
+
+                {enableAudioCapture && (
+                  <div className="mic-controls-container" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsAudioUserEnabled(prev => !prev)}
+                      className={`student-view-button ${isAudioRecording ? 'active' : ''}`}
+                      title={isAudioRecording ? `Audio Recording Active (Level: ${Math.round(audioLevel * 100)}%)` : "Microphone Muted"}
+                    >
+                      {isAudioRecording ? (isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active') : '🔇 Mic Muted'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsMicSetupOpen(true)}
+                      className="student-view-button"
+                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                      title="Microphone Setup & Speech Verification"
+                    >
+                      ⚙️ Mic Test
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1183,6 +1255,18 @@ const StudentView = ({ user }) => {
           recentMessages={recentMessages} 
         />
       </div>
+
+      <MicSetupModal
+        isOpen={isMicSetupOpen}
+        onClose={() => setIsMicSetupOpen(false)}
+        onConfirm={(payload) => {
+          const micId = typeof payload === 'object' && payload !== null ? payload.deviceId : payload;
+          setSelectedMicDeviceId(micId || '');
+          setIsAudioUserEnabled(true);
+          setIsMicSetupOpen(false);
+        }}
+        isMandatory={enableAudioCapture && audioCaptureMode === 'mandatory'}
+      />
     </div>
   );
 };

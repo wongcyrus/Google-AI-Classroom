@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const PropertiesWidget = ({ classProperties, myProperties }) => {
+const PropertiesWidget = ({ classProperties = {}, myProperties = {} }) => {
   return (
     <div className="properties-widget">
         <h2>Class Properties</h2>

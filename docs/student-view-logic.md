@@ -2,9 +2,33 @@
 
 This document outlines the automated, schedule-driven logic implemented in the `StudentView.jsx` component. The primary goal of this architecture is to ensure that a student's screen capture data is always associated with the correct, currently active class, especially in scenarios with back-to-back lessons.
 
-## Core Architecture
+## Core Architecture & State Flow
 
-The logic is managed by a custom React hook, `useStudentClassSchedule`, which provides the active class ID to the `StudentView` component. This decouples the class selection logic from the view component itself.
+```mermaid
+flowchart TD
+    subgraph ScheduleEngine [useStudentClassSchedule Hook]
+        SP[(studentProfiles/uid)] -->|Enrolled Classes| SL[Student Class List]
+        SL --> FetchSched[Fetch Class Schedules & TimeZones]
+        FetchSched --> Poller[30s Evaluation Interval]
+        Poller --> TZCheck{Current Time in Class TimeZone?}
+        TZCheck -->|Match Found| AutoClass[currentActiveClassId]
+        TZCheck -->|No Match| NullClass[null]
+    end
+
+    subgraph StateResolution [Class State Resolution in StudentView]
+        AutoClass --> Resolver{Manual Override Active?}
+        NullClass --> Resolver
+        Resolver -->|Yes: manualClassSelection| ActiveClass[activeClass: Manual Selection]
+        Resolver -->|No: Follow Schedule| ActiveClassAuto[activeClass: Auto Schedule]
+    end
+
+    subgraph CapturePipelines [Independent Capture Engines]
+        ActiveClass --> ScreenEngine[Screen Capture Stream: getDisplayMedia]
+        ActiveClass --> CamEngine[Webcam Stream & Multi-Camera Picker]
+        ActiveClass --> AudioEngine[Moving Window Audio Recorder: useAudioRecorder]
+        CamEngine --> MP[MediaPipe FaceLandmarker: Real-time Gaze Estimation]
+    end
+```
 
 ### 1. The `useStudentClassSchedule` Hook
 
@@ -128,5 +152,24 @@ The student client embeds an on-device AI invigilation pipeline powered by **Med
 - State telemetry is mirrored atomically to `classes/{classId}/status/{studentUid}`:
   - `faceStatus`: `normal` | `looking_away` | `no_face` | `multiple_faces` | `loading` | `disabled`
   - `gazeYaw`, `gazePitch`, `gazeDirection`, `metricDistance`, `irisGazeAway`.
+
+---
+
+## Microphone Input Selection & Moving Window Audio (`useAudioSetup.js` & `useAudioRecorder.js`)
+
+In addition to screen and webcam video streams, the student interface integrates microphone capture and hardware selection:
+
+1. **Microphone Setup & Calibration (`MicSetupModal.jsx`)**:
+   - Students can open the setup dialog via the **"⚙️ Mic Test"** button (or it automatically opens if `audioCaptureMode === 'mandatory'`).
+   - Automatically enumerates connected audio inputs (`audioinput` kind) and dynamically listens to `devicechange` events for newly connected USB or Bluetooth headsets.
+   - The selected device is saved in `localStorage ('preferred_mic_device_id')` for persistence.
+   - Displays a real-time Web Audio RMS volume meter ($0–100\%$) for instant visual feedback.
+   - Features a built-in Speech-to-Text verification challenge to confirm voice clarity before the session starts.
+
+2. **Moving Window Segmentation (`useAudioRecorder.js`)**:
+   - Audio from the selected device is recorded in continuous 1-second slices into a circular memory buffer.
+   - Every 15 seconds (stride), the previous 30-second window is packaged and transmitted to Cloud Storage for `gemini-3.5-transcribe` processing.
+   - Client-side silence suppression drops chunks with average volume $<4\%$, reducing network bandwidth and cloud processing costs by $>80\%$.
+   - Live telemetry (`isAudioSharing`, `audioStatus`, `audioLevel`) is updated in `classes/{classId}/status/{studentUid}`.
 
 

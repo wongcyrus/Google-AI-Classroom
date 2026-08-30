@@ -138,9 +138,101 @@ async function runSmokeTests() {
     assert(profileSnap.data().classes.includes(testClassId), 'Class added to student profile array');
 
     // ----------------------------------------------------
-    // TEST 5: Cascading Class Deletion Execution & Isolation
+    // TEST 5: Audio Chunk Ingestion & Audio Retention Stamping
     // ----------------------------------------------------
-    console.log(`\n▶ Test 5: Cascading Class Deletion & Isolation Verification`);
+    console.log(`\n▶ Test 5: Audio Chunk Ingestion & Retention Stamping`);
+    const audioChunkId = `smoke-audio-${now}`;
+    const audioExpireAt = new Date(now + 14 * 24 * 60 * 60 * 1000);
+    const audioDocRef = db.collection('audio').doc(audioChunkId);
+
+    await audioDocRef.set({
+      audioId: audioChunkId,
+      classId: testClassId,
+      studentUid: testStudentUid,
+      email: testStudentEmail,
+      audioPath: `audio/${testClassId}/${testStudentUid}/audio_${now}.webm`,
+      strideIndex: 1,
+      windowDurationSeconds: 30,
+      strideDurationSeconds: 15,
+      isSilent: false,
+      timestamp: new Date(now),
+      expireAt: audioExpireAt,
+    });
+
+    const audioSnap = await audioDocRef.get();
+    assert(audioSnap.exists, 'Audio recording document created successfully');
+    assert(audioSnap.data().windowDurationSeconds === 30, 'Moving window duration correctly stamped as 30s');
+    assert(audioSnap.data().strideDurationSeconds === 15, 'Stride duration correctly stamped as 15s');
+
+    // ----------------------------------------------------
+    // TEST 6: Audio Irregularity & Multi-Speaker Detection
+    // ----------------------------------------------------
+    console.log(`\n▶ Test 6: Audio Irregularity & Multi-Speaker Incident`);
+    const irregularityId = `smoke-irreg-${now}`;
+    const irregRef = db.collection('irregularities').doc(irregularityId);
+
+    await irregRef.set({
+      irregularityId,
+      classId: testClassId,
+      studentUid: testStudentUid,
+      studentEmail: testStudentEmail,
+      title: 'Multiple Voices Detected',
+      message: 'Secondary speaker identified reading answer options aloud.',
+      type: 'audio',
+      speakerCount: 2,
+      riskLevel: 'high',
+      transcriptSnippet: 'Speaker 2: "Select Option C"',
+      startOffsetSeconds: 12,
+      endOffsetSeconds: 24,
+      timestamp: FieldValue.serverTimestamp(),
+    });
+
+    const irregSnap = await irregRef.get();
+    assert(irregSnap.exists, 'Audio irregularity logged successfully');
+    assert(irregSnap.data().type === 'audio', 'Irregularity type stamped as audio');
+    assert(irregSnap.data().speakerCount === 2, 'Multi-speaker count recorded as 2');
+    assert(irregSnap.data().riskLevel === 'high', 'Incident risk level stamped as high');
+
+    // ----------------------------------------------------
+    // TEST 7: Session-Wide Audio Audit & Diarization Report
+    // ----------------------------------------------------
+    console.log(`\n▶ Test 7: Session-Wide Audio Audit Report`);
+    const auditRef = db.collection('classes').doc(testClassId).collection('audio_audits').doc(testStudentUid);
+    await auditRef.set({
+      classId: testClassId,
+      studentUid: testStudentUid,
+      studentEmail: testStudentEmail,
+      verdict: 'suspicious_collaboration',
+      speakerCount: 2,
+      summary: 'Diarization identified 2 distinct voices engaging in dialogue.',
+      transcript: '[00:12] Speaker 1: "What is question 4?"\n[00:15] Speaker 2: "Select Option C"',
+      analyzedAt: FieldValue.serverTimestamp(),
+    });
+
+    const auditSnap = await auditRef.get();
+    assert(auditSnap.exists, 'Audio audit report saved to class subcollection');
+    assert(auditSnap.data().verdict === 'suspicious_collaboration', 'Verdict correctly stamped as suspicious_collaboration');
+
+    // ----------------------------------------------------
+    // TEST 8: Dynamic Pricing Document Verification
+    // ----------------------------------------------------
+    console.log(`\n▶ Test 8: Dynamic Gemini Model Pricing Ingestion`);
+    const pricingRef = db.collection('system_config').doc('pricing');
+    await pricingRef.set({
+      'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+      'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
+      lastSyncedAt: new Date().toISOString(),
+      source: 'integration_test_sync',
+    }, { merge: true });
+
+    const pricingSnap = await pricingRef.get();
+    assert(pricingSnap.exists, 'Dynamic pricing document present in system_config/pricing');
+    assert(pricingSnap.data()['gemini-3.5-transcribe']?.input === 0.50, 'Gemini 3.5 Transcribe input rate properly configured');
+
+    // ----------------------------------------------------
+    // TEST 9: Cascading Class Deletion Execution & Isolation
+    // ----------------------------------------------------
+    console.log(`\n▶ Test 9: Cascading Class Deletion & Isolation Verification`);
     
     // Simulate onClassDocDeleted logic directly
     await classRef.delete();
@@ -148,11 +240,16 @@ async function runSmokeTests() {
     // Query related docs to verify batch query logic
     const remainingShots = await db.collection('screenshots').where('classId', '==', testClassId).get();
     const remainingJobs = await db.collection('videoJobs').where('classId', '==', testClassId).get();
+    const remainingAudio = await db.collection('audio').where('classId', '==', testClassId).get();
+    const remainingIrregs = await db.collection('irregularities').where('classId', '==', testClassId).get();
     
     // Perform simulated cascade cleanup on test artifacts
     const batch = db.batch();
     remainingShots.docs.forEach(doc => batch.delete(doc.ref));
     remainingJobs.docs.forEach(doc => batch.delete(doc.ref));
+    remainingAudio.docs.forEach(doc => batch.delete(doc.ref));
+    remainingIrregs.docs.forEach(doc => batch.delete(doc.ref));
+    batch.delete(auditRef);
     await batch.commit();
 
     // Remove class from student profile
@@ -160,10 +257,12 @@ async function runSmokeTests() {
     
     const cleanShots = await db.collection('screenshots').where('classId', '==', testClassId).get();
     const cleanJobs = await db.collection('videoJobs').where('classId', '==', testClassId).get();
+    const cleanAudio = await db.collection('audio').where('classId', '==', testClassId).get();
     const updatedProfile = await studentProfileRef.get();
 
     assert(cleanShots.empty, 'All screenshots belonging to deleted class are purged');
     assert(cleanJobs.empty, 'All video jobs belonging to deleted class are purged');
+    assert(cleanAudio.empty, 'All audio chunks belonging to deleted class are purged');
     assert(!updatedProfile.data().classes.includes(testClassId), 'Deleted classId removed from student profile');
     assert(updatedProfile.data().classes.includes('ANOTHER-ACTIVE-CLASS'), 'Other enrolled classes remain 100% untouched and safe');
 
