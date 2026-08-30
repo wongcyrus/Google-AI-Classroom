@@ -140,5 +140,34 @@ describe('Shared UI Components & Views', () => {
       expect(screen.getByText('s1@school.edu')).toBeInTheDocument();
       expect(screen.getByText('s2@school.edu')).toBeInTheDocument();
     });
+
+    it('renders filtered students when displayStudents is provided and shows clean empty state', () => {
+      const { rerender } = render(
+        <StudentsGrid
+          displayStudents={[mockStudents[1]]}
+          problemFilter="no_screen"
+          screenshots={mockScreenshots}
+          now={new Date()}
+          frameRate={15}
+        />
+      );
+
+      expect(screen.getByText('s2@school.edu')).toBeInTheDocument();
+      expect(screen.queryByText('s1@school.edu')).toBeNull();
+
+      // Test empty filter state
+      rerender(
+        <StudentsGrid
+          displayStudents={[]}
+          problemFilter="no_cam"
+          screenshots={mockScreenshots}
+          now={new Date()}
+          frameRate={15}
+        />
+      );
+
+      expect(screen.getByText(/All students are compliant with the selected filter/i)).toBeInTheDocument();
+    });
   });
 });
+

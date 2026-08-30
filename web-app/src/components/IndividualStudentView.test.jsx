@@ -123,10 +123,10 @@ describe('IndividualStudentView Component', () => {
       />
     );
 
-    const screenTabBtn = screen.getByText('🖥️ Screen');
+    const screenTabBtn = screen.getAllByText('🖥️ Screen')[0];
     fireEvent.click(screenTabBtn);
 
-    const webcamTabBtn = screen.getByText('📷 Webcam');
+    const webcamTabBtn = screen.getAllByText('📷 Webcam')[0];
     fireEvent.click(webcamTabBtn);
 
     const dualTabBtn = screen.getByText('Dual View');
@@ -259,6 +259,34 @@ describe('IndividualStudentView Component', () => {
     fireEvent.click(closeBtn);
     expect(mockStopPeek).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('sends direct quick intervention reminders when chips are clicked', async () => {
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        onClose={vi.fn()}
+      />
+    );
+
+    const screenChip = screen.getByTitle('Send Screen Share Reminder');
+    fireEvent.click(screenChip);
+    expect(mockAddDoc).toHaveBeenCalled();
+
+    const camChip = screen.getByTitle('Send Webcam Reminder');
+    fireEvent.click(camChip);
+    expect(mockAddDoc).toHaveBeenCalled();
+
+    const micChip = screen.getByTitle('Send Mic Reminder');
+    fireEvent.click(micChip);
+    expect(mockAddDoc).toHaveBeenCalled();
+
+    const faceChip = screen.getByTitle('Send Face Centering Reminder');
+    fireEvent.click(faceChip);
+    expect(mockAddDoc).toHaveBeenCalled();
   });
 
   it('returns null if no student is provided', () => {

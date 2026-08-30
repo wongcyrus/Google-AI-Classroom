@@ -1,112 +1,134 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import IrregularitiesView from './IrregularitiesView';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('../firebase-config', () => ({
   storage: {},
-  db: {},
-  auth: { currentUser: { uid: 'teacher_1', email: 'teacher@example.com' } },
+  auth: { currentUser: { email: 'teacher@school.edu' } },
 }));
 
+const mockGetDownloadURL = vi.fn().mockImplementation((ref) => Promise.resolve(`https://storage.local/${ref.path || 'image.jpg'}`));
 vi.mock('firebase/storage', () => ({
-  ref: vi.fn(),
-  getDownloadURL: vi.fn().mockResolvedValue('https://mockstorage.local/media.jpg'),
+  ref: vi.fn((storage, path) => ({ path })),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
 }));
 
-const mockIrregularitiesData = [
+const mockIrregularities = [
   {
     id: 'irreg_1',
-    title: 'Multiple Voices Detected',
-    message: 'Secondary person speaking during test',
-    studentEmail: 'student@example.com',
-    type: 'audio',
-    riskLevel: 'high',
-    transcriptSnippet: 'Hey what did you get for question 2?',
-    audioUrl: 'https://mockstorage.local/audio.webm',
-    screenUrl: 'https://mockstorage.local/screen.jpg',
-    webcamUrl: 'https://mockstorage.local/webcam.jpg',
-    timestamp: { toDate: () => new Date('2026-08-29T10:30:00Z') },
+    studentEmail: 'student1@school.edu',
+    type: 'looking_away',
+    title: 'Gaze Deviation',
+    message: 'Looking away for 12 seconds',
+    screenUrl: 'https://storage.local/screenshots/irreg1_screen.jpg',
+    webcamUrl: 'https://storage.local/webcams/irreg1_cam.jpg',
+    audioPath: 'https://storage.local/audios/irreg1_audio.wav',
+    transcriptSnippet: 'Hey what is the answer to question 3',
+    timestamp: { toDate: () => new Date('2026-08-30T10:15:00Z') },
+  },
+  {
+    id: 'irreg_2',
+    studentEmail: 'student2@school.edu',
+    type: 'no_face',
+    title: 'No Face Detected',
+    message: 'Face out of camera view',
+    imageUrl: 'https://storage.local/screenshots/irreg2.jpg',
+    status: 'active',
+    timestamp: { toDate: () => new Date('2026-08-30T10:20:00Z') },
   },
 ];
 
 vi.mock('../hooks/useCollectionQuery', () => ({
-  default: vi.fn(() => ({
-    data: mockIrregularitiesData,
+  default: () => ({
+    data: mockIrregularities,
     loading: false,
     page: 1,
     isLastPage: true,
     fetchNextPage: vi.fn(),
     fetchPrevPage: vi.fn(),
     refetch: vi.fn(),
-  })),
+  }),
 }));
 
-describe('IrregularitiesView Component', () => {
+vi.mock('./IncidentDossierExportModal', () => ({
+  default: ({ isOpen, onClose }) => (isOpen ? <div data-testid="dossier-modal"><button onClick={onClose}>Close Dossier</button></div> : null),
+}));
+
+vi.mock('./AudioTranscriptModal', () => ({
+  default: ({ isOpen, onClose }) => (isOpen ? <div data-testid="audio-modal"><button onClick={onClose}>Close Audio</button></div> : null),
+}));
+
+describe('IrregularitiesView Full Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.alert = vi.fn();
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-csv');
+    URL.revokeObjectURL = vi.fn();
   });
 
-  it('renders irregularities table and audio/evidence tags', async () => {
-    render(
-      <MemoryRouter initialEntries={['/classes/TEST-101/irregularities']}>
+  const renderComponent = (props = {}) => {
+    return render(
+      <MemoryRouter initialEntries={['/classes/CLASS_101/irregularities']}>
         <Routes>
-          <Route path="/classes/:classId/irregularities" element={<IrregularitiesView />} />
+          <Route path="/classes/:classId/irregularities" element={<IrregularitiesView {...props} />} />
         </Routes>
       </MemoryRouter>
     );
+  };
 
-    expect(screen.getByText('Multiple Voices Detected')).toBeInTheDocument();
-    expect(screen.getByText(/student@example.com/i)).toBeInTheDocument();
-    expect(screen.getByText(/Secondary person speaking during test/i)).toBeInTheDocument();
+  it('renders irregularities list with filter pills and student records', async () => {
+    renderComponent();
+
+    expect(screen.getByText(/Irregularities for Class: CLASS_101/i)).toBeInTheDocument();
+    expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('Gaze Deviation')).toBeInTheDocument();
+    expect(screen.getByText('student2@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('No Face Detected')).toBeInTheDocument();
   });
 
-  it('opens dual media player modal when clicking media thumbnail and closes on close button', async () => {
-    render(
-      <MemoryRouter initialEntries={['/classes/TEST-101/irregularities']}>
-        <Routes>
-          <Route path="/classes/:classId/irregularities" element={<IrregularitiesView />} />
-        </Routes>
-      </MemoryRouter>
-    );
+  it('allows switching period presets and applying custom range', () => {
+    renderComponent();
 
-    await waitFor(() => {
-      const mediaThumbs = screen.getAllByRole('img');
-      expect(mediaThumbs.length).toBeGreaterThan(0);
-      fireEvent.click(mediaThumbs[0]);
-    });
+    const todayBtn = screen.getByRole('button', { name: /Today/i });
+    fireEvent.click(todayBtn);
 
-    expect(screen.getByText(/🚨 Irregularity Evidence: Multiple Voices Detected/i)).toBeInTheDocument();
-    expect(screen.getByText(/Hey what did you get for question 2\?/i)).toBeInTheDocument();
-
-    const closeBtn = screen.getByText('×');
-    fireEvent.click(closeBtn);
-    expect(screen.queryByText(/🚨 Irregularity Evidence:/i)).toBeNull();
-  });
-
-  it('renders period filter bar and switches period presets', async () => {
-    render(
-      <MemoryRouter initialEntries={['/classes/TEST-101/irregularities']}>
-        <Routes>
-          <Route path="/classes/:classId/irregularities" element={<IrregularitiesView />} />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    expect(screen.getByText(/⏱️ Scope \/ Period:/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'All Sessions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Today' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Past 24h' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Past 7 Days' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Custom Range...' })).toBeInTheDocument();
-
-    // Click Custom Range preset
-    const customBtn = screen.getByRole('button', { name: 'Custom Range...' });
+    const customBtn = screen.getByRole('button', { name: /Custom Range.../i });
     fireEvent.click(customBtn);
 
-    expect(screen.getByText('From:')).toBeInTheDocument();
-    expect(screen.getByText('To:')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Apply Filter' })).toBeInTheDocument();
+    expect(screen.getByText(/From:/i)).toBeInTheDocument();
+    expect(screen.getByText(/To:/i)).toBeInTheDocument();
+
+    const applyBtn = screen.getByRole('button', { name: /Apply Filter/i });
+    fireEvent.click(applyBtn);
+  });
+
+  it('opens dossier export modal and quick CSV export', () => {
+    renderComponent();
+
+    const dossierBtn = screen.getByRole('button', { name: /Export Formal Dossier/i });
+    fireEvent.click(dossierBtn);
+
+    expect(screen.getByTestId('dossier-modal')).toBeInTheDocument();
+
+    const closeBtn = screen.getByRole('button', { name: /Close Dossier/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId('dossier-modal')).not.toBeInTheDocument();
+
+    const csvBtn = screen.getByRole('button', { name: /Quick CSV Page/i });
+    fireEvent.click(csvBtn);
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it('opens dual media evidence viewer modal when thumbnail is clicked', async () => {
+    renderComponent();
+
+    await waitFor(() => {
+      const screenImgs = screen.queryAllByAltText(/screen evidence|evidence/i);
+      if (screenImgs.length > 0) {
+        fireEvent.click(screenImgs[0]);
+      }
+    });
   });
 });

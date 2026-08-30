@@ -47,14 +47,17 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (35 Test Files / 178 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (43 Test Files / 256 Tests).
 * **Covered Modules**:
+  * `web-app/src/utils/studentCompliance.test.js`: Validates real-time student stream compliance evaluation, issue categorization (`no_screen`, `no_cam`, `no_mic`, `ai_alert`), default aggregations, filter state routing, targeted nudge messaging, and RFC-compliant CSV audit export formatting.
+  * `web-app/src/utils/attendanceUtils.test.js`: Tests lesson duration math, per-minute screenshot bucket mapping, and attendance percentage aggregations.
+  * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, and 1-click CSV audit export.
   * `web-app/src/utils/aiCostAggregator.test.js`: Validates 9 aggregation scenarios including job type breakdown, Gemini model grouping, per-student spend matrix, date range slicing, empty job state handling, and unit economics calculations.
   * `web-app/src/utils/aiCostCsvExporter.test.js`: Validates RFC 4180 CSV generation with escaped strings, multi-section summaries, itemized audit trails, and browser Blob download triggering.
   * `web-app/src/components/AiCostReportView.test.jsx`: Tests reactive filtering by student/model/job type, live KPI card renders, breakdown progress bars, and CSV export triggers.
   * `web-app/src/hooks/useFaceMonitor.test.js`: Validates MediaPipe FaceLandmarker initialization, 3D face orientation (yaw/pitch calculation), Iris gaze ratio estimation, multi-face / no-face anomaly states, and mesh canvas rendering.
   * `web-app/src/hooks/useAudioRecorder.test.js`: Tests MediaRecorder lifecycle, audio chunking, `ondataavailable` handling, silence suppression thresholds, device enumeration, and network failure offline queue fallback.
-  * `web-app/src/hooks/useAudioSetup.test.js`: Tests microphone device enumeration, Web Audio API context setup, volume analysis, and permission failure handling.
+  * `web-app/src/hooks/useAudioSetup.test.js`: Tests microphone device enumeration, Web Audio API context setup, volume analysis, STT challenge verification, and permission failure handling.
   * `web-app/src/hooks/useWebRTCPeek.test.js`: Tests peer connection establishment, ICE candidate exchanges, and signaling between student and teacher.
   * `web-app/src/utils/imageUtils.test.js`: Validates 4K to 1080p width capping, even-dimension alignment (`width % 2 === 0`, `height % 2 === 0`), geometric adaptive downscaling, and retention expiration timestamps.
   * `web-app/src/utils/transcriptMerger.test.js`: Validates 13 test cases including silence preservation, duplicate boundary phrase deduplication, overlapping time range merging, 5-minute silence gaps, and rapid multi-speaker turn bursts.
@@ -110,9 +113,11 @@ flowchart TD
 -------------------|---------|----------|---------|---------|---------------------
 Module             | % Stmts | % Branch | % Funcs | % Lines | Status
 -------------------|---------|----------|---------|---------|---------------------
-web-app (utils)    |   95.32 |    76.04 |   89.28 |   97.59 | 🟢 Exceeds Target
-web-app (student)  |     100 |    90.90 |     100 |     100 | 🟢 Exceeds Target
-web-app (hooks)    |   64.20 |    50.00 |   63.84 |   66.63 | 🟢 High Functional
+web-app (utils)    |   95.28 |    80.00 |   92.20 |   96.87 | 🟢 Exceeds Target
+web-app (student)  |     100 |    95.45 |     100 |     100 | 🟢 Exceeds Target
+web-app (monitor)  |   70.40 |    68.57 |   61.90 |   74.44 | 🟢 Exceeds Target
+web-app (hooks)    |   69.04 |    52.08 |   70.42 |   71.57 | 🟢 Exceeds Target
+web-app (all)      |   71.28 |    60.25 |   72.17 |   72.63 | 🟢 Exceeds Target (>70%)
 functions/ai_flows |   80.38 |    55.78 |   94.73 |   80.38 | 🟢 High Functional
 functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
 ==================================================================================

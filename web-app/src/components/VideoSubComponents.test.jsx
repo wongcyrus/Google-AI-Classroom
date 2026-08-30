@@ -94,6 +94,33 @@ describe('Video & AI Analysis Sub-components', () => {
       const select = screen.getByRole('combobox');
       fireEvent.change(select, { target: { value: 'p1' } });
       expect(onSelectPrompt).toHaveBeenCalled();
+
+      // Test radio filters
+      const publicRadio = screen.getByLabelText(/Public/i);
+      fireEvent.click(publicRadio);
+
+      const privateRadio = screen.getByLabelText(/Private/i);
+      fireEvent.click(privateRadio);
+
+      const sharedRadio = screen.getByLabelText(/Shared/i);
+      fireEvent.click(sharedRadio);
+
+      const textarea = screen.getByPlaceholderText(/Select a prompt or enter text here/i);
+      fireEvent.change(textarea, { target: { value: 'Updated prompt content' } });
+      expect(onTextChange).toHaveBeenCalledWith('Updated prompt content');
+    });
+
+    it('handles null user gracefully', () => {
+      render(
+        <VideoPromptSelector
+          user={null}
+          selectedPrompt={null}
+          onSelectPrompt={vi.fn()}
+          promptText=""
+          onTextChange={vi.fn()}
+        />
+      );
+      expect(screen.getByText('-- Select a prompt --')).toBeInTheDocument();
     });
   });
 

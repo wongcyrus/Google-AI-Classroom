@@ -43,7 +43,7 @@ The project is a monorepo composed of three main parts:
     *   **Dual-Channel Split Streams:** Independent live screen sharing and webcam capture with multi-camera selection and stream swapping.
     *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
     *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
-    *   **Live Teacher Monitor:** Action-oriented streamlined ControlsPanel, space-optimized channel selector (`🔲 Dual View`, `🖥️ Screen`, `📷 Webcam`), atomic real-time updates, and high-detail student inspection modals.
+    *   **Live Teacher Monitor & Compliance Audit:** Streamlined ControlsPanel with zero-space problem student filtering (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`), targeted one-click broadcast nudge (`📢 Nudge (N)`), instant compliance audit CSV export (`📥 Export CSV`), 1-to-1 WebRTC Live Peek with 2-way talkback, and high-detail student inspection modals.
 *   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 

@@ -53,7 +53,13 @@ flowchart TD
 
 ## Real-time & Session Views
 
-*   **`MonitorView.jsx`**: Provides a real-time grid view of all students during a live session. Features a **single-stream listener architecture** subscribing to `classes/{classId}/status` (with dual-channel URL resolution, atomic state updates to prevent race conditions, and `urlCacheRef` Storage URL caching), space-optimized compact channel selector dropdown (`🔲 Dual View`, `🖥️ Screen`, `📷 Webcam`), and an optimized **single-write class broadcast channel** (`classes/{classId}/messages`) with pre-defined message template selectors and 1-click preset broadcast chips.
+*   **`MonitorView.jsx`**: Provides a real-time grid view of all students during a live session. Features:
+    *   **Single-Stream Listener Architecture**: Subscribes to `classes/{classId}/status` with dual-channel URL resolution and atomic state updates to prevent race conditions.
+    *   **Zero-Space Compliance Filter Dropdown**: Real-time filtering by issue category (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`) with dynamic student counts.
+    *   **Inline Targeted Nudge Button**: One-click broadcast trigger (`📢 Nudge (N)`) targeting only currently filtered non-compliant students with pre-formatted reminder messages.
+    *   **Quick CSV Audit Export**: Instant one-click export (`📥 Export CSV`) capturing the currently filtered student compliance state, detected irregularities, stream flags, and gaze vector data into a timestamped CSV file.
+    *   **Space-Optimized Channel Selector**: Compact dropdown for switching between `🔲 Dual View`, `🖥️ Screen`, and `📷 Webcam`.
+    *   **Class Broadcast Channel**: Optimized Firestore write channel (`classes/{classId}/messages`) with pre-defined message templates.
 *   **`ControlsPanel.jsx`**: The consolidated sidebar control center for teachers during live monitoring. Reorganized in a logical top-down hierarchy:
   1. **🎬 Session & Stream**: Capture start/stop, stream pause/resume, and compact channel/interval/resolution grid.
   2. **📢 Class Broadcast**: Predefined template selector with instant send.
@@ -61,7 +67,11 @@ flowchart TD
   4. **👥 Attendance & Status**: 1-click "Not Sharing" student counter/modal and Attendance CSV export.
   5. **📊 Storage & AI Quotas**: Space-efficient dual progress bars for storage usage and class AI budget.
 *   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's status, supporting split-dual viewports (side-by-side feeds) or single channel views with channel badges (🖥️ / 📷), live gaze orientation vectors, and face status badges (`normal`, `looking_away`, `no_face`, `multiple_faces`).
-*   **`IndividualStudentView.jsx`**: A modal overlay for inspecting an individual student's live streams in high detail with a multi-tab interface (`Dual View`, `🖥️ Screen Feed`, `📷 Webcam Feed`), and tools to send private 1-to-1 direct messages or share screenshots.
+*   **`IndividualStudentView.jsx`**: A modal overlay for inspecting an individual student's live streams in high detail with:
+    *   **Multi-Tab Feed Switcher**: `Dual View`, `🖥️ Screen Feed`, and `📷 Webcam Feed`.
+    *   **Direct Quick Nudge Chips**: One-click intervention buttons (`🖥️ Screen`, `📷 Cam`, `🎙️ Mic`, `👁️ Face Screen`) that immediately dispatch targeted compliance notices to the student.
+    *   **1-to-1 WebRTC Live Peek & Talkback**: Real-time 30 FPS peer-to-peer video streaming and two-way microphone audio talkback without loading cloud storage.
+    *   **Private Direct Messaging**: Instant teacher-to-student text channel.
 *   **`SessionReviewView.jsx`**: A view for reviewing a student's completed session, including their screen recording and any detected irregularities.
 *   **`PlaybackView.jsx`**: A component for replaying a student's session as a sequence of screenshots with channel filtering (`All Channels`, `🖥️ Screen Only`, `📷 Webcam Only`), custom timeline scrubber, and channel-targeted video compilation.
 *   **`TimelineSlider.jsx`**: A custom slider used in `PlaybackView.jsx` to navigate the screenshot timeline and show buffered content.
@@ -84,6 +94,8 @@ flowchart TD
   * **Filter Toolbar & CSV Export**: Real-time filtering by student, job category, model, and date range, with RFC 4180 CSV export.
 *   **`aiCostAggregator.js` (Utility)**: A pure analytics utility aggregating raw `aiJobs` documents into multi-dimensional summaries, timeline series, and student cost shares.
 *   **`aiCostCsvExporter.js` (Utility)**: Converts aggregated AI financial data and itemized job records into formatted CSV reports with automatic browser downloads.
+*   **`studentCompliance.js` (Utility)**: Pure domain utility evaluating real-time student stream states, hardware sharing flags, and gaze orientation against class rules (`evaluateStudentCompliance`, `getComplianceSummary`, `filterStudentsByCompliance`, `getNudgeMessageForFilter`, `exportComplianceResultsToCsv`).
+*   **`attendanceUtils.js` (Utility)**: Handles lesson duration math, per-minute screenshot bucket mapping, and attendance percentage aggregations for heatmaps.
 
 ## Communication
 

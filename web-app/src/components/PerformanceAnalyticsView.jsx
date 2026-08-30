@@ -4,8 +4,14 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const PerformanceAnalyticsView = () => {
-  const { classId } = useParams();
+const PerformanceAnalyticsView = ({ classId: propClassId }) => {
+  let routeParams = {};
+  try {
+    routeParams = useParams() || {};
+  } catch (e) {
+    routeParams = {};
+  }
+  const classId = propClassId || routeParams.classId;
   const [performanceData, setPerformanceData] = useState([]);
   const [loading, setLoading] = useState(true);
 

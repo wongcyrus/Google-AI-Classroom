@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, functions } from '../firebase-config';
 import { CSVLink } from 'react-csv';
 import Modal from './Modal.jsx';
+import {
+  formatFilenameDate,
+  computeLessonDuration,
+  getLessonId,
+  mergeAttendanceData,
+} from '../utils/attendanceUtils';
 
 const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   const [attendanceData, setAttendanceData] = useState([]);
@@ -14,68 +21,20 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   const csvLink = useRef(null);
 
   const lessonDurationInMinutes = useMemo(() => {
-    if (!startTime || !endTime) return 0;
-    const duration = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
-    return duration > 0 ? duration : 0;
+    return computeLessonDuration(startTime, endTime);
   }, [startTime, endTime]);
 
   const combinedData = useMemo(() => {
     const lessonStudents = lessonData?.students || [];
-    
-    if (attendanceData.length === 0 && lessonStudents.length === 0) {
-        return [];
-    }
-
-    const allStudentEmails = new Set([
-        ...attendanceData.map(s => s.email),
-        ...lessonStudents.map(s => s.email)
-    ]);
-
-    const mergedData = Array.from(allStudentEmails).map(email => {
-        const attStudent = attendanceData.find(s => s.email === email);
-        const lessonStudent = lessonStudents.find(s => s.email === email);
-
-        return {
-            email: email,
-            uid: lessonStudent?.uid || null,
-            totalMinutes: attStudent?.totalMinutes,
-            percentage: attStudent?.percentage,
-            attendance: attStudent?.attendance || Array(lessonDurationInMinutes).fill(0),
-            workingMinutes: lessonStudent?.workingMinutes,
-            summary: lessonStudent?.summary,
-            feedback: lessonStudent?.feedback,
-        };
-    });
-
-    return mergedData;
+    return mergeAttendanceData(attendanceData, lessonStudents, lessonDurationInMinutes);
   }, [attendanceData, lessonData, lessonDurationInMinutes]);
 
-  const formatFilenameDate = (date) => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = `${d.getMonth() + 1}`.padStart(2, '0');
-    const day = `${d.getDate()}`.padStart(2, '0');
-    const hours = `${d.getHours()}`.padStart(2, '0');
-    const minutes = `${d.getMinutes()}`.padStart(2, '0');
-    return `${year}-${month}-${day}_${hours}-${minutes}`;
-  };
-
   const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
-
-  const getLessonId = async (start, end) => {
-    const message = `${new Date(start).toISOString()}-${new Date(end).toISOString()}`;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
 
   const handleFetchAttendance = async () => {
     if (!selectedLesson || !classId || !startTime || !endTime) return;
 
     setLoadingAttendance(true);
-    const functions = getFunctions();
     const getAttendanceData = httpsCallable(functions, 'getAttendanceData');
     try {
       const result = await getAttendanceData({ classId, startTime, endTime });
@@ -94,7 +53,6 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
       setAttendanceData([]); // Clear previous data
       try {
         const lessonId = await getLessonId(startTime, endTime);
-        const db = getFirestore();
         const lessonRef = doc(db, 'classes', classId, 'lessons', lessonId);
         const lessonSnap = await getDoc(lessonRef);
 
@@ -269,19 +227,15 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
             <hr />
             <h4>General Feedback</h4>
             <div>
-              {(lessonData?.generalFeedback || []).length > 0 ? (
-                lessonData.generalFeedback.map((fb, index) => <p key={index}>{fb}</p>)
-              ) : (
-                <p>Not available.</p>
-              )}
+              {Array.isArray(lessonData?.generalFeedback)
+                ? (lessonData.generalFeedback.length > 0 ? lessonData.generalFeedback.map((fb, index) => <p key={index}>{fb}</p>) : <p>Not available.</p>)
+                : (lessonData?.generalFeedback ? <p>{lessonData.generalFeedback}</p> : <p>Not available.</p>)}
             </div>
             <h4>Student-Specific Feedback</h4>
             <div>
-              {(selectedStudent.feedback || []).length > 0 ? (
-                selectedStudent.feedback.map((fb, index) => <p key={index}>{fb}</p>)
-              ) : (
-                <p>Not available.</p>
-              )}
+              {Array.isArray(selectedStudent.feedback)
+                ? (selectedStudent.feedback.length > 0 ? selectedStudent.feedback.map((fb, index) => <p key={index}>{fb}</p>) : <p>Not available.</p>)
+                : (selectedStudent.feedback ? <p>{selectedStudent.feedback}</p> : <p>Not available.</p>)}
             </div>
           </div>
         )}

@@ -73,6 +73,19 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     }
   };
 
+  const handleQuickNudge = async (text) => {
+    try {
+      const studentMessagesRef = collection(db, 'students', student.id, 'messages');
+      await addDoc(studentMessagesRef, {
+        message: text,
+        timestamp: serverTimestamp(),
+      });
+      alert(`Intervention sent to ${student.email}`);
+    } catch (error) {
+      console.error('Error sending intervention: ', error);
+    }
+  };
+
   const handleShare = async (urlToShare) => {
     const targetUrl = urlToShare || screenUrl || webcamUrl;
     if (navigator.share && targetUrl) {
@@ -152,15 +165,55 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
             </button>
           </div>
 
-          <div className="message-sender">
-            <input 
-              type="text" 
-              value={message} 
-              onChange={(e) => setMessage(e.target.value)} 
-              placeholder="Send direct message to student..." 
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            />
-            <button onClick={handleSendMessage} className="btn-send">Send</button>
+          <div className="message-sender" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <input 
+                type="text" 
+                value={message} 
+                onChange={(e) => setMessage(e.target.value)} 
+                placeholder="Send direct message to student..." 
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              />
+              <button onClick={handleSendMessage} className="btn-send">Send</button>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-mini"
+                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                onClick={() => handleQuickNudge('⚠️ Please start sharing your screen immediately.')}
+                title="Send Screen Share Reminder"
+              >
+                🖥️ Screen
+              </button>
+              <button
+                type="button"
+                className="btn-mini"
+                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                onClick={() => handleQuickNudge('⚠️ Please turn on your webcam feed for invigilation.')}
+                title="Send Webcam Reminder"
+              >
+                📷 Cam
+              </button>
+              <button
+                type="button"
+                className="btn-mini"
+                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                onClick={() => handleQuickNudge('⚠️ Please check and enable your microphone.')}
+                title="Send Mic Reminder"
+              >
+                🎙️ Mic
+              </button>
+              <button
+                type="button"
+                className="btn-mini"
+                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                onClick={() => handleQuickNudge('⚠️ Please keep your face centered and look directly at your screen.')}
+                title="Send Face Centering Reminder"
+              >
+                👁️ Face Screen
+              </button>
+            </div>
           </div>
 
           <div className="header-actions">

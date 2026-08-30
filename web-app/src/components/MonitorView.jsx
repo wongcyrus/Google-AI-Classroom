@@ -15,6 +15,12 @@ import IndividualStudentView from './IndividualStudentView';
 import { usePrompts } from '../hooks/usePrompts';
 
 import { useAnalysis } from '../hooks/useAnalysis';
+import {
+  getComplianceSummary,
+  filterStudentsByCompliance,
+  getNudgeMessageForFilter,
+  exportComplianceResultsToCsv,
+} from '../utils/studentCompliance';
 
 const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
@@ -24,7 +30,9 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [studentStatuses, setStudentStatuses] = useState([]);
   const [screenshots, setScreenshots] = useState({});
   const [selectedChannel, setSelectedChannel] = useState('both');
+  const [problemFilter, setProblemFilter] = useState('all');
   const [message, setMessage] = useState('');
+
   const [frameRate, setFrameRate] = useState(15);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -394,10 +402,18 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         email: email,
         name: status ? status.name : email,
         isSharing: status ? status.isSharing || false : false,
+        isWebcamSharing: status ? Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))) : false,
+        isAudioSharing: status ? Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording) : false,
+        audioStatus: status ? status.audioStatus : null,
+        audioLevel: status ? status.audioLevel : 0,
+        audioError: status ? status.audioError : null,
         faceStatus: status ? status.faceStatus : null,
         clientAiStatus: status ? status.clientAiStatus : null,
         yawAngle: status ? status.yawAngle : null,
         pitchAngle: status ? status.pitchAngle : null,
+        isMultiSpeaker: status ? Boolean(status.isMultiSpeaker) : false,
+        speakerCount: status ? status.speakerCount || 1 : 1,
+        activeViolation: status ? status.activeViolation : null,
       };
     });
   }, [classList, studentStatuses, uidToEmailMap]);
@@ -643,6 +659,38 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
 
   const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
 
+  const classComplianceSettings = useMemo(() => ({
+    captureMode: selectedChannel === 'both' ? 'dual' : selectedChannel,
+    enableAudioCapture: enableAudioCapture,
+    isCapturing: isCapturing,
+  }), [selectedChannel, enableAudioCapture, isCapturing]);
+
+  const complianceSummary = useMemo(() => {
+    return getComplianceSummary(students, classComplianceSettings, screenshots);
+  }, [students, classComplianceSettings, screenshots]);
+
+  const filteredStudents = useMemo(() => {
+    return filterStudentsByCompliance(students, problemFilter, classComplianceSettings, screenshots);
+  }, [students, problemFilter, classComplianceSettings, screenshots]);
+
+  const handleNudgeProblemStudents = async () => {
+    const count = filteredStudents.length;
+    if (count === 0) return;
+    const nudgeMsg = getNudgeMessageForFilter(problemFilter);
+    const confirmed = window.confirm(`📢 Send invigilation reminder to ${count} filtered student(s)?\n\n"${nudgeMsg}"`);
+    if (confirmed) {
+      await handleSendMessage(nudgeMsg);
+    }
+  };
+
+  const handleExportFilteredCsv = () => {
+    if (filteredStudents.length === 0) {
+      alert('No students in the current filter to export.');
+      return;
+    }
+    exportComplianceResultsToCsv(filteredStudents, problemFilter, classComplianceSettings, screenshots, classId);
+  };
+
   const handleRunAnalysis = async () => {
     if (!editablePromptText.trim()) {
         alert('Please select or enter a prompt.');
@@ -716,7 +764,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
 
   const analysisResultItems = useMemo(() => 
-    Object.entries(analysisResults).map(([studentId, result]) => {
+    Object.entries(analysisResults || {}).map(([studentId, result]) => {
       const studentObj = students.find(s => s.id === studentId);
       const email = studentObj?.email || uidToEmailMap.get(studentId) || studentId;
       
@@ -837,18 +885,62 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
               </span>
             </div>
 
-            {/* Compact Grid View Channel Selector */}
-            <select
-              aria-label="Grid view channel"
-              className="channel-select-compact"
-              value={selectedChannel}
-              onChange={(e) => setSelectedChannel(e.target.value)}
-              title="Class View Channel"
-            >
-              <option value="both">🔲 Dual View</option>
-              <option value="screen">🖥️ Screen</option>
-              <option value="webcam">📷 Webcam</option>
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Compact Grid View Channel Selector */}
+              <select
+                aria-label="Grid view channel"
+                className="channel-select-compact"
+                value={selectedChannel}
+                onChange={(e) => setSelectedChannel(e.target.value)}
+                title="Class View Channel"
+              >
+                <option value="both">🔲 Dual View</option>
+                <option value="screen">🖥️ Screen</option>
+                <option value="webcam">📷 Webcam</option>
+              </select>
+
+              {/* Ultra-Compact Problem Students Filter Dropdown */}
+              <select
+                aria-label="Filter students by status"
+                className={`channel-select-compact problem-filter-select ${complianceSummary.problems > 0 && problemFilter !== 'all' ? 'has-active-filter' : ''}`}
+                value={problemFilter}
+                onChange={(e) => setProblemFilter(e.target.value)}
+                title="Filter by student compliance issue"
+              >
+                <option value="all">👥 All Students ({complianceSummary.total})</option>
+                <option value="problems">⚠️ Problems ({complianceSummary.problems})</option>
+                <option value="no_cam">📷 Missing Cam ({complianceSummary.noCam})</option>
+                <option value="no_mic">🎙️ Missing Mic ({complianceSummary.noMic})</option>
+                <option value="no_screen">🖥️ Not Sharing ({complianceSummary.noScreen})</option>
+                <option value="ai_alert">🚨 AI Alerts ({complianceSummary.aiAlert})</option>
+              </select>
+
+              {/* Inline Zero-Space Targeted Nudge Button */}
+              {problemFilter !== 'all' && filteredStudents.length > 0 && (
+                <button
+                  type="button"
+                  className="compact-nudge-btn"
+                  onClick={handleNudgeProblemStudents}
+                  title={`Broadcast targeted reminder to ${filteredStudents.length} student(s)`}
+                >
+                  📢 Nudge ({filteredStudents.length})
+                </button>
+              )}
+
+              {/* Quick Export Filter Results to CSV */}
+              {filteredStudents.length > 0 && (
+                <button
+                  type="button"
+                  className="compact-nudge-btn"
+                  style={{ background: 'var(--color-bg-subtle, #f8fafc)', color: 'var(--color-text-main, #0f172a)', border: '1px solid var(--color-border, #cbd5e1)' }}
+                  onClick={handleExportFilteredCsv}
+                  title={`Export current ${filteredStudents.length} filtered results to CSV`}
+                  aria-label="Export filter results to CSV"
+                >
+                  📥 Export CSV
+                </button>
+              )}
+            </div>
           </div>
           {startTime && endTime && (
             <TimelineSlider
@@ -868,6 +960,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           screenshots={screenshots}
           frameRate={frameRate}
           students={students}
+          displayStudents={reviewTime ? undefined : filteredStudents}
+          problemFilter={problemFilter}
           now={now}
           isPaused={isPaused}
           selectedChannel={selectedChannel}
@@ -968,7 +1062,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
             </p>
             <p style={{ color: '#666', fontSize: '0.9em' }}>Please wait a moment.</p>
           </div>
-        ) : Object.keys(analysisResults).length > 0 ? (
+        ) : (analysisResults && Object.keys(analysisResults).length > 0) ? (
           <ul style={{ padding: 0, margin: 0, maxHeight: '60vh', overflowY: 'auto' }}>
             {analysisResultItems}
           </ul>

@@ -170,7 +170,13 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
                                 onChange={() => handleSelectZipJob(job.id)}
                             />
                         </td>
-                        <td>{job.createdAt?.toDate().toLocaleString()}</td>
+                        <td>
+                          {job.createdAt?.toDate
+                            ? job.createdAt.toDate().toLocaleString()
+                            : job.createdAt
+                            ? new Date(job.createdAt).toLocaleString()
+                            : 'N/A'}
+                        </td>
                         <td>{job.status}</td>
                         <td>
                         {job.status === 'completed' && job.zipPath ? (

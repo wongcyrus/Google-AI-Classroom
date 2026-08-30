@@ -44,3 +44,39 @@
   box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
 }
 
+/* Compact Problem Filter Dropdown */
+.problem-filter-select.has-active-filter {
+  border-color: #f59e0b;
+  background-color: #fffbeb;
+  color: #b45309;
+  font-weight: 700;
+}
+
+/* Inline Zero-Space Nudge Button */
+.compact-nudge-btn {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #f59e0b;
+  background-color: #fef3c7;
+  color: #92400e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compact-nudge-btn:hover {
+  background-color: #fde68a;
+  border-color: #d97706;
+  color: #78350f;
+}
+
+.compact-nudge-btn:active {
+  transform: scale(0.98);
+}
+
+

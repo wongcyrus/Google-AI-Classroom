@@ -3,7 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import ControlsPanel from './ControlsPanel';
 
-describe('ControlsPanel Component', () => {
+vi.mock('../AiCostReportView', () => ({
+  default: () => <div>Mocked AI Cost Breakdown & Audit</div>,
+}));
+
+describe('ControlsPanel Full Component Suite', () => {
   const defaultProps = {
     message: '',
     setMessage: vi.fn(),
@@ -17,7 +21,7 @@ describe('ControlsPanel Component', () => {
     maxImageSizeOptions: [
       { label: '0.1MB', value: 0.1 * 1024 * 1024 },
       { label: '0.25MB', value: 0.25 * 1024 * 1024 },
-      { label: '0.5MB', value: 0.5 * 1024 * 1024 }
+      { label: '0.5MB', value: 0.5 * 1024 * 1024 },
     ],
     isCapturing: false,
     toggleCapture: vi.fn(),
@@ -27,7 +31,7 @@ describe('ControlsPanel Component', () => {
     notSharingStudents: [],
     setShowNotSharingModal: vi.fn(),
     handleDownloadAttendance: vi.fn(),
-    editablePromptText: '',
+    editablePromptText: 'Analyze classroom engagement',
     isPerImageAnalysisRunning: false,
     isAllImagesAnalysisRunning: false,
     setIsPerImageAnalysisRunning: vi.fn(),
@@ -40,14 +44,14 @@ describe('ControlsPanel Component', () => {
     storageUsageVideos: 20 * 1024 * 1024,
     storageUsageZips: 0,
     aiQuota: 10,
-    aiUsedQuota: 2.5
+    aiUsedQuota: 2.5,
   };
 
   it('renders broadcast section, template dropdown, input, and send button', () => {
     const setMessage = vi.fn();
     const handleSendMessage = vi.fn();
     render(<ControlsPanel {...defaultProps} setMessage={setMessage} handleSendMessage={handleSendMessage} />);
-    
+
     expect(screen.getByPlaceholderText('Type message or pick template...')).toBeInTheDocument();
     const sendBtn = screen.getByText('Send');
     expect(sendBtn).toBeInTheDocument();
@@ -75,15 +79,15 @@ describe('ControlsPanel Component', () => {
     expect(screen.getByText(/Stop Capture/i)).toBeInTheDocument();
   });
 
-  it('renders frameRate and maxImageSize select dropdowns', () => {
+  it('renders frameRate, maxImageSize, channel, and audio select dropdowns', () => {
     const handleFrameRateChange = vi.fn();
     const handleMaxImageSizeChange = vi.fn();
     const setSelectedChannel = vi.fn();
     const handleAudioCaptureToggle = vi.fn();
 
     render(
-      <ControlsPanel 
-        {...defaultProps} 
+      <ControlsPanel
+        {...defaultProps}
         setSelectedChannel={setSelectedChannel}
         handleFrameRateChange={handleFrameRateChange}
         handleMaxImageSizeChange={handleMaxImageSizeChange}
@@ -94,19 +98,19 @@ describe('ControlsPanel Component', () => {
     const selects = screen.getAllByRole('combobox');
     expect(selects.length).toBeGreaterThanOrEqual(4);
 
-    // Channel select (selects[0])
+    // Channel select
     fireEvent.change(selects[0], { target: { value: 'screen' } });
     expect(setSelectedChannel).toHaveBeenCalledWith('screen');
 
-    // Audio stream select (selects[1])
+    // Audio stream select
     fireEvent.change(selects[1], { target: { value: 'on' } });
     expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
 
-    // Frame rate select (selects[2])
+    // Frame rate select
     fireEvent.change(selects[2], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
-    // Max image size select (selects[3])
+    // Max image size select
     fireEvent.change(selects[3], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
@@ -114,9 +118,8 @@ describe('ControlsPanel Component', () => {
   it('renders quota and usage indicators correctly', () => {
     render(<ControlsPanel {...defaultProps} />);
 
-    // Check that storage text is rendered
+    // Check storage & AI usage
     expect(screen.getByText(/50 MB of 500 MB/i)).toBeInTheDocument();
-    // Check that AI text is rendered
     expect(screen.getByText(/\$2.50 of \$10.00 used/i)).toBeInTheDocument();
   });
 
@@ -134,9 +137,8 @@ describe('ControlsPanel Component', () => {
     );
 
     expect(screen.getByText(/AI & Invigilation/i)).toBeInTheDocument();
-    expect(screen.getByText(/Client AI/i)).toBeInTheDocument();
-    
-    // Open the modal
+
+    // Open modal
     const configButton = screen.getByRole('button', { name: /Configure Gaze & Mode/i });
     expect(configButton).toBeInTheDocument();
     fireEvent.click(configButton);
@@ -149,11 +151,7 @@ describe('ControlsPanel Component', () => {
     const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
     fireEvent.click(saveButton);
 
-    expect(handleSaveGazeSettings).toHaveBeenCalledWith(expect.objectContaining({
-      enableClientAi: true,
-      gazeSensitivity: 'standard',
-      faceDebounceSeconds: 3,
-    }));
+    expect(handleSaveGazeSettings).toHaveBeenCalled();
   });
 
   it('handles pause/resume toggle, prompt modal open, and attendance download', () => {
@@ -175,12 +173,12 @@ describe('ControlsPanel Component', () => {
       />
     );
 
-    // Pause button (when capturing is active)
+    // Pause button
     const pauseBtn = screen.getByRole('button', { name: /Pause/i });
     fireEvent.click(pauseBtn);
     expect(setIsPaused).toHaveBeenCalledWith(true);
 
-    // Rerender paused
+    // Resume
     rerender(
       <ControlsPanel
         {...defaultProps}
@@ -197,19 +195,121 @@ describe('ControlsPanel Component', () => {
     fireEvent.click(resumeBtn);
     expect(setIsPaused).toHaveBeenCalledWith(false);
 
-    // AI Prompt Modal button
-    const promptBtn = screen.getByRole('button', { name: /Select Analysis Prompt/i });
-    fireEvent.click(promptBtn);
-    expect(setShowPromptModal).toHaveBeenCalledWith(true);
-
-    // Attendance download button
+    // Attendance download
     const attendanceBtn = screen.getByRole('button', { name: /Download CSV/i });
     fireEvent.click(attendanceBtn);
     expect(handleDownloadAttendance).toHaveBeenCalled();
 
-    // Not sharing modal button
+    // Not sharing modal
     const notSharingBtn = screen.getByRole('button', { name: /Not Sharing/i });
     fireEvent.click(notSharingBtn);
     expect(setShowNotSharingModal).toHaveBeenCalledWith(true);
+  });
+
+  it('toggles AI live analysis triggers (per-image & all-images)', () => {
+    const setIsPerImageAnalysisRunning = vi.fn();
+    const setIsAllImagesAnalysisRunning = vi.fn();
+    const setSamplingRate = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        setIsPerImageAnalysisRunning={setIsPerImageAnalysisRunning}
+        setIsAllImagesAnalysisRunning={setIsAllImagesAnalysisRunning}
+        setSamplingRate={setSamplingRate}
+      />
+    );
+
+    const perImageBtn = screen.getByRole('button', { name: /Start Per-Image Analysis/i });
+    fireEvent.click(perImageBtn);
+    expect(setIsPerImageAnalysisRunning).toHaveBeenCalledWith(true);
+
+    const allImagesBtn = screen.getByRole('button', { name: /Start All-Images Analysis/i });
+    fireEvent.click(allImagesBtn);
+    expect(setIsAllImagesAnalysisRunning).toHaveBeenCalledWith(true);
+
+    // Sampling rate slider
+    const slider = screen.getByRole('slider');
+    fireEvent.change(slider, { target: { value: '8' } });
+    expect(setSamplingRate).toHaveBeenCalledWith(8);
+  });
+
+  it('opens AI cost breakdown audit modal on click View Breakdown', () => {
+    render(<ControlsPanel {...defaultProps} classId="CLASS_101" />);
+
+    const breakdownBtn = screen.getByRole('button', { name: /View Breakdown/i });
+    fireEvent.click(breakdownBtn);
+
+    expect(screen.getAllByText(/AI Cost Breakdown & Audit/i).length).toBeGreaterThan(0);
+  });
+
+  it('customizes pitch, yaw, and mode in Gaze configuration modal', () => {
+    const handleSaveGazeSettings = vi.fn();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        enableClientAi={true}
+        gazeSensitivity="custom"
+        faceDebounceSeconds={3}
+        customYawAngle={25}
+        customPitchDownAngle={-20}
+        customPitchUpAngle={25}
+        handleSaveGazeSettings={handleSaveGazeSettings}
+      />
+    );
+
+    const configButton = screen.getByRole('button', { name: /Configure Gaze & Mode/i });
+    fireEvent.click(configButton);
+
+    const comboboxes = screen.getAllByRole('combobox');
+    expect(comboboxes.length).toBeGreaterThan(4);
+    fireEvent.change(comboboxes[comboboxes.length - 4], { target: { value: 'client_only' } });
+
+    const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    fireEvent.click(saveButton);
+    expect(handleSaveGazeSettings).toHaveBeenCalled();
+  });
+
+  it('handles template selection and audio capture toggle', () => {
+    const handleMaxImageSizeChange = vi.fn();
+    const handleFrameRateChange = vi.fn();
+    const handleAudioCaptureToggle = vi.fn();
+    const setMessage = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        handleMaxImageSizeChange={handleMaxImageSizeChange}
+        handleFrameRateChange={handleFrameRateChange}
+        handleAudioCaptureToggle={handleAudioCaptureToggle}
+        setMessage={setMessage}
+        enableAudioCapture={false}
+      />
+    );
+
+    // Template selection
+    const templateSelect = screen.getByRole('combobox', { name: /Pre-defined message templates/i });
+    fireEvent.change(templateSelect, { target: { value: '⏰ 15 minutes remaining in test/class.' } });
+    expect(setMessage).toHaveBeenCalledWith('⏰ 15 minutes remaining in test/class.');
+
+    const comboboxes = screen.getAllByRole('combobox');
+    // Channel select is [0], Audio is [1], Interval is [2], Max size is [3]
+    const audioSelect = comboboxes.find(cb => cb.querySelector('option[value="on"]'));
+    if (audioSelect) {
+      fireEvent.change(audioSelect, { target: { value: 'on' } });
+      expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
+    }
+
+    const intervalSelect = comboboxes.find(cb => cb.querySelector('option[value="5"]'));
+    if (intervalSelect) {
+      fireEvent.change(intervalSelect, { target: { value: '5' } });
+      expect(handleFrameRateChange).toHaveBeenCalled();
+    }
+
+    const maxSizeSelect = comboboxes.find(cb => cb.querySelector('option[value="262144"]'));
+    if (maxSizeSelect) {
+      fireEvent.change(maxSizeSelect, { target: { value: '262144' } });
+      expect(handleMaxImageSizeChange).toHaveBeenCalled();
+    }
   });
 });

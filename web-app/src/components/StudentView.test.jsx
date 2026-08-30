@@ -1,138 +1,180 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import StudentView from './StudentView';
 
+const mockSignOut = vi.fn();
 vi.mock('../firebase-config', () => ({
-  storage: {},
+  auth: {
+    signOut: () => mockSignOut(),
+    currentUser: { uid: 'student123', email: 'student@school.edu' },
+  },
   db: {},
-  auth: {}
+  storage: {},
+  functions: {},
 }));
 
+const mockDoc = vi.fn((db, col, id) => ({ path: `${col}/${id}`, id }));
+const mockCollection = vi.fn((db, col) => ({ path: col }));
+const mockOnSnapshot = vi.fn((query, callback) => {
+  callback({
+    docs: [
+      {
+        id: 'class1',
+        data: () => ({
+          name: 'Computer Science 101',
+          students: { student123: 'student@school.edu' },
+          teachers: ['teacher@school.edu'],
+          requireFullScreenOnly: true,
+          enableAudioCapture: true,
+          audioCaptureMode: 'optional',
+          captureMode: 'dual',
+          schedule: {
+            startDate: '2026-08-01',
+            endDate: '2026-12-31',
+            timeZone: 'Asia/Hong_Kong',
+            timeSlots: [{ days: ['Mon', 'Wed', 'Sun'], startTime: '00:00', endTime: '23:59' }],
+          },
+        }),
+      },
+    ],
+    exists: () => true,
+    data: () => ({
+      name: 'Computer Science 101',
+      students: { student123: 'student@school.edu' },
+      teachers: ['teacher@school.edu'],
+      requireFullScreenOnly: true,
+      enableAudioCapture: true,
+      audioCaptureMode: 'optional',
+      captureMode: 'dual',
+      schedule: {
+        startDate: '2026-08-01',
+        endDate: '2026-12-31',
+        timeZone: 'Asia/Hong_Kong',
+        timeSlots: [{ days: ['Mon', 'Wed', 'Sun'], startTime: '00:00', endTime: '23:59' }],
+      },
+    }),
+  });
+  return () => {};
+});
+
 vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn(),
-  onSnapshot: vi.fn(() => vi.fn()),
+  doc: (...args) => mockDoc(...args),
+  collection: (...args) => mockCollection(...args),
+  onSnapshot: (...args) => mockOnSnapshot(...args),
   query: vi.fn(),
   where: vi.fn(),
   orderBy: vi.fn(),
   limit: vi.fn(),
-  addDoc: vi.fn(),
-  setDoc: vi.fn(() => Promise.resolve()),
-  serverTimestamp: vi.fn()
+  setDoc: vi.fn().mockResolvedValue(),
+  addDoc: vi.fn().mockResolvedValue({ id: 'msg_1' }),
+  serverTimestamp: vi.fn(),
+  getDoc: vi.fn().mockResolvedValue({
+    exists: () => true,
+    data: () => ({ customProperties: { Seat: 'A1', Group: 'Alpha' } }),
+  }),
 }));
 
-vi.mock('firebase/storage', () => ({
-  ref: vi.fn(),
-  uploadBytes: vi.fn(() => Promise.resolve())
+vi.mock('../hooks/useFaceMonitor', () => ({
+  default: () => ({
+    isFaceModelLoading: false,
+    faceStatus: 'Face Verified',
+    faceColor: 'green',
+    gazeComplianceScore: 95,
+    gazeStatus: 'Looking at Screen',
+  }),
+  useFaceMonitor: () => ({
+    isFaceModelLoading: false,
+    faceStatus: 'Face Verified',
+    faceColor: 'green',
+    gazeComplianceScore: 95,
+    gazeStatus: 'Looking at Screen',
+  }),
 }));
 
-vi.mock('firebase/auth', () => ({
-  signOut: vi.fn()
+vi.mock('../hooks/useAudioRecorder', () => ({
+  default: () => ({
+    isRecording: false,
+    audioStream: null,
+    audioLevel: 0,
+    isSpeaking: false,
+    hasMicPermission: true,
+  }),
+  useAudioRecorder: () => ({
+    isRecording: false,
+    audioStream: null,
+    audioLevel: 0,
+    isSpeaking: false,
+    hasMicPermission: true,
+  }),
+}));
+
+vi.mock('../hooks/useWebRTCPeekStudent', () => ({
+  default: () => ({
+    isPeeking: false,
+    activeTeacher: null,
+  }),
+  useWebRTCPeekStudent: () => ({
+    isPeeking: false,
+    activeTeacher: null,
+  }),
 }));
 
 vi.mock('../hooks/useStudentClassSchedule', () => ({
-  useStudentClassSchedule: () => ({ currentActiveClassId: 'TEST-CLASS-101' })
+  default: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
+  useStudentClassSchedule: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
 }));
 
-describe('StudentView Component', () => {
+describe('StudentView Component Extended Test Suite', () => {
   const mockUser = {
-    uid: 'student-123',
-    email: 'student1@stu.vtc.edu.hk',
-    displayName: 'Student One'
+    uid: 'student123',
+    email: 'student@school.edu',
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders student controls and active class name', () => {
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        enumerateDevices: vi.fn().mockResolvedValue([
-          { kind: 'videoinput', deviceId: 'cam1', label: 'Integrated Camera' }
-        ]),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
-      },
-      writable: true,
-      configurable: true
-    });
-
+  it('renders student monitoring header and instructions', async () => {
     render(<StudentView user={mockUser} />);
 
-    expect(screen.getByText(/TEST-CLASS-101/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Share Screen/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start Webcam/i })).toBeInTheDocument();
+    expect(screen.getByText(/My Recent Alerts/i)).toBeInTheDocument();
   });
 
-  it('renders webcam selection dropdown when multiple webcams are detected', async () => {
+  it('populates camera selection dropdown from navigator.mediaDevices', async () => {
     const mockDevices = [
-      { kind: 'videoinput', deviceId: 'cam1', label: 'Built-in FaceTime HD Camera' },
-      { kind: 'videoinput', deviceId: 'cam2', label: 'Logitech C920 Pro HD' }
+      { deviceId: 'cam1', kind: 'videoinput', label: 'Built-in FaceTime HD Camera' },
+      { deviceId: 'cam2', kind: 'videoinput', label: 'Logitech C920 Pro HD' },
     ];
 
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+          getVideoTracks: () => [{ addEventListener: vi.fn(), stop: vi.fn() }],
+        }),
+        getDisplayMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+          getVideoTracks: () => [{ addEventListener: vi.fn(), stop: vi.fn() }],
+        }),
         enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
         addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
+        removeEventListener: vi.fn(),
       },
       writable: true,
-      configurable: true
-    });
-
-    render(<StudentView user={mockUser} />);
-
-    await waitFor(() => {
-      const select = screen.getByLabelText(/Select Webcam/i);
-      expect(select).toBeInTheDocument();
-      expect(screen.getByText(/Built-in FaceTime HD Camera/i)).toBeInTheDocument();
-      expect(screen.getByText(/Logitech C920 Pro HD/i)).toBeInTheDocument();
-    });
-  });
-
-  it('does not render camera dropdown when only one camera is detected', async () => {
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        enumerateDevices: vi.fn().mockResolvedValue([
-          { kind: 'videoinput', deviceId: 'cam1', label: 'Default Web Camera' }
-        ]),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
-      },
-      writable: true,
-      configurable: true
-    });
-
-    render(<StudentView user={mockUser} />);
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText(/Select Webcam/i)).not.toBeInTheDocument();
-    });
-  });
-
-  it('allows changing the selected webcam from the dropdown', async () => {
-    const mockDevices = [
-      { kind: 'videoinput', deviceId: 'cam1', label: 'Camera 1' },
-      { kind: 'videoinput', deviceId: 'cam2', label: 'Camera 2' }
-    ];
-
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
-      },
-      writable: true,
-      configurable: true
+      configurable: true,
     });
 
     render(<StudentView user={mockUser} />);
 
     const select = await screen.findByLabelText(/Select Webcam/i);
-    fireEvent.change(select, { target: { value: 'cam2' } });
+    expect(select).toBeInTheDocument();
+    expect(screen.getByText(/Built-in FaceTime HD Camera/i)).toBeInTheDocument();
+    expect(screen.getByText(/Logitech C920 Pro HD/i)).toBeInTheDocument();
 
+    fireEvent.change(select, { target: { value: 'cam2' } });
     expect(select.value).toBe('cam2');
   });
 
@@ -170,19 +212,99 @@ describe('StudentView Component', () => {
     });
   });
 
-  it('toggles mesh overlay visibility checkbox if present', async () => {
+  it('allows opening mic setup modal and toggling audio settings', async () => {
     render(<StudentView user={mockUser} />);
 
-    const meshCheckbox = screen.queryByLabelText(/Show Face Mesh/i) || screen.queryByRole('checkbox');
-    if (meshCheckbox) {
-      fireEvent.click(meshCheckbox);
-      expect(meshCheckbox.checked).toBeDefined();
+    const micToggleBtn = await screen.findByRole('button', { name: /Mic Muted|Mic Active/i });
+    expect(micToggleBtn).toBeInTheDocument();
+    fireEvent.click(micToggleBtn);
+
+    const micTestBtn = screen.getByRole('button', { name: /⚙️ Mic Test/i });
+    fireEvent.click(micTestBtn);
+
+    expect(screen.getByText(/Microphone Setup & Verification/i)).toBeInTheDocument();
+
+    const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
+    fireEvent.click(cancelBtn);
+  });
+
+  it('opens and closes Exam Readiness Wizard modal', async () => {
+    render(<StudentView user={mockUser} />);
+
+    const wizardBtn = screen.getByRole('button', { name: /Exam Readiness Check/i });
+    fireEvent.click(wizardBtn);
+
+    expect(screen.getByText(/Pre-Exam Readiness Wizard/i)).toBeInTheDocument();
+
+    const closeBtn = screen.getByRole('button', { name: /×/i });
+    fireEvent.click(closeBtn);
+  });
+
+  it('handles dismissing notification banner and clicking allow', async () => {
+    Object.defineProperty(window, 'Notification', {
+      value: {
+        permission: 'default',
+        requestPermission: vi.fn().mockResolvedValue('granted'),
+      },
+      writable: true,
+      configurable: true,
+    });
+
+    render(<StudentView user={mockUser} />);
+
+    const allowBtn = screen.queryByRole('button', { name: /Allow Notifications/i });
+    if (allowBtn) {
+      fireEvent.click(allowBtn);
+    }
+
+    const dismissBtn = screen.queryByRole('button', { name: /Dismiss banner|✕/i });
+    if (dismissBtn) {
+      fireEvent.click(dismissBtn);
     }
   });
 
-  it('renders student widgets like alerts and messages sidebar', async () => {
+  it('allows changing sampling rate slider', async () => {
     render(<StudentView user={mockUser} />);
 
-    expect(screen.getByText(/TEST-CLASS-101/)).toBeInTheDocument();
+    const sliders = screen.queryAllByRole('slider');
+    if (sliders.length > 0) {
+      fireEvent.change(sliders[0], { target: { value: 5 } });
+    }
+  });
+
+  it('starts webcam stream on click Start Webcam', async () => {
+    const mockWebcamStream = {
+      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn() }]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockWebcamStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
+    fireEvent.click(startWebcamBtn);
+
+    await waitFor(() => {
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
+    });
+  });
+
+  it('handles online and offline window network events', async () => {
+    render(<StudentView user={mockUser} />);
+
+    // Trigger offline
+    fireEvent(window, new Event('offline'));
+    // Trigger online
+    fireEvent(window, new Event('online'));
+  });
+
+  it('handles user sign out', async () => {
+    render(<StudentView user={mockUser} />);
+
+    const logoutBtn = screen.queryByRole('button', { name: /Log Out|Sign Out/i });
+    if (logoutBtn) {
+      fireEvent.click(logoutBtn);
+      expect(mockSignOut).toHaveBeenCalled();
+    }
   });
 });

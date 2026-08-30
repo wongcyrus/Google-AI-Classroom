@@ -131,5 +131,73 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
       expect(result.current.error).toBe('Permission Denied');
       expect(result.current.stream).toBeNull();
     });
+
+    it('performs STT challenge verification with SpeechRecognition mock', async () => {
+      let mockInstance;
+      class MockSpeechRecognition {
+        constructor() {
+          this.continuous = false;
+          this.interimResults = false;
+          this.lang = 'en-US';
+          this.onstart = null;
+          this.onresult = null;
+          this.onerror = null;
+          this.onend = null;
+          mockInstance = this;
+        }
+        start() {
+          if (this.onstart) this.onstart();
+        }
+        stop() {
+          if (this.onend) this.onend();
+        }
+      }
+
+      window.SpeechRecognition = MockSpeechRecognition;
+
+      const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      await act(async () => {
+        result.current.startSttVerification();
+      });
+
+      expect(result.current.isListeningStt).toBe(true);
+
+      // Trigger result event
+      act(() => {
+        if (mockInstance?.onresult) {
+          mockInstance.onresult({
+            resultIndex: 0,
+            results: [
+              [{ transcript: 'student microphone active testing audio' }],
+            ],
+          });
+        }
+      });
+
+      expect(result.current.isVerified).toBe(true);
+      expect(result.current.verificationScore).toBeGreaterThan(0);
+
+      act(() => {
+        result.current.stopSttVerification();
+      });
+      expect(result.current.isListeningStt).toBe(false);
+
+      delete window.SpeechRecognition;
+    });
+
+    it('updates selectedDeviceId and starts stream', async () => {
+      const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      act(() => {
+        result.current.setSelectedDeviceId('mic-2');
+      });
+      expect(result.current.selectedDeviceId).toBe('mic-2');
+
+      await act(async () => {
+        await result.current.startStream('mic-2');
+      });
+      expect(result.current.stream).toBeTruthy();
+    });
   });
 });
