@@ -157,5 +157,9 @@ service cloud.firestore {
     match /propertyUploadJobs/{jobId} {
       allow read, create: if isTeacher();
     }
+    match /system_config/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only backend functions / admin SDK can write
+    }
   }
 }

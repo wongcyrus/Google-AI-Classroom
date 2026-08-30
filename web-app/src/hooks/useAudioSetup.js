@@ -66,12 +66,39 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
   const [isPlayingBack, setIsPlayingBack] = useState(false);
   const [playbackAudioUrl, setPlaybackAudioUrl] = useState(null);
 
+  const streamRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  // Cleanup all audio resources on hook unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore error if recognition was not active
+        }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
 
   // Generate a friendly challenge phrase if not provided
   const challengePhrase = expectedPhrase || `My student ID is ${studentUid.slice(0, 6) || '123456'} and my microphone is working`;
@@ -112,8 +139,9 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
     setError(null);
 
     // Stop existing stream
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     }
 
     try {
@@ -123,6 +151,7 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
       };
 
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = newStream;
       setStream(newStream);
 
       // Save selected device ID

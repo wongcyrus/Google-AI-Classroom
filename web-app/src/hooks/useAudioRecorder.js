@@ -23,6 +23,7 @@ export function useAudioRecorder({
 } = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioStream, setAudioStream] = useState(null);
+  const audioStreamRef = useRef(null);
   const [currentVolume, setCurrentVolume] = useState(0);
   const [audioError, setAudioError] = useState(null);
   const [uploadedSegmentsCount, setUploadedSegmentsCount] = useState(0);
@@ -220,6 +221,7 @@ export function useAudioRecorder({
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      audioStreamRef.current = stream;
       setAudioStream(stream);
       startVolumeAnalysis(stream);
 
@@ -288,22 +290,25 @@ export function useAudioRecorder({
       }
     }
 
-    if (audioStream) {
-      audioStream.getTracks().forEach(track => track.stop());
-      setAudioStream(null);
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
     }
+    setAudioStream(null);
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
 
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
     }
 
     setIsRecording(false);
     setCurrentVolume(0);
-  }, [audioStream]);
+  }, []);
 
   // Automatically start/stop when enabled flag changes
   useEffect(() => {
@@ -314,10 +319,8 @@ export function useAudioRecorder({
     }
 
     return () => {
-      // cleanup on unmount
-      if (isRecording) {
-        stopRecording();
-      }
+      // Unconditional cleanup on unmount
+      stopRecording();
     };
   }, [enabled, classId, studentUid]); // eslint-disable-line react-hooks/exhaustive-deps
 

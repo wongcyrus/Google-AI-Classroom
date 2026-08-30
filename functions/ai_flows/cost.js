@@ -42,13 +42,17 @@ const TOKENS_PER_IMAGE_ESTIMATE = 258;
  * @returns {number} The calculated cost in USD.
  */
 export function calculateCost(usageMetadata, model = DEFAULT_MODEL) {
-  if (!usageMetadata) {
+  if (!usageMetadata || typeof usageMetadata !== 'object') {
     return 0;
   }
   const pricing = getModelPricing(model);
-  const inputCost = (usageMetadata.promptTokenCount / 1000000) * pricing.input;
-  const outputCost = (usageMetadata.candidatesTokenCount / 1000000) * pricing.output;
-  return inputCost + outputCost;
+  const promptTokens = Math.max(0, Number(usageMetadata.promptTokenCount) || 0);
+  const candidatesTokens = Math.max(0, Number(usageMetadata.candidatesTokenCount) || 0);
+  const inputRate = pricing?.input ?? MODEL_PRICING[DEFAULT_MODEL].input;
+  const outputRate = pricing?.output ?? MODEL_PRICING[DEFAULT_MODEL].output;
+  const inputCost = (promptTokens / 1000000) * inputRate;
+  const outputCost = (candidatesTokens / 1000000) * outputRate;
+  return Number((inputCost + outputCost).toFixed(6)) || 0;
 }
 
 /**
@@ -60,10 +64,11 @@ export function calculateCost(usageMetadata, model = DEFAULT_MODEL) {
  */
 export function estimateCost(prompt, media = [], model = DEFAULT_MODEL) {
   const pricing = getModelPricing(model);
+  const inputRate = pricing?.input ?? MODEL_PRICING[DEFAULT_MODEL].input;
   const textTokens = Math.ceil((prompt?.length || 0) / CHARS_PER_TOKEN_ESTIMATE);
-  const imageTokens = media.length * TOKENS_PER_IMAGE_ESTIMATE;
+  const imageTokens = (Array.isArray(media) ? media.length : 0) * TOKENS_PER_IMAGE_ESTIMATE;
   const totalInputTokens = textTokens + imageTokens;
 
-  const inputCost = (totalInputTokens / 1000000) * pricing.input;
-  return inputCost;
+  const inputCost = (totalInputTokens / 1000000) * inputRate;
+  return Number(inputCost.toFixed(6)) || 0;
 }
