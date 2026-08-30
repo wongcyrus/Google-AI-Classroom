@@ -38,6 +38,11 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   const { students, afterClassVideoPrompt } = classData;
 
   // Check if the class is configured for automatic analysis
+  if (classData.aiMonitoringMode === 'disabled' || classData.aiMonitoringMode === 'client_only') {
+    logger.info(`Class ${classId} has aiMonitoringMode='${classData.aiMonitoringMode}'. Skipping automatic cloud video analysis.`);
+    return;
+  }
+
   if (!classData.automaticCombine || !afterClassVideoPrompt || !afterClassVideoPrompt.promptText) {
     logger.info(`Class ${classId} is not configured for automatic analysis.`);
     return;

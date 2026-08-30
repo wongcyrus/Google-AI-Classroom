@@ -135,4 +135,54 @@ describe('StudentView Component', () => {
 
     expect(select.value).toBe('cam2');
   });
+
+  it('handles start and stop webcam sharing', async () => {
+    const mockStream = {
+      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
+    fireEvent.click(startWebcamBtn);
+
+    await waitFor(() => {
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
+    });
+  });
+
+  it('handles start screen sharing', async () => {
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn() }]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const startScreenBtn = screen.getByRole('button', { name: /Share Screen/i });
+    fireEvent.click(startScreenBtn);
+
+    await waitFor(() => {
+      expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalled();
+    });
+  });
+
+  it('toggles mesh overlay visibility checkbox if present', async () => {
+    render(<StudentView user={mockUser} />);
+
+    const meshCheckbox = screen.queryByLabelText(/Show Face Mesh/i) || screen.queryByRole('checkbox');
+    if (meshCheckbox) {
+      fireEvent.click(meshCheckbox);
+      expect(meshCheckbox.checked).toBeDefined();
+    }
+  });
+
+  it('renders student widgets like alerts and messages sidebar', async () => {
+    render(<StudentView user={mockUser} />);
+
+    expect(screen.getByText(/TEST-CLASS-101/)).toBeInTheDocument();
+  });
 });

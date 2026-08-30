@@ -45,6 +45,42 @@ describe('calculateCost', () => {
     const cost = calculateCost(usage);
     expect(cost).toBeCloseTo(0.00155, 6);
   });
+
+  it('should correctly handle Genkit format (inputTokens / outputTokens)', () => {
+    const usage = {
+      inputTokens: 1000000,
+      outputTokens: 1000000,
+    };
+    const cost = calculateCost(usage, 'gemini-3.5-flash-lite');
+    expect(cost).toBeCloseTo(2.80, 4);
+  });
+
+  it('should correctly compute audio transcription cost for gemini-3.5-transcribe', () => {
+    const usage = {
+      inputTokens: 2000000, // 2M @ $0.50 = $1.00
+      outputTokens: 1000000, // 1M @ $2.50 = $2.50
+    };
+    const cost = calculateCost(usage, 'gemini-3.5-transcribe');
+    expect(cost).toBeCloseTo(3.50, 4);
+  });
+
+  it('should correctly compute audio transcription cost for gemini-3.5-transcribe-live', () => {
+    const usage = {
+      inputTokens: 1000000, // 1M @ $0.60 = $0.60
+      outputTokens: 1000000, // 1M @ $3.00 = $3.00
+    };
+    const cost = calculateCost(usage, 'gemini-3.5-transcribe-live');
+    expect(cost).toBeCloseTo(3.60, 4);
+  });
+
+  it('should safely handle negative or malformed token counts', () => {
+    const usage = {
+      inputTokens: -50,
+      outputTokens: 'invalid',
+    };
+    const cost = calculateCost(usage);
+    expect(cost).toBe(0);
+  });
 });
 
 describe('estimateCost', () => {

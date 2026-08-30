@@ -35,9 +35,12 @@ const TOKENS_PER_IMAGE_ESTIMATE = 258;
 
 /**
  * Calculates the actual cost of an AI job based on the usage metadata from the API response.
+ * Handles all standard token property names across Genkit, Google GenAI SDK, and Vertex AI.
  * @param {object} usageMetadata - The usage metadata object from the AI response.
- * @param {number} usageMetadata.promptTokenCount - The number of tokens in the input.
- * @param {number} usageMetadata.candidatesTokenCount - The number of tokens in the output.
+ * @param {number} [usageMetadata.promptTokenCount] - The number of tokens in the input.
+ * @param {number} [usageMetadata.inputTokens] - The number of tokens in the input (Genkit format).
+ * @param {number} [usageMetadata.candidatesTokenCount] - The number of tokens in the output.
+ * @param {number} [usageMetadata.outputTokens] - The number of tokens in the output (Genkit format).
  * @param {string} [model] - The AI model identifier.
  * @returns {number} The calculated cost in USD.
  */
@@ -46,8 +49,27 @@ export function calculateCost(usageMetadata, model = DEFAULT_MODEL) {
     return 0;
   }
   const pricing = getModelPricing(model);
-  const promptTokens = Math.max(0, Number(usageMetadata.promptTokenCount) || 0);
-  const candidatesTokens = Math.max(0, Number(usageMetadata.candidatesTokenCount) || 0);
+  const promptTokens = Math.max(
+    0,
+    Number(
+      usageMetadata.promptTokenCount ??
+      usageMetadata.inputTokens ??
+      usageMetadata.promptTokens ??
+      usageMetadata.inputTokenCount ??
+      0
+    )
+  );
+  const candidatesTokens = Math.max(
+    0,
+    Number(
+      usageMetadata.candidatesTokenCount ??
+      usageMetadata.outputTokens ??
+      usageMetadata.completionTokens ??
+      usageMetadata.candidatesTokens ??
+      usageMetadata.outputTokenCount ??
+      0
+    )
+  );
   const inputRate = pricing?.input ?? MODEL_PRICING[DEFAULT_MODEL].input;
   const outputRate = pricing?.output ?? MODEL_PRICING[DEFAULT_MODEL].output;
   const inputCost = (promptTokens / 1000000) * inputRate;

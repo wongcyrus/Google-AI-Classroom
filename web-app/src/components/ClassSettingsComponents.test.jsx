@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChangePasswordModal from './ChangePasswordModal';
 import ScheduleManager from './ScheduleManager';
 import CustomPropertiesManager from './CustomPropertiesManager';
+import ClassManagement from './ClassManagement';
 
 vi.mock('../firebase-config', () => ({
   auth: {
@@ -126,6 +127,23 @@ describe('Class Settings & Management Components', () => {
       fireEvent.click(addBtn);
 
       expect(screen.getByRole('button', { name: /Save Class-wide Properties/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('ClassManagement', () => {
+    it('renders class settings and saves updated configurations', async () => {
+      render(<ClassManagement user={{ uid: 't1' }} embeddedClassId="CLASS-101" />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Class Settings/i)).toBeInTheDocument();
+      });
+
+      // Verify presence of audio monitoring controls and settings
+      expect(screen.getByText(/Audio & Microphone Monitoring/i)).toBeInTheDocument();
+      expect(screen.getByText(/Automation & AI Prompts/i)).toBeInTheDocument();
+
+      const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+      fireEvent.click(saveBtn);
     });
   });
 });

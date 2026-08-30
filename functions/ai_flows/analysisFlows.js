@@ -72,8 +72,8 @@ export const analyzeImageFlow = ai.defineFlow(
           maxToolRoundtrips: 10,
         });
         console.log(`AI response usage (${activeModel}):`, response.usage);
-        const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-        const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+        const usage = response.usage || {};
+        const cost = calculateCost(usage, activeModel);
 
         await logJob({
           classId,
@@ -84,8 +84,8 @@ export const analyzeImageFlow = ai.defineFlow(
           promptText: fullPrompt.find(p => p.text)?.text,
           mediaPaths: media.map(m => m.media.url),
           usage: {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
+            inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
+            outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
           },
           cost,
           modelUsed: activeModel,
@@ -179,8 +179,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
         maxToolRoundtrips: 10,
       });
       console.log(`AI video response usage (${activeModel}):`, response.usage);
-      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+      const usage = response.usage || {};
+      const cost = calculateCost(usage, activeModel);
 
       const jobId = await logJob({
         classId,
@@ -192,8 +192,8 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
         promptHash,
         mediaPaths: media.map(m => m.media.url),
         usage: {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
+          outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
         modelUsed: activeModel,
@@ -277,8 +277,8 @@ export const analyzeAllImagesFlow = ai.defineFlow(
         maxToolRoundtrips,
       });
       console.log(`AI all-images response usage (${activeModel}):`, response.usage);
-      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+      const usage = response.usage || {};
+      const cost = calculateCost(usage, activeModel);
 
       await logJob({
         classId,
@@ -287,8 +287,8 @@ export const analyzeAllImagesFlow = ai.defineFlow(
         promptText: fullPrompt.find(p => p.text)?.text,
         mediaPaths: media.map(m => m.media.url),
         usage: {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
+          outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
         modelUsed: activeModel,
@@ -392,8 +392,8 @@ Respond ONLY with valid JSON in this exact structure:
         prompt: fullPrompt,
       });
 
-      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+      const usage = response.usage || {};
+      const cost = calculateCost(usage, activeModel);
 
       let parsed = { faceStatus: 'normal', confidence: 1.0, reason: 'OK' };
       try {
@@ -419,8 +419,8 @@ Respond ONLY with valid JSON in this exact structure:
         promptText,
         mediaPaths: [webcamUrl],
         usage: {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
+          outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
         modelUsed: activeModel,
@@ -514,8 +514,8 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
         maxToolRoundtrips: 10,
       });
 
-      const usage = response.usage || { inputTokens: 0, outputTokens: 0 };
-      const cost = calculateCost({ promptTokenCount: usage.inputTokens, candidatesTokenCount: usage.outputTokens }, activeModel);
+      const usage = response.usage || {};
+      const cost = calculateCost(usage, activeModel);
 
       await logJob({
         classId,
@@ -526,8 +526,8 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
         promptText: defaultPromptText,
         mediaPaths: [audioUrl],
         usage: {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
+          outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
         modelUsed: activeModel,

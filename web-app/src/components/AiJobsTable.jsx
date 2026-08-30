@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { formatAiCost } from '../utils/formatters';
 
 const AiJobsTable = ({ aiJobs, onPlayVideo }) => {
   return (
@@ -10,6 +11,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo }) => {
                     <th>Play</th>
                     <th>Student</th>
                     <th>Model</th>
+                    <th>Cost</th>
                     <th>Status</th>
                     <th>Result</th>
                     <th>Created At</th>
@@ -25,6 +27,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo }) => {
                         </td>
                         <td>{job.studentEmail}</td>
                         <td><span style={{ fontSize: '0.85em', padding: '2px 6px', background: '#e0f2fe', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>{job.modelUsed || 'gemini-3.5-flash-lite'}</span></td>
+                        <td><span style={{ fontWeight: 600, color: '#475569' }}>{formatAiCost(job.cost)}</span></td>
                         <td>{job.status}</td>
                         <td>
                             {job.status === 'failed' ? (

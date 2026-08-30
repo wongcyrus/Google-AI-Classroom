@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 vi.mock('../firebase-config', () => ({
   storage: {},
   db: {},
+  auth: { currentUser: { uid: 'teacher_1', email: 'teacher@example.com' } },
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -82,5 +83,30 @@ describe('IrregularitiesView Component', () => {
     const closeBtn = screen.getByText('×');
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/🚨 Irregularity Evidence:/i)).toBeNull();
+  });
+
+  it('renders period filter bar and switches period presets', async () => {
+    render(
+      <MemoryRouter initialEntries={['/classes/TEST-101/irregularities']}>
+        <Routes>
+          <Route path="/classes/:classId/irregularities" element={<IrregularitiesView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/⏱️ Scope \/ Period:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All Sessions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Today' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Past 24h' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Past 7 Days' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Custom Range...' })).toBeInTheDocument();
+
+    // Click Custom Range preset
+    const customBtn = screen.getByRole('button', { name: 'Custom Range...' });
+    fireEvent.click(customBtn);
+
+    expect(screen.getByText('From:')).toBeInTheDocument();
+    expect(screen.getByText('To:')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply Filter' })).toBeInTheDocument();
   });
 });

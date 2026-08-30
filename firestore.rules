@@ -69,11 +69,15 @@ service cloud.firestore {
         allow write: if false; // Only backend functions can write
       }
       match /studentProperties/{studentId} {
-        allow read: if isTeacherInClass(classId) || request.auth.uid == studentId;
+        allow read, write: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentId);
       }
       match /classProperties/{docId} {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacherInClass(classId);
+      }
+
+      match /livePeeks/{studentUid} {
+        allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
       }
 
       match /lessons/{lessonId} {
@@ -133,6 +137,11 @@ service cloud.firestore {
 
     match /aiJobs/{jobId} {
       allow read, create, update: if isTeacher();
+    }
+
+    match /reportJobs/{jobId} {
+      allow create: if isTeacher() && request.resource.data.requesterUid == request.auth.uid;
+      allow read, update, delete: if isTeacher() && resource.data.requesterUid == request.auth.uid;
     }
 
     match /mails/{mailId} {

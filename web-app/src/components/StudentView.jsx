@@ -10,7 +10,10 @@ import './StudentView.css';
 import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
 import useFaceMonitor from '../hooks/useFaceMonitor';
 import useAudioRecorder from '../hooks/useAudioRecorder';
+import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
 import MicSetupModal from './MicSetupModal';
+import ExamReadinessWizard from './ExamReadinessWizard';
+import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 
 import Sidebar from './student/Sidebar';
 
@@ -38,6 +41,7 @@ const StudentView = ({ user }) => {
   const [recentIrregularities, setRecentIrregularities] = useState([]);
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
+  const [isReadinessWizardOpen, setIsReadinessWizardOpen] = useState(false);
 
   // Multi-camera selection & Layout State
   const [availableWebcams, setAvailableWebcams] = useState([]);
@@ -57,6 +61,65 @@ const StudentView = ({ user }) => {
   });
   const [dismissNotificationBanner, setDismissNotificationBanner] = useState(false);
   const [isSessionDisplaced, setIsSessionDisplaced] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0);
+
+  // Check offline queue count on mount and sync when online
+  useEffect(() => {
+    const updateQueueCount = async () => {
+      const count = await getOfflineQueueCount();
+      setOfflinePendingCount(count);
+    };
+    updateQueueCount();
+
+    const handleOnline = async () => {
+      setIsOnline(true);
+      try {
+        await flushOfflineQueue({
+          uploadItemHandler: async (item) => {
+            if (item.type !== 'screenshot') return;
+            const itemTime = item.timestamp || Date.now();
+            const channelName = item.metadata?.channel || 'screen';
+            const screenshotPath = `screenshots/${item.classId}/${item.studentUid}/${channelName}_${itemTime}.jpg`;
+            const screenshotRef = ref(storage, screenshotPath);
+            await uploadBytes(screenshotRef, item.blob);
+
+            const expireAtDate = new Date(itemTime + (item.metadata?.retentionDays || 30) * 86400000);
+            await addDoc(collection(db, 'screenshots'), {
+              classId: item.classId,
+              studentUid: item.studentUid,
+              email: (item.studentEmail || '').toLowerCase(),
+              channel: channelName,
+              imagePath: screenshotPath,
+              size: item.blob.size,
+              timestamp: new Date(itemTime),
+              expireAt: expireAtDate,
+              isBackfilled: true,
+              deleted: false,
+              ipAddress: item.metadata?.ipAddress || null,
+            });
+          },
+        });
+        const remaining = await getOfflineQueueCount();
+        setOfflinePendingCount(remaining);
+      } catch (err) {
+        console.warn('Error flushing offline screenshot queue:', err);
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+  }, []);
 
   const requestNotificationPermission = useCallback(async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -123,6 +186,7 @@ const StudentView = ({ user }) => {
   // Segmented Audio Recording Hook with Moving Window
   const {
     isRecording: isAudioRecording,
+    audioStream,
     audioLevel,
     isSpeaking,
     hasMicPermission,
@@ -131,6 +195,7 @@ const StudentView = ({ user }) => {
     studentUid: user?.uid,
     studentEmail: user?.email,
     enabled: isSharing && isCapturing && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
+    aiMonitoringMode,
     segmentDuration: audioSegmentDuration,
     windowDuration: audioMovingWindowDuration,
     strideDuration: audioMovingWindowStride,
@@ -138,6 +203,18 @@ const StudentView = ({ user }) => {
     silenceSuppression: audioSilenceSuppression,
     retentionDays: retentionDays,
     deviceId: selectedMicDeviceId,
+  });
+
+  const audioStreamRef = useRef(null);
+  audioStreamRef.current = audioStream;
+
+  // WebRTC Peer Connection for Teacher Live Peeking
+  useWebRTCPeekStudent({
+    classId: activeClass,
+    studentUid: user?.uid,
+    screenStreamRef,
+    webcamStreamRef,
+    audioStreamRef,
   });
 
   // MediaPipe Face & Gaze AI Monitor
@@ -573,39 +650,59 @@ const StudentView = ({ user }) => {
 
       if (blob) {
         const timestamp = Date.now();
-        const screenshotRef = ref(storage, `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`);
-        await uploadBytes(screenshotRef, blob);
-        const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
-        await addDoc(collection(db, 'screenshots'), {
-          classId: targetClass,
-          studentUid: user.uid,
-          email: user.email.toLowerCase(),
-          channel: channelName,
-          imagePath: screenshotRef.fullPath,
-          size: blob.size,
-          timestamp: serverTimestamp(),
-          expireAt: expireAtDate,
-          deleted: false,
-          ipAddress: ipAddress,
-        });
+        const screenshotPath = `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`;
+        const screenshotRef = ref(storage, screenshotPath);
+        
+        try {
+          await uploadBytes(screenshotRef, blob);
+          const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
+          await addDoc(collection(db, 'screenshots'), {
+            classId: targetClass,
+            studentUid: user.uid,
+            email: user.email.toLowerCase(),
+            channel: channelName,
+            imagePath: screenshotRef.fullPath,
+            size: blob.size,
+            timestamp: serverTimestamp(),
+            expireAt: expireAtDate,
+            deleted: false,
+            ipAddress: ipAddress,
+          });
 
-        const statusRef = doc(db, "classes", targetClass, "status", user.uid);
-        const statusUpdate = {
-          isSharing: true,
-          email: user.email.toLowerCase(),
-          name: user.displayName || user.email,
-          timestamp: serverTimestamp()
-        };
-        if (channelName === 'screen') {
-          statusUpdate.latestScreenPath = screenshotRef.fullPath;
-          statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
-        } else {
-          statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+          const statusRef = doc(db, "classes", targetClass, "status", user.uid);
+          const statusUpdate = {
+            isSharing: true,
+            email: user.email.toLowerCase(),
+            name: user.displayName || user.email,
+            timestamp: serverTimestamp()
+          };
+          if (channelName === 'screen') {
+            statusUpdate.latestScreenPath = screenshotRef.fullPath;
+            statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
+          } else {
+            statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+          }
+          await setDoc(statusRef, statusUpdate, { merge: true });
+        } catch (uploadErr) {
+          console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
+          await saveToOfflineQueue({
+            type: 'screenshot',
+            classId: targetClass,
+            studentUid: user.uid,
+            studentEmail: user.email.toLowerCase(),
+            blob,
+            timestamp,
+            metadata: {
+              channel: channelName,
+              retentionDays: retentionDays || 30,
+              ipAddress: ipAddress || null,
+            },
+          });
+          setOfflinePendingCount(c => c + 1);
         }
-        await setDoc(statusRef, statusUpdate, { merge: true });
       }
     } catch (err) {
-      console.error(`Error uploading ${channelName} snapshot:`, err);
+      console.error(`Error processing ${channelName} snapshot:`, err);
     } finally {
       if (channelName === 'screen') {
         isUploadingScreenRef.current = false;
@@ -1131,6 +1228,16 @@ const StudentView = ({ user }) => {
                     </button>
                   </div>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsReadinessWizardOpen(true)}
+                  className="student-view-button"
+                  style={{ backgroundColor: '#4338ca', color: '#fff', fontWeight: '600' }}
+                  title="3-Step Pre-Exam Self-Calibration Wizard"
+                >
+                  🎓 Exam Readiness Check
+                </button>
               </div>
             </div>
 
@@ -1266,6 +1373,25 @@ const StudentView = ({ user }) => {
           setIsMicSetupOpen(false);
         }}
         isMandatory={enableAudioCapture && audioCaptureMode === 'mandatory'}
+      />
+
+      <ExamReadinessWizard
+        isOpen={isReadinessWizardOpen}
+        onClose={() => setIsReadinessWizardOpen(false)}
+        onComplete={() => {
+          setIsReadinessWizardOpen(false);
+        }}
+        user={user}
+        classId={activeClass}
+        currentMicDeviceId={selectedMicDeviceId}
+        onSelectMicDevice={(id) => {
+          setSelectedMicDeviceId(id);
+          setIsAudioUserEnabled(true);
+        }}
+        currentCameraDeviceId={selectedWebcamId}
+        onSelectCameraDevice={(id) => {
+          setSelectedWebcamId(id);
+        }}
       />
     </div>
   );

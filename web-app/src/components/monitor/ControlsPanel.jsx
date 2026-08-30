@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Modal from '../Modal';
+import AiCostReportView from '../AiCostReportView';
 import { formatBytes, formatAiCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
@@ -26,9 +27,11 @@ const ControlsPanel = ({
     faceDebounceSeconds = 3, handleFaceDebounceChange,
     enableCloudFallback = false, handleEnableCloudFallbackChange,
     cloudFallbackRate = 3, handleCloudFallbackRateChange,
-    handleSaveGazeSettings
+    handleSaveGazeSettings,
+    classId
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
+    const [showAiCostModal, setShowAiCostModal] = useState(false);
 
     // Derive current mode with fallback
     const currentMode = (() => {
@@ -409,11 +412,45 @@ const ControlsPanel = ({
                       }}
                     ></div>
                 </div>
-                <p className="storage-text">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                  <p className="storage-text" style={{ margin: 0 }}>
                     {`${formatAiCost(aiUsedQuota)} of $${aiQuota.toFixed(2)} used`}
-                </p>
+                  </p>
+                  <button
+                    onClick={() => setShowAiCostModal(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#6366f1',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      padding: 0,
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    View Breakdown ↗
+                  </button>
+                </div>
             </div>
         </div>
+
+        {/* AI Cost Report Modal */}
+        {showAiCostModal && (
+          <Modal
+            show={showAiCostModal}
+            onClose={() => setShowAiCostModal(false)}
+            title="💰 AI Cost Breakdown & Audit"
+          >
+            <div style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+              <AiCostReportView
+                classId={classId}
+                classQuota={aiQuota}
+                onClose={() => setShowAiCostModal(false)}
+              />
+            </div>
+          </Modal>
+        )}
 
         {/* Gaze & Invigilation Modal */}
         {showGazeModal && (

@@ -74,7 +74,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 
 -   **`onAiJobCreated`**:
     -   **Trigger**: `onDocumentCreated` in `aiJobs/{jobId}`.
-    -   **Description**: This function is responsible for real-time quota management. When a new AI analysis job (`aiJob`) is created, it reads the associated `cost` and updates the total usage for the corresponding class. This helps in monitoring and enforcing budget limits.
+    -   **Description**: Responsible for atomic, real-time AI financial quota enforcement and accounting. Every AI flow (`analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, `analyzeAudioFlow`) writes token usage metadata (`inputTokens` / `promptTokenCount`, `outputTokens` / `candidatesTokenCount`) and calculates the exact USD cost using `calculateCost()`. When the `aiJobs` document is created, `onAiJobCreated` increments the class `aiUsedQuota` field atomically (`FieldValue.increment(cost)`). If the cumulative usage exceeds the class's `aiQuota`, further AI jobs are blocked.
 
 -   **`aggregatePerformanceMetrics`**:
     -   **Trigger**: `onDocumentCreated` in `screenshotAnalyses/{analysisId}`.
@@ -83,7 +83,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 ### Data Models
 
 -   **`videoAnalysisJobs`**: Stores requests for bulk video analysis. Documents include the requester's UID, the AI prompt, and either a list of videos or a time range.
--   **`aiJobs`**: Represents a single AI analysis task. Contains details about the job, including the cost.
+-   **`aiJobs`**: Represents a single AI analysis task. Contains details about the job, including `jobType`, `modelUsed`, `usage` token map, and exact calculated `cost` in USD.
 -   **`screenshotAnalyses`**: Contains the results of an individual screenshot analysis.
 -   **`performanceMetrics`**: Stores aggregated data on student task durations.
 
@@ -138,6 +138,10 @@ This directory contains Cloud Functions responsible for handling media-related t
     -   **Trigger**: `onDocumentCreated` in `zipJobs/{jobId}`.
     -   **Description**: This function handles requests for bulk video downloads. When a new job is created in the `zipJobs` collection, it downloads the specified videos from Cloud Storage, archives them into a single ZIP file, and generates a `summary.csv` file with metadata. The final ZIP file is uploaded to a `zips/` directory in Cloud Storage, and an email is sent to the requester with a link to download the archive.
 
+-   **`processReportJob`**:
+    -   **Trigger**: `onDocumentCreated` in `reportJobs/{jobId}`.
+    -   **Description**: Automatically compiles a professional Microsoft Word (`.docx`) Incident Dossier and/or CSV audit export for a class session. Queries irregularities (visual & acoustic), screenshots, and audio recordings, formats executive summaries, student incident breakdown tables, and evidence logs with clickable cloud media URLs. Uploads files to `reports/{classId}/` in Cloud Storage and sends an email notification to the requesting teacher.
+
 #### Scheduled Functions
 
 -   **`cleanupStuckJobs`**:
@@ -148,7 +152,8 @@ This directory contains Cloud Functions responsible for handling media-related t
 
 -   **`videoJobs`**: Stores requests to create a video from screenshots. Documents include the class ID, student UID, and the time range for the screenshots.
 -   **`zipJobs`**: Stores requests to archive multiple videos into a single ZIP file. Documents include the requester's UID and an array of video objects to be included in the archive.
--   **`mails`**: A collection used to queue outgoing emails. The `processZipJob` function creates a document here to send a download link to the user.
+-   **`reportJobs`**: Stores requests for DOCX Incident Dossiers and CSV exports, including class ID, target student UIDs, custom or session-bound period filters, and output format (`docx`, `csv`, or `both`).
+-   **`mails`**: A collection used to queue outgoing emails. Functions create a document here to send download links to teachers.
 
 ---
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ref as storageRef, uploadBytes } from 'firebase/storage';
 import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase-config';
+import { saveToOfflineQueue, flushOfflineQueue } from '../utils/offlineBufferManager';
 
 /**
  * Hook to manage background audio recording with Moving Window (Sliding Rolling Buffer) support,
@@ -12,6 +13,7 @@ export function useAudioRecorder({
   studentUid,
   studentEmail = '',
   enabled = false,
+  aiMonitoringMode = 'hybrid', // 'hybrid' | 'client_only' | 'cloud_only' | 'server_only' | 'disabled'
   segmentDuration = 30, // seconds (or window duration)
   windowDuration = 30,  // seconds for moving window
   strideDuration = 15,  // seconds between sliding strides (50% overlap)
@@ -21,6 +23,15 @@ export function useAudioRecorder({
   deviceId = '',
   onAudioUploaded = null,
 } = {}) {
+  // Derive effective mode
+  const effectiveMode = (() => {
+    const m = String(aiMonitoringMode || 'hybrid').toLowerCase();
+    if (m === 'disabled') return 'disabled';
+    if (m === 'client_only') return 'client_only';
+    if (m === 'cloud_only' || m === 'server_only') return 'cloud_only';
+    return 'hybrid';
+  })();
+
   const [isRecording, setIsRecording] = useState(false);
   const [audioStream, setAudioStream] = useState(null);
   const audioStreamRef = useRef(null);
@@ -141,6 +152,8 @@ export function useAudioRecorder({
         studentUid,
         studentEmail,
         audioPath: fullAudioPath,
+        aiMonitoringMode: effectiveMode,
+        allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
         duration: effWindowSec,
         strideDuration: effStrideSec,
         strideIndex,
@@ -179,11 +192,92 @@ export function useAudioRecorder({
         windowStartSec: windowStartOffsetSec,
       });
     } catch (err) {
-      console.error('Failed to upload audio segment:', err);
+      console.warn('Network error uploading audio segment, buffering in IndexedDB:', err);
+      try {
+        await saveToOfflineQueue({
+          type: 'audio',
+          classId,
+          studentUid,
+          studentEmail,
+          blob,
+          timestamp: now,
+          metadata: {
+            duration: effWindowSec,
+            strideDuration: effStrideSec,
+            strideIndex,
+            isSlidingWindow: enableMovingWindow,
+            windowStartSec: windowStartOffsetSec,
+            peakVolume: peakVol,
+            averageVolume: avgVol,
+            retentionDays: retentionDays || 30,
+          },
+        });
+      } catch (queueErr) {
+        console.error('Failed to buffer audio offline:', queueErr);
+      }
     } finally {
       isUploadingRef.current = false;
     }
   }, [classId, studentUid, studentEmail, effWindowSec, effStrideSec, enableMovingWindow, silenceSuppression, retentionDays, onAudioUploaded]);
+
+  // Auto-flush offline queue when back online
+  useEffect(() => {
+    const handleOnline = async () => {
+      try {
+        await flushOfflineQueue({
+          uploadItemHandler: async (item) => {
+            if (item.type !== 'audio') return;
+            const itemTime = item.timestamp || Date.now();
+            const dateStr = new Date(itemTime).toISOString().slice(0, 10);
+            const fileName = `audio_${item.studentUid}_${itemTime}.webm`;
+            const audioPath = `audio/${item.classId}/${dateStr}/${item.studentUid}/${fileName}`;
+            const fileRef = storageRef(storage, audioPath);
+
+            await uploadBytes(fileRef, item.blob, {
+              contentType: 'audio/webm',
+              customMetadata: {
+                classId: item.classId,
+                studentUid: item.studentUid,
+                studentEmail: item.studentEmail || '',
+                isBackfilled: 'true',
+              },
+            });
+
+            const expireAt = new Date(itemTime + (item.metadata?.retentionDays || 30) * 86400000);
+            const audioDocRef = doc(collection(db, 'audio'));
+            await setDoc(audioDocRef, {
+              audioId: audioDocRef.id,
+              classId: item.classId,
+              studentUid: item.studentUid,
+              studentEmail: item.studentEmail || '',
+              audioPath,
+              duration: item.metadata?.duration || 30,
+              strideDuration: item.metadata?.strideDuration || 15,
+              strideIndex: item.metadata?.strideIndex || 0,
+              isSlidingWindow: Boolean(item.metadata?.isSlidingWindow),
+              windowStartSec: item.metadata?.windowStartSec || 0,
+              windowEndSec: (item.metadata?.windowStartSec || 0) + (item.metadata?.duration || 30),
+              size: item.blob.size,
+              peakVolume: item.metadata?.peakVolume || 0,
+              averageVolume: item.metadata?.averageVolume || 0,
+              hasVoiceActivity: (item.metadata?.peakVolume || 0) >= 15,
+              timestamp: new Date(itemTime),
+              expireAt,
+              isBackfilled: true,
+              deleted: false,
+            });
+          },
+        });
+      } catch (err) {
+        console.warn('Error flushing offline audio queue:', err);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      return () => window.removeEventListener('online', handleOnline);
+    }
+  }, []);
 
   // Process and emit sliding window blob
   const processSlidingWindow = useCallback((mimeType) => {
@@ -310,11 +404,12 @@ export function useAudioRecorder({
     setCurrentVolume(0);
   }, []);
 
-  // Automatically start/stop when enabled flag changes
+  // Automatically start/stop when enabled flag or effectiveMode changes
   useEffect(() => {
-    if (enabled && classId && studentUid && !isRecording) {
+    const isModeActive = effectiveMode !== 'disabled';
+    if (enabled && isModeActive && classId && studentUid && !isRecording) {
       startRecording();
-    } else if (!enabled && isRecording) {
+    } else if ((!enabled || !isModeActive) && isRecording) {
       stopRecording();
     }
 
@@ -322,7 +417,7 @@ export function useAudioRecorder({
       // Unconditional cleanup on unmount
       stopRecording();
     };
-  }, [enabled, classId, studentUid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, effectiveMode, classId, studentUid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     isRecording,
@@ -332,6 +427,8 @@ export function useAudioRecorder({
     isSpeaking: currentVolume >= 15,
     hasMicPermission: !audioError,
     audioError,
+    effectiveMode,
+    isCloudDiarizationAllowed: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
     uploadedSegmentsCount,
     startRecording,
     stopRecording,

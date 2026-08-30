@@ -815,6 +815,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         cloudFallbackRate={cloudFallbackRate}
         handleCloudFallbackRateChange={handleCloudFallbackRateChange}
         handleSaveGazeSettings={handleSaveGazeSettings}
+        classId={classId}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -885,6 +886,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           student={selectedStudent} 
           screenshotData={screenshots[selectedStudent.id]} 
           screenshotUrl={selectedScreenshotUrl} 
+          classId={classId}
+          teacherUid={auth?.currentUser?.uid}
           onClose={() => setSelectedStudent(null)} 
         />
       )}

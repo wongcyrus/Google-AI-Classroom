@@ -16,8 +16,9 @@ import MessagesView from './MessagesView';
 import VideoLibrary from './VideoLibrary';
 import VideoAnalysisJobs from './VideoAnalysisJobs';
 import DataManagementView from './DataManagementView';
-import PerformanceAnalyticsView from './PerformanceAnalyticsView';
 import AttendanceView from './AttendanceView';
+import PerformanceAnalyticsView from './PerformanceAnalyticsView';
+import AiCostReportView from './AiCostReportView';
 import ClassManagement from './ClassManagement';
 
 import './ClassView.css';
@@ -153,6 +154,14 @@ const ClassView = ({ user }) => {
           case 'progress': return <ProgressView {...props} />;
           case 'attendance': return <AttendanceView {...props} />;
           case 'performance': return <PerformanceAnalyticsView {...props} />;
+          case 'ai-cost': return (
+            <AiCostReportView
+              classId={classId}
+              className={classInfo?.name || classId}
+              classQuota={classInfo?.aiQuota || 10}
+              students={Object.entries(classInfo?.students || {}).map(([uid, email]) => ({ uid, email }))}
+            />
+          );
           default: return <IrregularitiesView {...props} />;
         }
       case 'messages':
@@ -299,6 +308,12 @@ const ClassView = ({ user }) => {
             onClick={() => setSub('performance')}
           >
             <span>🎯</span> Performance Metrics
+          </button>
+          <button
+            className={`tab-button ${subTab === 'ai-cost' ? 'active' : ''}`}
+            onClick={() => setSub('ai-cost')}
+          >
+            <span>💰</span> AI Cost Report
           </button>
         </nav>
       )}

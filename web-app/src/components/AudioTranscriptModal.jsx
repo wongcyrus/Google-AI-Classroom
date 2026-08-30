@@ -10,6 +10,8 @@ export default function AudioTranscriptModal({
   audioUrl = '',
   snapshotUrl = '',
   transcriptSegments = [],
+  transcriptSnippet = '',
+  transcript = '',
   riskLevel = 'none',
   classification = 'normal_quiet',
   explanation = '',
@@ -17,6 +19,12 @@ export default function AudioTranscriptModal({
   const audioPlayerRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const effectiveSegments = (transcriptSegments && transcriptSegments.length > 0)
+    ? transcriptSegments
+    : (transcriptSnippet || transcript)
+      ? [{ id: 'seg-1', speaker: 'Detected Speech', text: transcriptSnippet || transcript, startTime: '00:00', displayStart: '00:00' }]
+      : [];
 
   const handleSeek = (timeStr) => {
     if (!audioPlayerRef.current) return;
@@ -112,9 +120,9 @@ export default function AudioTranscriptModal({
               💬 Multi-Speaker Dialogue Timeline:
             </h4>
 
-            {transcriptSegments && transcriptSegments.length > 0 ? (
+            {effectiveSegments && effectiveSegments.length > 0 ? (
               <div className="transcript-dialogue-list">
-                {transcriptSegments.map((turn, index) => {
+                {effectiveSegments.map((turn, index) => {
                   const style = getSpeakerStyleClass(turn.speaker);
                   const startTime = turn.displayStart || turn.startTime || '00:00';
                   const endTime = turn.displayEnd || turn.endTime || '';
