@@ -11,10 +11,10 @@ service firebase.storage {
                       request.resource.contentType.matches('image/.*');
 
       // Allow authenticated teachers to read any screenshot, or the student themselves.
-      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);
+      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk') || request.auth.uid == userId);
 
       // Allow authenticated teachers to delete.
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
     }
 
     match /audio/{classId}/{userId}/{fileName} {
@@ -25,10 +25,10 @@ service firebase.storage {
                       request.resource.contentType.matches('audio/.*');
 
       // Allow authenticated teachers to read any audio file, or the student themselves.
-      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);
+      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk') || request.auth.uid == userId);
 
       // Allow authenticated teachers to delete.
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
     }
 
     match /irregularities/{classId}/{userId}/{fileName} {

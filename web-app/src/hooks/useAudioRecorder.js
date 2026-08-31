@@ -115,6 +115,16 @@ export function useAudioRecorder({
 
     // Silence suppression check: if enabled and average volume < 4% and peak < 8%
     if (silenceSuppression && avgVol < 4 && peakVol < 8) {
+      // Update status doc so teacher knows microphone is active and listening
+      try {
+        const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+        setDoc(statusDocRef, {
+          isAudioSharing: true,
+          audioLevel: peakVol,
+          audioStatus: 'silent',
+          lastAudioHeartbeat: new Date(),
+        }, { merge: true }).catch(() => {});
+      } catch {}
       return;
     }
 
@@ -360,6 +370,19 @@ export function useAudioRecorder({
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
 
+      // Immediately notify status doc that microphone recording has started
+      try {
+        if (classId && studentUid) {
+          const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+          setDoc(statusDocRef, {
+            isAudioSharing: true,
+            audioLevel: 0,
+            audioStatus: 'idle',
+            lastAudioHeartbeat: new Date(),
+          }, { merge: true }).catch(() => {});
+        }
+      } catch {}
+
       return stream;
     } catch (err) {
       console.error('Error starting audio recorder:', err);
@@ -367,7 +390,7 @@ export function useAudioRecorder({
       setIsRecording(false);
       return null;
     }
-  }, [deviceId, effStrideSec, processSlidingWindow, startVolumeAnalysis]);
+  }, [deviceId, effStrideSec, processSlidingWindow, startVolumeAnalysis, classId, studentUid]);
 
   // Stop recording stream
   const stopRecording = useCallback(() => {
@@ -402,7 +425,18 @@ export function useAudioRecorder({
 
     setIsRecording(false);
     setCurrentVolume(0);
-  }, []);
+
+    try {
+      if (classId && studentUid) {
+        const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+        setDoc(statusDocRef, {
+          isAudioSharing: false,
+          audioLevel: 0,
+          audioStatus: 'inactive',
+        }, { merge: true }).catch(() => {});
+      }
+    } catch {}
+  }, [classId, studentUid]);
 
   // Automatically start/stop when enabled flag or effectiveMode changes
   useEffect(() => {

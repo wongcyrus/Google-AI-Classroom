@@ -292,16 +292,16 @@ const StudentView = ({ user }) => {
         updateData.metricDistance = metricDistance || 55;
         updateData.activeViolation = activeViolation || null;
       }
-      if (enableAudioCapture) {
-        updateData.isAudioSharing = isAudioRecording;
+      if (enableAudioCapture || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
+        updateData.isAudioSharing = Boolean(isAudioRecording);
         updateData.audioLevel = Math.round(audioLevel * 100);
-        updateData.audioStatus = isSpeaking ? 'speaking' : 'idle';
+        updateData.audioStatus = isSpeaking ? 'speaking' : (isAudioRecording ? 'idle' : 'muted');
       }
       if (Object.keys(updateData).length > 0) {
         setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
       }
     }
-  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {

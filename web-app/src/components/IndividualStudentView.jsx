@@ -64,37 +64,50 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     }
   }, [isTalkbackActive, selectedMicId]);
 
+  const studentUid = student?.id || student?.uid;
+
   // Listen to live student status for real-time audio metadata
   useEffect(() => {
-    if (!classId || !student?.id) return;
+    if (!classId || !studentUid) return;
     try {
-      const statusDocRef = doc(db, 'classes', classId, 'status', student.id);
-      const unsub = onSnapshot(statusDocRef, (snap) => {
+      const statusDocRef = doc(db, 'classes', classId, 'status', studentUid);
+      const unsub = onSnapshot(statusDocRef, async (snap) => {
         if (snap.exists()) {
           const data = snap.data();
+          const isSharingAudio = Boolean(data.isAudioSharing || data.isAudioRecording);
           setAudioStatusInfo({
-            isAudioSharing: Boolean(data.isAudioSharing || data.isAudioRecording),
+            isAudioSharing: isSharingAudio,
             audioLevel: data.audioLevel || 0,
-            audioStatus: data.audioStatus || 'normal',
+            audioStatus: data.audioStatus || (isSharingAudio ? 'idle' : 'inactive'),
             latestAudioPath: data.latestAudioPath || null,
           });
+
+          // If latestAudioPath is available and not yet in resolved URLs, resolve it
+          if (data.latestAudioPath && storage) {
+            try {
+              const url = await getDownloadURL(ref(storage, data.latestAudioPath));
+              setResolvedAudioUrls((prev) => ({ ...prev, latest: url, [data.latestAudioPath]: url }));
+            } catch (err) {
+              console.debug('Could not pre-resolve latest audio path URL:', err);
+            }
+          }
         }
       }, (err) => {
         console.warn('Could not listen to student status for audio:', err);
       });
       return () => unsub();
     } catch {}
-  }, [classId, student?.id]);
+  }, [classId, studentUid]);
 
   // Query recent recorded audio chunks from Firestore
   useEffect(() => {
-    if (!classId || !student?.id) return;
+    if (!classId || !studentUid) return;
 
     try {
       const audioQuery = query(
         collection(db, 'audio'),
         where('classId', '==', classId),
-        where('studentUid', '==', student.id),
+        where('studentUid', '==', studentUid),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -129,7 +142,7 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     } catch (err) {
       console.warn('Failed to query recent audios:', err);
     }
-  }, [classId, student?.id]);
+  }, [classId, studentUid]);
 
   if (!student) {
     return null;
@@ -137,8 +150,8 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
 
   const screenUrl = screenshotData?.screen?.url || (screenshotUrl && activeTab !== 'webcam' ? screenshotUrl : null);
   const webcamUrl = screenshotData?.webcam?.url;
-  const currentAudio = recentAudios[selectedAudioIndex] || null;
-  const currentAudioUrl = currentAudio ? (resolvedAudioUrls[currentAudio.id] || currentAudio.audioUrl || null) : null;
+  const currentAudio = recentAudios[selectedAudioIndex] || (audioStatusInfo.latestAudioPath ? { audioPath: audioStatusInfo.latestAudioPath, id: 'latest', timestamp: new Date() } : null);
+  const currentAudioUrl = currentAudio ? (resolvedAudioUrls[currentAudio.id] || resolvedAudioUrls[currentAudio.audioPath] || resolvedAudioUrls.latest || currentAudio.audioUrl || null) : null;
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
@@ -459,7 +472,9 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
               <span>🎙️ Recent Voice Recording</span>
               {audioStatusInfo.isAudioSharing ? (
                 <span className={`audio-status-pill ${audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 ? 'speaking' : 'silent'}`}>
-                  {audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 ? '🗣️ Speaking' : '🟢 Mic Active'}
+                  {audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 
+                    ? `🗣️ Speaking (${audioStatusInfo.audioLevel}%)` 
+                    : '🟢 Mic Active & Listening'}
                 </span>
               ) : (
                 <span className="audio-status-pill silent">⚪ Mic Inactive</span>
@@ -509,9 +524,23 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
                 </button>
               )}
             </div>
+          ) : audioStatusInfo.isAudioSharing ? (
+            <div className="audio-empty-placeholder active-listening" style={{ padding: '12px 14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 600, fontSize: '0.9rem' }}>
+                <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 6px #10b981' }}></span>
+                <span>Microphone is active & streaming live telemetry</span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.45 }}>
+                🔇 <em>No speech detected yet.</em> Smart silence suppression is active to conserve bandwidth. Audio recording clips and AI transcripts will upload automatically once the student or external speech is detected.
+              </p>
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                <span>Live Audio Level: <strong>{audioStatusInfo.audioLevel || 0}%</strong></span>
+                <span>Status: <strong style={{ textTransform: 'capitalize' }}>{audioStatusInfo.audioStatus || 'idle'}</strong></span>
+              </div>
+            </div>
           ) : (
             <div className="audio-empty-placeholder">
-              <span>🔇 No recent audio recordings uploaded for this student yet.</span>
+              <span>🔇 Microphone is inactive or student has not enabled audio streaming yet.</span>
             </div>
           )}
 
