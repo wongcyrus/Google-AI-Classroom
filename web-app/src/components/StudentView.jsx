@@ -195,7 +195,7 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    enabled: isSharing && isCapturing && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
+    enabled: isSharing && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
     aiMonitoringMode,
     segmentDuration: audioSegmentDuration,
     windowDuration: audioMovingWindowDuration,
@@ -205,6 +205,19 @@ const StudentView = ({ user }) => {
     retentionDays: retentionDays,
     deviceId: selectedMicDeviceId,
   });
+
+  // Automatically activate verified devices & audio capture if readiness already completed
+  useEffect(() => {
+    if (myProperties?.examReadiness?.isReady) {
+      setEnableAudioCapture(true);
+      if (myProperties.examReadiness.micDeviceId) {
+        setSelectedMicDeviceId(myProperties.examReadiness.micDeviceId);
+      }
+      if (myProperties.examReadiness.cameraDeviceId) {
+        setSelectedWebcamId(myProperties.examReadiness.cameraDeviceId);
+      }
+    }
+  }, [myProperties]);
 
   const audioStreamRef = useRef(null);
   audioStreamRef.current = audioStream;
@@ -1228,15 +1241,25 @@ const StudentView = ({ user }) => {
                   )}
                 </div>
 
-                {enableAudioCapture && (
+                {(enableAudioCapture || myProperties?.examReadiness?.isReady) && (
                   <div className="mic-controls-container" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button
                       type="button"
                       onClick={() => setIsAudioUserEnabled(prev => !prev)}
-                      className={`student-view-button ${isAudioRecording ? 'active' : ''}`}
-                      title={isAudioRecording ? `Audio Recording Active (Level: ${Math.round(audioLevel * 100)}%)` : "Microphone Muted"}
+                      className={`student-view-button ${isAudioRecording ? 'active' : (!isAudioUserEnabled ? 'btn-muted' : '')}`}
+                      title={
+                        !isAudioUserEnabled
+                          ? "Microphone Muted - Click to Unmute"
+                          : isAudioRecording
+                            ? `Audio Recording Active (Level: ${Math.round(audioLevel * 100)}%)`
+                            : "Microphone Active (Waiting for stream)"
+                      }
                     >
-                      {isAudioRecording ? (isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active') : '🔇 Mic Muted'}
+                      {!isAudioUserEnabled
+                        ? '🔇 Mic Muted'
+                        : isAudioRecording
+                          ? (isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active')
+                          : '🎙️ Mic Active'}
                     </button>
                     <button
                       type="button"
@@ -1446,8 +1469,26 @@ const StudentView = ({ user }) => {
       <ExamReadinessWizard
         isOpen={isReadinessWizardOpen}
         onClose={() => setIsReadinessWizardOpen(false)}
-        onComplete={() => {
+        onComplete={async (readinessResult) => {
           setIsReadinessWizardOpen(false);
+
+          // 1. Enable audio capture & unmute mic
+          setEnableAudioCapture(true);
+          setIsAudioUserEnabled(true);
+          const micId = readinessResult?.micDeviceId || selectedMicDeviceId;
+          if (micId) {
+            setSelectedMicDeviceId(micId);
+          }
+
+          // 2. Start webcam stream with verified camera
+          const camId = readinessResult?.cameraDeviceId || selectedWebcamId;
+          if (camId) {
+            setSelectedWebcamId(camId);
+          }
+          await startWebcam(camId);
+
+          // 3. Start full screen sharing
+          await startScreen();
         }}
         user={user}
         classId={activeClass}

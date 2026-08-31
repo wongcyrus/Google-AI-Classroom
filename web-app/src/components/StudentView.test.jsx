@@ -238,7 +238,21 @@ describe('StudentView Component Extended Test Suite', () => {
     fireEvent.click(cancelBtn);
   });
 
-  it('opens and closes Exam Readiness Wizard modal', async () => {
+  it('opens, closes and completes Exam Readiness Wizard modal triggering auto-stream', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    const mockCamTrack = { stop: vi.fn(), getSettings: () => ({}), addEventListener: vi.fn() };
+    const mockCamStream = {
+      getTracks: vi.fn().mockReturnValue([mockCamTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockCamTrack]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockCamStream);
+
     render(<StudentView user={mockUser} />);
 
     const wizardBtn = screen.getByRole('button', { name: /Exam Readiness Check/i });

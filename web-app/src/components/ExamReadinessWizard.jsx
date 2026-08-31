@@ -278,10 +278,20 @@ export default function ExamReadinessWizard({
 
       onSelectMicDevice?.(selectedMic);
       onSelectCameraDevice?.(selectedCamera);
-      onComplete?.();
+      onComplete?.({
+        micDeviceId: selectedMic,
+        cameraDeviceId: selectedCamera,
+        calibrationData,
+        isScreenVerified: true,
+      });
     } catch (err) {
       console.error('Failed to save readiness state:', err);
-      onComplete?.();
+      onComplete?.({
+        micDeviceId: selectedMic,
+        cameraDeviceId: selectedCamera,
+        calibrationData,
+        isScreenVerified: isScreenVerified,
+      });
     } finally {
       setIsSaving(false);
     }

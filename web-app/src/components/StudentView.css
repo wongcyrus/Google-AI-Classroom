@@ -74,6 +74,16 @@
   background-color: #dc2626;
 }
 
+.student-view-button.btn-muted {
+  background-color: #64748b;
+  opacity: 0.85;
+}
+
+.student-view-button.btn-muted:hover {
+  background-color: #475569;
+  opacity: 1;
+}
+
 .stream-controls-group {
   display: flex;
   gap: 0.75rem;
