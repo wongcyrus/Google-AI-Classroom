@@ -69,6 +69,26 @@ describe('Student View Widgets', () => {
       expect(screen.getByText('micAllowed')).toBeInTheDocument();
       expect(screen.getByText('true')).toBeInTheDocument();
     });
+
+    it('formats examReadiness and complex nested objects without rendering [object Object]', () => {
+      render(
+        <PropertiesWidget
+          classProperties={{ tags: ['midterm', 'section-A'] }}
+          myProperties={{
+            examReadiness: { isReady: true, calibratedAt: '2026-08-31T06:00:00Z' },
+            customMetadata: { seat: 'B-12', lab: 'Room 401' },
+          }}
+        />
+      );
+
+      expect(screen.getByText('examReadiness')).toBeInTheDocument();
+      expect(screen.getByText('✅ Verified (Ready)')).toBeInTheDocument();
+      expect(screen.getByText('tags')).toBeInTheDocument();
+      expect(screen.getByText('midterm, section-A')).toBeInTheDocument();
+      expect(screen.getByText('customMetadata')).toBeInTheDocument();
+      expect(screen.getByText(/seat: B-12/i)).toBeInTheDocument();
+      expect(screen.queryByText(/\[object Object\]/i)).not.toBeInTheDocument();
+    });
   });
 
   describe('Sidebar', () => {
