@@ -5,8 +5,41 @@ import { initializeApp as initClient } from 'firebase/app';
 import { getAuth as getClientAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore as getClientFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function resolveApiKey() {
+  if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
+  if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
+  if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
+
+  const candidateEnvPaths = [
+    path.resolve(__dirname, '../web-app/.env.dev'),
+    path.resolve(__dirname, '../web-app/.env'),
+    path.resolve(__dirname, '../web-app/.env.local'),
+    path.resolve(__dirname, '../.env'),
+  ];
+
+  for (const envPath of candidateEnvPaths) {
+    if (fs.existsSync(envPath)) {
+      try {
+        const content = fs.readFileSync(envPath, 'utf8');
+        const match = content.match(/^VITE_(?:FIREBASE_)?API_KEY=(.+)$/m);
+        if (match && match[1]) {
+          return match[1].trim().replace(/^["']|["']$/g, '');
+        }
+      } catch {}
+    }
+  }
+  return 'test-api-key-placeholder';
+}
+
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.argv[2] || 'it114115-dev-2026';
-const apiKey = process.env.VITE_API_KEY || 'AIzaSyBkn72kGU0Aei5k4LIvWEoG6PWbdeY_AbA';
+const apiKey = resolveApiKey();
 
 console.log(`\n========================================================`);
 console.log(`🛡️  RUNNING REAL-TOKEN SECURITY RULES VERIFICATION (${projectId})`);
