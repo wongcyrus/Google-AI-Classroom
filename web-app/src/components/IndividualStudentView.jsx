@@ -1,14 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './IndividualStudentView.css';
-import { db } from '../firebase-config';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, storage } from '../firebase-config';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
+import { ref, getDownloadURL } from 'firebase/storage';
 import useWebRTCPeekTeacher from '../hooks/useWebRTCPeekTeacher';
+import AudioTranscriptModal from './AudioTranscriptModal';
 
 const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId, teacherUid, onClose }) => {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('dual'); // 'dual' | 'screen' | 'webcam' | 'live_peek'
   const [availableMics, setAvailableMics] = useState([]);
   const [selectedMicId, setSelectedMicId] = useState('');
+
+  // Audio Recordings State
+  const [recentAudios, setRecentAudios] = useState([]);
+  const [selectedAudioIndex, setSelectedAudioIndex] = useState(0);
+  const [resolvedAudioUrls, setResolvedAudioUrls] = useState({});
+  const [audioStatusInfo, setAudioStatusInfo] = useState({
+    isAudioSharing: false,
+    audioLevel: 0,
+    audioStatus: 'normal',
+    latestAudioPath: null,
+  });
+  const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
 
   const liveVideoRef = useRef(null);
 
@@ -50,12 +64,81 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     }
   }, [isTalkbackActive, selectedMicId]);
 
+  // Listen to live student status for real-time audio metadata
+  useEffect(() => {
+    if (!classId || !student?.id) return;
+    try {
+      const statusDocRef = doc(db, 'classes', classId, 'status', student.id);
+      const unsub = onSnapshot(statusDocRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setAudioStatusInfo({
+            isAudioSharing: Boolean(data.isAudioSharing || data.isAudioRecording),
+            audioLevel: data.audioLevel || 0,
+            audioStatus: data.audioStatus || 'normal',
+            latestAudioPath: data.latestAudioPath || null,
+          });
+        }
+      }, (err) => {
+        console.warn('Could not listen to student status for audio:', err);
+      });
+      return () => unsub();
+    } catch {}
+  }, [classId, student?.id]);
+
+  // Query recent recorded audio chunks from Firestore
+  useEffect(() => {
+    if (!classId || !student?.id) return;
+
+    try {
+      const audioQuery = query(
+        collection(db, 'audio'),
+        where('classId', '==', classId),
+        where('studentUid', '==', student.id),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+
+      const unsub = onSnapshot(audioQuery, async (snap) => {
+        const audios = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+        setRecentAudios(audios);
+
+        // Resolve download URLs for clips
+        const urlMap = {};
+        for (const item of audios) {
+          if (item.audioUrl) {
+            urlMap[item.id] = item.audioUrl;
+          } else if (item.audioPath && storage) {
+            try {
+              const url = await getDownloadURL(ref(storage, item.audioPath));
+              urlMap[item.id] = url;
+            } catch (err) {
+              console.warn(`Could not resolve download URL for audio ${item.audioPath}:`, err);
+            }
+          }
+        }
+        setResolvedAudioUrls((prev) => ({ ...prev, ...urlMap }));
+      }, (err) => {
+        console.warn('Audio query snapshot error:', err);
+      });
+
+      return () => unsub();
+    } catch (err) {
+      console.warn('Failed to query recent audios:', err);
+    }
+  }, [classId, student?.id]);
+
   if (!student) {
     return null;
   }
 
   const screenUrl = screenshotData?.screen?.url || (screenshotUrl && activeTab !== 'webcam' ? screenshotUrl : null);
   const webcamUrl = screenshotData?.webcam?.url;
+  const currentAudio = recentAudios[selectedAudioIndex] || null;
+  const currentAudioUrl = currentAudio ? (resolvedAudioUrls[currentAudio.id] || currentAudio.audioUrl || null) : null;
 
   const handleSendMessage = async () => {
     if (!message.trim()) return;
@@ -368,7 +451,128 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
             </div>
           )}
         </div>
+
+        {/* Recent Audio Recording Section */}
+        <div className="individual-audio-section">
+          <div className="individual-audio-header">
+            <div className="audio-header-title">
+              <span>🎙️ Recent Voice Recording</span>
+              {audioStatusInfo.isAudioSharing ? (
+                <span className={`audio-status-pill ${audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 ? 'speaking' : 'silent'}`}>
+                  {audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 ? '🗣️ Speaking' : '🟢 Mic Active'}
+                </span>
+              ) : (
+                <span className="audio-status-pill silent">⚪ Mic Inactive</span>
+              )}
+            </div>
+
+            {recentAudios.length > 1 && (
+              <select
+                className="clip-select-dropdown"
+                value={selectedAudioIndex}
+                onChange={(e) => setSelectedAudioIndex(Number(e.target.value))}
+                aria-label="Select audio clip"
+              >
+                {recentAudios.map((clip, idx) => {
+                  const clipDate = clip.timestamp?.toDate ? clip.timestamp.toDate() : new Date(clip.timestamp || Date.now());
+                  const timeStr = clipDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  return (
+                    <option key={clip.id || idx} value={idx}>
+                      Clip {idx + 1}: {timeStr} ({clip.duration || 30}s)
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+          </div>
+
+          {currentAudioUrl ? (
+            <div className="individual-audio-controls">
+              <audio
+                controls
+                src={currentAudioUrl}
+                className="individual-audio-player"
+                preload="metadata"
+                data-testid="student-audio-player"
+              >
+                Your browser does not support HTML5 audio.
+              </audio>
+
+              {(currentAudio?.transcript || currentAudio?.transcriptSegments?.length > 0) && (
+                <button
+                  type="button"
+                  className="btn-transcript-modal"
+                  onClick={() => setIsTranscriptModalOpen(true)}
+                  title="View full AI diarization transcript with speaker tags"
+                >
+                  📜 View Full Transcript
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="audio-empty-placeholder">
+              <span>🔇 No recent audio recordings uploaded for this student yet.</span>
+            </div>
+          )}
+
+          {currentAudio && (
+            <div className="audio-meta-strip">
+              <span className="audio-meta-item">
+                🕒 Recorded: {currentAudio.timestamp?.toDate ? currentAudio.timestamp.toDate().toLocaleTimeString() : new Date(currentAudio.timestamp || Date.now()).toLocaleTimeString()}
+              </span>
+              <span className="audio-meta-item">
+                ⏱️ Duration: {currentAudio.duration || 30}s
+              </span>
+              {currentAudio.peakVolume !== undefined && (
+                <span className="audio-meta-item">
+                  🔊 Peak Volume: {currentAudio.peakVolume}%
+                </span>
+              )}
+              {currentAudio.hasVoiceActivity && (
+                <span className="audio-meta-item" style={{ color: '#34d399' }}>
+                  🗣️ Voice Detected
+                </span>
+              )}
+              {currentAudio.aiMonitoringMode && (
+                <span className="audio-meta-item">
+                  🧠 Mode: {currentAudio.aiMonitoringMode}
+                </span>
+              )}
+            </div>
+          )}
+
+          {currentAudio?.transcript && (
+            <div className="audio-transcript-snippet">
+              <span>💬 "{currentAudio.transcript.length > 140 ? `${currentAudio.transcript.slice(0, 140)}...` : currentAudio.transcript}"</span>
+              {!isTranscriptModalOpen && (
+                <button
+                  type="button"
+                  style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '0.78rem', textDecoration: 'underline' }}
+                  onClick={() => setIsTranscriptModalOpen(true)}
+                >
+                  Details
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {isTranscriptModalOpen && (
+        <AudioTranscriptModal
+          isOpen={isTranscriptModalOpen}
+          onClose={() => setIsTranscriptModalOpen(false)}
+          studentUid={student.id}
+          studentName={student.name || student.email}
+          audioUrl={currentAudioUrl}
+          snapshotUrl={webcamUrl || screenUrl}
+          transcriptSegments={currentAudio?.transcriptSegments || []}
+          transcriptSnippet={currentAudio?.transcript || ''}
+          riskLevel={currentAudio?.riskLevel || 'low'}
+          classification={currentAudio?.classification || (currentAudio?.hasVoiceActivity ? 'speaking' : 'normal')}
+          explanation={currentAudio?.explanation || currentAudio?.summary || 'Recent student voice recording segment'}
+        />
+      )}
     </div>
   );
 };

@@ -1,6 +1,24 @@
 {
   "indexes": [
     {
+      "collectionGroup": "audio",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "classId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "studentUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "irregularities",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

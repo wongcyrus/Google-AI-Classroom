@@ -5,14 +5,30 @@ import IndividualStudentView from './IndividualStudentView';
 
 vi.mock('../firebase-config', () => ({
   db: {},
+  storage: {},
 }));
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg_1' });
+let mockOnSnapshotCallback = null;
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   addDoc: (...args) => mockAddDoc(...args),
   serverTimestamp: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  onSnapshot: vi.fn((q, cb) => {
+    mockOnSnapshotCallback = cb;
+    return vi.fn();
+  }),
+  doc: vi.fn(),
+}));
+
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn(),
+  getDownloadURL: vi.fn().mockResolvedValue('https://example.com/audio_resolved.webm'),
 }));
 
 const mockStartPeek = vi.fn();
@@ -299,5 +315,66 @@ describe('IndividualStudentView Component', () => {
       />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it('renders audio player when recent recordings exist and allows opening full transcript modal', async () => {
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('🎙️ Recent Voice Recording')).toBeInTheDocument();
+
+    // Trigger audio snapshot with mock audios
+    act(() => {
+      if (mockOnSnapshotCallback) {
+        mockOnSnapshotCallback({
+          docs: [
+            {
+              id: 'audio_1',
+              data: () => ({
+                audioUrl: 'https://example.com/audio1.webm',
+                duration: 30,
+                peakVolume: 55,
+                hasVoiceActivity: true,
+                transcript: 'Can you help me with question 3?',
+                transcriptSegments: [{ speaker: 'student', text: 'Can you help me with question 3?', startSec: 2, endSec: 5 }],
+                timestamp: { toDate: () => new Date('2026-08-31T10:00:00Z') },
+              }),
+            },
+            {
+              id: 'audio_2',
+              data: () => ({
+                audioUrl: 'https://example.com/audio2.webm',
+                duration: 30,
+                peakVolume: 10,
+                hasVoiceActivity: false,
+                transcript: '',
+                timestamp: { toDate: () => new Date('2026-08-31T09:59:30Z') },
+              }),
+            },
+          ],
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('student-audio-player')).toBeInTheDocument();
+      expect(screen.getByText(/Can you help me with question 3\?/i)).toBeInTheDocument();
+      expect(screen.getByText('📜 View Full Transcript')).toBeInTheDocument();
+    });
+
+    // Open full transcript modal
+    const viewTranscriptBtn = screen.getByText('📜 View Full Transcript');
+    fireEvent.click(viewTranscriptBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Audio Diarization & Transcript/i)).toBeInTheDocument();
+    });
   });
 });
