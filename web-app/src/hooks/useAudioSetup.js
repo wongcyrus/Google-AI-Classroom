@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 /**
  * Normalizes text for fuzzy phrase comparison in STT verification.
@@ -156,38 +157,7 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
     }
 
     try {
-      let newStream = null;
-      if (deviceId) {
-        try {
-          newStream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: { ideal: deviceId } },
-            video: false,
-          });
-        } catch (exactErr) {
-          const isConstraintOrDeviceErr = exactErr && (
-            exactErr.name === 'OverconstrainedError' ||
-            exactErr.name === 'ConstraintNotSatisfiedError' ||
-            exactErr.name === 'NotFoundError' ||
-            exactErr.name === 'DevicesNotFoundError' ||
-            /constraint|overconstrained|not found/i.test(exactErr.message || '')
-          );
-          if (!isConstraintOrDeviceErr) {
-            throw exactErr;
-          }
-          console.warn('[useAudioSetup] Exact deviceId match failed, trying ideal:', exactErr);
-          try {
-            newStream = await navigator.mediaDevices.getUserMedia({
-              audio: { deviceId: { ideal: deviceId } },
-              video: false,
-            });
-          } catch (idealErr) {
-            console.warn('[useAudioSetup] Ideal deviceId match failed, trying default:', idealErr);
-            newStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          }
-        }
-      } else {
-        newStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      }
+      const newStream = await acquireInputDeviceStream('audio', deviceId);
 
       streamRef.current = newStream;
       setStream(newStream);

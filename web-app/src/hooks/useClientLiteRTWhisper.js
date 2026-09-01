@@ -11,6 +11,7 @@ import { doc, setDoc, updateDoc, serverTimestamp, collection, addDoc } from 'fir
 import { db } from '../firebase-config';
 import { isWhisperModelCached, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader';
 import { downsamplePcmTo16k } from '../utils/audioDecoder';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 export function useClientLiteRTWhisper({
   classId,
@@ -435,30 +436,11 @@ export function useClientLiteRTWhisper({
       })();
 
       try {
-        if (targetDeviceId) {
-          try {
-            localStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                deviceId: { ideal: targetDeviceId },
-                autoGainControl: true,
-                echoCancellation: true,
-                noiseSuppression: false,
-              },
-              video: false,
-            });
-          } catch (idealErr) {
-            console.warn('[useClientLiteRTWhisper] Ideal deviceId match failed, falling back to default mic:', idealErr);
-            localStream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
-              video: false,
-            });
-          }
-        } else {
-          localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false,
-          });
-        }
+        localStream = await acquireInputDeviceStream('audio', targetDeviceId, {
+          autoGainControl: true,
+          echoCancellation: true,
+          noiseSuppression: false,
+        });
 
         if (isMounted && localStream) {
           attachStream(localStream);

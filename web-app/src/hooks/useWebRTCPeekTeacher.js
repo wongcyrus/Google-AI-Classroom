@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { db } from '../firebase-config';
 import { doc, setDoc, onSnapshot, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 const RTC_CONFIG = {
   iceServers: [
@@ -225,10 +226,7 @@ export default function useWebRTCPeekTeacher({ classId, studentUid, teacherUid }
     }
 
     try {
-      const constraints = {
-        audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await acquireInputDeviceStream('audio', micDeviceId);
       talkbackStreamRef.current = stream;
       const audioTrack = stream.getAudioTracks()[0];
 

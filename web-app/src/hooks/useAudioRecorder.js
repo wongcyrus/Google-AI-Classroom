@@ -3,6 +3,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase-config';
 import { saveToOfflineQueue, flushOfflineQueue } from '../utils/offlineBufferManager';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 /**
  * Hook to manage background audio recording with Moving Window (Sliding Rolling Buffer) support,
@@ -347,62 +348,11 @@ export function useAudioRecorder({
     setAudioError(null);
     console.log('%c[useAudioRecorder:Start] 🎙️ Starting recording stream with deviceId:', 'background:#0891b2;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', deviceId || '(system default)');
     try {
-      let stream = null;
-      if (deviceId) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: { ideal: deviceId },
-              autoGainControl: true,
-              echoCancellation: true,
-              noiseSuppression: false,
-            },
-            video: false,
-          });
-        } catch (exactErr) {
-          const isConstraintOrDeviceErr = exactErr && (
-            exactErr.name === 'OverconstrainedError' ||
-            exactErr.name === 'ConstraintNotSatisfiedError' ||
-            exactErr.name === 'NotFoundError' ||
-            exactErr.name === 'DevicesNotFoundError' ||
-            /constraint|overconstrained|not found/i.test(exactErr.message || '')
-          );
-          if (!isConstraintOrDeviceErr) {
-            throw exactErr;
-          }
-          console.warn('[useAudioRecorder] Exact deviceId match failed, trying ideal:', exactErr);
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                deviceId: { ideal: deviceId },
-                autoGainControl: true,
-                echoCancellation: true,
-                noiseSuppression: false,
-              },
-              video: false,
-            });
-          } catch (idealErr) {
-            console.warn('[useAudioRecorder] Ideal deviceId match failed, trying default audio:', idealErr);
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                autoGainControl: true,
-                echoCancellation: true,
-                noiseSuppression: false,
-              },
-              video: false,
-            });
-          }
-        }
-      } else {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            autoGainControl: true,
-            echoCancellation: true,
-            noiseSuppression: false,
-          },
-          video: false,
-        });
-      }
+      const stream = await acquireInputDeviceStream('audio', deviceId, {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: false,
+      });
 
       audioStreamRef.current = stream;
       setAudioStream(stream);

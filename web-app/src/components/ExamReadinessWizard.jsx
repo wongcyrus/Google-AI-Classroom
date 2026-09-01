@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../firebase-config';
 import { doc, setDoc } from 'firebase/firestore';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 /**
  * 3-Step Guided Pre-Exam Readiness Wizard (Self-Calibration)
@@ -112,10 +113,7 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startMic = async () => {
       try {
-        const constraints = {
-          audio: selectedMic ? { deviceId: { ideal: selectedMic } } : true,
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await acquireInputDeviceStream('audio', selectedMic);
         if (!isMounted) {
           stream.getTracks().forEach(t => t.stop());
           return;
@@ -255,10 +253,7 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startCamera = async () => {
       try {
-        const constraints = {
-          video: selectedCamera ? { deviceId: { ideal: selectedCamera } } : true,
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await acquireInputDeviceStream('video', selectedCamera);
 
         if (!isMounted) {
           stream.getTracks().forEach(t => t.stop());

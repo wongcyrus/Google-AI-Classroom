@@ -186,7 +186,7 @@ In addition to screen and webcam video streams, the student interface integrates
 1. **Pre-Exam Readiness & Microphone Setup (`ExamReadinessWizard.jsx` & `MicSetupModal.jsx`)**:
    - Students can configure their microphone during the initial **Pre-Exam Readiness Wizard** or open the setup dialog anytime via the **"⚙️ Mic Test"** button (or it automatically opens if `audioCaptureMode === 'mandatory'`).
    - Automatically enumerates connected audio inputs (`audioinput` kind) and dynamically listens to `devicechange` events for newly connected USB or Bluetooth headsets.
-   - Robust `getUserMedia` constraints with automatic fallback (`exact` $\to$ `ideal` $\to$ default) prevent student device lockouts when hardware IDs shift.
+   - Permission-first `getUserMedia` acquisition lets Chrome display its native prompt before the chosen microphone is bound with an exact `deviceId`. An unavailable selected device is surfaced instead of silently recording from the default microphone.
    - The selected device is saved in `localStorage ('preferred_mic_device_id')` for persistence across browser reloads.
    - Displays a real-time Web Audio RMS volume meter ($0–100\%$) for instant visual feedback.
    - Features a built-in Speech-to-Text verification challenge to confirm voice clarity before the session starts.

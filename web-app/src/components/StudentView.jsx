@@ -19,6 +19,7 @@ import ExamReadinessWizard from './ExamReadinessWizard';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome } from '../utils/browserDetection';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
 
 import Sidebar from './student/Sidebar';
@@ -40,6 +41,7 @@ const StudentView = ({ user }) => {
 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isWebcamSharing, setIsWebcamSharing] = useState(false);
+  const [webcamError, setWebcamError] = useState('');
   const isSharing = isScreenSharing || isWebcamSharing;
 
   // Schedule-driven class state
@@ -646,17 +648,8 @@ const StudentView = ({ user }) => {
 
   /**
    * Initializes and starts the webcam video stream.
-   * 
-   * Robust Fallback Hierarchy for Multi-Camera & Hardware Changes:
-   * 1. Exact deviceId constraint: Attempts to bind directly to targetDeviceId / selectedWebcamId.
-   * 2. Ideal deviceId constraint: If 'exact' throws OverconstrainedError (e.g. device ID rotated by OS),
-   *    falls back to 'ideal' which allows Chrome to negotiate the best match.
-   * 3. Generic video constraint: If 'ideal' fails, falls back to `{ video: true }` so the student's
-   *    camera stream reliably opens on whatever working camera is available.
-   * 
-   * Lifecycle Management:
-   * - Safely stops any existing media stream tracks before acquiring a new stream.
-   * - Attaches active video track to on-device Face & Gaze detection (useFaceMonitor) and WebRTC live peek.
+   * Requests generic camera access first so Chrome can show its permission prompt,
+   * then binds the selected camera exactly without silently substituting another device.
    */
   const startWebcam = useCallback(async (targetDeviceId) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -671,25 +664,10 @@ const StudentView = ({ user }) => {
     }
 
     const deviceIdToUse = targetDeviceId || selectedWebcamId;
-    let stream = null;
-
     try {
-      const constraints = {
-        video: deviceIdToUse ? { deviceId: { ideal: deviceIdToUse } } : true
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (idealErr) {
-      console.warn("[StudentView] Webcam ideal deviceId failed, attempting fallback to generic video:", idealErr);
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch (anyErr) {
-        console.warn("Webcam unavailable or permission not granted:", anyErr);
-        setIsWebcamSharing(false);
-        return;
-      }
-    }
+      setWebcamError('');
+      const stream = await acquireInputDeviceStream('video', deviceIdToUse);
 
-    try {
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
       }
@@ -712,8 +690,13 @@ const StudentView = ({ user }) => {
         };
       }
     } catch (err) {
-      console.warn("Webcam setup error:", err);
+      console.warn("Webcam unavailable or permission not granted:", err);
+      const permissionDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+      setWebcamError(permissionDenied
+        ? 'Camera access is blocked. Allow Camera from Chrome site settings, then try again.'
+        : `Unable to start the selected webcam: ${err?.message || 'camera unavailable'}`);
       setIsWebcamSharing(false);
+      return;
     }
   }, [selectedWebcamId, availableWebcams, isScreenSharing, updateCaptureStatus, stopWebcam, refreshWebcams]);
 
@@ -1519,6 +1502,9 @@ const StudentView = ({ user }) => {
                         </option>
                       ))}
                     </select>
+                  )}
+                  {webcamError && (
+                    <span role="alert" className="stream-error-message">{webcamError}</span>
                   )}
                 </div>
 

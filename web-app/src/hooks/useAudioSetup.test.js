@@ -112,8 +112,12 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
         await result.current.startStream('mic-1');
       });
 
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
-        audio: { deviceId: { ideal: 'mic-1' } },
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenNthCalledWith(1, {
+        audio: {},
+        video: false,
+      });
+      expect(navigator.mediaDevices.getUserMedia).toHaveBeenNthCalledWith(2, {
+        audio: { deviceId: { exact: 'mic-1' } },
         video: false,
       });
       expect(result.current.stream).toBeTruthy();
