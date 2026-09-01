@@ -673,33 +673,17 @@ const StudentView = ({ user }) => {
     const deviceIdToUse = targetDeviceId || selectedWebcamId;
     let stream = null;
 
-    if (deviceIdToUse) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceIdToUse } }
-        });
-      } catch (exactErr) {
-        console.warn("[StudentView] Webcam exact deviceId failed, falling back to ideal:", exactErr);
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { ideal: deviceIdToUse } }
-          });
-        } catch (idealErr) {
-          console.warn("[StudentView] Webcam ideal deviceId failed, falling back to any available video device:", idealErr);
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          } catch (anyErr) {
-            console.warn("Webcam unavailable or permission not granted:", anyErr);
-            setIsWebcamSharing(false);
-            return;
-          }
-        }
-      }
-    } else {
+    try {
+      const constraints = {
+        video: deviceIdToUse ? { deviceId: { ideal: deviceIdToUse } } : true
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (idealErr) {
+      console.warn("[StudentView] Webcam ideal deviceId failed, attempting fallback to generic video:", idealErr);
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch (err) {
-        console.warn("Webcam unavailable or permission not granted:", err);
+      } catch (anyErr) {
+        console.warn("Webcam unavailable or permission not granted:", anyErr);
         setIsWebcamSharing(false);
         return;
       }

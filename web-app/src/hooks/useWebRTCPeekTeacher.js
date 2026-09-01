@@ -226,7 +226,7 @@ export default function useWebRTCPeekTeacher({ classId, studentUid, teacherUid }
 
     try {
       const constraints = {
-        audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
+        audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       talkbackStreamRef.current = stream;

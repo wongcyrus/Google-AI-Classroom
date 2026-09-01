@@ -113,7 +113,7 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
       });
 
       expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
-        audio: { deviceId: { exact: 'mic-1' } },
+        audio: { deviceId: { ideal: 'mic-1' } },
         video: false,
       });
       expect(result.current.stream).toBeTruthy();

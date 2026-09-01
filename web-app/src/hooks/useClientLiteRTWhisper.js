@@ -439,31 +439,19 @@ export function useClientLiteRTWhisper({
           try {
             localStream = await navigator.mediaDevices.getUserMedia({
               audio: {
-                deviceId: { exact: targetDeviceId },
+                deviceId: { ideal: targetDeviceId },
                 autoGainControl: true,
                 echoCancellation: true,
                 noiseSuppression: false,
               },
               video: false,
             });
-          } catch (exactErr) {
-            console.warn('[useClientLiteRTWhisper] Exact deviceId match failed, trying ideal:', exactErr);
-            try {
-              localStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                  deviceId: { ideal: targetDeviceId },
-                  autoGainControl: true,
-                  echoCancellation: true,
-                  noiseSuppression: false,
-                },
-                video: false,
-              });
-            } catch (idealErr) {
-              localStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: false,
-              });
-            }
+          } catch (idealErr) {
+            console.warn('[useClientLiteRTWhisper] Ideal deviceId match failed, falling back to default mic:', idealErr);
+            localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false,
+            });
           }
         } else {
           localStream = await navigator.mediaDevices.getUserMedia({

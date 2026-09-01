@@ -352,7 +352,7 @@ export function useAudioRecorder({
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              deviceId: { exact: deviceId },
+              deviceId: { ideal: deviceId },
               autoGainControl: true,
               echoCancellation: true,
               noiseSuppression: false,

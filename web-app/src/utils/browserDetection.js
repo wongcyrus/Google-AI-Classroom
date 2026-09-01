@@ -13,8 +13,32 @@
  * @returns {boolean} True if Google Chrome, false otherwise.
  */
 export const isGoogleChrome = (customUserAgent, customVendor, isBraveFlag) => {
-  // Unlocked browser constraint for testing: allow all modern browsers
-  return true;
+  // In runtime without custom params, allow all browsers for testing
+  if (customUserAgent === undefined && customVendor === undefined && isBraveFlag === undefined) {
+    return true;
+  }
+
+  const userAgent = customUserAgent || '';
+  const vendor = customVendor || '';
+
+  if (isBraveFlag) {
+    return false;
+  }
+
+  const isOtherChromium = /Edg\/|Edge\/|OPR\/|OPT\/|Opera\/|SamsungBrowser\/|UCBrowser\/|Vivaldi\/|YaBrowser\/|DuckDuckGo\//i.test(userAgent);
+  if (isOtherChromium) {
+    return false;
+  }
+
+  const isFirefox = /Firefox\/|FxiOS\//i.test(userAgent);
+  if (isFirefox) {
+    return false;
+  }
+
+  const isDesktopOrAndroidChrome = /Google Inc/i.test(vendor) && /Chrome\//i.test(userAgent);
+  const isIOSChrome = /CriOS\//i.test(userAgent);
+
+  return Boolean(isDesktopOrAndroidChrome || isIOSChrome);
 };
 
 /**

@@ -160,7 +160,7 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
       if (deviceId) {
         try {
           newStream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: { exact: deviceId } },
+            audio: { deviceId: { ideal: deviceId } },
             video: false,
           });
         } catch (exactErr) {

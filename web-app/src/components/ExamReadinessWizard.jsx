@@ -113,7 +113,7 @@ export default function ExamReadinessWizard({
     const startMic = async () => {
       try {
         const constraints = {
-          audio: selectedMic ? { deviceId: { exact: selectedMic } } : true,
+          audio: selectedMic ? { deviceId: { ideal: selectedMic } } : true,
         };
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (!isMounted) {
@@ -255,24 +255,10 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startCamera = async () => {
       try {
-        let stream = null;
-        if (selectedCamera) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: selectedCamera } }
-            });
-          } catch {
-            try {
-              stream = await navigator.mediaDevices.getUserMedia({
-                video: { deviceId: { ideal: selectedCamera } }
-              });
-            } catch {
-              stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            }
-          }
-        } else {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        }
+        const constraints = {
+          video: selectedCamera ? { deviceId: { ideal: selectedCamera } } : true,
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
         if (!isMounted) {
           stream.getTracks().forEach(t => t.stop());
