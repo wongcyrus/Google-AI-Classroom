@@ -9,7 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     isolate: true,
-    pool: 'forks',
+    pool: 'threads',
     coverage: {
       provider: 'v8',
       reporter: ['text'],
