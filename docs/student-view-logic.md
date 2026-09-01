@@ -183,24 +183,32 @@ To eliminate network bandwidth bottlenecks, prevent exam start latency, and avoi
 
 In addition to screen and webcam video streams, the student interface integrates microphone capture, hardware verification, and sliding window audio recording:
 
-1. **Pre-Exam Readiness & Microphone Setup (`ExamReadinessWizard.jsx` & `MicSetupModal.jsx`)**:
-   - Students can configure their microphone during the initial **Pre-Exam Readiness Wizard** or open the setup dialog anytime via the **"⚙️ Mic Test"** button (or it automatically opens if `audioCaptureMode === 'mandatory'`).
-   - Automatically enumerates connected audio inputs (`audioinput` kind) and dynamically listens to `devicechange` events for newly connected USB or Bluetooth headsets.
-   - Permission-first `getUserMedia` acquisition lets Chrome display its native prompt before the chosen microphone is bound with an exact `deviceId`. An unavailable selected device is surfaced instead of silently recording from the default microphone.
-   - The selected device is saved in `localStorage ('preferred_mic_device_id')` for persistence across browser reloads.
-   - Displays a real-time Web Audio RMS volume meter ($0–100\%$) for instant visual feedback.
-   - Features a built-in Speech-to-Text verification challenge to confirm voice clarity before the session starts.
+### 1. Microphone UI Elements & Controls Breakdown
+The student interface provides 3 clear, distinct controls for microphone interaction:
 
-2. **Selected Microphone Stream Routing & On-Device Whisper STT (`useClientLiteRTWhisper.js` & `useAudioRecorder.js`)**:
-   - Audio recording is completely **decoupled from Vision AI modes**. Even if Vision AI is set to `disabled` (`aiMonitoringMode === 'disabled'`), audio capture operates independently whenever the teacher enables the class audio toggle (`enableAudioCapture: true`).
-   - **Direct Audio Stream Attachment**: `useAudioRecorder` opens the media stream using the student's selected microphone and supplies `audioStream` directly to `useClientLiteRTWhisper`.
-   - `useClientLiteRTWhisper` attaches a real-time Web Audio `ScriptProcessorNode` to `audioStream`, downsampling to 16kHz PCM Float32Array and performing local Voice Activity Detection (VAD).
-   - This ensures on-device LiteRT Whisper STT transcribes speech directly from whichever microphone the student selected (USB headset, external podcast mic, webcam mic, or internal default).
-   - Audio from the selected microphone is also recorded in continuous 1-second slices into a rolling circular memory buffer.
-   - Every 15 seconds (stride), the previous 30-second window is packaged and uploaded to Firebase Cloud Storage under `audio/{classId}/{studentUid}/audio_{start}_{end}.webm`.
-   - **Silence Suppression**: Chunks with average volume $<4\%$ and peak $<8\%$ are dropped on the client, reducing bandwidth and storage quotas by $>80\%$.
-   - **Automatic Diarization Gating**: Cloud Gemini 3.5 Transcribe triggers only when cloud diarization is explicitly allowed by the teacher (`isCloudDiarizationAllowed`), ensuring cost control while maintaining complete raw audio logs for teacher review.
-   - Live telemetry (`isAudioSharing`, `audioStatus`, `audioLevel`, `liveTranscript`) is synchronized in real time to `classes/{classId}/status/{studentUid}` for instant teacher dashboard visibility.
+| UI Component | Role / Purpose | Interaction / Behavior |
+| :--- | :--- | :--- |
+| **`🎙️ Mic Active` / `🔇 Mic Muted` Toolbar Button** | **Runtime Mute Switch** | Toggles live audio capture (`isAudioUserEnabled`) on and off without opening dialogs. Shows `🔊 Speaking` dynamically when volume is detected. |
+| **Live VU Volume Meter `[24%]`** | **Visual Sound Feedback** | Inline volume level bar ($0–100\%$) indicating real-time microphone pickup when unmuted. |
+| **`⚙️ Mic Test` Toolbar Button** | **Hardware Diagnostics & Switcher** | Opens [`MicSetupModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MicSetupModal.jsx) where students can switch physical USB/Bluetooth inputs, test loopback playback, and run voice verification. |
+| **`ExamReadinessWizard.jsx`** | **Pre-Exam Guided Self-Calibration** | Step-by-step modal displayed before exam entry to verify Camera, Microphone, and Screen Sharing. |
+
+### 2. Two-Stage Hardware Acquisition (`acquireInputDeviceStream` in `mediaDeviceCapture.js`)
+To prevent Chrome from throwing `OverconstrainedError` before native permission is granted while ensuring the application never silently falls back to the wrong default device:
+1. **Phase 1 (Generic Permission Prompt):** Invokes `navigator.mediaDevices.getUserMedia({ audio: true })` without strict device constraints. This allows Chrome to show its standard permission prompt cleanly.
+2. **Phase 2 (Exact Device Binding):** Once permission is acquired, if a custom `deviceId` is chosen (e.g. USB headset), it requests `{ audio: { deviceId: { exact: deviceId } } }` and terminates the initial default stream.
+3. **Fail-Fast Error Handling:** If the selected device is disconnected or hardware-locked, the error is caught and displayed to the student rather than secretly recording from an unintended microphone.
+
+### 3. Selected Microphone Stream Routing & On-Device Whisper STT (`useClientLiteRTWhisper.js` & `useAudioRecorder.js`)
+- Audio recording is completely **decoupled from Vision AI modes**. Even if Vision AI is set to `disabled` (`aiMonitoringMode === 'disabled'`), audio capture operates independently whenever the teacher enables the class audio toggle (`enableAudioCapture: true`).
+- **Direct Audio Stream Attachment**: `useAudioRecorder` opens the media stream using the student's selected microphone and supplies `audioStream` directly to `useClientLiteRTWhisper`.
+- `useClientLiteRTWhisper` attaches a real-time Web Audio `ScriptProcessorNode` to `audioStream`, downsampling to 16kHz PCM Float32Array and performing local Voice Activity Detection (VAD).
+- This ensures on-device LiteRT Whisper STT transcribes speech directly from whichever microphone the student selected (USB headset, external podcast mic, webcam mic, or internal default).
+- Audio from the selected microphone is also recorded in continuous 1-second slices into a rolling circular memory buffer.
+- Every 15 seconds (stride), the previous 30-second window is packaged and uploaded to Firebase Cloud Storage under `audio/{classId}/{studentUid}/audio_{start}_{end}.webm`.
+- **Silence Suppression**: Chunks with average volume $<4\%$ and peak $<8\%$ are dropped on the client, reducing bandwidth and storage quotas by $>80\%$.
+- **Automatic Diarization Gating**: Cloud Gemini 3.5 Transcribe triggers only when cloud diarization is explicitly allowed by the teacher (`isCloudDiarizationAllowed`), ensuring cost control while maintaining complete raw audio logs for teacher review.
+- Live telemetry (`isAudioSharing`, `audioStatus`, `audioLevel`, `liveTranscript`) is synchronized in real time to `classes/{classId}/status/{studentUid}` for instant teacher dashboard visibility.
 
 ---
 

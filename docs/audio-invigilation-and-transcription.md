@@ -39,8 +39,9 @@ flowchart TD
 
 The acoustic pipeline operates in a flexible 3-tier hierarchy:
 
-1. **Tier 1 (Instant Mic Verification & Device Selection):**
-   - Students can select any connected audio device (USB headset, external microphone, webcam mic, 3.5mm jack).
+1. **Tier 1 (Instant Mic Verification & Two-Phase Device Acquisition):**
+   - Students can select any connected audio device (USB headset, external microphone, webcam mic, 3.5mm jack) via [`MicSetupModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MicSetupModal.jsx) or [`ExamReadinessWizard.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ExamReadinessWizard.jsx).
+   - Uses two-phase acquisition in [`acquireInputDeviceStream`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/mediaDeviceCapture.js): requests generic permission first (preventing pre-permission `OverconstrainedError` in Chrome), followed by exact `deviceId` binding.
    - Instant phrase-matching challenge verification via Web Speech API and loopback playback test.
    - Dynamic device switching restarts the media stream and seamlessly redirects the real-time audio pipeline.
 2. **Tier 2 (On-Device LiteRT Whisper Edge STT):** Background Web Worker (`litertWhisper.worker.js`) running `@litertjs/core` (Google LiteRT) on WebGPU / XNNPACK CPU WASM:
