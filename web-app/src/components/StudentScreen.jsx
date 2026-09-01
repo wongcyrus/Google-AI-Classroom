@@ -103,6 +103,25 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             {student.faceStatus === 'cloud_fallback' && '☁️ Cloud Fallback'}
           </div>
         )}
+        {student?.liveTranscript && isSharing && (
+          <div className="screen-speech-bubble" title={`Live Speech (Whisper): ${student.liveTranscript}`}>
+            <span className="speech-lang-tag">
+              {student.speechLanguage === 'cantonese' ? '💬 粵' : student.speechLanguage === 'mandarin' ? '💬 普' : student.speechLanguage === 'mixed' ? '💬 粵/普/EN' : '💬 EN'}
+            </span>
+            <span className="speech-text">"{student.liveTranscript}"</span>
+          </div>
+        )}
+        {student?.gemmaAlert && isSharing && (
+          <div
+            className={`screen-gemma-alert ${student.gemmaSeverity || 'medium'}`}
+            title={`LiteRT Gemma Speech Violation: ${student.gemmaAlert} (${Math.round((student.gemmaConfidence || 0.9) * 100)}% confidence)`}
+          >
+            {student.gemmaAlert === 'COLLUSION_EXAM' && '🚨 Collusion (Gemma)'}
+            {student.gemmaAlert === 'EXTERNAL_AI_ASSIST' && '⚠️ Dictation/AI (Gemma)'}
+            {student.gemmaAlert === 'UNAUTHORIZED_TALK' && '🗣️ Side Talk (Gemma)'}
+            {student.gemmaAlert !== 'COLLUSION_EXAM' && student.gemmaAlert !== 'EXTERNAL_AI_ASSIST' && student.gemmaAlert !== 'UNAUTHORIZED_TALK' && `🚨 ${student.gemmaAlert}`}
+          </div>
+        )}
       </div>
     </div>
   );

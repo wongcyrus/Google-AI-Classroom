@@ -69,21 +69,26 @@ const StudentsGrid = ({
           if (screenshotData && screenshotData.timestamp) {
             const screenshotTime = screenshotData.timestamp.toDate
               ? screenshotData.timestamp.toDate()
-              : new Date(screenshotData.timestamp);
+              : (screenshotData.timestamp instanceof Date ? screenshotData.timestamp : new Date(screenshotData.timestamp));
             const refTime = reviewTime ? new Date(reviewTime) : now;
             const secondsDiff = (refTime.getTime() - screenshotTime.getTime()) / 1000;
-            if (isPaused || (secondsDiff >= 0 && secondsDiff <= frameRate)) {
+            const freshnessWindow = Math.max(frameRate * 3, 30);
+            if (isPaused || (secondsDiff >= 0 && secondsDiff <= freshnessWindow)) {
               isFresh = true;
             }
           }
+
+          const isStudentSharing = reviewTime
+            ? (isFresh || !!screenshotData)
+            : Boolean(student.isSharing && (isFresh || isPaused));
 
           return (
             <StudentScreen
               key={studentUid}
               student={student}
-              isSharing={isFresh || !!screenshotData || student.isSharing}
-              screenshotData={screenshotData}
-              screenshotUrl={screenshotData?.url}
+              isSharing={isStudentSharing}
+              screenshotData={isStudentSharing || reviewTime ? screenshotData : null}
+              screenshotUrl={isStudentSharing || reviewTime ? screenshotData?.url : null}
               selectedChannel={selectedChannel}
               onClick={() => handleStudentClick && handleStudentClick(student)}
             />

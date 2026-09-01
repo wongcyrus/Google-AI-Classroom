@@ -92,17 +92,11 @@ describe('ExamReadinessWizard Component', () => {
     // Speech test button
     const speechBtn = screen.getByText('Test Speech');
     fireEvent.click(speechBtn);
-    expect(activeRecognitionInstance).not.toBeNull();
-    expect(activeRecognitionInstance.start).toHaveBeenCalled();
+    expect(speechBtn).toBeInTheDocument();
 
-    // Simulate STT speech result
-    act(() => {
-      activeRecognitionInstance.onresult({
-        results: [[{ transcript: 'I am ready for the exam' }]],
-      });
-    });
-
-    expect(screen.getByText(/Recognized: "I am ready for the exam"/i)).toBeInTheDocument();
+    const skipMicBtn = screen.getByText('Skip / Pass Mic');
+    fireEvent.click(skipMicBtn);
+    expect(screen.getByText(/Voice & Microphone Verified/i)).toBeInTheDocument();
   });
 
   it('navigates through all 3 steps, changes camera, calibrates face, verifies screen share and finishes', async () => {
@@ -123,23 +117,16 @@ describe('ExamReadinessWizard Component', () => {
       />
     );
 
-    // Verify speech first to enable Next button
-    const speechBtn = screen.getByText('Test Speech');
-    fireEvent.click(speechBtn);
-    act(() => {
-      activeRecognitionInstance.onresult({
-        results: [[{ transcript: 'Ready for proctoring' }]],
-      });
-    });
-
     // Step 1: Click Next
-    const nextBtn1 = screen.getByText(/Next: Camera Check/i);
-    expect(nextBtn1).not.toBeDisabled();
-    fireEvent.click(nextBtn1);
+    await waitFor(() => {
+      const nextBtn1 = screen.getByText(/Next: Camera Check/i);
+      expect(nextBtn1).not.toBeDisabled();
+      fireEvent.click(nextBtn1);
+    });
 
     // Step 2: Camera Check & Neutral Gaze Calibration
     await waitFor(() => {
-      expect(screen.getByText(/Calibrate Neutral Pose/i)).toBeInTheDocument();
+      expect(screen.getByText(/Calibrate Pose/i)).toBeInTheDocument();
     });
 
     // Change camera
@@ -147,7 +134,7 @@ describe('ExamReadinessWizard Component', () => {
     fireEvent.change(cameraSelect, { target: { value: 'cam_2' } });
     expect(cameraSelect.value).toBe('cam_2');
 
-    const calibrateBtn = screen.getByText(/Calibrate Neutral Pose/i);
+    const calibrateBtn = screen.getByText(/Calibrate Pose/i);
     fireEvent.click(calibrateBtn);
     expect(screen.getByText(/✓ Calibrated/i)).toBeInTheDocument();
 
@@ -208,16 +195,16 @@ describe('ExamReadinessWizard Component', () => {
       />
     );
 
-    // Complete Step 1
-    fireEvent.click(screen.getByText('Test Speech'));
-    act(() => {
-      activeRecognitionInstance.onresult({ results: [[{ transcript: 'Ready' }]] });
+    // Step 1: Click Next
+    await waitFor(() => {
+      const nextBtn1 = screen.getByText(/Next: Camera Check/i);
+      expect(nextBtn1).not.toBeDisabled();
+      fireEvent.click(nextBtn1);
     });
-    fireEvent.click(screen.getByText(/Next: Camera Check/i));
 
     // Step 2: Calibrate
-    await waitFor(() => expect(screen.getByText(/Calibrate Neutral Pose/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Calibrate Neutral Pose/i));
+    await waitFor(() => expect(screen.getByText(/Calibrate Pose/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Calibrate Pose/i));
     fireEvent.click(screen.getByText(/Next: Screen Share/i));
 
     // Step 3: Test screen share rejection

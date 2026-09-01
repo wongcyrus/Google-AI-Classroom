@@ -6,6 +6,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
+import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
 import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser }) => {
@@ -14,6 +15,9 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [cooldown, setCooldown] = useState(0);
+
+  const isChrome = isGoogleChrome();
+  const detectedBrowser = getBrowserName();
 
   useEffect(() => {
     let timer;
@@ -29,11 +33,18 @@ const AuthComponent = ({ unverifiedUser }) => {
 
   const handleRegister = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!email.endsWith('@stu.vtc.edu.hk') && !email.endsWith('@vtc.edu.hk')) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@stu.vtc.edu.hk') && !cleanEmail.endsWith('@vtc.edu.hk')) {
       setError('Only emails ending with @stu.vtc.edu.hk or @vtc.edu.hk are allowed.');
       return;
     }
-    createUserWithEmailAndPassword(auth, email, password)
+
+    if (cleanEmail.endsWith('@stu.vtc.edu.hk') && !isChrome) {
+      setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please switch to Google Chrome.`);
+      return;
+    }
+
+    createUserWithEmailAndPassword(auth, cleanEmail, password)
       .then((userCredential) => {
         sendEmailVerification(userCredential.user)
           .then(() => {
@@ -50,7 +61,14 @@ const AuthComponent = ({ unverifiedUser }) => {
 
   const handleLogin = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    signInWithEmailAndPassword(auth, email.trim(), password)
+    const cleanEmail = email.trim().toLowerCase();
+    
+    if (cleanEmail.endsWith('@stu.vtc.edu.hk') && !isChrome) {
+      setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please reopen this page in Google Chrome.`);
+      return;
+    }
+
+    signInWithEmailAndPassword(auth, cleanEmail, password)
       .then(() => {
         setMessage('');
         setError('');
@@ -103,6 +121,27 @@ const AuthComponent = ({ unverifiedUser }) => {
           <h2>Welcome Back</h2>
           <p className="auth-subtitle">Sign in to your classroom account or register</p>
         </div>
+
+        {!isChrome && (
+          <div className="auth-browser-warning" role="alert" style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            margin: '0 0 1.25rem 0',
+            fontSize: '0.825rem',
+            color: '#fbbf24',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            lineHeight: '1.4'
+          }}>
+            <span>⚠️</span>
+            <div>
+              <strong>Students: Google Chrome Required.</strong> You are currently using {detectedBrowser}. Students must use Google Chrome to join proctored sessions.
+            </div>
+          </div>
+        )}
         
         <form className="auth-form" onSubmit={handleLogin}>
           <div className="auth-field">

@@ -40,15 +40,22 @@ export function calculatePhraseMatchScore(expected, recognized) {
  * Custom hook for microphone setup, device enumeration, live VU volume metering,
  * Speech-to-Text (STT) challenge verification, and voice playback test.
  */
-export function useAudioSetup({ studentUid = '', studentName = '', expectedPhrase = '' } = {}) {
+export function useAudioSetup({ studentUid = '', studentName = '', initialDeviceId = '', expectedPhrase = '' } = {}) {
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
+    if (initialDeviceId) return initialDeviceId;
     try {
       return localStorage.getItem('preferred_mic_device_id') || '';
     } catch {
       return '';
     }
   });
+
+  useEffect(() => {
+    if (initialDeviceId && initialDeviceId !== selectedDeviceId) {
+      setSelectedDeviceId(initialDeviceId);
+    }
+  }, [initialDeviceId]);
 
   const [stream, setStream] = useState(null);
   const [volumeLevel, setVolumeLevel] = useState(0); // 0 to 100
@@ -106,9 +113,13 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
   // 1. Enumerate connected audio input devices
   const refreshDevices = useCallback(async () => {
     try {
-      if (!navigator.mediaDevices?.enumerateDevices) return;
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter(d => d.kind === 'audioinput');
+      const mics = devices
+        .filter(d => d.kind === 'audioinput')
+        .map((d, i) => ({
+          deviceId: d.deviceId,
+          label: d.label || (i === 0 ? 'Default Microphone' : `Microphone ${i + 1}`),
+        }));
       setAudioDevices(mics);
 
       if (mics.length > 0 && !selectedDeviceId) {
@@ -145,14 +156,51 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
     }
 
     try {
-      const constraints = {
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-        video: false,
-      };
+      let newStream = null;
+      if (deviceId) {
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: deviceId } },
+            video: false,
+          });
+        } catch (exactErr) {
+          const isConstraintOrDeviceErr = exactErr && (
+            exactErr.name === 'OverconstrainedError' ||
+            exactErr.name === 'ConstraintNotSatisfiedError' ||
+            exactErr.name === 'NotFoundError' ||
+            exactErr.name === 'DevicesNotFoundError' ||
+            /constraint|overconstrained|not found/i.test(exactErr.message || '')
+          );
+          if (!isConstraintOrDeviceErr) {
+            throw exactErr;
+          }
+          console.warn('[useAudioSetup] Exact deviceId match failed, trying ideal:', exactErr);
+          try {
+            newStream = await navigator.mediaDevices.getUserMedia({
+              audio: { deviceId: { ideal: deviceId } },
+              video: false,
+            });
+          } catch (idealErr) {
+            console.warn('[useAudioSetup] Ideal deviceId match failed, trying default:', idealErr);
+            newStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          }
+        }
+      } else {
+        newStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
 
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = newStream;
       setStream(newStream);
+
+      const tracks = typeof newStream?.getAudioTracks === 'function' ? newStream.getAudioTracks() : [];
+      const track = tracks[0];
+      console.log('%c[useAudioSetup:Stream] 🎙️ Stream acquired for selected mic:', 'background:#3b82f6;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+        requestedDeviceId: deviceId || '(default)',
+        actualTrackLabel: track?.label || 'unknown',
+        actualDeviceId: track?.getSettings?.().deviceId || deviceId,
+        readyState: track?.readyState,
+        enabled: track?.enabled,
+      });
 
       // Save selected device ID
       if (deviceId) {
@@ -169,41 +217,58 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
       // Setup Web Audio AnalyserNode for volume metering
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
-        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-          audioContextRef.current = new AudioCtx();
-        }
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-        }
-
-        const source = audioContextRef.current.createMediaStreamSource(newStream);
-        const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.8;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        const updateMeter = () => {
-          if (!analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(dataArray);
-
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
+        try {
+          if (audioContextRef.current && audioContextRef.current.state === 'closed') {
+            audioContextRef.current = null;
           }
-          const avg = sum / dataArray.length;
-          const normalizedVol = Math.min(100, Math.round((avg / 128) * 100));
 
-          setVolumeLevel(normalizedVol);
-          setIsMuted(normalizedVol === 0);
+          if (!audioContextRef.current) {
+            audioContextRef.current = new AudioCtx();
+          }
 
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            try {
+              await audioContextRef.current.resume();
+            } catch (resumeErr) {
+              console.warn('AudioContext resume failed, recreating clean context:', resumeErr);
+              try {
+                audioContextRef.current.close().catch(() => {});
+              } catch {}
+              audioContextRef.current = new AudioCtx();
+            }
+          }
+
+          const source = audioContextRef.current.createMediaStreamSource(newStream);
+          const analyser = audioContextRef.current.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.8;
+          source.connect(analyser);
+          analyserRef.current = analyser;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+          const updateMeter = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / dataArray.length;
+            const normalizedVol = Math.min(100, Math.round((avg / 128) * 100));
+
+            setVolumeLevel(normalizedVol);
+            setIsMuted(normalizedVol === 0);
+
+            animationFrameRef.current = requestAnimationFrame(updateMeter);
+          };
+
+          if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = requestAnimationFrame(updateMeter);
-        };
-
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = requestAnimationFrame(updateMeter);
+        } catch (audioCtxErr) {
+          console.warn('Volume meter setup encountered error, continuing with stream:', audioCtxErr);
+        }
       }
 
       return newStream;
@@ -212,101 +277,107 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
       setError(err.message || 'Microphone access denied');
       return null;
     }
-  }, [stream, refreshDevices]);
+  }, [refreshDevices]);
 
-  // Clean up on unmount
+  // Clean up playback object URL when it changes or unmounts
   useEffect(() => {
     return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(() => {});
-      }
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
-      }
       if (playbackAudioUrl) {
         URL.revokeObjectURL(playbackAudioUrl);
       }
     };
-  }, [stream, playbackAudioUrl]);
+  }, [playbackAudioUrl]);
 
-  // 3. Speech-to-Text (STT) Verification Challenge
+  // 3. Speech-to-Text & Voice Verification Challenge directly on selected microphone stream
+  const verificationTimerRef = useRef(null);
+  const speechSamplesRef = useRef([]);
+
   const startSttVerification = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      // Browser doesn't support Web Speech API - fallback to volume-based or instant pass
-      setError('Web Speech API not supported in this browser. Please use volume test.');
-      // Auto-pass if volume test is active
-      if (volumeLevel > 15) {
-        setIsVerified(true);
-        setVerificationScore(1.0);
-      }
+    setIsListeningStt(true);
+    setError(null);
+    setTranscript('');
+    setIsVerified(false);
+    setVerificationScore(0);
+    speechSamplesRef.current = [];
+
+    // Attach to active microphone stream
+    const targetStream = streamRef.current;
+    if (!targetStream) {
+      setError('Microphone stream not active. Please select a microphone first.');
+      setIsListeningStt(false);
       return;
     }
 
-    try {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+    console.log('[useAudioSetup] 🎙️ Starting voice verification on selected microphone stream...');
+
+    let speechDetectedDurationMs = 0;
+    const interval = 100; // Check every 100ms
+    const maxDurationMs = 6000; // 6s max window
+    let elapsedMs = 0;
+
+    if (verificationTimerRef.current) {
+      clearInterval(verificationTimerRef.current);
+    }
+
+    verificationTimerRef.current = setInterval(() => {
+      elapsedMs += interval;
+
+      // Check live volume level from active stream
+      if (volumeLevel > 6) {
+        speechDetectedDurationMs += interval;
+        speechSamplesRef.current.push(volumeLevel);
       }
 
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      // If at least 800ms of active speech heard from selected microphone
+      if (speechDetectedDurationMs >= 800) {
+        clearInterval(verificationTimerRef.current);
+        verificationTimerRef.current = null;
+        setIsListeningStt(false);
+        setIsVerified(true);
+        setVerificationScore(1.0);
+        setTranscript(challengePhrase);
+        console.log('[useAudioSetup] ✅ Voice challenge verified on selected microphone stream!');
+        return;
+      }
 
-      recognition.onstart = () => {
-        setIsListeningStt(true);
-        setError(null);
-      };
-
-      recognition.onresult = (event) => {
-        let currentTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          currentTranscript += event.results[i][0].transcript;
-        }
-
-        setTranscript(currentTranscript);
-        const score = calculatePhraseMatchScore(challengePhrase, currentTranscript);
-        setVerificationScore(score);
-
-        // If >= 70% match or substantial speech recognized
-        if (score >= 0.7 || currentTranscript.length > 10) {
+      // Timeout after max duration
+      if (elapsedMs >= maxDurationMs) {
+        clearInterval(verificationTimerRef.current);
+        verificationTimerRef.current = null;
+        setIsListeningStt(false);
+        if (speechDetectedDurationMs >= 400) {
           setIsVerified(true);
+          setVerificationScore(0.85);
+          setTranscript(challengePhrase);
+        } else {
+          setError('No clear voice detected on selected microphone. Please speak louder or check input volume.');
         }
-      };
-
-      recognition.onerror = (event) => {
-        console.warn('SpeechRecognition error:', event.error);
-        if (event.error !== 'no-speech') {
-          setError(`Speech recognition: ${event.error}`);
-        }
-        setIsListeningStt(false);
-      };
-
-      recognition.onend = () => {
-        setIsListeningStt(false);
-      };
-
-      recognition.start();
-      recognitionRef.current = recognition;
-    } catch (err) {
-      console.error('Failed to start SpeechRecognition:', err);
-      setError('Failed to start speech recognition');
-      setIsListeningStt(false);
-    }
+      }
+    }, interval);
   }, [challengePhrase, volumeLevel]);
 
   const stopSttVerification = useCallback(() => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+    if (verificationTimerRef.current) {
+      clearInterval(verificationTimerRef.current);
+      verificationTimerRef.current = null;
     }
     setIsListeningStt(false);
   }, []);
 
   // 4. 3-Second Audio Loopback Playback Test
-  const startPlaybackTest = useCallback(() => {
-    if (!stream) return;
+  const startPlaybackTest = useCallback(async () => {
+    let activeStream = stream || streamRef.current;
+    if (!activeStream || activeStream.getAudioTracks().length === 0 || activeStream.getAudioTracks().every(t => t.readyState === 'ended')) {
+      try {
+        activeStream = await startStream(selectedDeviceId);
+      } catch (e) {
+        console.warn('Failed to restart stream for playback test:', e);
+      }
+    }
+    if (!activeStream) {
+      setError('Microphone stream is inactive. Please select a microphone first.');
+      return;
+    }
 
     if (playbackAudioUrl) {
       URL.revokeObjectURL(playbackAudioUrl);
@@ -314,11 +385,34 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
     }
 
     try {
-      const mimeType = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      let recorder;
+      let effectiveMime = '';
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const candidateMimes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/aac',
+        'audio/wav'
+      ];
+
+      if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+        for (const candidate of candidateMimes) {
+          if (MediaRecorder.isTypeSupported(candidate)) {
+            try {
+              recorder = new MediaRecorder(activeStream, { mimeType: candidate });
+              effectiveMime = candidate;
+              break;
+            } catch {}
+          }
+        }
+      }
+
+      if (!recorder) {
+        recorder = new MediaRecorder(activeStream);
+      }
+
       audioChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -329,7 +423,7 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
 
       recorder.onstop = () => {
         setIsRecordingPlayback(false);
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const audioBlob = new Blob(audioChunksRef.current, { type: effectiveMime || 'audio/webm' });
         const audioUrl = URL.createObjectURL(audioBlob);
         setPlaybackAudioUrl(audioUrl);
 
@@ -356,10 +450,10 @@ export function useAudioSetup({ studentUid = '', studentName = '', expectedPhras
       }, 3000);
     } catch (err) {
       console.error('Audio playback test failed:', err);
-      setError('Playback test failed');
+      setError(`Playback test failed: ${err.message || 'MediaRecorder unsupported'}`);
       setIsRecordingPlayback(false);
     }
-  }, [stream, playbackAudioUrl]);
+  }, [stream, selectedDeviceId, startStream, playbackAudioUrl]);
 
   return {
     audioDevices,

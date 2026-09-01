@@ -219,7 +219,7 @@ const PromptManagement = () => {
 
     try {
       const ai = getAI(app, { backend: new VertexAIBackend() });
-      const model = getGenerativeModel(ai, { model: "gemini-3.5-flash-lite" });
+      const candidateModels = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
 
       const imageOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **image analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
 
@@ -292,7 +292,25 @@ const PromptManagement = () => {
 
       const optimizerPrompt = activeTab === 'videos' ? videoOptimizerPrompt : imageOptimizerPrompt;
 
-      const result = await model.generateContent(optimizerPrompt);
+      let result = null;
+      let lastErr = null;
+      for (const mName of candidateModels) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const model = getGenerativeModel(ai, { model: mName });
+            result = await model.generateContent(optimizerPrompt);
+            if (result) break;
+          } catch (err) {
+            lastErr = err;
+            console.warn(`[PromptOptimizer] Attempt ${attempt} on ${mName} encountered:`, err?.message || err);
+            await new Promise((r) => setTimeout(r, 600 * attempt));
+          }
+        }
+        if (result) break;
+      }
+
+      if (!result) throw lastErr;
+
       let optimizedText = result.response.text();
 
       // Strip markdown code block if present

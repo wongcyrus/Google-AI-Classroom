@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ref, uploadBytes } from 'firebase/storage';
-import { storage, db, auth } from '../firebase-config';
+import { storage, db, auth, functions } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import Banner from './Banner';
@@ -10,14 +11,29 @@ import './StudentView.css';
 import { useStudentClassSchedule } from '../hooks/useStudentClassSchedule';
 import useFaceMonitor from '../hooks/useFaceMonitor';
 import useAudioRecorder from '../hooks/useAudioRecorder';
+import { useClientLiteRTWhisper } from '../hooks/useClientLiteRTWhisper';
+import { useClientLiteRTGemma } from '../hooks/useClientLiteRTGemma';
 import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
+import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
+import { isGoogleChrome } from '../utils/browserDetection';
+import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
 
 import Sidebar from './student/Sidebar';
 
 const StudentView = ({ user }) => {
+  // Browser validation guard for students
+  const isChrome = isGoogleChrome();
+  if (!isChrome) {
+    return (
+      <UnsupportedBrowserNotice
+        onBackToLogin={() => signOut(auth)}
+      />
+    );
+  }
+
   // State
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
@@ -165,14 +181,32 @@ const StudentView = ({ user }) => {
   // Audio Recording & Mic Setup State
   const [enableAudioCapture, setEnableAudioCapture] = useState(false);
   const [audioCaptureMode, setAudioCaptureMode] = useState('mandatory');
+  const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [audioSegmentDuration, setAudioSegmentDuration] = useState(30);
   const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
   const [enableSegmentTranscription, setEnableSegmentTranscription] = useState(false);
   const [audioMovingWindowDuration, setAudioMovingWindowDuration] = useState(30);
   const [audioMovingWindowStride, setAudioMovingWindowStride] = useState(15);
   const [isMicSetupOpen, setIsMicSetupOpen] = useState(false);
-  const [selectedMicDeviceId, setSelectedMicDeviceId] = useState('');
+  const [selectedMicDeviceId, setSelectedMicDeviceId] = useState(() => {
+    try {
+      return localStorage.getItem('preferred_mic_device_id') || '';
+    } catch {
+      return '';
+    }
+  });
   const [isAudioUserEnabled, setIsAudioUserEnabled] = useState(true);
+  const [classSpeechLanguage, setClassSpeechLanguage] = useState('zh-HK');
+
+  // Log state updates to selectedMicDeviceId
+  useEffect(() => {
+    console.log('%c[StudentView:MicState] 🎙️ selectedMicDeviceId:', 'background:#4338ca;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+      selectedMicDeviceId: selectedMicDeviceId || '(default)',
+      isAudioUserEnabled,
+      voiceAiMode,
+      enableAudioCapture,
+    });
+  }, [selectedMicDeviceId, isAudioUserEnabled, voiceAiMode, enableAudioCapture]);
 
   // Refs
   const intervalRef = useRef(null);
@@ -184,7 +218,25 @@ const StudentView = ({ user }) => {
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
 
-  // Segmented Audio Recording Hook with Moving Window
+  // Client-Side Gemma LLM STT Monitor (LiteRT.js in Web Worker)
+  const {
+    status: gemmaStatus,
+    loadingProgress: gemmaLoadingProgress,
+    isModelCached: isGemmaCached,
+    delegateUsed: gemmaDelegate,
+    latestEvaluation: gemmaEvaluation,
+    preloadGemmaModel,
+    evaluateTranscript: evaluateSpeechWithGemma,
+  } = useClientLiteRTGemma({
+    classId: activeClass,
+    studentUid: user?.uid,
+    studentEmail: user?.email,
+    enabled: voiceAiMode !== 'disabled',
+  });
+
+  const handleAudioUploadedRef = useRef(null);
+
+  // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
   const {
     isRecording: isAudioRecording,
     audioStream,
@@ -195,7 +247,7 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    enabled: isSharing && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
+    enabled: (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
     aiMonitoringMode,
     segmentDuration: audioSegmentDuration,
     windowDuration: audioMovingWindowDuration,
@@ -204,12 +256,152 @@ const StudentView = ({ user }) => {
     silenceSuppression: audioSilenceSuppression,
     retentionDays: retentionDays,
     deviceId: selectedMicDeviceId,
+    onAudioUploaded: (data) => handleAudioUploadedRef.current?.(data),
   });
 
-  // Automatically activate verified devices & audio capture if readiness already completed
+  // 2. Client-Side Whisper STT Engine (LiteRT.js in Web Worker) connected to selected audioStream
+  const {
+    status: whisperStatus,
+    loadingProgress: whisperLoadingProgress,
+    isModelCached: isWhisperCached,
+    delegateUsed: whisperDelegate,
+    latestTranscript: whisperTranscript,
+    latestLanguage: whisperLanguage,
+    preloadModel: preloadWhisperModel,
+    transcribeAudioChunk,
+    setLatestTranscript: setWhisperTranscript,
+  } = useClientLiteRTWhisper({
+    classId: activeClass,
+    studentUid: user?.uid,
+    enabled: voiceAiMode !== 'disabled',
+    speechLanguage: classSpeechLanguage,
+    audioStream,
+    deviceId: selectedMicDeviceId,
+    onTranscript: evaluateSpeechWithGemma,
+  });
+
+  // Preload Audio AI models on teacher broadcast
+  useEffect(() => {
+    if (preloadClientAi && voiceAiMode !== 'disabled') {
+      if (!isWhisperCached && preloadWhisperModel) {
+        preloadWhisperModel().catch(err => console.debug('[StudentView] Whisper preload error:', err));
+      }
+      if (!isGemmaCached && preloadGemmaModel) {
+        preloadGemmaModel().catch(err => console.debug('[StudentView] Gemma preload error:', err));
+      }
+    }
+  }, [preloadClientAi, voiceAiMode, isWhisperCached, isGemmaCached, preloadWhisperModel, preloadGemmaModel]);
+
+  // Stable callback for uploaded audio segments
+  const handleAudioUploaded = useCallback(async ({ path, url, blob }) => {
+    console.log('%c[StudentView:AudioUploaded] 🎙️ Audio segment upload callback received:', 'background:#4338ca;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+      path,
+      blobSize: blob?.size,
+      voiceAiMode,
+      selectedMicDeviceId: selectedMicDeviceId || '(default)',
+    });
+    let transcriptText = '';
+
+    // 1. Decode audio blob into 16kHz Float32Array PCM for on-device LiteRT Whisper
+    let pcmData = null;
+    if (blob) {
+      try {
+        pcmData = await decodeAudioBlobToPcm(blob, 16000);
+        console.log('%c[StudentView:PCMDecoded] 🔊 Blob decoded to 16kHz PCM:', 'background:#0891b2;color:white;padding:2px 6px;border-radius:4px;', {
+          samples: pcmData?.length,
+          durationSec: pcmData ? (pcmData.length / 16000).toFixed(1) : 0,
+        });
+      } catch (decodeErr) {
+        console.debug('[StudentView] PCM decode note:', decodeErr);
+      }
+    }
+
+    // 2. On-device LiteRT Whisper transcription
+    if (transcribeAudioChunk) {
+      try {
+        console.log('%c[StudentView:LiteRTDispatch] 🚀 Dispatching segment to LiteRT Whisper:', 'background:#2563eb;color:white;padding:2px 6px;border-radius:4px;', {
+          path,
+          pcmSamples: pcmData?.length,
+          deviceId: selectedMicDeviceId || '(default)',
+        });
+        const result = await transcribeAudioChunk(pcmData, {
+          audioPath: path,
+          duration: audioSegmentDuration || 30,
+        });
+        console.log('%c[StudentView:LiteRTResult] 🎙️ LiteRT transcribe result:', 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', result);
+        if (result?.transcript && result.transcript.trim()) {
+          transcriptText = result.transcript.trim();
+        }
+      } catch (err) {
+        console.debug('[StudentView] Client LiteRT STT error:', err);
+      }
+    }
+
+    // 3. Cloud AI fallback (invoked in hybrid mode when local STT produces no words, or in cloud_only mode)
+    const isCloudAllowed = voiceAiMode === 'cloud_only' || voiceAiMode === 'hybrid' || enableCloudFallback;
+    if (!transcriptText && url && isCloudAllowed) {
+      try {
+        console.log('[StudentView] ⚡ Invoking Cloud Gemini Audio Analysis flow for segment:', path);
+        const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
+        const res = await analyzeAudioCallable({
+          audioUrl: url,
+          classId: activeClass,
+          studentUid: user?.uid,
+          studentEmail: user?.email,
+        });
+        if (res?.data?.transcript) {
+          transcriptText = res.data.transcript;
+          console.log(
+            `%c[Cloud Gemini Audio] 🎙️ Speech Transcribed: %c"${transcriptText}"`,
+            'background: #1e1b4b; color: #818cf8; font-weight: bold; font-size: 13px; padding: 2px 6px; border-radius: 4px;',
+            'color: #ffffff; font-weight: bold; font-size: 13px;'
+          );
+        }
+      } catch (err) {
+        console.warn('[StudentView] Cloud audio analysis call failed:', err);
+      }
+    }
+
+    // 4. If transcript acquired, sync UI state, Firestore status, and evaluate with Gemma LLM
+    if (transcriptText) {
+      if (setWhisperTranscript) setWhisperTranscript(transcriptText);
+      try {
+        const statusDocRef = doc(db, 'classes', activeClass, 'status', user?.uid);
+        await setDoc(
+          statusDocRef,
+          {
+            liveTranscript: transcriptText,
+            liveTranscriptTimestamp: Date.now(),
+            speechLanguage: classSpeechLanguage,
+            isAudioSharing: true,
+            audioStatus: 'speaking',
+            selectedMicDeviceId: selectedMicDeviceId || '',
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('[StudentView] Failed to update live transcript status:', err);
+      }
+
+      if (evaluateSpeechWithGemma) {
+        await evaluateSpeechWithGemma(transcriptText);
+      }
+    }
+  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, voiceAiMode, enableCloudFallback, activeClass, user]);
+
+  handleAudioUploadedRef.current = handleAudioUploaded;
+
+  // Automatically evaluate live speech transcript with Gemma LLM intent engine
+  useEffect(() => {
+    if (whisperTranscript && whisperTranscript.trim() && evaluateSpeechWithGemma) {
+      evaluateSpeechWithGemma(whisperTranscript).catch(e => console.debug('[StudentView] Gemma eval error:', e));
+    }
+  }, [whisperTranscript, evaluateSpeechWithGemma]);
+
+  // Automatically activate verified devices if readiness already completed
   useEffect(() => {
     if (myProperties?.examReadiness?.isReady) {
-      setEnableAudioCapture(true);
+      setIsAudioUserEnabled(true);
       if (myProperties.examReadiness.micDeviceId) {
         setSelectedMicDeviceId(myProperties.examReadiness.micDeviceId);
       }
@@ -218,6 +410,7 @@ const StudentView = ({ user }) => {
       }
     }
   }, [myProperties]);
+
 
   const audioStreamRef = useRef(null);
   audioStreamRef.current = audioStream;
@@ -272,35 +465,58 @@ const StudentView = ({ user }) => {
     showMeshOverlay,
   });
 
-  // Sync real-time face, gaze, and audio telemetry to student status doc
+  const lastTelemetrySyncRef = useRef(0);
+  const telemetryTimerRef = useRef(null);
+
+  // Sync real-time face, gaze, and audio telemetry to student status doc (Throttled to max once per 1.5s)
   useEffect(() => {
-    if (activeClass && user && user.uid) {
-      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
-      const updateData = {};
-      if (isWebcamSharing) {
-        updateData.faceStatus = faceStatus;
-        updateData.clientAiStatus = clientAiStatus;
-        updateData.loadingProgress = loadingProgress;
-        updateData.isModelCached = isModelCached;
-        updateData.fallbackReason = fallbackReason || null;
-        updateData.delegateUsed = delegateUsed || null;
-        updateData.yawAngle = yawAngle;
-        updateData.pitchAngle = pitchAngle;
-        updateData.ear = earValue;
-        updateData.mar = marValue;
-        updateData.isCalibrated = isCalibrated;
-        updateData.metricDistance = metricDistance || 55;
-        updateData.activeViolation = activeViolation || null;
-      }
-      if (enableAudioCapture || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
-        updateData.isAudioSharing = Boolean(isAudioRecording);
-        updateData.audioLevel = Math.round(audioLevel * 100);
-        updateData.audioStatus = isSpeaking ? 'speaking' : (isAudioRecording ? 'idle' : 'muted');
-      }
-      if (Object.keys(updateData).length > 0) {
-        setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
-      }
+    if (!activeClass || !user || !user.uid) return;
+
+    const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+    const updateData = {};
+    if (isWebcamSharing) {
+      updateData.faceStatus = faceStatus;
+      updateData.clientAiStatus = clientAiStatus;
+      updateData.loadingProgress = loadingProgress;
+      updateData.isModelCached = isModelCached;
+      updateData.fallbackReason = fallbackReason || null;
+      updateData.delegateUsed = delegateUsed || null;
+      updateData.yawAngle = yawAngle;
+      updateData.pitchAngle = pitchAngle;
+      updateData.ear = earValue;
+      updateData.mar = marValue;
+      updateData.isCalibrated = isCalibrated;
+      updateData.metricDistance = metricDistance || 55;
+      updateData.activeViolation = activeViolation || null;
     }
+    if (enableAudioCapture || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
+      updateData.isAudioSharing = Boolean(isAudioRecording);
+      updateData.audioLevel = Math.round(audioLevel * 100);
+      updateData.audioStatus = isSpeaking ? 'speaking' : (isAudioRecording ? 'idle' : 'muted');
+    }
+
+    if (Object.keys(updateData).length === 0) return;
+
+    const now = Date.now();
+    const timeSinceLast = now - lastTelemetrySyncRef.current;
+    const THROTTLE_MS = 1500;
+
+    const performSync = () => {
+      lastTelemetrySyncRef.current = Date.now();
+      setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
+    };
+
+    if (timeSinceLast >= THROTTLE_MS) {
+      if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
+      performSync();
+    } else {
+      if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
+      telemetryTimerRef.current = setTimeout(performSync, THROTTLE_MS - timeSinceLast);
+    }
+
+    return () => {
+      if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
+    };
   }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
@@ -391,6 +607,11 @@ const StudentView = ({ user }) => {
     await updateCaptureStatus([]);
   }, [updateCaptureStatus]);
 
+  /**
+   * Enumerate all videoinput (webcam) devices on the client machine.
+   * Dynamically tracks device labels and ensures selectedWebcamId remains valid
+   * when webcams are connected or disconnected.
+   */
   const refreshWebcams = useCallback(async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
@@ -399,7 +620,7 @@ const StudentView = ({ user }) => {
         .filter(device => device.kind === 'videoinput')
         .map((device, index) => ({
           deviceId: device.deviceId,
-          label: device.label || `Camera ${index + 1}`
+          label: device.label || (index === 0 ? 'Default Camera' : `Camera ${index + 1}`)
         }));
       setAvailableWebcams(videoDevices);
       if (videoDevices.length > 0) {
@@ -423,9 +644,23 @@ const StudentView = ({ user }) => {
     }
   }, [refreshWebcams]);
 
+  /**
+   * Initializes and starts the webcam video stream.
+   * 
+   * Robust Fallback Hierarchy for Multi-Camera & Hardware Changes:
+   * 1. Exact deviceId constraint: Attempts to bind directly to targetDeviceId / selectedWebcamId.
+   * 2. Ideal deviceId constraint: If 'exact' throws OverconstrainedError (e.g. device ID rotated by OS),
+   *    falls back to 'ideal' which allows Chrome to negotiate the best match.
+   * 3. Generic video constraint: If 'ideal' fails, falls back to `{ video: true }` so the student's
+   *    camera stream reliably opens on whatever working camera is available.
+   * 
+   * Lifecycle Management:
+   * - Safely stops any existing media stream tracks before acquiring a new stream.
+   * - Attaches active video track to on-device Face & Gaze detection (useFaceMonitor) and WebRTC live peek.
+   */
   const startWebcam = useCallback(async (targetDeviceId) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Webcam is not supported by your browser.");
+      console.warn("Webcam is not supported by your browser.");
       return;
     }
 
@@ -436,18 +671,50 @@ const StudentView = ({ user }) => {
     }
 
     const deviceIdToUse = targetDeviceId || selectedWebcamId;
-    const constraints = {
-      video: deviceIdToUse ? { deviceId: { exact: deviceIdToUse } } : true
-    };
+    let stream = null;
+
+    if (deviceIdToUse) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceIdToUse } }
+        });
+      } catch (exactErr) {
+        console.warn("[StudentView] Webcam exact deviceId failed, falling back to ideal:", exactErr);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { ideal: deviceIdToUse } }
+          });
+        } catch (idealErr) {
+          console.warn("[StudentView] Webcam ideal deviceId failed, falling back to any available video device:", idealErr);
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } catch (anyErr) {
+            console.warn("Webcam unavailable or permission not granted:", anyErr);
+            setIsWebcamSharing(false);
+            return;
+          }
+        }
+      }
+    } else {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (err) {
+        console.warn("Webcam unavailable or permission not granted:", err);
+        setIsWebcamSharing(false);
+        return;
+      }
+    }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
       }
       webcamStreamRef.current = stream;
       setIsWebcamSharing(true);
-      if (deviceIdToUse) setSelectedWebcamId(deviceIdToUse);
+
+      const activeTrack = stream.getVideoTracks()[0];
+      const actualDeviceId = activeTrack?.getSettings?.().deviceId || deviceIdToUse;
+      if (actualDeviceId) setSelectedWebcamId(actualDeviceId);
 
       // Re-enumerate to get human-readable labels now that camera permission is granted
       refreshWebcams();
@@ -455,14 +722,16 @@ const StudentView = ({ user }) => {
       const activeStreams = ['webcam', ...(isScreenSharing ? ['screen'] : [])];
       await updateCaptureStatus(activeStreams);
 
-      stream.getVideoTracks()[0].onended = () => {
-        stopWebcam();
-      };
+      if (activeTrack) {
+        activeTrack.onended = () => {
+          stopWebcam();
+        };
+      }
     } catch (err) {
-      console.error("Error starting webcam:", err);
-      alert("Could not start webcam. Please grant camera permission.");
+      console.warn("Webcam setup error:", err);
+      setIsWebcamSharing(false);
     }
-  }, [selectedWebcamId, isScreenSharing, updateCaptureStatus, stopWebcam, refreshWebcams]);
+  }, [selectedWebcamId, availableWebcams, isScreenSharing, updateCaptureStatus, stopWebcam, refreshWebcams]);
 
   const handleWebcamChange = (e) => {
     const newDeviceId = e.target.value;
@@ -472,7 +741,16 @@ const StudentView = ({ user }) => {
     }
   };
 
-  const startScreen = useCallback(async () => {
+  // Ensure webcam video element srcObject is always attached
+  useEffect(() => {
+    if (isWebcamSharing && webcamStreamRef.current && webcamVideoRef.current) {
+      if (webcamVideoRef.current.srcObject !== webcamStreamRef.current) {
+        webcamVideoRef.current.srcObject = webcamStreamRef.current;
+      }
+    }
+  }, [isWebcamSharing, primaryStream]);
+
+  const startScreen = useCallback(async (existingStream = null) => {
     if ('Notification' in window && window.Notification.permission === 'default') {
       try {
         await window.Notification.requestPermission();
@@ -481,20 +759,24 @@ const StudentView = ({ user }) => {
       }
     }
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      alert("Screen sharing is not supported by your browser. Please use Chrome, Firefox, or Edge.");
-      return;
-    }
-
     try {
-      const displayMediaOptions = {
-        video: {
-          displaySurface: 'monitor',
-        },
-        audio: false,
-      };
+      let stream = (existingStream && typeof existingStream.getVideoTracks === 'function') ? existingStream : null;
+      if (!stream) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+          alert("Screen sharing is not supported by your browser. Please use Chrome, Firefox, or Edge.");
+          return;
+        }
 
-      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        const displayMediaOptions = {
+          video: {
+            displaySurface: 'monitor',
+          },
+          audio: false,
+        };
+
+        stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      }
+
       const videoTrack = stream.getVideoTracks()[0];
       const trackSettings = videoTrack && typeof videoTrack.getSettings === 'function' ? videoTrack.getSettings() : {};
       const surface = trackSettings.displaySurface;
@@ -574,33 +856,62 @@ const StudentView = ({ user }) => {
     }
   }, [activeClass, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
 
+  // Ensure screen video element srcObject is always attached
+  useEffect(() => {
+    if (screenVideoRef.current && screenStreamRef.current && isScreenSharing) {
+      if (screenVideoRef.current.srcObject !== screenStreamRef.current) {
+        screenVideoRef.current.srcObject = screenStreamRef.current;
+        screenVideoRef.current.play().catch(e => console.debug('[StudentView] screen video play note:', e));
+      }
+    }
+  }, [isScreenSharing]);
+
   const isUploadingScreenRef = useRef(false);
   const isUploadingWebcamRef = useRef(false);
 
   const captureVideoElement = useCallback(async (videoElement, channelName, targetClass) => {
-    if (!user || !user.uid || !videoElement || videoElement.readyState < 2 || videoElement.videoWidth === 0) {
+    if (!user || !user.uid) {
+      return;
+    }
+
+    const activeStream = (videoElement && videoElement.srcObject)
+      || (channelName === 'screen' ? screenStreamRef.current : webcamStreamRef.current);
+
+    if (!activeStream && !videoElement) {
+      return;
+    }
+
+    const streamTracks = (activeStream && typeof activeStream.getVideoTracks === 'function')
+      ? activeStream.getVideoTracks()
+      : (videoElement?.srcObject && typeof videoElement.srcObject.getVideoTracks === 'function')
+        ? videoElement.srcObject.getVideoTracks()
+        : [];
+    const hasLiveTrack = streamTracks.some(t => t.readyState === 'live');
+
+    if (!hasLiveTrack && (!videoElement || videoElement.readyState < 2)) {
       return;
     }
 
     // Guard: Prevent stacking/queuing uploads if previous upload is still in-flight
     if (channelName === 'screen') {
       if (isUploadingScreenRef.current) {
-        console.debug("Screen upload still in flight, skipping frame to avoid lag.");
+        console.debug("[StudentView] Screen upload still in flight, skipping frame.");
         return;
       }
       isUploadingScreenRef.current = true;
     } else if (channelName === 'webcam') {
       if (isUploadingWebcamRef.current) {
-        console.debug("Webcam upload still in flight, skipping frame to avoid lag.");
+        console.debug("[StudentView] Webcam upload still in flight, skipping frame.");
         return;
       }
       isUploadingWebcamRef.current = true;
     }
 
     try {
+      const trackSettings = streamTracks[0]?.getSettings?.() || {};
       const MAX_CAPTURE_WIDTH = 1920;
-      let targetWidth = videoElement.videoWidth;
-      let targetHeight = videoElement.videoHeight;
+      let targetWidth = (videoElement && videoElement.videoWidth) || trackSettings.width || 1920;
+      let targetHeight = (videoElement && videoElement.videoHeight) || trackSettings.height || 1080;
       if (targetWidth > MAX_CAPTURE_WIDTH) {
         targetHeight = Math.round((targetHeight * MAX_CAPTURE_WIDTH) / targetWidth);
         targetWidth = MAX_CAPTURE_WIDTH;
@@ -612,50 +923,34 @@ const StudentView = ({ user }) => {
       const ctx = canvas.getContext('2d');
 
       let frameDrawn = false;
-      // Prefer ImageCapture API on Chromium/Edge to grab frame directly from hardware track even if browser is in background
-      if (typeof window !== 'undefined' && 'ImageCapture' in window && videoElement.srcObject) {
+      // 1. Prefer ImageCapture API on Chromium/Edge directly from hardware track
+      if (typeof window !== 'undefined' && 'ImageCapture' in window && streamTracks.length > 0 && streamTracks[0].readyState === 'live') {
         try {
-          const tracks = videoElement.srcObject.getVideoTracks();
-          if (tracks.length > 0 && tracks[0].readyState === 'live') {
-            const imageCapture = new window.ImageCapture(tracks[0]);
-            const bitmap = await imageCapture.grabFrame();
-            ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-            frameDrawn = true;
-          }
+          const imageCapture = new window.ImageCapture(streamTracks[0]);
+          const bitmap = await imageCapture.grabFrame();
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          frameDrawn = true;
         } catch {
           // Fallback to videoElement draw
         }
       }
 
-      if (!frameDrawn) {
-        ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+      // 2. Fallback to videoElement drawImage
+      if (!frameDrawn && videoElement) {
+        try {
+          if (videoElement.srcObject !== activeStream && activeStream) {
+            videoElement.srcObject = activeStream;
+          }
+          ctx.drawImage(videoElement, 0, 0, targetWidth, targetHeight);
+          frameDrawn = true;
+        } catch (e) {
+          console.debug('[StudentView] videoElement draw fallback note:', e);
+        }
       }
 
-      // Screen solid color verification
-      if (channelName === 'screen' && canvas.width > 1 && canvas.height > 1) {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        const isSolid = () => {
-          const r = data[0], g = data[1], b = data[2];
-          const points = [
-            0,
-            (canvas.width - 1) * 4,
-            (canvas.height - 1) * canvas.width * 4,
-            ((canvas.height - 1) * canvas.width + (canvas.width - 1)) * 4,
-            (Math.floor(canvas.height / 2) * canvas.width + Math.floor(canvas.width / 2)) * 4
-          ];
-          for (const pt of points) {
-            if (pt < data.length && (data[pt] !== r || data[pt+1] !== g || data[pt+2] !== b)) {
-              return false;
-            }
-          }
-          return true;
-        };
-
-        if (isSolid() && !frameDrawn) {
-          console.warn("Screen capture appears to be a solid black frame.");
-          return;
-        }
+      if (!frameDrawn) {
+        console.warn(`[StudentView] Could not draw frame for ${channelName}. Skipping.`);
+        return;
       }
 
       const MAX_SIZE_BYTES = maxImageSize;
@@ -843,8 +1138,10 @@ const StudentView = ({ user }) => {
         setEnableCloudFallback(prev => (data.enableCloudFallback !== undefined ? data.enableCloudFallback : false));
         setCloudFallbackRate(prev => (data.cloudFallbackRate !== undefined ? data.cloudFallbackRate : (prev || 3)));
         setIsCapturing(prev => (data.isCapturing !== undefined && data.isCapturing !== prev ? data.isCapturing : (prev || false)));
-        setEnableAudioCapture(prev => (data.enableAudioCapture !== undefined && data.enableAudioCapture !== prev ? data.enableAudioCapture : (prev || false)));
+        setEnableAudioCapture(data.enableAudioCapture !== undefined ? Boolean(data.enableAudioCapture) : false);
         setAudioCaptureMode(prev => (data.audioCaptureMode && data.audioCaptureMode !== prev ? data.audioCaptureMode : (prev || 'mandatory')));
+        setVoiceAiMode(prev => (data.voiceAiMode && data.voiceAiMode !== prev ? data.voiceAiMode : (prev || 'hybrid')));
+        setClassSpeechLanguage(prev => (data.speechLanguage && data.speechLanguage !== prev ? data.speechLanguage : (prev || 'zh-HK')));
         setAudioSegmentDuration(prev => (data.audioSegmentDuration !== undefined && data.audioSegmentDuration !== prev ? data.audioSegmentDuration : (prev || 30)));
         setAudioSilenceSuppression(prev => (data.audioSilenceSuppression !== undefined && data.audioSilenceSuppression !== prev ? data.audioSilenceSuppression : (prev !== undefined ? prev : true)));
         setEnableSegmentTranscription(prev => (data.enableSegmentTranscription !== undefined && data.enableSegmentTranscription !== prev ? data.enableSegmentTranscription : (prev || false)));
@@ -1208,7 +1505,7 @@ const StudentView = ({ user }) => {
                     ⏹️ Stop Screen
                   </button>
                 ) : (
-                  <button onClick={startScreen} className="student-view-button">
+                  <button onClick={() => startScreen()} className="student-view-button">
                     🖥️ Share Screen
                   </button>
                 )}
@@ -1261,11 +1558,49 @@ const StudentView = ({ user }) => {
                           ? (isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active')
                           : '🎙️ Mic Active'}
                     </button>
+                    {isAudioRecording && isAudioUserEnabled && (
+                      <div
+                        className="student-mic-vu-bar"
+                        title={`Live Mic Volume: ${Math.round(audioLevel * 100)}%`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'rgba(15, 23, 42, 0.6)',
+                          padding: '0 8px',
+                          height: '40px',
+                          boxSizing: 'border-box',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '6px',
+                            background: '#334155',
+                            borderRadius: '3px',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.min(100, Math.round(audioLevel * 100))}%`,
+                              height: '100%',
+                              backgroundColor: isSpeaking ? '#22c55e' : (audioLevel > 0.03 ? '#38bdf8' : '#94a3b8'),
+                              transition: 'width 0.08s ease-out',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', minWidth: '24px', textAlign: 'right' }}>
+                          {Math.round(audioLevel * 100)}%
+                        </span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setIsMicSetupOpen(true)}
-                      className="student-view-button"
-                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                      className="student-view-button btn-secondary-stream"
                       title="Microphone Setup & Speech Verification"
                     >
                       ⚙️ Mic Test
@@ -1285,14 +1620,7 @@ const StudentView = ({ user }) => {
                           <button
                             type="button"
                             onClick={isCalibrated ? resetCalibration : calibrateBaseline}
-                            className="student-view-button"
-                            style={{
-                              padding: '5px 9px',
-                              fontSize: '0.8rem',
-                              backgroundColor: isCalibrated ? '#059669' : '#334155',
-                              color: '#ffffff',
-                              border: 'none',
-                            }}
+                            className={`student-view-button ${isCalibrated ? 'btn-calibrated' : 'btn-secondary-stream'}`}
                             title={isCalibrated ? "Calibrated to current neutral head angle. Click to reset." : "Click while looking comfortably at center screen to calibrate neutral head angle."}
                           >
                             {isCalibrated ? '🎯 Calibrated' : '🎯 Calibrate View'}
@@ -1310,7 +1638,7 @@ const StudentView = ({ user }) => {
                       <button
                         type="button"
                         onClick={preloadModel}
-                        className="student-view-button ai-preload-btn"
+                        className="student-view-button btn-secondary-stream ai-preload-btn"
                         title="Download & cache lightweight on-device AI model (~3.8 MB) in advance"
                       >
                         📥 Preload AI (~3.8 MB)
@@ -1319,11 +1647,64 @@ const StudentView = ({ user }) => {
                   </div>
                 )}
 
+                {/* LiteRT Whisper Speech AI Preload (if audio capture is enabled) */}
+                {enableAudioCapture && (
+                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {whisperStatus === 'ready' || isWhisperCached ? (
+                      <span className="student-view-pill ai-ready" title={`LiteRT Whisper speech model cached in browser storage (${whisperDelegate || 'WASM'} active)`}>
+                        🎙️ Speech AI Ready
+                      </span>
+                    ) : whisperStatus === 'loading' ? (
+                      <div className="ai-preload-progress-box" title="Downloading LiteRT Whisper on-device speech model (~39 MB)">
+                        <span className="ai-progress-label">⏳ Loading Speech AI ({whisperLoadingProgress}%)</span>
+                        <div className="ai-progress-track">
+                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, whisperLoadingProgress)}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={preloadWhisperModel}
+                        className="student-view-button btn-secondary-stream ai-preload-btn"
+                        title="Download & cache on-device LiteRT Whisper speech model (~39 MB) in advance"
+                      >
+                        📥 Preload Speech AI (~39 MB)
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* LiteRT Gemma LLM Intent Guard Preload */}
+                {enableAudioCapture && (
+                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {gemmaStatus === 'ready' || isGemmaCached ? (
+                      <span className="student-view-pill ai-ready" title={`LiteRT Gemma LLM intent model cached in browser storage (${gemmaDelegate || 'WASM'} active)`}>
+                        🤖 Gemma LLM Ready
+                      </span>
+                    ) : gemmaStatus === 'loading' ? (
+                      <div className="ai-preload-progress-box" title="Downloading LiteRT Gemma on-device LLM model (~120 MB)">
+                        <span className="ai-progress-label">⏳ Loading Gemma ({gemmaLoadingProgress}%)</span>
+                        <div className="ai-progress-track">
+                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, gemmaLoadingProgress)}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={preloadGemmaModel}
+                        className="student-view-button btn-secondary-stream ai-preload-btn"
+                        title="Download & cache on-device LiteRT Gemma LLM model (~120 MB) in advance"
+                      >
+                        📥 Preload Gemma AI (~120 MB)
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setIsReadinessWizardOpen(true)}
-                  className="student-view-button"
-                  style={{ backgroundColor: '#4338ca', color: '#fff', fontWeight: '600' }}
+                  className="student-view-button btn-wizard"
                   title="3-Step Pre-Exam Self-Calibration Wizard"
                 >
                   🎓 Exam Readiness Check
@@ -1444,6 +1825,60 @@ const StudentView = ({ user }) => {
                 </div>
               )}
             </div>
+
+            {/* Live Speech AI & Gemma HUD (Placed Underneath Capture & Webcam Stage) */}
+            {enableAudioCapture && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                backgroundColor: 'var(--color-surface, #ffffff)',
+                border: '1px solid var(--color-border, #e2e8f0)',
+                borderRadius: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                fontSize: '0.875rem',
+                color: 'var(--color-text-main, #0f172a)',
+                boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '6px' }}>
+                  <span style={{ fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🎙️ Live Speech AI Monitor
+                    {isSpeaking && <span style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#10b981', color: '#fff', borderRadius: '9999px', fontWeight: 'bold' }}>SPEAKING</span>}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>⚡ LiteRT Whisper + Gemma</span>
+                </div>
+                {whisperTranscript ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div>
+                      <strong style={{ color: '#0f766e' }}>STT Transcript:</strong> <span style={{ fontStyle: 'italic', color: '#0f172a', fontWeight: 500 }}>"{whisperTranscript}"</span>
+                    </div>
+                    {gemmaEvaluation && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', marginTop: '2px' }}>
+                        <strong style={{ color: '#4338ca' }}>Gemma Intent:</strong>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '6px',
+                          fontWeight: 'bold',
+                          backgroundColor: gemmaEvaluation.isViolation ? '#fee2e2' : '#dcfce7',
+                          color: gemmaEvaluation.isViolation ? '#991b1b' : '#15803d',
+                          border: `1px solid ${gemmaEvaluation.isViolation ? '#f87171' : '#86efac'}`
+                        }}>
+                          {gemmaEvaluation.category || 'BENIGN'} {gemmaEvaluation.isViolation ? '🚨 FLAGGED' : '✅ CLEAN'}
+                        </span>
+                        <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                          (Confidence: {Math.round((gemmaEvaluation.confidence || 0.9) * 100)}%)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.825rem' }}>
+                    Listening for speech into microphone... Speak a sentence to test on-device STT & Gemma.
+                  </div>
+                )}
+              </div>
+            )}
         </div>
         <Sidebar 
           classProperties={classProperties} 
@@ -1472,23 +1907,29 @@ const StudentView = ({ user }) => {
         onComplete={async (readinessResult) => {
           setIsReadinessWizardOpen(false);
 
-          // 1. Enable audio capture & unmute mic
-          setEnableAudioCapture(true);
-          setIsAudioUserEnabled(true);
-          const micId = readinessResult?.micDeviceId || selectedMicDeviceId;
-          if (micId) {
-            setSelectedMicDeviceId(micId);
+          // 1. Enable user mic state & device (if available)
+          if (readinessResult?.micDeviceId) {
+            setIsAudioUserEnabled(true);
+            setSelectedMicDeviceId(readinessResult.micDeviceId);
           }
 
-          // 2. Start webcam stream with verified camera
-          const camId = readinessResult?.cameraDeviceId || selectedWebcamId;
+          // 2. Start webcam stream if camera is present and verified (non-blocking)
+          const camId = readinessResult?.cameraDeviceId;
           if (camId) {
             setSelectedWebcamId(camId);
+            try {
+              await startWebcam(camId);
+            } catch (camErr) {
+              console.warn('[StudentView] Webcam start skipped or unavailable:', camErr);
+            }
           }
-          await startWebcam(camId);
 
-          // 3. Start full screen sharing
-          await startScreen();
+          // 3. Start full screen sharing independently (ALWAYS works standalone)
+          try {
+            await startScreen(readinessResult?.screenStream);
+          } catch (screenErr) {
+            console.warn('[StudentView] Screen share start error:', screenErr);
+          }
         }}
         user={user}
         classId={activeClass}

@@ -258,6 +258,7 @@ erDiagram
     aiJobs }o--|| prompts : "uses prompt"
     irregularities }o--|| classes : "flagged in"
     irregularities }o--|| studentProfiles : "attributed to"
+    classes ||--o{ irregularities_subcollection "classes/{classId}/irregularities" : "stores class-scoped incidents"
     progress }o--|| classes : "tracks student in"
     progress }o--|| studentProfiles : "evaluates"
     propertyUploadJobs }o--|| classes : "imports properties for"
@@ -415,23 +416,31 @@ Stores information about each class.
             *   `timestamp`: (timestamp) A timestamp of when the message was sent.
             *   `senderUid`: (string) The UID of the teacher who broadcasted the message.
             *   `senderEmail`: (string) The email of the teacher who broadcasted the message.
-            *   `classId`: (string) The ID of the class.
+            *   `classes/{classId}/irregularities`: Class-scoped incident logs for class-specific report generation and teacher dashboards.
+        *   **Document ID**: Auto-generated.
+        *   **Fields**: Mirror the root `irregularities` schema (`classId`, `studentUid`, `studentEmail`, `category`, `severity`, `confidence`, `transcript`, `evidence`, `rationale`, `source`, `timestamp`).
+        *   **Security & Integrity**: Protected by Firestore Security Rules. Only authenticated enrolled students can create records matching their `request.auth.uid`. **Students have ZERO update and ZERO delete permissions** (`allow update: if isTeacherInClass(classId); allow delete: if isTeacherInClass(classId);`), preventing any student tampering or deletion of flagged incidents.
 
 ### `irregularities`
 
-Stores information about any irregularities detected across visual and acoustic monitoring streams.
+Stores top-level information about any irregularities detected across visual and acoustic monitoring streams (e.g. MediaPipe FaceLandmarker, LiteRT Gemma on-device intent evaluation, cloud Gemini analysis).
 
 *   **Document ID**: Auto-generated.
+*   **Security**: Students can read their own records and submit incidents (`allow create`), but **strictly CANNOT update or delete** (`allow update: if isTeacher(); allow delete: if isTeacher();`).
 *   **Fields**:
     *   `classId`: (string) The ID of the class where the irregularity occurred.
     *   `studentUid`: (string) The UID of the student involved.
-    *   `email`: (string) The student's email, denormalized for display.
-    *   `title`: (string) A title for the irregularity (e.g. `Unauthorized Collaboration`, `Looking Away`, `Phone In Hand`).
-    *   `message`: (string) A description or explanation of the irregularity.
+    *   `studentEmail` / `email`: (string) The student's email, denormalized for display.
+    *   `title`: (string) A title for the irregularity (e.g. `AI Speech Alert: COLLUSION_EXAM`, `Unauthorized Collaboration`, `Looking Away`).
+    *   `message` / `rationale`: (string) A description or explanation of the irregularity.
+    *   `category`: (string) Standardized AI violation category (`COLLUSION_EXAM`, `COLLUSION_DISCUSS`, `EXTERNAL_ASSISTANCE`, `EXAM_CONTENT_LEAK`, `NON_EXAM_TALK`, `LEGITIMATE_INQUIRY`, `LOOKING_AWAY`, etc.).
+    *   `severity`: (string) Severity tier (`none`, `low`, `medium`, `critical`).
+    *   `confidence`: (number) AI model confidence score (0.0 to 1.0).
+    *   `source`: (string) Detection source (`on_device_gemma`, `on_device_whisper`, `client_face_mesh`, `cloud_gemini`).
     *   `type`: (string) Incident stream type (`image`, `video`, `audio`, `looking_away`, `no_face`, `multiple_faces`).
     *   `imageUrl`: (string) Cloud Storage path or URL of the image associated with the irregularity.
     *   `audioPath`: (string) Cloud Storage path of the audio snippet associated with the incident.
-    *   `transcriptSnippet`: (string) Spoken dialogue quote with speaker attribution labels.
+    *   `transcript` / `transcriptSnippet`: (string) Spoken dialogue quote with speaker attribution labels.
     *   `speakerCount`: (number) Number of distinct speakers detected.
     *   `riskLevel`: (string) Risk classification severity (`none`, `low`, `medium`, `high`).
     *   `status`: (string) Incident status (`active`, `resolved`).

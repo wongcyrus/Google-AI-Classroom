@@ -87,10 +87,24 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [enableCloudFallback, setEnableCloudFallback] = useState(false);
   const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
+
+  // Voice AI States
+  const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
+  const [speechLanguage, setSpeechLanguage] = useState('zh-HK');
+  const [audioSegmentDuration, setAudioSegmentDuration] = useState(30);
+  const [audioMovingWindowStride, setAudioMovingWindowStride] = useState(15);
+  const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
+  const [vadSensitivity, setVadSensitivity] = useState(15);
+  const [voiceAiCloudFallbackRate, setVoiceAiCloudFallbackRate] = useState(3);
+
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
   const [samplingRate, setSamplingRate] = useState(5);
   const analysisCounterRef = useRef(0);
+  const lastAnalyzedPathMapRef = useRef(new Map()); // studentUid -> { imagePath, timestamp }
+  const activeAnalysisInFlightRef = useRef(new Set()); // studentUid set of currently in-flight Gemini calls
+  const lastAllImagesPathsRef = useRef(new Map()); // studentUid -> imagePath
+  const lastAllImagesRunTimeRef = useRef(0); // timestamp of last all-images analysis execution
   const studentUidMap = useRef(new Map());
   const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
 
@@ -105,7 +119,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     }
   };
 
-  const handleSaveGazeSettings = async (settings) => {
+  const handleSaveAiSettings = async (settings) => {
     if (!classId) return;
     try {
       const mode = settings.aiMonitoringMode || 'hybrid';
@@ -113,6 +127,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       const cloudAllowed = mode === 'hybrid' || mode === 'cloud_only';
 
       const payload = {
+        // Vision / Gaze
         aiMonitoringMode: mode,
         enableClientAi: clientAllowed,
         gazeSensitivity: settings.gazeSensitivity || 'standard',
@@ -122,7 +137,21 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         faceDebounceSeconds: parseInt(settings.faceDebounceSeconds, 10) || 3,
         enableCloudFallback: cloudAllowed,
         cloudFallbackRate: parseInt(settings.cloudFallbackRate, 10) || 3,
+        // Voice AI
+        voiceAiMode: settings.voiceAiMode || 'hybrid',
+        speechLanguage: settings.speechLanguage || 'zh-HK',
+        audioSegmentDuration: parseInt(settings.audioSegmentDuration, 10) || 30,
+        audioMovingWindowStride: parseInt(settings.audioMovingWindowStride, 10) || 15,
+        audioSilenceSuppression: settings.audioSilenceSuppression !== undefined ? settings.audioSilenceSuppression : true,
+        vadSensitivity: parseInt(settings.vadSensitivity, 10) || 15,
+        voiceAiCloudFallbackRate: parseInt(settings.voiceAiCloudFallbackRate, 10) || 3,
       };
+
+      if (settings.selectedAiModel) {
+        payload.aiModel = settings.selectedAiModel;
+        setSelectedAiModel(settings.selectedAiModel);
+      }
+
       setAiMonitoringMode(payload.aiMonitoringMode);
       setEnableClientAi(payload.enableClientAi);
       setGazeSensitivity(payload.gazeSensitivity);
@@ -133,12 +162,22 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       setEnableCloudFallback(payload.enableCloudFallback);
       setCloudFallbackRate(payload.cloudFallbackRate);
 
+      setVoiceAiMode(payload.voiceAiMode);
+      setSpeechLanguage(payload.speechLanguage);
+      setAudioSegmentDuration(payload.audioSegmentDuration);
+      setAudioMovingWindowStride(payload.audioMovingWindowStride);
+      setAudioSilenceSuppression(payload.audioSilenceSuppression);
+      setVadSensitivity(payload.vadSensitivity);
+      setVoiceAiCloudFallbackRate(payload.voiceAiCloudFallbackRate);
+
       await updateDoc(doc(db, "classes", classId), payload);
     } catch (e) {
-      console.error("Failed to update class gaze settings:", e);
-      alert("Failed to update gaze settings: " + e.message);
+      console.error("Failed to update class AI settings:", e);
+      alert("Failed to update AI settings: " + e.message);
     }
   };
+
+  const handleSaveGazeSettings = handleSaveAiSettings;
 
   const handleFaceDebounceChange = async (val) => {
     const num = parseInt(val, 10) || 3;
@@ -260,6 +299,27 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         }
         if (data.enableAudioCapture !== undefined) {
           setEnableAudioCapture(data.enableAudioCapture);
+        }
+        if (data.voiceAiMode !== undefined) {
+          setVoiceAiMode(data.voiceAiMode);
+        }
+        if (data.speechLanguage !== undefined) {
+          setSpeechLanguage(data.speechLanguage);
+        }
+        if (data.audioSegmentDuration !== undefined) {
+          setAudioSegmentDuration(data.audioSegmentDuration);
+        }
+        if (data.audioMovingWindowStride !== undefined) {
+          setAudioMovingWindowStride(data.audioMovingWindowStride);
+        }
+        if (data.audioSilenceSuppression !== undefined) {
+          setAudioSilenceSuppression(data.audioSilenceSuppression);
+        }
+        if (data.vadSensitivity !== undefined) {
+          setVadSensitivity(data.vadSensitivity);
+        }
+        if (data.voiceAiCloudFallbackRate !== undefined) {
+          setVoiceAiCloudFallbackRate(data.voiceAiCloudFallbackRate);
         }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
@@ -394,29 +454,49 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   }, [reviewTime, classList, classId]);
 
   const students = useMemo(() => {
+    const currentNow = now.getTime();
+    const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
+
+    const getTs = (obj) => {
+      if (!obj?.timestamp) return 0;
+      if (typeof obj.timestamp.toMillis === 'function') return obj.timestamp.toMillis();
+      if (obj.timestamp.seconds) return obj.timestamp.seconds * 1000;
+      if (obj.timestamp instanceof Date) return obj.timestamp.getTime();
+      if (typeof obj.timestamp === 'number') return obj.timestamp;
+      return 0;
+    };
+
     return classList.map(uid => {
       const status = studentStatuses.find(s => s.id === uid);
       const email = uidToEmailMap.get(uid) || (status ? status.email : '');
+      const statusTs = getTs(status);
+      const isStatusFresh = reviewTime
+        ? true
+        : (statusTs > 0 && (currentNow - statusTs) <= staleThresholdMs);
+
+      const isActuallySharing = Boolean(status && status.isSharing && isStatusFresh);
+
       return {
         id: uid,
         email: email,
         name: status ? status.name : email,
-        isSharing: status ? status.isSharing || false : false,
-        isWebcamSharing: status ? Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))) : false,
-        isAudioSharing: status ? Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording) : false,
-        audioStatus: status ? status.audioStatus : null,
-        audioLevel: status ? status.audioLevel : 0,
+        isSharing: isActuallySharing,
+        isWebcamSharing: isActuallySharing && Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))),
+        isAudioSharing: isActuallySharing && Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording),
+        audioStatus: isActuallySharing ? status?.audioStatus : null,
+        audioLevel: isActuallySharing ? (status?.audioLevel || 0) : 0,
         audioError: status ? status.audioError : null,
-        faceStatus: status ? status.faceStatus : null,
-        clientAiStatus: status ? status.clientAiStatus : null,
-        yawAngle: status ? status.yawAngle : null,
-        pitchAngle: status ? status.pitchAngle : null,
-        isMultiSpeaker: status ? Boolean(status.isMultiSpeaker) : false,
-        speakerCount: status ? status.speakerCount || 1 : 1,
-        activeViolation: status ? status.activeViolation : null,
+        faceStatus: isActuallySharing ? status?.faceStatus : null,
+        clientAiStatus: isActuallySharing ? status?.clientAiStatus : null,
+        yawAngle: isActuallySharing ? status?.yawAngle : null,
+        pitchAngle: isActuallySharing ? status?.pitchAngle : null,
+        isMultiSpeaker: isActuallySharing ? Boolean(status?.isMultiSpeaker) : false,
+        speakerCount: isActuallySharing ? (status?.speakerCount || 1) : 1,
+        activeViolation: isActuallySharing ? status?.activeViolation : null,
+        lastHeartbeat: statusTs,
       };
     });
-  }, [classList, studentStatuses, uidToEmailMap]);
+  }, [classList, studentStatuses, uidToEmailMap, now, frameRate, reviewTime]);
 
   useEffect(() => {
     if (reviewTime || students.length === 0 || pausedRef.current) return;
@@ -426,10 +506,28 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     const resolveAllStatuses = async () => {
       const updates = {};
       const analysisQueue = [];
+      const currentNow = Date.now();
+      const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
+
+      const getTs = (obj) => {
+        if (!obj?.timestamp) return 0;
+        if (typeof obj.timestamp.toMillis === 'function') return obj.timestamp.toMillis();
+        if (obj.timestamp.seconds) return obj.timestamp.seconds * 1000;
+        if (obj.timestamp instanceof Date) return obj.timestamp.getTime();
+        if (typeof obj.timestamp === 'number') return obj.timestamp;
+        return 0;
+      };
 
       for (const status of studentStatuses) {
         const studentUid = status.id;
         if (!studentUid) continue;
+
+        const statusTs = getTs(status);
+        const isFresh = statusTs > 0 && (currentNow - statusTs) <= staleThresholdMs;
+        const isActivelySharing = Boolean(status.isSharing && isFresh);
+
+        // In live mode, only resolve and display screenshots for actively sharing students with fresh heartbeats
+        if (!isActivelySharing) continue;
 
         const screenPath = status.latestScreenPath || status.latestImagePath;
         const webcamPath = status.latestWebcamPath;
@@ -475,20 +573,36 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
           imagePath: primaryPath
         };
 
-        if (isPerImageAnalysisRunning && primaryUrl) {
-          analysisQueue.push({ studentUid, status, targetUrl: primaryUrl });
+        if (isPerImageAnalysisRunning && primaryUrl && primaryPath) {
+          const lastAnalysis = lastAnalyzedPathMapRef.current.get(studentUid);
+          const minIntervalMs = (Number(samplingRate) || 5) * (Number(frameRate) || 15) * 1000;
+          const isSameImage = lastAnalysis && lastAnalysis.imagePath === primaryPath;
+          const isCoolingDown = lastAnalysis && (currentNow - lastAnalysis.timestamp) < minIntervalMs;
+          const isInFlight = activeAnalysisInFlightRef.current.has(studentUid);
+
+          // Deduplication Guard: Never analyze the exact same screenshot twice, enforce cooldown & prevent overlapping calls
+          if (!isSameImage && !isCoolingDown && !isInFlight) {
+            analysisQueue.push({ studentUid, status, targetUrl: primaryUrl, targetPath: primaryPath });
+          }
         }
       }
 
-      if (!isCancelled && Object.keys(updates).length > 0) {
-        setScreenshots(prev => ({ ...prev, ...updates }));
+      if (!isCancelled) {
+        // Set screenshots to only include actively sharing students
+        setScreenshots(updates);
 
         for (const item of analysisQueue) {
-          analysisCounterRef.current += 1;
-          if (analysisCounterRef.current % (samplingRate || 5) === 0) {
-            const studentEmail = uidToEmailMap.get(item.studentUid) || item.status.email;
-            runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText, selectedAiModel);
-          }
+          const studentEmail = uidToEmailMap.get(item.studentUid) || item.status.email;
+          lastAnalyzedPathMapRef.current.set(item.studentUid, { imagePath: item.targetPath, timestamp: Date.now() });
+          activeAnalysisInFlightRef.current.add(item.studentUid);
+
+          runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText, selectedAiModel)
+            .catch(err => {
+              console.error(`[MonitorView] Error during per-image analysis for ${studentEmail}:`, err);
+            })
+            .finally(() => {
+              activeAnalysisInFlightRef.current.delete(item.studentUid);
+            });
         }
       }
     };
@@ -498,10 +612,11 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
     return () => {
       isCancelled = true;
     };
-  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, samplingRate, runPerImageAnalysis, editablePromptText, selectedAiModel, uidToEmailMap, students.length]);
+  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, samplingRate, runPerImageAnalysis, editablePromptText, selectedAiModel, uidToEmailMap, students.length, frameRate]);
 
   useEffect(() => {
     if (!isAllImagesAnalysisRunning) {
+      lastAllImagesRunTimeRef.current = 0;
       return;
     }
 
@@ -510,28 +625,50 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
       return;
     }
 
+    const intervalMs = (Number(samplingRate) || 5) * (Number(frameRate) || 15) * 1000;
+
     const performAllImagesAnalysis = () => {
+      const now = Date.now();
+      // Strict Interval Guard: Ensure full sampling interval has elapsed before next analysis
+      if (lastAllImagesRunTimeRef.current > 0 && (now - lastAllImagesRunTimeRef.current) < (intervalMs - 500)) {
+        return;
+      }
+
       const screenshotsToAnalyze = {};
+      let hasNewImages = false;
+
       for (const student of students) {
         const studentScreenshot = screenshotsRef.current[student.id];
         const studentUrl = studentScreenshot?.url || studentScreenshot?.screen?.url;
-        if (studentUrl) {
+        const studentPath = studentScreenshot?.imagePath || studentScreenshot?.screen?.imagePath;
+
+        if (studentUrl && studentPath) {
           screenshotsToAnalyze[student.id] = { url: studentUrl, email: student.email };
+          const previousPath = lastAllImagesPathsRef.current.get(student.id);
+          if (previousPath !== studentPath) {
+            hasNewImages = true;
+          }
         }
       }
-      if (Object.keys(screenshotsToAnalyze).length > 0) {
-        console.log(`[MonitorView] Triggering all-images analysis (${Object.keys(screenshotsToAnalyze).length} screens) using model:`, selectedAiModel);
+
+      // Deduplication Guard: Only trigger Gemini when new images have arrived across the class
+      if (Object.keys(screenshotsToAnalyze).length > 0 && hasNewImages) {
+        lastAllImagesRunTimeRef.current = now;
+        for (const [sId] of Object.entries(screenshotsToAnalyze)) {
+          const sPath = screenshotsRef.current[sId]?.imagePath || screenshotsRef.current[sId]?.screen?.imagePath;
+          if (sPath) lastAllImagesPathsRef.current.set(sId, sPath);
+        }
+        console.log(`[MonitorView] Triggering all-images analysis (${Object.keys(screenshotsToAnalyze).length} screens, interval: every ${samplingRate} rounds / ${intervalMs / 1000}s) using model:`, selectedAiModel);
         runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
-      } else {
-        console.warn('[MonitorView] No student screenshots available to analyze yet.');
       }
     };
 
-    // Run immediately on activation
-    performAllImagesAnalysis();
+    // Run initially once on toggle on
+    if (lastAllImagesRunTimeRef.current === 0) {
+      performAllImagesAnalysis();
+    }
 
-    const intervalMs = Math.max((samplingRate || 5) * (frameRate || 5) * 1000, 5000);
-    const intervalId = setInterval(performAllImagesAnalysis, intervalMs);
+    const intervalId = setInterval(performAllImagesAnalysis, 1000);
 
     return () => clearInterval(intervalId);
   }, [isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedAiModel]);
@@ -874,9 +1011,27 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         handleEnableCloudFallbackChange={handleEnableCloudFallbackChange}
         cloudFallbackRate={cloudFallbackRate}
         handleCloudFallbackRateChange={handleCloudFallbackRateChange}
+        voiceAiMode={voiceAiMode}
+        speechLanguage={speechLanguage}
+        audioSegmentDuration={audioSegmentDuration}
+        audioMovingWindowStride={audioMovingWindowStride}
+        audioSilenceSuppression={audioSilenceSuppression}
+        vadSensitivity={vadSensitivity}
+        voiceAiCloudFallbackRate={voiceAiCloudFallbackRate}
+        handleSaveAiSettings={handleSaveAiSettings}
         handleSaveGazeSettings={handleSaveGazeSettings}
         handleBroadcastPreloadAi={handleBroadcastPreloadAi}
         classId={classId}
+        prompts={prompts}
+        selectedPrompt={selectedPrompt}
+        setSelectedPrompt={setSelectedPrompt}
+        promptFilter={promptFilter}
+        setPromptFilter={setPromptFilter}
+        filteredPrompts={filteredPrompts}
+        setEditablePromptText={setEditablePromptText}
+        handleRunAnalysis={handleRunAnalysis}
+        handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
+        isAnalyzing={isAnalyzing}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -999,70 +1154,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         />
       )}
 
-      <Modal
-        show={showPromptModal}
-        onClose={() => {
-          setShowPromptModal(false);
-        }}
-        title="Analyze Student Screens"
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
-          <label><input type="radio" value="all" name="promptFilter" checked={promptFilter === 'all'} onChange={(e) => setPromptFilter(e.target.value)} /> All</label>
-          <label><input type="radio" value="public" name="promptFilter" checked={promptFilter === 'public'} onChange={(e) => setPromptFilter(e.target.value)} /> Public</label>
-          <label><input type="radio" value="private" name="promptFilter" checked={promptFilter === 'private'} onChange={(e) => setPromptFilter(e.target.value)} /> Private</label>
-          <label><input type="radio" value="shared" name="promptFilter" checked={promptFilter === 'shared'} onChange={(e) => setPromptFilter(e.target.value)} /> Shared</label>
-        </div>
-        <select
-          value={selectedPrompt ? selectedPrompt.id : ''}
-          onChange={(e) => {
-            const prompt = prompts.find(p => p.id === e.target.value);
-            setSelectedPrompt(prompt);
-            setEditablePromptText(prompt ? prompt.promptText : '');
-          }}
-          style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
-        >
-          <option value="" disabled>Select a prompt</option>
-          {filteredPrompts.map(p => (
-            <option key={p.id} value={p.id} title={p.name}>{p.name}</option>
-          ))}
-        </select>
 
-        <textarea
-          value={editablePromptText}
-          onChange={(e) => setEditablePromptText(e.target.value)}
-          placeholder="Select a prompt or enter text here..."
-          style={{ width: '100%', minHeight: '100px', marginBottom: '12px', boxSizing: 'border-box' }}
-        />
-
-        <div style={{ marginBottom: '14px' }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', marginBottom: '4px' }}>
-            Select Gemini Model:
-          </label>
-          <select
-            value={selectedAiModel}
-            onChange={(e) => handleAiModelChange(e.target.value)}
-            style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--color-border, #cbd5e1)', fontSize: '0.88rem' }}
-          >
-            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens)</option>
-            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens)</option>
-            <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens)</option>
-          </select>
-        </div>
-
-        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-          {/* Conditionally render buttons based on selectedPrompt, but use editablePromptText for the action */}
-          {(selectedPrompt ? selectedPrompt.applyTo?.includes('Per Image') : true) && (
-            <button onClick={handleRunAnalysis} disabled={isAnalyzing}>
-              {isAnalyzing ? 'Analyzing...' : 'Per Image Analysis'}
-            </button>
-          )}
-          {(selectedPrompt ? selectedPrompt.applyTo?.includes('All Images') : true) && (
-            <button onClick={handleRunAllImagesAnalysis} disabled={isAnalyzing}>
-              {isAnalyzing ? 'Analyzing...' : 'All Images Analysis'}
-            </button>
-          )}
-        </div>
-      </Modal>
       <Modal
         show={showAnalysisResultsModal}
         onClose={() => setShowAnalysisResultsModal(false)}

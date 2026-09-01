@@ -14,8 +14,12 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
 
   // Audio Recordings State
   const [recentAudios, setRecentAudios] = useState([]);
-  const [selectedAudioIndex, setSelectedAudioIndex] = useState(0);
+  const [selectedAudioId, setSelectedAudioId] = useState(null);
   const [resolvedAudioUrls, setResolvedAudioUrls] = useState({});
+  const [isClipHistoryOpen, setIsClipHistoryOpen] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const isPlayingAudioRef = useRef(false);
+  isPlayingAudioRef.current = isPlayingAudio;
   const [audioStatusInfo, setAudioStatusInfo] = useState({
     isAudioSharing: false,
     audioLevel: 0,
@@ -25,12 +29,18 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
 
   const liveVideoRef = useRef(null);
+  const liveScreenVideoRef = useRef(null);
+  const liveWebcamVideoRef = useRef(null);
+  const liveAudioRef = useRef(null);
 
   // WebRTC Live Peek Hook
   const {
     isPeeking,
     connectionState,
     remoteStream,
+    screenStream,
+    webcamStream,
+    remoteAudioStream,
     isTalkbackActive,
     error: rtcError,
     startPeek,
@@ -42,12 +52,33 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     teacherUid,
   });
 
-  // Attach remote stream to live video element
+  // Attach remote stream(s) to live video and audio elements
   useEffect(() => {
-    if (liveVideoRef.current && remoteStream) {
-      liveVideoRef.current.srcObject = remoteStream;
+    if (liveScreenVideoRef.current && screenStream) {
+      liveScreenVideoRef.current.srcObject = screenStream;
     }
-  }, [remoteStream, isPeeking]);
+  }, [screenStream]);
+
+  useEffect(() => {
+    if (liveWebcamVideoRef.current && webcamStream) {
+      liveWebcamVideoRef.current.srcObject = webcamStream;
+    }
+  }, [webcamStream]);
+
+  useEffect(() => {
+    if (liveAudioRef.current && remoteAudioStream) {
+      liveAudioRef.current.srcObject = remoteAudioStream;
+      liveAudioRef.current.muted = false;
+      liveAudioRef.current.volume = 1.0;
+      liveAudioRef.current.play().catch(() => {});
+    }
+  }, [remoteAudioStream]);
+
+  useEffect(() => {
+    if (liveVideoRef.current && (remoteStream || screenStream || webcamStream)) {
+      liveVideoRef.current.srcObject = screenStream || webcamStream || remoteStream;
+    }
+  }, [remoteStream, screenStream, webcamStream, isPeeking]);
 
   // Load teacher microphones for talkback
   useEffect(() => {
@@ -64,7 +95,7 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
     }
   }, [isTalkbackActive, selectedMicId]);
 
-  const studentUid = student?.id || student?.uid;
+  const studentUid = student?.id || student?.uid || student?.studentUid;
 
   // Listen to live student status for real-time audio metadata
   useEffect(() => {
@@ -80,10 +111,17 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
             audioLevel: data.audioLevel || 0,
             audioStatus: data.audioStatus || (isSharingAudio ? 'idle' : 'inactive'),
             latestAudioPath: data.latestAudioPath || null,
+            latestAudioUrl: data.latestAudioUrl || null,
           });
 
-          // If latestAudioPath is available and not yet in resolved URLs, resolve it
-          if (data.latestAudioPath && storage) {
+          // If latestAudioUrl is available directly in status doc, resolve immediately
+          if (data.latestAudioUrl) {
+            setResolvedAudioUrls((prev) => ({
+              ...prev,
+              latest: data.latestAudioUrl,
+              ...(data.latestAudioPath ? { [data.latestAudioPath]: data.latestAudioUrl } : {}),
+            }));
+          } else if (data.latestAudioPath && storage) {
             try {
               const url = await getDownloadURL(ref(storage, data.latestAudioPath));
               setResolvedAudioUrls((prev) => ({ ...prev, latest: url, [data.latestAudioPath]: url }));
@@ -109,7 +147,7 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
         where('classId', '==', classId),
         where('studentUid', '==', studentUid),
         orderBy('timestamp', 'desc'),
-        limit(5)
+        limit(10)
       );
 
       const unsub = onSnapshot(audioQuery, async (snap) => {
@@ -117,6 +155,14 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
           id: d.id,
           ...d.data(),
         }));
+
+        // Sort descending by timestamp client-side for resilient performance
+        audios.sort((a, b) => {
+          const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp?.seconds ? a.timestamp.seconds * 1000 : new Date(a.timestamp || 0).getTime());
+          const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp?.seconds ? b.timestamp.seconds * 1000 : new Date(b.timestamp || 0).getTime());
+          return timeB - timeA;
+        });
+
         setRecentAudios(audios);
 
         // Resolve download URLs for clips
@@ -124,12 +170,14 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
         for (const item of audios) {
           if (item.audioUrl) {
             urlMap[item.id] = item.audioUrl;
+            if (item.audioPath) urlMap[item.audioPath] = item.audioUrl;
           } else if (item.audioPath && storage) {
             try {
               const url = await getDownloadURL(ref(storage, item.audioPath));
               urlMap[item.id] = url;
+              urlMap[item.audioPath] = url;
             } catch (err) {
-              console.warn(`Could not resolve download URL for audio ${item.audioPath}:`, err);
+              console.debug('Could not resolve download URL for audio:', item.audioPath, err);
             }
           }
         }
@@ -140,7 +188,7 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
 
       return () => unsub();
     } catch (err) {
-      console.warn('Failed to query recent audios:', err);
+      console.error('Failed to setup recent audios query:', err);
     }
   }, [classId, studentUid]);
 
@@ -150,7 +198,12 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
 
   const screenUrl = screenshotData?.screen?.url || (screenshotUrl && activeTab !== 'webcam' ? screenshotUrl : null);
   const webcamUrl = screenshotData?.webcam?.url;
-  const currentAudio = recentAudios[selectedAudioIndex] || (audioStatusInfo.latestAudioPath ? { audioPath: audioStatusInfo.latestAudioPath, id: 'latest', timestamp: new Date() } : null);
+
+  // Derive current audio clip stably
+  const currentAudio = (selectedAudioId ? recentAudios.find((a) => a.id === selectedAudioId) : null)
+    || recentAudios[0]
+    || (audioStatusInfo.latestAudioPath ? { audioPath: audioStatusInfo.latestAudioPath, id: 'latest', timestamp: new Date() } : null);
+
   const currentAudioUrl = currentAudio ? (resolvedAudioUrls[currentAudio.id] || resolvedAudioUrls[currentAudio.audioPath] || resolvedAudioUrls.latest || currentAudio.audioUrl || null) : null;
 
   const handleSendMessage = async () => {
@@ -343,6 +396,21 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
               <span style={{ fontWeight: '600', color: '#f8fafc' }}>
                 Status: {connectionState === 'connected' ? '🟢 Live P2P Stream Active (30 FPS)' : connectionState === 'connecting' ? '🔄 Establishing P2P Connection...' : '⚠️ Connecting...'}
               </span>
+              {connectionState === 'connected' && (
+                <span
+                  style={{
+                    backgroundColor: (remoteAudioStream?.getAudioTracks().length > 0) ? '#10b981' : '#64748b',
+                    color: '#fff',
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                  }}
+                  title={remoteAudioStream?.getAudioTracks().length > 0 ? 'Receiving real-time student audio' : 'No audio track received from student'}
+                >
+                  {(remoteAudioStream?.getAudioTracks().length > 0) ? '🎙️ Student Mic: LIVE' : '🎙️ Student Mic: Inactive'}
+                </span>
+              )}
               {rtcError && <span style={{ color: '#ef4444' }}>({rtcError})</span>}
             </div>
 
@@ -389,14 +457,10 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
 
         <div className="individual-student-view-body">
           {activeTab === 'live_peek' ? (
-            <div className="individual-single-feed" style={{ position: 'relative', minHeight: '400px', backgroundColor: '#000' }}>
-              <video
-                ref={liveVideoRef}
-                autoPlay
-                playsInline
-                controls
-                style={{ width: '100%', height: '100%', maxHeight: '600px', objectFit: 'contain' }}
-              />
+            <div className="individual-live-peek-container" style={{ position: 'relative', minHeight: '400px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' }}>
+              {/* Hidden audio element to play student microphone audio to teacher in real time */}
+              <audio ref={liveAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+
               {connectionState !== 'connected' && (
                 <div
                   style={{
@@ -407,7 +471,8 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#94a3b8',
-                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    backgroundColor: 'rgba(0,0,0,0.88)',
+                    zIndex: 10,
                   }}
                 >
                   <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📡</div>
@@ -417,6 +482,52 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
                   <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.25rem' }}>
                     Requesting video and audio tracks from student browser
                   </p>
+                </div>
+              )}
+
+              {screenStream && webcamStream ? (
+                <div className="individual-dual-container webrtc-dual-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', padding: '1rem', width: '100%', boxSizing: 'border-box' }}>
+                  <div className="individual-feed-card" style={{ display: 'flex', flexDirection: 'column', background: '#0f172a', borderRadius: '8px', overflow: 'hidden', border: '1px solid #334155' }}>
+                    <div className="feed-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: '#1e293b', color: '#f8fafc', fontWeight: 600, fontSize: '0.85rem' }}>
+                      <span>🖥️ Live Screen</span>
+                      <span style={{ backgroundColor: '#ef4444', color: '#fff', fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>● LIVE</span>
+                    </div>
+                    <video
+                      ref={liveScreenVideoRef}
+                      autoPlay
+                      playsInline
+                      controls
+                      style={{ width: '100%', height: 'auto', minHeight: '220px', maxHeight: '420px', objectFit: 'contain', backgroundColor: '#000' }}
+                    />
+                  </div>
+
+                  <div className="individual-feed-card" style={{ display: 'flex', flexDirection: 'column', background: '#0f172a', borderRadius: '8px', overflow: 'hidden', border: '1px solid #334155' }}>
+                    <div className="feed-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: '#1e293b', color: '#f8fafc', fontWeight: 600, fontSize: '0.85rem' }}>
+                      <span>📷 Live Webcam</span>
+                      <span style={{ backgroundColor: '#ef4444', color: '#fff', fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>● LIVE</span>
+                    </div>
+                    <video
+                      ref={liveWebcamVideoRef}
+                      autoPlay
+                      playsInline
+                      controls
+                      style={{ width: '100%', height: 'auto', minHeight: '220px', maxHeight: '420px', objectFit: 'contain', backgroundColor: '#000' }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="individual-single-feed" style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
+                  <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 5, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', padding: '4px 10px', borderRadius: '6px', color: '#fff', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{screenStream ? '🖥️ Live Screen' : webcamStream ? '📷 Live Webcam' : '👁️ Live WebRTC Stream'}</span>
+                    <span style={{ color: '#ef4444', fontWeight: 'bold' }}>● LIVE</span>
+                  </div>
+                  <video
+                    ref={liveVideoRef}
+                    autoPlay
+                    playsInline
+                    controls
+                    style={{ width: '100%', height: '100%', maxHeight: '600px', objectFit: 'contain' }}
+                  />
                 </div>
               )}
             </div>
@@ -465,123 +576,150 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
           )}
         </div>
 
-        {/* Recent Audio Recording Section */}
-        <div className="individual-audio-section">
-          <div className="individual-audio-header">
+        {/* Compact Voice Recording Bar */}
+        <div className="individual-audio-section compact">
+          <div className="individual-audio-bar">
+            {/* Left: Title & Live Status */}
             <div className="audio-header-title">
-              <span>🎙️ Recent Voice Recording</span>
+              <span>🎙️ Voice</span>
               {audioStatusInfo.isAudioSharing ? (
                 <span className={`audio-status-pill ${audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 ? 'speaking' : 'silent'}`}>
                   {audioStatusInfo.audioStatus === 'speaking' || audioStatusInfo.audioLevel >= 25 
-                    ? `🗣️ Speaking (${audioStatusInfo.audioLevel}%)` 
-                    : '🟢 Mic Active & Listening'}
+                    ? `🗣️ ${audioStatusInfo.audioLevel}%` 
+                    : '🟢 Live'}
                 </span>
               ) : (
-                <span className="audio-status-pill silent">⚪ Mic Inactive</span>
+                <span className="audio-status-pill silent">⚪ Inactive</span>
               )}
             </div>
 
-            {recentAudios.length > 1 && (
-              <select
-                className="clip-select-dropdown"
-                value={selectedAudioIndex}
-                onChange={(e) => setSelectedAudioIndex(Number(e.target.value))}
-                aria-label="Select audio clip"
-              >
-                {recentAudios.map((clip, idx) => {
-                  const clipDate = clip.timestamp?.toDate ? clip.timestamp.toDate() : new Date(clip.timestamp || Date.now());
-                  const timeStr = clipDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                  return (
-                    <option key={clip.id || idx} value={idx}>
-                      Clip {idx + 1}: {timeStr} ({clip.duration || 30}s)
-                    </option>
-                  );
-                })}
-              </select>
-            )}
-          </div>
+            {/* Center: Audio Player or Brief Status */}
+            <div className="audio-player-container">
+              {currentAudioUrl ? (
+                <audio
+                  key={currentAudio?.id || currentAudioUrl}
+                  controls
+                  src={currentAudioUrl}
+                  className="individual-audio-player compact"
+                  preload="metadata"
+                  data-testid="student-audio-player"
+                  onPlay={() => {
+                    setIsPlayingAudio(true);
+                    if (currentAudio?.id && selectedAudioId !== currentAudio.id) {
+                      setSelectedAudioId(currentAudio.id);
+                    }
+                  }}
+                  onPause={() => setIsPlayingAudio(false)}
+                  onEnded={() => setIsPlayingAudio(false)}
+                >
+                  Your browser does not support HTML5 audio.
+                </audio>
+              ) : audioStatusInfo.isAudioSharing ? (
+                <span className="audio-compact-hint">🔇 Silent interval (listening live)</span>
+              ) : (
+                <span className="audio-compact-hint">Mic inactive</span>
+              )}
+            </div>
 
-          {currentAudioUrl ? (
-            <div className="individual-audio-controls">
-              <audio
-                controls
-                src={currentAudioUrl}
-                className="individual-audio-player"
-                preload="metadata"
-                data-testid="student-audio-player"
-              >
-                Your browser does not support HTML5 audio.
-              </audio>
+            {/* Right: Meta & Actions */}
+            <div className="audio-actions-group">
+              {currentAudio && (
+                <span className="audio-clip-badge" title="Recorded clip time and duration">
+                  🕒 {currentAudio.timestamp?.toDate ? currentAudio.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date(currentAudio.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} ({currentAudio.duration || 30}s)
+                </span>
+              )}
 
               {(currentAudio?.transcript || currentAudio?.transcriptSegments?.length > 0) && (
                 <button
                   type="button"
-                  className="btn-transcript-modal"
+                  className="btn-transcript-modal compact"
                   onClick={() => setIsTranscriptModalOpen(true)}
-                  title="View full AI diarization transcript with speaker tags"
+                  title="View full AI diarization transcript"
                 >
-                  📜 View Full Transcript
+                  📜 Transcript
+                </button>
+              )}
+
+              {recentAudios.length > 0 && (
+                <button
+                  type="button"
+                  className={`btn-history-toggle ${isClipHistoryOpen ? 'open' : ''}`}
+                  onClick={() => setIsClipHistoryOpen(!isClipHistoryOpen)}
+                  title="Toggle recording timeline"
+                >
+                  📋 Clips ({recentAudios.length}) {isClipHistoryOpen ? '▲' : '▼'}
                 </button>
               )}
             </div>
-          ) : audioStatusInfo.isAudioSharing ? (
-            <div className="audio-empty-placeholder active-listening" style={{ padding: '12px 14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 600, fontSize: '0.9rem' }}>
-                <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 6px #10b981' }}></span>
-                <span>Microphone is active & streaming live telemetry</span>
-              </div>
-              <p style={{ margin: '6px 0 0', fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.45 }}>
-                🔇 <em>No speech detected yet.</em> Smart silence suppression is active to conserve bandwidth. Audio recording clips and AI transcripts will upload automatically once the student or external speech is detected.
-              </p>
-              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.8rem', color: '#cbd5e1' }}>
-                <span>Live Audio Level: <strong>{audioStatusInfo.audioLevel || 0}%</strong></span>
-                <span>Status: <strong style={{ textTransform: 'capitalize' }}>{audioStatusInfo.audioStatus || 'idle'}</strong></span>
-              </div>
-            </div>
-          ) : (
-            <div className="audio-empty-placeholder">
-              <span>🔇 Microphone is inactive or student has not enabled audio streaming yet.</span>
-            </div>
-          )}
+          </div>
 
-          {currentAudio && (
-            <div className="audio-meta-strip">
-              <span className="audio-meta-item">
-                🕒 Recorded: {currentAudio.timestamp?.toDate ? currentAudio.timestamp.toDate().toLocaleTimeString() : new Date(currentAudio.timestamp || Date.now()).toLocaleTimeString()}
-              </span>
-              <span className="audio-meta-item">
-                ⏱️ Duration: {currentAudio.duration || 30}s
-              </span>
-              {currentAudio.peakVolume !== undefined && (
-                <span className="audio-meta-item">
-                  🔊 Peak Volume: {currentAudio.peakVolume}%
+          {/* Optional Transcript Subtitle Strip (Live Whisper or Recorded Clip) */}
+          {(currentAudio?.transcript || student?.liveTranscript) && !isClipHistoryOpen && (
+            <div className="audio-transcript-snippet compact">
+              {student?.liveTranscript && !currentAudio?.transcript ? (
+                <span>
+                  <strong style={{ color: '#38bdf8' }}>🎙️ Whisper (Live):</strong> "{student.liveTranscript.length > 110 ? `${student.liveTranscript.slice(0, 110)}...` : student.liveTranscript}"
                 </span>
+              ) : (
+                <span>💬 "{currentAudio.transcript.length > 110 ? `${currentAudio.transcript.slice(0, 110)}...` : currentAudio.transcript}"</span>
               )}
-              {currentAudio.hasVoiceActivity && (
-                <span className="audio-meta-item" style={{ color: '#34d399' }}>
-                  🗣️ Voice Detected
-                </span>
-              )}
-              {currentAudio.aiMonitoringMode && (
-                <span className="audio-meta-item">
-                  🧠 Mode: {currentAudio.aiMonitoringMode}
-                </span>
-              )}
-            </div>
-          )}
-
-          {currentAudio?.transcript && (
-            <div className="audio-transcript-snippet">
-              <span>💬 "{currentAudio.transcript.length > 140 ? `${currentAudio.transcript.slice(0, 140)}...` : currentAudio.transcript}"</span>
-              {!isTranscriptModalOpen && (
+              {(currentAudio?.transcript || currentAudio?.transcriptSegments?.length > 0) && (
                 <button
                   type="button"
-                  style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '0.78rem', textDecoration: 'underline' }}
+                  className="btn-transcript-link"
                   onClick={() => setIsTranscriptModalOpen(true)}
                 >
                   Details
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Collapsible Recordings Playlist Drawer */}
+          {isClipHistoryOpen && recentAudios.length > 0 && (
+            <div className="recordings-playlist-section compact">
+              <div className="recordings-playlist-scroll" role="list">
+                {recentAudios.map((clip, idx) => {
+                  const clipDate = clip.timestamp?.toDate ? clip.timestamp.toDate() : new Date(clip.timestamp || Date.now());
+                  const timeStr = clipDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  const isSelected = currentAudio?.id === clip.id;
+
+                  return (
+                    <button
+                      key={clip.id || idx}
+                      type="button"
+                      role="listitem"
+                      className={`recording-playlist-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => setSelectedAudioId(clip.id)}
+                      title={`Play recording from ${timeStr}`}
+                    >
+                      <div className="playlist-item-left">
+                        <span className="playlist-play-icon">{isSelected ? '🔊' : '▶️'}</span>
+                        <div className="playlist-item-meta">
+                          <span className="playlist-time">{timeStr}</span>
+                          <span className="playlist-duration">{clip.duration || 30}s</span>
+                        </div>
+                      </div>
+
+                      <div className="playlist-item-preview">
+                        {clip.transcript ? (
+                          <span className="playlist-transcript-text">"{clip.transcript.length > 50 ? `${clip.transcript.slice(0, 50)}...` : clip.transcript}"</span>
+                        ) : clip.hasVoiceActivity ? (
+                          <span className="playlist-speech-badge">🗣️ Speech</span>
+                        ) : (
+                          <span className="playlist-quiet-badge">🤫 Quiet</span>
+                        )}
+                      </div>
+
+                      <div className="playlist-item-right">
+                        {clip.isMultiSpeaker && <span className="playlist-flag warn">👥 Multi</span>}
+                        {clip.riskLevel === 'high' && <span className="playlist-flag danger">🚨 Alert</span>}
+                        {isSelected && <span className="playlist-now-active">Selected</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

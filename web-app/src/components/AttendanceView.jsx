@@ -32,7 +32,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
 
   const handleFetchAttendance = async () => {
-    if (!selectedLesson || !classId || !startTime || !endTime) return;
+    if (!classId || !startTime || !endTime) return;
 
     setLoadingAttendance(true);
     const getAttendanceData = httpsCallable(functions, 'getAttendanceData');

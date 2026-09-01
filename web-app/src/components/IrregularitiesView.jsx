@@ -101,6 +101,25 @@ const IrregularitiesView = ({ startTime, endTime }) => {
   const [appliedCustomStart, setAppliedCustomStart] = useState(startTime || null);
   const [appliedCustomEnd, setAppliedCustomEnd] = useState(endTime || null);
 
+  // Sync with top-level shared date filter
+  useEffect(() => {
+    if (startTime) {
+      setCustomStart(new Date(startTime).toISOString().slice(0, 16));
+      setAppliedCustomStart(startTime);
+    } else {
+      setAppliedCustomStart(null);
+    }
+    if (endTime) {
+      setCustomEnd(new Date(endTime).toISOString().slice(0, 16));
+      setAppliedCustomEnd(endTime);
+    } else {
+      setAppliedCustomEnd(null);
+    }
+    if (startTime || endTime) {
+      setPeriodPreset('custom');
+    }
+  }, [startTime, endTime]);
+
   const effectiveTimeRange = useMemo(() => {
     const now = new Date();
     if (periodPreset === 'today') {

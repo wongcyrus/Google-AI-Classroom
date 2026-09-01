@@ -328,7 +328,7 @@ describe('IndividualStudentView Component', () => {
       />
     );
 
-    expect(screen.getByText('🎙️ Recent Voice Recording')).toBeInTheDocument();
+    expect(screen.getByText('🎙️ Voice')).toBeInTheDocument();
 
     // Trigger audio snapshot with mock audios
     act(() => {
@@ -365,16 +365,33 @@ describe('IndividualStudentView Component', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('student-audio-player')).toBeInTheDocument();
-      expect(screen.getByText(/Can you help me with question 3\?/i)).toBeInTheDocument();
-      expect(screen.getByText('📜 View Full Transcript')).toBeInTheDocument();
+      expect(screen.getAllByText(/Can you help me with question 3\?/i).length).toBeGreaterThan(0);
+      expect(screen.getByText('📜 Transcript')).toBeInTheDocument();
+      expect(screen.getByText(/Clips \(2\)/i)).toBeInTheDocument();
     });
 
-    // Open full transcript modal
-    const viewTranscriptBtn = screen.getByText('📜 View Full Transcript');
+    // Open full transcript modal on clip 1 (which has transcript)
+    const viewTranscriptBtn = screen.getByText('📜 Transcript');
     fireEvent.click(viewTranscriptBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Audio Diarization & Transcript/i)).toBeInTheDocument();
+    });
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    fireEvent.click(closeBtn);
+
+    // Toggle clips drawer
+    const clipsBtn = screen.getByText(/Clips \(2\)/i);
+    fireEvent.click(clipsBtn);
+
+    // Test clicking second clip from playlist to switch audio
+    const quietClip = screen.getByText(/🤫 Quiet/i);
+    fireEvent.click(quietClip);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('listitem').length).toBe(2);
     });
   });
 });

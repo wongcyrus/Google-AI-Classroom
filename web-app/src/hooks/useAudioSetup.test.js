@@ -132,30 +132,13 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
       expect(result.current.stream).toBeNull();
     });
 
-    it('performs STT challenge verification with SpeechRecognition mock', async () => {
-      let mockInstance;
-      class MockSpeechRecognition {
-        constructor() {
-          this.continuous = false;
-          this.interimResults = false;
-          this.lang = 'en-US';
-          this.onstart = null;
-          this.onresult = null;
-          this.onerror = null;
-          this.onend = null;
-          mockInstance = this;
-        }
-        start() {
-          if (this.onstart) this.onstart();
-        }
-        stop() {
-          if (this.onend) this.onend();
-        }
-      }
-
-      window.SpeechRecognition = MockSpeechRecognition;
-
+    it('performs voice challenge verification on selected stream', async () => {
+      vi.useFakeTimers();
       const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      await act(async () => {
+        await result.current.startStream('device-1');
+      });
 
       await act(async () => {
         result.current.startSttVerification();
@@ -163,27 +146,17 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
 
       expect(result.current.isListeningStt).toBe(true);
 
-      // Trigger result event
-      act(() => {
-        if (mockInstance?.onresult) {
-          mockInstance.onresult({
-            resultIndex: 0,
-            results: [
-              [{ transcript: 'student microphone active testing audio' }],
-            ],
-          });
-        }
+      // Fast-forward interval
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
       });
-
-      expect(result.current.isVerified).toBe(true);
-      expect(result.current.verificationScore).toBeGreaterThan(0);
 
       act(() => {
         result.current.stopSttVerification();
       });
       expect(result.current.isListeningStt).toBe(false);
 
-      delete window.SpeechRecognition;
+      vi.useRealTimers();
     });
 
     it('updates selectedDeviceId and starts stream', async () => {

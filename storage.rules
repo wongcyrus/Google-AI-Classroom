@@ -10,8 +10,8 @@ service firebase.storage {
                       request.resource.size < 2097152 && // 2 MB, configured in functions/config.js
                       request.resource.contentType.matches('image/.*');
 
-      // Allow authenticated teachers to read any screenshot, or the student themselves.
-      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk') || request.auth.uid == userId);
+      // Allow authenticated users to read screenshots
+      allow read: if request.auth != null;
 
       // Allow authenticated teachers to delete.
       allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
@@ -24,8 +24,8 @@ service firebase.storage {
                       request.resource.size < 5242880 && // 5 MB
                       request.resource.contentType.matches('audio/.*');
 
-      // Allow authenticated teachers to read any audio file, or the student themselves.
-      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk') || request.auth.uid == userId);
+      // Allow authenticated users (teachers and students) to read any audio file
+      allow read: if request.auth != null;
 
       // Allow authenticated teachers to delete.
       allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
@@ -38,9 +38,9 @@ service firebase.storage {
                       request.resource.size < 5242880 && // 5 MB
                       (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
 
-      // Teachers can read all, students can read their own
-      allow read: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.uid == userId);
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      // Teachers and students can read
+      allow read: if request.auth != null;
+      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
     }
 
     match /temp_ai/{fileName} {

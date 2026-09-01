@@ -177,12 +177,17 @@ export async function initFaceLandmarkerWithProgress({
   let fromCache = false;
 
   // 1. Download / retrieve model weights with progress
-  await fetchModelWithProgress(modelAssetPath, (progress) => {
-    if (progress.fromCache) fromCache = true;
-    if (typeof onProgress === 'function') {
-      onProgress(progress);
-    }
-  });
+  let modelBuffer = null;
+  try {
+    modelBuffer = await fetchModelWithProgress(modelAssetPath, (progress) => {
+      if (progress.fromCache) fromCache = true;
+      if (typeof onProgress === 'function') {
+        onProgress(progress);
+      }
+    });
+  } catch (fetchErr) {
+    console.warn('[WebAiModelLoader] Model pre-fetch warning:', fetchErr);
+  }
 
   // 2. Resolve Vision Tasks WASM
   let vision;
@@ -206,36 +211,55 @@ export async function initFaceLandmarkerWithProgress({
     outputFaceBlendshapes: false,
   };
 
+  const createOptions = (delegate) => {
+    const baseOptions = { delegate };
+    if (modelBuffer && modelBuffer.byteLength > 0) {
+      baseOptions.modelAssetBuffer = new Uint8Array(modelBuffer);
+    } else {
+      baseOptions.modelAssetPath = modelAssetPath;
+    }
+    return {
+      ...baseConfig,
+      baseOptions,
+    };
+  };
+
   if (preferredDelegate === 'GPU') {
     try {
-      landmarker = await FaceLandmarker.createFromOptions(vision, {
-        ...baseConfig,
-        baseOptions: {
-          modelAssetPath,
-          delegate: 'GPU',
-        },
-      });
+      landmarker = await FaceLandmarker.createFromOptions(vision, createOptions('GPU'));
       delegateUsed = 'GPU';
     } catch (gpuErr) {
       console.warn('[WebAiModelLoader] GPU delegate failed. Falling back to CPU delegate...', gpuErr);
+      try {
+        landmarker = await FaceLandmarker.createFromOptions(vision, createOptions('CPU'));
+        delegateUsed = 'CPU';
+      } catch (cpuErr) {
+        console.warn('[WebAiModelLoader] Buffer init failed. Falling back to CDN URL...', cpuErr);
+        landmarker = await FaceLandmarker.createFromOptions(vision, {
+          ...baseConfig,
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'CPU',
+          },
+        });
+        delegateUsed = 'CPU';
+      }
+    }
+  } else {
+    try {
+      landmarker = await FaceLandmarker.createFromOptions(vision, createOptions('CPU'));
+      delegateUsed = 'CPU';
+    } catch (cpuErr) {
+      console.warn('[WebAiModelLoader] CPU Buffer init failed. Falling back to CDN URL...', cpuErr);
       landmarker = await FaceLandmarker.createFromOptions(vision, {
         ...baseConfig,
         baseOptions: {
-          modelAssetPath,
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
           delegate: 'CPU',
         },
       });
       delegateUsed = 'CPU';
     }
-  } else {
-    landmarker = await FaceLandmarker.createFromOptions(vision, {
-      ...baseConfig,
-      baseOptions: {
-        modelAssetPath,
-        delegate: 'CPU',
-      },
-    });
-    delegateUsed = 'CPU';
   }
 
   return {

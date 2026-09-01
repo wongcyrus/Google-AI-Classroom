@@ -26,11 +26,14 @@ export default function ExamReadinessWizard({
   const [selectedMic, setSelectedMic] = useState(currentMicDeviceId || '');
   const [micVolume, setMicVolume] = useState(0);
   const [speechTranscript, setSpeechTranscript] = useState('');
+  const [speechError, setSpeechError] = useState('');
   const [isListeningSpeech, setIsListeningSpeech] = useState(false);
   const [isMicVerified, setIsMicVerified] = useState(false);
   const micStreamRef = useRef(null);
   const micAudioCtxRef = useRef(null);
   const micAnimFrameRef = useRef(null);
+  const speechRecRef = useRef(null);
+  const speechTimeoutRef = useRef(null);
 
   // --- Step 2: Camera & Pose Calibration ---
   const [videoDevices, setVideoDevices] = useState([]);
@@ -44,37 +47,53 @@ export default function ExamReadinessWizard({
   const [isScreenVerified, setIsScreenVerified] = useState(false);
   const [screenDetails, setScreenDetails] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const screenStreamRef = useRef(null);
 
-  // 1. Enumerate Audio & Video Devices
+  // 1. Enumerate Audio & Video Devices with friendly labels & permission refresh
+  const loadDevices = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audios = devices
+        .filter(d => d.kind === 'audioinput')
+        .map((d, i) => ({
+          deviceId: d.deviceId,
+          label: d.label || (i === 0 ? 'Default Microphone' : `Microphone ${i + 1}`),
+        }));
+      const videos = devices
+        .filter(d => d.kind === 'videoinput')
+        .map((d, i) => ({
+          deviceId: d.deviceId,
+          label: d.label || (i === 0 ? 'Default Camera' : `Camera ${i + 1}`),
+        }));
+
+      setAudioDevices(audios);
+      setVideoDevices(videos);
+
+      if (audios.length > 0 && !selectedMic) {
+        setSelectedMic(audios[0].deviceId);
+      }
+      if (videos.length > 0 && !selectedCamera) {
+        setSelectedCamera(videos[0].deviceId);
+      }
+    } catch (err) {
+      console.error('Error loading devices in wizard:', err);
+    }
+  }, [selectedMic, selectedCamera]);
+
   useEffect(() => {
     if (!isOpen) return;
-
-    const loadDevices = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audios = devices
-          .filter(d => d.kind === 'audioinput')
-          .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
-        const videos = devices
-          .filter(d => d.kind === 'videoinput')
-          .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camera ${i + 1}` }));
-
-        setAudioDevices(audios);
-        setVideoDevices(videos);
-
-        if (audios.length > 0 && !selectedMic) {
-          setSelectedMic(audios[0].deviceId);
-        }
-        if (videos.length > 0 && !selectedCamera) {
-          setSelectedCamera(videos[0].deviceId);
-        }
-      } catch (err) {
-        console.error('Error loading devices in wizard:', err);
-      }
-    };
-
     loadDevices();
-  }, [isOpen, selectedMic, selectedCamera]);
+
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', loadDevices);
+      return () => {
+        try {
+          navigator.mediaDevices?.removeEventListener?.('devicechange', loadDevices);
+        } catch {}
+      };
+    }
+  }, [isOpen, loadDevices]);
 
   // --- Step 1: Live Mic VU Meter ---
   useEffect(() => {
@@ -103,30 +122,40 @@ export default function ExamReadinessWizard({
         }
 
         micStreamRef.current = stream;
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        micAudioCtxRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const updateVol = () => {
-          if (!isMounted) return;
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
+        // Refresh device list now that permission is granted so real hardware names are shown
+        loadDevices();
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            const audioCtx = new AudioCtx();
+            micAudioCtxRef.current = audioCtx;
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const updateVol = () => {
+              if (!isMounted) return;
+              analyser.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+              }
+              const avg = sum / dataArray.length;
+              const normalized = Math.min(100, Math.round((avg / 128) * 100));
+              setMicVolume(normalized);
+              if (normalized > 15) {
+                setIsMicVerified(true);
+              }
+              micAnimFrameRef.current = requestAnimationFrame(updateVol);
+            };
+            updateVol();
           }
-          const avg = sum / dataArray.length;
-          const normalized = Math.min(100, Math.round((avg / 128) * 100));
-          setMicVolume(normalized);
-          if (normalized > 15) {
-            setIsMicVerified(true);
-          }
-          micAnimFrameRef.current = requestAnimationFrame(updateVol);
-        };
-        updateVol();
+        } catch (audioErr) {
+          console.warn('ExamReadinessWizard audio analysis setup warning:', audioErr);
+        }
       } catch (err) {
         console.error('Wizard mic init failed:', err);
       }
@@ -147,38 +176,71 @@ export default function ExamReadinessWizard({
     };
   }, [isOpen, step, selectedMic]);
 
-  // STT Voice Verification Test
-  const startSpeechTest = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setIsMicVerified(true);
+  // STT Voice Verification Test Helper
+  // STT Voice Verification Test directly on selected microphone stream
+  const stopSpeechTest = useCallback(() => {
+    if (speechTimeoutRef.current) {
+      clearInterval(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
+    setIsListeningSpeech(false);
+  }, []);
+
+  const startSpeechTest = useCallback(() => {
+    stopSpeechTest();
+    setSpeechError('');
+    setSpeechTranscript('');
+    setIsListeningSpeech(true);
+
+    if (!micStreamRef.current) {
+      setSpeechError('Microphone stream not active. Please select a microphone first.');
+      setIsListeningSpeech(false);
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+    console.log('[ExamReadinessWizard] 🎙️ Starting voice verification on selected microphone stream...');
 
-      setIsListeningSpeech(true);
-      recognition.onresult = (event) => {
-        const text = Array.from(event.results)
-          .map(r => r[0].transcript)
-          .join('');
-        setSpeechTranscript(text);
-        if (text.length > 3) {
+    let speechTimeMs = 0;
+    const interval = 100;
+    const maxDurationMs = 5000;
+    let elapsedMs = 0;
+
+    speechTimeoutRef.current = setInterval(() => {
+      elapsedMs += interval;
+
+      if (micVolume > 6) {
+        speechTimeMs += interval;
+      }
+
+      if (speechTimeMs >= 600) {
+        clearInterval(speechTimeoutRef.current);
+        speechTimeoutRef.current = null;
+        setIsListeningSpeech(false);
+        setIsMicVerified(true);
+        setSpeechTranscript('Voice captured and verified successfully on selected microphone!');
+        console.log('[ExamReadinessWizard] ✅ Selected microphone voice verified!');
+        return;
+      }
+
+      if (elapsedMs >= maxDurationMs) {
+        clearInterval(speechTimeoutRef.current);
+        speechTimeoutRef.current = null;
+        setIsListeningSpeech(false);
+        if (speechTimeMs >= 300) {
           setIsMicVerified(true);
+          setSpeechTranscript('Voice detected and verified on selected microphone.');
+        } else {
+          setSpeechError('No clear voice detected on selected microphone. Please speak louder into the microphone.');
         }
-      };
+      }
+    }, interval);
+  }, [micVolume, stopSpeechTest]);
 
-      recognition.onerror = () => setIsListeningSpeech(false);
-      recognition.onend = () => setIsListeningSpeech(false);
-      recognition.start();
-    } catch {
-      setIsMicVerified(true);
+  useEffect(() => {
+    if (!isOpen || step !== 1) {
+      stopSpeechTest();
     }
-  };
+  }, [isOpen, step, stopSpeechTest]);
 
   // --- Step 2: Camera Preview ---
   useEffect(() => {
@@ -193,10 +255,25 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startCamera = async () => {
       try {
-        const constraints = {
-          video: selectedCamera ? { deviceId: { exact: selectedCamera } } : true,
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream = null;
+        if (selectedCamera) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: selectedCamera } }
+            });
+          } catch {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: { ideal: selectedCamera } }
+              });
+            } catch {
+              stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            }
+          }
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+
         if (!isMounted) {
           stream.getTracks().forEach(t => t.stop());
           return;
@@ -206,6 +283,9 @@ export default function ExamReadinessWizard({
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
         }
+
+        // Refresh devices with actual camera hardware names
+        loadDevices();
       } catch (err) {
         console.error('Wizard camera init failed:', err);
       }
@@ -235,6 +315,11 @@ export default function ExamReadinessWizard({
   // --- Step 3: Screen Share Test ---
   const handleTestScreenShare = async () => {
     try {
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+      }
+
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: 'monitor' },
         audio: false,
@@ -251,8 +336,13 @@ export default function ExamReadinessWizard({
         isFullScreen: isMonitor,
       });
 
+      screenStreamRef.current = stream;
       setIsScreenVerified(true);
-      track.stop();
+
+      track.onended = () => {
+        setIsScreenVerified(false);
+        screenStreamRef.current = null;
+      };
     } catch (err) {
       console.error('Screen share verification failed:', err);
     }
@@ -261,6 +351,10 @@ export default function ExamReadinessWizard({
   // Final Complete & Save to Firestore
   const handleFinishWizard = async () => {
     setIsSaving(true);
+    const retainedScreenStream = screenStreamRef.current;
+    // Ownership transferred to StudentView via onComplete
+    screenStreamRef.current = null;
+
     try {
       if (classId && user?.uid) {
         const studentPropRef = doc(db, `classes/${classId}/studentProperties/${user.uid}`);
@@ -283,6 +377,7 @@ export default function ExamReadinessWizard({
         cameraDeviceId: selectedCamera,
         calibrationData,
         isScreenVerified: true,
+        screenStream: retainedScreenStream,
       });
     } catch (err) {
       console.error('Failed to save readiness state:', err);
@@ -291,6 +386,7 @@ export default function ExamReadinessWizard({
         cameraDeviceId: selectedCamera,
         calibrationData,
         isScreenVerified: isScreenVerified,
+        screenStream: retainedScreenStream,
       });
     } finally {
       setIsSaving(false);
@@ -424,40 +520,101 @@ export default function ExamReadinessWizard({
             </div>
 
             {/* STT Test Button */}
-            <div style={{ padding: '1rem', backgroundColor: '#0f172a', borderRadius: '8px', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem' }}>
-                  {isListeningSpeech ? '🎙️ Listening... Say: "I am ready"' : 'Optional Voice Verification:'}
-                </span>
-                <button
-                  type="button"
-                  onClick={startSpeechTest}
-                  disabled={isListeningSpeech}
-                  style={{
-                    padding: '0.4rem 0.8rem',
-                    borderRadius: '6px',
-                    backgroundColor: isListeningSpeech ? '#64748b' : '#3b82f6',
-                    color: '#fff',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isListeningSpeech ? 'Listening...' : 'Test Speech'}
-                </button>
+            <div
+              style={{
+                padding: '1rem',
+                backgroundColor: '#0f172a',
+                borderRadius: '8px',
+                marginBottom: '1.5rem',
+                border: isMicVerified ? '1px solid #059669' : '1px solid #334155',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isMicVerified ? '#34d399' : '#f8fafc' }}>
+                    {isListeningSpeech
+                      ? '🎙️ Listening... Say: "I am ready"'
+                      : isMicVerified
+                      ? '✅ Voice & Microphone Verified'
+                      : 'Optional Voice Verification:'}
+                  </span>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
+                    {isListeningSpeech
+                      ? 'Speak "I am ready" or any sentence into your microphone.'
+                      : 'Test speech recognition or speak into mic to fill volume bar.'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={isListeningSpeech ? stopSpeechTest : startSpeechTest}
+                    style={{
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '6px',
+                      backgroundColor: isListeningSpeech ? '#ef4444' : '#3b82f6',
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isListeningSpeech ? '⏹️ Stop Listening' : 'Test Speech'}
+                  </button>
+                  {!isMicVerified && (
+                    <button
+                      type="button"
+                      onClick={() => setIsMicVerified(true)}
+                      style={{
+                        padding: '0.45rem 0.75rem',
+                        borderRadius: '6px',
+                        backgroundColor: '#334155',
+                        color: '#94a3b8',
+                        border: '1px solid #475569',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                      title="Pass microphone check"
+                    >
+                      Skip / Pass Mic
+                    </button>
+                  )}
+                </div>
               </div>
               {speechTranscript && (
-                <p style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '0.5rem', margin: 0 }}>
+                <p style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '0.6rem', margin: 0 }}>
                   Recognized: "{speechTranscript}"
+                </p>
+              )}
+              {speechError && (
+                <p style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.4rem', margin: 0 }}>
+                  ⚠️ {speechError}
                 </p>
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMicVerified(false);
+                  setStep(2);
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  backgroundColor: '#334155',
+                  color: '#94a3b8',
+                  border: '1px solid #475569',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                No Mic / Skip Mic
+              </button>
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                disabled={!isMicVerified && micVolume === 0}
                 style={{
                   padding: '0.6rem 1.5rem',
                   borderRadius: '8px',
@@ -493,6 +650,7 @@ export default function ExamReadinessWizard({
                 marginBottom: '1rem',
               }}
             >
+              {videoDevices.length === 0 && <option value="">No Camera Detected</option>}
               {videoDevices.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label}
@@ -535,10 +693,12 @@ export default function ExamReadinessWizard({
             </div>
 
             <p style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', marginBottom: '1rem' }}>
-              Center your face inside the outline and look directly at your screen.
+              {videoDevices.length > 0
+                ? 'Center your face inside the outline and look directly at your screen.'
+                : 'No webcam detected. You can proceed directly with screen sharing.'}
             </p>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={() => setStep(1)}
@@ -556,31 +716,51 @@ export default function ExamReadinessWizard({
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button
                   type="button"
-                  onClick={handleCalibrateFace}
+                  onClick={() => {
+                    setIsFaceAligned(false);
+                    setSelectedCamera('');
+                    setStep(3);
+                  }}
                   style={{
-                    padding: '0.6rem 1.2rem',
+                    padding: '0.6rem 1rem',
                     borderRadius: '8px',
-                    backgroundColor: isFaceAligned ? '#059669' : '#f59e0b',
+                    backgroundColor: '#334155',
+                    color: '#cbd5e1',
+                    border: '1px solid #475569',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  No Webcam / Skip
+                </button>
+                {videoDevices.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleCalibrateFace}
+                    style={{
+                      padding: '0.6rem 1.2rem',
+                      borderRadius: '8px',
+                      backgroundColor: isFaceAligned ? '#059669' : '#f59e0b',
+                      color: '#fff',
+                      border: 'none',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isFaceAligned ? '✓ Calibrated' : '👁️ Calibrate Pose'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  style={{
+                    padding: '0.6rem 1.5rem',
+                    borderRadius: '8px',
+                    backgroundColor: '#2563eb',
                     color: '#fff',
                     border: 'none',
                     fontWeight: '600',
                     cursor: 'pointer',
-                  }}
-                >
-                  {isFaceAligned ? '✓ Calibrated' : '👁️ Calibrate Neutral Pose'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep(3)}
-                  disabled={!isFaceAligned}
-                  style={{
-                    padding: '0.6rem 1.5rem',
-                    borderRadius: '8px',
-                    backgroundColor: isFaceAligned ? '#2563eb' : '#475569',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: '600',
-                    cursor: isFaceAligned ? 'pointer' : 'not-allowed',
                   }}
                 >
                   Next: Screen Share →

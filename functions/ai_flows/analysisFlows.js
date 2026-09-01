@@ -22,6 +22,58 @@ function getToolsForAudioAnalysis() {
   return [recordAudioIrregularity, recordAudioAudit, sendMessageToStudent, sendMessageToTeacher];
 }
 
+/**
+ * Executes AI generation with automatic exponential backoff, jitter,
+ * connection reset recovery, and fallback to flash-lite if the primary model is overloaded.
+ */
+async function generateWithResilience(generateConfig, preferredModel) {
+  const modelsToTry = [preferredModel];
+  if (preferredModel !== 'gemini-3.5-flash-lite') {
+    modelsToTry.push('gemini-3.5-flash-lite');
+  }
+
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await ai.generate({
+          ...generateConfig,
+          model: vertexAI.model(modelName),
+        });
+        return { response, modelUsed: modelName };
+      } catch (err) {
+        lastError = err;
+        const msg = String(err?.message || err);
+        const isRetryable =
+          msg.includes('overloaded') ||
+          msg.includes('connection reset') ||
+          msg.includes('ECONNRESET') ||
+          msg.includes('ETIMEDOUT') ||
+          msg.includes('503') ||
+          msg.includes('429') ||
+          msg.includes('RESOURCE_EXHAUSTED') ||
+          msg.includes('UNAVAILABLE') ||
+          msg.includes('INTERNAL');
+
+        console.warn(`[AI Resilience] Attempt ${attempt}/${maxAttempts} for model ${modelName} encountered: ${msg}`);
+
+        if (!isRetryable && attempt === 1) {
+          break;
+        }
+
+        if (attempt < maxAttempts) {
+          const backoffMs = Math.min(800 * Math.pow(2, attempt - 1) + Math.random() * 400, 4000);
+          await new Promise((res) => setTimeout(res, backoffMs));
+        }
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 export const analyzeImageFlow = ai.defineFlow(
   {
     name: 'analyzeImageFlow',
@@ -63,17 +115,16 @@ export const analyzeImageFlow = ai.defineFlow(
       }
 
       try {
-        const response = await ai.generate({
-          model: vertexAI.model(activeModel),
+        const { response, modelUsed: actualModel } = await generateWithResilience({
           temperature: AI_TEMPERATURE,
           topP: AI_TOP_P,
           prompt: fullPrompt,
           tools: getToolsForImageAnalysis(),
           maxToolRoundtrips: 10,
-        });
-        console.log(`AI response usage (${activeModel}):`, response.usage);
+        }, activeModel);
+        console.log(`AI response usage (${actualModel}):`, response.usage);
         const usage = response.usage || {};
-        const cost = calculateCost(usage, activeModel);
+        const cost = calculateCost(usage, actualModel);
 
         await logJob({
           classId,
@@ -88,7 +139,7 @@ export const analyzeImageFlow = ai.defineFlow(
             outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
           },
           cost,
-          modelUsed: activeModel,
+          modelUsed: actualModel,
           result: response.text,
         });
         analysisResults[studentUid] = response.text;
@@ -170,17 +221,16 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
     try {
       const tools = getToolsForVideoAnalysis();
 
-      const response = await ai.generate({
-        model: vertexAI.model(activeModel),
+      const { response, modelUsed: actualModel } = await generateWithResilience({
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
         tools: tools,
         maxToolRoundtrips: 10,
-      });
-      console.log(`AI video response usage (${activeModel}):`, response.usage);
+      }, activeModel);
+      console.log(`AI video response usage (${actualModel}):`, response.usage);
       const usage = response.usage || {};
-      const cost = calculateCost(usage, activeModel);
+      const cost = calculateCost(usage, actualModel);
 
       const jobId = await logJob({
         classId,
@@ -196,7 +246,7 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
           outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
-        modelUsed: activeModel,
+        modelUsed: actualModel,
         result: response.text,
         masterJobId,
       });
@@ -268,17 +318,16 @@ export const analyzeAllImagesFlow = ai.defineFlow(
       const numScreenshots = Object.keys(screenshots).length;
       const maxToolRoundtrips = Math.max(5, numScreenshots * 3);
 
-      const response = await ai.generate({
-        model: vertexAI.model(activeModel),
+      const { response, modelUsed: actualModel } = await generateWithResilience({
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
         tools: getToolsForImageAnalysis(),
         maxToolRoundtrips,
-      });
-      console.log(`AI all-images response usage (${activeModel}):`, response.usage);
+      }, activeModel);
+      console.log(`AI all-images response usage (${actualModel}):`, response.usage);
       const usage = response.usage || {};
-      const cost = calculateCost(usage, activeModel);
+      const cost = calculateCost(usage, actualModel);
 
       await logJob({
         classId,
@@ -291,7 +340,7 @@ export const analyzeAllImagesFlow = ai.defineFlow(
           outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
-        modelUsed: activeModel,
+        modelUsed: actualModel,
         result: response.text,
       });
 
@@ -385,15 +434,14 @@ Respond ONLY with valid JSON in this exact structure:
     }
 
     try {
-      const response = await ai.generate({
-        model: vertexAI.model(activeModel),
+      const { response, modelUsed: actualModel } = await generateWithResilience({
         temperature: 0.1,
         topP: 0.9,
         prompt: fullPrompt,
-      });
+      }, activeModel);
 
       const usage = response.usage || {};
-      const cost = calculateCost(usage, activeModel);
+      const cost = calculateCost(usage, actualModel);
 
       let parsed = { faceStatus: 'normal', confidence: 1.0, reason: 'OK' };
       try {
@@ -423,7 +471,7 @@ Respond ONLY with valid JSON in this exact structure:
           outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
-        modelUsed: activeModel,
+        modelUsed: actualModel,
         result: JSON.stringify(parsed),
       });
 
@@ -505,17 +553,16 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
     }
 
     try {
-      const response = await ai.generate({
-        model: vertexAI.model(activeModel),
+      const { response, modelUsed: actualModel } = await generateWithResilience({
         temperature: AI_TEMPERATURE,
         topP: AI_TOP_P,
         prompt: fullPrompt,
         tools: getToolsForAudioAnalysis(),
         maxToolRoundtrips: 10,
-      });
+      }, activeModel);
 
       const usage = response.usage || {};
-      const cost = calculateCost(usage, activeModel);
+      const cost = calculateCost(usage, actualModel);
 
       await logJob({
         classId,
@@ -530,7 +577,7 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
           outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
         },
         cost,
-        modelUsed: activeModel,
+        modelUsed: actualModel,
         result: response.text,
       });
 

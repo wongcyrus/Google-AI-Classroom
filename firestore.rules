@@ -83,6 +83,19 @@ service cloud.firestore {
       match /lessons/{lessonId} {
         allow read, write: if isTeacherInClass(classId);
       }
+
+      match /audio/{audioId} {
+        allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid);
+        allow create: if request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId);
+        allow update, delete: if isTeacher();
+      }
+
+      match /irregularities/{irregularityId} {
+        allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid);
+        allow create: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId));
+        allow update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(classId));
+        allow delete: if isTeacherInClass(classId);
+      }
     }
 
     match /screenshots/{screenshotId} {
@@ -96,6 +109,7 @@ service cloud.firestore {
         allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
         allow create: if request.auth.uid == request.resource.data.studentUid && 
                          isStudentInClass(request.resource.data.classId);
+        allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
         allow delete: if isTeacher();
     }
 
@@ -106,7 +120,7 @@ service cloud.firestore {
     match /irregularities/{irregularityId} {
       allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
       allow create: if isTeacher() || (request.auth != null && request.auth.uid == request.resource.data.studentUid && isStudentInClass(request.resource.data.classId));
-      allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
+      allow update: if isTeacher();
       allow delete: if isTeacher();
     }
 

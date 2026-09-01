@@ -123,6 +123,7 @@ describe('useFaceMonitor Hook', () => {
           save: vi.fn(),
           restore: vi.fn(),
           beginPath: vi.fn(),
+          closePath: vi.fn(),
           arc: vi.fn(),
           fill: vi.fn(),
           moveTo: vi.fn(),

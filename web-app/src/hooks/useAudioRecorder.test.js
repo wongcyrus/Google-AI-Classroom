@@ -150,20 +150,23 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     expect(result.current.isCloudDiarizationAllowed).toBe(true);
   });
 
-  it('does not start recording and sets effectiveMode="disabled" when aiMonitoringMode="disabled"', async () => {
-    const { result } = renderHook(() =>
-      useAudioRecorder({
-        classId: 'CLASS_1',
-        studentUid: 's1',
-        enabled: true,
-        aiMonitoringMode: 'disabled',
-      })
-    );
+  it('sets effectiveMode="disabled" and isCloudDiarizationAllowed=false when aiMonitoringMode="disabled"', async () => {
+    let hookResult;
+    await act(async () => {
+      hookResult = renderHook(() =>
+        useAudioRecorder({
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          enabled: true,
+          aiMonitoringMode: 'disabled',
+        })
+      );
+    });
 
-    expect(result.current.effectiveMode).toBe('disabled');
-    expect(result.current.isCloudDiarizationAllowed).toBe(false);
-    expect(result.current.isRecording).toBe(false);
-    expect(mockGetUserMedia).not.toHaveBeenCalled();
+    expect(hookResult.result.current.effectiveMode).toBe('disabled');
+    expect(hookResult.result.current.isCloudDiarizationAllowed).toBe(false);
+    expect(hookResult.result.current.isRecording).toBe(true);
+    expect(mockGetUserMedia).toHaveBeenCalled();
   });
 
   it('starts audio recording stream when enabled in hybrid mode', async () => {

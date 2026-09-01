@@ -5,6 +5,8 @@ import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/fire
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
+import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
+import { isGoogleChrome, getBrowserName } from './utils/browserDetection';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -43,13 +45,34 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [unsupportedStudentBrowser, setUnsupportedStudentBrowser] = useState(false);
+  const [detectedBrowser, setDetectedBrowser] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && currentUser.emailVerified) {
         const idTokenResult = await currentUser.getIdTokenResult(true);
+        const resolvedRole = idTokenResult.claims.role || 'student';
+
+        // Enforce Google Chrome strictly for students
+        if (resolvedRole === 'student' && !isGoogleChrome()) {
+          const browserName = getBrowserName();
+          console.warn(`[BrowserEnforcement] Student account ${currentUser.email} attempted login on non-Chrome browser (${browserName}). Forcing logout.`);
+          setDetectedBrowser(browserName);
+          setUnsupportedStudentBrowser(true);
+          try {
+            await signOut(auth);
+          } catch (err) {
+            console.error('Error signing out non-Chrome student:', err);
+          }
+          setUser(null);
+          setRole(null);
+          setLoading(false);
+          return;
+        }
+
         setUser(currentUser);
-        setRole(idTokenResult.claims.role || 'student');
+        setRole(resolvedRole);
       } else {
         setUser(null);
         setRole(null);
@@ -71,6 +94,15 @@ const App = () => {
     );
   }
 
+  if (unsupportedStudentBrowser) {
+    return (
+      <UnsupportedBrowserNotice
+        detectedBrowser={detectedBrowser}
+        onBackToLogin={() => setUnsupportedStudentBrowser(false)}
+      />
+    );
+  }
+
   return (
     <Router>
       <div className="app-container">
@@ -85,7 +117,26 @@ const App = () => {
             <Routes>
               <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
               <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
-              <Route path="/student" element={user && role === 'student' ? <StudentView user={user} /> : <Navigate to="/login" />} />
+              <Route
+                path="/student"
+                element={
+                  user && role === 'student' ? (
+                    isGoogleChrome() ? (
+                      <StudentView user={user} />
+                    ) : (
+                      <UnsupportedBrowserNotice
+                        onBackToLogin={() => {
+                          signOut(auth);
+                          setUser(null);
+                          setRole(null);
+                        }}
+                      />
+                    )
+                  ) : (
+                    <Navigate to="/login" />
+                  )
+                }
+              />
               <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
               <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
               <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />

@@ -136,11 +136,9 @@ const ClassView = ({ user }) => {
     }
   };
 
-  const renderContent = () => {
+  const renderOtherContent = () => {
     const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange, filterField };
     switch (mainTab) {
-      case 'monitor':
-        return <MonitorView {...props} />;
       case 'video':
         switch (subTab) {
           case 'library': return <VideoLibrary {...props} />;
@@ -171,7 +169,7 @@ const ClassView = ({ user }) => {
       case 'settings':
         return <ClassManagement user={user} embeddedClassId={classId} />;
       default:
-        return <MonitorView {...props} />;
+        return null;
     }
   };
 
@@ -342,7 +340,25 @@ const ClassView = ({ user }) => {
       )}
 
       <div className="tab-content">
-        {renderContent()}
+        {/* Keep MonitorView mounted so live AI vision loops & WebRTC connections stay active when navigating between tabs */}
+        <div style={{ display: mainTab === 'monitor' ? 'block' : 'none' }}>
+          <MonitorView 
+            user={user} 
+            classId={classId} 
+            startTime={startTime} 
+            endTime={endTime} 
+            lessons={lessons} 
+            selectedLesson={selectedLesson} 
+            timezone={timezone} 
+            handleLessonChange={handleLessonChange} 
+            filterField={filterField} 
+          />
+        </div>
+        {mainTab !== 'monitor' && (
+          <div className="other-tab-content">
+            {renderOtherContent()}
+          </div>
+        )}
       </div>
     </div>
   );

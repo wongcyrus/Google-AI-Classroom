@@ -126,3 +126,14 @@ functions/ai_flows |   80.38 |    55.78 |   94.73 |   80.38 | 🟢 High Function
 functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
 ==================================================================================
 ```
+
+---
+
+## LiteRT Speech & Intent Model Hook Tests
+
+| Test Suite | Target Component | Coverage Focus |
+| :--- | :--- | :--- |
+| `src/hooks/useClientLiteRTWhisper.test.js` | `useClientLiteRTWhisper` | Web worker lifecycle, audio PCM transcription dispatching, multilingual language propagation, Firestore status telemetry updates, and `onTranscript` callbacks. |
+| `src/hooks/useClientLiteRTGemma.test.js` | `useClientLiteRTGemma` | On-device Gemma LLM initialization, intent classification dispatching, dual Firestore irregularity doc logging (`/irregularities` & `/classes/{classId}/irregularities`), benign vs violation telemetry filtering. |
+| `src/workers/litertWhisper.worker.test.js` | `litertWhisper.worker.js` | Multilingual token decoding, energy thresholding, and message handling. |
+| `src/workers/litertGemma.worker.test.js` | `litertGemma.worker.js` | Intent heuristics, regex matching, and response payload formatting. |

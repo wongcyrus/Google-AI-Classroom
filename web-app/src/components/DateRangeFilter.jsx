@@ -15,7 +15,8 @@ const DateRangeFilter = ({
   timezone,
   filterField,
   onFilterFieldChange,
-  filterFieldOptions
+  filterFieldOptions,
+  showFilterField = true,
 }) => {
 
   const handleStartTimeChange = (e) => {
@@ -31,7 +32,7 @@ const DateRangeFilter = ({
       <label>From: <input type="datetime-local" value={startTime} onChange={handleStartTimeChange} disabled={loading} /></label>
       <label>To: <input type="datetime-local" value={endTime} onChange={handleEndTimeChange} disabled={loading} /></label>
       
-      {filterFieldOptions && onFilterFieldChange && (
+      {showFilterField && filterFieldOptions && onFilterFieldChange && (
         <label>Filter by:
           <select value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)} disabled={loading}>
             {filterFieldOptions.map(option => (

@@ -38,7 +38,7 @@ export const analyzeFaceFallback = onCallGenkit({
 export const analyzeAudio = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.role === 'teacher';
+        return !!auth?.uid;
     },
 }, analyzeAudioFlow);
 

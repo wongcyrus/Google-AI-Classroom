@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ref as storageRef, uploadBytes } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase-config';
 import { saveToOfflineQueue, flushOfflineQueue } from '../utils/offlineBufferManager';
@@ -36,6 +36,9 @@ export function useAudioRecorder({
   const [audioStream, setAudioStream] = useState(null);
   const audioStreamRef = useRef(null);
   const [currentVolume, setCurrentVolume] = useState(0);
+  const [isSpeakingState, setIsSpeakingState] = useState(false);
+  const speechHangoverTimerRef = useRef(null);
+  const isSpeakingRef = useRef(false);
   const [audioError, setAudioError] = useState(null);
   const [uploadedSegmentsCount, setUploadedSegmentsCount] = useState(0);
 
@@ -51,6 +54,10 @@ export function useAudioRecorder({
   const strideTimerRef = useRef(null);
   const strideCountRef = useRef(0);
   const sessionStartTimestampRef = useRef(Date.now());
+  const onAudioUploadedRef = useRef(onAudioUploaded);
+  useEffect(() => {
+    onAudioUploadedRef.current = onAudioUploaded;
+  }, [onAudioUploaded]);
 
   // Effective window and stride settings
   const effWindowSec = Math.max(10, enableMovingWindow ? (windowDuration || segmentDuration || 30) : (segmentDuration || 30));
@@ -65,8 +72,12 @@ export function useAudioRecorder({
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioCtx();
       }
-      if (audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(() => {});
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        try {
+          audioContextRef.current.resume().catch(() => {});
+        } catch {
+          audioContextRef.current = new AudioCtx();
+        }
       }
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -92,6 +103,24 @@ export function useAudioRecorder({
         setCurrentVolume(normalized);
         volumeSamplesRef.current.push(normalized);
 
+        // Smooth speaking indicator with 1.5s hangover
+        if (normalized >= 15) {
+          if (speechHangoverTimerRef.current) {
+            clearTimeout(speechHangoverTimerRef.current);
+            speechHangoverTimerRef.current = null;
+          }
+          if (!isSpeakingRef.current) {
+            isSpeakingRef.current = true;
+            setIsSpeakingState(true);
+          }
+        } else if (isSpeakingRef.current && !speechHangoverTimerRef.current) {
+          speechHangoverTimerRef.current = setTimeout(() => {
+            isSpeakingRef.current = false;
+            setIsSpeakingState(false);
+            speechHangoverTimerRef.current = null;
+          }, 1500);
+        }
+
         // Retain samples for the active window duration (~30s * 60fps = 1800 samples)
         const maxSamples = effWindowSec * 60;
         if (volumeSamplesRef.current.length > maxSamples) {
@@ -110,7 +139,7 @@ export function useAudioRecorder({
 
   // Upload a single audio window blob to Storage and Firestore
   const uploadAudioSegment = useCallback(async (blob, peakVol, avgVol, windowStartOffsetSec = 0) => {
-    if (!classId || !studentUid || isUploadingRef.current) return;
+    if (!classId || !studentUid || isUploadingRef.current || !isRecordingRef.current) return;
     if (!blob || blob.size === 0) return;
 
     // Silence suppression check: if enabled and average volume < 4% and peak < 8%
@@ -152,6 +181,14 @@ export function useAudioRecorder({
         },
       });
 
+      // Resolve direct public download URL immediately
+      let downloadUrl = null;
+      try {
+        downloadUrl = await getDownloadURL(fileRef);
+      } catch (err) {
+        console.warn('[useAudioRecorder] Could not resolve download URL immediately:', err);
+      }
+
       const expireAt = new Date(Date.now() + (retentionDays || 30) * 86400000);
 
       // 2. Write metadata document in Firestore audio/{audioId}
@@ -162,6 +199,7 @@ export function useAudioRecorder({
         studentUid,
         studentEmail,
         audioPath: fullAudioPath,
+        audioUrl: downloadUrl,
         aiMonitoringMode: effectiveMode,
         allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
         duration: effWindowSec,
@@ -179,30 +217,35 @@ export function useAudioRecorder({
         deleted: false,
       });
 
-      // 3. Mirror latest audio path in status/{studentUid}
+      console.log(`[useAudioRecorder] ✅ Uploaded audio segment & recorded Firestore doc audio/${audioDocRef.id} with audioUrl:`, downloadUrl);
+
+      // 3. Mirror latest audio path and download URL in status/{studentUid}
       try {
         const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
-        await updateDoc(statusDocRef, {
+        await setDoc(statusDocRef, {
           latestAudioPath: fullAudioPath,
+          latestAudioUrl: downloadUrl,
           isAudioSharing: true,
           audioLevel: peakVol,
           audioStatus: peakVol >= 50 ? 'speaking' : 'normal',
           lastAudioTimestamp: new Date(now),
-        });
-      } catch {
-        // Status doc might not exist yet, ignore
+        }, { merge: true });
+      } catch (err) {
+        console.warn('[useAudioRecorder] Could not update status doc:', err);
       }
 
       setUploadedSegmentsCount(c => c + 1);
-      onAudioUploaded?.({
+      onAudioUploadedRef.current?.({
         path: fullAudioPath,
+        url: downloadUrl,
         timestamp: now,
         size: blob.size,
         strideIndex,
         windowStartSec: windowStartOffsetSec,
+        blob,
       });
     } catch (err) {
-      console.warn('Network error uploading audio segment, buffering in IndexedDB:', err);
+      console.warn('[useAudioRecorder] ❌ Network error uploading audio segment, buffering in IndexedDB:', err);
       try {
         await saveToOfflineQueue({
           type: 'audio',
@@ -253,6 +296,11 @@ export function useAudioRecorder({
               },
             });
 
+            let downloadUrl = null;
+            try {
+              downloadUrl = await getDownloadURL(fileRef);
+            } catch {}
+
             const expireAt = new Date(itemTime + (item.metadata?.retentionDays || 30) * 86400000);
             const audioDocRef = doc(collection(db, 'audio'));
             await setDoc(audioDocRef, {
@@ -261,6 +309,7 @@ export function useAudioRecorder({
               studentUid: item.studentUid,
               studentEmail: item.studentEmail || '',
               audioPath,
+              audioUrl: downloadUrl,
               duration: item.metadata?.duration || 30,
               strideDuration: item.metadata?.strideDuration || 15,
               strideIndex: item.metadata?.strideIndex || 0,
@@ -289,86 +338,181 @@ export function useAudioRecorder({
     }
   }, []);
 
-  // Process and emit sliding window blob
-  const processSlidingWindow = useCallback((mimeType) => {
-    const now = Date.now();
-    const windowStartTimestamp = now - (effWindowSec * 1000);
-    const sessionElapsedSec = Math.max(0, Math.round((now - sessionStartTimestampRef.current) / 1000) - effWindowSec);
+  const isRecordingRef = useRef(false);
 
-    // Filter chunks falling within the last windowDuration
-    const relevantChunks = rollingChunksRef.current.filter(c => c.timestamp >= windowStartTimestamp);
-    if (relevantChunks.length === 0) return;
-
-    const blobs = relevantChunks.map(c => c.blob);
-    const windowBlob = new Blob(blobs, { type: mimeType });
-
-    // Compute volume statistics across current buffer
-    const samples = volumeSamplesRef.current;
-    const avgVol = samples.length > 0 ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : 0;
-    const peakVol = samples.length > 0 ? Math.max(...samples) : 0;
-
-    strideCountRef.current += 1;
-    uploadAudioSegment(windowBlob, peakVol, avgVol, sessionElapsedSec);
-
-    // Prune chunks older than window duration + buffer
-    const purgeBefore = now - ((effWindowSec + 10) * 1000);
-    rollingChunksRef.current = rollingChunksRef.current.filter(c => c.timestamp >= purgeBefore);
-  }, [effWindowSec, uploadAudioSegment]);
-
-  // Start recording stream
+  // Start recording stream with standalone segment cycling for 100% valid container headers
   const startRecording = useCallback(async () => {
+    if (isRecordingRef.current) return;
+    isRecordingRef.current = true;
     setAudioError(null);
+    console.log('%c[useAudioRecorder:Start] 🎙️ Starting recording stream with deviceId:', 'background:#0891b2;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', deviceId || '(system default)');
     try {
-      const constraints = {
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-        video: false,
-      };
+      let stream = null;
+      if (deviceId) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: deviceId },
+              autoGainControl: true,
+              echoCancellation: true,
+              noiseSuppression: false,
+            },
+            video: false,
+          });
+        } catch (exactErr) {
+          const isConstraintOrDeviceErr = exactErr && (
+            exactErr.name === 'OverconstrainedError' ||
+            exactErr.name === 'ConstraintNotSatisfiedError' ||
+            exactErr.name === 'NotFoundError' ||
+            exactErr.name === 'DevicesNotFoundError' ||
+            /constraint|overconstrained|not found/i.test(exactErr.message || '')
+          );
+          if (!isConstraintOrDeviceErr) {
+            throw exactErr;
+          }
+          console.warn('[useAudioRecorder] Exact deviceId match failed, trying ideal:', exactErr);
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                deviceId: { ideal: deviceId },
+                autoGainControl: true,
+                echoCancellation: true,
+                noiseSuppression: false,
+              },
+              video: false,
+            });
+          } catch (idealErr) {
+            console.warn('[useAudioRecorder] Ideal deviceId match failed, trying default audio:', idealErr);
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                autoGainControl: true,
+                echoCancellation: true,
+                noiseSuppression: false,
+              },
+              video: false,
+            });
+          }
+        }
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: false,
+          },
+          video: false,
+        });
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       audioStreamRef.current = stream;
       setAudioStream(stream);
       startVolumeAnalysis(stream);
 
-      const mimeType = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      const tracks = stream.getAudioTracks();
+      const activeTrack = tracks[0];
+      console.log('%c[useAudioRecorder:TrackAcquired] ✅ Microphone track acquired:', 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+        requestedDeviceId: deviceId || '(default)',
+        actualLabel: activeTrack?.label || 'unknown',
+        actualDeviceId: activeTrack?.getSettings?.().deviceId || deviceId,
+        readyState: activeTrack?.readyState,
+        enabled: activeTrack?.enabled,
+      });
 
-      const recorder = new MediaRecorder(stream, { mimeType });
-      rollingChunksRef.current = [];
+      let effectiveMime = '';
+      const candidateMimes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/aac',
+        'audio/wav',
+      ];
+
+      if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+        for (const candidate of candidateMimes) {
+          if (MediaRecorder.isTypeSupported(candidate)) {
+            effectiveMime = candidate;
+            break;
+          }
+        }
+      }
+
+      console.log('[useAudioRecorder] ⏺️ MediaRecorder using MIME:', effectiveMime || 'default');
+
       volumeSamplesRef.current = [];
       strideCountRef.current = 0;
       sessionStartTimestampRef.current = Date.now();
-
-      // Collect 1-second chunks for granular sliding buffer
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          rollingChunksRef.current.push({
-            blob: event.data,
-            timestamp: Date.now(),
-          });
-        }
-      };
-
-      // Set up rolling stride interval
-      const strideIntervalMs = effStrideSec * 1000;
-      strideTimerRef.current = setInterval(() => {
-        if (recorder.state === 'recording') {
-          processSlidingWindow(mimeType);
-        }
-      }, strideIntervalMs);
-
-      recorder.onstop = () => {
-        if (strideTimerRef.current) {
-          clearInterval(strideTimerRef.current);
-          strideTimerRef.current = null;
-        }
-        setIsRecording(false);
-      };
-
-      // Request data in 1-second timeslices
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
+      isRecordingRef.current = true;
       setIsRecording(true);
+
+      const segmentDurationMs = Math.max(5000, (effStrideSec || 15) * 1000);
+
+      const recordSegment = () => {
+        if (!isRecordingRef.current || !audioStreamRef.current) return;
+
+        let recorder;
+        try {
+          recorder = effectiveMime
+            ? new MediaRecorder(audioStreamRef.current, { mimeType: effectiveMime })
+            : new MediaRecorder(audioStreamRef.current);
+        } catch {
+          recorder = new MediaRecorder(audioStreamRef.current);
+        }
+
+        mediaRecorderRef.current = recorder;
+        const segmentChunks = [];
+        const segmentStart = Date.now();
+
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            segmentChunks.push(event.data);
+          }
+        };
+
+        recorder.onerror = (e) => {
+          console.error('[useAudioRecorder] ❌ MediaRecorder error:', e);
+        };
+
+        recorder.onstop = () => {
+          if (segmentChunks.length > 0) {
+            const finalMime = effectiveMime || recorder.mimeType || 'audio/webm';
+            const segmentBlob = new Blob(segmentChunks, { type: finalMime });
+
+            const samples = volumeSamplesRef.current;
+            const avgVol = samples.length > 0 ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) : 0;
+            const peakVol = samples.length > 0 ? Math.max(...samples) : 0;
+            volumeSamplesRef.current = []; // Reset for next segment
+
+            const sessionElapsedSec = Math.max(0, Math.round((segmentStart - sessionStartTimestampRef.current) / 1000));
+            strideCountRef.current += 1;
+
+            uploadAudioSegment(segmentBlob, peakVol, avgVol, sessionElapsedSec);
+          }
+
+          // Cycle to the next segment if still recording
+          if (isRecordingRef.current && audioStreamRef.current) {
+            recordSegment();
+          }
+        };
+
+        // Start recorder cleanly (generates fresh EBML container header for this file)
+        recorder.start();
+
+        // Schedule stop for this segment
+        strideTimerRef.current = setTimeout(() => {
+          if (recorder && recorder.state === 'recording') {
+            try {
+              recorder.stop();
+            } catch (err) {
+              console.warn('[useAudioRecorder] Error stopping segment recorder:', err);
+            }
+          }
+        }, segmentDurationMs);
+      };
+
+      // Kick off first segment
+      recordSegment();
+      console.log('[useAudioRecorder] 🟢 Recording active. Segment duration:', effStrideSec, 'seconds.');
 
       // Immediately notify status doc that microphone recording has started
       try {
@@ -385,30 +529,41 @@ export function useAudioRecorder({
 
       return stream;
     } catch (err) {
-      console.error('Error starting audio recorder:', err);
+      console.error('[useAudioRecorder] ❌ Error starting audio recorder:', err);
       setAudioError(err.message || 'Microphone capture error');
+      isRecordingRef.current = false;
       setIsRecording(false);
       return null;
     }
-  }, [deviceId, effStrideSec, processSlidingWindow, startVolumeAnalysis, classId, studentUid]);
+  }, [deviceId, effStrideSec, uploadAudioSegment, startVolumeAnalysis, classId, studentUid]);
 
   // Stop recording stream
   const stopRecording = useCallback(() => {
+    console.log('[useAudioRecorder] ⏹️ Stopping audio recording...');
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    setCurrentVolume(0);
+
     if (strideTimerRef.current) {
-      clearInterval(strideTimerRef.current);
+      clearTimeout(strideTimerRef.current);
       strideTimerRef.current = null;
     }
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current) {
       try {
-        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.ondataavailable = null;
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
       } catch (e) {
-        console.warn('Error stopping MediaRecorder:', e);
+        console.warn('[useAudioRecorder] Error stopping MediaRecorder:', e);
       }
+      mediaRecorderRef.current = null;
     }
 
     if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
       audioStreamRef.current = null;
     }
     setAudioStream(null);
@@ -423,9 +578,6 @@ export function useAudioRecorder({
       audioContextRef.current = null;
     }
 
-    setIsRecording(false);
-    setCurrentVolume(0);
-
     try {
       if (classId && studentUid) {
         const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
@@ -438,27 +590,40 @@ export function useAudioRecorder({
     } catch {}
   }, [classId, studentUid]);
 
-  // Automatically start/stop when enabled flag or effectiveMode changes
+  const currentDeviceIdRef = useRef(deviceId);
+
+  // Automatically start/stop when enabled flag or params change
   useEffect(() => {
-    const isModeActive = effectiveMode !== 'disabled';
-    if (enabled && isModeActive && classId && studentUid && !isRecording) {
-      startRecording();
-    } else if ((!enabled || !isModeActive) && isRecording) {
+    const shouldRecord = Boolean(enabled && classId && studentUid);
+    const deviceChanged = currentDeviceIdRef.current !== deviceId;
+    currentDeviceIdRef.current = deviceId;
+
+    if (shouldRecord) {
+      if (deviceChanged && isRecordingRef.current) {
+        console.log('[useAudioRecorder] 🔄 Microphone deviceId changed to:', deviceId || '(default)', '- switching stream...');
+        stopRecording();
+        startRecording();
+      } else if (!isRecordingRef.current) {
+        startRecording();
+      }
+    } else if (!shouldRecord && isRecordingRef.current) {
       stopRecording();
     }
+  }, [enabled, effectiveMode, classId, studentUid, deviceId, startRecording, stopRecording]);
 
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      // Unconditional cleanup on unmount
       stopRecording();
     };
-  }, [enabled, effectiveMode, classId, studentUid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     isRecording,
     audioStream,
     currentVolume,
     audioLevel: currentVolume / 100,
-    isSpeaking: currentVolume >= 15,
+    isSpeaking: isSpeakingState,
     hasMicPermission: !audioError,
     audioError,
     effectiveMode,

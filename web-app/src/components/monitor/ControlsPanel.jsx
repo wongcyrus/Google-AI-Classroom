@@ -27,15 +27,34 @@ const ControlsPanel = ({
     faceDebounceSeconds = 3, handleFaceDebounceChange,
     enableCloudFallback = false, handleEnableCloudFallbackChange,
     cloudFallbackRate = 3, handleCloudFallbackRateChange,
+    voiceAiMode = 'hybrid',
+    speechLanguage = 'zh-HK',
+    audioSegmentDuration = 30,
+    audioMovingWindowStride = 15,
+    audioSilenceSuppression = true,
+    vadSensitivity = 15,
+    voiceAiCloudFallbackRate = 3,
+    handleSaveAiSettings,
     handleSaveGazeSettings,
     handleBroadcastPreloadAi,
-    classId
+    classId,
+    prompts = [],
+    selectedPrompt = null,
+    setSelectedPrompt,
+    promptFilter = 'all',
+    setPromptFilter,
+    filteredPrompts = [],
+    setEditablePromptText,
+    handleRunAnalysis,
+    handleRunAllImagesAnalysis,
+    isAnalyzing = false
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
     const [isPreloadSent, setIsPreloadSent] = useState(false);
+    const [modalConfigTab, setModalConfigTab] = useState('webcam'); // 'webcam' | 'voice' | 'screen'
 
-    // Derive current mode with fallback
+    // Derive current modes with fallback
     const currentMode = (() => {
       if (aiMonitoringMode) return aiMonitoringMode;
       if (enableClientAi === false && !enableCloudFallback) return 'disabled';
@@ -44,6 +63,9 @@ const ControlsPanel = ({
       return 'hybrid';
     })();
 
+    const currentVoiceMode = voiceAiMode || 'hybrid';
+
+    // Modal state
     const [modalAiMonitoringMode, setModalAiMonitoringMode] = useState('hybrid');
     const [modalGazeSensitivity, setModalGazeSensitivity] = useState('standard');
     const [modalCustomYawAngle, setModalCustomYawAngle] = useState(25);
@@ -51,6 +73,17 @@ const ControlsPanel = ({
     const [modalCustomPitchUpAngle, setModalCustomPitchUpAngle] = useState(26);
     const [modalFaceDebounceSeconds, setModalFaceDebounceSeconds] = useState(3);
     const [modalCloudFallbackRate, setModalCloudFallbackRate] = useState(3);
+
+    const [modalVoiceAiMode, setModalVoiceAiMode] = useState('hybrid');
+    const [modalSpeechLanguage, setModalSpeechLanguage] = useState('zh-HK');
+    const [modalAudioSegmentDuration, setModalAudioSegmentDuration] = useState(30);
+    const [modalAudioMovingWindowStride, setModalAudioMovingWindowStride] = useState(15);
+    const [modalAudioSilenceSuppression, setModalAudioSilenceSuppression] = useState(true);
+    const [modalVadSensitivity, setModalVadSensitivity] = useState(15);
+    const [modalVoiceAiCloudFallbackRate, setModalVoiceAiCloudFallbackRate] = useState(3);
+    const [modalSelectedAiModel, setModalSelectedAiModel] = useState('gemini-3.5-flash-lite');
+    const [modalSamplingRate, setModalSamplingRate] = useState(5);
+    const [modalEditablePromptText, setModalEditablePromptText] = useState('');
 
     const openGazeConfigModal = () => {
       setModalAiMonitoringMode(currentMode);
@@ -60,6 +93,18 @@ const ControlsPanel = ({
       setModalCustomPitchUpAngle(customPitchUpAngle !== undefined ? customPitchUpAngle : 26);
       setModalFaceDebounceSeconds(faceDebounceSeconds || 3);
       setModalCloudFallbackRate(cloudFallbackRate || 3);
+
+      setModalVoiceAiMode(currentVoiceMode);
+      setModalSpeechLanguage(speechLanguage || 'zh-HK');
+      setModalAudioSegmentDuration(audioSegmentDuration || 30);
+      setModalAudioMovingWindowStride(audioMovingWindowStride || 15);
+      setModalAudioSilenceSuppression(audioSilenceSuppression !== undefined ? audioSilenceSuppression : true);
+      setModalVadSensitivity(vadSensitivity || 15);
+      setModalVoiceAiCloudFallbackRate(voiceAiCloudFallbackRate || 3);
+      setModalSelectedAiModel(selectedAiModel || 'gemini-3.5-flash-lite');
+      setModalSamplingRate(samplingRate || 5);
+      setModalEditablePromptText(editablePromptText || '');
+
       setShowGazeModal(true);
     };
 
@@ -67,8 +112,14 @@ const ControlsPanel = ({
       const clientAllowed = modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'client_only';
       const cloudAllowed = modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'cloud_only';
 
-      if (handleSaveGazeSettings) {
-        await handleSaveGazeSettings({
+      if (setSamplingRate) setSamplingRate(modalSamplingRate);
+      if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+      if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
+
+      const saveFn = handleSaveAiSettings || handleSaveGazeSettings;
+      if (saveFn) {
+        await saveFn({
+          // Webcam & Gaze
           aiMonitoringMode: modalAiMonitoringMode,
           enableClientAi: clientAllowed,
           gazeSensitivity: modalGazeSensitivity,
@@ -78,11 +129,22 @@ const ControlsPanel = ({
           faceDebounceSeconds: modalFaceDebounceSeconds,
           enableCloudFallback: cloudAllowed,
           cloudFallbackRate: modalCloudFallbackRate,
+          // Voice
+          voiceAiMode: modalVoiceAiMode,
+          speechLanguage: modalSpeechLanguage,
+          audioSegmentDuration: modalAudioSegmentDuration,
+          audioMovingWindowStride: modalAudioMovingWindowStride,
+          audioSilenceSuppression: modalAudioSilenceSuppression,
+          vadSensitivity: modalVadSensitivity,
+          voiceAiCloudFallbackRate: modalVoiceAiCloudFallbackRate,
+          // Screen / Cloud Model
+          selectedAiModel: modalSelectedAiModel,
         });
       } else {
         if (handleFaceDebounceChange) handleFaceDebounceChange(modalFaceDebounceSeconds);
         if (handleEnableCloudFallbackChange) handleEnableCloudFallbackChange(cloudAllowed);
         if (handleCloudFallbackRateChange) handleCloudFallbackRateChange(modalCloudFallbackRate);
+        if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
       }
       setShowGazeModal(false);
     };
@@ -99,55 +161,150 @@ const ControlsPanel = ({
         </div>
 
         {/* 1. Session & Stream Control */}
-        <div className="control-section">
-            <h4 className="control-section-header">🎬 Session & Stream</h4>
-            <div className="button-vertical-stack">
+        <div className="control-section" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h4 className="control-section-header" style={{ margin: 0 }}>🎬 Session & Stream</h4>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: '12px',
+                background: isCapturing ? (isPaused ? '#fef3c7' : '#dcfce7') : '#f1f5f9',
+                color: isCapturing ? (isPaused ? '#92400e' : '#15803d') : '#64748b',
+                border: `1px solid ${isCapturing ? (isPaused ? '#fde68a' : '#bbf7d0') : '#e2e8f0'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {isCapturing ? (isPaused ? '⏸ Paused' : '🟢 Live Recording') : '⚪ Idle'}
+              </span>
+            </div>
+
+            {/* Main Action Buttons */}
+            {!isCapturing ? (
+              <button 
+                onClick={toggleCapture} 
+                className="success-action-btn"
+                style={{ 
+                  width: '100%', 
+                  fontSize: '0.92rem', 
+                  padding: '0.7rem 1rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px', 
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 4px rgba(16,185,129,0.2)'
+                }}
+              >
+                ▶ Start Capture
+              </button>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <button 
                   onClick={toggleCapture} 
-                  className={isCapturing ? "danger-action-btn" : "success-action-btn"}
-                  style={{ fontSize: '0.92rem', padding: '0.65rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  className="danger-action-btn"
+                  style={{ 
+                    fontSize: '0.86rem', 
+                    padding: '0.6rem 0.75rem', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '6px', 
+                    borderRadius: '6px' 
+                  }}
                 >
-                  {isCapturing ? '⏹ Stop Capture' : '▶ Start Capture'}
+                  ⏹ Stop Capture
                 </button>
                 <button 
                   onClick={() => setIsPaused(!isPaused)} 
                   className="secondary-action"
-                  style={{ fontSize: '0.85rem', padding: '0.5rem 0.8rem' }}
+                  style={{ 
+                    fontSize: '0.86rem', 
+                    padding: '0.6rem 0.75rem', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '6px', 
+                    borderRadius: '6px',
+                    background: isPaused ? '#eff6ff' : '#ffffff',
+                    color: isPaused ? '#1d4ed8' : '#334155',
+                    borderColor: isPaused ? '#bfdbfe' : '#cbd5e1'
+                  }}
                 >
                   {isPaused ? '▶ Resume Stream' : '⏸ Pause Stream'}
                 </button>
-            </div>
+              </div>
+            )}
 
-            <div className="stream-settings-compact" style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-              <div className="control-form-grid">
-                <div className="control-item">
-                  <label>Channel:</label>
-                  <select value={selectedChannel} onChange={(e) => setSelectedChannel && setSelectedChannel(e.target.value)}>
-                    <option value="both">Dual (Screen + Webcam)</option>
-                    <option value="screen">🖥️ Screen Only</option>
-                    <option value="webcam">📷 Webcam Only</option>
-                  </select>
+            {/* Media Stream Channels (Screen, Webcam, Voice) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
+              {/* Channel 1: Video Streams (Screen & Webcam) */}
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    🖥️ Video Channels
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Screen & Webcam</span>
                 </div>
-                <div className="control-item">
-                  <label>🎙️ Audio Stream:</label>
-                  <select 
-                    value={enableAudioCapture ? 'on' : 'off'} 
-                    onChange={(e) => handleAudioCaptureToggle && handleAudioCaptureToggle(e.target.value === 'on')}
-                  >
-                    <option value="on">🟢 Recording (Segments)</option>
-                    <option value="off">🚫 Disabled (Muted)</option>
-                  </select>
+                <select 
+                  value={selectedChannel} 
+                  onChange={(e) => setSelectedChannel && setSelectedChannel(e.target.value)}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff', color: '#1e293b', fontWeight: 500 }}
+                >
+                  <option value="both">🖥️+📷 Dual (Screen + Webcam)</option>
+                  <option value="screen">🖥️ Screen Only</option>
+                  <option value="webcam">📷 Webcam Only</option>
+                </select>
+              </div>
+
+              {/* Channel 2: Audio Stream (Voice & Mic) */}
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    🎙️ Audio Stream
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: enableAudioCapture ? '#15803d' : '#94a3b8', fontWeight: 600 }}>
+                    {enableAudioCapture ? '🟢 Active' : '🔇 Muted'}
+                  </span>
                 </div>
-                <div className="control-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <div className="control-item">
-                    <label>Interval:</label>
-                    <select value={frameRate} onChange={handleFrameRateChange}>
+                <select 
+                  value={enableAudioCapture ? 'on' : 'off'} 
+                  onChange={(e) => handleAudioCaptureToggle && handleAudioCaptureToggle(e.target.value === 'on')}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff', color: '#1e293b', fontWeight: 500 }}
+                >
+                  <option value="on">🟢 Recording (Segments)</option>
+                  <option value="off">🚫 Disabled (Muted)</option>
+                </select>
+              </div>
+
+              {/* Cadence & Size Settings */}
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  ⚡ Cadence & Bandwidth
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginBottom: '3px' }}>
+                      ⏱️ Interval
+                    </label>
+                    <select 
+                      value={frameRate} 
+                      onChange={handleFrameRateChange}
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    >
                       {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}s</option>)}
                     </select>
                   </div>
-                  <div className="control-item">
-                    <label>Max Size:</label>
-                    <select value={maxImageSize} onChange={handleMaxImageSizeChange}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginBottom: '3px' }}>
+                      📦 Max Size
+                    </label>
+                    <select 
+                      value={maxImageSize} 
+                      onChange={handleMaxImageSizeChange}
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    >
                       {maxImageSizeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
                   </div>
@@ -203,88 +360,112 @@ const ControlsPanel = ({
             </div>
         </div>
 
-        {/* 3. AI Monitoring & Invigilation */}
+        {/* 3. AI Monitoring & Invigilation Suite (Webcam, Voice, Screen) */}
         <div className="control-section highlight-section">
-            <h4 className="control-section-header">👁️ AI & Invigilation</h4>
+            <h4 className="control-section-header">🧠 AI & Invigilation Suite</h4>
 
-            {/* Gaze Monitoring Status Box */}
-            <div style={{ 
-              background: currentMode === 'disabled' ? '#fef2f2' : currentMode === 'cloud_only' ? '#eff6ff' : '#f0fdf4', 
-              border: `1px solid ${currentMode === 'disabled' ? '#fecaca' : currentMode === 'cloud_only' ? '#bfdbfe' : '#bbf7d0'}`, 
-              borderRadius: '8px', 
-              padding: '8px 10px', 
-              marginBottom: '8px',
-              fontSize: '0.8rem'
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e0e7ff',
+              borderRadius: '8px',
+              padding: '8px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span style={{ fontWeight: 600, color: currentMode === 'disabled' ? '#991b1b' : currentMode === 'cloud_only' ? '#1e40af' : '#166534' }}>
-                  {currentMode === 'hybrid' && '⚡ Client AI + Fallback'}
-                  {currentMode === 'client_only' && '💻 Client AI Only'}
-                  {currentMode === 'cloud_only' && '☁️ Cloud AI Only'}
-                  {currentMode === 'disabled' && '🚫 AI Disabled'}
-                </span>
-                {(currentMode === 'hybrid' || currentMode === 'client_only') && (
-                  <span style={{ fontSize: '0.72rem', background: 'rgba(0,0,0,0.06)', padding: '1px 5px', borderRadius: '4px', textTransform: 'capitalize' }}>
-                    {gazeSensitivity}
+              {/* Modality 1: 📷 Webcam (Face & Gaze Monitoring) */}
+              <div>
+                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>📷 WEBCAM (Face & Gaze):</span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontWeight: 600,
+                    background: currentMode === 'disabled' ? '#fee2e2' : currentMode === 'cloud_only' ? '#eff6ff' : '#dcfce7',
+                    color: currentMode === 'disabled' ? '#991b1b' : currentMode === 'cloud_only' ? '#1e40af' : '#166534'
+                  }}>
+                    {currentMode === 'hybrid' && '⚡ MediaPipe + Cloud'}
+                    {currentMode === 'client_only' && '💻 MediaPipe Local'}
+                    {currentMode === 'cloud_only' && '☁️ Cloud Gemini'}
+                    {currentMode === 'disabled' && '🚫 Disabled'}
                   </span>
-                )}
+                </div>
+                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {currentMode === 'disabled' ? 'Face & gaze tracking is deactivated.' : `Sensitivity: ${gazeSensitivity} • Debounce: ${faceDebounceSeconds}s`}
+                </div>
               </div>
-              <div style={{ color: '#475569', fontSize: '0.74rem', lineHeight: 1.35 }}>
-                {currentMode === 'disabled' ? (
-                  'Face & gaze tracking is deactivated.'
-                ) : currentMode === 'cloud_only' ? (
-                  `Cloud Gemini frame checks (~${(cloudFallbackRate || 3) * 5}s)`
-                ) : (
-                  gazeSensitivity === 'custom' 
-                    ? `Yaw ±${customYawAngle}°, Pitch ${customPitchDownAngle}°/+${customPitchUpAngle}°`
-                    : gazeSensitivity === 'relaxed'
-                    ? 'Yaw ±28°, Pitch -26°/+30°'
-                    : gazeSensitivity === 'strict'
-                    ? 'Yaw ±16°, Pitch -16°/+22°'
-                    : 'Yaw ±22°, Pitch -20°/+26° (Standard)'
-                )}
+
+              {/* Modality 2: 🎙️ Voice & Speech Intelligence (Whisper + Gemma) */}
+              <div style={{ paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>🎙️ VOICE (Whisper STT):</span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontWeight: 600,
+                    background: currentVoiceMode === 'disabled' ? '#fee2e2' : currentVoiceMode === 'cloud_only' ? '#eff6ff' : '#dbeafe',
+                    color: currentVoiceMode === 'disabled' ? '#991b1b' : currentVoiceMode === 'cloud_only' ? '#1e40af' : '#1e40af'
+                  }}>
+                    {currentVoiceMode === 'hybrid' && '⚡ Whisper + Gemma'}
+                    {currentVoiceMode === 'client_only' && '💻 Whisper Local'}
+                    {currentVoiceMode === 'cloud_only' && '☁️ Cloud Audio'}
+                    {currentVoiceMode === 'disabled' && '🚫 Disabled'}
+                  </span>
+                </div>
+                <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {currentVoiceMode === 'disabled' ? 'Voice STT is deactivated.' : `Stride: ${audioMovingWindowStride || 15}s / ${audioSegmentDuration || 30}s (VAD: ${vadSensitivity || 15}%)`}
+                </div>
               </div>
-              {currentMode !== 'disabled' && (
-                <div style={{ color: '#64748b', fontSize: '0.7rem', marginTop: '3px' }}>
-                  Debounce: {faceDebounceSeconds}s {currentMode === 'hybrid' ? `• Fallback: ~${(cloudFallbackRate || 3) * 5}s` : ''}
+
+              {/* Modality 3: 🖥️ Screen & Multimodal Vision Analysis */}
+              <div style={{ paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>🖥️ SCREEN (Gemini Vision):</span>
+                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontWeight: 600 }}>
+                    {selectedAiModel === 'gemini-3.7-pro' ? '🔬 3.7 Pro' : selectedAiModel === 'gemini-3.7-flash' ? '🧠 3.7 Flash' : '⚡ 3.5 Flash-Lite'}
+                  </span>
+                </div>
+                <div style={{ color: '#64748b', fontSize: '0.7rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>⏱️ Interval: Every {samplingRate}r (~{samplingRate * (frameRate || 15)}s)</span>
+                  <span style={{
+                    fontWeight: 600,
+                    color: isPerImageAnalysisRunning || isAllImagesAnalysisRunning ? '#16a34a' : '#64748b'
+                  }}>
+                    {isAllImagesAnalysisRunning ? '⚡ All-Screens Stream' : isPerImageAnalysisRunning ? '✨ Per-Screen Stream' : 'Idle'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Active Screen Stream Stop Button */}
+              {(isPerImageAnalysisRunning || isAllImagesAnalysisRunning) && (
+                <div style={{ paddingTop: '4px' }}>
+                  {isPerImageAnalysisRunning && (
+                    <button onClick={() => setIsPerImageAnalysisRunning(false)} className="danger-action-btn" style={{ width: '100%', fontSize: '0.78rem', padding: '5px' }}>
+                      ⏹ Stop Per-Image Stream
+                    </button>
+                  )}
+                  {isAllImagesAnalysisRunning && (
+                    <button onClick={() => setIsAllImagesAnalysisRunning(false)} className="danger-action-btn" style={{ width: '100%', fontSize: '0.78rem', padding: '5px' }}>
+                      ⏹ Stop All-Images Stream
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
-            <button
-              type="button"
-              className="action-btn"
-              style={{
-                width: '100%',
-                padding: '6px 10px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                background: '#4f46e5',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '5px',
-                marginBottom: '10px'
-              }}
-              onClick={openGazeConfigModal}
-            >
-              ⚙️ Configure Gaze & Mode
-            </button>
-
-            {(currentMode === 'hybrid' || currentMode === 'client_only') && (
+            {/* AI Suite Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
               <button
                 type="button"
-                className="action-btn preload-broadcast-btn"
+                className="action-btn"
                 style={{
                   width: '100%',
-                  padding: '6px 10px',
-                  fontSize: '0.78rem',
+                  padding: '7px 10px',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
-                  background: isPreloadSent ? '#059669' : '#0d9488',
+                  background: '#4f46e5',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '6px',
@@ -292,87 +473,43 @@ const ControlsPanel = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '5px',
-                  marginBottom: '10px',
-                  transition: 'background 0.2s ease'
+                  gap: '5px'
                 }}
-                onClick={async () => {
-                  if (handleBroadcastPreloadAi) {
-                    await handleBroadcastPreloadAi();
-                    setIsPreloadSent(true);
-                    setTimeout(() => setIsPreloadSent(false), 3000);
-                  }
-                }}
-                title="Broadcast preload signal to all enrolled student browsers to download and cache on-device AI model"
+                onClick={openGazeConfigModal}
               >
-                {isPreloadSent ? '✅ AI Preload Broadcasted' : '⚡ Preload AI for All Students'}
+                ⚙️ Configure AI Suite (Webcam, Voice, Screen)
               </button>
-            )}
 
-            {/* Cloud Gemini Multimodal Analysis Controls */}
-            <div style={{ paddingTop: '8px', borderTop: '1px solid #e0e7ff' }}>
-              <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>Gemini Model:</span>
-                <span style={{ fontSize: '0.72rem', padding: '1px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontWeight: 600 }}>
-                  {selectedAiModel === 'gemini-3.7-pro' ? '🔬 3.7 Pro' : selectedAiModel === 'gemini-3.7-flash' ? '🧠 3.7 Flash' : '⚡ 3.5 Flash-Lite'}
-                </span>
-              </div>
-
-              {editablePromptText ? (
-                <>
-                  <div className="button-vertical-stack" style={{ gap: '0.45rem' }}>
-                    {!isPerImageAnalysisRunning && !isAllImagesAnalysisRunning && (
-                      <>
-                        <button onClick={() => setIsPerImageAnalysisRunning(true)} className="ai-action-btn" style={{ fontSize: '0.8rem', padding: '6px 8px' }}>
-                          ✨ Start Per-Image Analysis
-                        </button>
-                        <button onClick={() => setIsAllImagesAnalysisRunning(true)} className="ai-action-btn" style={{ fontSize: '0.8rem', padding: '6px 8px' }}>
-                          ⚡ Start All-Images Analysis
-                        </button>
-                      </>
-                    )}
-                    {isPerImageAnalysisRunning && (
-                      <button onClick={() => setIsPerImageAnalysisRunning(false)} className="danger-action-btn" style={{ fontSize: '0.8rem', padding: '6px 8px' }}>
-                        ⏹ Stop Per-Image Analysis
-                      </button>
-                    )}
-                    {isAllImagesAnalysisRunning && (
-                      <button onClick={() => setIsAllImagesAnalysisRunning(false)} className="danger-action-btn" style={{ fontSize: '0.8rem', padding: '6px 8px' }}>
-                        ⏹ Stop All-Images Analysis
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="interval-slider-group" style={{ marginTop: '0.65rem', marginBottom: '0.65rem' }}>
-                    <label className="slider-label" style={{ fontSize: '0.75rem' }}>
-                      <span>Inspection Interval:</span>
-                      <strong>Every {samplingRate} rounds</strong>
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={samplingRate}
-                      onChange={(e) => setSamplingRate(Number(e.target.value))}
-                      className="interval-slider"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => setShowPromptModal(true)}
-                    className="secondary-action"
-                    style={{ width: '100%', fontSize: '0.78rem', padding: '4px 6px' }}
-                  >
-                    ⚙️ Change Prompt & Model
-                  </button>
-                </>
-              ) : (
-                <button 
-                  onClick={() => setShowPromptModal(true)} 
-                  className="secondary-btn" 
-                  style={{ width: '100%', fontSize: '0.8rem', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+              {(currentMode === 'hybrid' || currentMode === 'client_only' || currentVoiceMode === 'hybrid' || currentVoiceMode === 'client_only') && (
+                <button
+                  type="button"
+                  className="action-btn preload-broadcast-btn"
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    background: isPreloadSent ? '#059669' : '#0d9488',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    transition: 'background 0.2s ease'
+                  }}
+                  onClick={async () => {
+                    if (handleBroadcastPreloadAi) {
+                      await handleBroadcastPreloadAi();
+                      setIsPreloadSent(true);
+                      setTimeout(() => setIsPreloadSent(false), 3000);
+                    }
+                  }}
+                  title="Broadcast preload signal to all enrolled student browsers to download and cache on-device AI models"
                 >
-                  ✨ Select Analysis Prompt
+                  {isPreloadSent ? '✅ AI Preload Broadcasted' : '⚡ Preload AI for All Students'}
                 </button>
               )}
             </div>
@@ -488,169 +625,575 @@ const ControlsPanel = ({
           </Modal>
         )}
 
-        {/* Gaze & Invigilation Modal */}
+        {/* AI Modalities & Invigilation Configuration Modal */}
         {showGazeModal && (
           <Modal 
             show={showGazeModal} 
             onClose={() => setShowGazeModal(false)}
-            title="👁️ Gaze & Invigilation AI Configuration"
+            title="🧠 AI & Invigilation Suite Configuration"
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', paddingRight: '4px' }}>
-              <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem', marginBottom: '6px' }}>
-                  AI Face & Gaze Monitoring Mode:
-                </label>
-                <select
-                  value={modalAiMonitoringMode}
-                  onChange={(e) => setModalAiMonitoringMode(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '75vh', overflowY: 'auto', paddingRight: '4px' }}>
+              {/* Modality Tabs */}
+              <div style={{ display: 'flex', borderBottom: '1px solid #cbd5e1', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalConfigTab('webcam')}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderBottom: modalConfigTab === 'webcam' ? '3px solid #4f46e5' : '3px solid transparent',
+                    background: modalConfigTab === 'webcam' ? '#eef2ff' : 'transparent',
+                    color: modalConfigTab === 'webcam' ? '#4338ca' : '#64748b',
+                    borderRadius: '6px 6px 0 0',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
                 >
-                  <option value="hybrid">⚡ Client-side, then fallback to Cloud (Recommended — On-device MediaPipe, fallback to Cloud Gemini)</option>
-                  <option value="cloud_only">☁️ Just Cloud (Periodic Cloud Gemini Vision frame inspections)</option>
-                  <option value="client_only">💻 Just Client-side (100% Free on-device MediaPipe, zero Cloud quota)</option>
-                  <option value="disabled">🚫 Disable it (Turn off all face/gaze AI monitoring)</option>
-                </select>
-                <p style={{ margin: '6px 0 0 0', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>
-                  {modalAiMonitoringMode === 'hybrid' && 'Runs real-time face presence and gaze tracking on student machines for free, automatically falling back to Cloud Gemini AI if a student device cannot run local AI.'}
-                  {modalAiMonitoringMode === 'cloud_only' && 'Webcam frames are analyzed periodically using Cloud Gemini Vision. Client-side MediaPipe is deactivated.'}
-                  {modalAiMonitoringMode === 'client_only' && 'Runs real-time face presence and gaze tracking exclusively on student machines. No cloud vision AI calls or quotas are consumed.'}
-                  {modalAiMonitoringMode === 'disabled' && 'Face & Gaze AI monitoring is completely deactivated for this class.'}
-                </p>
+                  📷 Webcam & Gaze
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalConfigTab('voice')}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderBottom: modalConfigTab === 'voice' ? '3px solid #4f46e5' : '3px solid transparent',
+                    background: modalConfigTab === 'voice' ? '#eef2ff' : 'transparent',
+                    color: modalConfigTab === 'voice' ? '#4338ca' : '#64748b',
+                    borderRadius: '6px 6px 0 0',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  🎙️ Voice & Speech
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalConfigTab('screen')}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderBottom: modalConfigTab === 'screen' ? '3px solid #4f46e5' : '3px solid transparent',
+                    background: modalConfigTab === 'screen' ? '#eef2ff' : 'transparent',
+                    color: modalConfigTab === 'screen' ? '#4338ca' : '#64748b',
+                    borderRadius: '6px 6px 0 0',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  🖥️ Screen & Vision
+                </button>
               </div>
 
-              {(modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'client_only') && (
-                <div>
-                  <div style={{ marginBottom: '14px' }}>
+              {/* TAB 1: 📷 WEBCAM & GAZE */}
+              {modalConfigTab === 'webcam' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
-                      Gaze & Head Orientation Sensitivity Mode:
+                      AI Face & Gaze Monitoring Mode:
                     </label>
                     <select
-                      value={modalGazeSensitivity}
-                      onChange={(e) => setModalGazeSensitivity(e.target.value)}
+                      value={modalAiMonitoringMode}
+                      onChange={(e) => setModalAiMonitoringMode(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
                     >
-                      <option value="relaxed">🟢 Relaxed / Low Sensitivity (High Tolerance — Yaw ±28°, Pitch -26°/+30°)</option>
-                      <option value="standard">🟡 Standard / Balanced Default (Yaw ±22°, Pitch -20°/+26°)</option>
-                      <option value="strict">🔴 Strict / High Sensitivity (Yaw ±16°, Pitch -16°/+22°)</option>
-                      <option value="custom">⚙️ Custom Manual Angles (Specify exact Yaw & Pitch degrees)</option>
+                      <option value="hybrid">⚡ Client-side, then fallback to Cloud (Recommended — On-device MediaPipe, fallback to Cloud Gemini)</option>
+                      <option value="cloud_only">☁️ Just Cloud (Periodic Cloud Gemini Vision frame inspections)</option>
+                      <option value="client_only">💻 Just Client-side (100% Free on-device MediaPipe, zero Cloud quota)</option>
+                      <option value="disabled">🚫 Disable it (Turn off all face/gaze AI monitoring)</option>
                     </select>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                      Controls how strictly head rotation and eye deviation off-screen trigger an incident.
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                      {modalAiMonitoringMode === 'hybrid' && 'Runs real-time face presence and gaze tracking on student machines for free, automatically falling back to Cloud Gemini AI if a student device cannot run local AI.'}
+                      {modalAiMonitoringMode === 'cloud_only' && 'Webcam frames are analyzed periodically using Cloud Gemini Vision. Client-side MediaPipe is deactivated.'}
+                      {modalAiMonitoringMode === 'client_only' && 'Runs real-time face presence and gaze tracking exclusively on student machines. No cloud vision AI calls or quotas are consumed.'}
+                      {modalAiMonitoringMode === 'disabled' && 'Face & Gaze AI monitoring is completely deactivated for this class.'}
                     </p>
                   </div>
 
-                  {modalGazeSensitivity === 'custom' && (
-                    <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
-                      <h4 style={{ margin: '0 0 10px 0', fontSize: '0.88rem', color: '#1e293b' }}>📐 Custom Angle Limit Sliders</h4>
-                      
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                          <span>↔️ Horizontal Yaw Limit (Turn Left / Right)</span>
-                          <strong style={{ color: '#4f46e5' }}>±{modalCustomYawAngle}°</strong>
-                        </div>
-                        <input
-                          type="range"
-                          min="10"
-                          max="50"
-                          value={modalCustomYawAngle}
-                          onChange={(e) => setModalCustomYawAngle(parseInt(e.target.value, 10))}
-                          style={{ width: '100%' }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
-                          <span>10° (Strict)</span>
-                          <span>50° (Very Relaxed)</span>
-                        </div>
+                  {(modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'client_only') && (
+                    <div>
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                          Gaze & Head Orientation Sensitivity Mode:
+                        </label>
+                        <select
+                          value={modalGazeSensitivity}
+                          onChange={(e) => setModalGazeSensitivity(e.target.value)}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                        >
+                          <option value="relaxed">🟢 Relaxed / Low Sensitivity (High Tolerance — Yaw ±28°, Pitch -26°/+30°)</option>
+                          <option value="standard">🟡 Standard / Balanced Default (Yaw ±22°, Pitch -20°/+26°)</option>
+                          <option value="strict">🔴 Strict / High Sensitivity (Yaw ±16°, Pitch -16°/+22°)</option>
+                          <option value="custom">⚙️ Custom Manual Angles (Specify exact Yaw & Pitch degrees)</option>
+                        </select>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                          Controls how strictly head rotation and eye deviation off-screen trigger an incident.
+                        </p>
                       </div>
 
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                          <span>⬇️ Pitch Down Limit (Looking Down)</span>
-                          <strong style={{ color: '#4f46e5' }}>{modalCustomPitchDownAngle}°</strong>
-                        </div>
-                        <input
-                          type="range"
-                          min="-45"
-                          max="-10"
-                          value={modalCustomPitchDownAngle}
-                          onChange={(e) => setModalCustomPitchDownAngle(parseInt(e.target.value, 10))}
-                          style={{ width: '100%' }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
-                          <span>-45° (Very Relaxed)</span>
-                          <span>-10° (Strict)</span>
-                        </div>
-                      </div>
+                      {modalGazeSensitivity === 'custom' && (
+                        <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+                          <h4 style={{ margin: '0 0 10px 0', fontSize: '0.88rem', color: '#1e293b' }}>📐 Custom Angle Limit Sliders</h4>
+                          
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                              <span>↔️ Horizontal Yaw Limit (Turn Left / Right)</span>
+                              <strong style={{ color: '#4f46e5' }}>±{modalCustomYawAngle}°</strong>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="50"
+                              value={modalCustomYawAngle}
+                              onChange={(e) => setModalCustomYawAngle(parseInt(e.target.value, 10))}
+                              style={{ width: '100%' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
+                              <span>10° (Strict)</span>
+                              <span>50° (Very Relaxed)</span>
+                            </div>
+                          </div>
 
-                      <div style={{ marginBottom: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
-                          <span>⬆️ Pitch Up Limit (Looking Up)</span>
-                          <strong style={{ color: '#4f46e5' }}>+{modalCustomPitchUpAngle}°</strong>
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                              <span>⬇️ Pitch Down Limit (Looking Down)</span>
+                              <strong style={{ color: '#4f46e5' }}>{modalCustomPitchDownAngle}°</strong>
+                            </div>
+                            <input
+                              type="range"
+                              min="-45"
+                              max="-10"
+                              value={modalCustomPitchDownAngle}
+                              onChange={(e) => setModalCustomPitchDownAngle(parseInt(e.target.value, 10))}
+                              style={{ width: '100%' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
+                              <span>-45° (Very Relaxed)</span>
+                              <span>-10° (Strict)</span>
+                            </div>
+                          </div>
+
+                          <div style={{ marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px' }}>
+                              <span>⬆️ Pitch Up Limit (Looking Up)</span>
+                              <strong style={{ color: '#4f46e5' }}>+{modalCustomPitchUpAngle}°</strong>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="45"
+                              value={modalCustomPitchUpAngle}
+                              onChange={(e) => setModalCustomPitchUpAngle(parseInt(e.target.value, 10))}
+                              style={{ width: '100%' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
+                              <span>+10° (Strict)</span>
+                              <span>+45° (Very Relaxed)</span>
+                            </div>
+                          </div>
                         </div>
-                        <input
-                          type="range"
-                          min="10"
-                          max="45"
-                          value={modalCustomPitchUpAngle}
-                          onChange={(e) => setModalCustomPitchUpAngle(parseInt(e.target.value, 10))}
-                          style={{ width: '100%' }}
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
-                          <span>+10° (Strict)</span>
-                          <span>+45° (Very Relaxed)</span>
-                        </div>
-                      </div>
+                      )}
+                    </div>
+                  )}
+
+                  {modalAiMonitoringMode !== 'disabled' && (
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                        AI Gaze & Absence Debounce Gate:
+                      </label>
+                      <select
+                        value={modalFaceDebounceSeconds}
+                        onChange={(e) => setModalFaceDebounceSeconds(parseInt(e.target.value, 10))}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                      >
+                        <option value={2}>⏱️ 2s (Strict — Rapid Flagging)</option>
+                        <option value={3}>⏱️ 3s (Standard — Default Balanced)</option>
+                        <option value={5}>⏱️ 5s (Relaxed — Tolerates Brief Glances)</option>
+                        <option value={8}>⏱️ 8s (Very Relaxed)</option>
+                        <option value={10}>⏱️ 10s (High Tolerance)</option>
+                      </select>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                        Duration a student must continuously look away or step away from camera before registering an irregularity.
+                      </p>
+                    </div>
+                  )}
+
+                  {(modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'cloud_only') && (
+                    <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: '6px' }}>
+                        {modalAiMonitoringMode === 'cloud_only' ? '☁️ Cloud AI Analysis Interval:' : '☁️ Cloud Fallback Analysis Interval:'}
+                      </label>
+                      <select
+                        value={modalCloudFallbackRate}
+                        onChange={(e) => setModalCloudFallbackRate(parseInt(e.target.value, 10))}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                      >
+                        <option value={1}>⚡ Every 1 round (~5s) — Maximum Responsiveness</option>
+                        <option value={2}>⚡ Every 2 rounds (~10s) — Balanced</option>
+                        <option value={3}>⚡ Every 3 rounds (~15s) — Default Recommended</option>
+                        <option value={5}>⚡ Every 5 rounds (~25s) — Quota Saver</option>
+                        <option value={10}>⚡ Every 10 rounds (~50s) — Low Quota Consumption</option>
+                      </select>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                        {modalAiMonitoringMode === 'cloud_only'
+                          ? 'Interval between Cloud Gemini multimodal video frame inspections.'
+                          : 'Analysis frequency for students whose client devices cannot run MediaPipe locally and require cloud Gemini verification.'}
+                      </p>
                     </div>
                   )}
                 </div>
               )}
 
-              {modalAiMonitoringMode !== 'disabled' && (
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
-                    AI Gaze & Absence Debounce Gate:
-                  </label>
-                  <select
-                    value={modalFaceDebounceSeconds}
-                    onChange={(e) => setModalFaceDebounceSeconds(parseInt(e.target.value, 10))}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
-                  >
-                    <option value={2}>⏱️ 2s (Strict — Rapid Flagging)</option>
-                    <option value={3}>⏱️ 3s (Standard — Default Balanced)</option>
-                    <option value={5}>⏱️ 5s (Relaxed — Tolerates Brief Glances)</option>
-                    <option value={8}>⏱️ 8s (Very Relaxed)</option>
-                    <option value={10}>⏱️ 10s (High Tolerance)</option>
-                  </select>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    Duration a student must continuously look away or step away from camera before registering an irregularity.
-                  </p>
+              {/* TAB 2: 🎙️ VOICE & SPEECH */}
+              {modalConfigTab === 'voice' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                      Voice AI Monitoring Mode:
+                    </label>
+                    <select
+                      value={modalVoiceAiMode}
+                      onChange={(e) => setModalVoiceAiMode(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                    >
+                      <option value="hybrid">⚡ LiteRT Whisper + Gemma (Recommended — Free on-device STT & collusion reasoning)</option>
+                      <option value="client_only">💻 Client LiteRT STT Only (Free on-device transcription without intent evaluation)</option>
+                      <option value="cloud_only">☁️ Cloud Gemini Audio (Cloud multimodal audio analysis)</option>
+                      <option value="disabled">🚫 Disabled (Deactivate speech recognition & audio AI)</option>
+                    </select>
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                      {modalVoiceAiMode === 'hybrid' && 'Transcribes speech locally via Whisper and analyzes conversation intent using LiteRT Gemma on student browsers with cloud fallback.'}
+                      {modalVoiceAiMode === 'client_only' && 'Only performs local Whisper STT transcription. Transcripts are sent directly to the monitor view without LLM intent classification.'}
+                      {modalVoiceAiMode === 'cloud_only' && 'Transcribes and evaluates audio segments periodically via Gemini Multimodal Audio in the cloud.'}
+                      {modalVoiceAiMode === 'disabled' && 'Voice AI processing is deactivated. Audio is captured only for manual teacher playback if audio capture is enabled.'}
+                    </p>
+                  </div>
+
+                  {modalVoiceAiMode !== 'disabled' && (
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                        🌐 Speech AI Language / Trilingual Invigilation:
+                      </label>
+                      <select
+                        value={modalSpeechLanguage}
+                        onChange={(e) => setModalSpeechLanguage(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      >
+                        <option value="zh-HK">🌐 粵語 / 普通話 / English (Trilingual Multilingual Code-Switching — Default)</option>
+                        <option value="zh-CN">🇨🇳 普通話 / Mandarin Only</option>
+                        <option value="en-US">🇬🇧 / 🇺🇸 English Only</option>
+                      </select>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                        Enforced on background audio invigilation across all students automatically without exposing settings to student view.
+                      </span>
+                    </div>
+                  )}
+
+                  {modalVoiceAiMode !== 'disabled' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                          Moving Window Duration:
+                        </label>
+                        <select
+                          value={modalAudioSegmentDuration}
+                          onChange={(e) => setModalAudioSegmentDuration(parseInt(e.target.value, 10))}
+                          style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        >
+                          <option value={15}>15 seconds</option>
+                          <option value={30}>30 seconds (Default)</option>
+                          <option value={45}>45 seconds</option>
+                          <option value={60}>60 seconds</option>
+                        </select>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                          Context length provided to Whisper/Gemma.
+                        </span>
+                      </div>
+
+                      <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.82rem', marginBottom: '4px' }}>
+                          Moving Window Stride:
+                        </label>
+                        <select
+                          value={modalAudioMovingWindowStride}
+                          onChange={(e) => setModalAudioMovingWindowStride(parseInt(e.target.value, 10))}
+                          style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        >
+                          <option value={5}>⚡ 5s (Rapid Updates)</option>
+                          <option value={10}>⚡ 10s (High Cadence)</option>
+                          <option value={15}>⚡ 15s (Default Balanced)</option>
+                          <option value={20}>⚡ 20s (Relaxed)</option>
+                          <option value={30}>⚡ 30s (Stride = Window)</option>
+                        </select>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                          Frequency of sliding-window evaluation.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {modalVoiceAiMode !== 'disabled' && (
+                    <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer', marginBottom: '8px' }}>
+                        <input
+                          type="checkbox"
+                          checked={modalAudioSilenceSuppression}
+                          onChange={(e) => setModalAudioSilenceSuppression(e.target.checked)}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span>Silence Suppression (VAD Gating)</span>
+                      </label>
+                      <p style={{ margin: '0 0 10px 24px', fontSize: '0.76rem', color: '#64748b', lineHeight: 1.35 }}>
+                        Suppresses uploading and transcribing silent audio chunks to preserve bandwidth and battery.
+                      </p>
+
+                      {modalAudioSilenceSuppression && (
+                        <div style={{ marginLeft: '24px', marginTop: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>
+                            <span>VAD Energy Threshold:</span>
+                            <strong style={{ color: '#4f46e5' }}>{modalVadSensitivity}%</strong>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="35"
+                            value={modalVadSensitivity}
+                            onChange={(e) => setModalVadSensitivity(parseInt(e.target.value, 10))}
+                            style={{ width: '100%' }}
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#94a3b8' }}>
+                            <span>5% (Detect faint whispers)</span>
+                            <span>35% (Ignore background noise)</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(modalVoiceAiMode === 'hybrid' || modalVoiceAiMode === 'cloud_only') && (
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
+                        Cloud Audio Fallback Interval:
+                      </label>
+                      <select
+                        value={modalVoiceAiCloudFallbackRate}
+                        onChange={(e) => setModalVoiceAiCloudFallbackRate(parseInt(e.target.value, 10))}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      >
+                        <option value={1}>⚡ Every 1 chunk (~15s) — High Cadence</option>
+                        <option value={2}>⚡ Every 2 chunks (~30s) — Balanced</option>
+                        <option value={3}>⚡ Every 3 chunks (~45s) — Default Recommended</option>
+                        <option value={5}>⚡ Every 5 chunks (~75s) — Quota Saver</option>
+                      </select>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                        Fallback analysis frequency when client device cannot load Whisper/Gemma.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {(modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'cloud_only') && (
-                <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: '6px' }}>
-                    {modalAiMonitoringMode === 'cloud_only' ? '☁️ Cloud AI Analysis Interval:' : '☁️ Cloud Fallback Analysis Interval:'}
-                  </label>
-                  <select
-                    value={modalCloudFallbackRate}
-                    onChange={(e) => setModalCloudFallbackRate(parseInt(e.target.value, 10))}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
-                  >
-                    <option value={1}>⚡ Every 1 round (~5s) — Maximum Responsiveness</option>
-                    <option value={2}>⚡ Every 2 rounds (~10s) — Balanced</option>
-                    <option value={3}>⚡ Every 3 rounds (~15s) — Default Recommended</option>
-                    <option value={5}>⚡ Every 5 rounds (~25s) — Quota Saver</option>
-                    <option value={10}>⚡ Every 10 rounds (~50s) — Low Quota Consumption</option>
-                  </select>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    {modalAiMonitoringMode === 'cloud_only'
-                      ? 'Interval between Cloud Gemini multimodal video frame inspections.'
-                      : 'Analysis frequency for students whose client devices cannot run MediaPipe locally and require cloud Gemini verification.'}
-                  </p>
+              {/* TAB 3: 🖥️ SCREEN & VISION */}
+              {modalConfigTab === 'screen' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Gemini Vision Model Selector */}
+                  <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                      Gemini Vision Model:
+                    </label>
+                    <select
+                      value={modalSelectedAiModel}
+                      onChange={(e) => setModalSelectedAiModel(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                    >
+                      <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens - Fastest)</option>
+                      <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens - Balanced)</option>
+                      <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens - Deep Reasoning)</option>
+                    </select>
+                    <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                      Used for periodic student screenshot audits, multi-screen collusion checks, and off-task detection.
+                    </p>
+                  </div>
+
+                  {/* Inspection Interval Slider & Presets */}
+                  <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>
+                        ⏱️ Inspection Interval (Analysis Frequency):
+                      </label>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#4f46e5' }}>
+                        Every {modalSamplingRate} {modalSamplingRate === 1 ? 'round' : 'rounds'} (~{modalSamplingRate * (frameRate || 15)}s)
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={modalSamplingRate}
+                      onChange={(e) => setModalSamplingRate(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#4f46e5' }}
+                    />
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                      {[1, 2, 3, 5, 10].map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setModalSamplingRate(val)}
+                          style={{
+                            flex: 1,
+                            padding: '4px 0',
+                            fontSize: '0.75rem',
+                            borderRadius: '4px',
+                            border: modalSamplingRate === val ? '1px solid #4f46e5' : '1px solid #cbd5e1',
+                            background: modalSamplingRate === val ? '#ede9fe' : '#ffffff',
+                            color: modalSamplingRate === val ? '#4338ca' : '#475569',
+                            fontWeight: modalSamplingRate === val ? 700 : 500,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {val}r ({val * (frameRate || 15)}s)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Prompt Selection & Live Editor */}
+                  <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                      Select & Edit Vision AI Prompt:
+                    </label>
+
+                    {/* Filter Radio */}
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#475569' }}>
+                      {['all', 'public', 'private', 'shared'].map(f => (
+                        <label key={f} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', textTransform: 'capitalize' }}>
+                          <input
+                            type="radio"
+                            value={f}
+                            name="modalPromptFilter"
+                            checked={(promptFilter || 'all') === f}
+                            onChange={(e) => setPromptFilter && setPromptFilter(e.target.value)}
+                          />
+                          {f}
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Prompt Select */}
+                    <select
+                      value={selectedPrompt ? selectedPrompt.id : ''}
+                      onChange={(e) => {
+                        const p = (prompts || []).find(item => item.id === e.target.value);
+                        if (setSelectedPrompt) setSelectedPrompt(p);
+                        if (p && p.promptText) {
+                          setModalEditablePromptText(p.promptText);
+                        }
+                      }}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '8px' }}
+                    >
+                      <option value="" disabled>Select a prompt template...</option>
+                      {(filteredPrompts || prompts || []).map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+
+                    {/* Editable Prompt Textarea */}
+                    <textarea
+                      value={modalEditablePromptText}
+                      onChange={(e) => setModalEditablePromptText(e.target.value)}
+                      placeholder="Select a prompt template or write custom instructions for Gemini Vision..."
+                      style={{
+                        width: '100%',
+                        minHeight: '90px',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.82rem',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Stream & Run Trigger Controls */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                          if (setSamplingRate) setSamplingRate(modalSamplingRate);
+                          if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
+                          setIsPerImageAnalysisRunning(prev => !prev);
+                          if (isAllImagesAnalysisRunning) setIsAllImagesAnalysisRunning(false);
+                          setShowGazeModal(false);
+                        }}
+                        className={isPerImageAnalysisRunning ? 'danger-action-btn' : 'ai-action-btn'}
+                        style={{ flex: 1, padding: '8px 10px', fontSize: '0.82rem' }}
+                      >
+                        {isPerImageAnalysisRunning ? '⏹ Stop Per-Image Stream' : '✨ Start Per-Image Stream'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                          if (setSamplingRate) setSamplingRate(modalSamplingRate);
+                          if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
+                          setIsAllImagesAnalysisRunning(prev => !prev);
+                          if (isPerImageAnalysisRunning) setIsPerImageAnalysisRunning(false);
+                          setShowGazeModal(false);
+                        }}
+                        className={isAllImagesAnalysisRunning ? 'danger-action-btn' : 'ai-action-btn'}
+                        style={{ flex: 1, padding: '8px 10px', fontSize: '0.82rem' }}
+                      >
+                        {isAllImagesAnalysisRunning ? '⏹ Stop All-Images Stream' : '⚡ Start All-Images Stream'}
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {handleRunAnalysis && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                            handleRunAnalysis();
+                            setShowGazeModal(false);
+                          }}
+                          disabled={isAnalyzing}
+                          className="secondary-btn"
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '6px' }}
+                        >
+                          ▶ Run Single Per-Image Check
+                        </button>
+                      )}
+                      {handleRunAllImagesAnalysis && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                            handleRunAllImagesAnalysis();
+                            setShowGazeModal(false);
+                          }}
+                          disabled={isAnalyzing}
+                          className="secondary-btn"
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '6px' }}
+                        >
+                          ▶ Run Single All-Images Check
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+              {/* Modal Footer Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
                 <button
                   type="button"
                   onClick={() => setShowGazeModal(false)}

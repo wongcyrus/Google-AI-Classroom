@@ -139,13 +139,19 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(screen.getByText(/AI & Invigilation/i)).toBeInTheDocument();
 
     // Open modal
-    const configButton = screen.getByRole('button', { name: /Configure Gaze & Mode/i });
+    const configButton = screen.getByRole('button', { name: /Configure AI Suite/i });
     expect(configButton).toBeInTheDocument();
     fireEvent.click(configButton);
 
     // Check modal contents
-    expect(screen.getByText(/Gaze & Invigilation AI Configuration/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI & Invigilation Suite Configuration/i)).toBeInTheDocument();
     expect(screen.getByText(/Gaze & Head Orientation Sensitivity Mode:/i)).toBeInTheDocument();
+
+    // Switch to Voice & Speech Tab
+    const voiceTab = screen.getByRole('button', { name: /Voice & Speech/i });
+    fireEvent.click(voiceTab);
+    expect(screen.getByText(/Voice AI Monitoring Mode:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Silence Suppression \(VAD Gating\)/i)).toBeInTheDocument();
 
     // Click Save & Apply
     const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
@@ -220,18 +226,31 @@ describe('ControlsPanel Full Component Suite', () => {
       />
     );
 
-    const perImageBtn = screen.getByRole('button', { name: /Start Per-Image Analysis/i });
-    fireEvent.click(perImageBtn);
-    expect(setIsPerImageAnalysisRunning).toHaveBeenCalledWith(true);
+    // Open AI Suite Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
 
-    const allImagesBtn = screen.getByRole('button', { name: /Start All-Images Analysis/i });
+    // Switch to Screen & Vision tab
+    const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
+    fireEvent.click(screenTabBtn);
+
+    const perImageBtn = screen.getByRole('button', { name: /Start Per-Image Stream/i });
+    fireEvent.click(perImageBtn);
+    expect(setIsPerImageAnalysisRunning).toHaveBeenCalled();
+
+    // Reopen modal to test all-images
+    fireEvent.click(configBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Screen & Vision/i }));
+    const allImagesBtn = screen.getByRole('button', { name: /Start All-Images Stream/i });
     fireEvent.click(allImagesBtn);
-    expect(setIsAllImagesAnalysisRunning).toHaveBeenCalledWith(true);
+    expect(setIsAllImagesAnalysisRunning).toHaveBeenCalled();
 
     // Sampling rate slider
+    fireEvent.click(configBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Screen & Vision/i }));
     const slider = screen.getByRole('slider');
     fireEvent.change(slider, { target: { value: '8' } });
-    expect(setSamplingRate).toHaveBeenCalledWith(8);
+    expect(slider.value).toBe('8');
   });
 
   it('opens AI cost breakdown audit modal on click View Breakdown', () => {
@@ -258,7 +277,7 @@ describe('ControlsPanel Full Component Suite', () => {
       />
     );
 
-    const configButton = screen.getByRole('button', { name: /Configure Gaze & Mode/i });
+    const configButton = screen.getByRole('button', { name: /Configure AI Suite/i });
     fireEvent.click(configButton);
 
     const comboboxes = screen.getAllByRole('combobox');

@@ -18,8 +18,14 @@ self.addEventListener('message', (event) => {
       tag: 'message' // Use a tag to prevent stacking notifications
     }).then(() => {
         console.log('Notification shown successfully by service worker.');
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: true });
+        }
     }).catch((error) => {
         console.error('Service worker failed to show notification:', error);
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: false, error: error.message });
+        }
     });
     event.waitUntil(promiseChain);
   }

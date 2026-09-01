@@ -35,7 +35,29 @@ flowchart TD
 
 ---
 
-## 2. Dual-Mode Audio Processing
+## 2. Multi-Tiered Acoustic Architecture: LiteRT Whisper (Edge) & Gemini 3.5 (Cloud)
+
+The acoustic pipeline operates in a flexible 3-tier hierarchy:
+
+1. **Tier 1 (Instant Mic Verification & Device Selection):**
+   - Students can select any connected audio device (USB headset, external microphone, webcam mic, 3.5mm jack).
+   - Instant phrase-matching challenge verification via Web Speech API and loopback playback test.
+   - Dynamic device switching restarts the media stream and seamlessly redirects the real-time audio pipeline.
+2. **Tier 2 (On-Device LiteRT Whisper Edge STT):** Background Web Worker (`litertWhisper.worker.js`) running `@litertjs/core` (Google LiteRT) on WebGPU / XNNPACK CPU WASM:
+   - **Direct Microphone Stream Attachment:** `useClientLiteRTWhisper` attaches a Web Audio `ScriptProcessorNode` directly to the `audioStream` from the chosen microphone, resamples incoming frames to 16kHz PCM Float32Array, and executes VAD-driven chunking for instant on-device Whisper STT on whichever microphone the student selected.
+   - **Cantonese, Mandarin & English Code-Switching:** Uses decoder prompt biasing anchors (`唔該`, `點解`, `呢個`, `明白`, `assignment`, `exam`) to prevent translation bias.
+   - **Zero Cloud API Cost & Offline-First:** Saves transcription records directly to Firestore.
+   - **Persistent Cache Storage:** Quantized `.tflite` model (~39 MB) cached under `webai-litert-whisper-v1`.
+3. **On-Device Gemma LLM Intent Guard (`litertGemma.worker.js` & `useClientLiteRTGemma.js`):**
+   - Evaluates spoken transcripts locally via Google LiteRT runtime with zero network egress.
+   - Detects academic collusion (`COLLUSION_EXAM`), voice assistant dictation (`EXTERNAL_AI_ASSIST`), and unauthorized side-talk (`UNAUTHORIZED_TALK`).
+   - Accurately discriminates legitimate procedural inquiries (*"teacher my screen is blank"*, *"唔該阿Sir我睇唔到題"*) to avoid false positives.
+   - Updates `classes/{classId}/status/{studentUid}` with `gemmaAlert` and renders live proctoring alerts (`🚨 Collusion (Gemma)`) on the teacher's monitor grid.
+   - Quantized model (~120 MB) pre-cached in `webai-litert-gemma-v1`.
+
+---
+
+## 3. Dual-Mode Audio Processing
 
 Both modes are independently configurable per class in the Class Management settings and controls panel:
 
@@ -125,14 +147,17 @@ service firebase.storage {
   match /b/{bucket}/o {
     // 1. Audio Recording Segments
     match /audio/{classId}/{userId}/{fileName} {
+      // Allow authenticated students to upload audio segments to their own folder within a class.
       allow write: if request.auth != null &&
                       request.auth.uid == userId &&
                       request.resource.size < 5242880 && // 5 MB
                       request.resource.contentType.matches('audio/.*');
 
-      allow read: if request.auth != null && 
-                     (request.auth.token.role == 'teacher' || request.auth.uid == userId);
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      // Allow all authenticated users (teachers and students) to read audio recordings
+      allow read: if request.auth != null;
+
+      // Allow authenticated teachers to delete.
+      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
     }
 
     // 2. Irregularity Evidence (Images + Audio Snippets)
@@ -142,9 +167,8 @@ service firebase.storage {
                       request.resource.size < 5242880 && // 5 MB
                       (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
 
-      allow read: if request.auth != null && 
-                     (request.auth.token.role == 'teacher' || request.auth.uid == userId);
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      allow read: if request.auth != null;
+      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
     }
   }
 }
@@ -201,9 +225,14 @@ export const recordAudioIrregularity = ai.defineTool(
 
 ---
 
-## 7. Teacher UI & Dialogue Playback
+## 7. Teacher UI, Space-Optimized Audio Bar & Dialogue Playback
 
-- **Live Grid Multi-Voice Warning**: [`StudentScreen.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentScreen.jsx) displays `👥⚠️ Multi-Voice Warning` when secondary speakers or high risk classifications are detected.
+- **Live Grid Multi-Voice Warning**: [`StudentScreen.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentScreen.jsx) displays `👥⚠️ Multi-Voice Warning` when secondary speakers or high-risk speech patterns are detected.
+- **Space-Efficient Audio Bar**: [`IndividualStudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/IndividualStudentView.jsx) features a streamlined, single-row audio control bar (~38px height):
+  - **Inline Player & Telemetry**: Renders an inline HTML5 `<audio>` player keyed to the active track URL with dynamic live telemetry (`🟢 Live` or `🗣️ Speaking %`).
+  - **Decoupled URL Resolution**: Resolves Firebase Storage download URLs automatically via `urlMap[item.id]` and `urlMap[item.audioPath]` for seamless playback across all browser clients.
+  - **Collapsible Timeline Drawer (`📋 Clips (N) ▾`)**: Keeps the playlist collapsed by default to maximize vertical screen area for high-resolution dual-channel video feeds (Screen + Webcam). Teachers can expand the drawer with 1 click to inspect all past 30-second segments.
+  - **Subtitle Transcript Strip**: Displays a 1-line speech preview when an AI transcript is available, with a direct shortcut to full diarization analysis.
 - **Audio Transcript Modal**: [`AudioTranscriptModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AudioTranscriptModal.jsx) provides:
   - Color-coded speaker turns (🔵 Student, 🔴 Unauthorized Collaborator, 🟡 Whisper).
   - Clickable `[▶ MM:SS]` timestamp seek buttons to jump to exact moments in the audio recording.
@@ -276,3 +305,23 @@ sequenceDiagram
 5. **Acoustic Pipeline Handoff**:
    * When confirmed, the selected `deviceId` is passed directly as an exact constraint into `useAudioRecorder.js`, ensuring all subsequent 30-second rolling audio segments are captured exclusively from the student's chosen hardware device.
 
+---
+
+## On-Device Speech AI & Intent Classification (Google LiteRT.js)
+
+### 1. LiteRT Whisper STT Engine (`useClientLiteRTWhisper.js` & `litertWhisper.worker.js`)
+* **Local Web Worker Execution**: Transcribes incoming 16kHz PCM audio buffers in a background Web Worker without UI thread blocking.
+* **Multilingual Speech Recognition**: Supports Cantonese (`zh-HK`), Mandarin (`zh-CN`), and English (`en-US`) configured unobtrusively by teachers.
+* **Automatic Cache & Fallback**: Stores Whisper Tiny weights in `window.caches` for instant subsequent loads.
+* **Real-Time Telemetry**: Automatically updates `classes/{classId}/status/{studentUid}` with `liveTranscript`, `speechLanguage`, and acoustic status.
+
+### 2. LiteRT Gemma LLM Intent Evaluation (`useClientLiteRTGemma.js` & `litertGemma.worker.js`)
+* **On-Device Zero-Shot Evaluation**: Classifies student spoken transcripts in real time against strict academic integrity standards:
+  - `COLLUSION_EXAM`: Seeking or sharing exam answers / question numbers.
+  - `COLLUSION_DISCUSS`: General discussion of test material or strategies.
+  - `EXTERNAL_ASSISTANCE`: Communicating with someone off-camera.
+  - `EXAM_CONTENT_LEAK`: Dictating exam questions aloud.
+  - `LEGITIMATE_INQUIRY`: Asking teacher for clarification / technical help.
+  - `NON_EXAM_TALK`: Casual background chatter.
+* **Dual-Target Logging**: Dispatches detected violations to both top-level `/irregularities` (for real-time dashboard notifications) and `/classes/{classId}/irregularities` (for audit reports).
+* **Tamper-Resistant Security**: Guaranteed by Firestore Security Rules—students cannot delete or alter incident records.

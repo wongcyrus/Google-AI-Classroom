@@ -4,6 +4,10 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import StudentView from './StudentView';
 
 const mockSignOut = vi.fn();
+vi.mock('firebase/auth', () => ({
+  signOut: () => mockSignOut(),
+}));
+
 vi.mock('../firebase-config', () => ({
   auth: {
     signOut: () => mockSignOut(),
@@ -143,6 +147,29 @@ describe('StudentView Component Extended Test Suite', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    const mockDevices = [
+      { deviceId: 'cam1', kind: 'videoinput', label: 'Built-in FaceTime HD Camera' },
+      { deviceId: 'cam2', kind: 'videoinput', label: 'Logitech C920 Pro HD' },
+    ];
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+          getVideoTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
+        }),
+        getDisplayMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+          getVideoTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
+        }),
+        enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      writable: true,
+      configurable: true,
+    });
   });
 
   it('renders student monitoring header and instructions', async () => {
@@ -389,12 +416,6 @@ describe('StudentView Component Extended Test Suite', () => {
       isCalibrated: false,
     };
 
-    const mockStream = {
-      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
-      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
-    };
-    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
-
     render(<StudentView user={mockUser} />);
 
     const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
@@ -416,12 +437,6 @@ describe('StudentView Component Extended Test Suite', () => {
       isCalibrated: true,
     };
 
-    const mockStream = {
-      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
-      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
-    };
-    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
-
     render(<StudentView user={mockUser} />);
 
     const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
@@ -432,5 +447,33 @@ describe('StudentView Component Extended Test Suite', () => {
 
     fireEvent.click(calibratedBtn);
     expect(mockResetCalibration).toHaveBeenCalled();
+  });
+
+  it('renders UnsupportedBrowserNotice and triggers signOut when student accesses via non-Chrome browser', () => {
+    const originalUA = navigator.userAgent;
+    const originalVendor = navigator.vendor;
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'vendor', {
+      value: 'Apple Computer, Inc.',
+      configurable: true,
+    });
+
+    try {
+      render(<StudentView user={mockUser} />);
+
+      expect(screen.getByText(/Google Chrome Required/i)).toBeInTheDocument();
+      expect(screen.getByText(/Apple Safari/i)).toBeInTheDocument();
+
+      const goBackBtn = screen.getByRole('button', { name: /Go to Login Page/i });
+      fireEvent.click(goBackBtn);
+      expect(mockSignOut).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUA, configurable: true });
+      Object.defineProperty(navigator, 'vendor', { value: originalVendor, configurable: true });
+    }
   });
 });

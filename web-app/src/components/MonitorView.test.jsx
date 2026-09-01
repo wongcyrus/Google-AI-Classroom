@@ -38,6 +38,7 @@ vi.mock('firebase/firestore', () => ({
             isWebcamSharing: true,
             isAudioSharing: true,
             faceStatus: 'normal',
+            timestamp: new Date(),
           }),
         },
         {
@@ -49,6 +50,7 @@ vi.mock('firebase/firestore', () => ({
             isAudioSharing: false,
             faceStatus: 'looking_away',
             yawAngle: 32,
+            timestamp: new Date(),
           }),
         },
       ],

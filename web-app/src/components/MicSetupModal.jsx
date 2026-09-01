@@ -8,10 +8,13 @@ export default function MicSetupModal({
   onConfirm,
   studentUid = '',
   studentName = '',
+  initialDeviceId = '',
+  currentMicDeviceId = '',
   mandatory = false,
   isMandatory = false,
 }) {
   const isRequired = mandatory || isMandatory;
+  const initialId = currentMicDeviceId || initialDeviceId || '';
   const {
     audioDevices,
     selectedDeviceId,
@@ -30,7 +33,7 @@ export default function MicSetupModal({
     isRecordingPlayback,
     isPlayingBack,
     startPlaybackTest,
-  } = useAudioSetup({ studentUid, studentName });
+  } = useAudioSetup({ studentUid, studentName, initialDeviceId: initialId });
 
   // Start stream when modal opens or selectedDeviceId changes
   useEffect(() => {
@@ -43,11 +46,23 @@ export default function MicSetupModal({
 
   const handleDeviceChange = (e) => {
     const newId = e.target.value;
+    const selectedObj = audioDevices.find(d => d.deviceId === newId);
+    console.log('%c[MicSetupModal:DeviceSelect] 🎙️ User selected microphone:', 'background:#2563eb;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+      deviceId: newId || '(default)',
+      label: selectedObj?.label || 'Default Microphone',
+      availableDevicesCount: audioDevices.length,
+    });
     setSelectedDeviceId(newId);
     startStream(newId);
   };
 
   const handleConfirm = () => {
+    const selectedObj = audioDevices.find(d => d.deviceId === selectedDeviceId);
+    console.log('%c[MicSetupModal:Confirm] ✅ Microphone confirmed:', 'background:#16a34a;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+      deviceId: selectedDeviceId || '(default)',
+      label: selectedObj?.label || 'Default Microphone',
+      isVerified,
+    });
     onConfirm?.({
       deviceId: selectedDeviceId,
       isVerified,
