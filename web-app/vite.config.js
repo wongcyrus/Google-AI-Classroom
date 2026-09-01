@@ -9,6 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     isolate: true,
+    fileParallelism: false,
     pool: 'threads',
     coverage: {
       provider: 'v8',
