@@ -213,7 +213,7 @@ self.onmessage = async (event) => {
       }
 
       case 'EVALUATE_TRANSCRIPT': {
-        const { transcript = '', studentUid, classId, timestamp = Date.now(), systemPrompt } = payload || {};
+        const { transcript = '', studentUid, studentEmail, classId, timestamp = Date.now(), systemPrompt } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'evaluating' } });
 
         if (!gemmaEngine) {
@@ -222,12 +222,20 @@ self.onmessage = async (event) => {
 
         let conversation = null;
         let evaluationResult;
-        const promptToUse = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt : GEMMA_PROCTOR_SYSTEM_PROMPT;
+        const rawPrompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt : GEMMA_PROCTOR_SYSTEM_PROMPT;
+        let promptToUse = rawPrompt
+          .replace(/\{\{transcript\}\}/g, transcript)
+          .replace(/\{\{classId\}\}/g, classId || '')
+          .replace(/\{\{studentUid\}\}/g, studentUid || '')
+          .replace(/\{\{studentEmail\}\}/g, studentEmail || '');
+
+        if (!rawPrompt.includes('{{transcript}}')) {
+          promptToUse = `${promptToUse}\n\nStudent transcript: "${transcript}"`;
+        }
+
         try {
           conversation = await gemmaEngine.createConversation();
-          const response = await conversation.sendMessage(
-            `${promptToUse}\n\nStudent transcript: "${transcript}"`
-          );
+          const response = await conversation.sendMessage(promptToUse);
           evaluationResult = parseGemmaOutput(getResponseText(response));
         } finally {
           await conversation?.delete?.();

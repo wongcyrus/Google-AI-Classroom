@@ -416,4 +416,57 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
       result.current.stopRecording();
     });
   });
+
+  it('triggers segment timer and automatically advances to next segment', async () => {
+    vi.useFakeTimers();
+
+    let recorderInstances = [];
+    class MultiMediaRecorder {
+      constructor(stream, options) {
+        this.stream = stream;
+        this.options = options;
+        this.state = 'inactive';
+        this.ondataavailable = null;
+        this.onstop = null;
+        recorderInstances.push(this);
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        if (this.ondataavailable) {
+          this.ondataavailable({ data: new Blob(['chunk'], { type: 'audio/webm' }) });
+        }
+        if (this.onstop) this.onstop();
+      }
+      static isTypeSupported() {
+        return true;
+      }
+    }
+    window.MediaRecorder = MultiMediaRecorder;
+    global.MediaRecorder = MultiMediaRecorder;
+
+    const { result } = renderHook(() =>
+      useAudioRecorder({
+        classId: 'CLASS_TIMER_TEST',
+        studentUid: 's_timer',
+        enabled: true,
+        strideDurationSec: 5,
+      })
+    );
+
+    await act(async () => {
+      // Advance by segment duration (5000ms)
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(recorderInstances.length).toBeGreaterThanOrEqual(1);
+
+    act(() => {
+      result.current.stopRecording();
+    });
+
+    vi.useRealTimers();
+  });
 });

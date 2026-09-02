@@ -249,7 +249,7 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    customGemmaPrompt: gemmaIntentPrompt,
+    customGemmaPrompt: liveAudioPrompt || gemmaIntentPrompt,
   });
 
   const handleAudioUploadedRef = useRef(null);
@@ -572,6 +572,17 @@ const StudentView = ({ user }) => {
     cloudFallbackRate,
     showMeshOverlay,
   });
+
+  // Background Auto-Preload AI models silently so student doesn't need to manually click preload buttons
+  useEffect(() => {
+    if (!activeClass) return;
+    if (aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && !isModelCached && !isPreloading && clientAiStatus === 'idle') {
+      preloadModel?.();
+    }
+    if (enableAudioCapture && !isWhisperCached && whisperStatus === 'idle') {
+      preloadWhisperModel?.();
+    }
+  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
 
   const lastTelemetrySyncRef = useRef(0);
   const telemetryTimerRef = useRef(null);
@@ -1569,44 +1580,119 @@ const StudentView = ({ user }) => {
 
       <div className="student-view-content">
         <div className="student-view-main">
-            <div className="student-view-controls">
-              <div>
-                {activeClass ? (
-                    <p>Class: <strong>{activeClass}</strong></p>
-                ) : (
-                    <p>No active class.</p>
-                )}
+            {!isSharing ? (
+              <div className="student-setup-hero-card">
+                <div className="setup-hero-header">
+                  <div className="setup-class-tag">
+                    {activeClass ? `Class: ${activeClass}` : 'No active class'}
+                  </div>
+                  <h2 className="setup-hero-title">Welcome to Your Classroom Session</h2>
+                  <p className="setup-hero-subtitle">
+                    Please complete the guided device check and pose calibration before starting your proctored session.
+                  </p>
+                </div>
+
+                <div className="setup-hero-actions">
+                  <button
+                    type="button"
+                    onClick={() => setIsReadinessWizardOpen(true)}
+                    className="btn-start-setup-wizard"
+                  >
+                    🚀 Start Setup & Readiness Test
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startScreen()}
+                    className="btn-quick-start-screen"
+                    title="Start Screen Sharing Directly"
+                  >
+                    🖥️ Quick Start (Screen Only)
+                  </button>
+                </div>
+
+                <div className="setup-system-summary">
+                  <div className="summary-item">
+                    <span className="summary-icon">🖥️</span>
+                    <div className="summary-text">
+                      <strong>Screen Sharing</strong>
+                      <span>Full desktop verification</span>
+                    </div>
+                    <span className="summary-badge ready">Ready</span>
+                  </div>
+
+                  <div className="summary-item">
+                    <span className="summary-icon">📷</span>
+                    <div className="summary-text">
+                      <strong>Camera & Gaze</strong>
+                      <span>{availableWebcams.length > 0 ? `${availableWebcams.length} Detected` : 'Optional / Screen-Only'}</span>
+                    </div>
+                    <span className={`summary-badge ${availableWebcams.length > 0 ? 'ready' : 'info'}`}>
+                      {availableWebcams.length > 0 ? 'Detected' : 'No Webcam'}
+                    </span>
+                  </div>
+
+                  <div className="summary-item">
+                    <span className="summary-icon">🎙️</span>
+                    <div className="summary-text">
+                      <strong>Microphone</strong>
+                      <span>{enableAudioCapture ? (audioCaptureMode === 'mandatory' ? 'Required' : 'Optional') : 'Disabled'}</span>
+                    </div>
+                    <span className={`summary-badge ${isAudioUserEnabled || selectedMicDeviceId ? 'ready' : 'info'}`}>
+                      {isAudioUserEnabled ? 'Active' : 'Optional'}
+                    </span>
+                  </div>
+
+                  <div className="summary-item">
+                    <span className="summary-icon">⚡</span>
+                    <div className="summary-text">
+                      <strong>On-Device AI</strong>
+                      <span>{clientAiStatus === 'ready' ? 'Ready (Fast)' : isPreloading ? `Loading (${loadingProgress}%)` : 'Auto-Loads in Background'}</span>
+                    </div>
+                    <span className={`summary-badge ${clientAiStatus === 'ready' ? 'ready' : 'loading'}`}>
+                      {clientAiStatus === 'ready' ? 'Active' : 'Auto'}
+                    </span>
+                  </div>
+                </div>
               </div>
+            ) : (
+              <div className="student-active-top-bar">
+                <div className="active-status-left">
+                  <div className="active-pulse-badge">
+                    <span className="pulse-dot"></span>
+                    <span className="active-badge-label">
+                      {isScreenSharing && isWebcamSharing && isAudioRecording
+                        ? '🟢 Streaming Active (Screen + Cam + Mic)'
+                        : isScreenSharing && isWebcamSharing
+                        ? '🟢 Streaming Active (Screen + Cam)'
+                        : '🟡 Streaming Active (Screen Only)'}
+                    </span>
+                  </div>
+                  <span className="active-class-pill">Class: {activeClass}</span>
+                  {isCapturing && (
+                    <span className="active-telemetry-pill">📸 {frameRate}s capture</span>
+                  )}
+                </div>
 
-              <div className="stream-controls-group">
-                {isScreenSharing ? (
-                  <button onClick={stopScreen} className="student-view-button active">
-                    ⏹️ Stop Screen
-                  </button>
-                ) : (
-                  <button onClick={() => startScreen()} className="student-view-button">
-                    🖥️ Share Screen
-                  </button>
-                )}
-
-                <div className="webcam-controls-container">
-                  {isWebcamSharing ? (
-                    <button onClick={stopWebcam} className="student-view-button active">
-                      ⏹️ Stop Webcam
-                    </button>
-                  ) : (
-                    <button onClick={() => startWebcam()} className="student-view-button">
-                      📷 Start Webcam
+                <div className="active-controls-right">
+                  {/* Mic Mute Toggle */}
+                  {(enableAudioCapture || isAudioRecording) && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAudioUserEnabled((prev) => !prev)}
+                      className={`active-tool-button ${!isAudioUserEnabled ? 'muted' : 'active'}`}
+                      title={!isAudioUserEnabled ? 'Unmute Mic' : 'Mute Mic'}
+                    >
+                      {!isAudioUserEnabled ? '🔇 Unmute' : isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active'}
                     </button>
                   )}
 
+                  {/* Webcam Switcher if multiple webcams */}
                   {availableWebcams.length > 1 && (
                     <select
                       value={selectedWebcamId}
                       onChange={handleWebcamChange}
-                      className="webcam-select-dropdown"
+                      className="active-webcam-select"
                       aria-label="Select Webcam"
-                      title="Select Webcam"
                     >
                       {availableWebcams.map((cam, index) => (
                         <option key={cam.deviceId || index} value={cam.deviceId}>
@@ -1615,211 +1701,32 @@ const StudentView = ({ user }) => {
                       ))}
                     </select>
                   )}
-                  {webcamError && (
-                    <span role="alert" className="stream-error-message">{webcamError}</span>
-                  )}
+
+                  {/* Re-Open Setup / Calibration Wizard */}
+                  <button
+                    type="button"
+                    onClick={() => setIsReadinessWizardOpen(true)}
+                    className="active-tool-button btn-retest"
+                    title="Open Setup & Device Calibration"
+                  >
+                    ⚙️ Setup & Re-Test
+                  </button>
+
+                  {/* Stop Session Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopScreen();
+                      stopWebcam();
+                    }}
+                    className="active-tool-button btn-stop-session"
+                    title="Stop All Sharing"
+                  >
+                    ⏹️ Stop Session
+                  </button>
                 </div>
-
-                {(enableAudioCapture || myProperties?.examReadiness?.isReady) && (
-                  <div className="mic-controls-container" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setIsAudioUserEnabled(prev => !prev)}
-                      className={`student-view-button ${isAudioRecording ? 'active' : (!isAudioUserEnabled ? 'btn-muted' : '')}`}
-                      title={
-                        !isAudioUserEnabled
-                          ? "Microphone Muted - Click to Unmute"
-                          : isAudioRecording
-                            ? `Audio Recording Active (Level: ${Math.round(audioLevel * 100)}%)`
-                            : "Microphone Active (Waiting for stream)"
-                      }
-                    >
-                      {!isAudioUserEnabled
-                        ? '🔇 Mic Muted'
-                        : isAudioRecording
-                          ? (isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active')
-                          : '🎙️ Mic Active'}
-                    </button>
-                    {isAudioRecording && isAudioUserEnabled && (
-                      <div
-                        className="student-mic-vu-bar"
-                        title={`Live Mic Volume: ${Math.round(audioLevel * 100)}%`}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          background: 'rgba(15, 23, 42, 0.6)',
-                          padding: '0 8px',
-                          height: '40px',
-                          boxSizing: 'border-box',
-                          borderRadius: '6px',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '36px',
-                            height: '6px',
-                            background: '#334155',
-                            borderRadius: '3px',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${Math.min(100, Math.round(audioLevel * 100))}%`,
-                              height: '100%',
-                              backgroundColor: isSpeaking ? '#22c55e' : (audioLevel > 0.03 ? '#38bdf8' : '#94a3b8'),
-                              transition: 'width 0.08s ease-out',
-                            }}
-                          />
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', minWidth: '24px', textAlign: 'right' }}>
-                          {Math.round(audioLevel * 100)}%
-                        </span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsMicSetupOpen(true)}
-                      className="student-view-button btn-secondary-stream"
-                      title="Microphone Setup & Speech Verification"
-                    >
-                      ⚙️ Mic Test
-                    </button>
-                  </div>
-                )}
-
-                {/* AI Model Preload & Calibration Controls (if AI monitoring is enabled) */}
-                {aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && (
-                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {clientAiStatus === 'ready' || isModelCached ? (
-                      <>
-                        <span className="student-view-pill ai-ready" title={`On-device AI model cached in browser storage (${delegateUsed || 'GPU'} active)`}>
-                          ⚡ AI Ready
-                        </span>
-                        {isWebcamSharing && (
-                          <button
-                            type="button"
-                            onClick={isCalibrated ? resetCalibration : calibrateBaseline}
-                            className={`student-view-button ${isCalibrated ? 'btn-calibrated' : 'btn-secondary-stream'}`}
-                            title={isCalibrated ? "Calibrated to current neutral head angle. Click to reset." : "Click while looking comfortably at center screen to calibrate neutral head angle."}
-                          >
-                            {isCalibrated ? '🎯 Calibrated' : '🎯 Calibrate View'}
-                          </button>
-                        )}
-                      </>
-                    ) : isPreloading || clientAiStatus === 'initializing' ? (
-                      <div className="ai-preload-progress-box" title="Downloading lightweight on-device AI model (~3.8 MB)">
-                        <span className="ai-progress-label">⏳ Loading AI ({loadingProgress}%)</span>
-                        <div className="ai-progress-track">
-                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, loadingProgress)}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={preloadModel}
-                        className="student-view-button btn-secondary-stream ai-preload-btn"
-                        title="Download & cache lightweight on-device AI model (~3.8 MB) in advance"
-                      >
-                        📥 Preload AI (~3.8 MB)
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* LiteRT Whisper Speech AI Preload (if audio capture is enabled) */}
-                {enableAudioCapture && (
-                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {whisperStatus === 'ready' || isWhisperCached ? (
-                      <span className="student-view-pill ai-ready" title={`LiteRT Whisper speech model cached in browser storage (${whisperDelegate || 'WASM'} active)`}>
-                        🎙️ Speech AI Ready
-                      </span>
-                    ) : whisperStatus === 'loading' ? (
-                      <div className="ai-preload-progress-box" title="Downloading LiteRT Whisper on-device speech model (~39 MB)">
-                        <span className="ai-progress-label">⏳ Loading Speech AI ({whisperLoadingProgress}%)</span>
-                        <div className="ai-progress-track">
-                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, whisperLoadingProgress)}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={preloadWhisperModel}
-                        className="student-view-button btn-secondary-stream ai-preload-btn"
-                        title="Download & cache on-device LiteRT Whisper speech model (~39 MB) in advance"
-                      >
-                        📥 Preload Speech AI (~39 MB)
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Local voice intent engine status */}
-                {shouldEvaluateVoiceWithGemma && (
-                  <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {isGemmaReady ? (
-                      <span className="student-view-pill ai-ready" title={`LiteRT-LM Gemma 4 E2B loaded with ${gemmaDelegate || 'WebGPU'}`}>
-                        🤖 Gemma 4 E2B Ready
-                      </span>
-                    ) : gemmaUnavailableReason ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span
-                          className="student-view-pill"
-                          title="Gemma 4 E2B could not be loaded. Local intent evaluation is disabled."
-                          style={{
-                            background: '#fff7ed',
-                            color: '#9a3412',
-                            border: '1px solid #fdba74',
-                          }}
-                        >
-                          ⛔ Gemma unavailable
-                        </span>
-                        {gemmaUnavailableReason && (
-                          <span style={{ color: '#9a3412', fontSize: '0.7rem', maxWidth: '320px' }}>
-                            {gemmaUnavailableReason}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={preloadGemmaModel}
-                          className="student-view-button btn-secondary-stream ai-preload-btn"
-                          title="Retry loading Gemma 4 E2B on this device"
-                        >
-                          🔄 Retry Gemma 4 E2B (~2 GB)
-                        </button>
-                      </div>
-                    ) : gemmaStatus === 'loading' ? (
-                      <div className="ai-preload-progress-box" title="Initializing the local voice intent engine">
-                        <span className="ai-progress-label">⏳ Initializing Intent AI ({gemmaLoadingProgress}%)</span>
-                        <div className="ai-progress-track">
-                          <div className="ai-progress-bar" style={{ width: `${Math.max(5, gemmaLoadingProgress)}%` }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={preloadGemmaModel}
-                        className="student-view-button btn-secondary-stream ai-preload-btn"
-                        title="Initialize the local voice intent engine"
-                      >
-                        📥 Load Gemma 4 E2B (~2 GB)
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setIsReadinessWizardOpen(true)}
-                  className="student-view-button btn-wizard"
-                  title="3-Step Pre-Exam Self-Calibration Wizard"
-                >
-                  🎓 Exam Readiness Check
-                </button>
               </div>
-            </div>
+            )}
 
             {isCapturing && isSharing && (
               <p className="recording-indicator">

@@ -34,6 +34,8 @@ const ControlsPanel = ({
     audioSilenceSuppression = true,
     vadSensitivity = 15,
     voiceAiCloudFallbackRate = 3,
+    liveAudioPrompt = null,
+    audioPrompts = [],
     handleSaveAiSettings,
     handleSaveGazeSettings,
     handleBroadcastPreloadAi,
@@ -81,6 +83,9 @@ const ControlsPanel = ({
     const [modalAudioSilenceSuppression, setModalAudioSilenceSuppression] = useState(true);
     const [modalVadSensitivity, setModalVadSensitivity] = useState(15);
     const [modalVoiceAiCloudFallbackRate, setModalVoiceAiCloudFallbackRate] = useState(3);
+    const [modalVoicePromptFilter, setModalVoicePromptFilter] = useState('all');
+    const [modalSelectedVoicePrompt, setModalSelectedVoicePrompt] = useState(null);
+    const [modalEditableVoicePromptText, setModalEditableVoicePromptText] = useState('');
     const [modalSelectedAiModel, setModalSelectedAiModel] = useState('gemini-3.5-flash-lite');
     const [modalSamplingRate, setModalSamplingRate] = useState(5);
     const [modalEditablePromptText, setModalEditablePromptText] = useState('');
@@ -101,6 +106,9 @@ const ControlsPanel = ({
       setModalAudioSilenceSuppression(audioSilenceSuppression !== undefined ? audioSilenceSuppression : true);
       setModalVadSensitivity(vadSensitivity || 15);
       setModalVoiceAiCloudFallbackRate(voiceAiCloudFallbackRate || 3);
+      setModalVoicePromptFilter('all');
+      setModalSelectedVoicePrompt(liveAudioPrompt || null);
+      setModalEditableVoicePromptText(liveAudioPrompt?.promptText || (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : ''));
       setModalSelectedAiModel(selectedAiModel || 'gemini-3.5-flash-lite');
       setModalSamplingRate(samplingRate || 5);
       setModalEditablePromptText(editablePromptText || '');
@@ -115,6 +123,22 @@ const ControlsPanel = ({
       if (setSamplingRate) setSamplingRate(modalSamplingRate);
       if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
       if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
+
+      let finalLiveAudioPrompt = null;
+      if (modalSelectedVoicePrompt) {
+        const isModified = modalSelectedVoicePrompt.promptText !== modalEditableVoicePromptText;
+        finalLiveAudioPrompt = {
+          ...modalSelectedVoicePrompt,
+          promptText: modalEditableVoicePromptText,
+          name: isModified && modalSelectedVoicePrompt.name ? `${modalSelectedVoicePrompt.name} (Customized)` : (modalSelectedVoicePrompt.name || 'Custom Voice Prompt'),
+          originalId: modalSelectedVoicePrompt.id || modalSelectedVoicePrompt.originalId,
+        };
+      } else if (modalEditableVoicePromptText && modalEditableVoicePromptText.trim()) {
+        finalLiveAudioPrompt = {
+          name: 'Custom Voice Prompt',
+          promptText: modalEditableVoicePromptText,
+        };
+      }
 
       const saveFn = handleSaveAiSettings || handleSaveGazeSettings;
       if (saveFn) {
@@ -137,6 +161,7 @@ const ControlsPanel = ({
           audioSilenceSuppression: modalAudioSilenceSuppression,
           vadSensitivity: modalVadSensitivity,
           voiceAiCloudFallbackRate: modalVoiceAiCloudFallbackRate,
+          liveAudioPrompt: finalLiveAudioPrompt,
           // Screen / Cloud Model
           selectedAiModel: modalSelectedAiModel,
         });
@@ -994,6 +1019,98 @@ const ControlsPanel = ({
                       <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
                         Fallback analysis frequency when client device cannot load Whisper/Gemma.
                       </span>
+                    </div>
+                  )}
+
+                  {modalVoiceAiMode !== 'disabled' && (
+                    <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                        Select & Edit Voice AI Prompt:
+                      </label>
+
+                      {/* Filter Radio */}
+                      <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', fontSize: '0.8rem', color: '#475569' }}>
+                        {['all', 'public', 'private', 'shared'].map(f => (
+                          <label key={f} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', textTransform: 'capitalize' }}>
+                            <input
+                              type="radio"
+                              value={f}
+                              name="modalVoicePromptFilter"
+                              checked={modalVoicePromptFilter === f}
+                              onChange={(e) => setModalVoicePromptFilter(e.target.value)}
+                            />
+                            {f}
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Voice Prompt Select */}
+                      <select
+                        value={modalSelectedVoicePrompt ? modalSelectedVoicePrompt.id : ''}
+                        onChange={(e) => {
+                          const p = (audioPrompts || []).find(item => item.id === e.target.value);
+                          setModalSelectedVoicePrompt(p || null);
+                          if (p && p.promptText) {
+                            setModalEditableVoicePromptText(p.promptText);
+                          }
+                        }}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '8px' }}
+                      >
+                        <option value="">-- Select a voice/audio prompt template --</option>
+                        {(audioPrompts || [])
+                          .filter(p => {
+                            if (modalVoicePromptFilter === 'all') return true;
+                            if (modalVoicePromptFilter === 'public') return p.accessLevel === 'public';
+                            if (modalVoicePromptFilter === 'private') return p.accessLevel === 'private';
+                            if (modalVoicePromptFilter === 'shared') return p.accessLevel === 'shared';
+                            return true;
+                          })
+                          .map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                      </select>
+
+                      {/* Placeholder hint chips */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Available Placeholders:</span>
+                        {['{{transcript}}', '{{classId}}', '{{studentUid}}', '{{studentEmail}}'].map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setModalEditableVoicePromptText(prev => prev + (prev.endsWith(' ') || !prev ? '' : ' ') + tag)}
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '2px 6px',
+                              background: '#e0e7ff',
+                              color: '#3730a3',
+                              border: '1px solid #c7d2fe',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontFamily: 'monospace'
+                            }}
+                            title={`Insert ${tag} into prompt`}
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Editable Prompt Textarea */}
+                      <textarea
+                        value={modalEditableVoicePromptText}
+                        onChange={(e) => setModalEditableVoicePromptText(e.target.value)}
+                        placeholder="Select a voice prompt template or write custom instructions for LiteRT Gemma & Cloud Gemini..."
+                        style={{
+                          width: '100%',
+                          minHeight: '100px',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.82rem',
+                          fontFamily: 'monospace',
+                          boxSizing: 'border-box'
+                        }}
+                      />
                     </div>
                   )}
                 </div>

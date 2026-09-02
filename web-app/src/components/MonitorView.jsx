@@ -13,6 +13,7 @@ import TimelineSlider from './TimelineSlider';
 import IndividualStudentView from './IndividualStudentView';
 
 import { usePrompts } from '../hooks/usePrompts';
+import { useAudioPrompts } from '../hooks/useAudioPrompts';
 
 import { useAnalysis } from '../hooks/useAnalysis';
 import {
@@ -22,8 +23,9 @@ import {
   exportComplianceResultsToCsv,
 } from '../utils/studentCompliance';
 
-const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
+const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
+  const audioPrompts = useAudioPrompts(user);
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [classList, setClassList] = useState([]);
@@ -96,6 +98,7 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
   const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
   const [vadSensitivity, setVadSensitivity] = useState(15);
   const [voiceAiCloudFallbackRate, setVoiceAiCloudFallbackRate] = useState(3);
+  const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
 
   const [isPerImageAnalysisRunning, setIsPerImageAnalysisRunning] = useState(false);
   const [isAllImagesAnalysisRunning, setIsAllImagesAnalysisRunning] = useState(false);
@@ -146,6 +149,11 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         vadSensitivity: parseInt(settings.vadSensitivity, 10) || 15,
         voiceAiCloudFallbackRate: parseInt(settings.voiceAiCloudFallbackRate, 10) || 3,
       };
+
+      if (settings.liveAudioPrompt !== undefined) {
+        payload.liveAudioPrompt = settings.liveAudioPrompt;
+        setLiveAudioPrompt(settings.liveAudioPrompt);
+      }
 
       if (settings.selectedAiModel) {
         payload.aiModel = settings.selectedAiModel;
@@ -320,6 +328,9 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         }
         if (data.voiceAiCloudFallbackRate !== undefined) {
           setVoiceAiCloudFallbackRate(data.voiceAiCloudFallbackRate);
+        }
+        if (data.liveAudioPrompt !== undefined) {
+          setLiveAudioPrompt(data.liveAudioPrompt);
         }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
@@ -1022,6 +1033,8 @@ const MonitorView = ({ classId, lessons, selectedLesson, startTime, endTime, han
         audioSilenceSuppression={audioSilenceSuppression}
         vadSensitivity={vadSensitivity}
         voiceAiCloudFallbackRate={voiceAiCloudFallbackRate}
+        liveAudioPrompt={liveAudioPrompt}
+        audioPrompts={audioPrompts}
         handleSaveAiSettings={handleSaveAiSettings}
         handleSaveGazeSettings={handleSaveGazeSettings}
         handleBroadcastPreloadAi={handleBroadcastPreloadAi}

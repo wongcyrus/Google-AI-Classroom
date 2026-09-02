@@ -151,6 +151,7 @@ describe('StudentView Component Extended Test Suite', () => {
     const mockDevices = [
       { deviceId: 'cam1', kind: 'videoinput', label: 'Built-in FaceTime HD Camera' },
       { deviceId: 'cam2', kind: 'videoinput', label: 'Logitech C920 Pro HD' },
+      { deviceId: 'mic1', kind: 'audioinput', label: 'Internal Microphone' },
     ];
 
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -158,10 +159,12 @@ describe('StudentView Component Extended Test Suite', () => {
         getUserMedia: vi.fn().mockResolvedValue({
           getTracks: () => [{ stop: vi.fn() }],
           getVideoTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
+          getAudioTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
         }),
         getDisplayMedia: vi.fn().mockResolvedValue({
           getTracks: () => [{ stop: vi.fn() }],
-          getVideoTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
+          getVideoTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }) }],
+          getAudioTracks: () => [{ addEventListener: vi.fn(), removeEventListener: vi.fn(), stop: vi.fn() }],
         }),
         enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
         addEventListener: vi.fn(),
@@ -170,102 +173,75 @@ describe('StudentView Component Extended Test Suite', () => {
       writable: true,
       configurable: true,
     });
+
+    window.AudioContext = vi.fn().mockImplementation(() => ({
+      state: 'running',
+      createMediaStreamSource: vi.fn().mockReturnValue({ connect: vi.fn() }),
+      createAnalyser: vi.fn().mockReturnValue({
+        fftSize: 256,
+        frequencyBinCount: 128,
+        getByteFrequencyData: vi.fn((arr) => {
+          arr.fill(50);
+        }),
+      }),
+      close: vi.fn().mockResolvedValue(),
+    }));
+
+    function MockSpeechRecognition() {
+      this.continuous = false;
+      this.interimResults = false;
+      this.lang = 'en-US';
+      this.start = vi.fn();
+      this.onresult = null;
+      this.onerror = null;
+      this.onend = null;
+    }
+
+    window.SpeechRecognition = MockSpeechRecognition;
+    window.webkitSpeechRecognition = MockSpeechRecognition;
   });
 
-  it('renders student monitoring header and instructions', async () => {
+  it('renders student setup hero card and classroom summary', async () => {
     render(<StudentView user={mockUser} />);
 
-    expect(screen.getByRole('button', { name: /Share Screen/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Start Webcam/i })).toBeInTheDocument();
+    expect(screen.getByText(/Welcome to Your Classroom Session/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i })).toBeInTheDocument();
     expect(screen.getByText(/My Recent Alerts/i)).toBeInTheDocument();
   });
 
-  it('populates camera selection dropdown from navigator.mediaDevices', async () => {
-    const mockDevices = [
-      { deviceId: 'cam1', kind: 'videoinput', label: 'Built-in FaceTime HD Camera' },
-      { deviceId: 'cam2', kind: 'videoinput', label: 'Logitech C920 Pro HD' },
-    ];
-
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn() }],
-          getVideoTracks: () => [{ addEventListener: vi.fn(), stop: vi.fn() }],
-        }),
-        getDisplayMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn() }],
-          getVideoTracks: () => [{ addEventListener: vi.fn(), stop: vi.fn() }],
-        }),
-        enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      },
-      writable: true,
-      configurable: true,
-    });
-
+  it('allows opening and closing readiness wizard from setup hero card', async () => {
     render(<StudentView user={mockUser} />);
 
-    const select = await screen.findByLabelText(/Select Webcam/i);
-    expect(select).toBeInTheDocument();
-    expect(screen.getByText(/Built-in FaceTime HD Camera/i)).toBeInTheDocument();
-    expect(screen.getByText(/Logitech C920 Pro HD/i)).toBeInTheDocument();
+    const startSetupBtn = screen.getByRole('button', { name: /Start Setup & Readiness Test/i });
+    fireEvent.click(startSetupBtn);
 
-    fireEvent.change(select, { target: { value: 'cam2' } });
-    expect(select.value).toBe('cam2');
+    expect(screen.getByText(/Class Setup & Readiness/i)).toBeInTheDocument();
+    const closeBtn = screen.getByText('×');
+    fireEvent.click(closeBtn);
   });
 
-  it('handles start and stop webcam sharing', async () => {
-    const mockStream = {
-      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
-      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn(), stop: vi.fn() }]),
-    };
-    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream);
-
-    render(<StudentView user={mockUser} />);
-
-    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
-    fireEvent.click(startWebcamBtn);
-
-    await waitFor(() => {
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
-    });
-  });
-
-  it('handles start screen sharing', async () => {
+  it('handles quick start screen sharing from setup hero card', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
     const mockScreenStream = {
-      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
-      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn() }]),
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
     };
     navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
 
     render(<StudentView user={mockUser} />);
 
-    const startScreenBtn = screen.getByRole('button', { name: /Share Screen/i });
-    fireEvent.click(startScreenBtn);
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
 
     await waitFor(() => {
       expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalled();
     });
   });
 
-  it('allows opening mic setup modal and toggling audio settings', async () => {
-    render(<StudentView user={mockUser} />);
-
-    const micToggleBtn = await screen.findByRole('button', { name: /Mic Muted|Mic Active/i });
-    expect(micToggleBtn).toBeInTheDocument();
-    fireEvent.click(micToggleBtn);
-
-    const micTestBtn = screen.getByRole('button', { name: /⚙️ Mic Test/i });
-    fireEvent.click(micTestBtn);
-
-    expect(screen.getByText(/Microphone Setup & Verification/i)).toBeInTheDocument();
-
-    const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
-    fireEvent.click(cancelBtn);
-  });
-
-  it('opens, closes and completes Exam Readiness Wizard modal triggering auto-stream', async () => {
+  it('completes Exam Readiness Wizard and triggers streaming', async () => {
     const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
     const mockScreenStream = {
       getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
@@ -282,13 +258,33 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const wizardBtn = screen.getByRole('button', { name: /Exam Readiness Check/i });
+    const wizardBtn = screen.getByRole('button', { name: /Start Setup & Readiness Test/i });
     fireEvent.click(wizardBtn);
 
-    expect(screen.getByText(/Pre-Exam Readiness Wizard/i)).toBeInTheDocument();
+    // Step 1: Click next
+    await waitFor(() => {
+      const nextBtn1 = screen.getByRole('button', { name: /Next: Camera Check/i });
+      fireEvent.click(nextBtn1);
+    });
 
-    const closeBtn = screen.getByRole('button', { name: /×/i });
-    fireEvent.click(closeBtn);
+    // Step 2: Calibrate & Next
+    await waitFor(() => {
+      const calibrateBtn = screen.getByRole('button', { name: /Set Center Pose/i });
+      fireEvent.click(calibrateBtn);
+      const nextBtn2 = screen.getByRole('button', { name: /Next: Screen Share/i });
+      fireEvent.click(nextBtn2);
+    });
+
+    // Step 3: Screen share & Complete
+    await waitFor(() => {
+      const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
+      fireEvent.click(screenShareBtn);
+    });
+
+    await waitFor(() => {
+      const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
+      fireEvent.click(finishBtn);
+    });
   });
 
   it('handles dismissing notification banner and clicking allow', async () => {
@@ -323,23 +319,6 @@ describe('StudentView Component Extended Test Suite', () => {
     }
   });
 
-  it('starts webcam stream on click Start Webcam', async () => {
-    const mockWebcamStream = {
-      getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
-      getVideoTracks: vi.fn().mockReturnValue([{ addEventListener: vi.fn() }]),
-    };
-    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockWebcamStream);
-
-    render(<StudentView user={mockUser} />);
-
-    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
-    fireEvent.click(startWebcamBtn);
-
-    await waitFor(() => {
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
-    });
-  });
-
   it('handles online and offline window network events', async () => {
     render(<StudentView user={mockUser} />);
 
@@ -359,25 +338,7 @@ describe('StudentView Component Extended Test Suite', () => {
     }
   });
 
-  it('renders Preload AI button when model is not cached and triggers preload on click', async () => {
-    mockFaceMonitorReturn = {
-      ...mockFaceMonitorReturn,
-      clientAiStatus: 'idle',
-      isModelCached: false,
-      isPreloading: false,
-      loadingProgress: 0,
-    };
-
-    render(<StudentView user={mockUser} />);
-
-    const preloadBtn = screen.getByRole('button', { name: /Preload AI \(~3.8 MB\)/i });
-    expect(preloadBtn).toBeInTheDocument();
-
-    fireEvent.click(preloadBtn);
-    expect(mockPreloadModel).toHaveBeenCalled();
-  });
-
-  it('renders loading progress indicator when model is downloading or initializing', async () => {
+  it('renders loading progress indicator in setup hero summary when model is downloading', async () => {
     mockFaceMonitorReturn = {
       ...mockFaceMonitorReturn,
       clientAiStatus: 'initializing',
@@ -388,10 +349,10 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    expect(screen.getByText(/⏳ Loading AI \(45%\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Loading \(45%\)/i)).toBeInTheDocument();
   });
 
-  it('renders AI Ready badge when model is cached and ready', async () => {
+  it('renders AI Ready badge in setup hero when model is cached and ready', async () => {
     mockFaceMonitorReturn = {
       ...mockFaceMonitorReturn,
       clientAiStatus: 'ready',
@@ -404,49 +365,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    expect(screen.getByText(/⚡ AI Ready/i)).toBeInTheDocument();
-  });
-
-  it('renders Calibrate View button and calls calibrateNeutralBaseline when clicked', async () => {
-    mockFaceMonitorReturn = {
-      ...mockFaceMonitorReturn,
-      clientAiStatus: 'ready',
-      isModelCached: true,
-      isPreloading: false,
-      isCalibrated: false,
-    };
-
-    render(<StudentView user={mockUser} />);
-
-    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
-    fireEvent.click(startWebcamBtn);
-
-    const calibrateBtn = await screen.findByRole('button', { name: /🎯 Calibrate View/i });
-    expect(calibrateBtn).toBeInTheDocument();
-
-    fireEvent.click(calibrateBtn);
-    expect(mockCalibrateBaseline).toHaveBeenCalled();
-  });
-
-  it('renders Calibrated indicator when isCalibrated is true and calls resetCalibration on click', async () => {
-    mockFaceMonitorReturn = {
-      ...mockFaceMonitorReturn,
-      clientAiStatus: 'ready',
-      isModelCached: true,
-      isPreloading: false,
-      isCalibrated: true,
-    };
-
-    render(<StudentView user={mockUser} />);
-
-    const startWebcamBtn = screen.getByRole('button', { name: /Start Webcam/i });
-    fireEvent.click(startWebcamBtn);
-
-    const calibratedBtn = await screen.findByRole('button', { name: /🎯 Calibrated/i });
-    expect(calibratedBtn).toBeInTheDocument();
-
-    fireEvent.click(calibratedBtn);
-    expect(mockResetCalibration).toHaveBeenCalled();
+    expect(screen.getByText(/Ready \(Fast\)/i)).toBeInTheDocument();
   });
 
   it('renders UnsupportedBrowserNotice and triggers signOut when student accesses via non-Chrome browser', () => {

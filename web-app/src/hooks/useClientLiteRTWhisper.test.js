@@ -380,4 +380,89 @@ describe("useClientLiteRTWhisper Hook", () => {
     expect(abort).toHaveBeenCalledTimes(2);
     delete window.webkitSpeechRecognition;
   });
+
+  it('attaches Web Audio ScriptProcessorNode and processes audio frames with VAD', async () => {
+    let capturedAudioProcess;
+    const mockAudioTrack = {
+      label: 'Headset Mic',
+      readyState: 'live',
+      enabled: true,
+      getSettings: () => ({ deviceId: 'headset-mic-id' }),
+    };
+    const mockStream = {
+      getAudioTracks: () => [mockAudioTrack],
+    };
+
+    const mockSource = { connect: vi.fn() };
+    const mockProcessor = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      set onaudioprocess(fn) {
+        capturedAudioProcess = fn;
+      },
+      get onaudioprocess() {
+        return capturedAudioProcess;
+      },
+    };
+    const mockGain = {
+      connect: vi.fn(),
+      gain: { value: 0 },
+    };
+
+    const originalAudioContext = window.AudioContext;
+    window.AudioContext = class {
+      constructor() {
+        this.sampleRate = 48000;
+        this.state = 'running';
+        this.destination = {};
+      }
+      createMediaStreamSource() {
+        return mockSource;
+      }
+      createScriptProcessor() {
+        return mockProcessor;
+      }
+      createGain() {
+        return mockGain;
+      }
+      close() {
+        return Promise.resolve();
+      }
+    };
+
+    const { unmount } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        enabled: true,
+        audioStream: mockStream,
+        deviceId: 'headset-mic-id',
+      })
+    );
+
+    expect(capturedAudioProcess).toBeDefined();
+
+    // Trigger audio process with speech audio data (RMS above vadThreshold)
+    const speechData = new Float32Array(4096).fill(0.3);
+    act(() => {
+      capturedAudioProcess({
+        inputBuffer: {
+          getChannelData: () => speechData,
+        },
+      });
+    });
+
+    // Trigger audio process with silence (RMS below vadThreshold)
+    const silenceData = new Float32Array(4096).fill(0.0001);
+    act(() => {
+      capturedAudioProcess({
+        inputBuffer: {
+          getChannelData: () => silenceData,
+        },
+      });
+    });
+
+    unmount();
+    window.AudioContext = originalAudioContext;
+  });
 });

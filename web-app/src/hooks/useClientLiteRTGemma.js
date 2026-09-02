@@ -27,12 +27,21 @@ export function useClientLiteRTGemma({
 
   const workerRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
+  const classIdRef = useRef(classId);
+  const studentUidRef = useRef(studentUid);
+  const studentEmailRef = useRef(studentEmail);
   const reqIdCounterRef = useRef(0);
   const initializationPromiseRef = useRef(null);
   const evaluationInFlightRef = useRef(false);
   const statusRef = useRef(status);
   const engineRef = useRef(engine);
   const customGemmaPromptRef = useRef(customGemmaPrompt);
+
+  useEffect(() => {
+    classIdRef.current = classId;
+    studentUidRef.current = studentUid;
+    studentEmailRef.current = studentEmail;
+  }, [classId, studentUid, studentEmail]);
 
   useEffect(() => {
     customGemmaPromptRef.current = customGemmaPrompt;
@@ -186,16 +195,6 @@ export function useClientLiteRTGemma({
     return initializationPromiseRef.current;
   }, []);
 
-  const classIdRef = useRef(classId);
-  const studentUidRef = useRef(studentUid);
-  const studentEmailRef = useRef(studentEmail);
-
-  useEffect(() => {
-    classIdRef.current = classId;
-    studentUidRef.current = studentUid;
-    studentEmailRef.current = studentEmail;
-  }, [classId, studentUid, studentEmail]);
-
   /**
    * Evaluate a spoken transcript using Gemma, log violations to Firestore,
    * and update live student telemetry for the Teacher Monitor.
@@ -317,6 +316,7 @@ export function useClientLiteRTGemma({
         payload: {
           transcript,
           studentUid: studentUidRef.current,
+          studentEmail: studentEmailRef.current,
           classId: classIdRef.current,
           timestamp: Date.now(),
           systemPrompt,

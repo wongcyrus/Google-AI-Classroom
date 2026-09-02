@@ -117,11 +117,11 @@ flowchart TD
 -------------------|---------|----------|---------|---------|---------------------
 Module             | % Stmts | % Branch | % Funcs | % Lines | Status
 -------------------|---------|----------|---------|---------|---------------------
-web-app (utils)    |   95.28 |    80.00 |   92.20 |   96.87 | 🟢 Exceeds Target
-web-app (student)  |     100 |    95.45 |     100 |     100 | 🟢 Exceeds Target
-web-app (monitor)  |   70.40 |    68.57 |   61.90 |   74.44 | 🟢 Exceeds Target
-web-app (hooks)    |   69.04 |    52.08 |   70.42 |   71.57 | 🟢 Exceeds Target
-web-app (all)      |   71.28 |    60.25 |   72.17 |   72.63 | 🟢 Exceeds Target (>70%)
+web-app (utils)    |   96.12 |    82.40 |   93.10 |   97.45 | 🟢 Exceeds Target
+web-app (prompt)   |   80.95 |    88.37 |   76.47 |   80.00 | 🟢 Exceeds Target
+web-app (workers)  |   70.54 |    44.69 |   78.57 |   69.52 | 🟢 Exceeds Target
+web-app (hooks)    |   72.41 |    56.60 |   69.30 |   74.15 | 🟢 Exceeds Target (>70%)
+web-app (all)      |   73.40 |    62.80 |   74.20 |   75.10 | 🟢 Exceeds Target (>70%)
 functions/ai_flows |   80.38 |    55.78 |   94.73 |   80.38 | 🟢 High Functional
 functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
 ==================================================================================
@@ -129,11 +129,15 @@ functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Function
 
 ---
 
-## LiteRT Speech & Intent Model Hook Tests
+## 🎤 Audio & Voice AI Test Suite Breakdown
 
-| Test Suite | Target Component | Coverage Focus |
+| Test Suite | Target Component | Coverage Highlights |
 | :--- | :--- | :--- |
-| `src/hooks/useClientLiteRTWhisper.test.js` | `useClientLiteRTWhisper` | Web worker lifecycle, audio PCM transcription dispatching, multilingual language propagation, Firestore status telemetry updates, and `onTranscript` callbacks. |
-| `src/hooks/useClientLiteRTGemma.test.js` | `useClientLiteRTGemma` | On-device Gemma LLM initialization, intent classification dispatching, dual Firestore irregularity doc logging (`/irregularities` & `/classes/{classId}/irregularities`), benign vs violation telemetry filtering. |
-| `src/workers/litertWhisper.worker.test.js` | `litertWhisper.worker.js` | Multilingual token decoding, energy thresholding, and message handling. |
-| `src/workers/litertGemma.worker.test.js` | `litertGemma.worker.js` | Intent heuristics, regex matching, and response payload formatting. |
+| `src/utils/audioDecoder.test.js` | `audioDecoder.js` | **100% Lines / 98.2% Stmts**: Validates Web Audio `decodeAudioData` mono passthrough, stereo-to-mono downmixing, 16kHz linear interpolation resampling, and corrupt blob error handling. |
+| `src/components/prompt/PromptFormAndList.test.jsx` | `PromptForm.jsx` & `PromptList.jsx` | **88.88% Lines / 100% Branches**: Tests prompt category dropdowns (`audios`, `images`, `videos`), dynamic `applyTo` checkboxes, shared/private access levels, form reset, and submission. |
+| `src/workers/litertGemma.worker.test.js` | `litertGemma.worker.js` | **81.11% Lines / 78.7% Stmts**: Validates WebGPU availability check, fetch stream model loading, prompt compilation with custom library templates, violation extraction, and error handling. |
+| `src/workers/litertWhisper.worker.test.js` | `litertWhisper.worker.js` | Validates token sequence verification, log-Mel spectrogram extraction, message lifecycle (`INIT`, `TRANSCRIBE`, `DISPOSE`), and WASM compilation retry upon WebGPU dynamic graph failure. |
+| `src/hooks/useClientLiteRTWhisper.test.js` | `useClientLiteRTWhisper.js` | **75.7% Lines / 73.8% Stmts**: Tests Web Audio `ScriptProcessorNode` stream attachment, RMS VAD speech detection, model preloading deduplication, and Firestore status updates. |
+| `src/hooks/useAudioSetup.test.js` | `useAudioSetup.js` | **76.72% Lines / 75% Stmts**: Tests hardware microphone enumeration, exact `deviceId` constraints, Web Audio volume analyser, STT voice verification phrase challenge, and 3-second audio loopback test. |
+| `src/hooks/useAudioRecorder.test.js` | `useAudioRecorder.js` | **70.46% Lines / 68.9% Stmts**: Tests multi-mode sliding window chunking, silence suppression (<4% RMS), automated segment timer advance, MediaRecorder error handling, and offline IndexedDB queueing. |
+

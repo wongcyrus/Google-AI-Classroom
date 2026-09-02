@@ -347,4 +347,71 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.click(preloadBtn);
     expect(handleBroadcastPreloadAi).toHaveBeenCalledTimes(1);
   });
+
+  it('selects and edits voice prompt template and inserts placeholders in Voice tab', () => {
+    const handleSaveAiSettings = vi.fn();
+    const mockAudioPrompts = [
+      {
+        id: 'voice_p1',
+        name: 'AI Voice Invigilator',
+        category: 'audios',
+        accessLevel: 'public',
+        promptText: 'Analyze speech for {{studentUid}} in {{classId}}: {{transcript}}'
+      },
+      {
+        id: 'voice_p2',
+        name: 'Detect Whispering',
+        category: 'audios',
+        accessLevel: 'public',
+        promptText: 'Whisper detection for {{transcript}}'
+      }
+    ];
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        audioPrompts={mockAudioPrompts}
+        handleSaveAiSettings={handleSaveAiSettings}
+        voiceAiMode="hybrid"
+      />
+    );
+
+    // Open AI Suite Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // Switch to Voice & Speech Tab
+    const voiceTabBtn = screen.getByRole('button', { name: /Voice & Speech/i });
+    fireEvent.click(voiceTabBtn);
+
+    expect(screen.getByText(/Select & Edit Voice AI Prompt:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Available Placeholders:/i)).toBeInTheDocument();
+
+    // Select Voice Prompt
+    const selects = screen.getAllByRole('combobox');
+    const voiceSelect = selects.find(s => s.querySelector('option[value="voice_p1"]'));
+    expect(voiceSelect).toBeDefined();
+    fireEvent.change(voiceSelect, { target: { value: 'voice_p1' } });
+
+    // Verify textarea populated
+    const textarea = screen.getByPlaceholderText(/Select a voice prompt template or write custom instructions/i);
+    expect(textarea.value).toContain('Analyze speech for {{studentUid}} in {{classId}}: {{transcript}}');
+
+    // Insert placeholder pill
+    const studentEmailPill = screen.getByRole('button', { name: /\+ \{\{studentEmail\}\}/i });
+    fireEvent.click(studentEmailPill);
+    expect(textarea.value).toContain('{{studentEmail}}');
+
+    // Click Save & Apply
+    const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    fireEvent.click(saveButton);
+
+    expect(handleSaveAiSettings).toHaveBeenCalledWith(expect.objectContaining({
+      voiceAiMode: 'hybrid',
+      liveAudioPrompt: expect.objectContaining({
+        id: 'voice_p1',
+        promptText: expect.stringContaining('{{studentEmail}}'),
+      })
+    }));
+  });
 });

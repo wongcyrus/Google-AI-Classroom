@@ -84,5 +84,33 @@ describe('litertWhisper.worker', () => {
     expect(isValidWhisperTokenSequence(
       new Int32Array([50258, 50260, 50359, 50363, 15947])
     )).toBe(true);
+    expect(isValidWhisperTokenSequence(null)).toBe(false);
+    expect(isValidWhisperTokenSequence([])).toBe(false);
+  });
+
+  it('handles worker onmessage lifecycle for TRANSCRIBE, DISPOSE, and errors', async () => {
+    const messages = [];
+    self.postMessage = vi.fn((msg) => messages.push(msg));
+
+    // 1. Unknown message
+    await self.onmessage({ data: { type: 'UNKNOWN_MSG', id: '1' } });
+
+    // 2. Transcribe without model loaded -> errors cleanly
+    await self.onmessage({
+      data: {
+        type: 'TRANSCRIBE',
+        id: '2',
+        payload: {
+          audioPcm: new Float32Array([0.1, -0.1, 0.2]),
+          studentUid: 'student_1',
+          classId: 'IT114115-Demo',
+        },
+      },
+    });
+    expect(messages.some(m => m.type === 'ERROR' && m.id === '2')).toBe(true);
+
+    // 3. Dispose
+    await self.onmessage({ data: { type: 'DISPOSE', id: '4' } });
+    expect(messages.some(m => m.type === 'DISPOSE_COMPLETE' && m.id === '4')).toBe(true);
   });
 });

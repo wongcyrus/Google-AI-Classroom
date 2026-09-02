@@ -43,7 +43,8 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
 
       // Mock navigator.mediaDevices
       const mockStream = {
-        getTracks: vi.fn(() => [{ stop: vi.fn() }]),
+        getTracks: vi.fn(() => [{ stop: vi.fn(), readyState: 'live', enabled: true }]),
+        getAudioTracks: vi.fn(() => [{ stop: vi.fn(), readyState: 'live', enabled: true }]),
       };
 
       navigator.mediaDevices = {
@@ -175,6 +176,63 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
         await result.current.startStream('mic-2');
       });
       expect(result.current.stream).toBeTruthy();
+    });
+
+    it('runs 3-second audio playback loopback test', async () => {
+      let recorderInstance;
+      class MockMediaRecorder {
+        constructor(stream, opts) {
+          this.stream = stream;
+          this.opts = opts;
+          this.state = 'inactive';
+          recorderInstance = this;
+        }
+        start() {
+          this.state = 'recording';
+        }
+        stop() {
+          this.state = 'inactive';
+          if (this.ondataavailable) {
+            this.ondataavailable({ data: new Blob(['pcm'], { type: 'audio/webm' }) });
+          }
+          if (this.onstop) {
+            this.onstop();
+          }
+        }
+      }
+      globalThis.MediaRecorder = MockMediaRecorder;
+      globalThis.MediaRecorder.isTypeSupported = vi.fn().mockReturnValue(true);
+
+      globalThis.URL.createObjectURL = vi.fn().mockReturnValue('blob:http://localhost/test-audio');
+      globalThis.URL.revokeObjectURL = vi.fn();
+
+      const mockAudioPlay = vi.fn().mockResolvedValue();
+      globalThis.Audio = class {
+        constructor(src) {
+          this.src = src;
+          this.play = mockAudioPlay;
+        }
+      };
+
+      const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      await act(async () => {
+        await result.current.startStream('mic-1');
+      });
+
+      await act(async () => {
+        await result.current.startPlaybackTest();
+      });
+
+      expect(result.current.isRecordingPlayback).toBe(true);
+
+      // Stop recorder
+      act(() => {
+        recorderInstance.stop();
+      });
+
+      expect(result.current.isRecordingPlayback).toBe(false);
+      expect(result.current.playbackAudioUrl).toBe('blob:http://localhost/test-audio');
     });
   });
 });

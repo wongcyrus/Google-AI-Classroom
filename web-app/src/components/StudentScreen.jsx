@@ -20,6 +20,12 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         <div className="header-status-group">
           {screenshotData?.screen?.url && <span className="stream-pill" title="Screen Feed Active">🖥️</span>}
           {screenshotData?.webcam?.url && <span className="stream-pill" title="Webcam Feed Active">📷</span>}
+          {student?.hasWebcam === false && isSharing && (
+            <span className="stream-pill muted" title="No Webcam Hardware on Student Device (Screen Only Mode)">📷🚫</span>
+          )}
+          {student?.hasMic === false && isSharing && (
+            <span className="stream-pill muted" title="No Microphone Hardware on Student Device">🎙️🚫</span>
+          )}
           {student?.isAudioSharing && (
             <span 
               className={`stream-pill ${student?.audioStatus === 'speaking' ? 'speaking-active' : ''} ${student?.isMultiSpeaker || (student?.speakerCount > 1) ? 'multi-voice-warn' : ''}`} 
@@ -36,9 +42,9 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           {student?.clientAiStatus === 'ready' && student?.faceStatus === 'normal' && (
             <span className="ai-status-badge normal" title={`On-Device AI Ready (${student?.delegateUsed || 'GPU'})`}>🟢</span>
           )}
-          {student?.faceStatus === 'looking_away' && <span className="ai-status-badge warn" title={`Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || ''}°)`}>🟡</span>}
-          {student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
-          {student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
+          {student?.hasWebcam !== false && student?.faceStatus === 'looking_away' && <span className="ai-status-badge warn" title={`Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || ''}°)`}>🟡</span>}
+          {student?.hasWebcam !== false && student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
+          {student?.hasWebcam !== false && student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
           {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title={`Cloud AI Fallback Active ${student?.fallbackReason ? `(${student.fallbackReason})` : ''}`}>☁️</span>}
           {student?.gemmaModelStatus === 'ready' && (
             <span className="ai-status-badge normal" title="Gemma 4 E2B is loaded on this student device">🤖</span>
@@ -112,7 +118,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             {student.faceStatus === 'looking_away' && `👀 Looking Away (${student.yawAngle > 0 ? '+' : ''}${student.yawAngle || 0}°)`}
             {student.faceStatus === 'eyes_closed' && '😴 Eyes Closed / Sleeping'}
             {student.faceStatus === 'talking' && '🗣️ Talking / Whispering'}
-            {student.faceStatus === 'no_face' && '⚠️ No Face'}
+            {student.faceStatus === 'no_face' && student?.hasWebcam !== false && '⚠️ No Face'}
             {student.faceStatus === 'multiple_faces' && '⚠️ Multiple People'}
             {student.faceStatus === 'cloud_fallback' && '☁️ Cloud Fallback'}
           </div>

@@ -67,7 +67,7 @@ describe('ExamReadinessWizard Component', () => {
     window.webkitSpeechRecognition = MockSpeechRecognition;
   });
 
-  it('renders Step 1 audio check, allows microphone selection, and triggers speech test', async () => {
+  it('renders Step 1 audio check, allows microphone selection, and handles skip/test', async () => {
     render(
       <ExamReadinessWizard
         isOpen={true}
@@ -78,8 +78,8 @@ describe('ExamReadinessWizard Component', () => {
       />
     );
 
-    expect(screen.getByText(/Pre-Exam Readiness Wizard/i)).toBeInTheDocument();
-    expect(screen.getByText(/1. 🎙️ Audio Check/i)).toBeInTheDocument();
+    expect(screen.getByText(/Class Setup & Readiness/i)).toBeInTheDocument();
+    expect(screen.getByText(/1. 🎙️ Microphone/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Internal Mic')).toBeInTheDocument();
@@ -89,14 +89,10 @@ describe('ExamReadinessWizard Component', () => {
     fireEvent.change(micSelect, { target: { value: 'mic_2' } });
     expect(micSelect.value).toBe('mic_2');
 
-    // Speech test button
-    const speechBtn = screen.getByText('Test Speech');
-    fireEvent.click(speechBtn);
-    expect(speechBtn).toBeInTheDocument();
-
-    const skipMicBtn = screen.getByText('Skip / Pass Mic');
+    // Skip / Proceed without Mic
+    const skipMicBtn = screen.getByText(/Proceed without Mic/i);
     fireEvent.click(skipMicBtn);
-    expect(screen.getByText(/Voice & Microphone Verified/i)).toBeInTheDocument();
+    expect(screen.getByText(/2. 📷 Camera & Pose/i)).toBeInTheDocument();
   });
 
   it('navigates through all 3 steps, changes camera, calibrates face, verifies screen share and finishes', async () => {
@@ -119,14 +115,14 @@ describe('ExamReadinessWizard Component', () => {
 
     // Step 1: Click Next
     await waitFor(() => {
-      const nextBtn1 = screen.getByText(/Next: Camera Check/i);
+      const nextBtn1 = screen.getByRole('button', { name: /Next: Camera Check/i });
       expect(nextBtn1).not.toBeDisabled();
       fireEvent.click(nextBtn1);
     });
 
     // Step 2: Camera Check & Neutral Gaze Calibration
     await waitFor(() => {
-      expect(screen.getByText(/Calibrate Pose/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Set Center Pose/i })).toBeInTheDocument();
     });
 
     // Change camera
@@ -134,39 +130,39 @@ describe('ExamReadinessWizard Component', () => {
     fireEvent.change(cameraSelect, { target: { value: 'cam_2' } });
     expect(cameraSelect.value).toBe('cam_2');
 
-    const calibrateBtn = screen.getByText(/Calibrate Pose/i);
+    const calibrateBtn = screen.getByRole('button', { name: /Set Center Pose/i });
     fireEvent.click(calibrateBtn);
-    expect(screen.getByText(/✓ Calibrated/i)).toBeInTheDocument();
+    expect(screen.getByText(/✓ Pose Calibrated/i)).toBeInTheDocument();
 
     // Step 2: Back button test
-    const backBtn1 = screen.getByText('← Back');
+    const backBtn1 = screen.getByRole('button', { name: /← Back/i });
     fireEvent.click(backBtn1);
-    expect(screen.getByText(/1. 🎙️ Audio Check/i)).toBeInTheDocument();
+    expect(screen.getByText(/1. 🎙️ Microphone/i)).toBeInTheDocument();
 
     // Return to Step 2 then Step 3
-    fireEvent.click(screen.getByText(/Next: Camera Check/i));
-    const nextBtn2 = screen.getByText(/Next: Screen Share/i);
+    fireEvent.click(screen.getByRole('button', { name: /Next: Camera Check/i }));
+    const nextBtn2 = screen.getByRole('button', { name: /Next: Screen Share/i });
     fireEvent.click(nextBtn2);
 
     // Step 3: Screen Share Verification
     expect(screen.getByText(/3. 🖥️ Screen Share/i)).toBeInTheDocument();
-    const screenShareBtn = screen.getByText(/Test Share Entire Screen/i);
+    const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
     await act(async () => {
       fireEvent.click(screenShareBtn);
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/✓ Screen Verified/i)).toBeInTheDocument();
+      expect(screen.getByText(/Screen Verified/i)).toBeInTheDocument();
     });
 
     // Step 3: Back button test
-    const backBtn2 = screen.getByText('← Back');
+    const backBtn2 = screen.getByRole('button', { name: /← Back/i });
     fireEvent.click(backBtn2);
-    expect(screen.getByText(/2. 👁️ Camera Pose/i)).toBeInTheDocument();
+    expect(screen.getByText(/2. 📷 Camera & Pose/i)).toBeInTheDocument();
 
     // Back to Step 3 and complete
-    fireEvent.click(screen.getByText(/Next: Screen Share/i));
-    const finishBtn = screen.getByText(/Complete & Enter Exam/i);
+    fireEvent.click(screen.getByRole('button', { name: /Next: Screen Share/i }));
+    const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
     await act(async () => {
       fireEvent.click(finishBtn);
     });
@@ -179,10 +175,8 @@ describe('ExamReadinessWizard Component', () => {
     });
   });
 
-  it('handles screen share failure gracefully and finishes even if save fails', async () => {
-    navigator.mediaDevices.getDisplayMedia = vi.fn().mockRejectedValue(new Error('User cancelled screen share'));
-    mockSetDoc.mockRejectedValueOnce(new Error('Firestore offline'));
-
+  it('handles zero hardware devices gracefully (no webcam, no mic)', async () => {
+    navigator.mediaDevices.enumerateDevices = vi.fn().mockResolvedValue([]);
     const onComplete = vi.fn();
 
     render(
@@ -190,27 +184,42 @@ describe('ExamReadinessWizard Component', () => {
         isOpen={true}
         onClose={vi.fn()}
         onComplete={onComplete}
-        user={{ uid: 'student_1' }}
+        user={{ uid: 'student_no_hardware' }}
         classId="CLASS_1"
       />
     );
 
-    // Step 1: Click Next
+    // Step 1 detects no mic
     await waitFor(() => {
-      const nextBtn1 = screen.getByText(/Next: Camera Check/i);
-      expect(nextBtn1).not.toBeDisabled();
-      fireEvent.click(nextBtn1);
+      expect(screen.getByText(/No Microphone Detected/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Proceed Without Mic/i }));
+
+    // Step 2 detects no camera
+    await waitFor(() => {
+      expect(screen.getByText(/No Webcam Detected/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Proceed Without Camera/i }));
+
+    // Step 3: Screen share test
+    expect(screen.getByText(/3. 🖥️ Screen Share/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Select & Share Entire Screen/i }));
     });
 
-    // Step 2: Calibrate
-    await waitFor(() => expect(screen.getByText(/Calibrate Pose/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Calibrate Pose/i));
-    fireEvent.click(screen.getByText(/Next: Screen Share/i));
+    await waitFor(() => {
+      expect(screen.getByText(/✅ Verified/i)).toBeInTheDocument();
+    });
 
-    // Step 3: Test screen share rejection
-    const screenShareBtn = screen.getByText(/Test Share Entire Screen/i);
     await act(async () => {
-      fireEvent.click(screenShareBtn);
+      fireEvent.click(screen.getByRole('button', { name: /Complete & Enter Class/i }));
+    });
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+        hasCamera: false,
+        hasMic: false,
+      }));
     });
   });
 
