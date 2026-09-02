@@ -2,11 +2,11 @@
  * useClientLiteRTGemma.js
  * 
  * Custom hook to run on-device Gemma LLM evaluation on spoken STT transcripts
- * via Google LiteRT.js in a dedicated Web Worker.
+ * via Google LiteRT-LM in a dedicated Web Worker.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, setDoc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { isGemmaModelCached, DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader';
 
@@ -14,18 +14,27 @@ export function useClientLiteRTGemma({
   classId,
   studentUid,
   studentEmail = '',
-  enabled = true,
 }) {
-  const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'evaluating' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'evaluating' | 'unavailable' | 'error'
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isModelCached, setIsModelCached] = useState(false);
   const [delegateUsed, setDelegateUsed] = useState('wasm');
+  const [engine, setEngine] = useState('uninitialized');
+  const [unavailableReason, setUnavailableReason] = useState('');
   const [latestEvaluation, setLatestEvaluation] = useState(null);
   const [error, setError] = useState(null);
 
   const workerRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
   const reqIdCounterRef = useRef(0);
+  const initializationPromiseRef = useRef(null);
+  const evaluationInFlightRef = useRef(false);
+  const statusRef = useRef(status);
+  const engineRef = useRef(engine);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   // Check initial cache state
   useEffect(() => {
@@ -44,8 +53,7 @@ export function useClientLiteRTGemma({
 
     try {
       workerRef.current = new Worker(
-        new URL('../workers/litertGemma.worker.js', import.meta.url),
-        { type: 'module' }
+        new URL('../workers/litertGemma.worker.js', import.meta.url)
       );
 
       workerRef.current.onmessage = (event) => {
@@ -57,29 +65,51 @@ export function useClientLiteRTGemma({
         } else if (type === 'PROGRESS') {
           setLoadingProgress(payload.progress);
         } else if (type === 'INIT_COMPLETE') {
-          setStatus('ready');
-          setLoadingProgress(100);
-          setIsModelCached(true);
+          const isGemmaReady =
+            payload?.ready === true &&
+            payload?.engine === 'litert_lm_gemma_e2b';
+          const nextStatus = isGemmaReady ? 'ready' : 'unavailable';
+          setStatus(nextStatus);
+          statusRef.current = nextStatus;
+          setLoadingProgress(isGemmaReady ? 100 : 0);
+          setIsModelCached(Boolean(payload?.cached));
+          const initializedEngine = payload?.engine || 'unavailable';
+          setEngine(initializedEngine);
+          engineRef.current = initializedEngine;
+          setUnavailableReason(payload?.unavailableReason || '');
           if (payload?.delegate) setDelegateUsed(payload.delegate);
-          const resolve = pendingRequestsRef.current.get(id);
-          if (resolve) {
-            resolve(payload);
+          const request = pendingRequestsRef.current.get(id);
+          if (request) {
+            request.resolve(payload);
             pendingRequestsRef.current.delete(id);
           }
         } else if (type === 'EVALUATION_COMPLETE') {
+          const request = pendingRequestsRef.current.get(id);
+          if (payload?.engine !== 'litert_lm_gemma_e2b') {
+            if (request) {
+              request.reject(new Error('Rejected evaluation from a non-Gemma engine'));
+              pendingRequestsRef.current.delete(id);
+            }
+            return;
+          }
           setStatus('ready');
+          statusRef.current = 'ready';
           setLatestEvaluation(payload);
-          const resolve = pendingRequestsRef.current.get(id);
-          if (resolve) {
-            resolve(payload);
+          setEngine(payload.engine);
+          engineRef.current = payload.engine;
+          setUnavailableReason('');
+          if (request) {
+            request.resolve(payload);
             pendingRequestsRef.current.delete(id);
           }
         } else if (type === 'ERROR') {
           setError(payload?.error || 'Worker error');
+          setUnavailableReason(payload?.error || 'Worker error');
           setStatus('error');
-          const reject = pendingRequestsRef.current.get(id);
-          if (reject) {
-            reject(new Error(payload?.error || 'Worker error'));
+          statusRef.current = 'error';
+          const request = pendingRequestsRef.current.get(id);
+          if (request) {
+            request.reject(new Error(payload?.error || 'Worker error'));
             pendingRequestsRef.current.delete(id);
           }
         }
@@ -88,7 +118,9 @@ export function useClientLiteRTGemma({
       workerRef.current.onerror = (err) => {
         console.error('[useClientLiteRTGemma] Worker error:', err);
         setError(err.message || 'Worker initialization failed');
+        setUnavailableReason(err.message || 'Worker initialization failed');
         setStatus('error');
+        statusRef.current = 'error';
       };
     } catch (e) {
       console.warn('[useClientLiteRTGemma] Failed to instantiate worker:', e);
@@ -108,13 +140,24 @@ export function useClientLiteRTGemma({
    */
   const preloadGemmaModel = useCallback(async () => {
     if (!workerRef.current) return;
+    if (
+      statusRef.current === 'ready' &&
+      engineRef.current === 'litert_lm_gemma_e2b'
+    ) {
+      return;
+    }
+    if (initializationPromiseRef.current) return initializationPromiseRef.current;
+
+    console.log('[useClientLiteRTGemma] Starting Gemma 4 E2B preload request.');
     setStatus('loading');
+    statusRef.current = 'loading';
     setLoadingProgress(5);
     setError(null);
+    setUnavailableReason('');
 
-    return new Promise((resolve, reject) => {
+    const initializationPromise = new Promise((resolve, reject) => {
       const id = ++reqIdCounterRef.current;
-      pendingRequestsRef.current.set(id, resolve);
+      pendingRequestsRef.current.set(id, { resolve, reject });
       workerRef.current.postMessage({
         type: 'INIT',
         id,
@@ -125,19 +168,17 @@ export function useClientLiteRTGemma({
         if (pendingRequestsRef.current.has(id)) {
           pendingRequestsRef.current.delete(id);
           setStatus('error');
+          statusRef.current = 'error';
           setError('Model download timeout');
           reject(new Error('Model download timeout'));
         }
-      }, 90000);
+      }, 900000);
     });
+    initializationPromiseRef.current = initializationPromise.finally(() => {
+      initializationPromiseRef.current = null;
+    });
+    return initializationPromiseRef.current;
   }, []);
-
-  // Auto-init worker when enabled
-  useEffect(() => {
-    if (enabled && workerRef.current && status === 'idle') {
-      preloadGemmaModel().catch(e => console.debug('[useClientLiteRTGemma] Auto-init note:', e));
-    }
-  }, [enabled, status, preloadGemmaModel]);
 
   const classIdRef = useRef(classId);
   const studentUidRef = useRef(studentUid);
@@ -162,10 +203,31 @@ export function useClientLiteRTGemma({
       console.warn('[useClientLiteRTGemma] Worker not instantiated yet');
       return null;
     }
+    if (evaluationInFlightRef.current) {
+      console.debug('[useClientLiteRTGemma] Skipping overlapping Gemma evaluation.');
+      return null;
+    }
+    if (
+      statusRef.current !== 'ready' ||
+      engineRef.current !== 'litert_lm_gemma_e2b'
+    ) {
+      console.debug('[useClientLiteRTGemma] Skipping evaluation because Gemma 4 E2B is not loaded.');
+      return null;
+    }
 
     return new Promise((resolve) => {
+      evaluationInFlightRef.current = true;
+      setStatus('evaluating');
+      statusRef.current = 'evaluating';
       const id = ++reqIdCounterRef.current;
-      pendingRequestsRef.current.set(id, async (result) => {
+      pendingRequestsRef.current.set(id, {
+        reject: (requestError) => {
+          evaluationInFlightRef.current = false;
+          console.error('[useClientLiteRTGemma] Evaluation failed:', requestError);
+          resolve(null);
+        },
+        resolve: async (result) => {
+        evaluationInFlightRef.current = false;
         const isViolation = Boolean(result?.isViolation);
         const category = result?.category || 'BENIGN';
         const severity = result?.severity || 'none';
@@ -174,7 +236,7 @@ export function useClientLiteRTGemma({
         const rationale = result?.rationale || '';
 
         console.log(
-          `%c[LiteRT Gemma LLM] 🤖 Intent Evaluation: %c"${transcript}"\n%cCategory: [${category}] | Severity: ${severity.toUpperCase()} | Violation: ${isViolation ? '🚨 YES' : '✅ NO'} | Confidence: ${Math.round(confidence * 100)}%\nRationale: ${rationale}`,
+          `%c[LiteRT-LM Gemma 4 E2B] 🤖 Intent Evaluation: %c"${transcript}"\n%cCategory: [${category}] | Severity: ${severity.toUpperCase()} | Violation: ${isViolation ? '🚨 YES' : '✅ NO'} | Confidence: ${Math.round(confidence * 100)}%\nRationale: ${rationale}`,
           'background: #1e1b4b; color: #a5b4fc; font-weight: bold; font-size: 13px; padding: 2px 6px; border-radius: 4px;',
           'color: #ffffff; font-weight: bold; font-size: 13px;',
           isViolation ? 'color: #f87171; font-weight: bold; font-size: 12px;' : 'color: #4ade80; font-weight: bold; font-size: 12px;'
@@ -237,6 +299,7 @@ export function useClientLiteRTGemma({
         }
 
         resolve(result);
+        },
       });
 
       workerRef.current.postMessage({
@@ -258,6 +321,8 @@ export function useClientLiteRTGemma({
     loadingProgress,
     isModelCached,
     delegateUsed,
+    engine,
+    unavailableReason,
     latestEvaluation,
     error,
     preloadGemmaModel,

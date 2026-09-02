@@ -8,9 +8,9 @@
 export const GEMMA_CACHE_NAME = 'webai-litert-gemma-v1';
 
 export const DEFAULT_GEMMA_CONFIG = {
-  modelUrl: null,
-  modelName: 'gemma-2b-it-gpu-int4.bin',
-  approximateSizeMB: 1350,
+  modelUrl: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it-web.litertlm',
+  modelName: 'gemma-4-E2B-it-web.litertlm',
+  approximateSizeMB: 1915,
 };
 
 /**

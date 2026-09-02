@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
 import StudentScreen from './StudentScreen';
 
 describe('StudentScreen Component', () => {
@@ -203,6 +203,36 @@ describe('StudentScreen Component', () => {
 
     expect(screen.getByText('🚨 Collusion (Gemma)')).toBeInTheDocument();
   });
+
+  it('shows the teacher whether Gemma is loading, ready, or unavailable', () => {
+    const { rerender } = render(
+      <StudentScreen
+        student={{ ...mockStudent, gemmaModelStatus: 'loading', gemmaLoadingProgress: 40 }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Student is loading Gemma 4 E2B (40%)')).toHaveTextContent('🤖 40%');
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, gemmaModelStatus: 'ready' }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Gemma 4 E2B is loaded on this student device')).toHaveTextContent('🤖');
+
+    rerender(
+      <StudentScreen
+        student={{
+          ...mockStudent,
+          gemmaModelStatus: 'unavailable',
+          gemmaUnavailableReason: 'WebGPU is unavailable on this device',
+        }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle(
+      'Gemma unavailable: WebGPU is unavailable on this device'
+    )).toHaveTextContent('⛔🤖');
+  });
 });
-
-

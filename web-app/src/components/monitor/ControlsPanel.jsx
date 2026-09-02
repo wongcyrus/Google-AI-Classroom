@@ -507,9 +507,9 @@ const ControlsPanel = ({
                       setTimeout(() => setIsPreloadSent(false), 3000);
                     }
                   }}
-                  title="Broadcast preload signal to all enrolled student browsers to download and cache on-device AI models"
+                  title="Preload lightweight on-device models. Gemma 4 E2B remains student-controlled because it is approximately 2 GB."
                 >
-                  {isPreloadSent ? '✅ AI Preload Broadcasted' : '⚡ Preload AI for All Students'}
+                  {isPreloadSent ? '✅ Lightweight AI Preload Broadcasted' : '⚡ Preload Lightweight AI for All Students'}
                 </button>
               )}
             </div>

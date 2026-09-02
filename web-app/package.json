@@ -12,6 +12,7 @@
     "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 vitest run --coverage"
   },
   "dependencies": {
+    "@litert-lm/core": "^0.15.0",
     "@litertjs/core": "^2.5.3",
     "@mediapipe/tasks-vision": "^1.0.1",
     "@tanstack-query-firebase/react": "^2.1.1",

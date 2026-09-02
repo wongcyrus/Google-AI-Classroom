@@ -1,149 +1,169 @@
 /**
  * litertGemma.worker.js
  * 
- * Background Web Worker executing Google LiteRT.js (@litertjs/core) Gemma LLM inference
+ * Background Web Worker executing LiteRT-LM Gemma inference
  * for real-time exam speech transcript monitoring and intent classification.
  */
 
-import { fetchGemmaWithProgress, checkGemmaHardwareAcceleration, DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader.js';
+import { Engine } from '@litert-lm/core';
+import { DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader.js';
 
-let compiledGemmaModel = null;
-let activeDelegate = 'wasm';
-let isReady = false;
+let gemmaEngine = null;
+let initializationPromise = null;
+
+const LITERT_LM_WASM_BASE_URL =
+  'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.15.0/wasm/';
+
+const GEMMA_PROCTOR_SYSTEM_PROMPT = `You are an AI exam proctor. Classify a student's spoken transcript by meaning and context.
+
+Use exactly one category:
+- COLLUSION_EXAM: asking for, offering, or discussing exam answers, questions, or options
+- EXTERNAL_AI_ASSIST: asking a voice assistant, search engine, phone, or AI tool for help
+- UNAUTHORIZED_TALK: unrelated conversation with another person during a silent exam
+- LEGITIMATE_INQUIRY: procedural or technical help requested from the teacher or proctor
+- BENIGN: self-talk, reading aloud, ambient speech, coughing, or silence
+
+Respond with only one JSON object:
+{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"evidence":"quoted key phrase","rationale":"short explanation"}`;
 
 /**
  * System prompt template for Gemma exam proctoring.
  */
 export function buildGemmaProctorPrompt(transcript) {
   return `<start_of_turn>user
-You are an AI Exam Proctor monitoring student spoken transcripts in real time.
-Analyze the following transcript for exam cheating, collusion, or unauthorized communication.
-
-Allowed Categories:
-- COLLUSION_EXAM: Asking peers for answers, discussing exam questions, or sharing answers.
-- EXTERNAL_AI_ASSIST: Dictating questions to voice assistants, phones, or search engines.
-- UNAUTHORIZED_TALK: Off-topic conversation with peers during silent exam.
-- LEGITIMATE_INQUIRY: Asking teacher or proctor for technical/procedural help (e.g. bathroom, screen freeze).
-- BENIGN: Normal ambient utterance, self-reading, coughing, or silence.
-
+${GEMMA_PROCTOR_SYSTEM_PROMPT}
 Transcript: "${transcript}"
-
-Respond ONLY with a valid JSON object in this exact format:
-{
-  "isViolation": boolean,
-  "category": "COLLUSION_EXAM" | "EXTERNAL_AI_ASSIST" | "UNAUTHORIZED_TALK" | "LEGITIMATE_INQUIRY" | "BENIGN",
-  "severity": "critical" | "high" | "medium" | "low" | "none",
-  "confidence": number,
-  "evidence": "quoted key phrase",
-  "rationale": "short explanation"
-}<end_of_turn>
+<end_of_turn>
 <start_of_turn>model
 `;
 }
 
-/**
- * Robust regex-assisted fallback evaluator for simulated/lightweight environments
- * or multilingual Cantonese/Mandarin/English code-switching phrases.
- * @param {string} text 
- * @returns {object}
- */
-export function evaluateTranscriptHeuristic(text) {
-  if (!text || typeof text !== 'string') {
-    return {
-      isViolation: false,
-      category: 'BENIGN',
-      severity: 'none',
-      confidence: 1.0,
-      evidence: '',
-      rationale: 'No audible speech detected.',
-    };
-  }
+export function resolveLiteRtLmWasmUrl(fileName) {
+  return new URL(fileName, LITERT_LM_WASM_BASE_URL).href;
+}
 
-  const clean = text.trim();
-  const lower = clean.toLowerCase();
-
-  // 1. Check for External Voice Assistant / AI Prompts First
-  const aiAssistRegex = /(hey siri|siri|ok google|alexa|chatgpt|search for|google search|solve this|calculate integral|幫我search|幫我搵答案)/i;
-  if (aiAssistRegex.test(lower)) {
-    return {
-      isViolation: true,
-      category: 'EXTERNAL_AI_ASSIST',
-      severity: 'high',
-      confidence: 0.96,
-      evidence: clean,
-      rationale: 'Student appears to be dictating questions to an external voice assistant or search tool.',
-    };
-  }
-
-  // 2. Check for Exam Collusion / Asking for answers (English + Cantonese + Mandarin)
-  const collusionRegex = /(answer for|what did you choose|option a|option b|option c|option d|question 1|question 2|question 3|question 4|question 5|what is the answer|點解揀|話我知|第[0-9一二三四五六七八九十]+題|答案係|答案是|選a|選b|選c|選d|幾多號)/i;
-  if (collusionRegex.test(lower) || collusionRegex.test(clean)) {
-    return {
-      isViolation: true,
-      category: 'COLLUSION_EXAM',
-      severity: 'critical',
-      confidence: 0.95,
-      evidence: clean,
-      rationale: 'Student is actively asking for or discussing specific exam questions/options.',
-    };
-  }
-
-  // 3. Check for Legitimate Inquiries (with boundary checks)
-  const legitRegex = /(\bteacher\b|\bprof\b|\bproctor\b|\bsir\b|\bmiss\b|washroom|toilet|bathroom|screen|frozen|blank|can i|may i|唔該阿sir|阿sir|睇唔到|睇唔清|去洗手間|壞咗)/i;
-  if (legitRegex.test(lower) && !/(answer|option|question|答案|揀)/i.test(lower)) {
-    return {
-      isViolation: false,
-      category: 'LEGITIMATE_INQUIRY',
-      severity: 'none',
-      confidence: 0.94,
-      evidence: clean,
-      rationale: 'Student is raising a procedural or technical question with the instructor.',
-    };
-  }
-
-  // 4. Check for General Unauthorized Talking
-  const unauthorizedRegex = /(lunch|dinner|where are we|after exam|阵间|陣間|去邊|食飯|打機|game)/i;
-  if (unauthorizedRegex.test(lower)) {
-    return {
-      isViolation: true,
-      category: 'UNAUTHORIZED_TALK',
-      severity: 'medium',
-      confidence: 0.88,
-      evidence: clean,
-      rationale: 'Student is having an off-topic side conversation during the exam.',
-    };
-  }
-
-  // 5. Default: Benign
-  return {
-    isViolation: false,
-    category: 'BENIGN',
-    severity: 'none',
-    confidence: 0.85,
-    evidence: '',
-    rationale: 'Normal background utterance or self-talk.',
+function configureLiteRtLmWasmLocation() {
+  self.Module = {
+    ...(self.Module || {}),
+    locateFile: resolveLiteRtLmWasmUrl,
   };
 }
 
+async function streamModelWithProgress(modelUrl) {
+  const response = await fetch(modelUrl, { credentials: 'omit' });
+  if (!response.ok || !response.body) {
+    throw new Error(`Failed to download Gemma E2B model (${response.status})`);
+  }
+
+  const totalBytes = Number(response.headers.get('content-length')) || 0;
+  console.log('[LiteRTGemmaWorker] Gemma 4 E2B download started.', {
+    modelUrl,
+    totalBytes,
+  });
+  const reader = response.body.getReader();
+  let receivedBytes = 0;
+
+  return new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log('[LiteRTGemmaWorker] Gemma 4 E2B download completed.', {
+          receivedBytes,
+        });
+        self.postMessage({ type: 'PROGRESS', payload: { progress: 90 } });
+        controller.close();
+        return;
+      }
+
+      receivedBytes += value.byteLength;
+      if (totalBytes > 0) {
+        const progress = Math.min(89, 5 + Math.round((receivedBytes / totalBytes) * 84));
+        self.postMessage({ type: 'PROGRESS', payload: { progress } });
+      }
+      controller.enqueue(value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
+async function initializeGemma(modelUrl) {
+  if (gemmaEngine) return;
+  if (initializationPromise) return initializationPromise;
+
+  initializationPromise = (async () => {
+    if (!navigator.gpu) {
+      throw new Error('WebGPU is unavailable on this device');
+    }
+
+    configureLiteRtLmWasmLocation();
+    const modelStream = await streamModelWithProgress(modelUrl);
+    self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 90 } });
+    gemmaEngine = await Engine.create({
+      model: modelStream,
+      mainExecutorSettings: {
+        maxNumTokens: 2048,
+      },
+    }, GEMMA_PROCTOR_SYSTEM_PROMPT);
+  })();
+
+  try {
+    await initializationPromise;
+  } finally {
+    initializationPromise = null;
+  }
+}
+
+function getResponseText(response) {
+  if (typeof response?.content === 'string') return response.content;
+  if (!Array.isArray(response?.content)) return '';
+  return response.content
+    .filter(part => part?.type === 'text' || typeof part?.text === 'string')
+    .map(part => part.text || '')
+    .join('');
+}
+
 /**
- * Parses raw Gemma text output into structured JSON with fallback resilience.
+ * Parses and validates structured output from Gemma.
  * @param {string} rawText 
- * @param {string} originalTranscript 
  * @returns {object}
  */
-export function parseGemmaOutput(rawText, originalTranscript) {
+export function parseGemmaOutput(rawText) {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
-      if (typeof parsed.isViolation === 'boolean' && parsed.category) {
+      const validCategories = new Set([
+        'COLLUSION_EXAM',
+        'EXTERNAL_AI_ASSIST',
+        'UNAUTHORIZED_TALK',
+        'LEGITIMATE_INQUIRY',
+        'BENIGN',
+      ]);
+      const validSeverities = new Set(['critical', 'high', 'medium', 'low', 'none']);
+      if (
+        typeof parsed.isViolation === 'boolean' &&
+        validCategories.has(parsed.category) &&
+        validSeverities.has(parsed.severity) &&
+        Number.isFinite(parsed.confidence) &&
+        parsed.confidence >= 0 &&
+        parsed.confidence <= 1 &&
+        typeof parsed.evidence === 'string' &&
+        typeof parsed.rationale === 'string'
+      ) {
         return parsed;
       }
     }
-  } catch {
-    // Parse error: fall back to heuristic
+  } catch (error) {
+    throw new Error(`Gemma returned invalid JSON: ${error.message}`);
   }
-  return evaluateTranscriptHeuristic(originalTranscript);
+  throw new Error('Gemma returned an invalid evaluation payload');
+}
+
+async function disposeGemma() {
+  await gemmaEngine?.delete?.();
+  gemmaEngine = null;
 }
 
 /**
@@ -155,63 +175,38 @@ self.onmessage = async (event) => {
   try {
     switch (type) {
       case 'INIT': {
-        const { modelUrl = DEFAULT_GEMMA_CONFIG.modelUrl, modelBuffer: directBuffer } = payload || {};
+        const { modelUrl = DEFAULT_GEMMA_CONFIG.modelUrl } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 5 } });
 
-        const hw = await checkGemmaHardwareAcceleration();
-        activeDelegate = hw.delegate;
-
-        let modelBuffer = directBuffer || null;
-        if (!modelBuffer && modelUrl) {
-          try {
-            // Fetch model with streamed progress reporting if custom URL supplied
-            modelBuffer = await fetchGemmaWithProgress(modelUrl, (progress) => {
-              self.postMessage({ type: 'PROGRESS', payload: { progress } });
-            });
-          } catch (downloadErr) {
-            // Fall back to on-device intent engine
-          }
+        try {
+          await initializeGemma(modelUrl);
+        } catch (error) {
+          const unavailableReason = error?.message || 'Gemma E2B initialization failed';
+          await disposeGemma();
+          console.error('[LiteRTGemmaWorker] Gemma E2B unavailable:', unavailableReason);
+          self.postMessage({
+            type: 'INIT_COMPLETE',
+            id,
+            payload: {
+              ready: false,
+              delegate: 'webgpu',
+              engine: 'unavailable',
+              cached: false,
+              unavailableReason,
+            },
+          });
+          break;
         }
 
-        // Initialize LiteRT compiled model if buffer is available and @litertjs/core is supported
-        if (modelBuffer) {
-          try {
-            const { loadLiteRt, loadAndCompile, getGlobalLiteRt } = await import('@litertjs/core');
-            if (typeof loadLiteRt === 'function' && !getGlobalLiteRt()) {
-              try {
-                self.Module = self.Module || {};
-                self.Module.locateFile = (fileName, scriptDirectory) => {
-                  if (fileName.endsWith('.wasm')) {
-                    return `/litert/${fileName}`;
-                  }
-                  return (scriptDirectory || '/litert/') + fileName;
-                };
-                await loadLiteRt('/litert/');
-              } catch (loadErr) {
-                if (!String(loadErr?.message).includes('already')) {
-                  console.warn('[LiteRTGemmaWorker] Note on loadLiteRt:', loadErr?.message || loadErr);
-                }
-              }
-            }
-            if (typeof loadAndCompile === 'function') {
-              compiledGemmaModel = await loadAndCompile(modelBuffer, {
-                accelerator: activeDelegate === 'webgpu' ? 'webgpu' : 'wasm',
-              });
-            }
-          } catch (e) {
-            console.warn('[LiteRTGemmaWorker] Note on compiled model init:', e?.message || e);
-          }
-        }
-
-        isReady = true;
         self.postMessage({
           type: 'INIT_COMPLETE',
           id,
           payload: {
             ready: true,
-            delegate: activeDelegate,
-            engine: compiledGemmaModel ? 'litert_compiled_gemma' : 'litert_ondevice_intent_engine',
-            cached: Boolean(modelBuffer),
+            delegate: 'webgpu',
+            engine: 'litert_lm_gemma_e2b',
+            cached: false,
+            unavailableReason: '',
           },
         });
         break;
@@ -221,15 +216,20 @@ self.onmessage = async (event) => {
         const { transcript = '', studentUid, classId, timestamp = Date.now() } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'evaluating' } });
 
-        let evaluationResult;
+        if (!gemmaEngine) {
+          throw new Error('Gemma 4 E2B is not loaded');
+        }
 
-        if (compiledGemmaModel && typeof compiledGemmaModel.run === 'function') {
-          const prompt = buildGemmaProctorPrompt(transcript);
-          const rawOutput = await compiledGemmaModel.run({ prompt });
-          evaluationResult = parseGemmaOutput(rawOutput?.text || '', transcript);
-        } else {
-          // Fallback heuristic evaluator
-          evaluationResult = evaluateTranscriptHeuristic(transcript);
+        let conversation = null;
+        let evaluationResult;
+        try {
+          conversation = await gemmaEngine.createConversation();
+          const response = await conversation.sendMessage(
+            `${GEMMA_PROCTOR_SYSTEM_PROMPT}\n\nStudent transcript: "${transcript}"`
+          );
+          evaluationResult = parseGemmaOutput(getResponseText(response));
+        } finally {
+          await conversation?.delete?.();
         }
 
         self.postMessage({
@@ -237,6 +237,7 @@ self.onmessage = async (event) => {
           id,
           payload: {
             ...evaluationResult,
+            engine: 'litert_lm_gemma_e2b',
             transcript,
             studentUid,
             classId,
@@ -247,11 +248,7 @@ self.onmessage = async (event) => {
       }
 
       case 'DISPOSE': {
-        if (compiledGemmaModel && typeof compiledGemmaModel.unload === 'function') {
-          await compiledGemmaModel.unload();
-        }
-        compiledGemmaModel = null;
-        isReady = false;
+        await disposeGemma();
         self.postMessage({ type: 'DISPOSE_COMPLETE', id });
         break;
       }

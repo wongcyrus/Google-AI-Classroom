@@ -40,6 +40,20 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           {student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
           {student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
           {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title={`Cloud AI Fallback Active ${student?.fallbackReason ? `(${student.fallbackReason})` : ''}`}>☁️</span>}
+          {student?.gemmaModelStatus === 'ready' && (
+            <span className="ai-status-badge normal" title="Gemma 4 E2B is loaded on this student device">🤖</span>
+          )}
+          {student?.gemmaModelStatus === 'loading' && (
+            <span className="ai-status-badge initializing" title={`Student is loading Gemma 4 E2B (${student?.gemmaLoadingProgress || 0}%)`}>
+              🤖 {student?.gemmaLoadingProgress || 0}%
+            </span>
+          )}
+          {student?.gemmaModelStatus === 'unavailable' && (
+            <span className="ai-status-badge danger" title={`Gemma unavailable: ${student?.gemmaUnavailableReason || 'Unknown reason'}`}>⛔🤖</span>
+          )}
+          {student?.gemmaModelStatus === 'not_loaded' && (
+            <span className="ai-status-badge fallback" title="Student has not chosen to load Gemma 4 E2B">○🤖</span>
+          )}
           <span className={`status-indicator ${isSharing ? 'on' : 'off'}`}></span>
         </div>
       </div>

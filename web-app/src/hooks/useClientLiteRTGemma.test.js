@@ -22,13 +22,40 @@ vi.mock('../firebase-config', () => ({
 let mockWorkerInstance = null;
 
 class MockWorker {
-  constructor() {
+  constructor(...args) {
+    this.constructorArgs = args;
     this.postMessage = vi.fn();
     this.terminate = vi.fn();
     this.onmessage = null;
     this.onerror = null;
     mockWorkerInstance = this;
   }
+}
+
+async function initializeGemma(result) {
+  let preloadPromise;
+  act(() => {
+    preloadPromise = result.current.preloadGemmaModel();
+  });
+  const initCalls = mockWorkerInstance.postMessage.mock.calls
+    .filter(call => call[0].type === 'INIT');
+  const initCall = initCalls[initCalls.length - 1][0];
+
+  await act(async () => {
+    mockWorkerInstance.onmessage({
+      data: {
+        type: 'INIT_COMPLETE',
+        id: initCall.id,
+        payload: {
+          ready: true,
+          delegate: 'webgpu',
+          cached: false,
+          engine: 'litert_lm_gemma_e2b',
+        },
+      },
+    });
+    await preloadPromise;
+  });
 }
 
 describe('useClientLiteRTGemma Hook', () => {
@@ -56,6 +83,33 @@ describe('useClientLiteRTGemma Hook', () => {
     expect(result.current.status).toBe('idle');
     expect(result.current.loadingProgress).toBe(0);
     expect(mockWorkerInstance).not.toBeNull();
+    expect(mockWorkerInstance.constructorArgs).toHaveLength(1);
+  });
+
+  it('loads E2B only after an explicit student preload action', async () => {
+    const { result } = renderHook(() =>
+      useClientLiteRTGemma({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        enabled: true,
+      })
+    );
+
+    expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'INIT' })
+    );
+
+    let evaluationResult;
+    await act(async () => {
+      evaluationResult = await result.current.evaluateTranscript('Let me think aloud.');
+    });
+    expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'INIT' })
+    );
+    expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'EVALUATE_TRANSCRIPT' })
+    );
+    expect(evaluationResult).toBeNull();
   });
 
   it('handles preloadGemmaModel by sending INIT message to worker', async () => {
@@ -90,7 +144,12 @@ describe('useClientLiteRTGemma Hook', () => {
         data: {
           type: 'INIT_COMPLETE',
           id: reqId,
-          payload: { ready: true, delegate: 'webgpu', cached: true },
+          payload: {
+            ready: true,
+            delegate: 'webgpu',
+            cached: true,
+            engine: 'litert_lm_gemma_e2b',
+          },
         },
       });
       await preloadPromise;
@@ -98,6 +157,70 @@ describe('useClientLiteRTGemma Hook', () => {
 
     expect(result.current.status).toBe('ready');
     expect(result.current.delegateUsed).toBe('webgpu');
+    expect(result.current.engine).toBe('litert_lm_gemma_e2b');
+  });
+
+  it('reports failed initialization as unavailable and allows retry', async () => {
+    const { result } = renderHook(() =>
+      useClientLiteRTGemma({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        enabled: false,
+      })
+    );
+
+    let preloadPromise;
+    act(() => {
+      preloadPromise = result.current.preloadGemmaModel();
+    });
+    const initCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === 'INIT');
+
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: 'INIT_COMPLETE',
+          id: initCall[0].id,
+          payload: {
+            ready: false,
+            delegate: 'webgpu',
+            cached: false,
+            engine: 'unavailable',
+            unavailableReason: 'WebGPU is unavailable on this device',
+          },
+        },
+      });
+      await preloadPromise;
+    });
+
+    expect(result.current.status).toBe('unavailable');
+    expect(result.current.isModelCached).toBe(false);
+    expect(result.current.engine).toBe('unavailable');
+    expect(result.current.unavailableReason).toBe('WebGPU is unavailable on this device');
+
+    let retryPromise;
+    act(() => {
+      retryPromise = result.current.preloadGemmaModel();
+    });
+    const initCalls = mockWorkerInstance.postMessage.mock.calls
+      .filter(call => call[0].type === 'INIT');
+    expect(initCalls).toHaveLength(2);
+
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: 'INIT_COMPLETE',
+          id: initCalls[1][0].id,
+          payload: {
+            ready: true,
+            delegate: 'webgpu',
+            cached: false,
+            engine: 'litert_lm_gemma_e2b',
+          },
+        },
+      });
+      await retryPromise;
+    });
+    expect(result.current.engine).toBe('litert_lm_gemma_e2b');
   });
 
   it('evaluates transcript and logs violation to Firestore when isViolation is true', async () => {
@@ -109,6 +232,8 @@ describe('useClientLiteRTGemma Hook', () => {
         enabled: false,
       })
     );
+
+    await initializeGemma(result);
 
     let evalPromise;
     act(() => {
@@ -123,6 +248,16 @@ describe('useClientLiteRTGemma Hook', () => {
         }),
       })
     );
+
+    let overlappingResult;
+    await act(async () => {
+      overlappingResult = await result.current.evaluateTranscript('Give me the next answer too');
+    });
+    expect(overlappingResult).toBeNull();
+    expect(
+      mockWorkerInstance.postMessage.mock.calls
+        .filter(call => call[0].type === 'EVALUATE_TRANSCRIPT')
+    ).toHaveLength(1);
 
     const evalCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === 'EVALUATE_TRANSCRIPT');
     const reqId = evalCall[0].id;
@@ -143,6 +278,7 @@ describe('useClientLiteRTGemma Hook', () => {
             transcript: 'What did you choose for question 3?',
             studentUid: 'student_123',
             classId: 'CLASS_TEST',
+            engine: 'litert_lm_gemma_e2b',
           },
         },
       });
@@ -185,6 +321,8 @@ describe('useClientLiteRTGemma Hook', () => {
       })
     );
 
+    await initializeGemma(result);
+
     let evalPromise;
     act(() => {
       evalPromise = result.current.evaluateTranscript('Teacher, my screen is blank');
@@ -204,6 +342,7 @@ describe('useClientLiteRTGemma Hook', () => {
             severity: 'none',
             confidence: 0.94,
             transcript: 'Teacher, my screen is blank',
+            engine: 'litert_lm_gemma_e2b',
           },
         },
       });
@@ -222,6 +361,45 @@ describe('useClientLiteRTGemma Hook', () => {
       }),
       { merge: true }
     );
+  });
+
+  it('rejects evaluation results that are not produced by Gemma E2B', async () => {
+    const { result } = renderHook(() =>
+      useClientLiteRTGemma({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+      })
+    );
+    await initializeGemma(result);
+
+    let evalPromise;
+    act(() => {
+      evalPromise = result.current.evaluateTranscript('Tell me the answer');
+    });
+    const evalCall = mockWorkerInstance.postMessage.mock.calls
+      .find(call => call[0].type === 'EVALUATE_TRANSCRIPT');
+
+    let evaluation;
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: 'EVALUATION_COMPLETE',
+          id: evalCall[0].id,
+          payload: {
+            isViolation: true,
+            category: 'COLLUSION_EXAM',
+            severity: 'critical',
+            confidence: 0.99,
+            engine: 'rules',
+          },
+        },
+      });
+      evaluation = await evalPromise;
+    });
+
+    expect(evaluation).toBeNull();
+    expect(firestore.addDoc).not.toHaveBeenCalled();
+    expect(firestore.setDoc).not.toHaveBeenCalled();
   });
 
   it('handles empty transcript gracefully without sending to worker', async () => {

@@ -235,8 +235,9 @@ const StudentView = ({ user }) => {
   const {
     status: gemmaStatus,
     loadingProgress: gemmaLoadingProgress,
-    isModelCached: isGemmaCached,
     delegateUsed: gemmaDelegate,
+    engine: gemmaEngine,
+    unavailableReason: gemmaUnavailableReason,
     latestEvaluation: gemmaEvaluation,
     preloadGemmaModel,
     evaluateTranscript: evaluateSpeechWithGemma,
@@ -244,7 +245,6 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    enabled: shouldEvaluateVoiceWithGemma,
   });
 
   const handleAudioUploadedRef = useRef(null);
@@ -310,17 +310,57 @@ const StudentView = ({ user }) => {
     onTranscript: shouldEvaluateVoiceWithGemma ? evaluateSpeechWithGemma : undefined,
   });
 
-  // Preload Audio AI models on teacher broadcast
+  // Teacher broadcast preloads only lightweight models. Gemma E2B remains
+  // student-controlled because its download is approximately 2 GB.
   useEffect(() => {
     if (preloadClientAi && effectiveVoiceAiMode !== 'disabled') {
+      console.log('[StudentView:PreloadBroadcast] Teacher AI preload signal received.', {
+        preloadClientAi,
+        voiceAiMode: effectiveVoiceAiMode,
+      });
       if (isLocalVoiceAiEnabled && !isWhisperCached && preloadWhisperModel) {
         preloadWhisperModel().catch(err => console.debug('[StudentView] Whisper preload error:', err));
       }
-      if (shouldEvaluateVoiceWithGemma && !isGemmaCached && preloadGemmaModel) {
-        preloadGemmaModel().catch(err => console.debug('[StudentView] Gemma preload error:', err));
-      }
     }
-  }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, isWhisperCached, isGemmaCached, preloadWhisperModel, preloadGemmaModel]);
+  }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, isWhisperCached, preloadWhisperModel]);
+
+  const isGemmaReady =
+    gemmaEngine === 'litert_lm_gemma_e2b' &&
+    (gemmaStatus === 'ready' || gemmaStatus === 'evaluating');
+  const gemmaModelStatus = !shouldEvaluateVoiceWithGemma
+    ? 'disabled'
+    : isGemmaReady
+      ? 'ready'
+      : gemmaStatus === 'loading'
+        ? 'loading'
+        : gemmaUnavailableReason
+          ? 'unavailable'
+          : 'not_loaded';
+  const gemmaProgressBucket = Math.floor((gemmaLoadingProgress || 0) / 10) * 10;
+
+  useEffect(() => {
+    if (!activeClass || !user?.uid) return;
+
+    const statusDocRef = doc(db, 'classes', activeClass, 'status', user.uid);
+    setDoc(statusDocRef, {
+      gemmaModelStatus,
+      gemmaEngine,
+      gemmaLoadingProgress: gemmaProgressBucket,
+      gemmaUnavailableReason: gemmaUnavailableReason
+        ? gemmaUnavailableReason.slice(0, 240)
+        : '',
+      gemmaStatusUpdatedAt: serverTimestamp(),
+    }, { merge: true }).catch(error => {
+      console.warn('[StudentView] Failed to publish Gemma capability status:', error);
+    });
+  }, [
+    activeClass,
+    user?.uid,
+    gemmaModelStatus,
+    gemmaEngine,
+    gemmaProgressBucket,
+    gemmaUnavailableReason,
+  ]);
 
   // Stable callback for uploaded audio segments
   const handleAudioUploaded = useCallback(async ({ path, url, blob, strideIndex }) => {
@@ -439,13 +479,6 @@ const StudentView = ({ user }) => {
   }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, user, selectedMicDeviceId, classSpeechLanguage]);
 
   handleAudioUploadedRef.current = handleAudioUploaded;
-
-  // Automatically evaluate live speech transcript with Gemma LLM intent engine
-  useEffect(() => {
-    if (shouldEvaluateVoiceWithGemma && whisperTranscript && whisperTranscript.trim() && evaluateSpeechWithGemma) {
-      evaluateSpeechWithGemma(whisperTranscript).catch(e => console.debug('[StudentView] Gemma eval error:', e));
-    }
-  }, [shouldEvaluateVoiceWithGemma, whisperTranscript, evaluateSpeechWithGemma]);
 
   const appliedReadinessDevicesRef = useRef('');
 
@@ -1714,16 +1747,43 @@ const StudentView = ({ user }) => {
                   </div>
                 )}
 
-                {/* LiteRT Gemma LLM Intent Guard Preload */}
-                {enableAudioCapture && (
+                {/* Local voice intent engine status */}
+                {shouldEvaluateVoiceWithGemma && (
                   <div className="ai-preload-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {gemmaStatus === 'ready' || isGemmaCached ? (
-                      <span className="student-view-pill ai-ready" title={`LiteRT Gemma LLM intent model cached in browser storage (${gemmaDelegate || 'WASM'} active)`}>
-                        🤖 Gemma LLM Ready
+                    {isGemmaReady ? (
+                      <span className="student-view-pill ai-ready" title={`LiteRT-LM Gemma 4 E2B loaded with ${gemmaDelegate || 'WebGPU'}`}>
+                        🤖 Gemma 4 E2B Ready
                       </span>
+                    ) : gemmaUnavailableReason ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <span
+                          className="student-view-pill"
+                          title="Gemma 4 E2B could not be loaded. Local intent evaluation is disabled."
+                          style={{
+                            background: '#fff7ed',
+                            color: '#9a3412',
+                            border: '1px solid #fdba74',
+                          }}
+                        >
+                          ⛔ Gemma unavailable
+                        </span>
+                        {gemmaUnavailableReason && (
+                          <span style={{ color: '#9a3412', fontSize: '0.7rem', maxWidth: '320px' }}>
+                            {gemmaUnavailableReason}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={preloadGemmaModel}
+                          className="student-view-button btn-secondary-stream ai-preload-btn"
+                          title="Retry loading Gemma 4 E2B on this device"
+                        >
+                          🔄 Retry Gemma 4 E2B (~2 GB)
+                        </button>
+                      </div>
                     ) : gemmaStatus === 'loading' ? (
-                      <div className="ai-preload-progress-box" title="Downloading LiteRT Gemma on-device LLM model (~120 MB)">
-                        <span className="ai-progress-label">⏳ Loading Gemma ({gemmaLoadingProgress}%)</span>
+                      <div className="ai-preload-progress-box" title="Initializing the local voice intent engine">
+                        <span className="ai-progress-label">⏳ Initializing Intent AI ({gemmaLoadingProgress}%)</span>
                         <div className="ai-progress-track">
                           <div className="ai-progress-bar" style={{ width: `${Math.max(5, gemmaLoadingProgress)}%` }} />
                         </div>
@@ -1733,9 +1793,9 @@ const StudentView = ({ user }) => {
                         type="button"
                         onClick={preloadGemmaModel}
                         className="student-view-button btn-secondary-stream ai-preload-btn"
-                        title="Download & cache on-device LiteRT Gemma LLM model (~120 MB) in advance"
+                        title="Initialize the local voice intent engine"
                       >
-                        📥 Preload Gemma AI (~120 MB)
+                        📥 Load Gemma 4 E2B (~2 GB)
                       </button>
                     )}
                   </div>
@@ -1961,7 +2021,9 @@ const StudentView = ({ user }) => {
                     </div>
                     {gemmaEvaluation && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', marginTop: '2px' }}>
-                        <strong style={{ color: '#4338ca' }}>Gemma Intent:</strong>
+                        <strong style={{ color: '#4338ca' }}>
+                          Gemma Intent:
+                        </strong>
                         <span style={{
                           padding: '3px 10px',
                           borderRadius: '6px',

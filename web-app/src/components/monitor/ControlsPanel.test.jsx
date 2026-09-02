@@ -342,7 +342,7 @@ describe('ControlsPanel Full Component Suite', () => {
       />
     );
 
-    const preloadBtn = screen.getByRole('button', { name: /Preload AI for All Students/i });
+    const preloadBtn = screen.getByRole('button', { name: /Preload Lightweight AI for All Students/i });
     expect(preloadBtn).toBeInTheDocument();
     fireEvent.click(preloadBtn);
     expect(handleBroadcastPreloadAi).toHaveBeenCalledTimes(1);
