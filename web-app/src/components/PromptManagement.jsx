@@ -290,7 +290,34 @@ const PromptManagement = () => {
 
 **Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
 
-      const optimizerPrompt = activeTab === 'videos' ? videoOptimizerPrompt : imageOptimizerPrompt;
+      const audioOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **speech, audio transcript invigilation, and classroom discussion analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
+
+**Rewrite the following user-provided prompt based on these strict guidelines:**
+
+**User's prompt:** "${promptText}"
+
+---
+
+**REWRITING GUIDELINES (incorporating Google's best practices):**
+
+1.  **Role Definition (Persona):** Start with a clear role for the AI (e.g., "You are an AI Classroom Invigilator," "You are an AI Educational Discussion Analyst").
+
+2.  **Elaboration & Context:** Specify clearly whether the prompt is analyzing short rolling live speech (15-45s) for immediate cheating/whispering or full session/discussion continuous audio for topic breakdown and educational summaries.
+
+3.  **Structure and Formatting:**
+    *   Use Markdown for clarity (headings, bolding, lists).
+    *   Include "## Guidelines" for identifying multi-speaker dynamics, collusion, questions read aloud, or key discussion arguments.
+    *   Include "## Actions & Response Protocol" with step-by-step instructions.
+
+4.  **Tool Specifications:**
+    *   For invigilation tasks, reference calling \`recordAudioIrregularity\` and \`recordAudioAudit\` tools with clear verdicts ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').
+    *   For on-device Gemma intent tasks, format structured JSON output with fields: \`isViolation\`, \`category\`, \`severity\`, \`confidence\`, \`evidence\`, \`rationale\`.
+
+5.  **Positive & Precise Instructions:** Explicitly state what indicators to evaluate (e.g., "Evaluate whether speaker turns indicate answer sharing vs. procedural clarification").
+
+**Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
+
+      const optimizerPrompt = activeTab === 'videos' ? videoOptimizerPrompt : activeTab === 'audios' ? audioOptimizerPrompt : imageOptimizerPrompt;
 
       let result = null;
       let lastErr = null;

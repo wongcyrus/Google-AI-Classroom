@@ -564,7 +564,18 @@ export const analyzeAudioFlow = ai.defineFlow(
       // -------------------------------------------------------------
       const hasSpeech = rawTranscript && !rawTranscript.includes('[NO_SPEECH_DETECTED]');
       if (hasSpeech) {
-        const reasoningPrompt = `You are an AI Classroom Invigilator analyzing a student audio recording transcript during an exam.
+        const customPromptText = typeof prompt === 'string' ? prompt.trim() : (prompt?.promptText || '');
+        const reasoningPrompt = customPromptText
+          ? `${customPromptText}
+
+Class ID: ${classId}. Student UID: ${studentUid}. Student Email: ${studentEmail}.
+Audio Source: ${audioUrl}.
+
+Audio Transcript:
+"""
+${rawTranscript}
+"""`
+          : `You are an AI Classroom Invigilator analyzing a student audio recording transcript during an exam.
 Class ID: ${classId}. Student UID: ${studentUid}. Student Email: ${studentEmail}.
 Audio Source: ${audioUrl}.
 
@@ -576,8 +587,7 @@ ${rawTranscript}
 Instructions:
 1. Carefully analyze the transcript for unauthorized talking, student collusion, reading exam questions aloud, or whispering answers.
 2. If suspicious multi-speaker discussion, unauthorized talking, or exam answer recitation is detected, call the 'recordAudioIrregularity' tool with title, message, risk level ('low', 'medium', 'high'), and timestamp offsets.
-3. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').
-${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
+3. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').`;
 
         const { response: reasoningResponse, modelUsed: actualReasoningModel } = await generateWithResilience({
           temperature: AI_TEMPERATURE,

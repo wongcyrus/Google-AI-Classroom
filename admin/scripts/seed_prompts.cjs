@@ -58,6 +58,14 @@ async function seedPrompts(db) {
             applyTo = ['Per Image', 'All Images'];
         } else if (category === 'videos') {
             applyTo = ['Per Video'];
+        } else if (category === 'audios') {
+            if (name.includes('Gemma')) {
+                applyTo = ['On-Device Gemma Voice Intent'];
+            } else if (name.includes('Discussion') || name.includes('Long Audio')) {
+                applyTo = ['Session Audio Summary'];
+            } else {
+                applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
+            }
         }
 
         const promptData = {

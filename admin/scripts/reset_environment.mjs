@@ -34,6 +34,10 @@ const auth = getAuth();
 const COLLECTIONS_TO_PURGE = [
   'classes',
   'screenshots',
+  'audios',
+  'audio_audits',
+  'audio_segments',
+  'dossiers',
   'videoJobs',
   'videoAnalysisJobs',
   'aiJobs',

@@ -76,6 +76,40 @@ const PromptForm = ({
             {activeTab === 'videos' && (
                 <span> Per Video</span>
             )}
+            {activeTab === 'audios' && (
+                <>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Live Audio Invigilation" 
+                        checked={applyTo.includes('Live Audio Invigilation')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Live Audio Invigilation (Rolling 15-45s)
+                    </label>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Session Audio Summary" 
+                        checked={applyTo.includes('Session Audio Summary')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Session Audio Summary (Long / Discussion Audio)
+                    </label>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="On-Device Gemma Voice Intent" 
+                        checked={applyTo.includes('On-Device Gemma Voice Intent')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    On-Device Gemma Voice Intent
+                    </label>
+                </>
+            )}
         </div>
 
         {!isPublic && (

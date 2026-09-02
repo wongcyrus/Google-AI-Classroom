@@ -231,6 +231,10 @@ const StudentView = ({ user }) => {
   const isLocalVoiceAiEnabled = allowsLocalVoiceAi(effectiveVoiceAiMode);
   const shouldEvaluateVoiceWithGemma = effectiveVoiceAiMode === 'hybrid';
 
+  const [gemmaIntentPrompt, setGemmaIntentPrompt] = useState(null);
+  const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
+  const [sessionAudioPrompt, setSessionAudioPrompt] = useState(null);
+
   // Client-Side Gemma LLM STT Monitor (LiteRT.js in Web Worker)
   const {
     status: gemmaStatus,
@@ -245,6 +249,7 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
+    customGemmaPrompt: gemmaIntentPrompt,
   });
 
   const handleAudioUploadedRef = useRef(null);
@@ -427,6 +432,7 @@ const StudentView = ({ user }) => {
           classId: activeClass,
           studentUid: user?.uid,
           studentEmail: user?.email,
+          prompt: liveAudioPrompt?.promptText || (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
         });
         if (res?.data?.transcript && !res.data.transcript.includes('[NO_SPEECH_DETECTED]')) {
           transcriptText = res.data.transcript;
@@ -1224,6 +1230,9 @@ const StudentView = ({ user }) => {
           return prevMs === newMs ? prev : data.captureStartedAt;
         });
         setRetentionDays(prev => (data.retentionDays !== undefined && data.retentionDays !== prev ? data.retentionDays : (prev || 30)));
+        setGemmaIntentPrompt(data.gemmaIntentPrompt || null);
+        setLiveAudioPrompt(data.liveAudioPrompt || null);
+        setSessionAudioPrompt(data.sessionAudioPrompt || null);
       }
     }, (error) => {
       console.error(`Firestore: Error subscribing to class document ${activeClass}:`, error);

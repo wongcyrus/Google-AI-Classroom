@@ -12,9 +12,9 @@ describe('litertWhisper.worker', () => {
     const pcm = new Float32Array(16000); // 1 second of audio
     pcm.fill(0.5);
 
-    const features = extractAudioFeatures(pcm);
+    const features = extractAudioFeatures(pcm, 100);
     expect(features).toBeInstanceOf(Float32Array);
-    expect(features.length).toBe(80 * 3000);
+    expect(features.length).toBe(80 * 100);
     expect(features.every(Number.isFinite)).toBe(true);
     let minimum = Infinity;
     let maximum = -Infinity;

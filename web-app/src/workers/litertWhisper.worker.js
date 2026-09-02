@@ -89,12 +89,11 @@ export const CODE_SWITCHING_ANCHORS = [
  * @param {Float32Array} pcmData
  * @returns {Float32Array}
  */
-export function extractAudioFeatures(pcmData) {
+export function extractAudioFeatures(pcmData, frameCount = 3000) {
   const sampleRate = 16000;
   const fftSize = 400;
   const hopLength = 160;
   const melBins = 80;
-  const frameCount = 3000;
   const targetSamples = sampleRate * 30;
   const audio = new Float32Array(targetSamples);
   const copyLength = Math.min(pcmData?.length || 0, targetSamples);

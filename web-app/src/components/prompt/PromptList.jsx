@@ -23,6 +23,7 @@ const PromptList = ({
         <div className="tabs">
             <button onClick={() => setActiveTab('images')} className={activeTab === 'images' ? 'active' : ''}>Image Prompts</button>
             <button onClick={() => setActiveTab('videos')} className={activeTab === 'videos' ? 'active' : ''}>Video Prompts</button>
+            <button onClick={() => setActiveTab('audios')} className={activeTab === 'audios' ? 'active' : ''}>Voice / Audio Prompts</button>
         </div>
         <input 
             type="text" 

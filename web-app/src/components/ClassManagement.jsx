@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
+import AudioPromptSelector from './AudioPromptSelector';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import './ClassManagement.css';
@@ -55,6 +56,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
   
+  // Audio & Voice AI prompt states
+  const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
+  const [sessionAudioPrompt, setSessionAudioPrompt] = useState(null);
+  const [gemmaIntentPrompt, setGemmaIntentPrompt] = useState(null);
+  const [sessionAudioIntervalMinutes, setSessionAudioIntervalMinutes] = useState(0); // 0 = Full session
+
+  const [showAudioPromptModal, setShowAudioPromptModal] = useState(false);
+  const [audioPromptModalType, setAudioPromptModalType] = useState('live_audio'); // 'live_audio' | 'session_audio' | 'gemma_intent'
+  const [modalAudioPrompt, setModalAudioPrompt] = useState(null);
+  const [modalAudioPromptText, setModalAudioPromptText] = useState('');
+
   // Temp state for modal editing
   const [modalPrompt, setModalPrompt] = useState(null);
   const [modalPromptText, setModalPromptText] = useState('');
@@ -152,6 +164,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setCustomPitchUpAngle(classData.customPitchUpAngle !== undefined ? classData.customPitchUpAngle : 26);
           setCloudFallbackRate(classData.cloudFallbackRate || 3);
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
+          setLiveAudioPrompt(classData.liveAudioPrompt || null);
+          setSessionAudioPrompt(classData.sessionAudioPrompt || null);
+          setGemmaIntentPrompt(classData.gemmaIntentPrompt || null);
+          setSessionAudioIntervalMinutes(classData.sessionAudioIntervalMinutes || 0);
           setEnableAudioCapture(classData.enableAudioCapture || false);
           setAudioCaptureMode(classData.audioCaptureMode || 'mandatory');
           setAudioSegmentDuration(classData.audioSegmentDuration || 30);
@@ -192,6 +208,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAudioSilenceSuppression(true);
         setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
+        setLiveAudioPrompt(null);
+        setSessionAudioPrompt(null);
+        setGemmaIntentPrompt(null);
+        setSessionAudioIntervalMinutes(0);
       }
     };
     fetchClassDetails();
@@ -346,6 +366,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
+          liveAudioPrompt: liveAudioPrompt || null,
+          sessionAudioPrompt: sessionAudioPrompt || null,
+          gemmaIntentPrompt: gemmaIntentPrompt || null,
+          sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
           enableAudioCapture: enableAudioCapture || false,
           audioCaptureMode: audioCaptureMode || 'mandatory',
           audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
@@ -392,6 +416,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
+          liveAudioPrompt: liveAudioPrompt || null,
+          sessionAudioPrompt: sessionAudioPrompt || null,
+          gemmaIntentPrompt: gemmaIntentPrompt || null,
+          sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
           enableAudioCapture: enableAudioCapture || false,
           audioCaptureMode: audioCaptureMode || 'mandatory',
           audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
@@ -469,6 +497,47 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setShowPromptModal(false);
   };
 
+  const handleOpenAudioPromptModal = (type) => {
+    setAudioPromptModalType(type);
+    let target = null;
+    if (type === 'live_audio') target = liveAudioPrompt;
+    else if (type === 'session_audio') target = sessionAudioPrompt;
+    else if (type === 'gemma_intent') target = gemmaIntentPrompt;
+
+    setModalAudioPrompt(target);
+    setModalAudioPromptText(target ? target.promptText : '');
+    setShowAudioPromptModal(true);
+  };
+
+  const handleSetAudioPrompt = () => {
+    let finalPrompt = null;
+    if (modalAudioPrompt) {
+      const isModified = modalAudioPrompt.promptText !== modalAudioPromptText;
+      finalPrompt = {
+        ...modalAudioPrompt,
+        promptText: modalAudioPromptText,
+        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || 'Custom Voice Prompt'),
+        originalId: modalAudioPrompt.id || modalAudioPrompt.originalId,
+      };
+      if (finalPrompt.id) delete finalPrompt.id;
+    } else if (modalAudioPromptText.trim()) {
+      finalPrompt = {
+        name: 'Custom Voice Prompt',
+        promptText: modalAudioPromptText,
+        category: 'audios',
+      };
+    }
+
+    if (audioPromptModalType === 'live_audio') {
+      setLiveAudioPrompt(finalPrompt);
+    } else if (audioPromptModalType === 'session_audio') {
+      setSessionAudioPrompt(finalPrompt);
+    } else if (audioPromptModalType === 'gemma_intent') {
+      setGemmaIntentPrompt(finalPrompt);
+    }
+    setShowAudioPromptModal(false);
+  };
+
   return (
     <div className="class-management-container">
       {/* Video Prompt Modal */}
@@ -488,6 +557,54 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             Clear Prompt
           </button>
           <button type="button" onClick={handleSetPrompt}>
+            Save Prompt Selection
+          </button>
+        </div>
+      </Modal>
+
+      {/* Audio & Voice AI Prompt Modal */}
+      <Modal
+        show={showAudioPromptModal}
+        onClose={() => setShowAudioPromptModal(false)}
+        title={
+          audioPromptModalType === 'live_audio'
+            ? 'Select Live Audio Invigilation Prompt'
+            : audioPromptModalType === 'session_audio'
+              ? 'Select Discussion / Session Audio Summary Prompt'
+              : 'Select On-Device Gemma Voice Intent Prompt'
+        }
+      >
+        <AudioPromptSelector
+          user={user}
+          selectedPrompt={modalAudioPrompt}
+          onSelectPrompt={(p) => {
+            setModalAudioPrompt(p);
+            setModalAudioPromptText(p ? p.promptText : '');
+          }}
+          promptText={modalAudioPromptText}
+          onTextChange={setModalAudioPromptText}
+          applyToFilter={
+            audioPromptModalType === 'live_audio'
+              ? 'Live Audio Invigilation'
+              : audioPromptModalType === 'session_audio'
+                ? 'Session Audio Summary'
+                : 'On-Device Gemma Voice Intent'
+          }
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              if (audioPromptModalType === 'live_audio') setLiveAudioPrompt(null);
+              else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
+              else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
+              setShowAudioPromptModal(false);
+            }}
+          >
+            Clear Prompt
+          </button>
+          <button type="button" onClick={handleSetAudioPrompt}>
             Save Prompt Selection
           </button>
         </div>
@@ -890,7 +1007,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <label>After-Class Video Analysis Prompt</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <button type="button" className="secondary-btn" onClick={handleOpenPromptModal}>
-              {afterClassVideoPrompt ? `Selected: ${afterClassVideoPrompt.name || 'Custom Prompt'}` : 'Select AI Prompt'}
+              {afterClassVideoPrompt ? `Selected: ${afterClassVideoPrompt.name || 'Custom Prompt'}` : 'Select Video AI Prompt'}
             </button>
             {afterClassVideoPrompt && (
               <button
@@ -906,6 +1023,33 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           {afterClassVideoPrompt && (
             <p className="input-hint" style={{ marginTop: '0.5rem' }}>
               <strong>Prompt preview:</strong> {afterClassVideoPrompt.promptText.substring(0, 120)}...
+            </p>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label>🤖 On-Device Gemma Voice Intent Prompt (LiteRT-LM Gemma 4 E2B)</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('gemma_intent')}>
+              {gemmaIntentPrompt ? `Selected: ${gemmaIntentPrompt.name || 'Custom Prompt'}` : 'Select Gemma Intent Prompt'}
+            </button>
+            {gemmaIntentPrompt && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setGemmaIntentPrompt(null)}
+                style={{ color: '#ef4444' }}
+              >
+                Reset to Default
+              </button>
+            )}
+          </div>
+          <p className="input-hint">
+            Custom system prompt and taxonomy rules evaluated locally on student machines in real time.
+          </p>
+          {gemmaIntentPrompt && (
+            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+              <strong>Prompt preview:</strong> {gemmaIntentPrompt.promptText.substring(0, 120)}...
             </p>
           )}
         </div>
@@ -969,40 +1113,66 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               </div>
 
               {enableSegmentTranscription && (
-                <div className="form-row-2col" style={{ marginTop: '10px' }}>
-                  <div className="form-group">
-                    <label>Window Duration</label>
-                    <select
-                      value={audioMovingWindowDuration}
-                      onChange={(e) => setAudioMovingWindowDuration(parseInt(e.target.value, 10))}
-                    >
-                      <option value={20}>⏱️ 20 Seconds</option>
-                      <option value={30}>⏱️ 30 Seconds (Recommended Standard)</option>
-                      <option value={45}>⏱️ 45 Seconds (Wider Context)</option>
-                    </select>
-                    <p className="input-hint">Audio chunk length analyzed by Gemini.</p>
+                <>
+                  <div className="form-row-2col" style={{ marginTop: '10px' }}>
+                    <div className="form-group">
+                      <label>Window Duration</label>
+                      <select
+                        value={audioMovingWindowDuration}
+                        onChange={(e) => setAudioMovingWindowDuration(parseInt(e.target.value, 10))}
+                      >
+                        <option value={20}>⏱️ 20 Seconds</option>
+                        <option value={30}>⏱️ 30 Seconds (Recommended Standard)</option>
+                        <option value={45}>⏱️ 45 Seconds (Wider Context)</option>
+                      </select>
+                      <p className="input-hint">Audio chunk length analyzed by Gemini.</p>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Sliding Stride (Overlap)</label>
+                      <select
+                        value={audioMovingWindowStride}
+                        onChange={(e) => setAudioMovingWindowStride(parseInt(e.target.value, 10))}
+                      >
+                        <option value={10}>⚡ 10s Stride (Rapid rolling updates)</option>
+                        <option value={15}>⚡ 15s Stride (50% Overlap — Balanced)</option>
+                        <option value={20}>⚡ 20s Stride</option>
+                      </select>
+                      <p className="input-hint">Interval between rolling transcript updates.</p>
+                    </div>
                   </div>
 
-                  <div className="form-group">
-                    <label>Sliding Stride (Overlap)</label>
-                    <select
-                      value={audioMovingWindowStride}
-                      onChange={(e) => setAudioMovingWindowStride(parseInt(e.target.value, 10))}
-                    >
-                      <option value={10}>⚡ 10s Stride (Rapid rolling updates)</option>
-                      <option value={15}>⚡ 15s Stride (50% Overlap — Balanced)</option>
-                      <option value={20}>⚡ 20s Stride</option>
-                    </select>
-                    <p className="input-hint">Interval between rolling transcript updates.</p>
+                  <div className="form-group" style={{ marginTop: '10px' }}>
+                    <label>Live Audio Invigilation AI Prompt</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('live_audio')}>
+                        {liveAudioPrompt ? `Selected: ${liveAudioPrompt.name || 'Custom Prompt'}` : 'Select Live Invigilation Prompt'}
+                      </button>
+                      {liveAudioPrompt && (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => setLiveAudioPrompt(null)}
+                          style={{ color: '#ef4444' }}
+                        >
+                          Reset to Default
+                        </button>
+                      )}
+                    </div>
+                    {liveAudioPrompt && (
+                      <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+                        <strong>Prompt preview:</strong> {liveAudioPrompt.promptText.substring(0, 120)}...
+                      </p>
+                    )}
                   </div>
-                </div>
+                </>
               )}
             </div>
 
             {/* Mode 2: Full Session Combined Long Audio Diarization */}
             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
               <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b' }}>
-                📜 Mode 2: Full Session Combined Long Audio Audit (gemini-3.5-transcribe)
+                📜 Mode 2: Session & Discussion Long Audio Audit (gemini-3.5-transcribe)
               </h4>
               <div className="form-group">
                 <label className="checkbox-toggle-label">
@@ -1011,12 +1181,57 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     checked={enableCombinedLongAudio}
                     onChange={(e) => setEnableCombinedLongAudio(e.target.checked)}
                   />
-                  <span>Enable Full-Session Combined Audio Diarization & Chat Audit</span>
+                  <span>Enable Session & Discussion Audio Analysis & Diarization</span>
                 </label>
                 <p className="input-hint">
-                  Stitches all audio segments at the end of class into a single master track for deep multi-speaker attribution and a holistic exam integrity audit report.
+                  Analyzes continuous audio for multi-speaker attribution, discussion summaries, and holistic integrity audits.
                 </p>
               </div>
+
+              {enableCombinedLongAudio && (
+                <>
+                  <div className="form-group" style={{ marginTop: '10px' }}>
+                    <label>Discussion / Session Audio Analysis Interval</label>
+                    <select
+                      value={sessionAudioIntervalMinutes}
+                      onChange={(e) => setSessionAudioIntervalMinutes(parseInt(e.target.value, 10))}
+                    >
+                      <option value={0}>🎓 Full Session (Complete session audio at class conclusion)</option>
+                      <option value={5}>⏱️ Every 5 Minutes (Short discussion checkpoints)</option>
+                      <option value={10}>⏱️ Every 10 Minutes (Standard group discussion interval)</option>
+                      <option value={15}>⏱️ Every 15 Minutes (Extended seminar interval)</option>
+                      <option value={30}>⏱️ Every 30 Minutes (Lecture block interval)</option>
+                    </select>
+                    <p className="input-hint">
+                      How frequently long continuous audio segments are summarized and audited.
+                    </p>
+                  </div>
+
+                  <div className="form-group" style={{ marginTop: '10px' }}>
+                    <label>Discussion / Session Audio AI Prompt</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('session_audio')}>
+                        {sessionAudioPrompt ? `Selected: ${sessionAudioPrompt.name || 'Custom Prompt'}` : 'Select Discussion / Session AI Prompt'}
+                      </button>
+                      {sessionAudioPrompt && (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => setSessionAudioPrompt(null)}
+                          style={{ color: '#ef4444' }}
+                        >
+                          Reset to Default
+                        </button>
+                      )}
+                    </div>
+                    {sessionAudioPrompt && (
+                      <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+                        <strong>Prompt preview:</strong> {sessionAudioPrompt.promptText.substring(0, 120)}...
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

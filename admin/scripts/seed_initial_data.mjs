@@ -62,13 +62,30 @@ async function seedPrompts() {
   }
 
   const files = getMdFiles(promptsDir);
+  const createdPrompts = {};
   for (const filePath of files) {
     const content = fs.readFileSync(filePath, 'utf8');
     const name = path.basename(filePath, '.md');
     const category = path.basename(path.dirname(filePath));
-    const applyTo = category === 'images' ? ['Per Image', 'All Images'] : ['Per Video'];
+    
+    let applyTo;
+    if (category === 'images') {
+      applyTo = ['Per Image', 'All Images'];
+    } else if (category === 'videos') {
+      applyTo = ['Per Video'];
+    } else if (category === 'audios') {
+      if (name.includes('Gemma')) {
+        applyTo = ['On-Device Gemma Voice Intent'];
+      } else if (name.includes('Discussion') || name.includes('Long Audio')) {
+        applyTo = ['Session Audio Summary'];
+      } else {
+        applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
+      }
+    } else {
+      applyTo = [];
+    }
 
-    await db.collection('prompts').add({
+    const docRef = await db.collection('prompts').add({
       name,
       promptText: content,
       category,
@@ -77,8 +94,10 @@ async function seedPrompts() {
       createdAt: FieldValue.serverTimestamp(),
       lastUpdated: FieldValue.serverTimestamp()
     });
+    createdPrompts[name] = { id: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public' };
   }
   console.log(`✅ Seeded ${files.length} AI prompts.`);
+  return createdPrompts;
 }
 
 async function main() {
@@ -120,6 +139,8 @@ async function main() {
     studentUsers.push(sUser);
   }
 
+  const seededPrompts = await seedPrompts();
+
   const classId = 'IT114115-Demo';
   const classData = {
     name: 'IT114115 Demo Class',
@@ -151,6 +172,14 @@ async function main() {
     faceDebounceSeconds: 3,
     enableCloudFallback: false,
     cloudFallbackRate: 3,
+    enableAudioInvigilation: true,
+    audioAnalysisIntervalSeconds: 10,
+    audioSilenceThreshold: 0.01,
+    voiceAiMode: 'client_stt_gemma',
+    liveAudioPrompt: seededPrompts?.['AI Voice Invigilator (Live Rolling Audio)'] || null,
+    sessionAudioPrompt: seededPrompts?.['Summarize Classroom Discussion (Long Audio)'] || null,
+    gemmaIntentPrompt: seededPrompts?.['AI Speech Intent Proctor (Gemma On-Device)'] || null,
+    sessionAudioIntervalMinutes: 0,
     isCapturing: true,
     captureStartedAt: FieldValue.serverTimestamp()
   };
@@ -163,8 +192,6 @@ async function main() {
     await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
   }
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 3 students (student1..3).`);
-
-  await seedPrompts();
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);

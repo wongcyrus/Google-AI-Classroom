@@ -213,7 +213,7 @@ self.onmessage = async (event) => {
       }
 
       case 'EVALUATE_TRANSCRIPT': {
-        const { transcript = '', studentUid, classId, timestamp = Date.now() } = payload || {};
+        const { transcript = '', studentUid, classId, timestamp = Date.now(), systemPrompt } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'evaluating' } });
 
         if (!gemmaEngine) {
@@ -222,10 +222,11 @@ self.onmessage = async (event) => {
 
         let conversation = null;
         let evaluationResult;
+        const promptToUse = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt : GEMMA_PROCTOR_SYSTEM_PROMPT;
         try {
           conversation = await gemmaEngine.createConversation();
           const response = await conversation.sendMessage(
-            `${GEMMA_PROCTOR_SYSTEM_PROMPT}\n\nStudent transcript: "${transcript}"`
+            `${promptToUse}\n\nStudent transcript: "${transcript}"`
           );
           evaluationResult = parseGemmaOutput(getResponseText(response));
         } finally {

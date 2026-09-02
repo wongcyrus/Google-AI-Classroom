@@ -14,6 +14,7 @@ export function useClientLiteRTGemma({
   classId,
   studentUid,
   studentEmail = '',
+  customGemmaPrompt = null,
 }) {
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'evaluating' | 'unavailable' | 'error'
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -31,6 +32,11 @@ export function useClientLiteRTGemma({
   const evaluationInFlightRef = useRef(false);
   const statusRef = useRef(status);
   const engineRef = useRef(engine);
+  const customGemmaPromptRef = useRef(customGemmaPrompt);
+
+  useEffect(() => {
+    customGemmaPromptRef.current = customGemmaPrompt;
+  }, [customGemmaPrompt]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -302,6 +308,9 @@ export function useClientLiteRTGemma({
         },
       });
 
+      const systemPrompt = customGemmaPromptRef.current?.promptText || 
+        (typeof customGemmaPromptRef.current === 'string' ? customGemmaPromptRef.current : undefined);
+
       workerRef.current.postMessage({
         type: 'EVALUATE_TRANSCRIPT',
         id,
@@ -310,6 +319,7 @@ export function useClientLiteRTGemma({
           studentUid: studentUidRef.current,
           classId: classIdRef.current,
           timestamp: Date.now(),
+          systemPrompt,
           ...metadata,
         },
       });
