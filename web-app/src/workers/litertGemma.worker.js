@@ -179,7 +179,14 @@ self.onmessage = async (event) => {
             const { loadLiteRt, loadAndCompile, getGlobalLiteRt } = await import('@litertjs/core');
             if (typeof loadLiteRt === 'function' && !getGlobalLiteRt()) {
               try {
-                await loadLiteRt();
+                self.Module = self.Module || {};
+                self.Module.locateFile = (fileName, scriptDirectory) => {
+                  if (fileName.endsWith('.wasm')) {
+                    return `/litert/${fileName}`;
+                  }
+                  return (scriptDirectory || '/litert/') + fileName;
+                };
+                await loadLiteRt('/litert/');
               } catch (loadErr) {
                 if (!String(loadErr?.message).includes('already')) {
                   console.warn('[LiteRTGemmaWorker] Note on loadLiteRt:', loadErr?.message || loadErr);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAudioRecorder } from './useAudioRecorder';
 
 vi.mock('../firebase-config', () => ({
@@ -191,6 +191,119 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     });
 
     expect(result.current.isRecording).toBe(false);
+    expect(mockAudioTrack.stop).toHaveBeenCalled();
+  });
+
+  it('does not automatically retry a failed microphone request until configuration changes', async () => {
+    const deniedError = new DOMException('Permission denied', 'NotAllowedError');
+    mockGetUserMedia.mockRejectedValue(deniedError);
+
+    const { rerender } = renderHook(
+      ({ studentEmail }) =>
+        useAudioRecorder({
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          studentEmail,
+          enabled: true,
+          deviceId: 'persisted-mic',
+        }),
+      { initialProps: { studentEmail: 'first@school.edu' } }
+    );
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ studentEmail: 'updated@school.edu' });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a microphone stream that resolves after recording is disabled', async () => {
+    let resolveStream;
+    mockGetUserMedia.mockReturnValue(new Promise(resolve => {
+      resolveStream = resolve;
+    }));
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useAudioRecorder({
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          enabled,
+        }),
+      { initialProps: { enabled: true } }
+    );
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+    });
+    rerender({ enabled: false });
+
+    await act(async () => {
+      resolveStream(mockMediaStream);
+      await Promise.resolve();
+    });
+
+    expect(mockAudioTrack.stop).toHaveBeenCalled();
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.audioStream).toBeNull();
+  });
+
+  it('restarts recording when teacher-controlled capture settings change', async () => {
+    const { rerender } = renderHook(
+      ({ strideDuration }) =>
+        useAudioRecorder({
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          enabled: true,
+          strideDuration,
+        }),
+      { initialProps: { strideDuration: 15 } }
+    );
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ strideDuration: 5 });
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
+    });
+    expect(mockAudioTrack.stop).toHaveBeenCalled();
+  });
+
+  it('reacquires the microphone when the operating-system default changes', async () => {
+    let deviceChangeHandler;
+    navigator.mediaDevices.addEventListener = vi.fn((type, handler) => {
+      if (type === 'devicechange') deviceChangeHandler = handler;
+    });
+    navigator.mediaDevices.removeEventListener = vi.fn();
+
+    renderHook(() =>
+      useAudioRecorder({
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        enabled: true,
+        deviceId: 'default',
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
+    });
+
+    act(() => {
+      deviceChangeHandler();
+    });
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(4);
+    });
     expect(mockAudioTrack.stop).toHaveBeenCalled();
   });
 

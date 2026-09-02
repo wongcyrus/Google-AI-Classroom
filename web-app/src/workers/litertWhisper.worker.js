@@ -7,10 +7,77 @@
 
 import { fetchWithProgress, checkHardwareAcceleration, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader.js';
 import { decodeWhisperTokens } from '../utils/whisperTokenizer.js';
+import FFT from 'fft.js';
 
 let compiledModel = null;
+let TensorClass = null;
+let whisperVocabulary = [];
 let activeDelegate = 'wasm';
 let isReady = false;
+let clientInferenceSupported = true;
+const LITERT_WASM_URL = '/litert/';
+const WHISPER_START_OF_TRANSCRIPT_TOKEN = 50258;
+
+function createRealFft(size) {
+  let convolutionSize = 1;
+  while (convolutionSize < (size * 2) - 1) convolutionSize *= 2;
+
+  const fft = new FFT(convolutionSize);
+  const chirpReal = new Float32Array(size);
+  const chirpImaginary = new Float32Array(size);
+  const kernel = fft.createComplexArray();
+  const kernelSpectrum = fft.createComplexArray();
+  const input = fft.createComplexArray();
+  const inputSpectrum = fft.createComplexArray();
+  const product = fft.createComplexArray();
+  const convolution = fft.createComplexArray();
+
+  for (let index = 0; index < size; index++) {
+    const angle = Math.PI * index * index / size;
+    const real = Math.cos(angle);
+    const imaginary = Math.sin(angle);
+    chirpReal[index] = real;
+    chirpImaginary[index] = imaginary;
+    kernel[index * 2] = real;
+    kernel[(index * 2) + 1] = imaginary;
+    if (index > 0) {
+      kernel[(convolutionSize - index) * 2] = real;
+      kernel[((convolutionSize - index) * 2) + 1] = imaginary;
+    }
+  }
+  fft.transform(kernelSpectrum, kernel);
+
+  return {
+    forward(realInput) {
+      input.fill(0);
+      for (let index = 0; index < size; index++) {
+        input[index * 2] = realInput[index] * chirpReal[index];
+        input[(index * 2) + 1] = -realInput[index] * chirpImaginary[index];
+      }
+      fft.transform(inputSpectrum, input);
+      for (let index = 0; index < convolutionSize; index++) {
+        const offset = index * 2;
+        const leftReal = inputSpectrum[offset];
+        const leftImaginary = inputSpectrum[offset + 1];
+        const rightReal = kernelSpectrum[offset];
+        const rightImaginary = kernelSpectrum[offset + 1];
+        product[offset] = (leftReal * rightReal) - (leftImaginary * rightImaginary);
+        product[offset + 1] = (leftReal * rightImaginary) + (leftImaginary * rightReal);
+      }
+      fft.inverseTransform(convolution, product);
+
+      const output = new Float32Array(size + 2);
+      for (let index = 0; index <= size / 2; index++) {
+        const offset = index * 2;
+        const real = convolution[offset];
+        const imaginary = convolution[offset + 1];
+        output[offset] = (real * chirpReal[index]) + (imaginary * chirpImaginary[index]);
+        output[offset + 1] = (imaginary * chirpReal[index]) - (real * chirpImaginary[index]);
+      }
+      return output;
+    },
+  };
+}
 
 // Cantonese, Mandarin & English Code-Switching Prompt Anchor Tokens
 export const CODE_SWITCHING_ANCHORS = [
@@ -18,35 +85,133 @@ export const CODE_SWITCHING_ANCHORS = [
 ];
 
 /**
- * Basic acoustic feature extraction (16kHz PCM Float32 to Mel Spectrogram or input frames)
+ * Converts 16kHz PCM to Whisper's normalized [1, 80, 3000] log-Mel input.
  * @param {Float32Array} pcmData
  * @returns {Float32Array}
  */
 export function extractAudioFeatures(pcmData) {
-  // Normalize & clamp 16kHz audio buffer to 30-second target length (480,000 samples)
-  const targetSamples = DEFAULT_WHISPER_CONFIG.sampleRate * DEFAULT_WHISPER_CONFIG.chunkDurationSec;
-  const processed = new Float32Array(targetSamples);
-  if (pcmData && pcmData.length > 0) {
-    const copyLen = Math.min(pcmData.length, targetSamples);
+  const sampleRate = 16000;
+  const fftSize = 400;
+  const hopLength = 160;
+  const melBins = 80;
+  const frameCount = 3000;
+  const targetSamples = sampleRate * 30;
+  const audio = new Float32Array(targetSamples);
+  const copyLength = Math.min(pcmData?.length || 0, targetSamples);
 
-    // Peak amplitude detection for adaptive whisper boost
-    let maxVal = 0.0001;
-    for (let i = 0; i < copyLen; i++) {
-      const abs = Math.abs(pcmData[i]);
-      if (abs > maxVal) maxVal = abs;
-    }
+  let peak = 0.0001;
+  for (let index = 0; index < copyLength; index++) {
+    peak = Math.max(peak, Math.abs(pcmData[index]));
+  }
+  const gain = peak < 0.25 && peak > 0.003
+    ? Math.min(0.85 / peak, 6)
+    : 1;
+  for (let index = 0; index < copyLength; index++) {
+    audio[index] = Math.max(-1, Math.min(1, pcmData[index] * gain));
+  }
 
-    // Apply adaptive dynamic gain to low-volume whispered speech
-    let gain = 1.0;
-    if (maxVal < 0.25 && maxVal > 0.003) {
-      gain = Math.min(0.85 / maxVal, 6.0);
-    }
+  const hzToMel = (frequency) => {
+    if (frequency < 1000) return frequency / (200 / 3);
+    return 15 + Math.log(frequency / 1000) / (Math.log(6.4) / 27);
+  };
+  const melToHz = (mel) => {
+    if (mel < 15) return mel * (200 / 3);
+    return 1000 * Math.exp((Math.log(6.4) / 27) * (mel - 15));
+  };
 
-    for (let i = 0; i < copyLen; i++) {
-      processed[i] = Math.max(-1.0, Math.min(1.0, pcmData[i] * gain));
+  const melPoints = new Float32Array(melBins + 2);
+  const minMel = hzToMel(0);
+  const maxMel = hzToMel(sampleRate / 2);
+  for (let index = 0; index < melPoints.length; index++) {
+    melPoints[index] = melToHz(minMel + (index / (melBins + 1)) * (maxMel - minMel));
+  }
+
+  const frequencyBins = (fftSize / 2) + 1;
+  const melFilters = Array.from({ length: melBins }, () => new Float32Array(frequencyBins));
+  for (let melIndex = 0; melIndex < melBins; melIndex++) {
+    const lower = melPoints[melIndex];
+    const center = melPoints[melIndex + 1];
+    const upper = melPoints[melIndex + 2];
+    const normalization = 2 / (upper - lower);
+    for (let bin = 0; bin < frequencyBins; bin++) {
+      const frequency = (bin * sampleRate) / fftSize;
+      const lowerSlope = (frequency - lower) / (center - lower);
+      const upperSlope = (upper - frequency) / (upper - center);
+      melFilters[melIndex][bin] = Math.max(0, Math.min(lowerSlope, upperSlope)) * normalization;
     }
   }
-  return processed;
+
+  const window = new Float32Array(fftSize);
+  for (let index = 0; index < fftSize; index++) {
+    window[index] = 0.5 - 0.5 * Math.cos((2 * Math.PI * index) / fftSize);
+  }
+
+  const frame = new Float32Array(fftSize);
+  const fft = createRealFft(fftSize);
+  const features = new Float32Array(melBins * frameCount);
+  let maxLogMel = -Infinity;
+
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+    const frameStart = frameIndex * hopLength - (fftSize / 2);
+    for (let sampleIndex = 0; sampleIndex < fftSize; sampleIndex++) {
+      let sourceIndex = frameStart + sampleIndex;
+      if (sourceIndex < 0) sourceIndex = -sourceIndex;
+      if (sourceIndex >= targetSamples) sourceIndex = (2 * targetSamples) - sourceIndex - 2;
+      frame[sampleIndex] = audio[sourceIndex] * window[sampleIndex];
+    }
+
+    const spectrum = fft.forward(frame);
+    for (let melIndex = 0; melIndex < melBins; melIndex++) {
+      let melEnergy = 0;
+      const filter = melFilters[melIndex];
+      for (let bin = 0; bin < frequencyBins; bin++) {
+        const real = spectrum[bin * 2];
+        const imaginary = spectrum[(bin * 2) + 1];
+        melEnergy += ((real * real) + (imaginary * imaginary)) * filter[bin];
+      }
+      const logMel = Math.log10(Math.max(melEnergy, 1e-10));
+      features[(melIndex * frameCount) + frameIndex] = logMel;
+      maxLogMel = Math.max(maxLogMel, logMel);
+    }
+  }
+
+  const minimumLogMel = maxLogMel - 8;
+  for (let index = 0; index < features.length; index++) {
+    features[index] = (Math.max(features[index], minimumLogMel) + 4) / 4;
+  }
+  return features;
+}
+
+async function readOutputTokens(results) {
+  const outputTensor = Array.isArray(results)
+    ? results[0]
+    : Object.values(results || {})[0];
+  if (!outputTensor) {
+    throw new Error('Whisper model returned no output tensor.');
+  }
+
+  try {
+    if (typeof outputTensor.data === 'function') {
+      return await outputTensor.data();
+    }
+    if (typeof outputTensor.toTypedArray === 'function') {
+      return outputTensor.toTypedArray();
+    }
+    return outputTensor;
+  } finally {
+    outputTensor.delete?.();
+  }
+}
+
+export function isValidWhisperTokenSequence(tokenIds) {
+  if (!tokenIds || tokenIds.length === 0) return false;
+  const prefixLength = Math.min(tokenIds.length, 8);
+  for (let index = 0; index < prefixLength; index++) {
+    if (Math.round(tokenIds[index]) === WHISPER_START_OF_TRANSCRIPT_TOKEN) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -66,6 +231,36 @@ export function classifyLanguage(text) {
   if (hasCantonese) return 'cantonese';
   if (hasMandarin) return 'mandarin';
   return 'english';
+}
+
+export async function compileWhisperModel(loadAndCompile, modelBuffer, preferredDelegate) {
+  const compile = (accelerator) => loadAndCompile(
+    new Uint8Array(modelBuffer),
+    { accelerator }
+  );
+
+  if (preferredDelegate !== 'webgpu') {
+    return {
+      model: await compile('wasm'),
+      delegate: 'wasm',
+    };
+  }
+
+  try {
+    return {
+      model: await compile('webgpu'),
+      delegate: 'webgpu',
+    };
+  } catch (webGpuError) {
+    console.warn(
+      '[LiteRTWorker] WebGPU could not compile the dynamic Whisper graph; retrying with WASM:',
+      webGpuError?.message || webGpuError
+    );
+    return {
+      model: await compile('wasm'),
+      delegate: 'wasm',
+    };
+  }
 }
 
 /**
@@ -97,30 +292,59 @@ self.onmessage = async (event) => {
         // Initialize LiteRT compiled model if buffer is available and @litertjs/core runtime is available
         if (modelBuffer) {
           try {
-            const { loadLiteRt, loadAndCompile } = await import('@litertjs/core');
+            const { loadLiteRt, loadAndCompile, Tensor } = await import('@litertjs/core');
             if (typeof loadLiteRt === 'function') {
               try {
-                await loadLiteRt();
+                self.Module = self.Module || {};
+                self.Module.locateFile = (fileName, scriptDirectory) => {
+                  if (fileName.endsWith('.wasm')) {
+                    return `${LITERT_WASM_URL}${fileName}`;
+                  }
+                  return (scriptDirectory || LITERT_WASM_URL) + fileName;
+                };
+                await loadLiteRt(LITERT_WASM_URL);
                 console.log('[LiteRTWorker] ✅ @litertjs/core WASM runtime loaded');
               } catch (loadErr) {
                 if (!String(loadErr?.message).includes('already')) {
-                  console.debug('[LiteRTWorker] Note on loadLiteRt:', loadErr?.message || loadErr);
+                  throw loadErr;
                 }
               }
             }
             if (typeof loadAndCompile === 'function') {
               try {
-                compiledModel = await loadAndCompile(modelBuffer, {
-                  accelerator: activeDelegate === 'webgpu' ? 'webgpu' : 'wasm',
+                const compilation = await compileWhisperModel(
+                  loadAndCompile,
+                  modelBuffer,
+                  activeDelegate
+                );
+                compiledModel = compilation.model;
+                activeDelegate = compilation.delegate;
+                TensorClass = Tensor;
+                console.log('[LiteRTWorker] ✅ LiteRT Whisper model compiled successfully:', {
+                  accelerator: activeDelegate,
+                  inputs: compiledModel.getInputDetails(),
+                  outputs: compiledModel.getOutputDetails(),
                 });
-                console.log('[LiteRTWorker] ✅ LiteRT Whisper model compiled successfully (Accelerator:', activeDelegate, ')');
               } catch (compileErr) {
-                console.warn('[LiteRTWorker] Compiled model init:', compileErr?.message || compileErr);
+                throw new Error(`Whisper model compilation failed: ${compileErr?.message || compileErr}`);
               }
             }
           } catch (e) {
-            console.warn('[LiteRTWorker] LiteRT initialization note:', e?.message || e);
+            throw new Error(`LiteRT initialization failed: ${e?.message || e}`);
           }
+        }
+        if (!compiledModel || !TensorClass) {
+          throw new Error('LiteRT Whisper model could not be initialized.');
+        }
+
+        try {
+          const vocabResponse = await fetch('/models/whisper_vocab.json');
+          if (!vocabResponse.ok) {
+            throw new Error(`HTTP ${vocabResponse.status}`);
+          }
+          whisperVocabulary = await vocabResponse.json();
+        } catch (vocabError) {
+          throw new Error(`Whisper vocabulary failed to load: ${vocabError.message || vocabError}`);
         }
 
         isReady = true;
@@ -168,41 +392,36 @@ self.onmessage = async (event) => {
         let confidence = 0.92;
         let words = [];
 
-        if (compiledModel && typeof compiledModel.run === 'function') {
+        if (!clientInferenceSupported) {
+          console.debug(
+            '[LiteRTWorker] Local Whisper inference is disabled; returning an empty result for the configured cloud fallback.'
+          );
+        } else if (
+          compiledModel &&
+          TensorClass &&
+          typeof compiledModel.run === 'function'
+        ) {
+          let inputTensor = null;
           try {
             console.log('[LiteRTWorker] 🧠 Executing local on-device LiteRT Whisper inference...');
-            let results;
-            try {
-              results = await compiledModel.run([features]);
-            } catch {
-              results = await compiledModel.run({ input_features: features });
-            }
-            console.log('[LiteRTWorker] 🧠 Local model raw output:', results);
-            if (results?.text) {
-              transcriptText = results.text;
-            } else if (results?.transcript) {
-              transcriptText = results.transcript;
-            } else if (results?.output) {
-              transcriptText = decodeWhisperTokens(results.output);
-            } else if (results?.output_0) {
-              transcriptText = decodeWhisperTokens(results.output_0);
-            } else if (results?.identity) {
-              transcriptText = decodeWhisperTokens(results.identity);
-            } else if (results?.tokens) {
-              transcriptText = decodeWhisperTokens(results.tokens);
-            } else if (Array.isArray(results) && results[0]) {
-              transcriptText = decodeWhisperTokens(results[0]);
-            } else if (results instanceof Float32Array || results instanceof Int32Array) {
-              transcriptText = decodeWhisperTokens(results);
-            } else if (typeof results === 'object' && results !== null) {
-              const firstVal = Object.values(results)[0];
-              if (firstVal) {
-                transcriptText = decodeWhisperTokens(firstVal);
-              }
+            inputTensor = TensorClass.fromTypedArray(features, [1, 80, 3000]);
+            const results = await compiledModel.run([inputTensor]);
+            const outputTokens = await readOutputTokens(results);
+            if (isValidWhisperTokenSequence(outputTokens)) {
+              transcriptText = decodeWhisperTokens(outputTokens, whisperVocabulary);
+            } else {
+              clientInferenceSupported = false;
+              console.warn(
+                '[LiteRTWorker] LiteRT.js returned an invalid dynamic Whisper sequence; disabling local inference so hybrid mode can use Cloud Gemini STT.'
+              );
             }
           } catch (inferErr) {
             console.warn('[LiteRTWorker] On-device inference error:', inferErr);
+          } finally {
+            inputTensor?.delete();
           }
+        } else {
+          throw new Error('LiteRT Whisper model is unavailable.');
         }
 
         if (!transcriptText && simulatedText) {
@@ -232,6 +451,9 @@ self.onmessage = async (event) => {
           await compiledModel.unload();
         }
         compiledModel = null;
+        TensorClass = null;
+        whisperVocabulary = [];
+        clientInferenceSupported = true;
         isReady = false;
         self.postMessage({ type: 'DISPOSE_COMPLETE', id });
         break;

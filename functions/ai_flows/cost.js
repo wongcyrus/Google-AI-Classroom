@@ -4,7 +4,9 @@ export const MODEL_PRICING = {
   'gemini-3.7-flash': { input: 0.75, output: 3.75 },
   'gemini-3.7-pro': { input: 3.00, output: 15.00 },
   'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
+  'gemini-3.5-transcribe-preview': { input: 0.50, output: 2.50 },
   'gemini-3.5-transcribe-live': { input: 0.60, output: 3.00 },
+  'gemini-3.5-transcribe-live-preview': { input: 0.60, output: 3.00 },
 };
 
 export const DEFAULT_MODEL = 'gemini-3.5-flash-lite';

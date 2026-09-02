@@ -7,20 +7,20 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, setDoc, updateDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { isWhisperModelCached, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader';
 import { downsamplePcmTo16k } from '../utils/audioDecoder';
-import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 export function useClientLiteRTWhisper({
   classId,
   studentUid,
   enabled = true,
-  audioMonitoringMode = 'litert_whisper',
+  audioMonitoringMode: _audioMonitoringMode = 'litert_whisper',
   speechLanguage = 'zh-HK',
   audioStream = null,
   deviceId = '',
+  vadSensitivity = 15,
   onTranscript,
 }) {
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'transcribing' | 'error'
@@ -38,6 +38,7 @@ export function useClientLiteRTWhisper({
 
   const workerRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
+  const initializationPromiseRef = useRef(null);
   const reqIdCounterRef = useRef(0);
 
   // Check initial cache state
@@ -57,8 +58,7 @@ export function useClientLiteRTWhisper({
 
     try {
       workerRef.current = new Worker(
-        new URL('../workers/litertWhisper.worker.js', import.meta.url),
-        { type: 'module' }
+        new URL('../workers/litertWhisper.worker.js', import.meta.url)
       );
 
       workerRef.current.onmessage = (event) => {
@@ -74,26 +74,26 @@ export function useClientLiteRTWhisper({
           setLoadingProgress(100);
           setIsModelCached(true);
           if (payload?.delegate) setDelegateUsed(payload.delegate);
-          const resolve = pendingRequestsRef.current.get(id);
-          if (resolve) {
-            resolve(payload);
+          const pending = pendingRequestsRef.current.get(id);
+          if (pending) {
+            pending.resolve(payload);
             pendingRequestsRef.current.delete(id);
           }
         } else if (type === 'TRANSCRIBE_COMPLETE') {
           setStatus('ready');
           setLatestTranscript(payload.transcript || '');
           setLatestLanguage(payload.language || 'mixed');
-          const resolve = pendingRequestsRef.current.get(id);
-          if (resolve) {
-            resolve(payload);
+          const pending = pendingRequestsRef.current.get(id);
+          if (pending) {
+            pending.resolve(payload);
             pendingRequestsRef.current.delete(id);
           }
         } else if (type === 'ERROR') {
           setError(payload?.error || 'Worker error');
           setStatus('error');
-          const reject = pendingRequestsRef.current.get(id);
-          if (reject) {
-            reject(new Error(payload?.error || 'Worker error'));
+          const pending = pendingRequestsRef.current.get(id);
+          if (pending) {
+            pending.reject(new Error(payload?.error || 'Worker error'));
             pendingRequestsRef.current.delete(id);
           }
         }
@@ -120,15 +120,19 @@ export function useClientLiteRTWhisper({
   /**
    * Preload the LiteRT Whisper model into CacheStorage.
    */
-  const preloadModel = useCallback(async () => {
-    if (!workerRef.current) return;
+  const preloadModel = useCallback(() => {
+    if (!workerRef.current) return Promise.resolve(null);
+    if (initializationPromiseRef.current) {
+      return initializationPromiseRef.current;
+    }
+
     setStatus('loading');
     setLoadingProgress(5);
     setError(null);
 
-    return new Promise((resolve, reject) => {
+    const initializationPromise = new Promise((resolve, reject) => {
       const id = ++reqIdCounterRef.current;
-      pendingRequestsRef.current.set(id, resolve);
+      pendingRequestsRef.current.set(id, { resolve, reject });
       workerRef.current.postMessage({
         type: 'INIT',
         id,
@@ -144,6 +148,13 @@ export function useClientLiteRTWhisper({
         }
       }, 60000);
     });
+    const trackedPromise = initializationPromise.finally(() => {
+      if (initializationPromiseRef.current === trackedPromise) {
+        initializationPromiseRef.current = null;
+      }
+    });
+    initializationPromiseRef.current = trackedPromise;
+    return trackedPromise;
   }, []);
 
   // Auto-init worker when enabled
@@ -180,19 +191,17 @@ export function useClientLiteRTWhisper({
     if (!workerRef.current) return null;
 
     if (statusRef.current !== 'ready') {
-      try {
-        await preloadModelRef.current?.();
-      } catch (e) {
-        console.debug('[useClientLiteRTWhisper] Preload fallback:', e);
-      }
+      await preloadModelRef.current?.();
     }
 
     const { audioPath = '', duration = 30, simulatedText = '' } = metadata;
     console.log(`[useClientLiteRTWhisper] 🎙️ Dispatching audio chunk to LiteRT Worker (samples: ${audioPcm?.length || 0}, path: ${audioPath || 'live'})`);
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const id = ++reqIdCounterRef.current;
-      pendingRequestsRef.current.set(id, async (result) => {
+      pendingRequestsRef.current.set(id, {
+        reject,
+        resolve: async (result) => {
         const text = (result?.transcript || simulatedText || '').trim();
         const language = result?.language || 'mixed';
         const timestamp = Date.now();
@@ -259,6 +268,7 @@ export function useClientLiteRTWhisper({
         }
 
         resolve({ transcript: text, language, timestamp });
+        },
       });
 
       console.log('%c[useClientLiteRTWhisper:Dispatch] 🚀 Dispatching audio chunk to LiteRT Worker:', 'background:#d97706;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
@@ -286,12 +296,120 @@ export function useClientLiteRTWhisper({
     });
   }, []);
 
+  // Chrome can transcribe a supplied MediaStreamTrack. Passing the recorder's
+  // track is essential; start() without it silently listens to the default mic.
+  useEffect(() => {
+    if (!enabled || !audioStream || typeof window === 'undefined') return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const activeTrack = audioStream.getAudioTracks?.()[0];
+    if (!SpeechRecognition || !activeTrack || activeTrack.readyState === 'ended') return;
+
+    let recognition = null;
+    let isStopped = false;
+
+    try {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = speechLanguage || 'zh-HK';
+
+      recognition.onresult = (event) => {
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          if (event.results[i].isFinal) {
+            finalText += event.results[i][0].transcript;
+          } else {
+            interimText += event.results[i][0].transcript;
+          }
+        }
+
+        const transcript = (finalText || interimText || '').trim();
+        if (!transcript) return;
+
+        setLatestTranscript(transcript);
+        const language = speechLanguage || 'zh-HK';
+        const timestamp = Date.now();
+        console.log(
+          '%c[Selected Track Speech STT] 🎙️ Speech Transcribed:',
+          'background:#064e3b;color:#34d399;font-weight:bold;padding:2px 6px;border-radius:4px;',
+          {
+            transcript,
+            language,
+            deviceId: activeTrack.getSettings?.().deviceId || deviceIdRef.current,
+            label: activeTrack.label || 'unknown',
+          }
+        );
+
+        if (finalText && onTranscriptRef.current) {
+          try {
+            onTranscriptRef.current(finalText, {
+              language,
+              timestamp,
+              isFinal: true,
+            });
+          } catch (err) {
+            console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
+          }
+        }
+
+        const currentClassId = classIdRef.current;
+        const currentStudentUid = studentUidRef.current;
+        if (currentClassId && currentStudentUid) {
+          const statusDocRef = doc(db, 'classes', currentClassId, 'status', currentStudentUid);
+          setDoc(statusDocRef, {
+            liveTranscript: transcript,
+            liveTranscriptTimestamp: timestamp,
+            speechLanguage: language,
+            isAudioSharing: true,
+            audioStatus: 'speaking',
+            selectedMicDeviceId:
+              activeTrack.getSettings?.().deviceId || deviceIdRef.current || '',
+          }, { merge: true }).catch(() => {});
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.debug('[useClientLiteRTWhisper] Selected-track recognition notice:', event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        if (!isStopped && activeTrack.readyState === 'live') {
+          try {
+            recognition.start(activeTrack);
+          } catch (err) {
+            console.debug('[useClientLiteRTWhisper] Selected-track recognition restart failed:', err);
+          }
+        }
+      };
+
+      recognition.start(activeTrack);
+    } catch (err) {
+      console.debug('[useClientLiteRTWhisper] Selected-track recognition not started:', err);
+    }
+
+    return () => {
+      isStopped = true;
+      if (recognition) {
+        recognition.onend = null;
+        try {
+          recognition.abort();
+        } catch {
+          // Recognition may already be stopped during a stream switch.
+        }
+      }
+    };
+  }, [enabled, audioStream, speechLanguage]);
+
   // 1. Real-time audio stream listener for the selected microphone stream
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
 
     let isMounted = true;
-    let localStream = null;
     let audioCtx = null;
     let source = null;
     let processor = null;
@@ -373,8 +491,8 @@ export function useClientLiteRTWhisper({
             }
             const rms = Math.sqrt(sumSq / pcm16k.length);
 
-            // Sensitive VAD threshold (0.0020) for external USB mics and quiet/whispering voices
-            if (rms >= 0.0020) {
+            const vadThreshold = 0.002 * (Math.max(5, Math.min(35, vadSensitivity)) / 15);
+            if (rms >= vadThreshold) {
               if (!isSpeechActive) {
                 isSpeechActive = true;
                 console.log('%c[useClientLiteRTWhisper:VAD] 🗣️ Speech detected on mic:', 'background:#059669;color:white;padding:2px 6px;border-radius:4px;', {
@@ -423,32 +541,6 @@ export function useClientLiteRTWhisper({
     const initStream = async () => {
       if (audioStream) {
         attachStream(audioStream);
-        return;
-      }
-
-      // If audioStream not passed yet from parent, acquire selected mic device directly
-      const targetDeviceId = deviceId || (() => {
-        try {
-          return localStorage.getItem('preferred_mic_device_id') || '';
-        } catch {
-          return '';
-        }
-      })();
-
-      try {
-        localStream = await acquireInputDeviceStream('audio', targetDeviceId, {
-          autoGainControl: true,
-          echoCancellation: true,
-          noiseSuppression: false,
-        });
-
-        if (isMounted && localStream) {
-          attachStream(localStream);
-        } else if (localStream) {
-          localStream.getTracks().forEach(t => t.stop());
-        }
-      } catch (err) {
-        console.warn('[useClientLiteRTWhisper] Direct microphone acquisition note:', err);
       }
     };
 
@@ -461,22 +553,27 @@ export function useClientLiteRTWhisper({
 
       if (processor) {
         processor.onaudioprocess = null;
-        try { processor.disconnect(); } catch {}
+        try { processor.disconnect(); } catch {
+          // The audio graph may already be disconnected during browser teardown.
+        }
       }
       if (source) {
-        try { source.disconnect(); } catch {}
+        try { source.disconnect(); } catch {
+          // The audio graph may already be disconnected during browser teardown.
+        }
       }
       if (muteGain) {
-        try { muteGain.disconnect(); } catch {}
+        try { muteGain.disconnect(); } catch {
+          // The audio graph may already be disconnected during browser teardown.
+        }
       }
       if (audioCtx && audioCtx.state !== 'closed') {
-        try { audioCtx.close(); } catch {}
-      }
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
+        try { audioCtx.close(); } catch {
+          // The browser may close the context before React cleanup runs.
+        }
       }
     };
-  }, [enabled, audioStream, deviceId, transcribeAudioChunk]);
+  }, [enabled, audioStream, deviceId, transcribeAudioChunk, vadSensitivity]);
 
   return {
     status,

@@ -20,9 +20,11 @@ export function useAudioRecorder({
   strideDuration = 15,  // seconds between sliding strides (50% overlap)
   enableMovingWindow = true,
   silenceSuppression = true,
+  vadSensitivity = 15,
   retentionDays = 30,
   deviceId = '',
   onAudioUploaded = null,
+  onDeviceResolved = null,
 } = {}) {
   // Derive effective mode
   const effectiveMode = (() => {
@@ -42,6 +44,7 @@ export function useAudioRecorder({
   const isSpeakingRef = useRef(false);
   const [audioError, setAudioError] = useState(null);
   const [uploadedSegmentsCount, setUploadedSegmentsCount] = useState(0);
+  const [defaultDeviceRevision, setDefaultDeviceRevision] = useState(0);
 
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -56,9 +59,11 @@ export function useAudioRecorder({
   const strideCountRef = useRef(0);
   const sessionStartTimestampRef = useRef(Date.now());
   const onAudioUploadedRef = useRef(onAudioUploaded);
+  const onDeviceResolvedRef = useRef(onDeviceResolved);
   useEffect(() => {
     onAudioUploadedRef.current = onAudioUploaded;
-  }, [onAudioUploaded]);
+    onDeviceResolvedRef.current = onDeviceResolved;
+  }, [onAudioUploaded, onDeviceResolved]);
 
   // Effective window and stride settings
   const effWindowSec = Math.max(10, enableMovingWindow ? (windowDuration || segmentDuration || 30) : (segmentDuration || 30));
@@ -105,7 +110,7 @@ export function useAudioRecorder({
         volumeSamplesRef.current.push(normalized);
 
         // Smooth speaking indicator with 1.5s hangover
-        if (normalized >= 15) {
+        if (normalized >= vadSensitivity) {
           if (speechHangoverTimerRef.current) {
             clearTimeout(speechHangoverTimerRef.current);
             speechHangoverTimerRef.current = null;
@@ -136,7 +141,7 @@ export function useAudioRecorder({
     } catch (e) {
       console.warn('Volume analysis setup failed:', e);
     }
-  }, [effWindowSec]);
+  }, [effWindowSec, vadSensitivity]);
 
   // Upload a single audio window blob to Storage and Firestore
   const uploadAudioSegment = useCallback(async (blob, peakVol, avgVol, windowStartOffsetSec = 0) => {
@@ -144,7 +149,7 @@ export function useAudioRecorder({
     if (!blob || blob.size === 0) return;
 
     // Silence suppression check: if enabled and average volume < 4% and peak < 8%
-    if (silenceSuppression && avgVol < 4 && peakVol < 8) {
+    if (silenceSuppression && peakVol < vadSensitivity) {
       // Update status doc so teacher knows microphone is active and listening
       try {
         const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
@@ -272,7 +277,7 @@ export function useAudioRecorder({
     } finally {
       isUploadingRef.current = false;
     }
-  }, [classId, studentUid, studentEmail, effWindowSec, effStrideSec, enableMovingWindow, silenceSuppression, retentionDays, onAudioUploaded]);
+  }, [classId, studentUid, studentEmail, effWindowSec, effStrideSec, enableMovingWindow, silenceSuppression, vadSensitivity, retentionDays, effectiveMode]);
 
   // Auto-flush offline queue when back online
   useEffect(() => {
@@ -340,10 +345,13 @@ export function useAudioRecorder({
   }, []);
 
   const isRecordingRef = useRef(false);
+  const automaticStartFailureKeyRef = useRef('');
+  const startAttemptRef = useRef(0);
 
   // Start recording stream with standalone segment cycling for 100% valid container headers
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current) return;
+    const startAttempt = ++startAttemptRef.current;
     isRecordingRef.current = true;
     setAudioError(null);
     console.log('%c[useAudioRecorder:Start] 🎙️ Starting recording stream with deviceId:', 'background:#0891b2;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', deviceId || '(system default)');
@@ -353,17 +361,30 @@ export function useAudioRecorder({
         echoCancellation: true,
         noiseSuppression: false,
       });
+      if (startAttempt !== startAttemptRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return null;
+      }
 
       audioStreamRef.current = stream;
       setAudioStream(stream);
+      automaticStartFailureKeyRef.current = '';
       startVolumeAnalysis(stream);
 
       const tracks = stream.getAudioTracks();
       const activeTrack = tracks[0];
+      const actualDeviceId = activeTrack?.getSettings?.().deviceId || '';
+      if (
+        actualDeviceId &&
+        actualDeviceId !== deviceId &&
+        deviceId !== 'default'
+      ) {
+        onDeviceResolvedRef.current?.(actualDeviceId);
+      }
       console.log('%c[useAudioRecorder:TrackAcquired] ✅ Microphone track acquired:', 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
         requestedDeviceId: deviceId || '(default)',
         actualLabel: activeTrack?.label || 'unknown',
-        actualDeviceId: activeTrack?.getSettings?.().deviceId || deviceId,
+        actualDeviceId: actualDeviceId || deviceId,
         readyState: activeTrack?.readyState,
         enabled: activeTrack?.enabled,
       });
@@ -479,8 +500,12 @@ export function useAudioRecorder({
 
       return stream;
     } catch (err) {
+      if (startAttempt !== startAttemptRef.current) {
+        return null;
+      }
       console.error('[useAudioRecorder] ❌ Error starting audio recorder:', err);
       setAudioError(err.message || 'Microphone capture error');
+      automaticStartFailureKeyRef.current = `${classId}:${studentUid}:${deviceId}`;
       isRecordingRef.current = false;
       setIsRecording(false);
       return null;
@@ -490,6 +515,7 @@ export function useAudioRecorder({
   // Stop recording stream
   const stopRecording = useCallback(() => {
     console.log('[useAudioRecorder] ⏹️ Stopping audio recording...');
+    startAttemptRef.current += 1;
     isRecordingRef.current = false;
     setIsRecording(false);
     setCurrentVolume(0);
@@ -540,26 +566,64 @@ export function useAudioRecorder({
     } catch {}
   }, [classId, studentUid]);
 
-  const currentDeviceIdRef = useRef(deviceId);
+  const recordingConfigKey = [
+    deviceId,
+    defaultDeviceRevision,
+    effWindowSec,
+    effStrideSec,
+    enableMovingWindow,
+    silenceSuppression,
+    vadSensitivity,
+    effectiveMode,
+  ].join(':');
+  const currentRecordingConfigRef = useRef(recordingConfigKey);
+
+  useEffect(() => {
+    if (
+      (deviceId !== '' && deviceId !== 'default') ||
+      !navigator.mediaDevices?.addEventListener
+    ) {
+      return;
+    }
+
+    const handleDefaultDeviceChange = () => {
+      setDefaultDeviceRevision(revision => revision + 1);
+    };
+    navigator.mediaDevices.addEventListener('devicechange', handleDefaultDeviceChange);
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.(
+        'devicechange',
+        handleDefaultDeviceChange
+      );
+    };
+  }, [deviceId]);
 
   // Automatically start/stop when enabled flag or params change
   useEffect(() => {
     const shouldRecord = Boolean(enabled && classId && studentUid);
-    const deviceChanged = currentDeviceIdRef.current !== deviceId;
-    currentDeviceIdRef.current = deviceId;
+    const configurationChanged =
+      currentRecordingConfigRef.current !== recordingConfigKey;
+    const startKey = `${classId}:${studentUid}:${deviceId}`;
+    currentRecordingConfigRef.current = recordingConfigKey;
 
     if (shouldRecord) {
-      if (deviceChanged && isRecordingRef.current) {
-        console.log('[useAudioRecorder] 🔄 Microphone deviceId changed to:', deviceId || '(default)', '- switching stream...');
+      if (configurationChanged && isRecordingRef.current) {
+        console.log('[useAudioRecorder] 🔄 Audio capture settings changed; restarting the recording stream.');
         stopRecording();
         startRecording();
-      } else if (!isRecordingRef.current) {
+      } else if (
+        !isRecordingRef.current &&
+        automaticStartFailureKeyRef.current !== startKey
+      ) {
         startRecording();
       }
-    } else if (!shouldRecord && isRecordingRef.current) {
-      stopRecording();
+    } else if (!shouldRecord) {
+      automaticStartFailureKeyRef.current = '';
+      if (isRecordingRef.current) {
+        stopRecording();
+      }
     }
-  }, [enabled, effectiveMode, classId, studentUid, deviceId, startRecording, stopRecording]);
+  }, [enabled, classId, studentUid, deviceId, recordingConfigKey, startRecording, stopRecording]);
 
   // Cleanup on unmount
   useEffect(() => {

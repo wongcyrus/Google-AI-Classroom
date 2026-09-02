@@ -20,6 +20,11 @@ import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome } from '../utils/browserDetection';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
+import {
+  allowsLocalVoiceAi,
+  normalizeVoiceAiMode,
+  shouldRunCloudVoiceFallback,
+} from '../utils/voiceAiPolicy';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
 
 import Sidebar from './student/Sidebar';
@@ -186,6 +191,8 @@ const StudentView = ({ user }) => {
   const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [audioSegmentDuration, setAudioSegmentDuration] = useState(30);
   const [audioSilenceSuppression, setAudioSilenceSuppression] = useState(true);
+  const [vadSensitivity, setVadSensitivity] = useState(15);
+  const [voiceAiCloudFallbackRate, setVoiceAiCloudFallbackRate] = useState(1);
   const [enableSegmentTranscription, setEnableSegmentTranscription] = useState(false);
   const [audioMovingWindowDuration, setAudioMovingWindowDuration] = useState(30);
   const [audioMovingWindowStride, setAudioMovingWindowStride] = useState(15);
@@ -199,6 +206,7 @@ const StudentView = ({ user }) => {
   });
   const [isAudioUserEnabled, setIsAudioUserEnabled] = useState(true);
   const [classSpeechLanguage, setClassSpeechLanguage] = useState('zh-HK');
+  const [lastAudioSegmentStatus, setLastAudioSegmentStatus] = useState(null);
 
   // Log state updates to selectedMicDeviceId
   useEffect(() => {
@@ -219,6 +227,9 @@ const StudentView = ({ user }) => {
   const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
+  const effectiveVoiceAiMode = normalizeVoiceAiMode(voiceAiMode);
+  const isLocalVoiceAiEnabled = allowsLocalVoiceAi(effectiveVoiceAiMode);
+  const shouldEvaluateVoiceWithGemma = effectiveVoiceAiMode === 'hybrid';
 
   // Client-Side Gemma LLM STT Monitor (LiteRT.js in Web Worker)
   const {
@@ -233,10 +244,24 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    enabled: voiceAiMode !== 'disabled',
+    enabled: shouldEvaluateVoiceWithGemma,
   });
 
   const handleAudioUploadedRef = useRef(null);
+  const handleMicDeviceResolved = useCallback((actualDeviceId) => {
+    if (!actualDeviceId || actualDeviceId === selectedMicDeviceId) return;
+    try {
+      localStorage.setItem('preferred_mic_device_id', actualDeviceId);
+    } catch {
+      // The in-memory selection still remains valid when storage is unavailable.
+    }
+    setSelectedMicDeviceId(actualDeviceId);
+  }, [selectedMicDeviceId]);
+  const isAudioCaptureActive =
+    (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) &&
+    enableAudioCapture &&
+    isAudioUserEnabled &&
+    !isSessionDisplaced;
 
   // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
   const {
@@ -249,16 +274,18 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
-    enabled: (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) && enableAudioCapture && isAudioUserEnabled && !isSessionDisplaced,
-    aiMonitoringMode,
+    enabled: isAudioCaptureActive,
+    aiMonitoringMode: effectiveVoiceAiMode,
     segmentDuration: audioSegmentDuration,
     windowDuration: audioMovingWindowDuration,
     strideDuration: audioMovingWindowStride,
-    enableMovingWindow: enableSegmentTranscription || true,
+    enableMovingWindow: enableSegmentTranscription,
     silenceSuppression: audioSilenceSuppression,
+    vadSensitivity,
     retentionDays: retentionDays,
     deviceId: selectedMicDeviceId,
     onAudioUploaded: (data) => handleAudioUploadedRef.current?.(data),
+    onDeviceResolved: handleMicDeviceResolved,
   });
 
   // 2. Client-Side Whisper STT Engine (LiteRT.js in Web Worker) connected to selected audioStream
@@ -275,27 +302,28 @@ const StudentView = ({ user }) => {
   } = useClientLiteRTWhisper({
     classId: activeClass,
     studentUid: user?.uid,
-    enabled: voiceAiMode !== 'disabled',
+    enabled: isLocalVoiceAiEnabled && isAudioCaptureActive,
     speechLanguage: classSpeechLanguage,
     audioStream,
     deviceId: selectedMicDeviceId,
-    onTranscript: evaluateSpeechWithGemma,
+    vadSensitivity,
+    onTranscript: shouldEvaluateVoiceWithGemma ? evaluateSpeechWithGemma : undefined,
   });
 
   // Preload Audio AI models on teacher broadcast
   useEffect(() => {
-    if (preloadClientAi && voiceAiMode !== 'disabled') {
-      if (!isWhisperCached && preloadWhisperModel) {
+    if (preloadClientAi && effectiveVoiceAiMode !== 'disabled') {
+      if (isLocalVoiceAiEnabled && !isWhisperCached && preloadWhisperModel) {
         preloadWhisperModel().catch(err => console.debug('[StudentView] Whisper preload error:', err));
       }
-      if (!isGemmaCached && preloadGemmaModel) {
+      if (shouldEvaluateVoiceWithGemma && !isGemmaCached && preloadGemmaModel) {
         preloadGemmaModel().catch(err => console.debug('[StudentView] Gemma preload error:', err));
       }
     }
-  }, [preloadClientAi, voiceAiMode, isWhisperCached, isGemmaCached, preloadWhisperModel, preloadGemmaModel]);
+  }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, isWhisperCached, isGemmaCached, preloadWhisperModel, preloadGemmaModel]);
 
   // Stable callback for uploaded audio segments
-  const handleAudioUploaded = useCallback(async ({ path, url, blob }) => {
+  const handleAudioUploaded = useCallback(async ({ path, url, blob, strideIndex }) => {
     console.log('%c[StudentView:AudioUploaded] 🎙️ Audio segment upload callback received:', 'background:#4338ca;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
       path,
       blobSize: blob?.size,
@@ -303,6 +331,7 @@ const StudentView = ({ user }) => {
       selectedMicDeviceId: selectedMicDeviceId || '(default)',
     });
     let transcriptText = '';
+    let usedEngine = 'LiteRT Whisper (Local)';
 
     // 1. Decode audio blob into 16kHz Float32Array PCM for on-device LiteRT Whisper
     let pcmData = null;
@@ -319,7 +348,7 @@ const StudentView = ({ user }) => {
     }
 
     // 2. On-device LiteRT Whisper transcription
-    if (transcribeAudioChunk) {
+    if (isLocalVoiceAiEnabled && transcribeAudioChunk) {
       try {
         console.log('%c[StudentView:LiteRTDispatch] 🚀 Dispatching segment to LiteRT Whisper:', 'background:#2563eb;color:white;padding:2px 6px;border-radius:4px;', {
           path,
@@ -333,16 +362,24 @@ const StudentView = ({ user }) => {
         console.log('%c[StudentView:LiteRTResult] 🎙️ LiteRT transcribe result:', 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', result);
         if (result?.transcript && result.transcript.trim()) {
           transcriptText = result.transcript.trim();
+          usedEngine = 'LiteRT Whisper (Local)';
         }
       } catch (err) {
         console.debug('[StudentView] Client LiteRT STT error:', err);
       }
     }
 
-    // 3. Cloud AI fallback (invoked in hybrid mode when local STT produces no words, or in cloud_only mode)
-    const isCloudAllowed = voiceAiMode === 'cloud_only' || voiceAiMode === 'hybrid' || enableCloudFallback;
-    if (!transcriptText && url && isCloudAllowed) {
+    // 3. Cloud AI fallback (invoked ONLY when cloud is permitted and NOT in client_only or disabled mode)
+    const shouldUseCloud = shouldRunCloudVoiceFallback({
+      mode: effectiveVoiceAiMode,
+      fallbackRate: voiceAiCloudFallbackRate,
+      strideIndex,
+      hasLocalTranscript: Boolean(transcriptText),
+      hasAudioUrl: Boolean(url),
+    });
+    if (shouldUseCloud) {
       try {
+        usedEngine = 'Cloud Gemini Transcribe';
         console.log('[StudentView] ⚡ Invoking Cloud Gemini Audio Analysis flow for segment:', path);
         const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
         const res = await analyzeAudioCallable({
@@ -351,7 +388,7 @@ const StudentView = ({ user }) => {
           studentUid: user?.uid,
           studentEmail: user?.email,
         });
-        if (res?.data?.transcript) {
+        if (res?.data?.transcript && !res.data.transcript.includes('[NO_SPEECH_DETECTED]')) {
           transcriptText = res.data.transcript;
           console.log(
             `%c[Cloud Gemini Audio] 🎙️ Speech Transcribed: %c"${transcriptText}"`,
@@ -363,6 +400,16 @@ const StudentView = ({ user }) => {
         console.warn('[StudentView] Cloud audio analysis call failed:', err);
       }
     }
+
+    // Update last audio segment telemetry for UI monitor
+    setLastAudioSegmentStatus({
+      strideIndex,
+      durationSec: audioSegmentDuration || 30,
+      engine: usedEngine,
+      transcript: transcriptText,
+      timestamp: Date.now(),
+      hasSpeech: Boolean(transcriptText && !transcriptText.includes('[NO_SPEECH_DETECTED]')),
+    });
 
     // 4. If transcript acquired, sync UI state, Firestore status, and evaluate with Gemma LLM
     if (transcriptText) {
@@ -385,33 +432,53 @@ const StudentView = ({ user }) => {
         console.warn('[StudentView] Failed to update live transcript status:', err);
       }
 
-      if (evaluateSpeechWithGemma) {
+      if (shouldEvaluateVoiceWithGemma && evaluateSpeechWithGemma) {
         await evaluateSpeechWithGemma(transcriptText);
       }
     }
-  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, voiceAiMode, enableCloudFallback, activeClass, user]);
+  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, user, selectedMicDeviceId, classSpeechLanguage]);
 
   handleAudioUploadedRef.current = handleAudioUploaded;
 
   // Automatically evaluate live speech transcript with Gemma LLM intent engine
   useEffect(() => {
-    if (whisperTranscript && whisperTranscript.trim() && evaluateSpeechWithGemma) {
+    if (shouldEvaluateVoiceWithGemma && whisperTranscript && whisperTranscript.trim() && evaluateSpeechWithGemma) {
       evaluateSpeechWithGemma(whisperTranscript).catch(e => console.debug('[StudentView] Gemma eval error:', e));
     }
-  }, [whisperTranscript, evaluateSpeechWithGemma]);
+  }, [shouldEvaluateVoiceWithGemma, whisperTranscript, evaluateSpeechWithGemma]);
 
-  // Automatically activate verified devices if readiness already completed
+  const appliedReadinessDevicesRef = useRef('');
+
+  // Apply readiness devices once per completed device selection, not on every status snapshot.
   useEffect(() => {
-    if (myProperties?.examReadiness?.isReady) {
+    const readiness = myProperties?.examReadiness;
+    if (!readiness?.isReady) {
+      appliedReadinessDevicesRef.current = '';
+      return;
+    }
+
+    const readinessKey = `${readiness.micDeviceId || ''}:${readiness.cameraDeviceId || ''}`;
+    if (appliedReadinessDevicesRef.current !== readinessKey) {
+      appliedReadinessDevicesRef.current = readinessKey;
       setIsAudioUserEnabled(true);
-      if (myProperties.examReadiness.micDeviceId) {
-        setSelectedMicDeviceId(myProperties.examReadiness.micDeviceId);
+      let hasLocalMicSelection = false;
+      try {
+        hasLocalMicSelection = Boolean(localStorage.getItem('preferred_mic_device_id'));
+      } catch {
+        // Fall back to the readiness selection when storage is unavailable.
       }
-      if (myProperties.examReadiness.cameraDeviceId) {
-        setSelectedWebcamId(myProperties.examReadiness.cameraDeviceId);
+      if (readiness.micDeviceId && !hasLocalMicSelection) {
+        setSelectedMicDeviceId(readiness.micDeviceId);
+      }
+      if (readiness.cameraDeviceId) {
+        setSelectedWebcamId(readiness.cameraDeviceId);
       }
     }
-  }, [myProperties]);
+  }, [
+    myProperties?.examReadiness?.isReady,
+    myProperties?.examReadiness?.micDeviceId,
+    myProperties?.examReadiness?.cameraDeviceId,
+  ]);
 
 
   const audioStreamRef = useRef(null);
@@ -1095,22 +1162,25 @@ const StudentView = ({ user }) => {
         setCaptureMode(prev => (data.captureMode && data.captureMode !== prev ? data.captureMode : (prev || 'dual')));
         setRequireFullScreenOnly(prev => (data.requireFullScreenOnly !== undefined ? data.requireFullScreenOnly : true));
         setFaceDebounceSeconds(prev => (data.faceDebounceSeconds !== undefined ? data.faceDebounceSeconds : (prev || 3)));
-        setAiMonitoringMode(prev => (data.aiMonitoringMode && data.aiMonitoringMode !== prev ? data.aiMonitoringMode : (prev || 'hybrid')));
-        setEnableClientAi(prev => (data.enableClientAi !== undefined ? data.enableClientAi : true));
+        const incomingAiMode = data.aiMonitoringMode || 'hybrid';
+        setAiMonitoringMode(incomingAiMode);
+        setEnableClientAi(data.enableClientAi !== undefined ? data.enableClientAi : (incomingAiMode === 'hybrid' || incomingAiMode === 'client_only'));
         setPreloadClientAi(prev => (data.preloadClientAi !== undefined ? data.preloadClientAi : false));
         setGazeSensitivity(prev => (data.gazeSensitivity && data.gazeSensitivity !== prev ? data.gazeSensitivity : (prev || 'standard')));
         setCustomYawAngle(prev => (data.customYawAngle !== undefined ? data.customYawAngle : (prev || 25)));
         setCustomPitchDownAngle(prev => (data.customPitchDownAngle !== undefined ? data.customPitchDownAngle : (prev || -22)));
         setCustomPitchUpAngle(prev => (data.customPitchUpAngle !== undefined ? data.customPitchUpAngle : (prev || 26)));
-        setEnableCloudFallback(prev => (data.enableCloudFallback !== undefined ? data.enableCloudFallback : false));
+        setEnableCloudFallback(data.enableCloudFallback !== undefined ? data.enableCloudFallback : (incomingAiMode === 'hybrid' || incomingAiMode === 'cloud_only'));
         setCloudFallbackRate(prev => (data.cloudFallbackRate !== undefined ? data.cloudFallbackRate : (prev || 3)));
         setIsCapturing(prev => (data.isCapturing !== undefined && data.isCapturing !== prev ? data.isCapturing : (prev || false)));
         setEnableAudioCapture(data.enableAudioCapture !== undefined ? Boolean(data.enableAudioCapture) : false);
         setAudioCaptureMode(prev => (data.audioCaptureMode && data.audioCaptureMode !== prev ? data.audioCaptureMode : (prev || 'mandatory')));
-        setVoiceAiMode(prev => (data.voiceAiMode && data.voiceAiMode !== prev ? data.voiceAiMode : (prev || 'hybrid')));
+        setVoiceAiMode(data.voiceAiMode || incomingAiMode);
         setClassSpeechLanguage(prev => (data.speechLanguage && data.speechLanguage !== prev ? data.speechLanguage : (prev || 'zh-HK')));
         setAudioSegmentDuration(prev => (data.audioSegmentDuration !== undefined && data.audioSegmentDuration !== prev ? data.audioSegmentDuration : (prev || 30)));
         setAudioSilenceSuppression(prev => (data.audioSilenceSuppression !== undefined && data.audioSilenceSuppression !== prev ? data.audioSilenceSuppression : (prev !== undefined ? prev : true)));
+        setVadSensitivity(data.vadSensitivity !== undefined ? data.vadSensitivity : 15);
+        setVoiceAiCloudFallbackRate(data.voiceAiCloudFallbackRate !== undefined ? data.voiceAiCloudFallbackRate : 1);
         setEnableSegmentTranscription(prev => (data.enableSegmentTranscription !== undefined && data.enableSegmentTranscription !== prev ? data.enableSegmentTranscription : (prev || false)));
         setAudioMovingWindowDuration(prev => (data.audioMovingWindowDuration !== undefined && data.audioMovingWindowDuration !== prev ? data.audioMovingWindowDuration : (prev || 30)));
         setAudioMovingWindowStride(prev => (data.audioMovingWindowStride !== undefined && data.audioMovingWindowStride !== prev ? data.audioMovingWindowStride : (prev || 15)));
@@ -1800,26 +1870,92 @@ const StudentView = ({ user }) => {
             {enableAudioCapture && (
               <div style={{
                 marginTop: '16px',
-                padding: '12px 16px',
+                padding: '14px 16px',
                 backgroundColor: 'var(--color-surface, #ffffff)',
                 border: '1px solid var(--color-border, #e2e8f0)',
                 borderRadius: '10px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
+                gap: '10px',
                 fontSize: '0.875rem',
                 color: 'var(--color-text-main, #0f172a)',
                 boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '6px' }}>
+                {/* Header with Live Engine & Speaking Status */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '8px' }}>
                   <span style={{ fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     🎙️ Live Speech AI Monitor
-                    {isSpeaking && <span style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#10b981', color: '#fff', borderRadius: '9999px', fontWeight: 'bold' }}>SPEAKING</span>}
+                    {isSpeaking && (
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#10b981', color: '#fff', borderRadius: '9999px', fontWeight: 'bold', animation: 'pulse 1.5s infinite' }}>
+                        🗣️ SPEAKING (VAD ACTIVE)
+                      </span>
+                    )}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>⚡ LiteRT Whisper + Gemma</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {whisperStatus === 'loading' && (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#fef3c7', color: '#92400e', borderRadius: '9999px', fontWeight: 600 }}>
+                        ⏳ Loading Whisper ({whisperLoadingProgress}%)
+                      </span>
+                    )}
+                    {whisperStatus === 'transcribing' && (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#e0e7ff', color: '#3730a3', borderRadius: '9999px', fontWeight: 600 }}>
+                        🧠 Transcribing...
+                      </span>
+                    )}
+                    {whisperStatus === 'ready' && (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#dcfce7', color: '#166534', borderRadius: '9999px', fontWeight: 600 }}>
+                        🟢 LiteRT Ready ({whisperDelegate.toUpperCase()})
+                      </span>
+                    )}
+                    {whisperStatus === 'error' && (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#fee2e2', color: '#991b1b', borderRadius: '9999px', fontWeight: 600 }}>
+                        ☁️ Cloud STT Fallback
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Sub-bar with Device, Mode, and Model Info */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '0.75rem', color: '#64748b' }}>
+                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                    🎙️ {selectedMicDeviceId ? 'Selected Mic Active' : 'Default Mic Active'}
+                  </span>
+                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                    🌐 Mode: {effectiveVoiceAiMode.toUpperCase()} ({classSpeechLanguage})
+                  </span>
+                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                    📦 {isWhisperCached ? 'Model Cached (39.5 MB)' : 'On-Device Whisper'}
+                  </span>
+                </div>
+
+                {/* Last Segment Telemetry */}
+                {lastAudioSegmentStatus && (
+                  <div style={{
+                    backgroundColor: '#f8fafc',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '0.78rem',
+                    color: '#475569',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span>
+                      <strong>Last Segment:</strong> Stride #{lastAudioSegmentStatus.strideIndex} ({lastAudioSegmentStatus.durationSec}s) via <span style={{ color: '#4f46e5', fontWeight: 600 }}>{lastAudioSegmentStatus.engine}</span>
+                    </span>
+                    <span style={{
+                      color: lastAudioSegmentStatus.hasSpeech ? '#059669' : '#64748b',
+                      fontWeight: 600,
+                    }}>
+                      {lastAudioSegmentStatus.hasSpeech ? '💬 Speech Detected' : '🤫 Silence / Background'}
+                    </span>
+                  </div>
+                )}
+
+                {/* STT Transcript & Gemma Intent */}
                 {whisperTranscript ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
                     <div>
                       <strong style={{ color: '#0f766e' }}>STT Transcript:</strong> <span style={{ fontStyle: 'italic', color: '#0f172a', fontWeight: 500 }}>"{whisperTranscript}"</span>
                     </div>
@@ -1843,8 +1979,8 @@ const StudentView = ({ user }) => {
                     )}
                   </div>
                 ) : (
-                  <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.825rem' }}>
-                    Listening for speech into microphone... Speak a sentence to test on-device STT & Gemma.
+                  <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.825rem', padding: '4px 0' }}>
+                    Listening for speech into microphone... Speak a sentence to test on-device STT & Gemma intent analysis.
                   </div>
                 )}
               </div>
@@ -1868,6 +2004,9 @@ const StudentView = ({ user }) => {
           setIsAudioUserEnabled(true);
           setIsMicSetupOpen(false);
         }}
+        studentUid={user?.uid}
+        studentName={user?.displayName || user?.email || ''}
+        currentMicDeviceId={selectedMicDeviceId}
         isMandatory={enableAudioCapture && audioCaptureMode === 'mandatory'}
       />
 

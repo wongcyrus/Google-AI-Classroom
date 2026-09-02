@@ -513,28 +513,18 @@ export const analyzeAudioFlow = ai.defineFlow(
     }),
     outputSchema: z.object({
       transcript: z.string().optional(),
+      summary: z.string().optional(),
       cost: z.number().optional(),
       error: z.string().optional(),
     }),
   },
   async ({ audioUrl, classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
-    const activeModel = model || AI_TRANSCRIBE_MODEL;
-    const defaultPromptText = `You are an AI Classroom invigilator analyzing student audio recording.
-Audio Source: ${audioUrl}. Class ID: ${classId}. Student UID: ${studentUid}. Student Email: ${studentEmail}.
-Instructions:
-1. Transcribe the audio recording with speaker diarization (e.g., Speaker 1, Speaker 2).
-2. Detect if there are multiple distinct speakers or unauthorized whispering/collaboration.
-3. If suspicious multi-speaker discussion, unauthorized talking, or exam answer recitation is detected, call the 'recordAudioIrregularity' tool with title, message, risk level ('low', 'medium', 'high'), and timestamp offsets.
-4. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').
-${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
+    const transcribeModel = model || AI_TRANSCRIBE_MODEL;
+    const reasoningModel = AI_MODEL || 'gemini-3.5-flash-lite';
 
-    const fullPrompt = [
-      { text: defaultPromptText },
-      { media: { url: audioUrl } },
-    ];
-    const media = [{ media: { url: audioUrl } }];
+    const transcribePrompt = `Transcribe this student audio recording verbatim in its original spoken language (Cantonese, Mandarin, or English) with speaker diarization timestamps (e.g., [00:05] Speaker 1: ...). If there is background silence or no intelligible speech, output [NO_SPEECH_DETECTED].`;
 
-    const estimatedCost = estimateCost(defaultPromptText, media, activeModel);
+    const estimatedCost = estimateCost(transcribePrompt, [{ media: { url: audioUrl } }], transcribeModel) + 0.0001;
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
@@ -544,25 +534,63 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
         studentEmail,
         jobType: 'analyzeAudio',
         status: 'blocked-by-quota',
-        promptText: defaultPromptText,
+        promptText: transcribePrompt,
         mediaPaths: [audioUrl],
         cost: 0,
-        modelUsed: activeModel,
+        modelUsed: transcribeModel,
       });
       return { error: 'Insufficient quota.' };
     }
 
     try {
-      const { response, modelUsed: actualModel } = await generateWithResilience({
-        temperature: AI_TEMPERATURE,
-        topP: AI_TOP_P,
-        prompt: fullPrompt,
-        tools: getToolsForAudioAnalysis(),
-        maxToolRoundtrips: 10,
-      }, activeModel);
+      // -------------------------------------------------------------
+      // Step 1: Specialized Audio Transcription (NO tools passed to STT model)
+      // -------------------------------------------------------------
+      const { response: transcribeResponse, modelUsed: actualTranscribeModel } = await generateWithResilience({
+        temperature: 0.1,
+        prompt: [
+          { text: transcribePrompt },
+          { media: { url: audioUrl } },
+        ],
+      }, transcribeModel);
 
-      const usage = response.usage || {};
-      const cost = calculateCost(usage, actualModel);
+      const rawTranscript = (transcribeResponse.text || '').trim();
+      const transcribeUsage = transcribeResponse.usage || {};
+      let totalCost = calculateCost(transcribeUsage, actualTranscribeModel);
+      let auditSummary = '';
+
+      // -------------------------------------------------------------
+      // Step 2: Reasoning & Irregularity Tool Execution (WITH tools on Flash-Lite)
+      // -------------------------------------------------------------
+      const hasSpeech = rawTranscript && !rawTranscript.includes('[NO_SPEECH_DETECTED]');
+      if (hasSpeech) {
+        const reasoningPrompt = `You are an AI Classroom Invigilator analyzing a student audio recording transcript during an exam.
+Class ID: ${classId}. Student UID: ${studentUid}. Student Email: ${studentEmail}.
+Audio Source: ${audioUrl}.
+
+Audio Transcript:
+"""
+${rawTranscript}
+"""
+
+Instructions:
+1. Carefully analyze the transcript for unauthorized talking, student collusion, reading exam questions aloud, or whispering answers.
+2. If suspicious multi-speaker discussion, unauthorized talking, or exam answer recitation is detected, call the 'recordAudioIrregularity' tool with title, message, risk level ('low', 'medium', 'high'), and timestamp offsets.
+3. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').
+${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
+
+        const { response: reasoningResponse, modelUsed: actualReasoningModel } = await generateWithResilience({
+          temperature: AI_TEMPERATURE,
+          topP: AI_TOP_P,
+          prompt: reasoningPrompt,
+          tools: getToolsForAudioAnalysis(),
+          maxToolRoundtrips: 5,
+        }, reasoningModel);
+
+        auditSummary = reasoningResponse.text || '';
+        const reasoningUsage = reasoningResponse.usage || {};
+        totalCost += calculateCost(reasoningUsage, actualReasoningModel);
+      }
 
       await logJob({
         classId,
@@ -570,20 +598,21 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
         studentEmail,
         jobType: 'analyzeAudio',
         status: 'completed',
-        promptText: defaultPromptText,
+        promptText: transcribePrompt,
         mediaPaths: [audioUrl],
         usage: {
-          inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? usage.promptTokens ?? 0,
-          outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? usage.completionTokens ?? 0,
+          inputTokens: transcribeUsage.inputTokens ?? transcribeUsage.promptTokenCount ?? 0,
+          outputTokens: transcribeUsage.outputTokens ?? transcribeUsage.candidatesTokenCount ?? 0,
         },
-        cost,
-        modelUsed: actualModel,
-        result: response.text,
+        cost: totalCost,
+        modelUsed: `${actualTranscribeModel} + ${reasoningModel}`,
+        result: rawTranscript,
       });
 
       return {
-        transcript: response.text,
-        cost,
+        transcript: rawTranscript,
+        summary: auditSummary,
+        cost: totalCost,
       };
     } catch (error) {
       console.error('Error in analyzeAudioFlow:', error);
@@ -593,10 +622,10 @@ ${prompt ? `Additional custom instructions: ${prompt}` : ''}`;
         studentEmail,
         jobType: 'analyzeAudio',
         status: 'failed',
-        promptText: defaultPromptText,
+        promptText: transcribePrompt,
         mediaPaths: [audioUrl],
         cost: 0,
-        modelUsed: activeModel,
+        modelUsed: transcribeModel,
         errorDetails: error.message,
       });
       return { error: error.message };
