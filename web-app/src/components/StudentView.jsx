@@ -263,10 +263,10 @@ const StudentView = ({ user }) => {
     setSelectedMicDeviceId(actualDeviceId);
   }, [selectedMicDeviceId]);
   const isAudioCaptureActive =
+    Boolean(enableAudioCapture) &&
     (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) &&
     isAudioUserEnabled &&
-    !isSessionDisplaced &&
-    (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled');
+    !isSessionDisplaced;
 
   // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
   const {
@@ -1635,17 +1635,15 @@ const StudentView = ({ user }) => {
                   <div className="summary-item">
                     <span className="summary-icon">🎙️</span>
                     <div className="summary-text">
-                      <strong>Microphone & Voice AI</strong>
+                      <strong>Microphone</strong>
                       <span>
-                        {effectiveVoiceAiMode !== 'disabled'
-                          ? `Active (${effectiveVoiceAiMode.toUpperCase()})`
-                          : enableAudioCapture
-                          ? (audioCaptureMode === 'mandatory' ? 'Required (Recording)' : 'Optional')
-                          : 'Optional'}
+                        {enableAudioCapture
+                          ? (audioCaptureMode === 'mandatory' ? 'Required (Recording)' : 'Optional (Recording)')
+                          : 'Not Recording'}
                       </span>
                     </div>
-                    <span className={`summary-badge ${isAudioUserEnabled ? 'ready' : 'info'}`}>
-                      {isAudioUserEnabled ? 'Active' : 'Optional'}
+                    <span className={`summary-badge ${enableAudioCapture && isAudioUserEnabled ? 'ready' : 'info'}`}>
+                      {enableAudioCapture ? (isAudioUserEnabled ? 'Active' : 'Muted') : 'Off'}
                     </span>
                   </div>
 
@@ -1849,8 +1847,8 @@ const StudentView = ({ user }) => {
               )}
             </div>
 
-            {/* Live Speech AI & Voice Proctoring HUD (Always visible whenever Voice AI or Mic is enabled) */}
-            {(enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled') && (
+            {/* Live Speech AI & Voice Proctoring HUD (Shown only when teacher enables audio recording) */}
+            {enableAudioCapture && (
               <div style={{
                 marginTop: '16px',
                 padding: '16px',
