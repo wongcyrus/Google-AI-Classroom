@@ -264,9 +264,9 @@ const StudentView = ({ user }) => {
   }, [selectedMicDeviceId]);
   const isAudioCaptureActive =
     (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) &&
-    enableAudioCapture &&
     isAudioUserEnabled &&
-    !isSessionDisplaced;
+    !isSessionDisplaced &&
+    (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled');
 
   // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
   const {
@@ -280,6 +280,7 @@ const StudentView = ({ user }) => {
     studentUid: user?.uid,
     studentEmail: user?.email,
     enabled: isAudioCaptureActive,
+    enableCloudUpload: Boolean(enableAudioCapture),
     aiMonitoringMode: effectiveVoiceAiMode,
     segmentDuration: audioSegmentDuration,
     windowDuration: audioMovingWindowDuration,
@@ -307,7 +308,7 @@ const StudentView = ({ user }) => {
   } = useClientLiteRTWhisper({
     classId: activeClass,
     studentUid: user?.uid,
-    enabled: isLocalVoiceAiEnabled && isAudioCaptureActive,
+    enabled: isAudioCaptureActive && (isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled'),
     speechLanguage: classSpeechLanguage,
     audioStream,
     deviceId: selectedMicDeviceId,
@@ -579,10 +580,10 @@ const StudentView = ({ user }) => {
     if (aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && !isModelCached && !isPreloading && clientAiStatus === 'idle') {
       preloadModel?.();
     }
-    if (enableAudioCapture && !isWhisperCached && whisperStatus === 'idle') {
+    if ((enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled') && !isWhisperCached && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
+  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
 
   const lastTelemetrySyncRef = useRef(0);
   const telemetryTimerRef = useRef(null);
@@ -608,7 +609,7 @@ const StudentView = ({ user }) => {
       updateData.metricDistance = metricDistance || 55;
       updateData.activeViolation = activeViolation || null;
     }
-    if (enableAudioCapture || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
+    if (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled' || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
       updateData.isAudioSharing = Boolean(isAudioRecording);
       updateData.audioLevel = Math.round(audioLevel * 100);
       updateData.audioStatus = isSpeaking ? 'speaking' : (isAudioRecording ? 'idle' : 'muted');
@@ -636,7 +637,7 @@ const StudentView = ({ user }) => {
     return () => {
       if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
     };
-  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {

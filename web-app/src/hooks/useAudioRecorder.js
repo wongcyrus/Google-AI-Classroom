@@ -14,6 +14,7 @@ export function useAudioRecorder({
   studentUid,
   studentEmail = '',
   enabled = false,
+  enableCloudUpload = true,
   aiMonitoringMode = 'hybrid', // 'hybrid' | 'client_only' | 'cloud_only' | 'server_only' | 'disabled'
   segmentDuration = 30, // seconds (or window duration)
   windowDuration = 30,  // seconds for moving window
@@ -457,7 +458,20 @@ export function useAudioRecorder({
             const sessionElapsedSec = Math.max(0, Math.round((segmentStart - sessionStartTimestampRef.current) / 1000));
             strideCountRef.current += 1;
 
-            uploadAudioSegment(segmentBlob, peakVol, avgVol, sessionElapsedSec);
+            if (enableCloudUpload) {
+              uploadAudioSegment(segmentBlob, peakVol, avgVol, sessionElapsedSec);
+            } else if (classId && studentUid) {
+              // Update live audio telemetry in status doc without uploading blob to storage
+              try {
+                const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+                setDoc(statusDocRef, {
+                  isAudioSharing: true,
+                  audioLevel: peakVol,
+                  audioStatus: peakVol >= 50 ? 'speaking' : (peakVol >= 15 ? 'active' : 'silent'),
+                  lastAudioHeartbeat: new Date(),
+                }, { merge: true }).catch(() => {});
+              } catch {}
+            }
           }
 
           // Cycle to the next segment if still recording
