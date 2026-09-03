@@ -34,6 +34,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [aiModel, setAiModel] = useState('gemini-3.5-flash-lite');
   const [requireFullScreenOnly, setRequireFullScreenOnly] = useState(true);
   const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
+  const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [enableClientAi, setEnableClientAi] = useState(true);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
@@ -155,6 +156,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             else derivedMode = 'hybrid';
           }
           setAiMonitoringMode(derivedMode);
+          setVoiceAiMode(classData.voiceAiMode || derivedMode);
           setEnableClientAi(derivedMode === 'hybrid' || derivedMode === 'client_only');
           setEnableCloudFallback(derivedMode === 'hybrid' || derivedMode === 'cloud_only');
 
@@ -357,7 +359,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
-          voiceAiMode: aiMonitoringMode || 'hybrid',
+          voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
           gazeSensitivity: gazeSensitivity || 'standard',
           customYawAngle: parseInt(customYawAngle, 10) || 25,
@@ -407,7 +409,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
-          voiceAiMode: aiMonitoringMode || 'hybrid',
+          voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
           gazeSensitivity: gazeSensitivity || 'standard',
           customYawAngle: parseInt(customYawAngle, 10) || 25,
@@ -1280,4 +1282,3 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 };
 
 export default ClassManagement;
-

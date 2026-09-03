@@ -241,6 +241,33 @@ describe('StudentView Component Extended Test Suite', () => {
     });
   });
 
+  it('coalesces repeated quick-start clicks into one display capture request', async () => {
+    const mockScreenTrack = {
+      stop: vi.fn(),
+      readyState: 'live',
+      getSettings: () => ({ displaySurface: 'monitor' }),
+    };
+    const mockScreenStream = {
+      getTracks: vi.fn(() => [mockScreenTrack]),
+      getVideoTracks: vi.fn(() => [mockScreenTrack]),
+    };
+    let resolveDisplayMedia;
+    navigator.mediaDevices.getDisplayMedia = vi.fn(() => new Promise((resolve) => {
+      resolveDisplayMedia = resolve;
+    }));
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    fireEvent.click(quickStartBtn);
+    fireEvent.click(quickStartBtn);
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledOnce();
+    await act(async () => {
+      resolveDisplayMedia(mockScreenStream);
+    });
+  });
+
   it('completes Exam Readiness Wizard and triggers streaming', async () => {
     const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
     const mockScreenStream = {

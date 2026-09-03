@@ -414,4 +414,28 @@ describe('ControlsPanel Full Component Suite', () => {
       })
     }));
   });
+
+  it('saves the selected Voice AI monitoring mode independently', () => {
+    const handleSaveAiSettings = vi.fn().mockResolvedValue();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        aiMonitoringMode="hybrid"
+        voiceAiMode="hybrid"
+        handleSaveAiSettings={handleSaveAiSettings}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Configure AI Suite/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Voice & Speech/i }));
+
+    const voiceModeSelect = screen.getByLabelText(/Voice AI Monitoring Mode:/i);
+    fireEvent.change(voiceModeSelect, { target: { value: 'disabled' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save & Apply to Live Class/i }));
+
+    expect(handleSaveAiSettings).toHaveBeenCalledWith(expect.objectContaining({
+      aiMonitoringMode: 'hybrid',
+      voiceAiMode: 'disabled',
+    }));
+  });
 });

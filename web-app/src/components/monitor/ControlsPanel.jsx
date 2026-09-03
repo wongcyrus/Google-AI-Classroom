@@ -879,10 +879,11 @@ const ControlsPanel = ({
               {modalConfigTab === 'voice' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
+                    <label htmlFor="voice-ai-monitoring-mode" style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
                       Voice AI Monitoring Mode:
                     </label>
                     <select
+                      id="voice-ai-monitoring-mode"
                       value={modalVoiceAiMode}
                       onChange={(e) => setModalVoiceAiMode(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}

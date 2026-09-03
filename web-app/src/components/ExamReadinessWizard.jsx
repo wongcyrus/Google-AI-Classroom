@@ -19,6 +19,7 @@ export default function ExamReadinessWizard({
   onSelectMicDevice,
   currentCameraDeviceId,
   onSelectCameraDevice,
+  currentScreenStream = null,
   captureMode = 'dual',
   enableAudioCapture = false,
   audioCaptureMode = 'optional',
@@ -53,6 +54,42 @@ export default function ExamReadinessWizard({
   const [screenDetails, setScreenDetails] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const screenStreamRef = useRef(null);
+  const ownsScreenStreamRef = useRef(false);
+  const screenShareRequestRef = useRef(false);
+
+  const applyScreenVerification = useCallback((stream) => {
+    const track = stream?.getVideoTracks?.()[0];
+    if (!track || track.readyState === 'ended') return false;
+
+    const settings = track.getSettings ? track.getSettings() : {};
+    setScreenDetails({
+      displaySurface: settings.displaySurface || 'screen',
+      width: settings.width || 1920,
+      height: settings.height || 1080,
+      isFullScreen: settings.displaySurface === 'monitor',
+    });
+    screenStreamRef.current = stream;
+    setIsScreenVerified(true);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (currentScreenStream && applyScreenVerification(currentScreenStream)) {
+        ownsScreenStreamRef.current = false;
+      }
+      return;
+    }
+
+    if (ownsScreenStreamRef.current && screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    screenStreamRef.current = null;
+    ownsScreenStreamRef.current = false;
+    screenShareRequestRef.current = false;
+    setIsScreenVerified(false);
+    setScreenDetails(null);
+  }, [isOpen, currentScreenStream, applyScreenVerification]);
 
   // 1. Enumerate Audio & Video Devices with friendly labels & permission refresh
   const loadDevices = useCallback(async () => {
@@ -297,8 +334,15 @@ export default function ExamReadinessWizard({
 
   // --- Step 3: Screen Share Test ---
   const handleTestScreenShare = async () => {
+    if (applyScreenVerification(currentScreenStream)) {
+      ownsScreenStreamRef.current = false;
+      return;
+    }
+    if (screenShareRequestRef.current) return;
+    screenShareRequestRef.current = true;
+
     try {
-      if (screenStreamRef.current) {
+      if (ownsScreenStreamRef.current && screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
       }
@@ -309,25 +353,20 @@ export default function ExamReadinessWizard({
       });
 
       const track = stream.getVideoTracks()[0];
-      const settings = track.getSettings ? track.getSettings() : {};
-      const isMonitor = settings.displaySurface === 'monitor';
-
-      setScreenDetails({
-        displaySurface: settings.displaySurface || 'screen',
-        width: settings.width || 1920,
-        height: settings.height || 1080,
-        isFullScreen: isMonitor,
-      });
-
-      screenStreamRef.current = stream;
-      setIsScreenVerified(true);
+      ownsScreenStreamRef.current = true;
+      applyScreenVerification(stream);
 
       track.onended = () => {
-        setIsScreenVerified(false);
-        screenStreamRef.current = null;
+        if (screenStreamRef.current === stream) {
+          setIsScreenVerified(false);
+          screenStreamRef.current = null;
+          ownsScreenStreamRef.current = false;
+        }
       };
     } catch (err) {
       console.error('Screen share verification failed:', err);
+    } finally {
+      screenShareRequestRef.current = false;
     }
   };
 
@@ -336,6 +375,7 @@ export default function ExamReadinessWizard({
     setIsSaving(true);
     const retainedScreenStream = screenStreamRef.current;
     screenStreamRef.current = null;
+    ownsScreenStreamRef.current = false;
 
     const hasCamera = Boolean(selectedCamera && hasCameraHardware);
     const hasMic = Boolean(selectedMic && hasMicHardware);
@@ -916,4 +956,3 @@ export default function ExamReadinessWizard({
     </div>
   );
 }
-

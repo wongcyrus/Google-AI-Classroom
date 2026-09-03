@@ -223,6 +223,83 @@ describe('ExamReadinessWizard Component', () => {
     });
   });
 
+  it('reuses an active StudentView screen stream instead of requesting a second one', async () => {
+    navigator.mediaDevices.enumerateDevices = vi.fn().mockResolvedValue([]);
+    const activeTrack = {
+      stop: vi.fn(),
+      readyState: 'live',
+      getSettings: () => ({
+        displaySurface: 'monitor',
+        width: 1920,
+        height: 1080,
+      }),
+    };
+    const activeStream = {
+      getTracks: () => [activeTrack],
+      getVideoTracks: () => [activeTrack],
+    };
+
+    render(
+      <ExamReadinessWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        onComplete={vi.fn()}
+        user={{ uid: 'student_1' }}
+        classId="CLASS_1"
+        currentScreenStream={activeStream}
+      />
+    );
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Mic/i }));
+    });
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Camera/i }));
+    });
+
+    expect(screen.getByText(/✅ Verified/i)).toBeInTheDocument();
+    expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
+    expect(activeTrack.stop).not.toHaveBeenCalled();
+  });
+
+  it('stops an untransferred wizard screen stream when the wizard closes', async () => {
+    navigator.mediaDevices.enumerateDevices = vi.fn().mockResolvedValue([]);
+    const wizardTrack = {
+      stop: vi.fn(),
+      readyState: 'live',
+      getSettings: () => ({ displaySurface: 'monitor' }),
+    };
+    const wizardStream = {
+      getTracks: () => [wizardTrack],
+      getVideoTracks: () => [wizardTrack],
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(wizardStream);
+
+    const props = {
+      onClose: vi.fn(),
+      onComplete: vi.fn(),
+      user: { uid: 'student_1' },
+      classId: 'CLASS_1',
+    };
+    const { rerender } = render(
+      <ExamReadinessWizard isOpen={true} {...props} />
+    );
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Mic/i }));
+    });
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Camera/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Select & Share Entire Screen/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/✅ Verified/i)).toBeInTheDocument());
+
+    rerender(<ExamReadinessWizard isOpen={false} {...props} />);
+    expect(wizardTrack.stop).toHaveBeenCalledOnce();
+  });
+
   it('triggers onClose when close icon is clicked', () => {
     const onClose = vi.fn();
     render(

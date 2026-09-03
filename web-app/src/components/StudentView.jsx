@@ -224,6 +224,7 @@ const StudentView = ({ user }) => {
   const webcamVideoRef = useRef(null);
   const overlayCanvasRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const isStartingScreenRef = useRef(false);
   const webcamStreamRef = useRef(null);
   const sessionIdRef = useRef(null);
   const lastMessageTimestampRef = useRef(null);
@@ -309,7 +310,7 @@ const StudentView = ({ user }) => {
   } = useClientLiteRTWhisper({
     classId: activeClass,
     studentUid: user?.uid,
-    enabled: isAudioCaptureActive && (isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled'),
+    enabled: isAudioCaptureActive && isLocalVoiceAiEnabled,
     speechLanguage: classSpeechLanguage,
     audioStream,
     deviceId: selectedMicDeviceId,
@@ -378,7 +379,11 @@ const StudentView = ({ user }) => {
       selectedMicDeviceId: selectedMicDeviceId || '(default)',
     });
     let transcriptText = '';
-    let usedEngine = 'LiteRT Whisper (Local)';
+    let usedEngine = effectiveVoiceAiMode === 'disabled'
+      ? 'Voice AI Disabled'
+      : isLocalVoiceAiEnabled
+        ? 'LiteRT Whisper (Local)'
+        : 'Cloud Gemini Transcribe';
 
     // 1. Decode audio blob into 16kHz Float32Array PCM for on-device LiteRT Whisper
     let pcmData = null;
@@ -581,10 +586,10 @@ const StudentView = ({ user }) => {
     if (aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && !isModelCached && !isPreloading && clientAiStatus === 'idle') {
       preloadModel?.();
     }
-    if ((enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled') && !isWhisperCached && whisperStatus === 'idle') {
+    if (isAudioCaptureActive && isLocalVoiceAiEnabled && !isWhisperCached && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
+  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
 
   const lastTelemetrySyncRef = useRef(0);
   const telemetryTimerRef = useRef(null);
@@ -837,6 +842,19 @@ const StudentView = ({ user }) => {
   }, [isWebcamSharing, primaryStream]);
 
   const startScreen = useCallback(async (existingStream = null) => {
+    const currentTrack = screenStreamRef.current?.getVideoTracks?.()[0];
+    if (
+      !existingStream &&
+      currentTrack &&
+      currentTrack.readyState !== 'ended'
+    ) {
+      return screenStreamRef.current;
+    }
+    if (isStartingScreenRef.current) {
+      return null;
+    }
+    isStartingScreenRef.current = true;
+
     if ('Notification' in window && window.Notification.permission === 'default') {
       try {
         await window.Notification.requestPermission();
@@ -922,6 +940,9 @@ const StudentView = ({ user }) => {
 
       displaySurfaceRef.current = surface || 'monitor';
 
+      if (screenStreamRef.current && screenStreamRef.current !== stream) {
+        screenStreamRef.current.getTracks().forEach(track => track.stop());
+      }
       if (screenVideoRef.current) {
         screenVideoRef.current.srcObject = stream;
       }
@@ -939,6 +960,8 @@ const StudentView = ({ user }) => {
       setIsScreenSharing(false);
       displaySurfaceRef.current = null;
       alert("Could not start screen sharing. Please grant permission.");
+    } finally {
+      isStartingScreenRef.current = false;
     }
   }, [activeClass, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
 
@@ -2190,6 +2213,7 @@ const StudentView = ({ user }) => {
           setIsAudioUserEnabled(true);
         }}
         currentCameraDeviceId={selectedWebcamId}
+        currentScreenStream={screenStreamRef.current}
         onSelectCameraDevice={(id) => {
           setSelectedWebcamId(id);
         }}
