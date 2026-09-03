@@ -239,6 +239,7 @@ const StudentView = ({ user }) => {
   const {
     status: gemmaStatus,
     loadingProgress: gemmaLoadingProgress,
+    isModelCached: isGemmaCached,
     delegateUsed: gemmaDelegate,
     engine: gemmaEngine,
     unavailableReason: gemmaUnavailableReason,
@@ -1657,6 +1658,45 @@ const StudentView = ({ user }) => {
                       {clientAiStatus === 'ready' ? 'Active' : 'Auto'}
                     </span>
                   </div>
+
+                  {enableAudioCapture && shouldEvaluateVoiceWithGemma && (
+                    <div className="summary-item">
+                      <span className="summary-icon">🤖</span>
+                      <div className="summary-text">
+                        <strong>Gemma Intent AI</strong>
+                        <span>
+                          {isGemmaReady || isGemmaCached
+                            ? 'Ready (On-Device)'
+                            : gemmaStatus === 'loading'
+                            ? `Downloading (${gemmaLoadingProgress}%)`
+                            : 'Cloud Fallback (Optional Preload)'}
+                        </span>
+                      </div>
+                      {gemmaStatus === 'loading' ? (
+                        <span className="summary-badge loading">Loading</span>
+                      ) : isGemmaReady || isGemmaCached ? (
+                        <span className="summary-badge ready">Ready</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={preloadGemmaModel}
+                          style={{
+                            fontSize: '0.75rem',
+                            padding: '4px 8px',
+                            background: '#e0e7ff',
+                            color: '#4338ca',
+                            borderRadius: '6px',
+                            border: '1px solid #c7d2fe',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          title="Download & cache on-device Gemma 4 E2B model in browser storage"
+                        >
+                          Preload
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1879,7 +1919,7 @@ const StudentView = ({ user }) => {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                     {whisperStatus === 'loading' && (
                       <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#fef3c7', color: '#92400e', borderRadius: '9999px', fontWeight: 600 }}>
                         ⏳ Loading Whisper STT ({whisperLoadingProgress}%)
@@ -1899,6 +1939,51 @@ const StudentView = ({ user }) => {
                       <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#fee2e2', color: '#991b1b', borderRadius: '9999px', fontWeight: 600 }}>
                         ☁️ Cloud STT Mode
                       </span>
+                    )}
+
+                    {/* Gemma On-Device Intent LLM Status & Preload Control */}
+                    {shouldEvaluateVoiceWithGemma && (
+                      isGemmaReady || isGemmaCached ? (
+                        <span
+                          style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#ede9fe', color: '#5b21b6', borderRadius: '9999px', fontWeight: 600 }}
+                          title={`On-device Gemma 4 E2B intent model ready (${gemmaDelegate || 'WASM'})`}
+                        >
+                          🤖 Gemma Ready
+                        </span>
+                      ) : gemmaStatus === 'loading' ? (
+                        <span
+                          style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#fef3c7', color: '#92400e', borderRadius: '9999px', fontWeight: 600 }}
+                          title="Downloading on-device Gemma LLM model into browser storage"
+                        >
+                          ⏳ Loading Gemma ({gemmaLoadingProgress}%)
+                        </span>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={preloadGemmaModel}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '3px 9px',
+                              background: '#4f46e5',
+                              color: '#ffffff',
+                              borderRadius: '9999px',
+                              fontWeight: 600,
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                            title="Download & cache on-device Gemma 4 E2B model (~1.5GB) in browser storage for zero-cloud intent analysis"
+                          >
+                            📥 Preload Gemma AI
+                          </button>
+                          <span style={{ fontSize: '0.68rem', color: '#64748b' }} title="Cloud Gemini analyzes audio while local Gemma is not loaded">
+                            (☁️ Cloud Active)
+                          </span>
+                        </div>
+                      )
                     )}
                   </div>
                 </div>
