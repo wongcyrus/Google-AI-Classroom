@@ -15,7 +15,7 @@ export const CORS_ORIGINS = [
 
 // Genkit AI Model parameters
 export const AI_MODEL = 'gemini-3.5-flash-lite';
-export const AI_TRANSCRIBE_MODEL = 'gemini-3.5-flash-lite';
+export const AI_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe';
 export const VERTEX_AI_LOCATION = 'global';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;

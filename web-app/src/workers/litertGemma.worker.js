@@ -14,17 +14,19 @@ let initializationPromise = null;
 const LITERT_LM_WASM_BASE_URL =
   'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.15.0/wasm/';
 
-const GEMMA_PROCTOR_SYSTEM_PROMPT = `You are an AI exam proctor. Classify a student's spoken transcript by meaning and context.
-
-Use exactly one category:
+const GEMMA_OUTPUT_INSTRUCTIONS = `Use exactly one category:
 - COLLUSION_EXAM: asking for, offering, or discussing exam answers, questions, or options
 - EXTERNAL_AI_ASSIST: asking a voice assistant, search engine, phone, or AI tool for help
 - UNAUTHORIZED_TALK: unrelated conversation with another person during a silent exam
 - LEGITIMATE_INQUIRY: procedural or technical help requested from the teacher or proctor
 - BENIGN: self-talk, reading aloud, ambient speech, coughing, or silence
 
-Respond with only one JSON object:
+Respond with only one JSON object and no markdown:
 {"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"evidence":"quoted key phrase","rationale":"short explanation"}`;
+
+const GEMMA_PROCTOR_SYSTEM_PROMPT = `You are an AI exam proctor. Classify a student's spoken transcript by meaning and context.
+
+${GEMMA_OUTPUT_INSTRUCTIONS}`;
 
 /**
  * System prompt template for Gemma exam proctoring.
@@ -36,6 +38,29 @@ Transcript: "${transcript}"
 <end_of_turn>
 <start_of_turn>model
 `;
+}
+
+export function buildGemmaEvaluationPrompt({
+  transcript,
+  systemPrompt,
+  classId,
+  studentUid,
+  studentEmail,
+}) {
+  const rawPrompt = typeof systemPrompt === 'string' && systemPrompt.trim()
+    ? systemPrompt.trim()
+    : 'Classify this transcript for exam invigilation.';
+  let prompt = rawPrompt
+    .replace(/\{\{transcript\}\}/g, transcript)
+    .replace(/\{\{classId\}\}/g, classId || '')
+    .replace(/\{\{studentUid\}\}/g, studentUid || '')
+    .replace(/\{\{studentEmail\}\}/g, studentEmail || '');
+
+  if (!rawPrompt.includes('{{transcript}}')) {
+    prompt = `${prompt}\n\nStudent transcript: "${transcript}"`;
+  }
+
+  return `${prompt}\n\n${GEMMA_OUTPUT_INSTRUCTIONS}`;
 }
 
 export function resolveLiteRtLmWasmUrl(fileName) {
@@ -134,6 +159,18 @@ export function parseGemmaOutput(rawText) {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      const category = typeof parsed.category === 'string'
+        ? parsed.category.trim().toUpperCase()
+        : parsed.category;
+      const severity = typeof parsed.severity === 'string'
+        ? parsed.severity.trim().toLowerCase()
+        : parsed.severity;
+      let confidence = typeof parsed.confidence === 'string'
+        ? Number(parsed.confidence.replace(/%$/, '').trim())
+        : parsed.confidence;
+      if (Number.isFinite(confidence) && confidence > 1 && confidence <= 100) {
+        confidence /= 100;
+      }
       const validCategories = new Set([
         'COLLUSION_EXAM',
         'EXTERNAL_AI_ASSIST',
@@ -144,15 +181,20 @@ export function parseGemmaOutput(rawText) {
       const validSeverities = new Set(['critical', 'high', 'medium', 'low', 'none']);
       if (
         typeof parsed.isViolation === 'boolean' &&
-        validCategories.has(parsed.category) &&
-        validSeverities.has(parsed.severity) &&
-        Number.isFinite(parsed.confidence) &&
-        parsed.confidence >= 0 &&
-        parsed.confidence <= 1 &&
+        validCategories.has(category) &&
+        validSeverities.has(severity) &&
+        Number.isFinite(confidence) &&
+        confidence >= 0 &&
+        confidence <= 1 &&
         typeof parsed.evidence === 'string' &&
         typeof parsed.rationale === 'string'
       ) {
-        return parsed;
+        return {
+          ...parsed,
+          category,
+          severity,
+          confidence,
+        };
       }
     }
   } catch (error) {
@@ -222,21 +264,31 @@ self.onmessage = async (event) => {
 
         let conversation = null;
         let evaluationResult;
-        const rawPrompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt : GEMMA_PROCTOR_SYSTEM_PROMPT;
-        let promptToUse = rawPrompt
-          .replace(/\{\{transcript\}\}/g, transcript)
-          .replace(/\{\{classId\}\}/g, classId || '')
-          .replace(/\{\{studentUid\}\}/g, studentUid || '')
-          .replace(/\{\{studentEmail\}\}/g, studentEmail || '');
-
-        if (!rawPrompt.includes('{{transcript}}')) {
-          promptToUse = `${promptToUse}\n\nStudent transcript: "${transcript}"`;
-        }
+        const promptToUse = buildGemmaEvaluationPrompt({
+          transcript,
+          systemPrompt,
+          classId,
+          studentUid,
+          studentEmail,
+        });
 
         try {
           conversation = await gemmaEngine.createConversation();
+          console.log('[LiteRTGemmaWorker:Prompt] Sending resolved prompt to Gemma.', {
+            requestId: id,
+            prompt: promptToUse,
+          });
           const response = await conversation.sendMessage(promptToUse);
-          evaluationResult = parseGemmaOutput(getResponseText(response));
+          const rawOutput = getResponseText(response);
+          console.log('[LiteRTGemmaWorker:RawOutput] Gemma response received.', {
+            requestId: id,
+            output: rawOutput,
+          });
+          evaluationResult = parseGemmaOutput(rawOutput);
+          console.log('[LiteRTGemmaWorker:ParsedOutput] Gemma evaluation accepted.', {
+            requestId: id,
+            evaluation: evaluationResult,
+          });
         } finally {
           await conversation?.delete?.();
         }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  buildGemmaEvaluationPrompt,
   buildGemmaProctorPrompt,
   parseGemmaOutput,
   resolveLiteRtLmWasmUrl,
@@ -34,6 +35,34 @@ describe('litertGemma.worker', () => {
     const parsed = parseGemmaOutput(validJson, 'what is answer');
     expect(parsed.isViolation).toBe(true);
     expect(parsed.category).toBe('COLLUSION_EXAM');
+  });
+
+  it('normalizes common Gemma formatting without changing its classification', () => {
+    const parsed = parseGemmaOutput(`\`\`\`json
+{"isViolation":false,"category":"benign","severity":"NONE","confidence":"94%","evidence":"","rationale":"Self-talk"}
+\`\`\``);
+
+    expect(parsed).toMatchObject({
+      isViolation: false,
+      category: 'BENIGN',
+      severity: 'none',
+      confidence: 0.94,
+    });
+  });
+
+  it('preserves custom instructions while enforcing the evaluation output contract', () => {
+    const prompt = buildGemmaEvaluationPrompt({
+      transcript: 'Can you tell me the answer?',
+      systemPrompt: 'Focus on collaboration and use class {{classId}}.',
+      classId: 'CLASS_TEST',
+      studentUid: 'student_1',
+      studentEmail: 'student@example.com',
+    });
+
+    expect(prompt).toContain('Focus on collaboration and use class CLASS_TEST.');
+    expect(prompt).toContain('Student transcript: "Can you tell me the answer?"');
+    expect(prompt).toContain('"isViolation":boolean');
+    expect(prompt).toContain('Respond with only one JSON object and no markdown');
   });
 
   it('rejects invalid Gemma output instead of applying rule-based classification', () => {
@@ -156,6 +185,9 @@ describe('litertGemma.worker', () => {
     expect(evalComplete.payload.isViolation).toBe(true);
     expect(evalComplete.payload.category).toBe('UNAUTHORIZED_TALK');
     expect(evalComplete.payload.studentUid).toBe('student_1');
+    expect(mockConversation.sendMessage).toHaveBeenCalledWith(
+      expect.stringContaining('"isViolation":boolean')
+    );
 
     // 3. DISPOSE
     await self.onmessage({ data: { type: 'DISPOSE', id: 'disp_1' } });

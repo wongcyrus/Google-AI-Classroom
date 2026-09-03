@@ -201,22 +201,31 @@ export function useClientLiteRTGemma({
    */
   const evaluateTranscript = useCallback(async (transcript, metadata = {}) => {
     if (!transcript || typeof transcript !== 'string' || !transcript.trim()) {
+      console.debug('[useClientLiteRTGemma:Evaluate] Skipped empty transcript.');
       return null;
     }
 
     if (!workerRef.current) {
-      console.warn('[useClientLiteRTGemma] Worker not instantiated yet');
+      console.warn('[useClientLiteRTGemma:Evaluate] Skipped because the worker is not instantiated.', {
+        transcript,
+      });
       return null;
     }
     if (evaluationInFlightRef.current) {
-      console.debug('[useClientLiteRTGemma] Skipping overlapping Gemma evaluation.');
+      console.warn('[useClientLiteRTGemma:Evaluate] Skipped because another Gemma evaluation is in progress.', {
+        transcript,
+      });
       return null;
     }
     if (
       statusRef.current !== 'ready' ||
       engineRef.current !== 'litert_lm_gemma_e2b'
     ) {
-      console.debug('[useClientLiteRTGemma] Skipping evaluation because Gemma 4 E2B is not loaded.');
+      console.warn('[useClientLiteRTGemma:Evaluate] Skipped because Gemma 4 E2B is not ready.', {
+        transcript,
+        status: statusRef.current,
+        engine: engineRef.current,
+      });
       return null;
     }
 
@@ -310,6 +319,12 @@ export function useClientLiteRTGemma({
       const systemPrompt = customGemmaPromptRef.current?.promptText || 
         (typeof customGemmaPromptRef.current === 'string' ? customGemmaPromptRef.current : undefined);
 
+      console.log('[useClientLiteRTGemma:Dispatch] Sending transcript to the Gemma worker.', {
+        requestId: id,
+        transcript,
+        classId: classIdRef.current,
+        hasCustomPrompt: Boolean(systemPrompt?.trim()),
+      });
       workerRef.current.postMessage({
         type: 'EVALUATE_TRANSCRIPT',
         id,

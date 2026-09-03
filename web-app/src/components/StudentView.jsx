@@ -439,6 +439,7 @@ const StudentView = ({ user }) => {
           classId: activeClass,
           studentUid: user?.uid,
           studentEmail: user?.email,
+          model: 'gemini-3.5-transcribe',
           prompt: liveAudioPrompt?.promptText || (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
         });
         if (res?.data?.transcript && !res.data.transcript.includes('[NO_SPEECH_DETECTED]')) {

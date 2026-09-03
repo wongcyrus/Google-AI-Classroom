@@ -519,7 +519,7 @@ export const analyzeAudioFlow = ai.defineFlow(
     }),
   },
   async ({ audioUrl, classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
-    const transcribeModel = model || AI_TRANSCRIBE_MODEL;
+    const transcribeModel = model || AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe';
     const reasoningModel = AI_MODEL || 'gemini-3.5-flash-lite';
 
     const transcribePrompt = `Transcribe this student audio recording verbatim in its original spoken language (Cantonese, Mandarin, or English) with speaker diarization timestamps (e.g., [00:05] Speaker 1: ...). If there is background silence or no intelligible speech, output [NO_SPEECH_DETECTED].`;
@@ -558,6 +558,7 @@ export const analyzeAudioFlow = ai.defineFlow(
       const transcribeUsage = transcribeResponse.usage || {};
       let totalCost = calculateCost(transcribeUsage, actualTranscribeModel);
       let auditSummary = '';
+      let actualReasoningModel = null;
 
       // -------------------------------------------------------------
       // Step 2: Reasoning & Irregularity Tool Execution (WITH tools on Flash-Lite)
@@ -600,7 +601,7 @@ Instructions:
 3. Call the 'recordAudioAudit' tool with the complete transcript, speakerCount, summary, and verdict ('clean_exam', 'suspicious_collaboration', 'whisper_detected', 'background_noise', 'inconclusive').`;
         }
 
-        const { response: reasoningResponse, modelUsed: actualReasoningModel } = await generateWithResilience({
+        const { response: reasoningResponse, modelUsed: usedReasoningModel } = await generateWithResilience({
           temperature: AI_TEMPERATURE,
           topP: AI_TOP_P,
           prompt: reasoningPrompt,
@@ -608,6 +609,7 @@ Instructions:
           maxToolRoundtrips: 5,
         }, reasoningModel);
 
+        actualReasoningModel = usedReasoningModel;
         auditSummary = reasoningResponse.text || '';
         const reasoningUsage = reasoningResponse.usage || {};
         totalCost += calculateCost(reasoningUsage, actualReasoningModel);
@@ -626,7 +628,7 @@ Instructions:
           outputTokens: transcribeUsage.outputTokens ?? transcribeUsage.candidatesTokenCount ?? 0,
         },
         cost: totalCost,
-        modelUsed: `${actualTranscribeModel} + ${reasoningModel}`,
+        modelUsed: actualReasoningModel ? `${actualTranscribeModel} + ${actualReasoningModel}` : actualTranscribeModel,
         result: rawTranscript,
       });
 
