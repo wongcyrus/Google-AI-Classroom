@@ -231,7 +231,7 @@ export function isValidWhisperTokenSequence(tokenIds) {
  * @returns {'cantonese' | 'mandarin' | 'english' | 'mixed'}
  */
 export function classifyLanguage(text) {
-  if (!text) return 'english';
+  if (!text || !text.trim()) return 'none';
   const hasCantonese = /[唔點喺係嘅咗諗乜嘢睇啱掣緊]/.test(text);
   const hasMandarin = /[什麼這是在的了看對們會]/.test(text);
   const hasEnglish = /[a-zA-Z]/.test(text);
@@ -241,7 +241,8 @@ export function classifyLanguage(text) {
   }
   if (hasCantonese) return 'cantonese';
   if (hasMandarin) return 'mandarin';
-  return 'english';
+  if (hasEnglish) return 'english';
+  return 'mixed';
 }
 
 export async function compileWhisperModel(loadAndCompile, modelBuffer, preferredDelegate) {
@@ -441,11 +442,18 @@ async function handleMessage(event) {
 
         const detectedLanguage = classifyLanguage(transcriptText);
 
-        console.log('[LiteRTWorker:TranscribeComplete] Local inference completed.', {
-          deviceId,
-          transcriptLength: transcriptText.length,
-          language: detectedLanguage,
-        });
+        if (transcriptText.length > 0) {
+          console.log('[LiteRTWorker:TranscribeComplete] Local inference completed.', {
+            deviceId,
+            transcriptLength: transcriptText.length,
+            language: detectedLanguage,
+          });
+        } else {
+          console.debug('[LiteRTWorker:TranscribeComplete] No speech tokens decoded in segment.', {
+            deviceId,
+            samples: audioPcm?.length || 0,
+          });
+        }
         self.postMessage({
           type: 'TRANSCRIBE_COMPLETE',
           id,

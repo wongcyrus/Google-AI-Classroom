@@ -81,8 +81,10 @@ export function useClientLiteRTWhisper({
           }
         } else if (type === 'TRANSCRIBE_COMPLETE') {
           setStatus('ready');
-          setLatestTranscript(payload.transcript || '');
-          setLatestLanguage(payload.language || 'mixed');
+          if (payload.transcript && payload.transcript.trim()) {
+            setLatestTranscript(payload.transcript.trim());
+            setLatestLanguage(payload.language || 'mixed');
+          }
           const pending = pendingRequestsRef.current.get(id);
           if (pending) {
             pending.resolve(payload);
@@ -307,6 +309,30 @@ export function useClientLiteRTWhisper({
 
     let recognition = null;
     let isStopped = false;
+    let debounceTimer = null;
+    let lastDispatchedText = '';
+
+    const dispatchEvaluation = (textToEvaluate) => {
+      const cleaned = (textToEvaluate || '').trim();
+      if (!cleaned || cleaned === lastDispatchedText) return;
+      lastDispatchedText = cleaned;
+      if (onTranscriptRef.current) {
+        try {
+          console.log(
+            '%c[Selected Track Speech STT] 🚀 Triggering intent check:',
+            'background:#4f46e5;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;',
+            { transcript: cleaned, language: speechLanguage || 'zh-HK' }
+          );
+          onTranscriptRef.current(cleaned, {
+            language: speechLanguage || 'zh-HK',
+            timestamp: Date.now(),
+            isFinal: true,
+          });
+        } catch (err) {
+          console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
+        }
+      }
+    };
 
     try {
       recognition = new SpeechRecognition();
@@ -343,16 +369,16 @@ export function useClientLiteRTWhisper({
           }
         );
 
-        if (finalText && onTranscriptRef.current) {
-          try {
-            onTranscriptRef.current(finalText, {
-              language,
-              timestamp,
-              isFinal: true,
-            });
-          } catch (err) {
-            console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
-          }
+        if (finalText) {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = null;
+          dispatchEvaluation(finalText);
+        } else {
+          // Debounce interim speech: if student pauses for 1000ms, evaluate speech intent
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            dispatchEvaluation(transcript);
+          }, 1000);
         }
 
         const currentClassId = classIdRef.current;
@@ -378,6 +404,10 @@ export function useClientLiteRTWhisper({
       };
 
       recognition.onend = () => {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
         if (!isStopped && activeTrack.readyState === 'live') {
           try {
             recognition.start(activeTrack);
@@ -394,6 +424,10 @@ export function useClientLiteRTWhisper({
 
     return () => {
       isStopped = true;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
       if (recognition) {
         recognition.onend = null;
         try {
