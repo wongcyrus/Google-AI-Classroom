@@ -34,3 +34,10 @@ export function shouldRunCloudVoiceFallback({
   const chunkIndex = Number.parseInt(strideIndex, 10);
   return !Number.isFinite(chunkIndex) || chunkIndex % cadence === 0;
 }
+
+export function shouldRunCloudTranscriptFallback({
+  mode,
+  isLocalEvaluatorReady,
+}) {
+  return allowsCloudVoiceAi(mode) && !isLocalEvaluatorReady;
+}

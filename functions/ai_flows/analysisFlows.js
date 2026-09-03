@@ -503,14 +503,18 @@ export const analyzeAudioFlow = ai.defineFlow(
   {
     name: 'analyzeAudioFlow',
     inputSchema: z.object({
-      audioUrl: z.string().describe('URL or storage path of the audio recording'),
+      audioUrl: z.string().optional().describe('URL or storage path of the audio recording'),
+      transcript: z.string().optional().describe('Existing browser or on-device STT transcript to analyze without retranscribing audio'),
       classId: z.string(),
       studentUid: z.string(),
       studentEmail: z.string().optional(),
       prompt: z.string().optional(),
       model: z.string().optional(),
       diarization: z.boolean().optional().default(true),
-    }),
+    }).refine(
+      ({ audioUrl, transcript }) => Boolean(audioUrl?.trim() || transcript?.trim()),
+      { message: 'Either audioUrl or transcript is required' }
+    ),
     outputSchema: z.object({
       transcript: z.string().optional(),
       summary: z.string().optional(),
@@ -518,13 +522,16 @@ export const analyzeAudioFlow = ai.defineFlow(
       error: z.string().optional(),
     }),
   },
-  async ({ audioUrl, classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
+  async ({ audioUrl = '', transcript = '', classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
     const transcribeModel = model || AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-preview';
     const reasoningModel = AI_MODEL || 'gemini-3.5-flash-lite';
+    const suppliedTranscript = transcript.trim();
 
     const transcribePrompt = `Transcribe this student audio recording verbatim in its original spoken language (Cantonese, Mandarin, or English) with speaker diarization timestamps (e.g., [00:05] Speaker 1: ...). If there is background silence or no intelligible speech, output [NO_SPEECH_DETECTED].`;
 
-    const estimatedCost = estimateCost(transcribePrompt, [{ media: { url: audioUrl } }], transcribeModel) + 0.0001;
+    const estimatedCost = suppliedTranscript
+      ? estimateCost(`${prompt}\n${suppliedTranscript}`, [], reasoningModel) + 0.0001
+      : estimateCost(transcribePrompt, [{ media: { url: audioUrl } }], transcribeModel) + 0.0001;
     const hasQuota = await checkQuota(classId, estimatedCost);
 
     if (!hasQuota) {
@@ -534,10 +541,10 @@ export const analyzeAudioFlow = ai.defineFlow(
         studentEmail,
         jobType: 'analyzeAudio',
         status: 'blocked-by-quota',
-        promptText: transcribePrompt,
-        mediaPaths: [audioUrl],
+        promptText: suppliedTranscript ? prompt : transcribePrompt,
+        mediaPaths: audioUrl ? [audioUrl] : [],
         cost: 0,
-        modelUsed: transcribeModel,
+        modelUsed: suppliedTranscript ? reasoningModel : transcribeModel,
       });
       return { error: 'Insufficient quota.' };
     }
@@ -546,30 +553,38 @@ export const analyzeAudioFlow = ai.defineFlow(
       // -------------------------------------------------------------
       // Step 1: Specialized Audio Transcription (NO tools passed to STT model)
       // -------------------------------------------------------------
-      const { response: transcribeResponse, modelUsed: actualTranscribeModel } = await generateWithResilience({
-        temperature: 0.1,
-        prompt: [
-          { text: transcribePrompt },
-          { media: { url: audioUrl } },
-        ],
-      }, transcribeModel);
-
-      let rawTranscript = (transcribeResponse.text || '').trim();
-      if (!rawTranscript && transcribeResponse.message?.content) {
-        rawTranscript = transcribeResponse.message.content
-          .map((p) => {
-            if (p.text) return p.text;
-            if (p.audioTranscription?.words) {
-              return p.audioTranscription.words.map((w) => w.word).join(' ');
-            }
-            return '';
-          })
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+      let rawTranscript = suppliedTranscript;
+      let transcribeUsage = {};
+      let actualTranscribeModel = null;
+      if (!rawTranscript) {
+        const transcription = await generateWithResilience({
+          temperature: 0.1,
+          prompt: [
+            { text: transcribePrompt },
+            { media: { url: audioUrl } },
+          ],
+        }, transcribeModel);
+        const transcribeResponse = transcription.response;
+        actualTranscribeModel = transcription.modelUsed;
+        rawTranscript = (transcribeResponse.text || '').trim();
+        if (!rawTranscript && transcribeResponse.message?.content) {
+          rawTranscript = transcribeResponse.message.content
+            .map((p) => {
+              if (p.text) return p.text;
+              if (p.audioTranscription?.words) {
+                return p.audioTranscription.words.map((w) => w.word).join(' ');
+              }
+              return '';
+            })
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+        }
+        transcribeUsage = transcribeResponse.usage || {};
       }
-      const transcribeUsage = transcribeResponse.usage || {};
-      let totalCost = calculateCost(transcribeUsage, actualTranscribeModel);
+      let totalCost = actualTranscribeModel
+        ? calculateCost(transcribeUsage, actualTranscribeModel)
+        : 0;
       let auditSummary = '';
       let actualReasoningModel = null;
 
@@ -641,7 +656,9 @@ Instructions:
           outputTokens: transcribeUsage.outputTokens ?? transcribeUsage.candidatesTokenCount ?? 0,
         },
         cost: totalCost,
-        modelUsed: actualReasoningModel ? `${actualTranscribeModel} + ${actualReasoningModel}` : actualTranscribeModel,
+        modelUsed: actualTranscribeModel && actualReasoningModel
+          ? `${actualTranscribeModel} + ${actualReasoningModel}`
+          : actualReasoningModel || actualTranscribeModel || reasoningModel,
         result: rawTranscript,
       });
 
@@ -658,10 +675,10 @@ Instructions:
         studentEmail,
         jobType: 'analyzeAudio',
         status: 'failed',
-        promptText: transcribePrompt,
-        mediaPaths: [audioUrl],
+        promptText: suppliedTranscript ? prompt : transcribePrompt,
+        mediaPaths: audioUrl ? [audioUrl] : [],
         cost: 0,
-        modelUsed: transcribeModel,
+        modelUsed: suppliedTranscript ? reasoningModel : transcribeModel,
         errorDetails: error.message,
       });
       return { error: error.message };

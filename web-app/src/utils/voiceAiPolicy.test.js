@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   allowsCloudVoiceAi,
   allowsLocalVoiceAi,
+  shouldRunCloudTranscriptFallback,
   shouldRunCloudVoiceFallback,
 } from './voiceAiPolicy';
 
@@ -42,6 +43,21 @@ describe('voiceAiPolicy', () => {
       strideIndex: 1,
       hasLocalTranscript: false,
       hasAudioUrl: true,
+    })).toBe(false);
+  });
+
+  it('sends an existing transcript to cloud only when local evaluation is unavailable', () => {
+    expect(shouldRunCloudTranscriptFallback({
+      mode: 'hybrid',
+      isLocalEvaluatorReady: false,
+    })).toBe(true);
+    expect(shouldRunCloudTranscriptFallback({
+      mode: 'hybrid',
+      isLocalEvaluatorReady: true,
+    })).toBe(false);
+    expect(shouldRunCloudTranscriptFallback({
+      mode: 'client_only',
+      isLocalEvaluatorReady: false,
     })).toBe(false);
   });
 });

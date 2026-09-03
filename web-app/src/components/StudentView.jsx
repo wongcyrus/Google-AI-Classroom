@@ -23,6 +23,7 @@ import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
   normalizeVoiceAiMode,
+  shouldRunCloudTranscriptFallback,
   shouldRunCloudVoiceFallback,
 } from '../utils/voiceAiPolicy';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
@@ -253,6 +254,55 @@ const StudentView = ({ user }) => {
     studentEmail: user?.email,
     customGemmaPrompt: liveAudioPrompt || gemmaIntentPrompt,
   });
+  const isGemmaReady =
+    gemmaEngine === 'litert_lm_gemma_e2b' &&
+    (gemmaStatus === 'ready' || gemmaStatus === 'evaluating');
+  const handleLiveVoiceTranscript = useCallback(async (transcript) => {
+    if (!shouldEvaluateVoiceWithGemma) return null;
+
+    if (isGemmaReady) {
+      return evaluateSpeechWithGemma(transcript);
+    }
+    if (!shouldRunCloudTranscriptFallback({
+      mode: effectiveVoiceAiMode,
+      isLocalEvaluatorReady: isGemmaReady,
+    })) {
+      return null;
+    }
+
+    console.log('[StudentView:CloudTranscriptFallback] Sending selected-track STT to Genkit.', {
+      transcript,
+      gemmaStatus,
+      gemmaEngine,
+    });
+    try {
+      const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
+      const response = await analyzeAudioCallable({
+        transcript,
+        classId: activeClass,
+        studentUid: user?.uid,
+        studentEmail: user?.email,
+        prompt: liveAudioPrompt?.promptText ||
+          (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
+      });
+      console.log('[StudentView:CloudTranscriptFallback] Genkit analysis completed.', response?.data);
+      return response?.data || null;
+    } catch (error) {
+      console.warn('[StudentView:CloudTranscriptFallback] Genkit analysis failed:', error);
+      return null;
+    }
+  }, [
+    activeClass,
+    effectiveVoiceAiMode,
+    evaluateSpeechWithGemma,
+    gemmaEngine,
+    gemmaStatus,
+    isGemmaReady,
+    liveAudioPrompt,
+    shouldEvaluateVoiceWithGemma,
+    user?.email,
+    user?.uid,
+  ]);
 
   const handleAudioUploadedRef = useRef(null);
   const handleMicDeviceResolved = useCallback((actualDeviceId) => {
@@ -315,7 +365,7 @@ const StudentView = ({ user }) => {
     audioStream,
     deviceId: selectedMicDeviceId,
     vadSensitivity,
-    onTranscript: shouldEvaluateVoiceWithGemma ? evaluateSpeechWithGemma : undefined,
+    onTranscript: shouldEvaluateVoiceWithGemma ? handleLiveVoiceTranscript : undefined,
   });
 
   // Teacher broadcast preloads only lightweight models. Gemma E2B remains
@@ -332,9 +382,6 @@ const StudentView = ({ user }) => {
     }
   }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, isWhisperCached, preloadWhisperModel]);
 
-  const isGemmaReady =
-    gemmaEngine === 'litert_lm_gemma_e2b' &&
-    (gemmaStatus === 'ready' || gemmaStatus === 'evaluating');
   const gemmaModelStatus = !shouldEvaluateVoiceWithGemma
     ? 'disabled'
     : isGemmaReady
