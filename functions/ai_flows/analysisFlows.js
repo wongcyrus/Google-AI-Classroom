@@ -554,7 +554,20 @@ export const analyzeAudioFlow = ai.defineFlow(
         ],
       }, transcribeModel);
 
-      const rawTranscript = (transcribeResponse.text || '').trim();
+      let rawTranscript = (transcribeResponse.text || '').trim();
+      if (!rawTranscript && transcribeResponse.message?.content) {
+        rawTranscript = transcribeResponse.message.content
+          .map((p) => {
+            if (p.text) return p.text;
+            if (p.audioTranscription?.words) {
+              return p.audioTranscription.words.map((w) => w.word).join(' ');
+            }
+            return '';
+          })
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+      }
       const transcribeUsage = transcribeResponse.usage || {};
       let totalCost = calculateCost(transcribeUsage, actualTranscribeModel);
       let auditSummary = '';
