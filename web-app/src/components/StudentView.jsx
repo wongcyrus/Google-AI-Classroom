@@ -1635,10 +1635,16 @@ const StudentView = ({ user }) => {
                   <div className="summary-item">
                     <span className="summary-icon">🎙️</span>
                     <div className="summary-text">
-                      <strong>Microphone</strong>
-                      <span>{enableAudioCapture ? (audioCaptureMode === 'mandatory' ? 'Required' : 'Optional') : 'Disabled'}</span>
+                      <strong>Microphone & Voice AI</strong>
+                      <span>
+                        {effectiveVoiceAiMode !== 'disabled'
+                          ? `Active (${effectiveVoiceAiMode.toUpperCase()})`
+                          : enableAudioCapture
+                          ? (audioCaptureMode === 'mandatory' ? 'Required (Recording)' : 'Optional')
+                          : 'Optional'}
+                      </span>
                     </div>
-                    <span className={`summary-badge ${isAudioUserEnabled || selectedMicDeviceId ? 'ready' : 'info'}`}>
+                    <span className={`summary-badge ${isAudioUserEnabled ? 'ready' : 'info'}`}>
                       {isAudioUserEnabled ? 'Active' : 'Optional'}
                     </span>
                   </div>
@@ -1843,66 +1849,100 @@ const StudentView = ({ user }) => {
               )}
             </div>
 
-            {/* Live Speech AI & Gemma HUD (Placed Underneath Capture & Webcam Stage) */}
-            {enableAudioCapture && (
+            {/* Live Speech AI & Voice Proctoring HUD (Always visible whenever Voice AI or Mic is enabled) */}
+            {(enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled') && (
               <div style={{
                 marginTop: '16px',
-                padding: '14px 16px',
+                padding: '16px',
                 backgroundColor: 'var(--color-surface, #ffffff)',
                 border: '1px solid var(--color-border, #e2e8f0)',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
+                gap: '12px',
                 fontSize: '0.875rem',
                 color: 'var(--color-text-main, #0f172a)',
                 boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))',
               }}>
                 {/* Header with Live Engine & Speaking Status */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '8px' }}>
-                  <span style={{ fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    🎙️ Live Speech AI Monitor
-                    {isSpeaking && (
-                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#10b981', color: '#fff', borderRadius: '9999px', fontWeight: 'bold', animation: 'pulse 1.5s infinite' }}>
-                        🗣️ SPEAKING (VAD ACTIVE)
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border, #e2e8f0)', paddingBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.95rem' }}>
+                      🎙️ Voice AI & Speech Invigilation
+                    </span>
+                    {isSpeaking ? (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#10b981', color: '#fff', borderRadius: '9999px', fontWeight: 'bold' }}>
+                        🗣️ SPEAKING
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#f1f5f9', color: '#64748b', borderRadius: '9999px', fontWeight: 600 }}>
+                        🤫 LISTENING
                       </span>
                     )}
-                  </span>
+                  </div>
+
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {whisperStatus === 'loading' && (
-                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#fef3c7', color: '#92400e', borderRadius: '9999px', fontWeight: 600 }}>
-                        ⏳ Loading Whisper ({whisperLoadingProgress}%)
+                      <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#fef3c7', color: '#92400e', borderRadius: '9999px', fontWeight: 600 }}>
+                        ⏳ Loading Whisper STT ({whisperLoadingProgress}%)
                       </span>
                     )}
                     {whisperStatus === 'transcribing' && (
-                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#e0e7ff', color: '#3730a3', borderRadius: '9999px', fontWeight: 600 }}>
-                        🧠 Transcribing...
+                      <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#e0e7ff', color: '#3730a3', borderRadius: '9999px', fontWeight: 600 }}>
+                        🧠 Transcribing Speech...
                       </span>
                     )}
                     {whisperStatus === 'ready' && (
-                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#dcfce7', color: '#166534', borderRadius: '9999px', fontWeight: 600 }}>
-                        🟢 LiteRT Ready ({whisperDelegate.toUpperCase()})
+                      <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#dcfce7', color: '#166534', borderRadius: '9999px', fontWeight: 600 }}>
+                        🟢 Whisper Ready ({whisperDelegate.toUpperCase()})
                       </span>
                     )}
                     {whisperStatus === 'error' && (
-                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#fee2e2', color: '#991b1b', borderRadius: '9999px', fontWeight: 600 }}>
-                        ☁️ Cloud STT Fallback
+                      <span style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#fee2e2', color: '#991b1b', borderRadius: '9999px', fontWeight: 600 }}>
+                        ☁️ Cloud STT Mode
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Sub-bar with Device, Mode, and Model Info */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '0.75rem', color: '#64748b' }}>
-                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                    🎙️ {selectedMicDeviceId ? 'Selected Mic Active' : 'Default Mic Active'}
-                  </span>
-                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                    🌐 Mode: {effectiveVoiceAiMode.toUpperCase()} ({classSpeechLanguage})
-                  </span>
-                  <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                    📦 {isWhisperCached ? 'Model Cached (39.5 MB)' : 'On-Device Whisper'}
-                  </span>
+                {/* Sub-bar with Live Volume Meter, Device, Mode, and Model Info */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '180px', flex: '1 1 200px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap' }}>
+                      Mic Input Level:
+                    </span>
+                    <div style={{
+                      flex: 1,
+                      height: '8px',
+                      backgroundColor: '#e2e8f0',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      position: 'relative'
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.min(100, Math.max(2, Math.round(audioLevel * 100)))}%`,
+                        backgroundColor: audioLevel > 0.4 ? '#ef4444' : audioLevel > 0.15 ? '#10b981' : '#3b82f6',
+                        transition: 'width 0.1s ease-out, background-color 0.2s',
+                        borderRadius: '4px'
+                      }} />
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace', minWidth: '32px' }}>
+                      {Math.round(audioLevel * 100)}%
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                    <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                      🌐 Mode: <strong>{effectiveVoiceAiMode.toUpperCase()}</strong> ({classSpeechLanguage})
+                    </span>
+                    <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                      📦 {isWhisperCached ? 'Whisper Cached' : 'On-Device STT'}
+                    </span>
+                    <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                      ☁️ Cloud Storage: <strong>{enableAudioCapture ? 'Enabled' : 'Off (Local Only)'}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Last Segment Telemetry */}
@@ -1919,7 +1959,7 @@ const StudentView = ({ user }) => {
                     justifyContent: 'space-between',
                   }}>
                     <span>
-                      <strong>Last Segment:</strong> Stride #{lastAudioSegmentStatus.strideIndex} ({lastAudioSegmentStatus.durationSec}s) via <span style={{ color: '#4f46e5', fontWeight: 600 }}>{lastAudioSegmentStatus.engine}</span>
+                      <strong>Last Audio Chunk:</strong> Stride #{lastAudioSegmentStatus.strideIndex} ({lastAudioSegmentStatus.durationSec}s) via <span style={{ color: '#4f46e5', fontWeight: 600 }}>{lastAudioSegmentStatus.engine}</span>
                     </span>
                     <span style={{
                       color: lastAudioSegmentStatus.hasSpeech ? '#059669' : '#64748b',
@@ -1932,14 +1972,22 @@ const StudentView = ({ user }) => {
 
                 {/* STT Transcript & Gemma Intent */}
                 {whisperTranscript ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    padding: '10px 12px',
+                    borderRadius: '8px'
+                  }}>
                     <div>
-                      <strong style={{ color: '#0f766e' }}>STT Transcript:</strong> <span style={{ fontStyle: 'italic', color: '#0f172a', fontWeight: 500 }}>"{whisperTranscript}"</span>
+                      <strong style={{ color: '#0f766e' }}>🎙️ Transcribed Speech:</strong> <span style={{ fontStyle: 'italic', color: '#0f172a', fontWeight: 600 }}>"{whisperTranscript}"</span>
                     </div>
                     {gemmaEvaluation && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', marginTop: '2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '0.8rem' }}>
                         <strong style={{ color: '#4338ca' }}>
-                          Gemma Intent:
+                          🤖 Gemma Intent Check:
                         </strong>
                         <span style={{
                           padding: '3px 10px',
@@ -1951,15 +1999,47 @@ const StudentView = ({ user }) => {
                         }}>
                           {gemmaEvaluation.category || 'BENIGN'} {gemmaEvaluation.isViolation ? '🚨 FLAGGED' : '✅ CLEAN'}
                         </span>
+                        {gemmaEvaluation.rationale && (
+                          <span style={{ color: '#475569', fontSize: '0.75rem' }}>
+                            ({gemmaEvaluation.rationale})
+                          </span>
+                        )}
                         <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                          (Confidence: {Math.round((gemmaEvaluation.confidence || 0.9) * 100)}%)
+                          • Confidence: {Math.round((gemmaEvaluation.confidence || 0.9) * 100)}%
                         </span>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.825rem', padding: '4px 0' }}>
-                    Listening for speech into microphone... Speak a sentence to test on-device STT & Gemma intent analysis.
+                  <div style={{
+                    color: '#64748b',
+                    fontStyle: 'italic',
+                    fontSize: '0.825rem',
+                    padding: '8px 12px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '6px',
+                    border: '1px dashed #cbd5e1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span>👂 Listening for speech into microphone... Speak a sentence to test on-device STT & AI intent analysis.</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsReadinessWizardOpen(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#4f46e5',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        padding: 0
+                      }}
+                    >
+                      Test Microphone ➔
+                    </button>
                   </div>
                 )}
               </div>
