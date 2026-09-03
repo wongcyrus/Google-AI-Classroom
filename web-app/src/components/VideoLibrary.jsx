@@ -335,6 +335,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             >
               <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens)</option>
               <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens)</option>
+              <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash ($0.75 / $3.75 per 1M tokens)</option>
               <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens)</option>
             </select>
           </div>

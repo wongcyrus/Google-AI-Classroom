@@ -25,6 +25,15 @@ describe('calculateCost', () => {
     expect(cost).toBeCloseTo(4.50, 4);
   });
 
+  it('should correctly compute exact USD cost for gemini-3.8-flash', () => {
+    const usage = {
+      promptTokenCount: 1000000, // 1M tokens @ $0.75
+      candidatesTokenCount: 1000000, // 1M tokens @ $3.75
+    };
+    const cost = calculateCost(usage, 'gemini-3.8-flash');
+    expect(cost).toBeCloseTo(4.50, 4);
+  });
+
   it('should correctly compute exact USD cost for gemini-3.7-pro', () => {
     const usage = {
       promptTokenCount: 1000000, // 1M tokens @ $3.00

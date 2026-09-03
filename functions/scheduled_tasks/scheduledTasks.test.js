@@ -34,6 +34,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       const pricing = {
         'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
         'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+        'gemini-3.8-flash': { input: 0.75, output: 3.75 },
         'gemini-3.7-pro': { input: 3.00, output: 15.00 },
         'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
       };
@@ -43,6 +44,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     const rates = parseBillingSkus([]);
     expect(rates['gemini-3.5-flash-lite'].input).toBe(0.30);
     expect(rates['gemini-3.7-flash'].output).toBe(3.75);
+    expect(rates['gemini-3.8-flash'].output).toBe(3.75);
     expect(rates['gemini-3.5-transcribe'].input).toBe(0.50);
   });
 });

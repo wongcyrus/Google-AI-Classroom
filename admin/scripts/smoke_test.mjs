@@ -220,6 +220,7 @@ async function runSmokeTests() {
     const pricingRef = db.collection('system_config').doc('pricing');
     await pricingRef.set({
       'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+      'gemini-3.8-flash': { input: 0.75, output: 3.75 },
       'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
       lastSyncedAt: new Date().toISOString(),
       source: 'integration_test_sync',

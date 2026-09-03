@@ -449,7 +449,7 @@ const ControlsPanel = ({
                 <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>🖥️ SCREEN (Gemini Vision):</span>
                   <span style={{ fontSize: '0.7rem', padding: '1px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontWeight: 600 }}>
-                    {selectedAiModel === 'gemini-3.7-pro' ? '🔬 3.7 Pro' : selectedAiModel === 'gemini-3.7-flash' ? '🧠 3.7 Flash' : '⚡ 3.5 Flash-Lite'}
+                    {selectedAiModel === 'gemini-3.7-pro' ? '🔬 3.7 Pro' : selectedAiModel === 'gemini-3.8-flash' ? '⚡ 3.8 Flash' : selectedAiModel === 'gemini-3.7-flash' ? '🧠 3.7 Flash' : '⚡ 3.5 Flash-Lite'}
                   </span>
                 </div>
                 <div style={{ color: '#64748b', fontSize: '0.7rem', display: 'flex', justifyContent: 'space-between' }}>
@@ -1131,6 +1131,7 @@ const ControlsPanel = ({
                     >
                       <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens - Fastest)</option>
                       <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash ($0.75 / $3.75 per 1M tokens - Balanced)</option>
+                      <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash ($0.75 / $3.75 per 1M tokens - Next-Gen)</option>
                       <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro ($3.00 / $15.00 per 1M tokens - Deep Reasoning)</option>
                     </select>
                     <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
