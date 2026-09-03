@@ -57,7 +57,7 @@ flowchart TD
 
 | Specification | Mode 1: On-Device LiteRT Whisper + Gemma | Mode 2: Real-Time Rolling Moving Window | Mode 3: Discussion / Session Summarization | Mode 4: Offline Hybrid Queue |
 | :--- | :--- | :--- | :--- | :--- |
-| **Primary Model** | Local LiteRT Whisper + Gemma 4 E2B | Cloud `gemini-3.5-transcribe` | Cloud `gemini-3.5-transcribe` & Gemini Pro | Local IndexedDB + Post-Sync Cloud |
+| **Primary Model** | Local LiteRT Whisper + Gemma 4 E2B | Cloud `gemini-3.5-transcribe-preview` (fallback to `gemini-3.5-flash-lite`) | Cloud `gemini-3.5-transcribe-preview` & Gemini Pro | Local IndexedDB + Post-Sync Cloud |
 | **Execution Tier** | 100% Client Browser (WebGPU / WASM) | Cloud Function + Vertex AI / Genkit | Cloud Function + Vertex AI / Genkit | Client-side buffered queue |
 | **Network Egress** | Zero audio upload (transcripts/alerts only) | WebM chunks uploaded via HTTPS | WebM chunks uploaded per interval | Zero until connection restored |
 | **Timing Cadence** | Continuous stream (~1-2s latency) | 15s stride / 30s sliding window | 5 min, 10 min, 15 min, 30 min, or Full Session | Automatic re-flush on reconnection |
@@ -254,5 +254,50 @@ All voice prompts are managed dynamically in the unified Prompt Library and inte
 | **Irregularity Logging** | **Client Hook Execution (`useClientLiteRTGemma.js`)**: Hook detects `isViolation === true` and executes direct Firestore writes to `/irregularities` and `/classes/{classId}/irregularities` | **Cloud Function Execution (`aiTools.js`)**: Cloud Genkit agent invokes `recordAudioIrregularity` tool during generation |
 | **Telemetry Updates** | Merges `gemmaAlert`, `gemmaSeverity`, `gemmaConfidence`, `lastGemmaTimestamp` directly into `/classes/{classId}/status/{studentUid}` | Cloud Function writes to class subcollections and logs audits |
 | **Cloud Quota & Latency** | **$0.00 / 0 Cloud API tokens**, ~1-2s local inference | Standard Vertex AI token billing, ~3-5s network + generation roundtrip |
+ 
+ ---
+ 
++## 9. Dual-Path `analyzeAudioFlow` Architecture
++ 
++The server-side `analyzeAudioFlow` Genkit pipeline supports two distinct execution paths depending on client capabilities:
++ 
++```mermaid
++flowchart TD
++    Input[Client Request: analyzeAudio] --> CheckInput{Input Contains?}
++    
++    %% Path A: Full Audio Processing
++    CheckInput -->|audioUrl only| Step1[Step 1: Audio Transcription via gemini-3.5-transcribe-preview]
++    Step1 -->|Extract| WordChunks[Word-level Timestamps & Spoken Text]
++    Step1 -.->|Vertex Fallback| FallbackModel[Fallback: gemini-3.5-flash-lite]
++    WordChunks --> Step2[Step 2: Reason & Tool Invocations via gemini-3.5-flash-lite]
++    
++    %% Path B: Direct Transcript Fast Path
++    CheckInput -->|transcript provided| DirectPath[Bypass Step 1 Transcription\n$0 Transcribe Token Cost]
++    DirectPath --> Step2
++    
++    Step2 --> Tools{Cheating Detected?}
++    Tools -->|Yes| RecordIrregularity[Tool: recordAudioIrregularity]
++    Tools -->|No / Clean| CleanAudit[Tool: recordAudioAudit]
++    RecordIrregularity --> SaveAudit[(Firestore: /irregularities)]
++    CleanAudit --> SaveAudit
++```
++ 
++1. **Mode A (Full Audio Pipeline)**: When raw `audioUrl` is passed, Step 1 transcribes audio via `gemini-3.5-transcribe-preview` (`temperature: 0.1`, resilience fallback to `gemini-3.5-flash-lite`). Step 2 performs cheating/collusion reasoning with tools via `gemini-3.5-flash-lite`.
++2. **Mode B (Transcript-Only Fast Path)**: When `transcript` is passed (from on-device Whisper Tiny or Web Speech API), Step 1 is skipped completely (`actualTranscribeModel = null`, $0 transcribe cost). Step 2 immediately evaluates the transcript with proctor tools.
++ 
++---
++ 
++## 10. Persistent Cache Storage for Edge Models
++ 
++To avoid re-downloading large AI models on every session, the client uses the browser's Cache Storage API and Persistent Storage permission:
++ 
++1. **Whisper STT Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
++2. **Gemma 4 E2B Model (`gemma-4-e2b.bin` ~1.5 GB)**:
++   - Cached in Cache Storage namespace `litert-gemma-cache-v1`.
++   - Background worker (`litertGemma.worker.js`) checks `caches.open('litert-gemma-cache-v1')` before initiating network download.
++   - Upon download, streams model data directly to the LiteRT engine while writing to Cache Storage in parallel.
++   - Subsequent sessions load the model directly from local disk/cache with zero network download.
++3. **Eviction Prevention (`navigator.storage.persist()`)**:
++   - `useClientLiteRTGemma.js` requests persistent storage permission to prevent the browser from evicting cached model weights during disk cleanup.
 
 

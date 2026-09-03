@@ -38,13 +38,13 @@ This project is a showcase of modern, scalable, and intelligent application deve
 The project is a monorepo composed of three main parts:
 
 *   **`web-app/`**: A React single-page application (built with Vite) that serves as the user-facing frontend for students and teachers. It uses Firebase for authentication and all real-time communication. Key capabilities include:
-    *   **Audio Invigilation & Gemini 3.5 Transcribe:** Dual-mode acoustic monitoring featuring rolling 30s/15s moving window segmentation, client-side silence suppression (saving >80% bandwidth & quota), automatic sentence healing, multi-speaker diarization, independent audio pipeline execution (decoupled from Vision AI modes), and space-optimized individual inspection controls with inline playback and collapsible clip timeline drawers.
-    *   **On-Device AI Invigilation (Desktop Worker Engine, Multi-Signal EAR/MAR & Cache Storage):** High-efficiency browser edge inference (~15–30 FPS, 0 cloud quota) powered by MediaPipe Face & Iris in a background Web Worker (`faceLandmarker.worker.js`) with zero UI thread jank, hardware frame synchronization (`requestVideoFrameCallback`), multi-signal geometric telemetry (Eye Aspect Ratio for sleeping/drowsiness detection and Mouth Aspect Ratio for talking/whispering detection), 1-click Neutral Baseline Calibration (`🎯 Calibrate View`), 4 flexible modes (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), browser Cache API persistence (`webai-models-v1`), student-side model preload button (`📥 Preload AI (~3.8 MB)`), teacher broadcast preload trigger (`⚡ Preload AI for All Students`), and live download progress telemetry.
-    *   **Dual-Channel Split Streams:** Independent live screen sharing and webcam capture with multi-camera selection and stream swapping.
+    *   **Audio Invigilation & Gemini 3.5 Transcribe Preview:** Dual-mode acoustic monitoring featuring rolling 30s/15s moving window segmentation, client-side silence suppression (saving >80% bandwidth & quota), automatic sentence healing, multi-speaker diarization with word-level timestamps (`gemini-3.5-transcribe-preview`), direct transcript-to-reasoning cloud fallback path, independent audio pipeline execution (decoupled from Vision AI modes), and space-optimized individual inspection controls with inline playback and collapsible clip timeline drawers.
+    *   **On-Device AI Invigilation (Desktop Worker Engine, Multi-Signal EAR/MAR & Persistent Cache Storage):** High-efficiency browser edge inference (~15–30 FPS, 0 cloud quota) powered by MediaPipe Face & Iris (`faceLandmarker.worker.js`), LiteRT Whisper STT (`litertWhisper.worker.js`), and LiteRT Gemma 4 E2B (`litertGemma.worker.js`) with zero UI thread jank, hardware frame synchronization (`requestVideoFrameCallback`), multi-signal geometric telemetry (Eye Aspect Ratio for sleeping/drowsiness detection and Mouth Aspect Ratio for talking/whispering detection), 1-click Neutral Baseline Calibration (`🎯 Calibrate View`), 4 flexible modes (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), browser Cache API persistence (`webai-models-v1`, `litert-gemma-cache-v1` with `navigator.storage.persist()`), student-side model preload button, teacher broadcast preload trigger (`⚡ Preload AI for All Students`), and live download progress telemetry.
+    *   **Dual-Channel Split Streams & Streamlined Controls:** Independent live screen sharing and webcam capture with multi-camera selection, stream swapping, and responsive segmented button groups for fast channel switching (`🖥️+📷 Dual`, `🖥️ Screen`, `📷 Webcam`) and audio recording/muted toggling.
     *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
     *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
     *   **Live Teacher Monitor & Compliance Audit:** Streamlined ControlsPanel with zero-space problem student filtering (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`), targeted one-click broadcast nudge (`📢 Nudge (N)`), instant compliance audit CSV export (`📥 Export CSV`), 1-to-1 WebRTC Live Peek with 2-way talkback, and high-detail student inspection modals.
-*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`).
+*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
 For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
@@ -54,7 +54,7 @@ For a detailed breakdown of the Firestore data model, please see the [Firestore 
 ```mermaid
 graph TD
     subgraph "Client"
-        WebApp["Web App (React + MediaPipe FaceLandmarker)"]
+        WebApp["Web App (React + MediaPipe + LiteRT Whisper/Gemma)"]
     end
 
     subgraph "Firebase"
@@ -73,7 +73,7 @@ graph TD
             F_analyzeImage["analyzeImage (onCall)"]
             F_analyzeAllImages["analyzeAllImages (onCall)"]
             F_analyzeFaceFallback["analyzeFaceFallback (onCall)"]
-            F_analyzeAudio["analyzeAudio (onCall: gemini-3.5-transcribe)"]
+            F_analyzeAudio["analyzeAudio (onCall: gemini-3.5-transcribe-preview)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]

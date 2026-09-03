@@ -199,16 +199,17 @@ To prevent Chrome from throwing `OverconstrainedError` before native permission 
 2. **Phase 2 (Exact Device Binding):** Once permission is acquired, if a custom `deviceId` is chosen (e.g. USB headset), it requests `{ audio: { deviceId: { exact: deviceId } } }` and terminates the initial default stream.
 3. **Fail-Fast Error Handling:** If the selected device is disconnected or hardware-locked, the error is caught and displayed to the student rather than secretly recording from an unintended microphone.
 
-### 3. Selected Microphone Stream Routing & On-Device Whisper STT (`useClientLiteRTWhisper.js` & `useAudioRecorder.js`)
+### 3. Selected Microphone Stream Routing & On-Device Whisper + Gemma AI (`useClientLiteRTWhisper.js`, `useClientLiteRTGemma.js` & `useAudioRecorder.js`)
 - Audio recording is completely **decoupled from Vision AI modes**. Even if Vision AI is set to `disabled` (`aiMonitoringMode === 'disabled'`), audio capture operates independently whenever the teacher enables the class audio toggle (`enableAudioCapture: true`).
 - **Direct Audio Stream Attachment**: `useAudioRecorder` opens the media stream using the student's selected microphone and supplies `audioStream` directly to `useClientLiteRTWhisper`.
 - `useClientLiteRTWhisper` attaches a real-time Web Audio `ScriptProcessorNode` to `audioStream`, downsampling to 16kHz PCM Float32Array and performing local Voice Activity Detection (VAD).
 - This ensures on-device LiteRT Whisper STT transcribes speech directly from whichever microphone the student selected (USB headset, external podcast mic, webcam mic, or internal default).
+- **On-Device Gemma Intent Analysis & Cloud Fallback (`useClientLiteRTGemma.js`)**: Spoken transcripts are fed to on-device Gemma 4 E2B (`litertGemma.worker.js`) running in WebGPU/WASM for instant cheating/whispering classification. Downloaded model weights are saved in Cache Storage (`litert-gemma-cache-v1`) with `navigator.storage.persist()`. In hybrid modes or when Gemma is loading, transcripts are simultaneously routed directly to Cloud Genkit (`analyzeAudio`) for immediate reasoning without re-transcribing raw audio.
 - Audio from the selected microphone is also recorded in continuous 1-second slices into a rolling circular memory buffer.
 - Every 15 seconds (stride), the previous 30-second window is packaged and uploaded to Firebase Cloud Storage under `audio/{classId}/{studentUid}/audio_{start}_{end}.webm`.
 - **Silence Suppression**: Chunks with average volume $<4\%$ and peak $<8\%$ are dropped on the client, reducing bandwidth and storage quotas by $>80\%$.
-- **Automatic Diarization Gating**: Cloud Gemini 3.5 Transcribe triggers only when cloud diarization is explicitly allowed by the teacher (`isCloudDiarizationAllowed`), ensuring cost control while maintaining complete raw audio logs for teacher review.
-- Live telemetry (`isAudioSharing`, `audioStatus`, `audioLevel`, `liveTranscript`) is synchronized in real time to `classes/{classId}/status/{studentUid}` for instant teacher dashboard visibility.
+- **Automatic Diarization Gating**: Cloud Gemini 3.5 Transcribe Preview triggers only when cloud diarization is explicitly allowed by the teacher (`isCloudDiarizationAllowed`), ensuring cost control while maintaining complete raw audio logs for teacher review.
+- Live telemetry (`isAudioSharing`, `audioStatus`, `audioLevel`, `liveTranscript`, `transcriptLanguage`, `gemmaAlert`) is synchronized in real time to `classes/{classId}/status/{studentUid}` for instant teacher dashboard visibility.
 
 ---
 
