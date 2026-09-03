@@ -14,6 +14,7 @@ let TensorClass = null;
 let whisperVocabulary = [];
 let activeDelegate = 'wasm';
 let isReady = false;
+let clientInferenceSupported = true;
 const LITERT_WASM_URL = '/litert/';
 const WHISPER_START_OF_TRANSCRIPT_TOKEN = 50258;
 
@@ -402,7 +403,11 @@ async function handleMessage(event) {
         let confidence = 0.92;
         let words = [];
 
-        if (
+        if (!clientInferenceSupported) {
+          console.debug(
+            '[LiteRTWorker] Dynamic-output inference is unavailable in this LiteRT runtime.'
+          );
+        } else if (
           compiledModel &&
           TensorClass &&
           typeof compiledModel.run === 'function'
@@ -416,8 +421,9 @@ async function handleMessage(event) {
             if (isValidWhisperTokenSequence(outputTokens)) {
               transcriptText = decodeWhisperTokens(outputTokens, whisperVocabulary);
             } else {
+              clientInferenceSupported = false;
               console.warn(
-                '[LiteRTWorker] LiteRT.js returned an invalid Whisper token sequence for this segment; local inference will retry on the next segment.'
+                '[LiteRTWorker] This runtime cannot execute the model dynamic output; using selected-track speech transcription.'
               );
             }
           } catch (inferErr) {
@@ -463,6 +469,7 @@ async function handleMessage(event) {
         compiledModel = null;
         TensorClass = null;
         whisperVocabulary = [];
+        clientInferenceSupported = true;
         isReady = false;
         self.postMessage({ type: 'DISPOSE_COMPLETE', id });
         break;

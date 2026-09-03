@@ -296,6 +296,115 @@ export function useClientLiteRTWhisper({
     });
   }, []);
 
+  // Use the browser's selected-track recognizer while the bundled dynamic-output
+  // TFLite graph is unavailable in LiteRT WASM.
+  useEffect(() => {
+    if (!enabled || !audioStream || typeof window === 'undefined') return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const activeTrack = audioStream.getAudioTracks?.()[0];
+    if (!SpeechRecognition || !activeTrack || activeTrack.readyState === 'ended') return;
+
+    let recognition = null;
+    let isStopped = false;
+
+    try {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = speechLanguage || 'zh-HK';
+
+      recognition.onresult = (event) => {
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          if (event.results[i].isFinal) {
+            finalText += event.results[i][0].transcript;
+          } else {
+            interimText += event.results[i][0].transcript;
+          }
+        }
+
+        const transcript = (finalText || interimText || '').trim();
+        if (!transcript) return;
+
+        setLatestTranscript(transcript);
+        const language = speechLanguage || 'zh-HK';
+        const timestamp = Date.now();
+        console.log(
+          '%c[Selected Track Speech STT] Speech transcribed:',
+          'background:#064e3b;color:#34d399;font-weight:bold;padding:2px 6px;border-radius:4px;',
+          {
+            transcript,
+            language,
+            deviceId: activeTrack.getSettings?.().deviceId || deviceIdRef.current,
+            label: activeTrack.label || 'unknown',
+          }
+        );
+
+        if (finalText && onTranscriptRef.current) {
+          try {
+            onTranscriptRef.current(finalText, {
+              language,
+              timestamp,
+              isFinal: true,
+            });
+          } catch (err) {
+            console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
+          }
+        }
+
+        const currentClassId = classIdRef.current;
+        const currentStudentUid = studentUidRef.current;
+        if (currentClassId && currentStudentUid) {
+          const statusDocRef = doc(db, 'classes', currentClassId, 'status', currentStudentUid);
+          setDoc(statusDocRef, {
+            liveTranscript: transcript,
+            liveTranscriptTimestamp: timestamp,
+            speechLanguage: language,
+            isAudioSharing: true,
+            audioStatus: 'speaking',
+            selectedMicDeviceId:
+              activeTrack.getSettings?.().deviceId || deviceIdRef.current || '',
+          }, { merge: true }).catch(() => {});
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.debug('[useClientLiteRTWhisper] Selected-track recognition notice:', event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        if (!isStopped && activeTrack.readyState === 'live') {
+          try {
+            recognition.start(activeTrack);
+          } catch (err) {
+            console.debug('[useClientLiteRTWhisper] Selected-track recognition restart failed:', err);
+          }
+        }
+      };
+
+      recognition.start(activeTrack);
+    } catch (err) {
+      console.debug('[useClientLiteRTWhisper] Selected-track recognition not started:', err);
+    }
+
+    return () => {
+      isStopped = true;
+      if (recognition) {
+        recognition.onend = null;
+        try {
+          recognition.abort();
+        } catch {
+          // Recognition may already be stopped during a stream switch.
+        }
+      }
+    };
+  }, [enabled, audioStream, speechLanguage]);
+
   // 1. Real-time audio stream listener for the selected microphone stream
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
