@@ -79,7 +79,7 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(screen.getByText(/Stop Capture/i)).toBeInTheDocument();
   });
 
-  it('renders frameRate, maxImageSize, channel, and audio select dropdowns', () => {
+  it('uses consistent segmented buttons for video and audio capture choices', () => {
     const handleFrameRateChange = vi.fn();
     const handleMaxImageSizeChange = vi.fn();
     const setSelectedChannel = vi.fn();
@@ -95,23 +95,24 @@ describe('ControlsPanel Full Component Suite', () => {
       />
     );
 
-    const selects = screen.getAllByRole('combobox');
-    expect(selects.length).toBeGreaterThanOrEqual(4);
-
-    // Channel select
-    fireEvent.change(selects[0], { target: { value: 'screen' } });
+    fireEvent.click(screen.getByRole('button', { name: '🖥️ Screen' }));
     expect(setSelectedChannel).toHaveBeenCalledWith('screen');
 
-    // Audio stream select
-    fireEvent.change(selects[1], { target: { value: 'on' } });
+    fireEvent.click(screen.getByRole('button', { name: '🎙️ Record' }));
     expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
 
+    fireEvent.click(screen.getByRole('button', { name: '🔇 Muted' }));
+    expect(handleAudioCaptureToggle).toHaveBeenCalledWith(false);
+
+    const selects = screen.getAllByRole('combobox');
+    expect(selects.length).toBeGreaterThanOrEqual(2);
+
     // Frame rate select
-    fireEvent.change(selects[2], { target: { value: '5' } });
+    fireEvent.change(selects[0], { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
     // Max image size select
-    fireEvent.change(selects[3], { target: { value: String(500 * 1024) } });
+    fireEvent.change(selects[1], { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 

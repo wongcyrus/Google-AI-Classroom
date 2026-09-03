@@ -272,15 +272,23 @@ const ControlsPanel = ({
                   </label>
                   <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Screen & Webcam</span>
                 </div>
-                <select 
-                  value={selectedChannel} 
-                  onChange={(e) => setSelectedChannel && setSelectedChannel(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff', color: '#1e293b', fontWeight: 500 }}
-                >
-                  <option value="both">🖥️+📷 Dual (Screen + Webcam)</option>
-                  <option value="screen">🖥️ Screen Only</option>
-                  <option value="webcam">📷 Webcam Only</option>
-                </select>
+                <div className="capture-option-group" role="group" aria-label="Video capture channels">
+                  {[
+                    { value: 'both', label: '🖥️+📷 Dual' },
+                    { value: 'screen', label: '🖥️ Screen' },
+                    { value: 'webcam', label: '📷 Webcam' },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`capture-option-btn ${selectedChannel === option.value ? 'active' : ''}`}
+                      aria-pressed={selectedChannel === option.value}
+                      onClick={() => setSelectedChannel?.(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Channel 2: Audio Stream (Voice & Mic) */}
@@ -293,14 +301,24 @@ const ControlsPanel = ({
                     {enableAudioCapture ? '🟢 Active' : '🔇 Muted'}
                   </span>
                 </div>
-                <select 
-                  value={enableAudioCapture ? 'on' : 'off'} 
-                  onChange={(e) => handleAudioCaptureToggle && handleAudioCaptureToggle(e.target.value === 'on')}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff', color: '#1e293b', fontWeight: 500 }}
-                >
-                  <option value="on">🟢 Recording (Segments)</option>
-                  <option value="off">🚫 Disabled (Muted)</option>
-                </select>
+                <div className="capture-option-group two-options" role="group" aria-label="Audio capture mode">
+                  <button
+                    type="button"
+                    className={`capture-option-btn ${enableAudioCapture ? 'active' : ''}`}
+                    aria-pressed={enableAudioCapture}
+                    onClick={() => handleAudioCaptureToggle?.(true)}
+                  >
+                    🎙️ Record
+                  </button>
+                  <button
+                    type="button"
+                    className={`capture-option-btn ${!enableAudioCapture ? 'active muted' : ''}`}
+                    aria-pressed={!enableAudioCapture}
+                    onClick={() => handleAudioCaptureToggle?.(false)}
+                  >
+                    🔇 Muted
+                  </button>
+                </div>
               </div>
 
               {/* Cadence & Size Settings */}
