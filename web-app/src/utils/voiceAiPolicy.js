@@ -35,9 +35,6 @@ export function shouldRunCloudVoiceFallback({
   return !Number.isFinite(chunkIndex) || chunkIndex % cadence === 0;
 }
 
-export function shouldRunCloudTranscriptFallback({
-  mode,
-  isLocalEvaluatorReady,
-}) {
-  return allowsCloudVoiceAi(mode) && !isLocalEvaluatorReady;
+export function shouldSendTranscriptToCloud(mode) {
+  return allowsCloudVoiceAi(mode);
 }

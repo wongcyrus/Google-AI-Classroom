@@ -23,7 +23,7 @@ import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
   normalizeVoiceAiMode,
-  shouldRunCloudTranscriptFallback,
+  shouldSendTranscriptToCloud,
   shouldRunCloudVoiceFallback,
 } from '../utils/voiceAiPolicy';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
@@ -260,35 +260,35 @@ const StudentView = ({ user }) => {
   const handleLiveVoiceTranscript = useCallback(async (transcript) => {
     if (!shouldEvaluateVoiceWithGemma) return null;
 
-    if (isGemmaReady) {
-      return evaluateSpeechWithGemma(transcript);
-    }
-    if (!shouldRunCloudTranscriptFallback({
-      mode: effectiveVoiceAiMode,
-      isLocalEvaluatorReady: isGemmaReady,
-    })) {
-      return null;
+    const localEvaluationPromise = isGemmaReady
+      ? evaluateSpeechWithGemma(transcript)
+      : Promise.resolve(null);
+    if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) {
+      return localEvaluationPromise;
     }
 
-    console.log('[StudentView:CloudTranscriptFallback] Sending selected-track STT to Genkit.', {
+    console.log('[StudentView:CloudTranscriptAnalysis] Sending selected-track STT to Genkit.', {
       transcript,
       gemmaStatus,
       gemmaEngine,
     });
     try {
       const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
-      const response = await analyzeAudioCallable({
-        transcript,
-        classId: activeClass,
-        studentUid: user?.uid,
-        studentEmail: user?.email,
-        prompt: liveAudioPrompt?.promptText ||
-          (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
-      });
-      console.log('[StudentView:CloudTranscriptFallback] Genkit analysis completed.', response?.data);
+      const [, response] = await Promise.all([
+        localEvaluationPromise,
+        analyzeAudioCallable({
+          transcript,
+          classId: activeClass,
+          studentUid: user?.uid,
+          studentEmail: user?.email,
+          prompt: liveAudioPrompt?.promptText ||
+            (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
+        }),
+      ]);
+      console.log('[StudentView:CloudTranscriptAnalysis] Genkit analysis completed.', response?.data);
       return response?.data || null;
     } catch (error) {
-      console.warn('[StudentView:CloudTranscriptFallback] Genkit analysis failed:', error);
+      console.warn('[StudentView:CloudTranscriptAnalysis] Genkit analysis failed:', error);
       return null;
     }
   }, [

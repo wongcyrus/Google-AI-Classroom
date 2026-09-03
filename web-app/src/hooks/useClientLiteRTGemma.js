@@ -163,6 +163,17 @@ export function useClientLiteRTGemma({
     }
     if (initializationPromiseRef.current) return initializationPromiseRef.current;
 
+    if (navigator.storage?.persist) {
+      try {
+        const persisted = await navigator.storage.persist();
+        console.log('[useClientLiteRTGemma] Persistent model storage request completed.', {
+          persisted,
+        });
+      } catch (error) {
+        console.warn('[useClientLiteRTGemma] Persistent storage request failed:', error);
+      }
+    }
+
     console.log('[useClientLiteRTGemma] Starting Gemma 4 E2B preload request.');
     setStatus('loading');
     statusRef.current = 'loading';

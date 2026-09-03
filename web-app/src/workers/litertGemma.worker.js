@@ -6,10 +6,14 @@
  */
 
 import { Engine } from '@litert-lm/core';
-import { DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader.js';
+import {
+  DEFAULT_GEMMA_CONFIG,
+  GEMMA_CACHE_NAME,
+} from '../utils/gemmaLiteRTLoader.js';
 
 let gemmaEngine = null;
 let initializationPromise = null;
+let gemmaLoadedFromCache = false;
 
 const LITERT_LM_WASM_BASE_URL =
   'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.15.0/wasm/';
@@ -74,25 +78,66 @@ function configureLiteRtLmWasmLocation() {
   };
 }
 
-async function streamModelWithProgress(modelUrl) {
+export async function getGemmaModelResponse(modelUrl) {
+  const cacheStorage = typeof caches !== 'undefined' ? caches : self.caches;
+  if (cacheStorage) {
+    try {
+      const cache = await cacheStorage.open(GEMMA_CACHE_NAME);
+      const cachedResponse = await cache.match(modelUrl);
+      if (cachedResponse) {
+        return {
+          response: cachedResponse,
+          fromCache: true,
+          cacheWritePromise: Promise.resolve(true),
+        };
+      }
+    } catch (error) {
+      console.warn('[LiteRTGemmaWorker] Gemma cache lookup failed:', error);
+    }
+  }
+
   const response = await fetch(modelUrl, { credentials: 'omit' });
   if (!response.ok || !response.body) {
     throw new Error(`Failed to download Gemma E2B model (${response.status})`);
   }
 
+  let cacheWritePromise = Promise.resolve(false);
+  if (cacheStorage) {
+    try {
+      const cache = await cacheStorage.open(GEMMA_CACHE_NAME);
+      cacheWritePromise = cache.put(modelUrl, response.clone())
+        .then(() => true)
+        .catch((error) => {
+          console.warn('[LiteRTGemmaWorker] Failed to persist Gemma model:', error);
+          return false;
+        });
+    } catch (error) {
+      console.warn('[LiteRTGemmaWorker] Failed to open Gemma cache:', error);
+    }
+  }
+
+  return { response, fromCache: false, cacheWritePromise };
+}
+
+async function streamModelWithProgress(modelUrl) {
+  const {
+    response,
+    fromCache,
+    cacheWritePromise,
+  } = await getGemmaModelResponse(modelUrl);
   const totalBytes = Number(response.headers.get('content-length')) || 0;
-  console.log('[LiteRTGemmaWorker] Gemma 4 E2B download started.', {
+  console.log(`[LiteRTGemmaWorker] Gemma 4 E2B ${fromCache ? 'cache load' : 'download'} started.`, {
     modelUrl,
     totalBytes,
   });
   const reader = response.body.getReader();
   let receivedBytes = 0;
 
-  return new ReadableStream({
+  const modelStream = new ReadableStream({
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
-        console.log('[LiteRTGemmaWorker] Gemma 4 E2B download completed.', {
+        console.log(`[LiteRTGemmaWorker] Gemma 4 E2B ${fromCache ? 'cache load' : 'download'} completed.`, {
           receivedBytes,
         });
         self.postMessage({ type: 'PROGRESS', payload: { progress: 90 } });
@@ -111,10 +156,12 @@ async function streamModelWithProgress(modelUrl) {
       return reader.cancel(reason);
     },
   });
+
+  return { modelStream, fromCache, cacheWritePromise };
 }
 
 async function initializeGemma(modelUrl) {
-  if (gemmaEngine) return;
+  if (gemmaEngine) return { fromCache: gemmaLoadedFromCache };
   if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
@@ -123,7 +170,11 @@ async function initializeGemma(modelUrl) {
     }
 
     configureLiteRtLmWasmLocation();
-    const modelStream = await streamModelWithProgress(modelUrl);
+    const {
+      modelStream,
+      fromCache,
+      cacheWritePromise,
+    } = await streamModelWithProgress(modelUrl);
     self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 90 } });
     gemmaEngine = await Engine.create({
       model: modelStream,
@@ -131,6 +182,9 @@ async function initializeGemma(modelUrl) {
         maxNumTokens: 2048,
       },
     }, GEMMA_PROCTOR_SYSTEM_PROMPT);
+    const cached = await cacheWritePromise;
+    gemmaLoadedFromCache = fromCache;
+    return { fromCache, cached: fromCache || cached };
   })();
 
   try {
@@ -206,6 +260,7 @@ export function parseGemmaOutput(rawText) {
 async function disposeGemma() {
   await gemmaEngine?.delete?.();
   gemmaEngine = null;
+  gemmaLoadedFromCache = false;
 }
 
 /**
@@ -220,8 +275,9 @@ self.onmessage = async (event) => {
         const { modelUrl = DEFAULT_GEMMA_CONFIG.modelUrl } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 5 } });
 
+        let initializationResult;
         try {
-          await initializeGemma(modelUrl);
+          initializationResult = await initializeGemma(modelUrl);
         } catch (error) {
           const unavailableReason = error?.message || 'Gemma E2B initialization failed';
           await disposeGemma();
@@ -247,7 +303,7 @@ self.onmessage = async (event) => {
             ready: true,
             delegate: 'webgpu',
             engine: 'litert_lm_gemma_e2b',
-            cached: false,
+            cached: Boolean(initializationResult?.cached),
             unavailableReason: '',
           },
         });

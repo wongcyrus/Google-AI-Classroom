@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildGemmaEvaluationPrompt,
   buildGemmaProctorPrompt,
+  getGemmaModelResponse,
   parseGemmaOutput,
   resolveLiteRtLmWasmUrl,
 } from './litertGemma.worker';
@@ -81,6 +82,27 @@ describe('litertGemma.worker', () => {
     expect(resolveLiteRtLmWasmUrl('litertlm_wasm_asyncify_internal.wasm')).toBe(
       'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.15.0/wasm/litertlm_wasm_asyncify_internal.wasm'
     );
+  });
+
+  it('loads Gemma from CacheStorage without downloading it again', async () => {
+    const cachedResponse = new Response('cached-gemma-model');
+    const match = vi.fn().mockResolvedValue(cachedResponse);
+    const open = vi.fn().mockResolvedValue({ match });
+    const originalCaches = globalThis.caches;
+    globalThis.caches = { open };
+    globalThis.fetch = vi.fn();
+
+    try {
+      const result = await getGemmaModelResponse('https://example.com/gemma-model.bin');
+
+      expect(open).toHaveBeenCalledWith('webai-litert-gemma-v1');
+      expect(match).toHaveBeenCalledWith('https://example.com/gemma-model.bin');
+      expect(result.response).toBe(cachedResponse);
+      expect(result.fromCache).toBe(true);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    } finally {
+      globalThis.caches = originalCaches;
+    }
   });
 
   it('handles onmessage lifecycle for INIT, EVALUATE_TRANSCRIPT, DISPOSE and errors', async () => {
