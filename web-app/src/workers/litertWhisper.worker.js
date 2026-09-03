@@ -14,9 +14,20 @@ let TensorClass = null;
 let whisperVocabulary = [];
 let activeDelegate = 'wasm';
 let isReady = false;
-let clientInferenceSupported = true;
 const LITERT_WASM_URL = '/litert/';
 const WHISPER_START_OF_TRANSCRIPT_TOKEN = 50258;
+
+export function createSerialTaskQueue() {
+  let tail = Promise.resolve();
+
+  return (task) => {
+    const result = tail.then(task);
+    tail = result.catch(() => {});
+    return result;
+  };
+}
+
+const enqueueTranscription = createSerialTaskQueue();
 
 function createRealFft(size) {
   let convolutionSize = 1;
@@ -265,7 +276,7 @@ export async function compileWhisperModel(loadAndCompile, modelBuffer, preferred
 /**
  * Handle incoming messages from the main React thread.
  */
-self.onmessage = async (event) => {
+async function handleMessage(event) {
   const { type, payload, id } = event.data;
 
   try {
@@ -391,11 +402,7 @@ self.onmessage = async (event) => {
         let confidence = 0.92;
         let words = [];
 
-        if (!clientInferenceSupported) {
-          console.debug(
-            '[LiteRTWorker] Local Whisper inference is disabled; returning an empty result for the configured cloud fallback.'
-          );
-        } else if (
+        if (
           compiledModel &&
           TensorClass &&
           typeof compiledModel.run === 'function'
@@ -409,9 +416,8 @@ self.onmessage = async (event) => {
             if (isValidWhisperTokenSequence(outputTokens)) {
               transcriptText = decodeWhisperTokens(outputTokens, whisperVocabulary);
             } else {
-              clientInferenceSupported = false;
               console.warn(
-                '[LiteRTWorker] LiteRT.js returned an invalid dynamic Whisper sequence; disabling local inference so hybrid mode can use Cloud Gemini STT.'
+                '[LiteRTWorker] LiteRT.js returned an invalid Whisper token sequence for this segment; local inference will retry on the next segment.'
               );
             }
           } catch (inferErr) {
@@ -429,6 +435,11 @@ self.onmessage = async (event) => {
 
         const detectedLanguage = classifyLanguage(transcriptText);
 
+        console.log('[LiteRTWorker:TranscribeComplete] Local inference completed.', {
+          deviceId,
+          transcriptLength: transcriptText.length,
+          language: detectedLanguage,
+        });
         self.postMessage({
           type: 'TRANSCRIBE_COMPLETE',
           id,
@@ -452,7 +463,6 @@ self.onmessage = async (event) => {
         compiledModel = null;
         TensorClass = null;
         whisperVocabulary = [];
-        clientInferenceSupported = true;
         isReady = false;
         self.postMessage({ type: 'DISPOSE_COMPLETE', id });
         break;
@@ -472,4 +482,11 @@ self.onmessage = async (event) => {
       },
     });
   }
+}
+
+self.onmessage = (event) => {
+  if (event.data?.type === 'TRANSCRIBE') {
+    return enqueueTranscription(() => handleMessage(event));
+  }
+  return handleMessage(event);
 };

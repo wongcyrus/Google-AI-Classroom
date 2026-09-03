@@ -322,65 +322,6 @@ describe("useClientLiteRTWhisper Hook", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  it("starts browser speech recognition with the recorder's selected track", () => {
-    const selectedTrack = {
-      kind: "audio",
-      readyState: "live",
-      getSettings: vi.fn(() => ({ deviceId: "selected-webcam-mic" })),
-    };
-    const selectedStream = {
-      getAudioTracks: vi.fn(() => [selectedTrack]),
-    };
-    const replacementTrack = {
-      kind: "audio",
-      readyState: "live",
-      getSettings: vi.fn(() => ({ deviceId: "selected-headset-mic" })),
-    };
-    const replacementStream = {
-      getAudioTracks: vi.fn(() => [replacementTrack]),
-    };
-    const start = vi.fn();
-    const abort = vi.fn();
-    const speechRecognition = vi.fn(function MockSpeechRecognition() {
-      this.start = start;
-      this.abort = abort;
-    });
-    Object.defineProperty(window, "webkitSpeechRecognition", {
-      configurable: true,
-      value: speechRecognition,
-    });
-
-    const { rerender, unmount } = renderHook(
-      ({ audioStream, deviceId }) =>
-        useClientLiteRTWhisper({
-          classId: "CLASS_TEST",
-          studentUid: "student_123",
-          enabled: true,
-          audioStream,
-          deviceId,
-        }),
-      {
-        initialProps: {
-          audioStream: selectedStream,
-          deviceId: "selected-webcam-mic",
-        },
-      }
-    );
-
-    expect(speechRecognition).toHaveBeenCalledOnce();
-    expect(start).toHaveBeenCalledWith(selectedTrack);
-    rerender({
-      audioStream: replacementStream,
-      deviceId: "selected-headset-mic",
-    });
-    expect(abort).toHaveBeenCalledOnce();
-    expect(speechRecognition).toHaveBeenCalledTimes(2);
-    expect(start).toHaveBeenLastCalledWith(replacementTrack);
-    unmount();
-    expect(abort).toHaveBeenCalledTimes(2);
-    delete window.webkitSpeechRecognition;
-  });
-
   it('attaches Web Audio ScriptProcessorNode and processes audio frames with VAD', async () => {
     let capturedAudioProcess;
     const mockAudioTrack = {

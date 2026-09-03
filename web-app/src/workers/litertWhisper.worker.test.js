@@ -3,6 +3,7 @@ import {
   extractAudioFeatures,
   classifyLanguage,
   compileWhisperModel,
+  createSerialTaskQueue,
   isValidWhisperTokenSequence,
   CODE_SWITCHING_ANCHORS,
 } from './litertWhisper.worker';
@@ -86,6 +87,41 @@ describe('litertWhisper.worker', () => {
     )).toBe(true);
     expect(isValidWhisperTokenSequence(null)).toBe(false);
     expect(isValidWhisperTokenSequence([])).toBe(false);
+  });
+
+  it('serializes local inference tasks and continues after a failed task', async () => {
+    const enqueue = createSerialTaskQueue();
+    const events = [];
+    let releaseFirst;
+    const firstGate = new Promise(resolve => {
+      releaseFirst = resolve;
+    });
+
+    const first = enqueue(async () => {
+      events.push('first:start');
+      await firstGate;
+      events.push('first:end');
+    });
+    const second = enqueue(async () => {
+      events.push('second:start');
+      throw new Error('segment failed');
+    });
+    const third = enqueue(async () => {
+      events.push('third:start');
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual(['first:start']);
+    releaseFirst();
+    await first;
+    await expect(second).rejects.toThrow('segment failed');
+    await third;
+    expect(events).toEqual([
+      'first:start',
+      'first:end',
+      'second:start',
+      'third:start',
+    ]);
   });
 
   it('handles worker onmessage lifecycle for TRANSCRIBE, DISPOSE, and errors', async () => {

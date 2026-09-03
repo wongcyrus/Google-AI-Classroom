@@ -17,6 +17,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('firebase/storage', () => ({
   ref: vi.fn(() => ({})),
   uploadBytes: vi.fn().mockResolvedValue({ metadata: { size: 1024 } }),
+  getDownloadURL: vi.fn().mockResolvedValue('https://storage.test/audio.webm'),
 }));
 
 vi.mock('../utils/offlineBufferManager', () => ({
@@ -192,6 +193,64 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
 
     expect(result.current.isRecording).toBe(false);
     expect(mockAudioTrack.stop).toHaveBeenCalled();
+  });
+
+  it('uses the latest cloud-upload setting when recording becomes enabled', async () => {
+    const recorderInstances = [];
+    class ControllableMediaRecorder {
+      constructor(stream, options) {
+        this.stream = stream;
+        this.options = options;
+        this.state = 'inactive';
+        this.ondataavailable = null;
+        this.onstop = null;
+        recorderInstances.push(this);
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        this.onstop?.();
+      }
+      static isTypeSupported() {
+        return true;
+      }
+    }
+    window.MediaRecorder = ControllableMediaRecorder;
+    global.MediaRecorder = ControllableMediaRecorder;
+
+    const { uploadBytes } = await import('firebase/storage');
+    const { rerender } = renderHook(
+      ({ enabled, enableCloudUpload }) =>
+        useAudioRecorder({
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          studentEmail: 's1@school.edu',
+          enabled,
+          enableCloudUpload,
+          silenceSuppression: false,
+        }),
+      {
+        initialProps: {
+          enabled: false,
+          enableCloudUpload: false,
+        },
+      }
+    );
+
+    rerender({ enabled: true, enableCloudUpload: true });
+    await waitFor(() => expect(recorderInstances).toHaveLength(1));
+
+    const firstSegment = recorderInstances[0];
+    await act(async () => {
+      firstSegment.ondataavailable({
+        data: new Blob(['recorded-voice'], { type: 'audio/webm' }),
+      });
+      firstSegment.stop();
+    });
+
+    await waitFor(() => expect(uploadBytes).toHaveBeenCalledOnce());
   });
 
   it('does not automatically retry a failed microphone request until configuration changes', async () => {

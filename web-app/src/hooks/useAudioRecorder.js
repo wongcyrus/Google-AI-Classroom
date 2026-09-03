@@ -149,8 +149,8 @@ export function useAudioRecorder({
     if (!classId || !studentUid || isUploadingRef.current || !isRecordingRef.current) return;
     if (!blob || blob.size === 0) return;
 
-    // Silence suppression check: if enabled and average volume < 4% and peak < 8%
-    if (silenceSuppression && peakVol < vadSensitivity) {
+    // Suppress only consistently silent windows; VAD sensitivity should not discard quiet speech.
+    if (silenceSuppression && avgVol < 4 && peakVol < 8) {
       // Update status doc so teacher knows microphone is active and listening
       try {
         const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
@@ -524,7 +524,7 @@ export function useAudioRecorder({
       setIsRecording(false);
       return null;
     }
-  }, [deviceId, effStrideSec, uploadAudioSegment, startVolumeAnalysis, classId, studentUid]);
+  }, [deviceId, effStrideSec, enableCloudUpload, uploadAudioSegment, startVolumeAnalysis, classId, studentUid]);
 
   // Stop recording stream
   const stopRecording = useCallback(() => {
@@ -586,6 +586,7 @@ export function useAudioRecorder({
     effWindowSec,
     effStrideSec,
     enableMovingWindow,
+    enableCloudUpload,
     silenceSuppression,
     vadSensitivity,
     effectiveMode,
