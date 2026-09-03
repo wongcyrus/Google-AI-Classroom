@@ -22,6 +22,7 @@ import {
   getNudgeMessageForFilter,
   exportComplianceResultsToCsv,
 } from '../utils/studentCompliance';
+import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
 
 const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
@@ -497,6 +498,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         audioStatus: isActuallySharing ? status?.audioStatus : null,
         audioLevel: isActuallySharing ? (status?.audioLevel || 0) : 0,
         audioError: status ? status.audioError : null,
+        ...getStudentVoiceStatus(status),
         faceStatus: isActuallySharing ? status?.faceStatus : null,
         clientAiStatus: isActuallySharing ? status?.clientAiStatus : null,
         gemmaModelStatus: status?.gemmaModelStatus || 'not_loaded',
@@ -821,7 +823,12 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       return { id: uid, email: email };
     }), [classList, sharingStudentUids, uidToEmailMap]);
 
-  const selectedScreenshotUrl = selectedStudent && screenshots[selectedStudent.id] ? screenshots[selectedStudent.id].url : null;
+  const liveSelectedStudent = selectedStudent
+    ? students.find(student => student.id === selectedStudent.id) || selectedStudent
+    : null;
+  const selectedScreenshotUrl = liveSelectedStudent && screenshots[liveSelectedStudent.id]
+    ? screenshots[liveSelectedStudent.id].url
+    : null;
 
   const classComplianceSettings = useMemo(() => ({
     captureMode: selectedChannel === 'both' ? 'dual' : selectedChannel,
@@ -1160,10 +1167,10 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         ) : <p>All students are sharing their screen.</p>}
       </Modal>
 
-      {selectedStudent && (
+      {liveSelectedStudent && (
         <IndividualStudentView 
-          student={selectedStudent} 
-          screenshotData={screenshots[selectedStudent.id]} 
+          student={liveSelectedStudent}
+          screenshotData={screenshots[liveSelectedStudent.id]}
           screenshotUrl={selectedScreenshotUrl} 
           classId={classId}
           teacherUid={auth?.currentUser?.uid}

@@ -126,7 +126,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         {student?.liveTranscript && isSharing && (
           <div className="screen-speech-bubble" title={`Live Speech (Whisper): ${student.liveTranscript}`}>
             <span className="speech-lang-tag">
-              {student.speechLanguage === 'cantonese' ? '💬 粵' : student.speechLanguage === 'mandarin' ? '💬 普' : student.speechLanguage === 'mixed' ? '💬 粵/普/EN' : '💬 EN'}
+              {student.speechLanguage === 'cantonese' || /^zh-(HK|Hant)/i.test(student.speechLanguage || '') ? '💬 粵' : student.speechLanguage === 'mandarin' || /^zh-(CN|Hans)/i.test(student.speechLanguage || '') ? '💬 普' : student.speechLanguage === 'mixed' ? '💬 粵/普/EN' : '💬 EN'}
             </span>
             <span className="speech-text">"{student.liveTranscript}"</span>
           </div>

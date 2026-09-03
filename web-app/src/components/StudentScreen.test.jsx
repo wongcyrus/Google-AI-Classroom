@@ -190,6 +190,23 @@ describe('StudentScreen Component', () => {
     expect(screen.getByText('"點解 option B 係啱嘅？"')).toBeInTheDocument();
   });
 
+  it('renders zh-HK live speech as Cantonese', () => {
+    render(
+      <StudentScreen
+        student={{
+          ...mockStudent,
+          liveTranscript: '你做緊乜嘢呀',
+          speechLanguage: 'zh-HK',
+        }}
+        isSharing={true}
+        screenshotUrl="test.jpg"
+      />
+    );
+
+    expect(screen.getByText('💬 粵')).toBeInTheDocument();
+    expect(screen.getByText('"你做緊乜嘢呀"')).toBeInTheDocument();
+  });
+
   it('renders on-device LiteRT Gemma violation alert badge', () => {
     const studentWithGemmaAlert = {
       ...mockStudent,

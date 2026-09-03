@@ -519,7 +519,7 @@ export const analyzeAudioFlow = ai.defineFlow(
     }),
   },
   async ({ audioUrl, classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
-    const transcribeModel = model || AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe';
+    const transcribeModel = model || AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-preview';
     const reasoningModel = AI_MODEL || 'gemini-3.5-flash-lite';
 
     const transcribePrompt = `Transcribe this student audio recording verbatim in its original spoken language (Cantonese, Mandarin, or English) with speaker diarization timestamps (e.g., [00:05] Speaker 1: ...). If there is background silence or no intelligible speech, output [NO_SPEECH_DETECTED].`;

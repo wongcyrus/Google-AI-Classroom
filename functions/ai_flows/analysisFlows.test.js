@@ -32,8 +32,8 @@ describe('analyzeAudioFlow Dynamic Placeholder Interpolation', () => {
     expect(promptText).toContain('Audio Transcript / Context:\n"I am done with question 3."');
   });
 
-  it('configures gemini-3.5-transcribe as the dedicated audio transcription model', async () => {
+  it('configures gemini-3.5-transcribe-preview as the dedicated audio transcription model', async () => {
     const { AI_TRANSCRIBE_MODEL } = await import('./config.js');
-    expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe');
+    expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe-preview');
   });
 });
