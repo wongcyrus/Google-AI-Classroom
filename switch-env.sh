@@ -35,9 +35,14 @@ echo "=========================================================="
 # 1. Switch Firebase CLI active project
 firebase use "$FIREBASE_ALIAS" 2>/dev/null || firebase use "$PROJECT_ID"
 
-# 2. Copy the active web-app/.env
+# 2. Copy the active web-app/.env and mode-specific files
 if [ -f "$ENV_FILE" ]; then
     cp "$ENV_FILE" web-app/.env
+    if [ "$FIREBASE_ALIAS" = "prod" ]; then
+        cp "$ENV_FILE" web-app/.env.production
+    elif [ "$FIREBASE_ALIAS" = "dev" ]; then
+        cp "$ENV_FILE" web-app/.env.development
+    fi
     echo "📄 Updated web-app/.env"
 fi
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 
@@ -50,11 +50,55 @@ export const useClassSchedule = (classId) => {
       return lessons.sort((a, b) => b.start - a.start);
     };
 
-    const getDefaultLesson = (lessons) => {
-      if (lessons.length === 0) return null;
+    const getSmartDefaultLesson = async (lessons, targetClassId) => {
+      if (!lessons || lessons.length === 0) return null;
       const now = new Date();
       const currentLesson = lessons.find(l => now >= l.start && now <= l.end);
       if (currentLesson) return currentLesson;
+
+      if (targetClassId) {
+        try {
+          const jobsSnap = await getDocs(query(
+            collection(db, 'videoJobs'),
+            where('classId', '==', targetClassId),
+            where('status', '==', 'completed'),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+          ));
+          if (!jobsSnap.empty) {
+            const jobData = jobsSnap.docs[0].data();
+            const jobStart = jobData.startTime?.toDate ? jobData.startTime.toDate() : (jobData.startTime ? new Date(jobData.startTime) : null);
+            if (jobStart) {
+              const matchingLesson = lessons.find(l => Math.abs(l.start.getTime() - jobStart.getTime()) < 60000);
+              if (matchingLesson) return matchingLesson;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not query videoJobs for smart default lesson:', err);
+        }
+
+        try {
+          const statusSnap = await getDocs(collection(db, 'classes', targetClassId, 'status'));
+          let latestTs = null;
+          const docs = statusSnap?.docs || (statusSnap?.forEach ? statusSnap : []);
+          docs.forEach(d => {
+            const data = typeof d.data === 'function' ? d.data() : d;
+            const ts = data?.timestamp?.toDate ? data.timestamp.toDate() : (data?.timestamp ? new Date(data.timestamp) : null);
+            if (ts && (!latestTs || ts > latestTs)) latestTs = ts;
+          });
+          if (latestTs) {
+            const matchingLesson = lessons.find(l => {
+              const padStart = new Date(l.start.getTime() - 30 * 60 * 1000);
+              const padEnd = new Date(l.end.getTime() + 60 * 60 * 1000);
+              return latestTs >= padStart && latestTs <= padEnd;
+            });
+            if (matchingLesson) return matchingLesson;
+          }
+        } catch (err) {
+          console.warn('Could not query status for smart default lesson:', err);
+        }
+      }
+
       const lastCompletedLesson = lessons.find(l => now > l.end);
       return lastCompletedLesson || lessons[lessons.length - 1];
     };
@@ -72,7 +116,7 @@ export const useClassSchedule = (classId) => {
         if (scheduleData) {
           const generatedLessons = generateLessons(scheduleData, tz);
           setLessons(generatedLessons);
-          const defaultLesson = getDefaultLesson(generatedLessons);
+          const defaultLesson = await getSmartDefaultLesson(generatedLessons, classId);
           if (defaultLesson) {
             setStartTime(toLocalISOString(defaultLesson.start));
             setEndTime(toLocalISOString(defaultLesson.end));

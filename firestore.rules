@@ -80,6 +80,15 @@ service cloud.firestore {
         allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
       }
 
+      match /screenBroadcast/{docId} {
+        allow read: if isTeacher() || isStudentInClass(classId);
+        allow write: if isTeacher();
+      }
+
+      match /screenBroadcastViewers/{studentUid} {
+        allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
+      }
+
       match /lessons/{lessonId} {
         allow read, write: if isTeacherInClass(classId);
       }

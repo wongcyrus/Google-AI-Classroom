@@ -1131,3 +1131,66 @@
   cursor: pointer;
 }
 
+/* Teacher Live Screen Broadcast Alert Banner */
+.teacher-broadcast-alert-banner {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 1px solid #4338ca;
+  color: #ffffff;
+  padding: 0.9rem 1.25rem;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(49, 46, 129, 0.25);
+  animation: banner-glow 2s infinite alternate;
+}
+
+.broadcast-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.broadcast-banner-title {
+  font-size: 0.95rem;
+  color: #e0e7ff;
+}
+
+.broadcast-banner-title strong {
+  color: #ffffff;
+}
+
+.broadcast-view-btn {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
+}
+
+.broadcast-view-btn:hover {
+  background: #4338ca;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes banner-glow {
+  0% {
+    box-shadow: 0 4px 12px rgba(49, 46, 129, 0.25);
+    border-color: #4338ca;
+  }
+  100% {
+    box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45);
+    border-color: #6366f1;
+  }
+}
+
+

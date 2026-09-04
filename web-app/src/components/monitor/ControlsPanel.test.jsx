@@ -439,4 +439,9 @@ describe('ControlsPanel Full Component Suite', () => {
       voiceAiMode: 'disabled',
     }));
   });
+
+  it('renders the teacher screen broadcast control button', () => {
+    render(<ControlsPanel {...defaultProps} classId="CLASS_101" />);
+    expect(screen.getByRole('button', { name: /Share Screen to Students/i })).toBeInTheDocument();
+  });
 });

@@ -14,6 +14,8 @@ import useAudioRecorder from '../hooks/useAudioRecorder';
 import { useClientLiteRTWhisper } from '../hooks/useClientLiteRTWhisper';
 import { useClientLiteRTGemma } from '../hooks/useClientLiteRTGemma';
 import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
+import useTeacherScreenBroadcastStudent from '../hooks/useTeacherScreenBroadcastStudent';
+import TeacherScreenViewerModal from './TeacherScreenViewerModal';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
@@ -66,6 +68,8 @@ const StudentView = ({ user }) => {
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
   const [isReadinessWizardOpen, setIsReadinessWizardOpen] = useState(false);
+  const [isExamReadyLocal, setIsExamReadyLocal] = useState(false);
+  const [isViewingTeacherScreen, setIsViewingTeacherScreen] = useState(false);
 
   // Multi-camera selection & Layout State
   const [availableWebcams, setAvailableWebcams] = useState([]);
@@ -314,9 +318,10 @@ const StudentView = ({ user }) => {
     }
     setSelectedMicDeviceId(actualDeviceId);
   }, [selectedMicDeviceId]);
+  const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady);
   const isAudioCaptureActive =
     Boolean(enableAudioCapture) &&
-    (isSharing || isWebcamSharing || isScreenSharing || Boolean(myProperties?.examReadiness?.isReady)) &&
+    (isSharing || isWebcamSharing || isScreenSharing || isExamActive) &&
     isAudioUserEnabled &&
     !isSessionDisplaced;
 
@@ -586,6 +591,33 @@ const StudentView = ({ user }) => {
     webcamStreamRef,
     audioStreamRef,
   });
+
+  // WebRTC Receiver Hook for Teacher Screen Broadcast
+  const {
+    isBroadcastActive: isTeacherBroadcastActive,
+    broadcastInfo: teacherBroadcastInfo,
+    remoteStream: teacherRemoteStream,
+    connectionState: teacherConnectionState,
+    hasAudio: teacherBroadcastHasAudio,
+    isAudioMuted: isTeacherAudioMuted,
+    joinBroadcast: joinTeacherBroadcast,
+    leaveBroadcast: leaveTeacherBroadcast,
+    toggleAudioMute: toggleTeacherAudioMute,
+  } = useTeacherScreenBroadcastStudent({
+    classId: activeClass,
+    studentUid: user?.uid,
+    studentEmail: user?.email,
+  });
+
+  // Automatically open teacher broadcast viewer for student when teacher starts sharing
+  useEffect(() => {
+    if (isTeacherBroadcastActive && activeClass) {
+      setIsViewingTeacherScreen(true);
+      joinTeacherBroadcast();
+    } else if (!isTeacherBroadcastActive) {
+      setIsViewingTeacherScreen(false);
+    }
+  }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast]);
 
   // MediaPipe Face & Gaze AI Monitor
   const {
@@ -886,6 +918,14 @@ const StudentView = ({ user }) => {
       if (webcamVideoRef.current.srcObject !== webcamStreamRef.current) {
         webcamVideoRef.current.srcObject = webcamStreamRef.current;
       }
+      try {
+        const playPromise = webcamVideoRef.current.play?.();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(e => console.debug('[StudentView] webcam video play note:', e));
+        }
+      } catch (playErr) {
+        console.debug('[StudentView] webcam play error:', playErr);
+      }
     }
   }, [isWebcamSharing, primaryStream]);
 
@@ -1018,7 +1058,14 @@ const StudentView = ({ user }) => {
     if (screenVideoRef.current && screenStreamRef.current && isScreenSharing) {
       if (screenVideoRef.current.srcObject !== screenStreamRef.current) {
         screenVideoRef.current.srcObject = screenStreamRef.current;
-        screenVideoRef.current.play().catch(e => console.debug('[StudentView] screen video play note:', e));
+        try {
+          const playPromise = screenVideoRef.current.play?.();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(e => console.debug('[StudentView] screen video play note:', e));
+          }
+        } catch (playErr) {
+          console.debug('[StudentView] screen play error:', playErr);
+        }
       }
     }
   }, [isScreenSharing]);
@@ -1168,6 +1215,7 @@ const StudentView = ({ user }) => {
             statusUpdate.latestWebcamPath = screenshotRef.fullPath;
           }
           await setDoc(statusRef, statusUpdate, { merge: true });
+          console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${screenshotRef.fullPath}`);
         } catch (uploadErr) {
           console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
           await saveToOfflineQueue({
@@ -1488,9 +1536,12 @@ const StudentView = ({ user }) => {
     let worker = null;
     let fallbackInterval = null;
 
-    if (isSharing && isCapturing && activeClass) {
+    const shouldCapture = isSharing && (isCapturing || isExamActive) && activeClass;
+
+    if (shouldCapture) {
       const now = Date.now();
-      const startTime = captureStartedAt ? (captureStartedAt.toMillis ? captureStartedAt.toMillis() : (captureStartedAt.toDate ? captureStartedAt.toDate().getTime() : now)) : now;
+      const rawStart = captureStartedAt || (isExamActive && myProperties?.examReadiness?.calibratedAt ? new Date(myProperties.examReadiness.calibratedAt) : null);
+      const startTime = rawStart ? (rawStart.toMillis ? rawStart.toMillis() : (rawStart.toDate ? rawStart.toDate().getTime() : (rawStart.getTime ? rawStart.getTime() : now))) : now;
       const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
 
       if (now - startTime < twoAndAHalfHours) {
@@ -1567,7 +1618,7 @@ const StudentView = ({ user }) => {
         fallbackInterval = null;
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, user?.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
 
   return (
     <div className="student-view-container">
@@ -1648,6 +1699,32 @@ const StudentView = ({ user }) => {
           >
             Resume Here
           </button>
+        </div>
+      )}
+
+      {/* Teacher Live Screen Broadcast Alert Banner */}
+      {isTeacherBroadcastActive && (
+        <div className="teacher-broadcast-alert-banner">
+          <div className="broadcast-banner-info">
+            <span className="live-pulse-dot" />
+            <span className="broadcast-banner-title">
+              🖥️ <strong>Teacher is sharing their screen:</strong>{' '}
+              {teacherBroadcastInfo?.teacherEmail ? teacherBroadcastInfo.teacherEmail : 'Live Classroom Broadcast'}
+              {teacherBroadcastHasAudio && ' (with audio)'}
+            </span>
+          </div>
+          <div className="broadcast-banner-action">
+            <button
+              type="button"
+              className="broadcast-view-btn"
+              onClick={() => {
+                setIsViewingTeacherScreen(true);
+                joinTeacherBroadcast();
+              }}
+            >
+              🖥️ View Teacher's Screen
+            </button>
+          </div>
         </div>
       )}
 
@@ -1784,7 +1861,7 @@ const StudentView = ({ user }) => {
                     </span>
                   </div>
                   <span className="active-class-pill">Class: {activeClass}</span>
-                  {isCapturing && (
+                  {(isCapturing || isExamActive) && (
                     <span className="active-telemetry-pill">📸 {frameRate}s capture</span>
                   )}
                 </div>
@@ -1844,7 +1921,7 @@ const StudentView = ({ user }) => {
               </div>
             )}
 
-            {isCapturing && isSharing && (
+            {(isCapturing || isExamActive) && isSharing && (
               <p className="recording-indicator">
                 🔴 Live invigilation active: Capturing every {frameRate}s (Quality optimized).
               </p>
@@ -2228,6 +2305,7 @@ const StudentView = ({ user }) => {
         onClose={() => setIsReadinessWizardOpen(false)}
         onComplete={async (readinessResult) => {
           setIsReadinessWizardOpen(false);
+          setIsExamReadyLocal(true);
 
           // 1. Enable user mic state & device (if available)
           if (readinessResult?.micDeviceId) {
@@ -2265,6 +2343,21 @@ const StudentView = ({ user }) => {
         onSelectCameraDevice={(id) => {
           setSelectedWebcamId(id);
         }}
+      />
+
+      {/* Teacher Live Screen Viewer Modal for Students */}
+      <TeacherScreenViewerModal
+        isOpen={isViewingTeacherScreen}
+        onClose={() => {
+          setIsViewingTeacherScreen(false);
+          leaveTeacherBroadcast();
+        }}
+        remoteStream={teacherRemoteStream}
+        connectionState={teacherConnectionState}
+        hasAudio={teacherBroadcastHasAudio}
+        isAudioMuted={isTeacherAudioMuted}
+        onToggleMute={toggleTeacherAudioMute}
+        broadcastInfo={teacherBroadcastInfo}
       />
     </div>
   );

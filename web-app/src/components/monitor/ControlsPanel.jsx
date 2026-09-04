@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import Modal from '../Modal';
 import AiCostReportView from '../AiCostReportView';
+import TeacherScreenBroadcastModal from '../TeacherScreenBroadcastModal';
+import useTeacherScreenBroadcast from '../../hooks/useTeacherScreenBroadcast';
+import { auth } from '../../firebase-config';
 import { formatBytes, formatAiCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
@@ -49,12 +52,40 @@ const ControlsPanel = ({
     setEditablePromptText,
     handleRunAnalysis,
     handleRunAllImagesAnalysis,
-    isAnalyzing = false
+    isAnalyzing = false,
+    isScreenBroadcasting: propIsScreenBroadcasting,
+    broadcastScreenStream: propBroadcastScreenStream,
+    broadcastHasAudio: propBroadcastHasAudio,
+    broadcastViewers: propBroadcastViewers,
+    startScreenBroadcast: propStartScreenBroadcast,
+    stopScreenBroadcast: propStopScreenBroadcast,
+    showBroadcastModal: propShowBroadcastModal,
+    setShowBroadcastModal: propSetShowBroadcastModal,
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
+    const [localShowBroadcastModal, setLocalShowBroadcastModal] = useState(false);
     const [isPreloadSent, setIsPreloadSent] = useState(false);
     const [modalConfigTab, setModalConfigTab] = useState('webcam'); // 'webcam' | 'voice' | 'screen'
+
+    const showBroadcastModal = propShowBroadcastModal !== undefined ? propShowBroadcastModal : localShowBroadcastModal;
+    const setShowBroadcastModal = propSetShowBroadcastModal || setLocalShowBroadcastModal;
+
+    const teacherUid = auth?.currentUser?.uid || null;
+    const teacherEmail = auth?.currentUser?.email || null;
+
+    const localBroadcast = useTeacherScreenBroadcast({
+      classId: propIsScreenBroadcasting === undefined ? classId : null,
+      teacherUid,
+      teacherEmail
+    });
+
+    const isScreenBroadcasting = propIsScreenBroadcasting !== undefined ? propIsScreenBroadcasting : localBroadcast.isBroadcasting;
+    const broadcastScreenStream = propBroadcastScreenStream !== undefined ? propBroadcastScreenStream : localBroadcast.screenStream;
+    const broadcastHasAudio = propBroadcastHasAudio !== undefined ? propBroadcastHasAudio : localBroadcast.hasAudio;
+    const broadcastViewers = propBroadcastViewers !== undefined ? propBroadcastViewers : localBroadcast.viewers;
+    const startScreenBroadcast = propStartScreenBroadcast || localBroadcast.startBroadcast;
+    const stopScreenBroadcast = propStopScreenBroadcast || localBroadcast.stopBroadcast;
 
     // Derive current modes with fallback
     const currentMode = (() => {
@@ -319,6 +350,82 @@ const ControlsPanel = ({
                     🔇 Muted
                   </button>
                 </div>
+              </div>
+
+              {/* Channel 3: Live Screen Broadcast to Class */}
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    🖥️ Share Screen to Class
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: isScreenBroadcasting ? '#dc2626' : '#64748b', fontWeight: 600 }}>
+                    {isScreenBroadcasting ? `🔴 Live (${broadcastViewers.length} watching)` : '⚪ Off'}
+                  </span>
+                </div>
+                {!isScreenBroadcasting ? (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    style={{
+                      width: '100%',
+                      fontSize: '0.84rem',
+                      padding: '0.55rem 0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                      color: '#1e293b',
+                      borderColor: '#cbd5e1',
+                      fontWeight: 600
+                    }}
+                    onClick={async () => {
+                      await startScreenBroadcast();
+                    }}
+                  >
+                    🖥️ Share Screen to Students
+                  </button>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      style={{
+                        fontSize: '0.82rem',
+                        padding: '0.5rem 0.6rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        borderRadius: '6px',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        borderColor: '#bfdbfe',
+                        fontWeight: 600
+                      }}
+                      onClick={() => setShowBroadcastModal(true)}
+                    >
+                      👁️ Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-action-btn"
+                      style={{
+                        fontSize: '0.82rem',
+                        padding: '0.5rem 0.6rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        borderRadius: '6px'
+                      }}
+                      onClick={stopScreenBroadcast}
+                    >
+                      ⏹ Stop Share
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Cadence & Size Settings */}
@@ -1368,6 +1475,17 @@ const ControlsPanel = ({
             </div>
           </Modal>
         )}
+
+        {/* Teacher Screen Broadcast Live Preview & Control Modal */}
+        <TeacherScreenBroadcastModal
+          isOpen={showBroadcastModal}
+          onClose={() => setShowBroadcastModal(false)}
+          screenStream={broadcastScreenStream}
+          isBroadcasting={isScreenBroadcasting}
+          hasAudio={broadcastHasAudio}
+          viewers={broadcastViewers}
+          onStopBroadcast={stopScreenBroadcast}
+        />
     </div>
     );
 };

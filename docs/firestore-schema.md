@@ -658,3 +658,32 @@ Stores information about zip file creation jobs.
 *   **`mails`**: Standalone collection for triggering emails.
 *   **`users`**: A directory for user discovery. It is not directly linked in the authorization flow but is used to look up user UIDs by email for features like sharing.
 *   **`propertyUploadJobs` -> `classes`**: Many-to-one. A property upload job belongs to one class.
+
+---
+
+## ⚡ Indexes & Query Optimization
+
+All multi-field queries in the application rely on Firestore composite indexes defined in [`firestore.indexes.json`](../firestore.indexes.json). Deploying these indexes guarantees sub-second query performance and eliminates missing index errors during live exams.
+
+### 1. Composite Index Matrix
+
+| Collection / Scope | Indexed Fields | Query Pattern & Application Feature |
+| :--- | :--- | :--- |
+| **`screenshots`** (Group) | `classId ASC, timestamp DESC` | **PlaybackView / Session Review**: Fetches latest screenshots in descending chronological order for timeline scrubbing and smart session initialization. |
+| **`screenshots`** (Group) | `classId ASC, timestamp ASC` | **Media Processing Cloud Functions**: Chronologically iterates screenshots for automated MP4 compilation (`processVideoJob`). |
+| **`screenshots`** (Group) | `classId ASC, studentUid ASC, timestamp ASC` | **Per-Student Timeline**: Extracts an individual student's contiguous frame sequence for single-student video generation or export. |
+| **`videoJobs`** (Group) | `classId ASC, status ASC, createdAt DESC` | **Smart Lesson Resolution & Video Library**: Detects completed student videos to automatically activate the correct lesson time slot (`useClassSchedule`). |
+| **`videoJobs`** (Group) | `classId ASC, createdAt DESC` | **Teacher Video Dashboard**: Lists recent video jobs across all students in a class. |
+| **`videoJobs`** (Group) | `studentUid ASC, createdAt DESC` | **Student History**: Displays all processed video assets for a single student. |
+| **`aiJobs`** (Group) | `classId ASC, createdAt DESC` | **AI Cost Report**: Aggregates token usage, financial spend, and Gemini model breakdown across a class session. |
+| **`aiJobs`** (Group) | `studentUid ASC, createdAt DESC` | **Student AI Consumption Matrix**: Per-student audit table displaying job counts and token consumption. |
+| **`audio`** (Group) | `classId ASC, studentUid ASC, windowStartSec ASC` | **Audio Transcript Modal**: Chronological retrieval of 30-second audio snippets for dialogue playback and multi-speaker diarization seek. |
+| **`irregularities`** (Group)| `classId ASC, timestamp DESC` | **IrregularitiesView & Incident Dossiers**: Real-time violation alert stream and audit report export. |
+
+### 2. Time-To-Live (TTL) Automatic Deletion Policies
+
+Collections with high throughput media metadata include the `expireAt` timestamp field, governed by Cloud Firestore TTL policies and Cloud Storage cleanup triggers:
+
+- **`screenshots`**: `expireAt = timestamp + (classes.retentionDays * 86400s)`. Raw screenshots are deleted automatically once retention expires.
+- **`videoJobs`**: `expireAt = finishedAt + (classes.videoRetentionDays * 86400s)`. Compiled MP4 videos are purged when class video retention limits expire.
+- **`zipJobs`**: `expireAt = createdAt + 7 days`. Ephemeral ZIP download archives are automatically removed from Cloud Storage after 7 days.

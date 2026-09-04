@@ -312,6 +312,10 @@ describe('StudentView Component Extended Test Suite', () => {
       const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
       fireEvent.click(finishBtn);
     });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Live invigilation active/i)).toBeInTheDocument();
+    });
   });
 
   it('handles dismissing notification banner and clicking allow', async () => {

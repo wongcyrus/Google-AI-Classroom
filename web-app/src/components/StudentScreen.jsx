@@ -69,13 +69,13 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           <>
             {showScreen && (
               <div className="feed-viewport">
-                <span className="feed-tag">🖥️ Screen</span>
+                <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
                 <img src={screenUrl} alt={`Screen from ${student.email}`} />
               </div>
             )}
             {showWebcam && (
               <div className="feed-viewport">
-                <span className="feed-tag">📷 Webcam</span>
+                <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
                 <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
               </div>
             )}
@@ -88,7 +88,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         ) : selectedChannel === 'screen' ? (
           showScreen ? (
             <div className="feed-viewport single">
-              <span className="feed-tag">🖥️ Screen</span>
+              <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
               <img src={screenUrl} alt={`Screen from ${student.email}`} />
             </div>
           ) : (
@@ -99,7 +99,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
         ) : (
           showWebcam ? (
             <div className="feed-viewport single">
-              <span className="feed-tag">📷 Webcam</span>
+              <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
               <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
             </div>
           ) : (

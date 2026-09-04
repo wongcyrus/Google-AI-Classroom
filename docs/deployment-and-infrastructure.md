@@ -92,7 +92,7 @@ When a project is deployed or seeded via `node admin/scripts/seed_initial_data.m
 
 ## 🔄 Switching Between Environments (Dev vs Prod)
 
-Switching between Development and Production is instantaneous with zero Terraform overhead:
+Switching between Development and Production is instantaneous with zero Terraform overhead, backed by build-time safety guardrails that make cross-environment configuration leaks impossible:
 
 ### 1. Instant Switcher (`./switch-env.sh`)
 ```bash
@@ -104,11 +104,40 @@ Switching between Development and Production is instantaneous with zero Terrafor
 ```
 *What happens under the hood in <0.5s:*
 - Switches Firebase CLI active project (`firebase use dev` / `firebase use prod`).
-- Synchronizes `web-app/.env` from isolated environment templates.
+- Synchronizes `web-app/.env` from isolated environment templates (`web-app/.env.prod` or `web-app/.env.dev`).
+- Synchronizes Vite mode-specific environment files (`web-app/.env.production` or `web-app/.env.development`).
 - Generates and propagates `functions/config.js` to all 7 Cloud Function codebases.
-- Updates Cloud Storage `cors.json`.
+- Updates Cloud Storage `cors.json` with appropriate origin domain whitelists.
 
-### 2. Single-Command Deployment (`./deploy.sh`)
+### 2. Build-Time Safety Guardrails (`vite.config.js`)
+To guarantee that development Firebase credentials (e.g., `it114115-dev-2026`) are never accidentally bundled into production hosting assets (e.g., `https://it114115-2627.web.app`), `web-app/vite.config.js` executes strict pre-compilation validation:
+
+```javascript
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+
+  // Safety Assertion: If building for production, enforce target project is it114115-2627
+  if (mode === 'production') {
+    const projectId = env.VITE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID;
+    if (projectId && projectId !== 'it114115-2627') {
+      throw new Error(
+        `[CRITICAL BUILD ERROR] Production build aborted!\n` +
+        `Expected target projectId: 'it114115-2627'\n` +
+        `Found projectId in environment: '${projectId}'\n` +
+        `Please ensure you are using the correct production configuration.`
+      );
+    }
+  }
+  // ...
+});
+```
+
+* **Targeted Build Scripts (`web-app/package.json`):**
+  - `npm run build:prod`: Runs `vite build --mode production` with hard project ID validation.
+  - `npm run build:dev`: Runs `vite build --mode development` for dev staging verification.
+  - `npm run build`: Standard Vite build inheriting the active `.env`.
+
+### 3. Single-Command Deployment (`./deploy.sh`)
 You can deploy directly to any target environment by specifying it in the command:
 ```bash
 # Deploy entire stack directly to Production
@@ -122,7 +151,33 @@ You can deploy directly to any target environment by specifying it in the comman
 
 # Deploy ONLY functions to Development
 ./deploy.sh dev --only functions
+
+# Deploy ONLY Firestore composite indexes
+npx -y firebase-tools@latest deploy --only firestore:indexes --project it114115-2627
 ```
+
+---
+
+## 🗄️ Firestore Composite Index Architecture (`firestore.indexes.json`)
+
+All complex Firestore queries used across the frontend, cloud functions, and analytics engines require composite indexes. These indexes are declared declaratively in [`firestore.indexes.json`](../firestore.indexes.json) and deployed via the Firebase CLI:
+
+| Collection / Group | Indexed Fields | Query Purpose |
+| :--- | :--- | :--- |
+| **`screenshots`** | `classId ASC, timestamp DESC` | Real-time Session Review & Playback timeline queries |
+| **`screenshots`** | `classId ASC, timestamp ASC` | Chronological session scrubbing & video generation |
+| **`screenshots`** | `classId ASC, studentUid ASC, timestamp ASC` | Per-student timeline reconstruction & export |
+| **`videoJobs`** | `classId ASC, status ASC, createdAt DESC` | Smart Lesson discovery (detecting completed morning/afternoon sessions) & Video Library |
+| **`videoJobs`** | `classId ASC, createdAt DESC` | Class-wide video compilation job tracking |
+| **`videoJobs`** | `studentUid ASC, createdAt DESC` | Individual student video archives |
+| **`aiJobs`** | `classId ASC, createdAt DESC` | AI Cost Report & financial audit summaries |
+| **`aiJobs`** | `studentUid ASC, createdAt DESC` | Student AI consumption breakdown |
+| **`audio`** | `classId ASC, studentUid ASC, windowStartSec ASC` | Diarization seek player & dialogue playback |
+| **`irregularities`**| `classId ASC, timestamp DESC` | Live AI alert feed & Incident Dossier generation |
+
+> [!IMPORTANT]
+> If a query is executed without an active composite index in production, Firestore throws a missing index error (with a direct creation link). Maintaining all indexes in `firestore.indexes.json` guarantees immediate Zero-Downtime deployments across new student cohorts and yearly projects.
+
 
 ---
 

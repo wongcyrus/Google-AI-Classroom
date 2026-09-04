@@ -43,7 +43,7 @@ The project is a monorepo composed of three main parts:
     *   **Dual-Channel Split Streams & Streamlined Controls:** Independent live screen sharing and webcam capture with multi-camera selection, stream swapping, and responsive segmented button groups for fast channel switching (`🖥️+📷 Dual`, `🖥️ Screen`, `📷 Webcam`) and audio recording/muted toggling.
     *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
     *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
-    *   **Live Teacher Monitor & Compliance Audit:** Streamlined ControlsPanel with zero-space problem student filtering (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`), targeted one-click broadcast nudge (`📢 Nudge (N)`), instant compliance audit CSV export (`📥 Export CSV`), 1-to-1 WebRTC Live Peek with 2-way talkback, and high-detail student inspection modals.
+    *   **Live Teacher Monitor & Compliance Audit:** Streamlined ControlsPanel with zero-space problem student filtering (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`), targeted one-click broadcast nudge (`📢 Nudge (N)`), instant compliance audit CSV export (`📥 Export CSV`), 1-to-1 WebRTC Live Peek with 2-way talkback, high-detail student inspection modals, offline screen caching (`🖥️ Screen (Offline)` badge) displaying students' last-known frames post-session, and Smart Default Lesson Resolution (`useClassSchedule.js`) detecting active morning/afternoon slots automatically via completed video jobs and student status heartbeats.
 *   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
@@ -296,18 +296,32 @@ To create and deploy a brand-new project from scratch in a single command:
 ./setup-new-project.sh it114115-dev-2026 01C74C-667DFE-538DBC
 ```
 
-### Switching & Deploying Routine Updates
+### Switching Environments & Build-Time Guardrails
 
-- **Deploying to Production (`it114115-2627`):**
-  ```bash
-  firebase use it114115-2627
-  ./deploy.sh
-  ```
+Switching between Development (`it114115-dev-2026`) and Production (`it114115-2627`) is instantaneous:
 
-- **Deploying to Development (`it114115-dev-2026`):**
+```bash
+# Switch to Production
+./switch-env.sh prod
+
+# Switch to Development
+./switch-env.sh dev
+```
+
+* **Vite Production Safety Assertion (`vite.config.js`):** Production builds (`--mode production`) strictly validate that `VITE_PROJECT_ID === 'it114115-2627'`. If an environment mismatch is detected, the build **aborts immediately** with a fatal error, preventing development credentials from leaking into production hosting.
+* **Targeted Build Scripts:**
+  - `npm run build:prod`: Builds production assets with hard project ID validation.
+  - `npm run build:dev`: Builds development assets targeting `it114115-dev-2026`.
+* **Deploying Changes:**
   ```bash
-  firebase use it114115-dev-2026
-  ./deploy.sh
+  # Deploy full stack to active environment
+  ./deploy.sh prod
+  
+  # Deploy only hosting
+  ./deploy.sh prod --only hosting
+
+  # Deploy Firestore composite indexes
+  npx -y firebase-tools@latest deploy --only firestore:indexes --project it114115-2627
   ```
 
 ### Multi-Codebase Architecture

@@ -14,6 +14,8 @@ vi.mock('../firebase-config', () => ({
   },
 }));
 
+const fixedDate = new Date('2026-08-30T08:30:00Z');
+
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   doc: vi.fn(),
@@ -38,7 +40,7 @@ vi.mock('firebase/firestore', () => ({
             isWebcamSharing: true,
             isAudioSharing: true,
             faceStatus: 'normal',
-            timestamp: new Date(),
+            timestamp: fixedDate,
           }),
         },
         {
@@ -50,7 +52,7 @@ vi.mock('firebase/firestore', () => ({
             isAudioSharing: false,
             faceStatus: 'looking_away',
             yawAngle: 32,
-            timestamp: new Date(),
+            timestamp: fixedDate,
           }),
         },
       ],
@@ -74,12 +76,42 @@ vi.mock('firebase/storage', () => ({
   getDownloadURL: vi.fn().mockResolvedValue('https://storage.local/screen.jpg'),
 }));
 
+const mockRunPerImageAnalysis = vi.fn().mockResolvedValue();
+const mockRunAllImagesAnalysis = vi.fn().mockResolvedValue();
+const mockSetPromptFilter = vi.fn();
+const mockStartBroadcast = vi.fn();
+const mockStopBroadcast = vi.fn();
+
 vi.mock('../hooks/usePrompts', () => ({
   usePrompts: vi.fn(() => ({
     prompts: [],
     filteredPrompts: [],
     promptFilter: 'all',
-    setPromptFilter: vi.fn(),
+    setPromptFilter: mockSetPromptFilter,
+  })),
+}));
+
+vi.mock('../hooks/useAudioPrompts', () => ({
+  useAudioPrompts: vi.fn(() => ({
+    audioPrompts: [],
+    loading: false,
+  })),
+}));
+
+vi.mock('../hooks/useTeacherScreenBroadcast', () => ({
+  default: vi.fn(() => ({
+    isBroadcasting: false,
+    activeStudentCount: 0,
+    broadcastError: null,
+    startBroadcast: mockStartBroadcast,
+    stopBroadcast: mockStopBroadcast,
+  })),
+  useTeacherScreenBroadcast: vi.fn(() => ({
+    isBroadcasting: false,
+    activeStudentCount: 0,
+    broadcastError: null,
+    startBroadcast: mockStartBroadcast,
+    stopBroadcast: mockStopBroadcast,
   })),
 }));
 
@@ -87,8 +119,8 @@ vi.mock('../hooks/useAnalysis', () => ({
   useAnalysis: vi.fn(() => ({
     isAnalyzing: false,
     analysisResults: null,
-    runPerImageAnalysis: vi.fn(),
-    runAllImagesAnalysis: vi.fn(),
+    runPerImageAnalysis: mockRunPerImageAnalysis,
+    runAllImagesAnalysis: mockRunAllImagesAnalysis,
   })),
 }));
 
@@ -110,8 +142,14 @@ describe('MonitorView Component Suite', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it('renders student filter dropdown, grid channel switcher, and export csv button', async () => {
@@ -186,6 +224,10 @@ describe('MonitorView Component Suite', () => {
     const studentCard = screen.getByText('student1@school.edu');
     fireEvent.click(studentCard);
 
+    // Start capture first so Pause Stream button is rendered
+    const startBtn = screen.getByRole('button', { name: /Start Capture/i });
+    fireEvent.click(startBtn);
+
     // Hide controls button
     const hideBtn = screen.getByRole('button', { name: /Hide Controls/i });
     fireEvent.click(hideBtn);
@@ -197,6 +239,7 @@ describe('MonitorView Component Suite', () => {
 
     // Pause stream
     const pauseBtn = screen.getByRole('button', { name: /Pause Stream/i });
+    expect(pauseBtn).toBeInTheDocument();
     fireEvent.click(pauseBtn);
   });
 });

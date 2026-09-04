@@ -7,9 +7,16 @@ vi.mock('../firebase-config', () => ({
 }));
 
 const mockGetDoc = vi.fn();
+const mockGetDocs = vi.fn().mockResolvedValue({ empty: true, docs: [] });
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   getDoc: (...args) => mockGetDoc(...args),
+  collection: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  getDocs: (...args) => mockGetDocs(...args),
 }));
 
 describe('useClassSchedule Hook', () => {
@@ -79,16 +86,40 @@ describe('useClassSchedule Hook', () => {
     expect(result.current.endTime).toBe('2026-08-01T11:00');
   });
 
-  it('handles class with no schedule or non-existent document gracefully', async () => {
+  it('smartly defaults to lesson matching completed video jobs instead of empty later slots', async () => {
+    // Class has two slots on the same day: 09:00-11:00 and 14:00-16:00
     mockGetDoc.mockResolvedValueOnce({
-      exists: () => false,
+      exists: () => true,
+      data: () => ({
+        schedule: {
+          startDate: '2026-08-01',
+          endDate: '2026-08-01',
+          timeZone: 'UTC',
+          timeSlots: [
+            { days: ['Sat'], startTime: '09:00', endTime: '11:00' },
+            { days: ['Sat'], startTime: '14:00', endTime: '16:00' },
+          ],
+        },
+      }),
     });
 
-    const { result } = renderHook(() => useClassSchedule('CLASS_EMPTY'));
+    // Mock videoJobs returning a completed job matching the morning slot 09:00
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [{
+        data: () => ({
+          startTime: { toDate: () => new Date('2026-08-01T09:00:00.000Z') },
+          status: 'completed',
+        }),
+      }],
+    });
+
+    const { result } = renderHook(() => useClassSchedule('CLASS_MULTI_SLOT'));
 
     await waitFor(() => {
-      expect(result.current.schedule).toBeNull();
-      expect(result.current.lessons).toEqual([]);
+      expect(result.current.lessons.length).toBe(2);
+      expect(result.current.selectedLesson).toBe('2026-08-01T09:00:00.000Z');
     });
   });
 });
+

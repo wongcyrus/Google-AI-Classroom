@@ -245,3 +245,15 @@
   background: rgba(217, 119, 6, 0.95);
 }
 
+.offline-badge {
+  display: inline-block;
+  background: rgba(100, 116, 139, 0.85);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  letter-spacing: 0.02em;
+}
+

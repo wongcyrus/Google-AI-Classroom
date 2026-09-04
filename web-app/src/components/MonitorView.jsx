@@ -6,6 +6,7 @@ import { ref, getDownloadURL } from 'firebase/storage';
 
 
 import Modal from './Modal';
+import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
 
 import ControlsPanel from './monitor/ControlsPanel';
 import StudentsGrid from './monitor/StudentsGrid';
@@ -14,6 +15,7 @@ import IndividualStudentView from './IndividualStudentView';
 
 import { usePrompts } from '../hooks/usePrompts';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
+import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 
 import { useAnalysis } from '../hooks/useAnalysis';
 import {
@@ -49,7 +51,20 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
   const [reviewTime, setReviewTime] = useState(null);
   const [timelineScrubTime, setTimelineScrubTime] = useState(null);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const timelineDebounceTimer = useRef(null);
+
+  const teacherUid = user?.uid || auth?.currentUser?.uid || null;
+  const teacherEmail = user?.email || auth?.currentUser?.email || null;
+
+  const {
+    isBroadcasting: isScreenBroadcasting,
+    screenStream: broadcastScreenStream,
+    hasAudio: broadcastHasAudio,
+    viewers: broadcastViewers,
+    startBroadcast: startScreenBroadcast,
+    stopBroadcast: stopScreenBroadcast,
+  } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
 
   const handleLessonChange = (e) => {
     originalHandleLessonChange(e);
@@ -543,9 +558,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         const isFresh = statusTs > 0 && (currentNow - statusTs) <= staleThresholdMs;
         const isActivelySharing = Boolean(status.isSharing && isFresh);
 
-        // In live mode, only resolve and display screenshots for actively sharing students with fresh heartbeats
-        if (!isActivelySharing) continue;
-
+        // Resolve latest screenshot for all students with saved paths (both live and offline)
         const screenPath = status.latestScreenPath || status.latestImagePath;
         const webcamPath = status.latestWebcamPath;
         if (!screenPath && !webcamPath) continue;
@@ -578,19 +591,22 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
           screen: resolvedScreenUrl ? {
             url: resolvedScreenUrl,
             timestamp: status.timestamp,
-            imagePath: screenPath
+            imagePath: screenPath,
+            isLive: isActivelySharing
           } : null,
           webcam: resolvedWebcamUrl ? {
             url: resolvedWebcamUrl,
             timestamp: status.timestamp,
-            imagePath: webcamPath
+            imagePath: webcamPath,
+            isLive: isActivelySharing
           } : null,
           url: primaryUrl,
           timestamp: status.timestamp,
-          imagePath: primaryPath
+          imagePath: primaryPath,
+          isLive: isActivelySharing
         };
 
-        if (isPerImageAnalysisRunning && primaryUrl && primaryPath) {
+        if (isPerImageAnalysisRunning && isActivelySharing && primaryUrl && primaryPath) {
           const lastAnalysis = lastAnalyzedPathMapRef.current.get(studentUid);
           const minIntervalMs = (Number(samplingRate) || 5) * (Number(frameRate) || 15) * 1000;
           const isSameImage = lastAnalysis && lastAnalysis.imagePath === primaryPath;
@@ -605,7 +621,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       }
 
       if (!isCancelled) {
-        // Set screenshots to only include actively sharing students
+        // Set screenshots for students (live and offline last known)
         setScreenshots(updates);
 
         for (const item of analysisQueue) {
@@ -1056,6 +1072,14 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAnalysis={handleRunAnalysis}
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
+        isScreenBroadcasting={isScreenBroadcasting}
+        broadcastScreenStream={broadcastScreenStream}
+        broadcastHasAudio={broadcastHasAudio}
+        broadcastViewers={broadcastViewers}
+        startScreenBroadcast={startScreenBroadcast}
+        stopScreenBroadcast={stopScreenBroadcast}
+        showBroadcastModal={showBroadcastModal}
+        setShowBroadcastModal={setShowBroadcastModal}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -1075,6 +1099,86 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
               <span>
                 {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
               </span>
+
+              {/* Prominent Top Bar Teacher Screen Broadcast Button */}
+              {!isScreenBroadcasting ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await startScreenBroadcast();
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+                  }}
+                  title="Broadcast your screen live to all students in this class"
+                >
+                  🖥️ Share Screen to Class
+                </button>
+              ) : (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span
+                    style={{
+                      background: '#fee2e2',
+                      color: '#b91c1c',
+                      border: '1px solid #fca5a5',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    🔴 Live Broadcast to Students ({broadcastViewers.length} watching)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBroadcastModal(true)}
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                    title="View connected students list and preview"
+                  >
+                    👥 Viewers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopScreenBroadcast}
+                    style={{
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Stop Screen Broadcast"
+                  >
+                    ⏹ Stop Sharing
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1199,6 +1303,17 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
           <p>No analysis results available.</p>
         )}
       </Modal>
+
+      {/* Teacher Screen Broadcast Live Preview & Control Modal */}
+      <TeacherScreenBroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        screenStream={broadcastScreenStream}
+        isBroadcasting={isScreenBroadcasting}
+        hasAudio={broadcastHasAudio}
+        viewers={broadcastViewers}
+        onStopBroadcast={stopScreenBroadcast}
+      />
     </div>
   );
 };
