@@ -444,4 +444,30 @@ describe('ControlsPanel Full Component Suite', () => {
     render(<ControlsPanel {...defaultProps} classId="CLASS_101" />);
     expect(screen.getByRole('button', { name: /Share Screen to Students/i })).toBeInTheDocument();
   });
+
+  it('handles Video Recording Mode changes independently of Grid View Channel', () => {
+    const handleCaptureModeChange = vi.fn();
+    const setSelectedChannel = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        captureMode="dual"
+        handleCaptureModeChange={handleCaptureModeChange}
+        selectedChannel="both"
+        setSelectedChannel={setSelectedChannel}
+      />
+    );
+
+    // Click Video Recording Mode button
+    const screenRecordBtn = screen.getByRole('button', { name: '🖥️ Screen Record' });
+    fireEvent.click(screenRecordBtn);
+    expect(handleCaptureModeChange).toHaveBeenCalledWith('screen');
+    expect(setSelectedChannel).not.toHaveBeenCalled();
+
+    // Click Grid View Channel button
+    const screenViewBtn = screen.getByRole('button', { name: '🖥️ Screen' });
+    fireEvent.click(screenViewBtn);
+    expect(setSelectedChannel).toHaveBeenCalledWith('screen');
+  });
 });

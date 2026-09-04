@@ -394,4 +394,129 @@ describe('IndividualStudentView Component', () => {
       expect(screen.getAllByRole('listitem').length).toBe(2);
     });
   });
+
+  it('initializes tab to Screen when selectedChannel is screen or problemFilter is no_screen', () => {
+    const { rerender } = render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="screen"
+        onClose={vi.fn()}
+      />
+    );
+
+    const screenTab = screen.getByRole('tab', { name: /Screen Tab/i });
+    expect(screenTab).toHaveClass('active');
+
+    // Rerender with problemFilter = no_screen
+    rerender(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="both"
+        problemFilter="no_screen"
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('tab', { name: /Screen Tab/i })).toHaveClass('active');
+  });
+
+  it('initializes tab to Webcam when selectedChannel is webcam or problemFilter is no_cam', () => {
+    const { rerender } = render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="webcam"
+        onClose={vi.fn()}
+      />
+    );
+
+    const webcamTab = screen.getByRole('tab', { name: /Webcam Tab/i });
+    expect(webcamTab).toHaveClass('active');
+
+    // Rerender with problemFilter = no_cam
+    rerender(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="both"
+        problemFilter="no_cam"
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('tab', { name: /Webcam Tab/i })).toHaveClass('active');
+  });
+
+  it('disables dual and webcam tabs and selects Screen when captureMode is screen', () => {
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        captureMode="screen"
+        onClose={vi.fn()}
+      />
+    );
+
+    const dualTab = screen.getByRole('tab', { name: /Dual View Tab/i });
+    const screenTab = screen.getByRole('tab', { name: /Screen Tab/i });
+    const webcamTab = screen.getByRole('tab', { name: /Webcam Tab/i });
+
+    expect(screenTab).toHaveClass('active');
+    expect(dualTab).toBeDisabled();
+    expect(webcamTab).toBeDisabled();
+  });
+
+  it('restores previous tab when stopping live peek rather than forcing dual', () => {
+    const { rerender } = render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="screen"
+        onClose={vi.fn()}
+      />
+    );
+
+    const screenTab = screen.getByRole('tab', { name: /Screen Tab/i });
+    expect(screenTab).toHaveClass('active');
+
+    // Start Live Peek
+    const livePeekBtn = screen.getByRole('tab', { name: /Live Peek Tab/i });
+    fireEvent.click(livePeekBtn);
+    expect(mockStartPeek).toHaveBeenCalled();
+
+    mockHookReturn.isPeeking = true;
+    mockHookReturn.connectionState = 'connected';
+
+    rerender(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        selectedChannel="screen"
+        onClose={vi.fn()}
+      />
+    );
+
+    // Stop Live Peek
+    const stopPeekBtn = screen.getByRole('tab', { name: /Live Peek Tab/i });
+    fireEvent.click(stopPeekBtn);
+    expect(mockStopPeek).toHaveBeenCalled();
+
+    // Verify it restored 'screen' tab instead of 'dual'
+    expect(screen.getByRole('tab', { name: /Screen Tab/i })).toHaveClass('active');
+  });
 });
+

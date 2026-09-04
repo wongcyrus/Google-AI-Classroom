@@ -11,6 +11,7 @@ const ControlsPanel = ({
     message, setMessage, handleSendMessage, setShowControls, 
     frameRate, handleFrameRateChange, frameRateOptions, 
     maxImageSize, handleMaxImageSizeChange, maxImageSizeOptions,
+    captureMode = 'dual', handleCaptureModeChange,
     selectedChannel = 'both', setSelectedChannel,
     isCapturing, toggleCapture, isPaused, setIsPaused, 
     setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
@@ -295,7 +296,34 @@ const ControlsPanel = ({
 
             {/* Media Stream Channels (Screen, Webcam, Voice) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
-              {/* Channel 1: Video Streams (Screen & Webcam) */}
+              {/* Channel 1: Video Recording Mode (Class Setting) */}
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    📹 Video Recording Mode
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Class Setting</span>
+                </div>
+                <div className="capture-option-group" role="group" aria-label="Video recording mode">
+                  {[
+                    { value: 'dual', label: '📹 Dual Record' },
+                    { value: 'screen', label: '🖥️ Screen Record' },
+                    { value: 'webcam', label: '📷 Cam Record' },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`capture-option-btn ${captureMode === option.value ? 'active' : ''}`}
+                      aria-pressed={captureMode === option.value}
+                      onClick={() => handleCaptureModeChange?.(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Channel 2: Grid View Channel (Teacher Display Mode) */}
               <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>

@@ -6,9 +6,46 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import useWebRTCPeekTeacher from '../hooks/useWebRTCPeekTeacher';
 import AudioTranscriptModal from './AudioTranscriptModal';
 
-const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId, teacherUid, onClose }) => {
+const IndividualStudentView = ({ 
+  student, 
+  screenshotData, 
+  screenshotUrl, 
+  classId, 
+  teacherUid, 
+  initialTab,
+  selectedChannel = 'both',
+  problemFilter = 'all',
+  captureMode = 'dual',
+  onClose 
+}) => {
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('dual'); // 'dual' | 'screen' | 'webcam' | 'live_peek'
+
+  const resolveDefaultTab = () => {
+    if (initialTab) return initialTab;
+    // 1. Contextual problem filter priority
+    if (problemFilter === 'no_cam') return 'webcam';
+    if (problemFilter === 'no_screen') return 'screen';
+    // 2. Class recording mode constraint
+    if (captureMode === 'screen') return 'screen';
+    if (captureMode === 'webcam') return 'webcam';
+    // 3. Overall grid view channel filter
+    if (selectedChannel === 'screen') return 'screen';
+    if (selectedChannel === 'webcam') return 'webcam';
+    return 'dual';
+  };
+
+  const [activeTab, setActiveTab] = useState(resolveDefaultTab);
+  const previousTabRef = useRef(resolveDefaultTab());
+
+  useEffect(() => {
+    if (activeTab !== 'live_peek') {
+      previousTabRef.current = activeTab;
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setActiveTab(resolveDefaultTab());
+  }, [student?.id, student?.uid, student?.studentUid, selectedChannel, problemFilter, captureMode, initialTab]);
   const [availableMics, setAvailableMics] = useState([]);
   const [selectedMicId, setSelectedMicId] = useState('');
 
@@ -264,7 +301,9 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
   const handleToggleLivePeek = () => {
     if (isPeeking) {
       stopPeek();
-      if (activeTab === 'live_peek') setActiveTab('dual');
+      if (activeTab === 'live_peek') {
+        setActiveTab(previousTabRef.current || resolveDefaultTab());
+      }
     } else {
       startPeek();
       setActiveTab('live_peek');
@@ -280,28 +319,44 @@ const IndividualStudentView = ({ student, screenshotData, screenshotUrl, classId
             <p className="student-subemail">{student.email}</p>
           </div>
 
-          <div className="channel-tab-group">
+          <div className="channel-tab-group" role="tablist" aria-label="Student video channels">
             <button 
+              role="tab"
+              aria-selected={activeTab === 'dual'}
+              aria-label="Dual View Tab"
               className={`channel-tab-btn ${activeTab === 'dual' ? 'active' : ''}`}
               onClick={() => setActiveTab('dual')}
+              disabled={captureMode === 'screen' || captureMode === 'webcam'}
+              title={captureMode === 'screen' ? 'Class set to Screen Only' : captureMode === 'webcam' ? 'Class set to Webcam Only' : 'Dual View'}
             >
               Dual View
             </button>
             <button 
+              role="tab"
+              aria-selected={activeTab === 'screen'}
+              aria-label="Screen Tab"
               className={`channel-tab-btn ${activeTab === 'screen' ? 'active' : ''}`}
               onClick={() => setActiveTab('screen')}
-              disabled={!screenUrl}
+              disabled={captureMode === 'webcam' || (!screenUrl && captureMode === 'dual')}
+              title={captureMode === 'webcam' ? 'Class set to Webcam Only' : '🖥️ Screen'}
             >
               🖥️ Screen
             </button>
             <button 
+              role="tab"
+              aria-selected={activeTab === 'webcam'}
+              aria-label="Webcam Tab"
               className={`channel-tab-btn ${activeTab === 'webcam' ? 'active' : ''}`}
               onClick={() => setActiveTab('webcam')}
-              disabled={!webcamUrl}
+              disabled={captureMode === 'screen' || (!webcamUrl && captureMode === 'dual')}
+              title={captureMode === 'screen' ? 'Class set to Screen Only' : '📷 Webcam'}
             >
               📷 Webcam
             </button>
             <button 
+              role="tab"
+              aria-selected={activeTab === 'live_peek'}
+              aria-label="Live Peek Tab"
               className={`channel-tab-btn live-peek-tab-btn ${activeTab === 'live_peek' ? 'active' : ''}`}
               onClick={handleToggleLivePeek}
               style={{

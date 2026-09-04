@@ -36,6 +36,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const [screenshots, setScreenshots] = useState({});
   const [selectedChannel, setSelectedChannel] = useState('both');
   const [problemFilter, setProblemFilter] = useState('all');
+  const [captureMode, setCaptureMode] = useState('dual');
   const [message, setMessage] = useState('');
 
   const [frameRate, setFrameRate] = useState(15);
@@ -323,6 +324,10 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         }
         if (data.enableAudioCapture !== undefined) {
           setEnableAudioCapture(data.enableAudioCapture);
+        }
+        const classCapture = data.captureMode || data.settings?.captureMode;
+        if (classCapture !== undefined) {
+          setCaptureMode(classCapture);
         }
         if (data.voiceAiMode !== undefined) {
           setVoiceAiMode(data.voiceAiMode);
@@ -847,10 +852,10 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     : null;
 
   const classComplianceSettings = useMemo(() => ({
-    captureMode: selectedChannel === 'both' ? 'dual' : selectedChannel,
+    captureMode: captureMode || 'dual',
     enableAudioCapture: enableAudioCapture,
     isCapturing: isCapturing,
-  }), [selectedChannel, enableAudioCapture, isCapturing]);
+  }), [captureMode, enableAudioCapture, isCapturing]);
 
   const complianceSummary = useMemo(() => {
     return getComplianceSummary(students, classComplianceSettings, screenshots);
@@ -995,6 +1000,17 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     }
   };
 
+  const handleCaptureModeChange = async (newMode) => {
+    setCaptureMode(newMode);
+    if (!classId) return;
+    try {
+      const classRef = doc(db, "classes", classId);
+      await updateDoc(classRef, { captureMode: newMode });
+    } catch (err) {
+      console.error("Failed to update class captureMode setting:", err);
+    }
+  };
+
   return (
     <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
       {showControls && <ControlsPanel
@@ -1008,6 +1024,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         maxImageSize={maxImageSize}
         handleMaxImageSizeChange={handleMaxImageSizeChange}
         maxImageSizeOptions={maxImageSizeOptions}
+        captureMode={captureMode}
+        handleCaptureModeChange={handleCaptureModeChange}
         selectedChannel={selectedChannel}
         setSelectedChannel={setSelectedChannel}
         isCapturing={isCapturing}
@@ -1278,6 +1296,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
           screenshotUrl={selectedScreenshotUrl} 
           classId={classId}
           teacherUid={auth?.currentUser?.uid}
+          selectedChannel={selectedChannel}
+          problemFilter={problemFilter}
+          captureMode={captureMode}
           onClose={() => setSelectedStudent(null)} 
         />
       )}

@@ -242,4 +242,21 @@ describe('MonitorView Component Suite', () => {
     expect(pauseBtn).toBeInTheDocument();
     fireEvent.click(pauseBtn);
   });
+
+  it('synchronizes individual student popup with grid channel filter without breaking compliance', () => {
+    render(<MonitorView {...defaultProps} />);
+
+    // Switch grid channel to screen
+    const channelSelect = screen.getByRole('combobox', { name: 'Grid view channel' });
+    fireEvent.change(channelSelect, { target: { value: 'screen' } });
+    expect(channelSelect.value).toBe('screen');
+
+    // Click student to open popup
+    const studentCard = screen.getByText('student1@school.edu');
+    fireEvent.click(studentCard);
+
+    // Verify popup opened with screen tab active (following the overall filter)
+    const activeScreenTab = screen.getByRole('tab', { name: /Screen Tab/i });
+    expect(activeScreenTab).toHaveClass('active');
+  });
 });
