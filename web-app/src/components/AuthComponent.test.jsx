@@ -106,4 +106,65 @@ describe('AuthComponent Component', () => {
       );
     });
   });
+
+  it('prevents duplicate submissions and disables buttons while login is in progress', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    let resolveLogin;
+    signInWithEmailAndPassword.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveLogin = resolve;
+    }));
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), {
+      target: { value: 'teacher@vtc.edu.hk' }
+    });
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'teacherpass123' }
+    });
+
+    const submitBtn = screen.getByRole('button', { name: /Sign In/i });
+    fireEvent.click(submitBtn);
+
+    // Immediately shows Signing In... and is disabled
+    expect(screen.getByRole('button', { name: /Signing In\.\.\./i })).toBeDisabled();
+    expect(screen.getByLabelText(/Email Address/i)).toBeDisabled();
+    expect(screen.getByLabelText(/Password/i)).toBeDisabled();
+
+    // Spam click the button 3 more times while in-flight
+    fireEvent.click(submitBtn);
+    fireEvent.click(submitBtn);
+    fireEvent.click(submitBtn);
+
+    // Must have only been called once!
+    expect(signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
+
+    // Resolve login
+    resolveLogin({ user: { uid: 'teacher1' } });
+  });
+
+  it('displays a friendly rate-limit message when auth/too-many-requests occurs', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    const error = new Error('Too many attempts');
+    error.code = 'auth/too-many-requests';
+    signInWithEmailAndPassword.mockRejectedValueOnce(error);
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), {
+      target: { value: 'teacher@vtc.edu.hk' }
+    });
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'wrongpass' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/temporarily blocked by Firebase for security/i)).toBeInTheDocument();
+    });
+
+    // Button should be re-enabled after failure
+    expect(screen.getByRole('button', { name: /Sign In/i })).not.toBeDisabled();
+  });
 });

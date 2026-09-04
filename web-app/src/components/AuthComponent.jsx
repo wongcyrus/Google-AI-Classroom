@@ -15,6 +15,7 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isChrome = isGoogleChrome();
   const detectedBrowser = getBrowserName();
@@ -31,8 +32,10 @@ const AuthComponent = ({ unverifiedUser }) => {
     };
   }, [cooldown]);
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isLoading) return;
+
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.endsWith('@stu.vtc.edu.hk') && !cleanEmail.endsWith('@vtc.edu.hk')) {
       setError('Only emails ending with @stu.vtc.edu.hk or @vtc.edu.hk are allowed.');
@@ -44,73 +47,112 @@ const AuthComponent = ({ unverifiedUser }) => {
       return;
     }
 
-    createUserWithEmailAndPassword(auth, cleanEmail, password)
-      .then((userCredential) => {
-        sendEmailVerification(userCredential.user)
-          .then(() => {
-            setMessage('Registration successful. A verification email has been sent. Please verify your email before logging in.');
-          })
-          .catch((error) => {
-            setError("Error sending verification email: " + error.message);
-          });
-      })
-      .catch((error) => {
-        setError(error.message);
-      });
+    setIsLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      await sendEmailVerification(userCredential.user);
+      setMessage('Registration successful. A verification email has been sent. Please verify your email before logging in.');
+    } catch (err) {
+      if (err.code === 'auth/too-many-requests') {
+        setError('Too many requests. Please wait a moment before trying again.');
+      } else {
+        setError(err.message || 'Registration failed.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isLoading) return;
+
     const cleanEmail = email.trim().toLowerCase();
-    
+    if (!cleanEmail) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
     if (cleanEmail.endsWith('@stu.vtc.edu.hk') && !isChrome) {
       setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please reopen this page in Google Chrome.`);
       return;
     }
 
-    signInWithEmailAndPassword(auth, cleanEmail, password)
-      .then(() => {
-        setMessage('');
-        setError('');
-      })
-      .catch((error) => {
-        if (error.code === 'auth/invalid-credential') {
-          setError('Login failed. Please check your email and password.');
-          setMessage('If you were recently added to a class, you might need to set your password first. Use the "Forgot Password" link.');
-        } else {
-          setError(error.message);
-        }
-      });
-  };
+    setIsLoading(true);
+    setError('');
+    setMessage('');
 
-  const handleResendVerificationEmail = (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (unverifiedUser && cooldown === 0) {
-      sendEmailVerification(unverifiedUser)
-        .then(() => {
-          setMessage('A new verification email has been sent. Please check your inbox.');
-          setError('');
-          setCooldown(60);
-        })
-        .catch((error) => {
-          setError('Error resending verification email: ' + error.message);
-        });
+    try {
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
+      // Successful login will be observed by onAuthStateChanged in App.jsx
+    } catch (err) {
+      setIsLoading(false);
+      if (err.code === 'auth/invalid-credential') {
+        setError('Login failed. Please check your email and password.');
+        setMessage('If you were recently added to a class, you might need to set your password first. Use the "Forgot Password" link.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Too many login attempts. Your account or network has been temporarily blocked by Firebase for security. Please wait 1-2 minutes before trying again, or reset your password.');
+      } else {
+        setError(err.message || 'Login failed. Please check your credentials and try again.');
+      }
     }
   };
 
-  const handleForgotPassword = (e) => {
+  const handleResendVerificationEmail = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isLoading || cooldown > 0) return;
+
+    if (unverifiedUser) {
+      setIsLoading(true);
+      setError('');
+      try {
+        await sendEmailVerification(unverifiedUser);
+        setMessage('A new verification email has been sent. Please check your inbox.');
+        setCooldown(60);
+      } catch (err) {
+        if (err.code === 'auth/too-many-requests') {
+          setError('Too many requests. Please wait before requesting another verification email.');
+        } else {
+          setError('Error resending verification email: ' + err.message);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isLoading) return;
+
     if (!email) {
       setError('Please enter your email address to reset your password.');
       return;
     }
-    sendPasswordResetEmail(auth, email.trim())
-      .then(() => {
-        setMessage('Password reset email sent. Please check your inbox.');
-      })
-      .catch((error) => {
-        setError(error.message);
-      });
+
+    setIsLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setMessage('Password reset email sent. Please check your inbox.');
+    } catch (err) {
+      if (err.code === 'auth/too-many-requests') {
+        setError('Too many requests. Please wait a moment before trying again.');
+      } else {
+        setError(err.message || 'Failed to send password reset email.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -152,6 +194,7 @@ const AuthComponent = ({ unverifiedUser }) => {
               placeholder="user@stu.vtc.edu.hk or @vtc.edu.hk"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
               required
             />
           </div>
@@ -164,16 +207,34 @@ const AuthComponent = ({ unverifiedUser }) => {
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
               required
             />
           </div>
 
           <div className="auth-buttons-stack">
             <div className="auth-primary-actions">
-              <button type="submit" className="auth-submit-btn">
-                Sign In
+              <button 
+                type="submit" 
+                className="auth-submit-btn" 
+                disabled={isLoading}
+                aria-busy={isLoading}
+              >
+                {isLoading ? (
+                  <span className="auth-btn-loading">
+                    <span className="auth-spinner" aria-hidden="true" />
+                    Signing In...
+                  </span>
+                ) : (
+                  'Sign In'
+                )}
               </button>
-              <button type="button" onClick={handleRegister} className="auth-register-btn secondary-btn">
+              <button 
+                type="button" 
+                onClick={handleRegister} 
+                className="auth-register-btn secondary-btn"
+                disabled={isLoading}
+              >
                 Register
               </button>
             </div>
@@ -182,15 +243,16 @@ const AuthComponent = ({ unverifiedUser }) => {
               type="button" 
               onClick={handleForgotPassword} 
               className="forgot-password-button"
+              disabled={isLoading}
             >
               Forgot Password?
             </button>
 
             {unverifiedUser && (
               <button 
-                type="button"
+                type="button" 
                 onClick={handleResendVerificationEmail} 
-                disabled={cooldown > 0}
+                disabled={cooldown > 0 || isLoading}
                 className="resend-verification-button"
               >
                 {cooldown > 0 ? `Resend Verification (${cooldown}s)` : 'Resend Verification Email'}

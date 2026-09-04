@@ -51,7 +51,10 @@ const App = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && currentUser.emailVerified) {
-        const idTokenResult = await currentUser.getIdTokenResult(true);
+        let idTokenResult = await currentUser.getIdTokenResult();
+        if (!idTokenResult.claims.role) {
+          idTokenResult = await currentUser.getIdTokenResult(true);
+        }
         const resolvedRole = idTokenResult.claims.role || 'student';
 
         // Enforce Google Chrome strictly for students

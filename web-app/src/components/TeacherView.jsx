@@ -21,7 +21,10 @@ const TeacherView = ({ user }) => {
   useEffect(() => {
     const checkRole = async () => {
       if (user) {
-        const idTokenResult = await user.getIdTokenResult(true);
+        let idTokenResult = await user.getIdTokenResult();
+        if (!idTokenResult.claims.role) {
+          idTokenResult = await user.getIdTokenResult(true);
+        }
         setRole(idTokenResult.claims.role);
       }
     };

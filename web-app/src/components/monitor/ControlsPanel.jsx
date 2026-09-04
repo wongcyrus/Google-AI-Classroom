@@ -323,33 +323,6 @@ const ControlsPanel = ({
                 </div>
               </div>
 
-              {/* Channel 2: Grid View Channel (Teacher Display Mode) */}
-              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    🖥️ Video Channels
-                  </label>
-                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Screen & Webcam</span>
-                </div>
-                <div className="capture-option-group" role="group" aria-label="Video capture channels">
-                  {[
-                    { value: 'both', label: '🖥️+📷 Dual' },
-                    { value: 'screen', label: '🖥️ Screen' },
-                    { value: 'webcam', label: '📷 Webcam' },
-                  ].map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={`capture-option-btn ${selectedChannel === option.value ? 'active' : ''}`}
-                      aria-pressed={selectedChannel === option.value}
-                      onClick={() => setSelectedChannel?.(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Channel 2: Audio Stream (Voice & Mic) */}
               <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>

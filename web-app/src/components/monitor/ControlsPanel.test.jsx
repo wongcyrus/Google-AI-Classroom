@@ -79,24 +79,24 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(screen.getByText(/Stop Capture/i)).toBeInTheDocument();
   });
 
-  it('uses consistent segmented buttons for video and audio capture choices', () => {
+  it('uses consistent segmented buttons for video recording mode and audio capture choices', () => {
     const handleFrameRateChange = vi.fn();
     const handleMaxImageSizeChange = vi.fn();
-    const setSelectedChannel = vi.fn();
+    const handleCaptureModeChange = vi.fn();
     const handleAudioCaptureToggle = vi.fn();
 
     render(
       <ControlsPanel
         {...defaultProps}
-        setSelectedChannel={setSelectedChannel}
+        handleCaptureModeChange={handleCaptureModeChange}
         handleFrameRateChange={handleFrameRateChange}
         handleMaxImageSizeChange={handleMaxImageSizeChange}
         handleAudioCaptureToggle={handleAudioCaptureToggle}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '🖥️ Screen' }));
-    expect(setSelectedChannel).toHaveBeenCalledWith('screen');
+    fireEvent.click(screen.getByRole('button', { name: '🖥️ Screen Record' }));
+    expect(handleCaptureModeChange).toHaveBeenCalledWith('screen');
 
     fireEvent.click(screen.getByRole('button', { name: '🎙️ Record' }));
     expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
@@ -445,29 +445,23 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(screen.getByRole('button', { name: /Share Screen to Students/i })).toBeInTheDocument();
   });
 
-  it('handles Video Recording Mode changes independently of Grid View Channel', () => {
+  it('handles Video Recording Mode changes in class settings', () => {
     const handleCaptureModeChange = vi.fn();
-    const setSelectedChannel = vi.fn();
 
     render(
       <ControlsPanel
         {...defaultProps}
         captureMode="dual"
         handleCaptureModeChange={handleCaptureModeChange}
-        selectedChannel="both"
-        setSelectedChannel={setSelectedChannel}
       />
     );
 
-    // Click Video Recording Mode button
     const screenRecordBtn = screen.getByRole('button', { name: '🖥️ Screen Record' });
     fireEvent.click(screenRecordBtn);
     expect(handleCaptureModeChange).toHaveBeenCalledWith('screen');
-    expect(setSelectedChannel).not.toHaveBeenCalled();
 
-    // Click Grid View Channel button
-    const screenViewBtn = screen.getByRole('button', { name: '🖥️ Screen' });
-    fireEvent.click(screenViewBtn);
-    expect(setSelectedChannel).toHaveBeenCalledWith('screen');
+    const camRecordBtn = screen.getByRole('button', { name: '📷 Cam Record' });
+    fireEvent.click(camRecordBtn);
+    expect(handleCaptureModeChange).toHaveBeenCalledWith('webcam');
   });
 });
