@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISATE 2026: Gemini AI Classroom Assistant & Invigilator | Cyrus Wong</title>
+  <style>
+    :root {
+      --bg-primary: #070b14;
+      --bg-card: #0e1626;
+      --bg-card-border: #1e2c48;
+      --text-main: #f0f4fc;
+      --text-muted: #94a3b8;
+      --accent-cyan: #00f2fe;
+      --accent-blue: #38bdf8;
+      --accent-indigo: #818cf8;
+      --accent-purple: #c084fc;
+      --accent-green: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-red: #f87171;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* Top presentation control bar */
+    header {
+      height: 52px;
+      background: rgba(14, 22, 38, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--bg-card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+      font-size: 0.9rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-size: 1.05rem;
+    }
+
+    .tag-pill {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent-blue);
+      font-weight: 500;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .timer-display {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      color: var(--accent-cyan);
+      background: rgba(0, 242, 254, 0.08);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 242, 254, 0.2);
+    }
+
+    .btn-ctrl {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-ctrl:hover {
+      background: #1a2742;
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    /* Main viewport */
+    #deck-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .slide {
+      position: absolute;
+      width: min(94vw, 1500px);
+      height: min(84vh, 843px); /* 16:9 aspect */
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      padding: 40px 48px;
+      display: none;
+      flex-direction: column;
+      opacity: 0;
+      transform: scale(0.98);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Slide Typography */
+    .slide-header {
+      margin-bottom: 24px;
+    }
+
+    .act-label {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+    }
+
+    .slide-title {
+      font-size: 2.1rem;
+      font-weight: 800;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #ffffff 40%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+
+    .slide-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Two column slide content */
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 32px;
+      flex: 1;
+      align-items: center;
+    }
+
+    .grid-2col-equal {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      flex: 1;
+      align-items: stretch;
+    }
+
+    .grid-image-full {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .slide-img {
+      max-width: 100%;
+      max-height: 560px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+      object-fit: contain;
+    }
+
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .bullet-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 1.05rem;
+      line-height: 1.5;
+    }
+
+    .bullet-icon {
+      font-size: 1.3rem;
+      line-height: 1;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .bullet-text strong {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .badge-callout {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      border-radius: 4px;
+      margin-right: 6px;
+      font-family: var(--font-mono);
+    }
+    .badge-cyan { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid rgba(0, 242, 254, 0.3); }
+    .badge-green { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); border: 1px solid rgba(52, 211, 153, 0.3); }
+    .badge-amber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); border: 1px solid rgba(251, 191, 36, 0.3); }
+    .badge-purple { background: rgba(192, 132, 252, 0.15); color: var(--accent-purple); border: 1px solid rgba(192, 132, 252, 0.3); }
+
+    /* Code & Prompt blocks */
+    .code-card {
+      background: #060911;
+      border: 1px solid #1a253a;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .code-header {
+      background: #0f172a;
+      padding: 8px 16px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .code-body {
+      padding: 16px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .kwd { color: #f472b6; font-weight: 600; }
+    .fn { color: #60a5fa; }
+    .str { color: #a7f3d0; }
+    .cmt { color: #64748b; font-style: italic; }
+    .num { color: #fde047; }
+    .key { color: #38bdf8; }
+
+    /* Speaker Notes Drawer */
+    #notes-drawer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 220px;
+      background: rgba(10, 15, 29, 0.96);
+      backdrop-filter: blur(16px);
+      border-top: 2px solid var(--accent-indigo);
+      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+      padding: 20px 32px;
+      z-index: 200;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #notes-drawer.open {
+      transform: translateY(0);
+    }
+
+    .notes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .notes-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent-indigo);
+    }
+
+    .notes-content {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+
+    .notes-cue {
+      display: inline-block;
+      background: rgba(129, 140, 248, 0.15);
+      border: 1px solid rgba(129, 140, 248, 0.3);
+      color: #a5b4fc;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    /* Footer pagination bar */
+    footer {
+      height: 40px;
+      background: var(--bg-primary);
+      border-top: 1px solid rgba(30, 44, 72, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-container {
+      flex: 1;
+      height: 4px;
+      background: #1a253a;
+      border-radius: 2px;
+      margin: 0 24px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo));
+      transition: width 0.3s ease;
+    }
+
+    /* Key helper hint */
+    .key-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    kbd {
+      background: #1a253a;
+      border: 1px solid #2d3f60;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation & Presentation Header -->
+  <header>
+    <div class="brand">
+      <span class="brand-badge">ISATE 2026</span>
+      <span>Gemini AI Classroom Assistant</span>
+      <span class="tag-pill">1-Hour Masterclass</span>
+    </div>
+    <div class="controls">
+      <div class="timer-display" id="session-timer">⏱️ 00:00 / 60:00</div>
+      <button class="btn-ctrl" onclick="toggleTimer()">⏯️ Timer</button>
+      <button class="btn-ctrl" onclick="toggleNotes()">📝 Notes (S)</button>
+      <button class="btn-ctrl" onclick="toggleFullscreen()">⛶ Fullscreen (F)</button>
+    </div>
+  </header>
+
+  <!-- Slide Deck Presentation Canvas -->
+  <main id="deck-container">
+
+    <!-- SLIDE 1: Title -->
+    <section class="slide active" data-act="Introduction" data-time="0-3 min" data-notes="Welcome distinguished delegates, educators from KOSEN Japan, Singapore Polytechnics, and VTC Hong Kong. Today, I am thrilled to share our open-source, edge-first classroom AI assistant and multimodal invigilation architecture powered by Google Gemini 3 and on-device WebAI.">
+      <div class="slide-header">
+        <div class="act-label">Act I: The Assessment Crisis & Architectural Vision</div>
+        <h1 class="slide-title">Gemini AI Classroom Assistant & Multimodal Invigilator</h1>
+        <div class="slide-subtitle">A Privacy-Preserving, Sub-$0.02 Edge-First Architecture for Computing & Engineering Education</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_hero_classroom_ai.png" alt="Futuristic Examination Classroom with Edge AI Shield">
+      </div>
+    </section>
+
+    <!-- SLIDE 2: Speaker Bio -->
+    <section class="slide" data-act="Speaker Profile" data-time="3-6 min" data-notes="Introduce yourself: Senior Lecturer at HKIIT / VTC Hong Kong. I lead the Cloud and Data Centre Administration program. I am humbled to hold recognitions across the major cloud ecosystems: Google Developer Expert in GCP and AI/ML, AWS AI Hero since 2016, and Microsoft MVP in Azure AI. Our core mission at VTC is practical engineering excellence—giving students real-world cloud and AI skills without incurring crippling institutional software costs.">
+      <div class="slide-header">
+        <div class="act-label">Speaker Biography</div>
+        <h1 class="slide-title">About the Speaker: Cyrus Wong (黃俊彥)</h1>
+        <div class="slide-subtitle">Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong Kong</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_speaker_bio_triple_cloud.png" alt="Cyrus Wong - Triple Cloud Recognition: GDE, AWS Hero, MVP">
+      </div>
+    </section>
+
+    <!-- SLIDE 3: The Assessment Trilemma -->
+    <section class="slide" data-act="Motivation" data-time="6-9 min" data-notes="Explain the computing education crisis. In the era of Copilot and ChatGPT, traditional take-home coding exams are broken. Every computer lab teacher faces an impossible trilemma: Ensuring Academic Integrity (preventing screen sharing and whispering), Protecting Student Privacy (preventing intrusive spyware), and Managing Institutional Cost (commercial SaaS costs $15-$25/student, which polytechnics cannot scale).">
+      <div class="slide-header">
+        <div class="act-label">Act I: The Assessment Crisis</div>
+        <h1 class="slide-title">The Assessment Trilemma in Technology Education</h1>
+        <div class="slide-subtitle">Why Traditional Invigilation and Commercial Surveillance Fail at Scale</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_assessment_trilemma.png" alt="The Assessment Trilemma: Integrity vs Privacy vs Cost">
+      </div>
+    </section>
+
+    <!-- SLIDE 4: Paradigm Shift -->
+    <section class="slide" data-act="Paradigm Shift" data-time="9-12 min" data-notes="Walk through this comparison in detail. Explain the difference between Legacy Surveillance Proctoring (kernel drivers that cause blue screens, 100% video upload that crashes campus Wi-Fi, $15/seat cost) versus our Edge-AI Classroom Assistant (100% zero-install browser native, 95% local compute, zero raw biometrics egress, sub-$0.02 cost).">
+      <div class="slide-header">
+        <div class="act-label">Act I: Paradigm Shift</div>
+        <h1 class="slide-title">Rethinking Proctoring: Spyware vs. Edge-AI Assistant</h1>
+        <div class="slide-subtitle">Moving from Punitive Black-Box Surveillance to Transparent Human-in-the-Loop Pedagogy</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_proctoring_evolution.png" alt="Legacy Surveillance vs Edge-AI Assistant Comparison">
+      </div>
+    </section>
+
+    <!-- SLIDE 5: 4-Tier Hybrid Architecture -->
+    <section class="slide" data-act="System Architecture" data-time="12-16 min" data-notes="This is our master system architecture. Point out the 4 horizontal tiers: 1. Student Browser Edge running Web Workers for MediaPipe, LiteRT Whisper, and Gemma. 2. Realtime Signaling via Firestore single-stream status and Storage chunking. 3. Cloud Intelligence running Cloud Functions Gen 2 with Gemini 3.7 Flash and Gemini 3.5 Transcribe. 4. Teacher Command Center with 1-click nudge and WebRTC peer-to-peer live peek.">
+      <div class="slide-header">
+        <div class="act-label">Act II: Cloud & Edge Systems Architecture</div>
+        <h1 class="slide-title">High-Level Systems Architecture: 4-Tier Hybrid Flow</h1>
+        <div class="slide-subtitle">Balancing Extreme Low Bandwidth at the Edge with Hyperscale Cloud Reasoning</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_hybrid_architecture.png" alt="4-Tier Horizontal Systems Architecture">
+      </div>
+    </section>
+
+    <!-- SLIDE 6: Cloud Functions Gen 2 Topology -->
+    <section class="slide" data-act="Cloud Serverless" data-time="16-19 min" data-notes="Explain the serverless cloud design on Google Cloud Run and Cloud Functions Gen 2. Instead of a monolithic backend, we split our system into 7 domain-driven isolated micro-codebases: ai_flows, attendance, auth_triggers, media_processing, property_processing, scheduled_tasks, and storage_triggers in region asia-east2. This guarantees zero deployment coupling and zero cold-start cascade.">
+      <div class="slide-header">
+        <div class="act-label">Act II: Cloud Architecture</div>
+        <h1 class="slide-title">Google Cloud Run & Cloud Functions Gen 2 Topology</h1>
+        <div class="slide-subtitle">7 Domain-Driven Isolated Micro-Codebases Deployed to asia-east2 (Hong Kong)</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_cloud_functions_gen2.png" alt="Cloud Functions Gen 2 Topology with 7 Micro-codebases">
+      </div>
+    </section>
+
+    <!-- SLIDE 7: High-Throughput Firestore Single-Stream Pattern -->
+    <section class="slide" data-act="Cloud Data Optimization" data-time="19-22 min" data-notes="Walk through this critical architectural design decision. If 50 student laptops each update a separate Firestore document, and the teacher dashboard listens to all 50, you generate thousands of document reads per minute and risk quota exhaustion. Our single-stream pattern aggregates status rollups into classes/{classId}/status. The teacher has 1 single listener. This achieves a 98% reduction in Firestore operations!">
+      <div class="slide-header">
+        <div class="act-label">Act II: Cloud Architecture</div>
+        <h1 class="slide-title">Firestore Single-Stream Channel: 98% Read Reduction</h1>
+        <div class="slide-subtitle">Avoiding Multi-Document Listener Storms in High-Density Computer Labs</div>
+      </div>
+      <div class="grid-2col-equal">
+        <div class="code-card">
+          <div class="code-header">
+            <span>web-app/src/hooks/useMonitorClass.js</span>
+            <span class="badge-cyan">Teacher Single-Stream Listener</span>
+          </div>
+          <div class="code-body"><span class="cmt">// Single document listener for entire class of 50 students</span>
+<span class="kwd">const</span> statusDocRef = <span class="fn">doc</span>(db, <span class="str">'classes'</span>, classId, <span class="str">'status'</span>, <span class="str">'current'</span>);
+
+<span class="kwd">const</span> unsubscribe = <span class="fn">onSnapshot</span>(statusDocRef, (snapshot) => {
+  <span class="kwd">if</span> (!snapshot.<span class="fn">exists</span>()) <span class="kwd">return</span>;
+  
+  <span class="cmt">// Atomic map of all students: UID -> { status, gaze, lastScreen }</span>
+  <span class="kwd">const</span> { activeStudents, lastUpdated } = snapshot.<span class="fn">data</span>();
+  <span class="fn">updateStudentGrid</span>(activeStudents);
+});</div>
+        </div>
+        <div class="bullet-list" style="justify-content: center;">
+          <div class="bullet-item">
+            <span class="bullet-icon">🚫</span>
+            <div class="bullet-text"><strong>The Naive Anti-Pattern:</strong> 50 students × 50 listeners = 2,500 Firestore reads every 5 seconds. Rapid quota exhaustion and UI lag.</div>
+          </div>
+          <div class="bullet-item">
+            <span class="bullet-icon">⚡</span>
+            <div class="bullet-text"><strong>Single-Stream Aggregator:</strong> Background Cloud Function batches student heartbeats into a single atomic payload. Teacher dashboard consumes 1 read per cycle.</div>
+          </div>
+          <div class="bullet-item">
+            <span class="bullet-icon">🎯</span>
+            <div class="bullet-text"><strong>Composite Index Optimization:</strong> Multi-field queries (`classId ASC, timestamp DESC`) defined declaratively in `firestore.indexes.json`.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 8: Gemini 3 Suite & Model Routing -->
+    <section class="slide" data-act="AI Engineering" data-time="22-25 min" data-notes="Explain our AI model routing strategy. We do not use one giant model for everything. We specialize: gemini-3.7-flash with thinking budget for complex multimodal video exam analysis; gemini-3.5-flash-lite for ultra-fast, cheap per-image verification; gemini-3.5-transcribe-preview for long audio multi-speaker diarization; and LiteRT Gemma 4 E2B on the student laptop for zero-cost edge intent proctoring.">
+      <div class="slide-header">
+        <div class="act-label">Act III: AI Engineering</div>
+        <h1 class="slide-title">Google Gemini 3 Model Suite & Routing Strategy</h1>
+        <div class="slide-subtitle">Matching Model Capabilities, Latency Profiles, and Cost Parameters to Invigilation Tasks</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_gemini_models_matrix.png" alt="Google Gemini 3 Suite & Model Routing Strategy">
+      </div>
+    </section>
+
+    <!-- SLIDE 9: Google Genkit & Tool-Calling Flow -->
+    <section class="slide" data-act="AI Engineering" data-time="25-28 min" data-notes="Explain how Google Genkit orchestrates our serverless AI pipeline. When audio or video anomalies occur, Genkit calls Gemini with type-safe Zod schemas. If the model determines a violation occurred, it autonomously executes tools like recordIrregularity, sendMessageToStudent, and recordAudioAudit. Furthermore, our resilience interceptor catches 503/429 errors with exponential backoff and automatically falls back to flash-lite.">
+      <div class="slide-header">
+        <div class="act-label">Act III: AI Engineering</div>
+        <h1 class="slide-title">Google Genkit Resilience & Autonomous Tool Calling</h1>
+        <div class="slide-subtitle">Deterministic Schema Validation, Exponential Backoff, and Self-Healing Failover</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_genkit_resilience_flow.png" alt="Google Genkit AI Resilience & Autonomous Tool Calling">
+      </div>
+    </section>
+
+    <!-- SLIDE 10: Production Prompt Blueprints -->
+    <section class="slide" data-act="Prompt Engineering" data-time="28-31 min" data-notes="Show the audience our actual production prompt templates. Point out how LiteRT Gemma uses a zero-shot, single-token classification prompt with strict JSON output schema. Show how the Cloud Rolling Audio Invigilator prompt uses Mustache variables and instructs the model to call the recordAudioIrregularity tool only when external collusion is verified.">
+      <div class="slide-header">
+        <div class="act-label">Act III: AI Engineering</div>
+        <h1 class="slide-title">Production Prompt Engineering: Strict JSON & Tool Schemas</h1>
+        <div class="slide-subtitle">Eliminating Hallucinations and Guaranteeing Deterministic Database Writes</div>
+      </div>
+      <div class="grid-2col-equal">
+        <div class="code-card">
+          <div class="code-header">
+            <span>admin/prompts/audios/AI Speech Intent Proctor (Gemma).md</span>
+            <span class="badge-purple">Edge Gemma Prompt</span>
+          </div>
+          <div class="code-body"><span class="str">You are an AI exam proctor. Classify a student's
+spoken transcript by meaning and context.
+
+Use exactly one category:
+- COLLUSION_EXAM: discussing exam answers/options
+- EXTERNAL_AI_ASSIST: querying Siri, Alexa, phone AI
+- UNAUTHORIZED_TALK: conversation with peers
+- LEGITIMATE_INQUIRY: teacher/proctor technical question
+- BENIGN: self-talk, reading code, ambient noise
+
+Respond with ONLY one JSON object:
+{"isViolation":boolean,"category":"COLLUSION_EXAM|...",
+ "severity":"critical|high|medium|low|none",
+ "confidence":0.95,"evidence":"quote","rationale":"..."}</span></div>
+        </div>
+        <div class="code-card">
+          <div class="code-header">
+            <span>functions/ai_flows/prompts.js (Mustache Interpolation)</span>
+            <span class="badge-cyan">Cloud Genkit Tool Prompt</span>
+          </div>
+          <div class="code-body"><span class="str">You are an expert AI Classroom Invigilator.
+Context: Class {{classId}}, Student {{studentEmail}}
+Audio Transcript: """{{transcript}}"""
+
+Instructions:
+1. Analyze transcript for unauthorized collusion or whisper.
+2. If collaboration is detected:
+   - Call tool `recordAudioIrregularity` with:
+     { title, message, riskLevel, speakerCount, snippet }
+3. Call tool `recordAudioAudit` with:
+     { verdict, speakerCount, summary, transcript }</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 11: Edge Vision & 468-Point Mesh -->
+    <section class="slide" data-act="Edge Vision AI" data-time="31-34 min" data-notes="Walk through our on-device vision algorithm. Inside the student browser, we run Google MediaPipe FaceLandmarker with Iris tracking. We extract 468 facial mesh landmarks plus 10 iris points (468-477). From these, we compute 3D head orientation (Yaw, Pitch, Roll), Eye Aspect Ratio for drowsiness, and metric iris distance in cm. The student can click 'Calibrate View' to establish their natural neutral baseline.">
+      <div class="slide-header">
+        <div class="act-label">Act IV: Edge-First AI Engineering</div>
+        <h1 class="slide-title">On-Device Vision AI: 468-Point Mesh & Iris Geometry</h1>
+        <div class="slide-subtitle">MediaPipe Landmarker Running in Background Web Workers (Zero UI Thread Jank)</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_edge_vision_gaze.png" alt="Facial Mesh & Iris Tracking Infographic">
+      </div>
+    </section>
+
+    <!-- SLIDE 12: Vision Code Deep Dive -->
+    <section class="slide" data-act="Code Deep Dive" data-time="34-37 min" data-notes="Walk through this production code snippet from useFaceMonitor.js. Point out the use of requestVideoFrameCallback: this synchronizes inference with actual camera hardware frames instead of burning CPU cycles with requestAnimationFrame. We pass ImageBitmap directly to the Web Worker via zero-copy Transferable Objects! Inside the worker, we project iris pixels into real metric centimeters.">
+      <div class="slide-header">
+        <div class="act-label">Act IV: Edge-First AI Engineering</div>
+        <h1 class="slide-title">Code Deep Dive: Zero-Jank Vision Loop & Metric Projection</h1>
+        <div class="slide-subtitle">Hardware-Synchronized requestVideoFrameCallback + Zero-Copy ImageBitmap Transfer</div>
+      </div>
+      <div class="grid-2col-equal">
+        <div class="code-card">
+          <div class="code-header">
+            <span>web-app/src/hooks/useFaceMonitor.js</span>
+            <span class="badge-green">requestVideoFrameCallback</span>
+          </div>
+          <div class="code-body"><span class="cmt">// Hardware-synchronized frame capture (no UI stutter)</span>
+<span class="kwd">const</span> <span class="fn">processFrame</span> = <span class="kwd">async</span> (now, metadata) => {
+  <span class="kwd">if</span> (!workerRef.current || !isDetecting) <span class="kwd">return</span>;
+  
+  <span class="cmt">// Zero-copy Transferable ImageBitmap</span>
+  <span class="kwd">const</span> bitmap = <span class="kwd">await</span> <span class="fn">createImageBitmap</span>(videoEl);
+  workerRef.current.<span class="fn">postMessage</span>(
+    { type: <span class="str">'DETECT_FRAME'</span>, bitmap, timestamp: now },
+    [bitmap] <span class="cmt">// Transfers ownership instantly</span>
+  );
+  
+  videoEl.<span class="fn">requestVideoFrameCallback</span>(processFrame);
+};</div>
+        </div>
+        <div class="code-card">
+          <div class="code-header">
+            <span>web-app/src/workers/faceLandmarker.worker.js</span>
+            <span class="badge-cyan">Iris Depth Calculation</span>
+          </div>
+          <div class="code-body"><span class="cmt">// Metric distance calculation via pinhole camera model</span>
+<span class="kwd">function</span> <span class="fn">calculateIrisDistanceCm</span>(landmarks, frameWidth) {
+  <span class="kwd">const</span> leftIris = landmarks[<span class="num">468</span>];
+  <span class="kwd">const</span> rightIris = landmarks[<span class="num">473</span>];
+  <span class="kwd">const</span> irisPixelDist = Math.<span class="fn">hypot</span>(
+    (rightIris.x - leftIris.x) * frameWidth,
+    (rightIris.y - leftIris.y) * frameWidth
+  );
+  
+  <span class="cmt">// Avg human iris = 11.7mm; focal length calibrated</span>
+  <span class="kwd">const</span> distanceCm = (AVG_IRIS_MM * FOCAL_PX) / irisPixelDist;
+  <span class="kwd">return</span> Math.<span class="fn">round</span>(distanceCm);
+}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 13: Edge Speech AI Pipeline -->
+    <section class="slide" data-act="Edge Speech AI" data-time="37-40 min" data-notes="Explain the browser-native Edge Speech pipeline. In Hong Kong, students naturally code-switch between Cantonese and English. We deploy a quantized LiteRT Whisper model in a Web Worker to transcribe speech locally with sub-second latency. The transcript is immediately fed into an on-device LiteRT Gemma 4 E2B model. The models are cached persistently in browser CacheStorage. Zero audio biometrics leave the laptop!">
+      <div class="slide-header">
+        <div class="act-label">Act IV: Edge-First AI Engineering</div>
+        <h1 class="slide-title">Browser-Native Speech AI: LiteRT Whisper & Gemma 4 E2B</h1>
+        <div class="slide-subtitle">Bilingual Cantonese/English Code-Switching Transcribed and Audited Locally at $0 Cost</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_edge_speech_proctor.png" alt="Browser-Native Edge Speech AI Pipeline">
+      </div>
+    </section>
+
+    <!-- SLIDE 14: Cloud Audio Diarization & Silence Suppression -->
+    <section class="slide" data-act="Cloud Audio AI" data-time="40-42 min" data-notes="Explain our cloud audio architecture. Continuous audio upload is disastrous for campus Wi-Fi and cloud budgets. We solved this with Web Audio RMS silence suppression: if room audio is below the decibel threshold, the audio chunk is discarded right in the browser! Over 80% of exam audio is silent and never uploaded. For speech chunks, Gemini 3.5 Transcribe performs multi-speaker diarization with synchronized clickable seeking.">
+      <div class="slide-header">
+        <div class="act-label">Act IV: Audio Intelligence</div>
+        <h1 class="slide-title">Cloud Audio Diarization & RMS Silence Suppression</h1>
+        <div class="slide-subtitle">Dropping >80% Silent Audio Locally; Synchronized Waveform Seek via Gemini 3.5 Transcribe</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_cloud_audio_diarization.png" alt="Cloud Audio Diarization & Moving Window Timeline">
+      </div>
+    </section>
+
+    <!-- SLIDE 15: Dual WebRTC Media Networks -->
+    <section class="slide" data-act="Real-Time Media" data-time="42-44 min" data-notes="Explain our WebRTC media streaming topologies. When a teacher spots a student looking away or talking, they click 'WebRTC Live Peek'. This establishes a direct 30 FPS peer-to-peer WebRTC stream between teacher and student without storing or routing video through cloud servers. Furthermore, we built 1-to-many WebRTC Teacher Screen Broadcasting so teachers can broadcast code demos straight to student screens in floating Picture-in-Picture.">
+      <div class="slide-header">
+        <div class="act-label">Act V: Real-Time Media & Classroom Ergonomics</div>
+        <h1 class="slide-title">Dual Real-Time WebRTC Media Streaming Topologies</h1>
+        <div class="slide-subtitle">1-to-1 P2P Live Peek (Zero Cloud Storage Transit) & 1-to-Many Teacher Screen Broadcasting</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_webrtc_topologies.png" alt="Dual Real-Time WebRTC Media Streaming Topologies">
+      </div>
+    </section>
+
+    <!-- SLIDE 16: Teacher Command Center UI -->
+    <section class="slide" data-act="Teacher Ergonomics" data-time="44-46 min" data-notes="Show the Teacher Command Center. Watching 50 video grids causes severe human fatigue. Our interface introduces 'Zero-Space Compliance Filters': teachers can filter to 'Problems' or 'Critical AI Alerts' with a single click. If a student is distracted, the teacher presses 'N' to broadcast a targeted nudge to their screen. Offline student screens are preserved with last known frame caching and marked '(Offline)'.">
+      <div class="slide-header">
+        <div class="act-label">Act V: Classroom Ergonomics</div>
+        <h1 class="slide-title">Teacher Command Center: Solving Cognitive Overload</h1>
+        <div class="slide-subtitle">Zero-Space Compliance Filtering, 1-Click Targeted Nudge ('N'), and Offline State Caching</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_teacher_command_center.png" alt="Teacher Real-Time Command Center UI Mockup">
+      </div>
+    </section>
+
+    <!-- SLIDE 17: Cloud Media Lifecycle & Storage TTL -->
+    <section class="slide" data-act="Cloud Storage & Compliance" data-time="46-48 min" data-notes="Explain institutional data compliance. Engineering colleges must adhere to GDPR and data retention laws. Our pipeline uploads discrete screenshots, compiles them into compact MP4s using containerized FFmpeg on Cloud Run, and sets automated Firestore TTL expiration dates (expireAt). Raw screenshots are purged after exam review, and temporary ZIP export archives are wiped after 7 days automatically. Zero manual server maintenance!">
+      <div class="slide-header">
+        <div class="act-label">Act V: Cloud Architecture & Compliance</div>
+        <h1 class="slide-title">Cloud Media Lifecycle & Containerized FFmpeg Pipeline</h1>
+        <div class="slide-subtitle">Automatic Screenshot-to-MP4 Compilation & Declarative Firestore TTL Data Purging</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_cloud_storage_ffmpeg_ttl.png" alt="Cloud Media Lifecycle & Automated Storage Governance">
+      </div>
+    </section>
+
+    <!-- SLIDE 18: Green AI & FinOps Governance -->
+    <section class="slide" data-act="Institutional Economics" data-time="48-50 min" data-notes="Share our real financial figures. For a 50-student 2-hour practical coding exam, commercial SaaS solutions cost $750. By offloading 95%+ of compute to student laptops via LiteRT and WebAssembly, our total Google Cloud bill is only $0.85 per exam (<$0.02 per student). We also built real-time token tracking and class budget circuit breakers directly into the instructor dashboard.">
+      <div class="slide-header">
+        <div class="act-label">Act V: Institutional Economics</div>
+        <h1 class="slide-title">Green AI & Cloud FinOps: Institutional Cost Sustainability</h1>
+        <div class="slide-subtitle">Achieving a 99.8% Cost Reduction: $0.85 per Exam vs. $750.00 Commercial SaaS</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_ai_cost_finops.png" alt="Green AI & Cloud FinOps Governance Dashboard">
+      </div>
+    </section>
+
+    <!-- SLIDE 19: Academic Incident Dossier Pipeline -->
+    <section class="slide" data-act="Academic Integrity" data-time="50-52 min" data-notes="Explain how we handle suspected cheating. In academic review committees, vague teacher allegations are rejected. Our system automatically aggregates timestamped screen captures, 3D gaze telemetry history, audio transcripts, and Gemini reasoning summaries into a formal 1-click Microsoft Word (.docx) report and verifiable CSV logs. This provides irrefutable, objective evidence.">
+      <div class="slide-header">
+        <div class="act-label">Act V: Academic Governance</div>
+        <h1 class="slide-title">Academic Integrity Incident Dossier Pipeline</h1>
+        <div class="slide-subtitle">1-Click Automated Export to Verifiable Microsoft Word (.docx) and CSV Audit Logs</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_incident_dossier_workflow.png" alt="Academic Integrity Incident Dossier Pipeline">
+      </div>
+    </section>
+
+    <!-- SLIDE 20: DevSecOps & Build Safeguards -->
+    <section class="slide" data-act="DevSecOps & Testing" data-time="52-54 min" data-notes="Explain our software engineering rigor. Our entire Google Cloud environment is codified in Terraform—enabling a faculty to deploy an isolated cloud instance for a new academic year in 1 command. Our codebase is protected by 64 Vitest suites with 408 passing tests. Furthermore, we implemented a Vite build-time guardrail that immediately aborts production builds if development credentials are leaked.">
+      <div class="slide-header">
+        <div class="act-label">Act V: DevSecOps & Software Reliability</div>
+        <h1 class="slide-title">Engineering Reliability: Terraform IaC & Build Guardrails</h1>
+        <div class="slide-subtitle">1-Command Cloud Deployment, 408 Automated Unit/Integration Tests, and Build-Time Assertions</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_devsecops_safeguards.png" alt="DevSecOps 3-Pillar Engineering Safety Architecture">
+      </div>
+    </section>
+
+    <!-- SLIDE 21: Live Demonstration Roadmap -->
+    <section class="slide" data-act="Live Demonstration" data-time="54-58 min" data-notes="Transition to the live interactive system demonstration. Walk the audience through the 5 stages: Stage 1 Student 3-step readiness wizard; Stage 2 Teacher multi-screen live grid; Stage 3 Simulated look-away anomaly; Stage 4 1-click nudge broadcast and WebRTC live peek; Stage 5 Reviewing the audio seek player and exporting the Word dossier.">
+      <div class="slide-header">
+        <div class="act-label">Act VI: Live Demonstration & Verification</div>
+        <h1 class="slide-title">Live System Demonstration: 5-Stage Verification Flow</h1>
+        <div class="slide-subtitle">Verifying End-to-End Edge-Cloud Pipeline in a Real Classroom Setting</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_live_demo_workflow.png" alt="Live Demonstration 5-Stage Verification Flow">
+      </div>
+    </section>
+
+    <!-- SLIDE 22: Conclusion & Open Access -->
+    <section class="slide" data-act="Conclusion & Q&A" data-time="58-60 min" data-notes="Summarize the key takeaways: 1. Privacy-by-design (zero raw biometrics leave client). 2. Edge-first scalability (<$0.02 per student). 3. Cloud multimodal depth with Google Gemini 3. 4. Teacher cognitive ergonomics. Invite faculty from KOSEN Japan, Singapore, and international colleges to test the live demo at https://it114115-2627.web.app or scan the QR code. Open the floor for Q&A!">
+      <div class="slide-header">
+        <div class="act-label">Act VI: Conclusion & International Collaboration</div>
+        <h1 class="slide-title">Empowering Technology Educators with Edge-First AI</h1>
+        <div class="slide-subtitle">Open-Source Repository, Live Deployment, and Academic Collaboration</div>
+      </div>
+      <div class="grid-image-full">
+        <img class="slide-img" src="images/slide_closing_summary.png" alt="Concluding Summary & QR Code to Live Application">
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Presenter Speaker Notes Drawer -->
+  <aside id="notes-drawer">
+    <div class="notes-header">
+      <span class="notes-title" id="notes-slide-title">Speaker Notes & Cue Cards</span>
+      <button class="btn-ctrl" style="padding: 2px 8px; font-size: 0.75rem;" onclick="toggleNotes()">✕ Close (S)</button>
+    </div>
+    <div class="notes-content" id="notes-text">
+      <!-- Dynamically populated from active slide data-notes -->
+    </div>
+  </aside>
+
+  <!-- Bottom Navigation & Progress Bar -->
+  <footer>
+    <div class="key-hint">
+      Navigation: <kbd>→</kbd> <kbd>←</kbd> | <kbd>Space</kbd> | <kbd>F</kbd> Fullscreen | <kbd>S</kbd> Notes
+    </div>
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="deck-progress"></div>
+    </div>
+    <div id="slide-counter">Slide 1 / 22</div>
+  </footer>
+
+  <!-- Presentation Logic Engine -->
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    const notesDrawer = document.getElementById('notes-drawer');
+    const notesText = document.getElementById('notes-text');
+    const notesSlideTitle = document.getElementById('notes-slide-title');
+    const slideCounter = document.getElementById('slide-counter');
+    const progressBar = document.getElementById('deck-progress');
+    const sessionTimerEl = document.getElementById('session-timer');
+
+    let timerInterval = null;
+    let timerSeconds = 0;
+    let isTimerRunning = false;
+
+    function updateSlide(index) {
+      if (index < 0 || index >= totalSlides) return;
+      slides[currentSlide].classList.remove('active');
+      currentSlide = index;
+      slides[currentSlide].classList.add('active');
+
+      // Update footer
+      slideCounter.textContent = `Slide ${currentSlide + 1} / ${totalSlides}`;
+      progressBar.style.width = `${((currentSlide + 1) / totalSlides) * 100}%`;
+
+      // Update speaker notes
+      const activeSlide = slides[currentSlide];
+      const act = activeSlide.getAttribute('data-act') || 'General';
+      const time = activeSlide.getAttribute('data-time') || '';
+      const notes = activeSlide.getAttribute('data-notes') || 'No speaker notes for this slide.';
+
+      notesSlideTitle.innerHTML = `<span class="notes-cue">${act}</span> <span class="notes-cue">${time}</span> Slide ${currentSlide + 1}: ${activeSlide.querySelector('.slide-title').textContent}`;
+      notesText.innerHTML = `<p>${notes}</p>`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        updateSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        updateSlide(currentSlide - 1);
+      }
+    }
+
+    function toggleNotes() {
+      notesDrawer.classList.toggle('open');
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    function toggleTimer() {
+      if (isTimerRunning) {
+        clearInterval(timerInterval);
+        isTimerRunning = false;
+      } else {
+        isTimerRunning = true;
+        timerInterval = setInterval(() => {
+          timerSeconds++;
+          const mins = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+          const secs = String(timerSeconds % 60).padStart(2, '0');
+          sessionTimerEl.textContent = `⏱️ ${mins}:${secs} / 60:00`;
+          if (timerSeconds >= 3600) {
+            sessionTimerEl.style.color = 'var(--accent-red)';
+          }
+        }, 1000);
+      }
+    }
+
+    // Keyboard events
+    document.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowRight':
+        case ' ':
+        case 'PageDown':
+          e.preventDefault();
+          nextSlide();
+          break;
+        case 'ArrowLeft':
+        case 'PageUp':
+          e.preventDefault();
+          prevSlide();
+          break;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          toggleNotes();
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'Home':
+          e.preventDefault();
+          updateSlide(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          updateSlide(totalSlides - 1);
+          break;
+      }
+    });
+
+    // Start timer on initial load
+    toggleTimer();
+    updateSlide(0);
+  </script>
+</body>
+</html>
