@@ -11,7 +11,7 @@ const auth = getAuth();
 async function seed() {
   console.log(`Seeding demo class on ${projectId}...`);
 
-  const teacherEmails = ['teacher1@vtc.edu.hk', 'teacher2@vtc.edu.hk'];
+  const teacherEmails = ['teacher1@vtc.edu.hk', 'teacher2@vtc.edu.hk', 'cywong@vtc.edu.hk'];
   const studentEmails = [
     'student1@stu.vtc.edu.hk',
     'student2@stu.vtc.edu.hk',

@@ -228,6 +228,7 @@ The default development environment (`it114115-dev-2026`) comes pre-seeded with 
 | :--- | :--- | :--- | :--- |
 | **👨‍🏫 Lead Teacher** | `teacher1@vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Instructor) |
 | **👨‍🏫 Co-Teacher** | `teacher2@vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Co-Instructor) |
+| **👨‍🏫 Co-Teacher** | `cywong@vtc.edu.hk` | *(Personal account)* | `IT114115-Demo` (Co-Instructor) |
 | **🧑‍🎓 Student 1** | `student1@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 2** | `student2@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
