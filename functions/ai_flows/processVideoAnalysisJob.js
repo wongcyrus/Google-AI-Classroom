@@ -162,9 +162,8 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
                     return { status: 'success', jobId: existingJobDoc.id }; // Return existing job to monitor
                 }
 
-                // For any other status (failed, blocked, etc.), do not create a new job.
-                console.log(`Skipping job creation for video '${video.videoPath}' as existing job '${existingJobDoc.id}' has a non-actionable status: '${existingJobData.status}'.`);
-                return { status: 'failure', video: video, error: `Existing job ${existingJobDoc.id} has status '${existingJobData.status}'. Use retry.` };
+                // If the previous job failed or was blocked, proceed with a fresh analysis attempt
+                console.log(`Previous job '${existingJobDoc.id}' has status '${existingJobData.status}'. Proceeding with fresh analysis for video '${video.videoPath}'.`);
             }
 
             // If no valid existing job, proceed with analysis.

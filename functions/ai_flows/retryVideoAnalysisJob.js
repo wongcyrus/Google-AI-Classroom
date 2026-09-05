@@ -11,6 +11,21 @@ import { formatInTimeZone } from 'date-fns-tz';
 const db = getFirestore();
 const storage = getStorage();
 
+function getISOString(date) {
+  if (!date) return null;
+  if (typeof date.toDate === 'function') { // Firestore Timestamp
+    return date.toDate().toISOString();
+  }
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  const d = new Date(date);
+  if (!isNaN(d)) {
+    return d.toISOString();
+  }
+  return null;
+}
+
 export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: CORS_ORIGINS, cpu: 2, memory: '8GiB', timeoutSeconds: 3600 }, async (request) => {
     if (!request.auth) {
         throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
@@ -71,7 +86,7 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
         status: 'processing',
         failedVideos: [], // Clear the list for the new retry attempt
         retryHistory: FieldValue.arrayUnion({
-            retriedAt: FieldValue.serverTimestamp(),
+            retriedAt: new Date().toISOString(),
             videoCount: videosToAnalyze.length,
             originalFailures: videosToAnalyze 
         })
@@ -86,9 +101,11 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
 
         const classRef = db.collection('classes').doc(jobData.classId);
         const classDoc = await classRef.get();
-        const timezone = classDoc.exists ? classDoc.data().schedule?.timeZone || 'UTC' : 'UTC';
-        const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
-        const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, 'yyyy-MM-dd HH:mm:ss zzz') : 'N/A';
+        const classData = classDoc.exists ? classDoc.data() : {};
+        const modelToUse = jobData.model || classData.aiModel || 'gemini-3.5-flash-lite';
+        const timezone = classData.schedule?.timeZone || 'UTC';
+        const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
+        const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
 
         const promptTemplate = (video) => `The following video is from a student.\nEmail: ${video.studentEmail}\nStudent UID: ${video.studentUid}\nClass ID: ${jobData.classId}\nThe video was recorded between ${startDate} and ${endDate}.\nPlease analyze the video based on the user's prompt: "${jobData.prompt}"\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
@@ -99,7 +116,7 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
             for (const video of batch) {
                 const promptText = promptTemplate(video);
                 const media = [{ media: { url: `gs://${bucketName}/${video.videoPath}`, contentType: 'video/mp4' } }];
-                batchEstimatedCost += estimateCost(promptText, media);
+                batchEstimatedCost += estimateCost(promptText, media, modelToUse);
             }
 
             const hasQuota = await checkQuota(jobData.classId, batchEstimatedCost);
@@ -162,9 +179,8 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
                                 return { status: 'success', jobId: existingJobDoc.id }; // Return existing job to monitor
                             }
 
-                            // For any other status (failed, blocked, etc.), do not create a new job.
-                            console.log(`Skipping job creation for video '${video.videoPath}' as existing job '${existingJobDoc.id}' has a non-actionable status: '${existingJobData.status}'.`);
-                            return { status: 'failure', video: video, error: `Existing job ${existingJobDoc.id} has status '${existingJobData.status}'. Use retry.` };
+                            // If the previous job failed or was blocked, proceed with a fresh analysis attempt on retry
+                            console.log(`Previous job '${existingJobDoc.id}' has status '${existingJobData.status}'. Proceeding with fresh analysis on retry for video '${video.videoPath}'.`);
                         }
 
                         // If no valid existing job, proceed with analysis.
@@ -175,8 +191,9 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
                             studentUid: video.studentUid,
                             studentEmail: video.studentEmail,
                             masterJobId: jobId,
-                            startTime: jobData.startTime,
-                            endTime: jobData.endTime,
+                            startTime: getISOString(jobData.startTime),
+                            endTime: getISOString(jobData.endTime),
+                            model: modelToUse,
                         });
 
                         if (result && result.jobId) {
@@ -202,7 +219,9 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
             totalFailures += failedJobs.length;
 
             const isLastBatch = (i + batch.length) >= videosToAnalyze.length;
-            const updatePayload = {};
+            const updatePayload = {
+                modelUsed: modelToUse,
+            };
 
             if (successfulJobs.length > 0) {
                 updatePayload.aiJobIds = FieldValue.arrayUnion(...successfulJobs.map(j => j.jobId));

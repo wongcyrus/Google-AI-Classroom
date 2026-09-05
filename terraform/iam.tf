@@ -54,3 +54,19 @@ resource "google_project_iam_member" "pubsub_token_creator" {
   role    = "roles/iam.serviceAccountTokenCreator"
   member  = "serviceAccount:${google_project_service_identity.pubsub.email}"
 }
+
+# Vertex AI Service Agent for Cloud Storage media access
+resource "google_project_service_identity" "aiplatform" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "aiplatform.googleapis.com"
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_project_iam_member" "aiplatform_storage_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
+}
+
