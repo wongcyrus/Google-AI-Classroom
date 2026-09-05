@@ -167,4 +167,78 @@ describe('AuthComponent Component', () => {
     // Button should be re-enabled after failure
     expect(screen.getByRole('button', { name: /Sign In/i })).not.toBeDisabled();
   });
+
+  it('validates domain requirements for registration', () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    render(<AuthComponent />);
+
+    // Try registering with non-vtc domain
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'user@gmail.com' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+    expect(screen.getByText(/Only emails ending with @stu\.vtc\.edu\.hk or @vtc\.edu\.hk are allowed\./i)).toBeInTheDocument();
+  });
+
+  it('blocks student registration on non-Chrome browser', () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Firefox');
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+    expect(screen.getByText(/Google Chrome is strictly required for students\. Detected: Firefox/i)).toBeInTheDocument();
+    expect(createUserWithEmailAndPassword).not.toHaveBeenCalled();
+  });
+
+  it('allows registration on Chrome and sends verification email', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    createUserWithEmailAndPassword.mockResolvedValueOnce({
+      user: { email: 'student1@stu.vtc.edu.hk' },
+    });
+
+    render(<AuthComponent />);
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+
+    await waitFor(() => {
+      expect(createUserWithEmailAndPassword).toHaveBeenCalled();
+      expect(screen.getByText(/Registration successful\. A verification email has been sent/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles forgot password workflow', async () => {
+    const { sendPasswordResetEmail } = await import('firebase/auth');
+    render(<AuthComponent />);
+
+    // Click forgot password without email
+    fireEvent.click(screen.getByRole('button', { name: /Forgot Password\?/i }));
+    expect(screen.getByText(/Please enter your email address to reset your password\./i)).toBeInTheDocument();
+
+    // With email
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'teacher@vtc.edu.hk' } });
+    fireEvent.click(screen.getByRole('button', { name: /Forgot Password\?/i }));
+
+    await waitFor(() => {
+      expect(sendPasswordResetEmail).toHaveBeenCalledWith(expect.anything(), 'teacher@vtc.edu.hk');
+      expect(screen.getByText(/Password reset email sent\. Please check your inbox\./i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles resend verification email for unverified user prop', async () => {
+    const { sendEmailVerification } = await import('firebase/auth');
+    const mockUnverified = { email: 'student1@stu.vtc.edu.hk' };
+
+    render(<AuthComponent unverifiedUser={mockUnverified} />);
+
+    const resendBtn = screen.getByRole('button', { name: /Resend Verification Email/i });
+    expect(resendBtn).toBeInTheDocument();
+
+    fireEvent.click(resendBtn);
+    await waitFor(() => {
+      expect(sendEmailVerification).toHaveBeenCalledWith(mockUnverified);
+      expect(screen.getByText(/A new verification email has been sent\. Please check your inbox\./i)).toBeInTheDocument();
+    });
+  });
 });

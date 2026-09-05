@@ -180,4 +180,24 @@ describe('SessionReviewView Full Suite', () => {
       });
     }
   });
+
+  it('opens and closes job error modal when clicking a failed job status', async () => {
+    render(
+      <SessionReviewView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+      />
+    );
+
+    const failedLink = screen.getByRole('link', { name: 'failed' });
+    fireEvent.click(failedLink);
+
+    expect(screen.getByText(/Job Failure Details/i)).toBeInTheDocument();
+
+    const closeBtn = screen.getByText(/Job Failure Details/i).parentElement.querySelector('button');
+    fireEvent.click(closeBtn);
+    expect(screen.queryByText(/Job Failure Details/i)).not.toBeInTheDocument();
+  });
 });
+

@@ -231,6 +231,8 @@ The default development environment (`it114115-dev-2026`) comes pre-seeded with 
 | **🧑‍🎓 Student 1** | `student1@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 2** | `student2@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+| **🧑‍🎓 Student 4** | `student4@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+| **🧑‍🎓 Student 5** | `student5@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 
 ---
 

@@ -151,4 +151,70 @@ describe('PlaybackView Component', () => {
       expect(mockSetDoc).toHaveBeenCalled();
     });
   });
+
+  it('allows changing speed and slider position, and displays empty state message', async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/No screenshots found for the selected channel and time range/i)).toBeInTheDocument();
+    });
+
+    const speedSelect = screen.getByDisplayValue('1x');
+    fireEvent.change(speedSelect, { target: { value: '2' } });
+    expect(screen.getByDisplayValue('2x')).toBeInTheDocument();
+  });
+
+  it('shows existing video warning if job already exists in Firestore', async () => {
+    mockGetDocs
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: 's1',
+            data: () => ({
+              channel: 'screen',
+              imagePath: 'screenshots/s1.jpg',
+              timestamp: { toDate: () => new Date() },
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [{ id: 'job-1' }],
+      });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Frame: 1 \/ 1/i)).toBeInTheDocument();
+    });
+
+    const combineBtn = screen.getByText(/Combine to Video/i);
+    await act(async () => {
+      fireEvent.click(combineBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/A similar video job already exists/i)).toBeInTheDocument();
+    });
+  });
 });
+

@@ -18,9 +18,11 @@ vi.mock('../firebase-config', () => ({
   functions: {},
 }));
 
-const mockDoc = vi.fn((db, col, id) => ({ path: `${col}/${id}`, id }));
-const mockCollection = vi.fn((db, col) => ({ path: col }));
-const mockOnSnapshot = vi.fn((query, callback) => {
+let snapshotCallbacks = [];
+const mockDoc = vi.fn((db, ...args) => ({ path: args.join('/'), id: args[args.length - 1] }));
+const mockCollection = vi.fn((db, ...args) => ({ path: args.join('/') }));
+const mockOnSnapshot = vi.fn((refOrQuery, callback) => {
+  snapshotCallbacks.push({ ref: refOrQuery, callback });
   callback({
     docs: [
       {
@@ -62,6 +64,8 @@ const mockOnSnapshot = vi.fn((query, callback) => {
   return () => {};
 });
 
+const mockSetDoc = vi.fn().mockResolvedValue();
+
 vi.mock('firebase/firestore', () => ({
   doc: (...args) => mockDoc(...args),
   collection: (...args) => mockCollection(...args),
@@ -70,7 +74,7 @@ vi.mock('firebase/firestore', () => ({
   where: vi.fn(),
   orderBy: vi.fn(),
   limit: vi.fn(),
-  setDoc: vi.fn().mockResolvedValue(),
+  setDoc: (...args) => mockSetDoc(...args),
   addDoc: vi.fn().mockResolvedValue({ id: 'msg_1' }),
   serverTimestamp: vi.fn(),
   getDoc: vi.fn().mockResolvedValue({
@@ -134,6 +138,49 @@ vi.mock('../hooks/useWebRTCPeekStudent', () => ({
   }),
 }));
 
+let mockWhisperReturn = {
+  transcript: '',
+  whisperStatus: 'ready',
+  isWhisperCached: true,
+  preloadWhisperModel: vi.fn(),
+};
+
+let mockGemmaReturn = {
+  latestEvaluation: null,
+  isGemmaReady: true,
+  isGemmaCached: true,
+  preloadGemmaModel: vi.fn(),
+  gemmaStatus: 'ready',
+  shouldEvaluateVoiceWithGemma: true,
+};
+
+let mockTeacherBroadcastReturn = {
+  isBroadcastActive: false,
+  broadcastInfo: null,
+  remoteStream: null,
+  connectionState: 'idle',
+  hasAudio: false,
+  isAudioMuted: false,
+  joinBroadcast: vi.fn(),
+  leaveBroadcast: vi.fn(),
+  toggleAudioMute: vi.fn(),
+};
+
+vi.mock('../hooks/useClientLiteRTWhisper', () => ({
+  default: () => mockWhisperReturn,
+  useClientLiteRTWhisper: () => mockWhisperReturn,
+}));
+
+vi.mock('../hooks/useClientLiteRTGemma', () => ({
+  default: () => mockGemmaReturn,
+  useClientLiteRTGemma: () => mockGemmaReturn,
+}));
+
+vi.mock('../hooks/useTeacherScreenBroadcastStudent', () => ({
+  default: () => mockTeacherBroadcastReturn,
+  useTeacherScreenBroadcastStudent: () => mockTeacherBroadcastReturn,
+}));
+
 vi.mock('../hooks/useStudentClassSchedule', () => ({
   default: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
   useStudentClassSchedule: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
@@ -147,6 +194,39 @@ describe('StudentView Component Extended Test Suite', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.alert = vi.fn();
+    snapshotCallbacks = [];
+
+    mockWhisperReturn = {
+      status: 'ready',
+      loadingProgress: 100,
+      isModelCached: true,
+      delegateUsed: 'wasm',
+      latestTranscript: '',
+      latestLanguage: 'english',
+      preloadModel: vi.fn(),
+      transcribeAudioChunk: vi.fn(),
+      setLatestTranscript: vi.fn(),
+    };
+    mockGemmaReturn = {
+      latestEvaluation: null,
+      isGemmaReady: true,
+      isGemmaCached: true,
+      preloadGemmaModel: vi.fn(),
+      gemmaStatus: 'ready',
+      shouldEvaluateVoiceWithGemma: true,
+    };
+    mockTeacherBroadcastReturn = {
+      isBroadcastActive: false,
+      broadcastInfo: null,
+      remoteStream: null,
+      connectionState: 'idle',
+      hasAudio: false,
+      isAudioMuted: false,
+      joinBroadcast: vi.fn(),
+      leaveBroadcast: vi.fn(),
+      toggleAudioMute: vi.fn(),
+    };
 
     const mockDevices = [
       { deviceId: 'cam1', kind: 'videoinput', label: 'Built-in FaceTime HD Camera' },
@@ -426,4 +506,205 @@ describe('StudentView Component Extended Test Suite', () => {
       Object.defineProperty(navigator, 'vendor', { value: originalVendor, configurable: true });
     }
   });
+
+  it('rejects single application window share and displays alert when requireFullScreenOnly is true', async () => {
+    const mockWindowTrack = {
+      stop: vi.fn(),
+      getSettings: () => ({ displaySurface: 'window' }),
+      addEventListener: vi.fn(),
+    };
+    const mockWindowStream = {
+      getTracks: vi.fn().mockReturnValue([mockWindowTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockWindowTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockWindowStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    expect(mockWindowTrack.stop).toHaveBeenCalled();
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Entire Screen Required'));
+  });
+
+  it('allows muting audio in active invigilation mode', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const wizardBtn = screen.getByRole('button', { name: /Start Setup & Readiness Test/i });
+    fireEvent.click(wizardBtn);
+
+    // Step 1: Click next
+    await waitFor(() => {
+      const nextBtn1 = screen.getByRole('button', { name: /Next: Camera Check/i });
+      fireEvent.click(nextBtn1);
+    });
+
+    // Step 2: Calibrate & Next
+    await waitFor(() => {
+      const calibrateBtn = screen.getByRole('button', { name: /Set Center Pose/i });
+      fireEvent.click(calibrateBtn);
+      const nextBtn2 = screen.getByRole('button', { name: /Next: Screen Share/i });
+      fireEvent.click(nextBtn2);
+    });
+
+    // Step 3: Screen share & Complete
+    await waitFor(() => {
+      const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
+      fireEvent.click(screenShareBtn);
+    });
+
+    await waitFor(() => {
+      const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
+      fireEvent.click(finishBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Live invigilation active/i)).toBeInTheDocument();
+    });
+
+    // Mute mic button
+    const muteBtn = screen.queryByRole('button', { name: /Mic Active/i });
+    if (muteBtn) {
+      fireEvent.click(muteBtn);
+      expect(screen.getByRole('button', { name: /Unmute/i })).toBeInTheDocument();
+    }
+  });
+
+  it('handles offline queue buffering when offline', async () => {
+    render(<StudentView user={mockUser} />);
+    fireEvent(window, new Event('offline'));
+    fireEvent(window, new Event('online'));
+  });
+
+  it('renders Whisper transcript and Gemma intent evaluation when speech is detected', async () => {
+    mockWhisperReturn = {
+      ...mockWhisperReturn,
+      latestTranscript: 'Can you help me with question 3?',
+    };
+    mockGemmaReturn = {
+      ...mockGemmaReturn,
+      latestEvaluation: {
+        category: 'COLLABORATION',
+        isViolation: true,
+        rationale: 'Student asked for question help',
+        confidence: 0.95,
+      },
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Transcribed Speech:/i)).toBeInTheDocument();
+      expect(screen.getByText(/"Can you help me with question 3\?"*/i)).toBeInTheDocument();
+      expect(screen.getByText(/Gemma Intent Check:/i)).toBeInTheDocument();
+      expect(screen.getByText(/COLLABORATION 🚨 FLAGGED/i)).toBeInTheDocument();
+      expect(screen.getByText(/Student asked for question help/i)).toBeInTheDocument();
+      expect(screen.getByText(/Confidence: 95%/i)).toBeInTheDocument();
+    });
+  });
+
+  it('automatically opens TeacherScreenViewerModal when teacher broadcast starts and joins broadcast', async () => {
+    mockTeacherBroadcastReturn = {
+      ...mockTeacherBroadcastReturn,
+      isBroadcastActive: true,
+      broadcastInfo: { title: 'Exam Instructions Review', teacherEmail: 'teacher@school.edu' },
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      expect(mockTeacherBroadcastReturn.joinBroadcast).toHaveBeenCalled();
+      expect(screen.getByText(/teacher@school\.edu's Screen/i)).toBeInTheDocument();
+    });
+
+    const closeBtn = screen.getByTitle('Close Stream');
+    fireEvent.click(closeBtn);
+    expect(mockTeacherBroadcastReturn.leaveBroadcast).toHaveBeenCalled();
+  });
+
+  it('allows manual preloading of Gemma intent model from setup hero', async () => {
+    mockGemmaReturn = {
+      ...mockGemmaReturn,
+      isGemmaReady: false,
+      isGemmaCached: false,
+      gemmaStatus: 'idle',
+      shouldEvaluateVoiceWithGemma: true,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const preloadBtns = screen.getAllByRole('button', { name: /Preload/i });
+      expect(preloadBtns.length).toBeGreaterThan(0);
+      fireEvent.click(preloadBtns[0]);
+    });
+    expect(mockGemmaReturn.preloadGemmaModel).toHaveBeenCalled();
+  });
+
+  it('handles session displacement and resuming session in current tab', async () => {
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const statusCallbackObj = snapshotCallbacks.find(item => item.ref?.path?.includes('status'));
+      expect(statusCallbackObj).toBeDefined();
+    });
+
+    const statusCallbackObj = snapshotCallbacks.find(item => item.ref?.path?.includes('status'));
+    act(() => {
+      statusCallbackObj.callback({
+        exists: () => true,
+        data: () => ({ sessionId: 'different-uuid-from-another-tab' }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Classroom session active in another tab or device/i)).toBeInTheDocument();
+    });
+
+    const resumeBtn = screen.getByRole('button', { name: /Resume Here/i });
+    fireEvent.click(resumeBtn);
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sessionId: expect.any(String) }),
+      { merge: true }
+    );
+  });
+
+  it('allows switching webcam selection in active invigilation mode', async () => {
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    const camSelect = screen.getByLabelText(/Select Webcam/i);
+    expect(camSelect).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(camSelect, { target: { value: 'cam2' } });
+    });
+
+    expect(camSelect.value).toBe('cam2');
+  });
 });
+
+
+
+

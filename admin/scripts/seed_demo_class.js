@@ -12,7 +12,13 @@ async function seed() {
   console.log(`Seeding demo class on ${projectId}...`);
 
   const teacherEmails = ['teacher1@vtc.edu.hk', 'teacher2@vtc.edu.hk'];
-  const studentEmails = ['student1@stu.vtc.edu.hk', 'student2@stu.vtc.edu.hk', 'student3@stu.vtc.edu.hk'];
+  const studentEmails = [
+    'student1@stu.vtc.edu.hk',
+    'student2@stu.vtc.edu.hk',
+    'student3@stu.vtc.edu.hk',
+    'student4@stu.vtc.edu.hk',
+    'student5@stu.vtc.edu.hk'
+  ];
 
   const teacherUsers = await Promise.all(teacherEmails.map(email => auth.getUserByEmail(email)));
   const studentUsers = await Promise.all(studentEmails.map(email => auth.getUserByEmail(email)));

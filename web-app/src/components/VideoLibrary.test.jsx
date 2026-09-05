@@ -243,4 +243,34 @@ describe('VideoLibrary Full Component Suite', () => {
       expect(mockSetDoc).toHaveBeenCalled();
     });
   });
+
+  it('handles playback failure gracefully and allows closing prompt modal', async () => {
+    mockGetDownloadURL.mockRejectedValueOnce(new Error('Storage file not found'));
+
+    render(
+      <VideoLibrary
+        user={{ uid: 'teacher_1' }}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        filterField="startTime"
+      />
+    );
+
+    const playBtns = screen.getAllByRole('button', { name: '▶️' });
+    if (playBtns.length > 0) {
+      await act(async () => {
+        fireEvent.click(playBtns[0]);
+      });
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to get video for playback'));
+    }
+
+    const selectPromptBtn = screen.getByRole('button', { name: /Select Video Prompt/i });
+    fireEvent.click(selectPromptBtn);
+
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByPlaceholderText(/Select a prompt or enter text here/i)).not.toBeInTheDocument();
+  });
 });
+

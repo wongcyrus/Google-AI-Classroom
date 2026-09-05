@@ -123,9 +123,8 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
         workingMinutes: studentData.workingMinutes ?? 'N/A',
         aiPercentage: studentData.workingMinutes && lessonDurationInMinutes > 0 ? ((studentData.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : 'N/A',
         generalSummary: sanitize(lessonData?.generalSummary),
-        studentSummary: sanitize(studentData.summary),
-        generalFeedback: (lessonData?.generalFeedback || []).map(sanitize).join(' | '),
-        studentFeedback: (studentData.feedback || []).map(sanitize).join(' | '),
+        generalFeedback: (Array.isArray(lessonData?.generalFeedback) ? lessonData.generalFeedback : (lessonData?.generalFeedback ? [lessonData.generalFeedback] : [])).map(sanitize).join(' | '),
+        studentFeedback: (Array.isArray(studentData.feedback) ? studentData.feedback : (studentData.feedback ? [studentData.feedback] : [])).map(sanitize).join(' | '),
       };
       const attendanceRecord = studentData.attendance || Array(lessonDurationInMinutes).fill(0);
       attendanceRecord.forEach((present, i) => {

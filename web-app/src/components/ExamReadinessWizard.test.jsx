@@ -316,4 +316,95 @@ describe('ExamReadinessWizard Component', () => {
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('resets screen verification when screen share track ends prematurely', async () => {
+    navigator.mediaDevices.enumerateDevices = vi.fn().mockResolvedValue([]);
+    let endedCallback = null;
+    const wizardTrack = {
+      stop: vi.fn(),
+      readyState: 'live',
+      getSettings: () => ({ displaySurface: 'monitor' }),
+      set onended(cb) {
+        endedCallback = cb;
+      },
+      get onended() {
+        return endedCallback;
+      },
+    };
+    const wizardStream = {
+      getTracks: () => [wizardTrack],
+      getVideoTracks: () => [wizardTrack],
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(wizardStream);
+
+    render(
+      <ExamReadinessWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        onComplete={vi.fn()}
+        user={{ uid: 'student_1' }}
+        classId="CLASS_1"
+      />
+    );
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Mic/i }));
+    });
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Camera/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Select & Share Entire Screen/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/✅ Verified/i)).toBeInTheDocument());
+
+    act(() => {
+      if (endedCallback) endedCallback();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/✅ Verified/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('calls onComplete fallback even if Firestore setDoc throws an error', async () => {
+    mockSetDoc.mockRejectedValue(new Error('Firestore permission error'));
+    const onComplete = vi.fn();
+
+    render(
+      <ExamReadinessWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        onComplete={onComplete}
+        user={{ uid: 'student_1' }}
+        classId="CLASS_1"
+      />
+    );
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Mic/i }));
+    });
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Proceed Without Camera/i }));
+    });
+
+    const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
+    await act(async () => {
+      fireEvent.click(screenShareBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Screen Verified/i)).toBeInTheDocument();
+    });
+
+    const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
+    await act(async () => {
+      fireEvent.click(finishBtn);
+    });
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
 });
+

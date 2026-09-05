@@ -121,14 +121,31 @@ describe('IrregularitiesView Full Suite', () => {
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
-  it('opens dual media evidence viewer modal when thumbnail is clicked', async () => {
+  it('opens dual media evidence viewer modal when thumbnail is clicked and interacts with audio modal', async () => {
     renderComponent();
 
     await waitFor(() => {
-      const screenImgs = screen.queryAllByAltText(/screen evidence|evidence/i);
-      if (screenImgs.length > 0) {
-        fireEvent.click(screenImgs[0]);
-      }
+      const dualContainers = document.querySelectorAll('.dual-thumbnail-container');
+      expect(dualContainers.length).toBeGreaterThan(0);
+      fireEvent.click(dualContainers[0]);
     });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Irregularity Evidence:/i)).toBeInTheDocument();
+      expect(screen.getByAltText('Screen Evidence')).toBeInTheDocument();
+      expect(screen.getByAltText('Webcam Evidence')).toBeInTheDocument();
+    });
+
+    const openAudioBtn = screen.getByRole('button', { name: /Diarization Timeline & Seek/i });
+    fireEvent.click(openAudioBtn);
+
+    expect(screen.getByTestId('audio-modal')).toBeInTheDocument();
+    const closeAudioBtn = screen.getByRole('button', { name: /Close Audio/i });
+    fireEvent.click(closeAudioBtn);
+    expect(screen.queryByTestId('audio-modal')).not.toBeInTheDocument();
+
+    const closeSpan = document.querySelector('.media-player-modal .close');
+    fireEvent.click(closeSpan);
+    expect(screen.queryByText(/Irregularity Evidence:/i)).not.toBeInTheDocument();
   });
 });

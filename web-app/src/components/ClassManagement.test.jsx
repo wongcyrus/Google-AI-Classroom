@@ -194,4 +194,141 @@ describe('ClassManagement Full Component Test Suite', () => {
     const savePromptBtn = screen.getByRole('button', { name: /Save Prompt Selection/i });
     fireEvent.click(savePromptBtn);
   });
+
+  it('handles importing student emails from uploaded text/csv file', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Student Email Addresses/i)).toBeInTheDocument();
+    });
+
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    expect(fileInputs.length).toBeGreaterThan(0);
+
+    const file = new File(['student1@test.com, student2@test.com'], 'students.csv', { type: 'text/csv' });
+    
+    // Trigger file change
+    fireEvent.change(fileInputs[0], { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Successfully imported'));
+    });
+  });
+
+  it('handles custom gaze orientation angles and AI monitoring mode configuration', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI Face & Gaze Monitoring Mode/i)).toBeInTheDocument();
+    });
+
+    const sensitivitySelect = screen.getByDisplayValue(/Standard \/ Balanced Default/i);
+    fireEvent.change(sensitivitySelect, { target: { value: 'custom' } });
+
+    expect(screen.getByText(/Custom Angle Limits/i)).toBeInTheDocument();
+
+    const rangeSliders = screen.getAllByRole('slider');
+    expect(rangeSliders.length).toBeGreaterThan(0);
+    fireEvent.change(rangeSliders[0], { target: { value: '35' } });
+  });
+
+  it('handles opening and configuring audio prompts for live audio and gemma voice intent', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Enable Audio Segment Recording/i)).toBeInTheDocument();
+    });
+
+    // Gemma intent prompt button
+    const gemmaBtn = screen.getByRole('button', { name: /Select Gemma Intent Prompt/i });
+    fireEvent.click(gemmaBtn);
+
+    expect(screen.getByText(/Select On-Device Gemma Voice Intent Prompt/i)).toBeInTheDocument();
+    const saveAudioPromptBtn = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveAudioPromptBtn[saveAudioPromptBtn.length - 1]);
+  });
+
+  it('shows error validation when date range is inverted or schedule is empty', async () => {
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => false,
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+
+    const classIdInput = screen.getByPlaceholderText(/e\.g\. it114115-2026-s1/i);
+    fireEvent.change(classIdInput, { target: { value: 'ab' } }); // too short
+
+    const createBtn = screen.getByRole('button', { name: /Create Class/i });
+    await act(async () => {
+      fireEvent.click(createBtn);
+    });
+
+    expect(screen.getByText(/Class ID must be at least 3 characters long/i)).toBeInTheDocument();
+  });
+
+  it('handles deleting class in danger zone', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Delete This Class/i })).toBeInTheDocument();
+    });
+
+    // Delete class
+    const deleteBtn = screen.getByRole('button', { name: /Delete This Class/i });
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    expect(mockDeleteDoc).toHaveBeenCalled();
+    expect(window.alert).toHaveBeenCalledWith('Class deleted successfully.');
+  });
+
+  it('handles configuring advanced audio monitoring options and resetting prompts', async () => {
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          liveAudioPrompt: { name: 'Live Check', promptText: 'Check for chatter' },
+          gemmaIntentPrompt: { name: 'Voice Intent', promptText: 'Check cheating intents' },
+          sessionAudioPrompt: { name: 'Session Check', promptText: 'Check seminar questions' },
+          enableSegmentTranscription: true,
+          enableCombinedLongAudio: true,
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Enable Audio Segment Recording/i)).toBeInTheDocument();
+    });
+
+    // Reset Gemma intent prompt
+    const resetGemmaBtn = screen.getAllByRole('button', { name: /Reset to Default/i })[0];
+    fireEvent.click(resetGemmaBtn);
+
+    // Audio capture mode select
+    const micRequirementSelect = screen.getByDisplayValue(/Mandatory \(Students must verify/i);
+    fireEvent.change(micRequirementSelect, { target: { value: 'optional' } });
+
+    // Silence suppression toggle
+    const silenceToggle = screen.getByLabelText(/Silence Suppression/i);
+    fireEvent.click(silenceToggle);
+
+    // Window duration select
+    const windowSelect = screen.getByDisplayValue(/30 Seconds/i);
+    fireEvent.change(windowSelect, { target: { value: '20' } });
+
+    // Stride select
+    const strideSelect = screen.getByDisplayValue(/15s Stride/i);
+    fireEvent.change(strideSelect, { target: { value: '10' } });
+
+    // Long audio interval select
+    const intervalSelect = screen.getByDisplayValue(/Full Session/i);
+    fireEvent.change(intervalSelect, { target: { value: '10' } });
+  });
 });
+

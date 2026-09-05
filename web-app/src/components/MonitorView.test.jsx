@@ -259,4 +259,149 @@ describe('MonitorView Component Suite', () => {
     const activeScreenTab = screen.getByRole('tab', { name: /Screen Tab/i });
     expect(activeScreenTab).toHaveClass('active');
   });
+
+  it('handles sending broadcast messages to all students and changing frame rate', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    // Message input
+    const messageInput = screen.getByPlaceholderText(/Type message or pick template\.\.\./i);
+    expect(messageInput).toBeInTheDocument();
+
+    fireEvent.change(messageInput, { target: { value: 'Class ends in 10 minutes!' } });
+    const sendBtn = screen.getByRole('button', { name: /^Send$/i });
+    
+    await act(async () => {
+      fireEvent.click(sendBtn);
+    });
+
+    expect(mockAddDoc).toHaveBeenCalled();
+
+    // Frame rate / interval select
+    const frameRateSelect = screen.getByDisplayValue('15s');
+    fireEvent.change(frameRateSelect, { target: { value: '30' } });
+    expect(frameRateSelect.value).toBe('30');
+  });
+
+  it('triggers teacher screen broadcast start and stop', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    // Find and click Screen Broadcast button
+    const broadcastBtn = screen.getByRole('button', { name: /Share Screen to Students/i });
+    expect(broadcastBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(broadcastBtn);
+    });
+
+    expect(mockStartBroadcast).toHaveBeenCalled();
+  });
+
+  it('handles timeline slider scrubbing and debounced review time update', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const slider = screen.getByRole('slider');
+    expect(slider).toBeInTheDocument();
+
+    // Scrub slider
+    const testTime = new Date('2026-08-30T09:15:00Z').getTime();
+    fireEvent.change(slider, { target: { value: testTime.toString() } });
+
+    // Advance debounce timer
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+  });
+
+  it('handles configuring AI suite and executing single per-image analysis', async () => {
+    mockRunPerImageAnalysis.mockResolvedValueOnce();
+
+    render(<MonitorView {...defaultProps} />);
+
+    // Open AI Suite configuration modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // Switch to Screen & Vision tab
+    const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
+    fireEvent.click(screenTabBtn);
+
+    // Enter prompt into textarea
+    const promptTextarea = screen.getByPlaceholderText(/Select a prompt template or write custom instructions/i);
+    fireEvent.change(promptTextarea, { target: { value: 'Detect browser tabs and prohibited apps' } });
+
+    // Save & apply settings to populate editablePromptText in parent
+    const saveSettingsBtn = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    await act(async () => {
+      fireEvent.click(saveSettingsBtn);
+    });
+
+    // Reopen modal and run check
+    fireEvent.click(screen.getByRole('button', { name: /Configure AI Suite/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Screen & Vision/i }));
+
+    const analyzeBtn = screen.getByRole('button', { name: /Run Single Per-Image Check/i });
+    expect(analyzeBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(analyzeBtn);
+    });
+
+    expect(mockRunPerImageAnalysis).toHaveBeenCalled();
+  });
+
+  it('opens and closes Not Sharing students modal', () => {
+    render(<MonitorView {...defaultProps} />);
+
+    // Not sharing button
+    const notSharingBtn = screen.getByRole('button', { name: /Not Sharing/i });
+    expect(notSharingBtn).toBeInTheDocument();
+
+    fireEvent.click(notSharingBtn);
+    expect(screen.getByText(/Students Not Sharing/i)).toBeInTheDocument();
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: /Close/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByText(/Students Not Sharing/i)).not.toBeInTheDocument();
+  });
+
+  it('sends broadcast announcement to class', async () => {
+    window.alert = vi.fn();
+    render(<MonitorView {...defaultProps} />);
+
+    const msgInput = screen.getByPlaceholderText(/Type message or pick template.../i);
+    fireEvent.change(msgInput, { target: { value: 'Please keep camera on' } });
+
+    const sendBtn = screen.getByRole('button', { name: /^Send$/i });
+    await act(async () => {
+      fireEvent.click(sendBtn);
+    });
+
+    expect(mockAddDoc).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({
+        message: 'Please keep camera on',
+        senderEmail: 'teacher@school.edu',
+      })
+    );
+  });
+
+  it('handles downloading attendance CSV', () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const downloadBtn = screen.getByRole('button', { name: /Download CSV/i });
+    fireEvent.click(downloadBtn);
+  });
+
+  it('broadcasts preload AI to all students', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const preloadBtn = screen.queryByRole('button', { name: /Preload Lightweight AI for All Students/i });
+    if (preloadBtn) {
+      await act(async () => {
+        fireEvent.click(preloadBtn);
+      });
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    }
+  });
 });

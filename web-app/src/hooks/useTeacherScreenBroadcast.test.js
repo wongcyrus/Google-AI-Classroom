@@ -47,8 +47,12 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     mockPeerConnection = {
       createOffer: vi.fn().mockResolvedValue({ type: 'offer', sdp: 'v=0...' }),
       createAnswer: vi.fn().mockResolvedValue({ type: 'answer', sdp: 'v=0...' }),
+      remoteDescription: null,
       setLocalDescription: vi.fn().mockResolvedValue(),
-      setRemoteDescription: vi.fn().mockResolvedValue(),
+      setRemoteDescription: vi.fn().mockImplementation((desc) => {
+        mockPeerConnection.remoteDescription = desc;
+        return Promise.resolve();
+      }),
       addTrack: vi.fn().mockReturnValue({ replaceTrack: vi.fn() }),
       addIceCandidate: vi.fn().mockResolvedValue(),
       close: vi.fn(),
@@ -226,4 +230,80 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_456' })
     );
   });
+
+  it('applies student candidates and answers received on viewers collection', async () => {
+    mockPeerConnection.remoteDescription = { type: 'answer' };
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@school.edu',
+      })
+    );
+
+    await act(async () => {
+      await result.current.startBroadcast();
+    });
+
+    const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
+    expect(viewersCb).toBeDefined();
+
+    // 1. Initial request from student to register peer connection
+    await act(async () => {
+      const mockRequestedDocs = [
+        {
+          id: 'student_789',
+          data: () => ({
+            status: 'requesting',
+            email: 'student789@school.edu',
+          }),
+        },
+      ];
+      viewersCb({
+        docs: mockRequestedDocs,
+        forEach: (fn) => mockRequestedDocs.forEach(fn),
+      });
+    });
+
+    // 2. Student replies with answer and candidate while remoteDescription is set
+    await act(async () => {
+      const mockDocs = [
+        {
+          id: 'student_789',
+          data: () => ({
+            status: 'answered',
+            email: 'student789@school.edu',
+            answer: { type: 'answer', sdp: 'v=0...' },
+            studentCandidates: [{ candidate: 'candidate:1 1 UDP 2130706431 192.168.1.1 50000 typ host', sdpMid: '0', sdpMLineIndex: 0 }],
+          }),
+        },
+      ];
+      viewersCb({
+        docs: mockDocs,
+        forEach: (fn) => mockDocs.forEach(fn),
+      });
+    });
+
+    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalled();
+  });
+
+  it('handles getDisplayMedia error and cleans up broadcast state', async () => {
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockRejectedValueOnce(new Error('Permission denied'));
+
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@school.edu',
+      })
+    );
+
+    await act(async () => {
+      await result.current.startBroadcast();
+    });
+
+    expect(result.current.isBroadcasting).toBe(false);
+    expect(result.current.error).toBe('Permission denied');
+  });
 });
+

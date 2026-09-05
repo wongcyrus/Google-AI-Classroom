@@ -1,4 +1,38 @@
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@litertjs/core', () => {
+  const mockModel = {
+    getInputDetails: vi.fn().mockReturnValue([{ name: 'audio', shape: [1, 80, 3000] }]),
+    getOutputDetails: vi.fn().mockReturnValue([{ name: 'tokens', shape: [1, 448] }]),
+    run: vi.fn().mockResolvedValue([
+      {
+        toTypedArray: vi.fn().mockReturnValue(new Int32Array([50258, 50259, 50359, 50363, 4, 5])),
+      },
+    ]),
+    unload: vi.fn().mockResolvedValue({}),
+  };
+  return {
+    loadLiteRt: vi.fn().mockResolvedValue({}),
+    loadAndCompile: vi.fn().mockResolvedValue(mockModel),
+    Tensor: class MockTensor {
+      static fromTypedArray() {
+        return new MockTensor();
+      }
+      delete() {}
+    },
+  };
+});
+
+vi.mock('../utils/webAiLiteRTLoader.js', () => ({
+  fetchWithProgress: vi.fn().mockImplementation(async (url, onProgress) => {
+    onProgress?.(100);
+    return new ArrayBuffer(16);
+  }),
+  checkHardwareAcceleration: vi.fn().mockResolvedValue({ delegate: 'wasm' }),
+  DEFAULT_WHISPER_CONFIG: { modelUrl: '/models/whisper_tiny.tflite' },
+}));
+
+
 import {
   extractAudioFeatures,
   classifyLanguage,
@@ -148,5 +182,49 @@ describe('litertWhisper.worker', () => {
     // 3. Dispose
     await self.onmessage({ data: { type: 'DISPOSE', id: '4' } });
     expect(messages.some(m => m.type === 'DISPOSE_COMPLETE' && m.id === '4')).toBe(true);
+  });
+
+  it('handles worker INIT and TRANSCRIBE flow with mocked LiteRT model', async () => {
+    const messages = [];
+    self.postMessage = vi.fn((msg) => messages.push(msg));
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('whisper_vocab')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(['<|startoftranscript|>', '<|en|>', '<|transcribe|>', '<|notimestamps|>', 'hello', 'world']),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(16)),
+      });
+    });
+
+    await self.onmessage({
+      data: {
+        type: 'INIT',
+        id: 'init_1',
+        payload: {
+          modelBuffer: new ArrayBuffer(16),
+          delegate: 'wasm',
+        },
+      },
+    });
+
+    expect(messages.some(m => m.type === 'INIT_COMPLETE' && m.id === 'init_1')).toBe(true);
+
+    await self.onmessage({
+      data: {
+        type: 'TRANSCRIBE',
+        id: 'tr_1',
+        payload: {
+          audioPcm: new Float32Array(16000),
+          studentUid: 'student_1',
+          classId: 'class_1',
+        },
+      },
+    });
+
+    expect(messages.some(m => m.type === 'TRANSCRIBE_COMPLETE' && m.id === 'tr_1')).toBe(true);
   });
 });

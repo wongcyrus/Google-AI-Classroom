@@ -31,7 +31,15 @@ export default defineConfig(({ mode }) => {
       fileParallelism: false,
       coverage: {
         provider: 'v8',
-        reporter: ['text'],
+        reporter: ['text', 'json-summary'],
+        include: ['src/**/*.{js,jsx}'],
+        exclude: [
+          'src/test/**',
+          'src/main.jsx',
+          '**/*.test.{js,jsx}',
+          '**/*.css',
+          'src/assets/**',
+        ],
       },
     },
   };

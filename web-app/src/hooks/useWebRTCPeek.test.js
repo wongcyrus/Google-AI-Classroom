@@ -112,11 +112,20 @@ describe('useWebRTCPeekTeacher and useWebRTCPeekStudent Hooks', () => {
     });
     expect(mockUpdateDoc).toHaveBeenCalled();
 
-    // Simulate incoming tracks
-    const mockRemoteTrack = { id: 'remote_video' };
-    mockPeerConnection.ontrack({
-      streams: [{ getTracks: () => [mockRemoteTrack] }],
-      track: mockRemoteTrack,
+    // Simulate incoming video and audio tracks
+    const mockVideoTrack = { id: 'remote_video', kind: 'video' };
+    const mockAudioTrack = { id: 'remote_audio', kind: 'audio', label: 'Mic', enabled: true, readyState: 'live' };
+    
+    act(() => {
+      mockPeerConnection.ontrack({
+        streams: [{ id: 'screen_stream', getTracks: () => [mockVideoTrack] }],
+        track: mockVideoTrack,
+      });
+
+      mockPeerConnection.ontrack({
+        streams: [{ id: 'audio_stream', getTracks: () => [mockAudioTrack] }],
+        track: mockAudioTrack,
+      });
     });
 
     // Simulate connection state change
@@ -126,14 +135,24 @@ describe('useWebRTCPeekTeacher and useWebRTCPeekStudent Hooks', () => {
     });
     expect(result.current.connectionState).toBe('connected');
 
-    // Simulate student answer & candidate via snapshot
+    // Simulate student answer, streamMetadata & candidate via snapshot
     await act(async () => {
       await snapshotCallback({
         exists: () => true,
         data: () => ({
           answer: { type: 'answer', sdp: 'v=0...' },
+          streamMetadata: { screenStreamId: 'remote_video', webcamStreamId: 'cam_video' },
           studentCandidates: [{ candidate: 'student-cand-1' }],
         }),
+      });
+    });
+
+    // Simulate webcam track arriving after metadata
+    const mockCamTrack = { id: 'cam_video', kind: 'video' };
+    act(() => {
+      mockPeerConnection.ontrack({
+        streams: [{ id: 'cam_stream', getTracks: () => [mockCamTrack] }],
+        track: mockCamTrack,
       });
     });
 
@@ -242,8 +261,13 @@ describe('useWebRTCPeekTeacher and useWebRTCPeekStudent Hooks', () => {
 
     // Trigger student ontrack (teacher talkback voice)
     mockPeerConnection.ontrack({
+      track: { kind: 'audio', id: 'teacher-voice' },
       streams: [{ getTracks: () => [{ id: 'teacher-voice' }] }],
     });
+
+    if (mockPeerConnection.onconnectionstatechange) {
+      mockPeerConnection.onconnectionstatechange();
+    }
 
     unmount();
     expect(mockPeerConnection.close).toHaveBeenCalled();
@@ -263,6 +287,32 @@ describe('useWebRTCPeekTeacher and useWebRTCPeekStudent Hooks', () => {
     await act(async () => {
       await snapshotCallback({
         exists: () => false,
+      });
+    });
+
+    unmount();
+  });
+
+  it('handles responder errors gracefully when remote offer processing fails', async () => {
+    mockPeerConnection.setRemoteDescription = vi.fn().mockRejectedValueOnce(new Error('Invalid SDP offer'));
+
+    const { unmount } = renderHook(() =>
+      useWebRTCPeekStudent({
+        classId: 'CLASS_1',
+        studentUid: 'student_123',
+        screenStreamRef: { current: null },
+        webcamStreamRef: { current: null },
+        audioStreamRef: { current: null },
+      })
+    );
+
+    await act(async () => {
+      await snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          status: 'offered',
+          offer: { type: 'offer', sdp: 'broken' },
+        }),
       });
     });
 

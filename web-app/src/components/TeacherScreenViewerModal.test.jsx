@@ -34,8 +34,18 @@ describe('Teacher Screen Modals Suite', () => {
       expect(onToggleMute).toHaveBeenCalled();
     });
 
-    it('switches view mode to floating, fullscreen, and minimized', () => {
-      render(<TeacherScreenViewerModal {...defaultProps} />);
+    it('switches view mode to floating, fullscreen, and minimized, and expands pill', () => {
+      const onClose = vi.fn();
+      render(<TeacherScreenViewerModal {...defaultProps} onClose={onClose} />);
+
+      // Switch to docked and test backdrop click
+      const dockedBtn = screen.getByRole('button', { name: /Standard/i });
+      fireEvent.click(dockedBtn);
+      expect(dockedBtn).toHaveClass('active');
+      const backdrop = document.querySelector('.viewer-backdrop');
+      expect(backdrop).toBeInTheDocument();
+      fireEvent.click(backdrop);
+      expect(onClose).toHaveBeenCalled();
 
       // Switch to floating
       const floatBtn = screen.getByRole('button', { name: /Float/i });
@@ -50,7 +60,45 @@ describe('Teacher Screen Modals Suite', () => {
       // Minimize to floating pill
       const minBtn = screen.getByRole('button', { name: /Min/i });
       fireEvent.click(minBtn);
-      expect(screen.getByText(/Teacher Screen Sharing \(Click to Expand\)/i)).toBeInTheDocument();
+      const pill = screen.getByText(/Teacher Screen Sharing \(Click to Expand\)/i);
+      expect(pill).toBeInTheDocument();
+
+      // Clicking pill expands back to docked mode
+      fireEvent.click(pill);
+      expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
+
+      // Minimize again and click pill close button
+      fireEvent.click(screen.getByRole('button', { name: /Min/i }));
+      const pillCloseBtn = screen.getByTitle('Close Screen Share');
+      fireEvent.click(pillCloseBtn);
+      expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('renders muted state, connecting state, and default title when broadcastInfo is empty', () => {
+      render(
+        <TeacherScreenViewerModal
+          {...defaultProps}
+          broadcastInfo={null}
+          connectionState="connecting"
+          isAudioMuted={true}
+        />
+      );
+
+      expect(screen.getByText('🖥️ Teacher Screen')).toBeInTheDocument();
+      expect(screen.getByText('⏳ Connecting...')).toBeInTheDocument();
+      expect(screen.getByText('🔇 Muted')).toBeInTheDocument();
+    });
+
+    it('attaches remoteStream to video element and calls play', () => {
+      const mockStream = { id: 'stream-1' };
+      const playMock = vi.fn().mockRejectedValue(new Error('Autoplay blocked'));
+      window.HTMLMediaElement.prototype.play = playMock;
+
+      render(<TeacherScreenViewerModal {...defaultProps} remoteStream={mockStream} />);
+
+      const video = document.querySelector('video.teacher-live-video');
+      expect(video).toBeInTheDocument();
+      expect(video.srcObject).toBe(mockStream);
     });
 
     it('does not render when isOpen is false', () => {

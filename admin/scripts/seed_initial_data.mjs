@@ -122,7 +122,9 @@ async function main() {
   const demoStudentEmails = [
     'student1@stu.vtc.edu.hk',
     'student2@stu.vtc.edu.hk',
-    'student3@stu.vtc.edu.hk'
+    'student3@stu.vtc.edu.hk',
+    'student4@stu.vtc.edu.hk',
+    'student5@stu.vtc.edu.hk'
   ];
 
   const teacherMap = {};
@@ -191,12 +193,12 @@ async function main() {
   for (const sUser of studentUsers) {
     await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
   }
-  console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 3 students (student1..3).`);
+  console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5).`);
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
   console.log(`👨‍🏫 Teachers: teacher1@vtc.edu.hk, teacher2@vtc.edu.hk (Co-teaching)`);
-  console.log(`🧑‍🎓 Students: student1@stu.vtc.edu.hk, student2@stu.vtc.edu.hk, student3@stu.vtc.edu.hk`);
+  console.log(`🧑‍🎓 Students: student1@stu.vtc.edu.hk .. student5@stu.vtc.edu.hk`);
   console.log(`🔑 Default Password: Password123!`);
   console.log(`==========================================================\n`);
 }
