@@ -10,12 +10,16 @@ fi
 
 # Copy the central config file to all function directories
 for d in functions/*/ ; do
-    cp functions/config.js "$d/config.js"
+    if [ -f "$d/package.json" ]; then
+        cp functions/config.js "$d/config.js"
+    fi
 done
 
 echo "Installing functions dependencies..."
 for d in functions/*/ ; do
-    (cd "$d" && npm install)
+    if [ -f "$d/package.json" ]; then
+        (cd "$d" && npm install)
+    fi
 done
 
 echo "Building web app..."
