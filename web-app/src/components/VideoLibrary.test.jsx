@@ -272,5 +272,48 @@ describe('VideoLibrary Full Component Suite', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByPlaceholderText(/Select a prompt or enter text here/i)).not.toBeInTheDocument();
   });
+
+  it('handles exporting video manifest as CSV', () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-manifest');
+
+    render(
+      <VideoLibrary
+        user={{ uid: 'teacher_1' }}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        filterField="startTime"
+      />
+    );
+
+    const exportBtn = screen.getByRole('button', { name: /Export Video Manifest/i });
+    fireEvent.click(exportBtn);
+
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    window.URL.createObjectURL = originalCreateObjectURL;
+  });
+
+  it('alerts when exporting manifest with no videos', () => {
+    mockUsePaginatedQueryReturn = {
+      data: [],
+      loading: false,
+      isLastPage: true,
+      fetchNextPage: vi.fn(),
+    };
+
+    render(
+      <VideoLibrary
+        user={{ uid: 'teacher_1' }}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        filterField="startTime"
+      />
+    );
+
+    const exportBtn = screen.getByRole('button', { name: /Export Video Manifest/i });
+    expect(exportBtn).toBeDisabled();
+  });
 });
 

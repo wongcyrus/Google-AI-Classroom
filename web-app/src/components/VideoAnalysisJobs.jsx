@@ -1,18 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, getDocs, documentId, doc, writeBatch, getDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { collection, query, where, getDocs, documentId, doc, writeBatch, getDoc, addDoc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
-import { db } from '../firebase-config';
+import { db, functions } from '../firebase-config';
 import './SharedViews.css';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoAnalysisJobsTable from './VideoAnalysisJobsTable';
 import AiJobsTable from './AiJobsTable';
 import VideoPlayerModal from './VideoPlayerModal';
+import Modal from './Modal';
+import JobResultModal from './JobResultModal';
+import PromptViewModal from './PromptViewModal';
+import { exportToCsv, exportToJson } from '../utils/exportUtils';
 
-
-const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
+const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) => {
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
+  const [viewingPromptJob, setViewingPromptJob] = useState(null);
   const [aiJobs, setAiJobs] = useState([]);
   const [aiJobsLoading, setAiJobsLoading] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
@@ -20,6 +24,23 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const [playerLoading, setPlayerLoading] = useState(false);
   const [retryLoading, setRetryLoading] = useState(false);
 
+  // Level 2 detail view states
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [inspectingJob, setInspectingJob] = useState(null);
+  const [studentFilter, setStudentFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Task Prompt Synthesis state
+  const [showTaskPromptModal, setShowTaskPromptModal] = useState(false);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [generatedPromptText, setGeneratedPromptText] = useState('');
+  const [taskPromptName, setTaskPromptName] = useState('');
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
+  const [rerunScope, setRerunScope] = useState('job_videos');
+  const [isLaunchingJob, setIsLaunchingJob] = useState(false);
+  const [promptSummaryCount, setPromptSummaryCount] = useState(0);
 
   const extraClauses = useMemo(() => [{ field: 'deleted', op: '==', value: false }], []);
 
@@ -84,11 +105,9 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
   const handleAnalysisJobSelect = (job) => {
     const isSameJob = selectedAnalysisJob && selectedAnalysisJob.id === job.id;
 
-    // To refresh, we must fetch the latest job data.
-    // We do this on every selection to ensure data is fresh.
     setAiJobsLoading(true);
     if (!isSameJob) {
-      setSelectedAnalysisJob(job); // Optimistic selection for better UX
+      setSelectedAnalysisJob(job);
     }
 
     const jobRef = doc(db, 'videoAnalysisJobs', job.id);
@@ -115,6 +134,28 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     });
   };
 
+  const navigateToJob = (job) => {
+    if (typeof document !== 'undefined' && document.startViewTransition) {
+      document.startViewTransition(() => {
+        handleAnalysisJobSelect(job);
+      });
+    } else {
+      handleAnalysisJobSelect(job);
+    }
+  };
+
+  const navigateBack = () => {
+    if (typeof document !== 'undefined' && document.startViewTransition) {
+      document.startViewTransition(() => {
+        setSelectedAnalysisJob(null);
+        setAiJobs([]);
+      });
+    } else {
+      setSelectedAnalysisJob(null);
+      setAiJobs([]);
+    }
+  };
+
   const handleDeleteAnalysisJob = async (jobId, aiJobIds) => {
     if (!window.confirm(`Are you sure you want to soft delete this analysis job (${jobId}) and its ${aiJobIds?.length || 0} sub-jobs?`)) {
       return;
@@ -127,15 +168,18 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
       batch.update(analysisJobRef, { deleted: true });
 
       if (aiJobIds && aiJobIds.length > 0) {
-        aiJobIds.forEach(id => {
-          const aiJobRef = doc(db, 'aiJobs', id);
-          batch.update(aiJobRef, { deleted: true });
-        });
+        for (let i = 0; i < aiJobIds.length; i += 500) {
+          const chunk = aiJobIds.slice(i, i + 500);
+          chunk.forEach(aiJobId => {
+            const aiJobRef = doc(db, 'aiJobs', aiJobId);
+            batch.update(aiJobRef, { deleted: true });
+          });
+        }
       }
 
       await batch.commit();
 
-      alert('Job and sub-jobs marked as deleted.');
+      alert(`Successfully deleted analysis job ${jobId} and marked ${aiJobIds?.length || 0} AI sub-jobs as deleted.`);
 
       refetch();
       if (selectedAnalysisJob?.id === jobId) {
@@ -158,65 +202,137 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     setRetryLoading(true);
 
     try {
-        const functions = getFunctions();
-        const retryer = httpsCallable(functions, 'retryVideoAnalysisJob');
-        
-        const result = await retryer({ jobId: selectedAnalysisJob.id });
+      const retryer = httpsCallable(functions, 'retryVideoAnalysisJob');
+      const result = await retryer({ jobId: selectedAnalysisJob.id });
 
-        alert(`Successfully started retry. Server response: ${result.data.result}`);
-      
-        refetch();
-
+      alert(`Successfully started retry. Server response: ${result.data.result}`);
+      refetch();
+      handleAnalysisJobSelect(selectedAnalysisJob);
     } catch (error) {
-        console.error("Error retrying job:", error);
-        alert(`Failed to retry job: ${error.message}`);
+      console.error("Error retrying job:", error);
+      alert(`Failed to retry job: ${error.message}`);
     } finally {
-        setRetryLoading(false);
+      setRetryLoading(false);
     }
   };
 
-  const handleExportAiJobs = () => {
+  const handleExportJobsDirectoryCsv = () => {
+    if (!videoAnalysisJobs || videoAnalysisJobs.length === 0) {
+      alert("No analysis jobs to export.");
+      return;
+    }
+
+    const headers = [
+      'Job ID',
+      'Model',
+      'Status',
+      'Videos Count',
+      'Created At',
+      'Filter Field',
+      'Filter Start',
+      'Filter End',
+      'Prompt'
+    ];
+
+    const rows = videoAnalysisJobs.map(job => [
+      job.id,
+      job.model || job.modelUsed || 'gemini-3.5-flash-lite',
+      job.status || 'unknown',
+      job.videos?.length || job.aiJobIds?.length || 0,
+      job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),
+      job.filterField || 'N/A',
+      job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
+      job.endTime?.toDate ? job.endTime.toDate().toISOString() : (job.endTime || 'N/A'),
+      job.prompt || ''
+    ]);
+
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+    const filename = `Class_${classId}_Video_Analysis_Jobs_Page_${page}_${dateSuffix}.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
+  const handleExportAiJobs = (customList = null) => {
+    const listToExport = customList || aiJobs;
+    if (listToExport.length === 0 || !selectedAnalysisJob) {
+      alert("No AI jobs to export.");
+      return;
+    }
+
+    const headers = [
+      'AI Job ID',
+      'Batch Job ID',
+      'Student Email',
+      'Student UID',
+      'Model',
+      'Status',
+      'Cost (USD)',
+      'Created At',
+      'Result Findings',
+      'Error Details',
+      'Video Path'
+    ];
+    
+    const rows = listToExport.map(job => {
+      const studentEmail = job.studentEmail || '';
+      const studentUid = job.studentUid || '';
+      const model = job.modelUsed || selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite';
+      const status = job.status || '';
+      const costStr = job.cost != null ? Number(job.cost).toFixed(4) : '0.0000';
+      const result = (job.result && typeof job.result === 'object') ? JSON.stringify(job.result) : (job.result || '');
+      const errorDetails = job.errorDetails || '';
+      const createdAt = job.timestamp?.toDate ? job.timestamp.toDate().toISOString() : (job.timestamp || 'N/A');
+      const videoPath = (job.mediaPaths && job.mediaPaths[0]) || job.videoPath || '';
+
+      return [
+        job.id,
+        selectedAnalysisJob.id,
+        studentEmail,
+        studentUid,
+        model,
+        status,
+        costStr,
+        createdAt,
+        result,
+        errorDetails,
+        videoPath
+      ];
+    });
+
+    const isFiltered = listToExport.length !== aiJobs.length;
+    const filename = isFiltered 
+      ? `Class_${classId}_Job_${selectedAnalysisJob.id}_Filtered_Findings.csv`
+      : `Class_${classId}_Job_${selectedAnalysisJob.id}_Findings.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
+  const handleExportAiJobsJson = () => {
     if (aiJobs.length === 0 || !selectedAnalysisJob) {
       alert("No AI jobs to export.");
       return;
     }
 
-    const headers = ['Student', 'Model', 'Status', 'Result', 'Error Details', 'Created At', 'Video Path'];
-    
-    const csvRows = aiJobs.map(job => {
-      const student = job.studentEmail || '';
-      const model = job.modelUsed || selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite';
-      const status = job.status || '';
-      const result = (job.result && typeof job.result === 'object') ? JSON.stringify(job.result) : (job.result || '');
-      const errorDetails = job.errorDetails || '';
-      const createdAt = job.timestamp?.toDate().toLocaleString() || '';
-      const videoPath = (job.mediaPaths && job.mediaPaths[0]) || '';
+    const payload = {
+      batchJobId: selectedAnalysisJob.id,
+      classId,
+      model: selectedAnalysisJob.model || selectedAnalysisJob.modelUsed || 'gemini-3.5-flash-lite',
+      prompt: selectedAnalysisJob.prompt || '',
+      exportedAt: new Date().toISOString(),
+      studentAnalyses: aiJobs.map(j => ({
+        id: j.id,
+        studentEmail: j.studentEmail,
+        studentUid: j.studentUid,
+        status: j.status,
+        model: j.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite',
+        cost: j.cost,
+        timestamp: j.timestamp?.toDate ? j.timestamp.toDate().toISOString() : j.timestamp,
+        result: j.result,
+        errorDetails: j.errorDetails,
+        videoPath: (j.mediaPaths && j.mediaPaths[0]) || j.videoPath || null
+      }))
+    };
 
-      const escape = (str) => `"${String(str).replace(/"/g, '""')}"`;
-
-      return [
-        escape(student),
-        escape(model),
-        escape(status),
-        escape(result),
-        escape(errorDetails),
-        escape(createdAt),
-        escape(videoPath)
-      ].join(',');
-    });
-
-    const csvContent = [headers.join(','), ...csvRows].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `analysis-${selectedAnalysisJob.id}.csv`);
-    document.body.appendChild(link);
-    
-    link.click();
-    
-    document.body.removeChild(link);
+    const filename = `Class_${classId}_Job_${selectedAnalysisJob.id}_Batch.json`;
+    exportToJson(payload, filename);
   };
 
   const handlePlayVideo = async (video) => {
@@ -234,86 +350,766 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField }) => {
     } catch (error) {
       console.error('Error getting video URL for playback:', error);
       alert(`Failed to get video for playback. ${error.message}`);
-      setShowPlayer(false); // Close modal on error
+      setShowPlayer(false);
     } finally {
       setPlayerLoading(false);
     }
   };
 
-  const hasFailedSubJobs = useMemo(() => aiJobs.some(j => j.status === 'failed'), [aiJobs]);
+  const handleCopyJobPrompt = async () => {
+    if (!selectedAnalysisJob?.prompt) return;
+    try {
+      await navigator.clipboard.writeText(selectedAnalysisJob.prompt);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch (err) {
+      console.warn('Copy prompt failed', err);
+    }
+  };
 
+  const handleOpenGeneratePromptModal = async () => {
+    if (!selectedAnalysisJob) return;
+
+    setGeneratingPrompt(true);
+    try {
+      const studentSummaries = [];
+      for (const job of aiJobs) {
+        if (job.status === 'completed' && job.result) {
+          const res = typeof job.result === 'object' ? JSON.stringify(job.result) : String(job.result);
+          studentSummaries.push({
+            studentEmail: job.studentEmail || 'unknown',
+            summary: res
+          });
+        }
+      }
+
+      const promptCaller = httpsCallable(functions, 'generateLabTaskPrompt');
+      const response = await promptCaller({
+        classId: selectedAnalysisJob.classId,
+        jobId: selectedAnalysisJob.id,
+        studentSummaries
+      });
+
+      const { generatedPrompt, promptName, summaryCount } = response.data;
+      setGeneratedPromptText(generatedPrompt || '');
+      setTaskPromptName(promptName || `Lab Tasks - ${selectedAnalysisJob.classId}`);
+      setPromptSummaryCount(summaryCount || studentSummaries.length);
+      setShowTaskPromptModal(true);
+    } catch (error) {
+      console.error('Error synthesizing lab task prompt:', error);
+      alert(`Failed to generate lab task prompt: ${error.message}`);
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const cleanVideoPath = (raw) => {
+    if (!raw) return '';
+    let p = raw;
+    if (p.startsWith('gs://')) {
+      const parts = p.replace('gs://', '').split('/');
+      parts.shift();
+      p = parts.join('/');
+    } else if (p.startsWith('https://storage.googleapis.com/')) {
+      const after = decodeURIComponent(p.replace('https://storage.googleapis.com/', ''));
+      const parts = after.split('/');
+      parts.shift();
+      p = parts.join('/');
+    }
+    if (p.startsWith('/')) p = p.substring(1);
+    return p;
+  };
+
+  const handleLaunchJobWithPrompt = async () => {
+    if (!generatedPromptText.trim()) {
+      alert('Prompt cannot be empty.');
+      return;
+    }
+
+    setIsLaunchingJob(true);
+    try {
+      if (saveToLibrary && taskPromptName.trim()) {
+        await addDoc(collection(db, 'prompts'), {
+          title: taskPromptName.trim(),
+          text: generatedPromptText,
+          description: `Auto-synthesized from analysis job ${selectedAnalysisJob.id}`,
+          classId: selectedAnalysisJob.classId,
+          type: 'lab_task',
+          isSystem: false,
+          createdBy: user?.uid || selectedAnalysisJob.requester,
+          creatorEmail: user?.email || '',
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      let targetVideos = [];
+      if (rerunScope === 'job_videos') {
+        if (selectedAnalysisJob.videos && selectedAnalysisJob.videos.length > 0) {
+          targetVideos = selectedAnalysisJob.videos.map(v => {
+            const path = cleanVideoPath(v.videoPath || v.path);
+            return {
+              ...v,
+              videoPath: path,
+              path: path
+            };
+          }).filter(v => v.videoPath);
+        } else if (aiJobs.length > 0) {
+          targetVideos = aiJobs.map(j => {
+            const raw = (j.mediaPaths && j.mediaPaths[0]) || j.videoPath || j.path;
+            const path = cleanVideoPath(raw);
+            return {
+              videoPath: path,
+              path: path,
+              classId: j.classId || selectedAnalysisJob.classId,
+              studentUid: j.studentUid,
+              studentEmail: j.studentEmail,
+              startTime: j.startTime,
+            };
+          }).filter(v => v.videoPath);
+        }
+      } else {
+        if (selectedAnalysisJob.startTime && selectedAnalysisJob.endTime) {
+          const videoRef = collection(db, 'videoJobs');
+          const vQuery = query(
+            videoRef,
+            where('classId', '==', selectedAnalysisJob.classId),
+            where('startTime', '>=', selectedAnalysisJob.startTime),
+            where('startTime', '<=', selectedAnalysisJob.endTime)
+          );
+          const videoSnap = await getDocs(vQuery);
+          targetVideos = videoSnap.docs.map(doc => {
+            const v = doc.data();
+            const path = cleanVideoPath(v.videoPath || v.path);
+            return {
+              videoPath: path,
+              path: path,
+              classId: v.classId || selectedAnalysisJob.classId,
+              studentUid: v.studentUid,
+              studentEmail: v.studentEmail,
+              startTime: v.startTime,
+            };
+          }).filter(v => v.videoPath);
+        }
+      }
+
+      if (targetVideos.length === 0) {
+        alert('No videos found to analyze.');
+        setIsLaunchingJob(false);
+        return;
+      }
+
+      const newJobRef = doc(collection(db, 'videoAnalysisJobs'));
+      const effectiveFilterField = filterField || selectedAnalysisJob.filterField || 'startTime';
+      await setDoc(newJobRef, {
+        jobId: newJobRef.id,
+        classId: selectedAnalysisJob.classId,
+        requester: user?.uid || selectedAnalysisJob.requester,
+        videos: targetVideos,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        startTime: selectedAnalysisJob.startTime,
+        endTime: selectedAnalysisJob.endTime,
+        filterField: effectiveFilterField,
+        deleted: false,
+        prompt: generatedPromptText,
+        model: selectedModel,
+      });
+
+      alert(`Successfully launched new analysis job (${targetVideos.length} videos) with your lab task prompt!`);
+      setShowTaskPromptModal(false);
+      refetch();
+    } catch (error) {
+      console.error('Error launching analysis job:', error);
+      alert(`Failed to launch analysis job: ${error.message}`);
+    } finally {
+      setIsLaunchingJob(false);
+    }
+  };
+
+  const hasFailedSubJobs = useMemo(() => aiJobs.some(j => j.status === 'failed'), [aiJobs]);
+  const failedVideosCount = useMemo(() => {
+    if (selectedAnalysisJob?.failedVideos && selectedAnalysisJob.failedVideos.length > 0) {
+      return selectedAnalysisJob.failedVideos.length;
+    }
+    return aiJobs.filter(j => j.status === 'failed').length;
+  }, [selectedAnalysisJob, aiJobs]);
+
+  const filteredAiJobs = useMemo(() => {
+    return aiJobs.filter(job => {
+      const matchesStudent = !studentFilter || 
+        (job.studentEmail && job.studentEmail.toLowerCase().includes(studentFilter.toLowerCase()));
+      const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
+      return matchesStudent && matchesStatus;
+    });
+  }, [aiJobs, studentFilter, statusFilter]);
 
   return (
     <div className="view-container">
       <VideoPlayerModal show={showPlayer} onClose={() => setShowPlayer(false)} videoUrl={videoUrl} loading={playerLoading} />
-      <div className="view-header">
-        <h2>Video Analysis Jobs</h2>
-      </div>
+      <JobResultModal show={Boolean(inspectingJob)} onClose={() => setInspectingJob(null)} job={inspectingJob} />
+      <PromptViewModal show={Boolean(viewingPromptJob)} onClose={() => setViewingPromptJob(null)} job={viewingPromptJob} />
       
-      <div className="actions-container" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-        <div className="filter-column">
+      {/* Synthesize Lab Task Prompt Modal */}
+      <Modal
+        show={showTaskPromptModal}
+        onClose={() => {
+          if (!isLaunchingJob) setShowTaskPromptModal(false);
+        }}
+        title="✨ AI-Generated Lab Task Prompt"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+          <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--color-text-muted, #64748b)' }}>
+            Gemini synthesized this prompt from {promptSummaryCount} student video summaries in this lab. Review and edit the tasks or rubrics below before launching.
+          </p>
+          
+          <div style={{ flex: 1, minHeight: '220px', display: 'flex', flexDirection: 'column' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '4px', color: 'var(--color-text-main, #334155)' }}>
+              Task Prompt (Editable Markdown):
+            </label>
+            <textarea
+              value={generatedPromptText}
+              onChange={(e) => setGeneratedPromptText(e.target.value)}
+              placeholder="Generated prompt will appear here..."
+              style={{
+                width: '100%',
+                flex: 1,
+                minHeight: '220px',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px solid var(--color-border, #cbd5e1)',
+                boxSizing: 'border-box',
+                resize: 'vertical',
+                lineHeight: '1.45',
+              }}
+            />
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', background: 'var(--color-surface-subtle, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border, #e2e8f0)' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--color-text-main, #334155)' }}>
+                Target Videos:
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="rerunScope"
+                    value="job_videos"
+                    checked={rerunScope === 'job_videos'}
+                    onChange={(e) => setRerunScope(e.target.value)}
+                  />
+                  <span>This Job's Videos ({selectedAnalysisJob?.videos?.length || selectedAnalysisJob?.aiJobIds?.length || 0})</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="rerunScope"
+                    value="all_videos"
+                    checked={rerunScope === 'all_videos'}
+                    onChange={(e) => setRerunScope(e.target.value)}
+                  />
+                  <span>All Videos in Class Time Window</span>
+                </label>
+              </div>
+            </div>
 
-        </div>
-      </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--color-text-main, #334155)' }}>
+                Model:
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--color-border, #cbd5e1)',
+                  fontSize: '0.85rem',
+                  background: '#fff'
+                }}
+              >
+                <option value="gemini-3.8-flash">gemini-3.8-flash (Standard Multimodal)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Cost-Optimized)</option>
+                <option value="gemini-3.7-flash">gemini-3.7-flash (Advanced Reasoning)</option>
+              </select>
 
-      <>
-        {analysisJobsLoading ? (
-          <p>Loading analysis jobs...</p>
-        ) : videoAnalysisJobs.length === 0 ? (
-          <p>No analysis jobs found for the selected criteria.</p>
-        ) : (
-          <>
-            <VideoAnalysisJobsTable 
-            jobs={videoAnalysisJobs} 
-            selectedJob={selectedAnalysisJob} 
-            onSelectJob={handleAnalysisJobSelect} 
-            onDeleteJob={handleDeleteAnalysisJob} 
-          />
-          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={fetchPrevPage} disabled={page <= 1 || analysisJobsLoading}>
-              Previous
+              <div style={{ marginTop: '10px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={saveToLibrary}
+                    onChange={(e) => setSaveToLibrary(e.target.checked)}
+                  />
+                  <span>Save as reusable prompt template</span>
+                </label>
+                {saveToLibrary && (
+                  <input
+                    type="text"
+                    value={taskPromptName}
+                    onChange={(e) => setTaskPromptName(e.target.value)}
+                    placeholder="Template Title"
+                    style={{
+                      width: '100%',
+                      marginTop: '6px',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border, #cbd5e1)',
+                      fontSize: '0.82rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+            <button
+              onClick={() => setShowTaskPromptModal(false)}
+              disabled={isLaunchingJob}
+              style={{ padding: '8px 16px' }}
+            >
+              Cancel
             </button>
-            <span>Page {page}</span>
-            <button onClick={fetchNextPage} disabled={isLastPage || analysisJobsLoading}>
-              Next
+            <button
+              onClick={handleLaunchJobWithPrompt}
+              disabled={isLaunchingJob || !generatedPromptText.trim()}
+              style={{
+                backgroundColor: '#4f46e5',
+                color: '#fff',
+                fontWeight: 600,
+                padding: '8px 18px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: isLaunchingJob ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isLaunchingJob ? 'Launching Analysis...' : '🚀 Launch Analysis Job'}
             </button>
           </div>
-          </>
-        )}
+        </div>
+      </Modal>
 
-        {selectedAnalysisJob && (
-          <div style={{ marginTop: '30px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3>AI Jobs for Analysis Job: {selectedAnalysisJob.id}</h3>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => setSelectedAnalysisJob(null)}>Close</button>
-                  {((
-                    selectedAnalysisJob.status === 'partial_failure' || 
-                    selectedAnalysisJob.status === 'failed'
-                  ) || (
-                    selectedAnalysisJob.status === 'processing' && hasFailedSubJobs
-                  )) && (
-                    <button onClick={handleRetryFailedJobs} disabled={retryLoading}>
-                      {retryLoading ? 'Retrying...' : 'Retry Failed Jobs'}
-                    </button>
-                  )}
-                  {aiJobs.length > 0 && (
-                      <button onClick={handleExportAiJobs}>Export AI Jobs</button>
+      {/* ========================================================
+          LEVEL 1: VIDEO ANALYSIS JOBS DIRECTORY
+          ======================================================== */}
+      {!selectedAnalysisJob ? (
+        <>
+          <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h2>Video Analysis Jobs</h2>
+              {!analysisJobsLoading && videoAnalysisJobs.length > 0 && (
+                <span style={{ fontSize: '0.82rem', padding: '3px 10px', borderRadius: '9999px', background: '#e2e8f0', color: '#475569', fontWeight: 600 }}>
+                  Page {page} ({videoAnalysisJobs.length} jobs)
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleExportJobsDirectoryCsv}
+                disabled={analysisJobsLoading || videoAnalysisJobs.length === 0}
+                style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
+              >
+                📥 Export Jobs Log (CSV)
+              </button>
+              <button 
+                onClick={() => refetch()} 
+                disabled={analysisJobsLoading}
+                style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
+              >
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
+
+          {analysisJobsLoading ? (
+            <p>Loading analysis jobs...</p>
+          ) : videoAnalysisJobs.length === 0 ? (
+            <p>No analysis jobs found for the selected criteria.</p>
+          ) : (
+            <>
+              <VideoAnalysisJobsTable 
+                jobs={videoAnalysisJobs} 
+                selectedJob={selectedAnalysisJob} 
+                onSelectJob={navigateToJob} 
+                onDeleteJob={handleDeleteAnalysisJob} 
+                onViewPrompt={(job) => setViewingPromptJob(job)}
+              />
+              <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem' }}>
+                <button onClick={fetchPrevPage} disabled={page <= 1 || analysisJobsLoading}>
+                  Previous
+                </button>
+                <span style={{ fontWeight: 500, fontSize: '0.9rem' }}>Page {page}</span>
+                <button onClick={fetchNextPage} disabled={isLastPage || analysisJobsLoading}>
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        /* ========================================================
+           LEVEL 2: SELECTED JOB DEEP-DIVE DASHBOARD
+           ======================================================== */
+        <div>
+          {/* Level 2 Breadcrumb & Back Bar */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '16px', 
+            paddingBottom: '12px', 
+            borderBottom: '1px solid #e2e8f0' 
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={navigateBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  color: '#1e293b'
+                }}
+              >
+                ← Back to Video Analysis Jobs
+              </button>
+              <span style={{ color: '#94a3b8' }}>/</span>
+              <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#475569' }}>
+                Job: <span style={{ fontFamily: 'monospace', color: '#2563eb' }}>{selectedAnalysisJob.id}</span>
+              </span>
+            </div>
+            <div>
+              <button 
+                onClick={navigateBack} 
+                style={{ 
+                  padding: '6px 14px', 
+                  borderRadius: '6px', 
+                  border: '1px solid #cbd5e1', 
+                  background: '#ffffff', 
+                  color: '#0f172a',
+                  cursor: 'pointer',
+                  fontWeight: 600 
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          {/* Job Overview Hero Card */}
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '16px 20px',
+            marginBottom: '18px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a' }}>Job Overview</h3>
+                  <span style={{
+                    padding: '2px 10px',
+                    borderRadius: '9999px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    backgroundColor: selectedAnalysisJob.status === 'completed' ? '#dcfce7' : selectedAnalysisJob.status === 'failed' ? '#fee2e2' : selectedAnalysisJob.status === 'partial_failure' ? '#fef3c7' : '#e0f2fe',
+                    color: selectedAnalysisJob.status === 'completed' ? '#166534' : selectedAnalysisJob.status === 'failed' ? '#991b1b' : selectedAnalysisJob.status === 'partial_failure' ? '#92400e' : '#0369a1',
+                  }}>
+                    {selectedAnalysisJob.status}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '0.85rem', color: '#64748b' }}>
+                  <span><strong>Model:</strong> {selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite'}</span>
+                  <span><strong>Class:</strong> {selectedAnalysisJob.classId}</span>
+                  <span><strong>Created:</strong> {selectedAnalysisJob.createdAt?.toDate().toLocaleString() || 'N/A'}</span>
+                  <span><strong>Videos:</strong> {selectedAnalysisJob.videos?.length || selectedAnalysisJob.aiJobIds?.length || aiJobs.length || 0} total</span>
+                  {failedVideosCount > 0 && (
+                    <span style={{ color: '#dc2626', fontWeight: 600 }}>({failedVideosCount} failed)</span>
                   )}
                 </div>
               </div>
-              {aiJobsLoading ? (
-                  <p>Loading AI jobs...</p>
-              ) : aiJobs.length === 0 ? (
-                  <p>No AI jobs found for this analysis job.</p>
-              ) : (
-                  <AiJobsTable aiJobs={aiJobs} onPlayVideo={handlePlayVideo} />
-              )}
-          </div>
-        )}
-      </>
 
+              {/* Action Toolbar */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                {((selectedAnalysisJob.status === 'partial_failure' || selectedAnalysisJob.status === 'failed') ||
+                  (selectedAnalysisJob.status === 'processing' && hasFailedSubJobs) ||
+                  failedVideosCount > 0) && (
+                  <button
+                    onClick={handleRetryFailedJobs}
+                    disabled={retryLoading}
+                    style={{
+                      backgroundColor: '#dc2626',
+                      color: '#fff',
+                      fontWeight: 600,
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '7px 14px',
+                      cursor: retryLoading ? 'wait' : 'pointer'
+                    }}
+                  >
+                    {retryLoading ? 'Retrying...' : `Retry Failed Jobs (${failedVideosCount})`}
+                  </button>
+                )}
+
+                {(selectedAnalysisJob.status === 'completed' || aiJobs.some(j => j.status === 'completed')) && (
+                  <button
+                    onClick={handleOpenGeneratePromptModal}
+                    disabled={generatingPrompt}
+                    style={{
+                      backgroundColor: '#4f46e5',
+                      color: '#fff',
+                      fontWeight: 600,
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '7px 16px',
+                      cursor: generatingPrompt ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {generatingPrompt ? '✨ Synthesizing Tasks...' : '✨ Generate Lab Task Prompt'}
+                  </button>
+                )}
+
+                {aiJobs.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => handleExportAiJobs()}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      📥 Export Findings (CSV)
+                    </button>
+                    <button
+                      onClick={handleExportAiJobsJson}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      📦 Export Batch (JSON)
+                    </button>
+                  </>
+                )}
+
+                <button
+                  onClick={() => handleDeleteAnalysisJob(selectedAnalysisJob.id, selectedAnalysisJob.aiJobIds)}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #fecaca',
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                >
+                  Delete Job
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Collapsible Prompt Card */}
+          {selectedAnalysisJob.prompt && (
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '18px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#334155' }}>
+                    📝 Task Rubric / Prompt Used
+                  </span>
+                  <button
+                    onClick={() => setPromptExpanded(!promptExpanded)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {promptExpanded ? 'Collapse' : 'Expand full prompt'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setViewingPromptJob(selectedAnalysisJob)}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: '0.78rem',
+                      borderRadius: '4px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔍 Full Modal
+                  </button>
+                  <button
+                    onClick={handleCopyJobPrompt}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: '0.78rem',
+                      borderRadius: '4px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {copiedPrompt ? '✓ Copied' : '📋 Copy Prompt'}
+                  </button>
+                </div>
+              </div>
+              {promptExpanded ? (
+                <pre style={{
+                  marginTop: '10px',
+                  marginBottom: 0,
+                  padding: '12px',
+                  background: '#ffffff',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.82rem',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: '260px',
+                  overflowY: 'auto'
+                }}>
+                  {selectedAnalysisJob.prompt}
+                </pre>
+              ) : (
+                <p style={{
+                  margin: '6px 0 0 0',
+                  fontSize: '0.84rem',
+                  color: '#64748b',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {selectedAnalysisJob.prompt.split('\n')[0] || selectedAnalysisJob.prompt.substring(0, 90)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Sub-Jobs Section */}
+          <div style={{ marginTop: '10px' }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '12px', 
+              flexWrap: 'wrap', 
+              gap: '10px' 
+            }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1e293b' }}>
+                AI Jobs for Analysis Job: {selectedAnalysisJob.id}
+              </h3>
+              
+              {/* Search & Filter Controls */}
+              {aiJobs.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Filter by student email..."
+                    value={studentFilter}
+                    onChange={(e) => setStudentFilter(e.target.value)}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.82rem',
+                      minWidth: '210px'
+                    }}
+                  />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.82rem',
+                      background: '#ffffff',
+                      color: '#0f172a'
+                    }}
+                  >
+                    <option value="all">All Statuses ({aiJobs.length})</option>
+                    <option value="completed">Completed ({aiJobs.filter(j => j.status === 'completed').length})</option>
+                    <option value="failed">Failed ({aiJobs.filter(j => j.status === 'failed').length})</option>
+                    <option value="processing">Processing ({aiJobs.filter(j => j.status === 'processing' || j.status === 'running').length})</option>
+                  </select>
+                  <button
+                    onClick={() => handleExportAiJobs(filteredAiJobs)}
+                    disabled={filteredAiJobs.length === 0}
+                    title="Export currently filtered AI jobs as CSV"
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    📥 Export CSV ({filteredAiJobs.length})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {aiJobsLoading ? (
+              <p>Loading AI jobs...</p>
+            ) : filteredAiJobs.length === 0 ? (
+              <p>{aiJobs.length === 0 ? 'No AI jobs found for this analysis job.' : 'No AI jobs match the filter.'}</p>
+            ) : (
+              <AiJobsTable
+                aiJobs={filteredAiJobs}
+                onPlayVideo={handlePlayVideo}
+                onInspectResult={(job) => setInspectingJob(job)}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

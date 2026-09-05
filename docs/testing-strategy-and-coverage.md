@@ -10,12 +10,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 261+ Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 656+ Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 15 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 40 Tests across 7 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 178 Tests across 35 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 39 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 576 Tests across 85 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,8 +47,19 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (45 Test Files / 288+ Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (85 Test Files / 576 Tests).
 * **Covered Modules**:
+  * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
+  * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, status badge variants, multi-line prompt accordion expansion/collapse, Level 1 "📜 View Prompt" modal opening, sub-job navigation (`View Details →`), and job deletion callbacks.
+  * `web-app/src/components/AiJobsTable.test.jsx`: Tests sub-job rendering, cost breakdown formatting, multi-attribute media path resolution (`mediaPaths`/`videoPath`/`path`), error inspector modal, raw JSON inspection modal, and row-level 1-click CSV/JSON export actions.
+  * `web-app/src/components/PromptViewModal.test.jsx`: Tests prompt inspection modal metadata (Job ID, Model, Author, Timestamp), one-click clipboard copying with 2-second visual feedback (`Copied!`), error catch fallbacks, and null job dismissal.
+  * `web-app/src/components/VideoPromptSelector.test.jsx`: Tests prompt category radio filtering (`all`, `public`, `private`, `shared`), null user safety, prompt selection callbacks, and custom instruction textarea updates.
+  * `web-app/src/components/JobResultModal.test.jsx`: Tests result payload rendering, clipboard copy with feedback, JSON export, CSV export, Markdown report export, formatted `.txt` report export (`Job_<id>_<student>_Report.txt`), and failed job error traceback inspector.
+  * `web-app/src/components/VideoAnalysisJobs.test.jsx`: Tests Level 1 jobs CSV export, Level 2 batch findings CSV and JSON exports, Level 2 filtered CSV export, multi-line prompt expander, clipboard copying, student email filtering, and job deletion.
+  * `web-app/src/components/AnalyticsAndDataViews.test.jsx`: Tests KPI cards, bottleneck analysis, lesson-based date range filtering, and both top-level and Student Milestone Matrix table CSV exports.
+  * `web-app/src/components/DataManagementView.test.jsx`: Tests select-all/deselect-all batch operations, date range validation alerts, paginated job controls, confirmation prompts, and cascading Firestore deletion safety.
+  * `web-app/src/components/SessionReviewView.test.jsx`: Tests student timeline playback, student search filtering, disabled export states when unselected, and video compilation jobs CSV export.
+  * `web-app/src/components/VideoLibrary.test.jsx`: Tests video manifest CSV export, download validation, and disabled state assertions when the video list is empty.
   * `web-app/src/workers/faceLandmarker.worker.test.js`: Validates dedicated Web Worker inference engine lifecycle, `init` action with GPU delegate allocation and CPU fallback, `process` action with `ImageBitmap` zero-copy transfer and resource closing, Eye Aspect Ratio (EAR) computation, Mouth Aspect Ratio (MAR) computation, adaptive neutral baseline yaw/pitch offset subtraction, and `no_face`/`multiple_faces` classification.
   * `web-app/src/utils/webAiModelLoader.test.js`: Validates 17 edge AI model loading scenarios including browser Cache API storage (`webai-models-v1`), `fetch()` `ReadableStream` download percentage calculation, GPU delegate allocation with automatic CPU fallback, mathematical calculation of Eye Aspect Ratio (`calculateEAR`) and Mouth Aspect Ratio (`calculateMAR`), and offline/network failure transitions.
   * `web-app/src/utils/studentCompliance.test.js`: Validates real-time student stream compliance evaluation, issue categorization (`no_screen`, `no_cam`, `no_mic`, `ai_alert`), default aggregations, filter state routing, targeted nudge messaging, and RFC-compliant CSV audit export formatting.
@@ -117,11 +128,11 @@ flowchart TD
 -------------------|---------|----------|---------|---------|---------------------
 Module             | % Stmts | % Branch | % Funcs | % Lines | Status
 -------------------|---------|----------|---------|---------|---------------------
-web-app (utils)    |   96.12 |    82.40 |   93.10 |   97.45 | 🟢 Exceeds Target
-web-app (prompt)   |   80.95 |    88.37 |   76.47 |   80.00 | 🟢 Exceeds Target
-web-app (workers)  |   70.54 |    44.69 |   78.57 |   69.52 | 🟢 Exceeds Target
-web-app (hooks)    |   72.41 |    56.60 |   69.30 |   74.15 | 🟢 Exceeds Target (>70%)
-web-app (all)      |   73.40 |    62.80 |   74.20 |   75.10 | 🟢 Exceeds Target (>70%)
+web-app (utils)    |   91.37 |    80.11 |   95.52 |   92.53 | 🟢 Exceeds Target (>90%)
+web-app (workers)  |   88.00 |    69.23 |   86.04 |   88.77 | 🟢 Exceeds Target (>85%)
+web-app (hooks)    |   79.27 |    60.72 |   81.12 |   81.01 | 🟢 Exceeds 80% Target
+web-app (components|   75.98 |    65.05 |   79.36 |   77.34 | 🟢 Exceeds Target (>75%)
+web-app (all)      |   79.18 |    66.72 |   80.12 |   80.64 | 🟢 Exceeds >= 80% Benchmark
 functions/ai_flows |   80.38 |    55.78 |   94.73 |   80.38 | 🟢 High Functional
 functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
 ==================================================================================

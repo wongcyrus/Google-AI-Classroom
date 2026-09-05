@@ -4,8 +4,8 @@ import { db, storage } from '../firebase-config';
 import { ref, deleteObject } from 'firebase/storage';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
-
 import PlaybackView from './PlaybackView';
+import { exportToCsv } from '../utils/exportUtils';
 
 const SessionReviewView = ({ classId, startTime, endTime }) => {
   console.log('SessionReviewView rendered for class:', classId);
@@ -225,6 +225,27 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   };
 
 
+  const handleExportVideoJobsCsv = () => {
+    if (!filteredVideoJobs || filteredVideoJobs.length === 0) {
+      alert("No video jobs to export.");
+      return;
+    }
+    const headers = ['Job ID', 'Student Email', 'Student UID', 'Start Time', 'End Time', 'Created At', 'Status', 'Error Details'];
+    const rows = filteredVideoJobs.map(job => [
+      job.id,
+      job.studentEmail || 'All Students',
+      job.studentUid || 'N/A',
+      job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
+      job.endTime?.toDate ? job.endTime.toDate().toISOString() : (job.endTime || 'N/A'),
+      job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),
+      job.status || 'unknown',
+      job.error || job.errorDetails || ''
+    ]);
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+    const filename = `Class_${classId}_Video_Jobs_${dateSuffix}.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
   const handleStartPlayback = () => {
     if (!selectedStudent) {
       alert('Please select a student.');
@@ -350,7 +371,24 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
         </div>
       )}
       <div className="jobs-table">
-          <h3>Video Jobs</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: 0 }}>Video Jobs</h3>
+            <button
+              onClick={handleExportVideoJobsCsv}
+              disabled={filteredVideoJobs.length === 0}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              📥 Export Video Jobs (CSV)
+            </button>
+          </div>
           <table>
               <thead>
                   <tr>

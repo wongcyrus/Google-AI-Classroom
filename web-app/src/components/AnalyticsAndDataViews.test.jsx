@@ -82,31 +82,102 @@ describe('Analytics & Data Management Views Full Suite', () => {
     it('renders performance analytics metrics when data exists', async () => {
       mockGetDocs.mockResolvedValueOnce({
         docs: [
-          { data: () => ({ taskName: 'Code Editor', duration: 120 }) },
-          { data: () => ({ taskName: 'Code Editor', duration: 60 }) },
-          { data: () => ({ taskName: 'Terminal', duration: 45 }) },
+          { id: 'm1', data: () => ({ studentUid: 'stu_1', taskName: 'Task 1: Account Setup & MFA', duration: 1200 }) },
+          { id: 'm2', data: () => ({ studentUid: 'stu_1', taskName: 'Task 2: AWS CloudShell & IDE', duration: 1800 }) },
+          { id: 'm3', data: () => ({ studentUid: 'stu_2', taskName: 'Task 1: Account Setup & MFA', duration: 1500 }) },
         ],
       });
 
       render(<PerformanceAnalyticsView classId="CLASS_101" />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Performance Analytics/i)).toBeInTheDocument();
+        expect(screen.getByText(/Lab Performance & Mastery Analytics/i)).toBeInTheDocument();
       });
 
-      expect(screen.getByText(/This chart displays the total time students have spent on different tasks/i)).toBeInTheDocument();
+      // KPI cards
+      expect(screen.getByText(/Avg Total Duration/i)).toBeInTheDocument();
+      expect(screen.getByText(/Lab Completion Rate/i)).toBeInTheDocument();
+      expect(screen.getByText(/Primary Bottleneck/i)).toBeInTheDocument();
+
+      // Student matrix table and export buttons
+      expect(screen.getByText('Student Milestone Matrix')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^📥 Export CSV$/i })).toBeInTheDocument();
+      const exportMatrixBtn = screen.getByRole('button', { name: /Export Matrix CSV/i });
+      expect(exportMatrixBtn).toBeInTheDocument();
+      fireEvent.click(exportMatrixBtn);
+      expect(screen.getAllByText('stu_1').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('stu_2').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('renders empty state message when no metrics available', async () => {
+    it('filters metrics by selected lesson matching the top filter', async () => {
+      const lessonDate = new Date('2026-09-04T01:30:00.000Z');
+      const lessonEnd = new Date('2026-09-04T03:30:00.000Z');
+      const lessons = [{ start: lessonDate, end: lessonEnd }];
+      const selectedLesson = lessonDate.toISOString();
+
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'm1',
+            data: () => ({
+              studentUid: 'stu_1',
+              taskName: 'Task 1: Account Setup & MFA',
+              duration: 1200,
+              startTime: lessonDate,
+            }),
+          },
+          {
+            id: 'm2',
+            data: () => ({
+              studentUid: 'stu_outside',
+              taskName: 'Task 1: Account Setup & MFA',
+              duration: 1800,
+              startTime: new Date('2026-08-20T00:00:00.000Z'), // Outside lesson window
+            }),
+          },
+        ],
+      });
+
+      render(
+        <PerformanceAnalyticsView
+          classId="CLASS_101"
+          lessons={lessons}
+          selectedLesson={selectedLesson}
+          startTime={lessonDate.toISOString()}
+          endTime={lessonEnd.toISOString()}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Filtered by Lesson:/i)).toBeInTheDocument();
+      });
+
+      expect(screen.getAllByText('stu_1').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText('stu_outside')).not.toBeInTheDocument();
+    });
+
+    it('renders empty state message when no metrics available and calls handleLessonChange to reset', async () => {
+      const mockHandleLessonChange = vi.fn();
       mockGetDocs.mockResolvedValueOnce({
         docs: [],
       });
 
-      render(<PerformanceAnalyticsView classId="CLASS_101" />);
+      render(
+        <PerformanceAnalyticsView
+          classId="CLASS_101"
+          startTime="2026-09-04T01:30:00.000Z"
+          endTime="2026-09-04T03:30:00.000Z"
+          handleLessonChange={mockHandleLessonChange}
+        />
+      );
 
       await waitFor(() => {
-        expect(screen.getByText(/No performance data has been collected yet/i)).toBeInTheDocument();
+        expect(screen.getByText(/No performance metrics recorded for the selected lesson window/i)).toBeInTheDocument();
       });
+
+      const resetBtn = screen.getByRole('button', { name: /View All Recorded Class Data/i });
+      fireEvent.click(resetBtn);
+      expect(mockHandleLessonChange).toHaveBeenCalledWith({ target: { value: '' } });
     });
   });
 

@@ -37,3 +37,38 @@ describe('analyzeAudioFlow Dynamic Placeholder Interpolation', () => {
     expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe-preview');
   });
 });
+
+describe('resolveVideoDetails Robust Path Parsing', () => {
+  it('correctly handles relative videoPath', async () => {
+    const { resolveVideoDetails } = await import('./processVideoAnalysisJob.js');
+    const bucket = 'it114115-2627.firebasestorage.app';
+    const result = resolveVideoDetails({ videoPath: 'videos/itp4124/test.mp4' }, bucket);
+    expect(result.relativePath).toBe('videos/itp4124/test.mp4');
+    expect(result.gsUri).toBe('gs://it114115-2627.firebasestorage.app/videos/itp4124/test.mp4');
+  });
+
+  it('correctly normalizes full gs:// URIs', async () => {
+    const { resolveVideoDetails } = await import('./processVideoAnalysisJob.js');
+    const bucket = 'it114115-2627.firebasestorage.app';
+    const result = resolveVideoDetails({ path: 'gs://it114115-2627.firebasestorage.app/videos/itp4124/test.mp4' }, bucket);
+    expect(result.relativePath).toBe('videos/itp4124/test.mp4');
+    expect(result.gsUri).toBe('gs://it114115-2627.firebasestorage.app/videos/itp4124/test.mp4');
+  });
+
+  it('correctly handles https:// storage URLs', async () => {
+    const { resolveVideoDetails } = await import('./processVideoAnalysisJob.js');
+    const bucket = 'it114115-2627.firebasestorage.app';
+    const result = resolveVideoDetails({ videoPath: 'https://storage.googleapis.com/it114115-2627.firebasestorage.app/videos%2Fitp4124%2Ftest.mp4' }, bucket);
+    expect(result.relativePath).toBe('videos/itp4124/test.mp4');
+    expect(result.gsUri).toBe('gs://it114115-2627.firebasestorage.app/videos/itp4124/test.mp4');
+  });
+
+  it('filters out undefined and invalid paths', async () => {
+    const { resolveVideoDetails } = await import('./processVideoAnalysisJob.js');
+    const bucket = 'it114115-2627.firebasestorage.app';
+    expect(resolveVideoDetails({ path: 'gs://it114115-2627.firebasestorage.app/undefined' }, bucket).relativePath).toBe('');
+    expect(resolveVideoDetails({ videoPath: undefined }, bucket).relativePath).toBe('');
+    expect(resolveVideoDetails(null, bucket).relativePath).toBe('');
+  });
+});
+

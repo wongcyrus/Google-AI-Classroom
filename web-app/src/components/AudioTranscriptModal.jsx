@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { timeStringToSeconds } from '../utils/transcriptMerger';
+import { exportToCsv, exportToText } from '../utils/exportUtils';
 import './AudioTranscriptModal.css';
 
 export default function AudioTranscriptModal({
@@ -51,6 +52,42 @@ export default function AudioTranscriptModal({
     return { card: 'speaker-student', tag: 'student', icon: '🔵' };
   };
 
+  const handleExportText = () => {
+    const headerLines = [
+      '=== AUDIO TRANSCRIPT & DIARIZATION REPORT ===',
+      `Student: ${studentName || studentUid || 'Student'}`,
+      `Classification: ${classification.replace(/_/g, ' ')}`,
+      `Risk Level: ${riskLevel}`,
+      explanation ? `Explanation: ${explanation}` : '',
+      `Generated At: ${new Date().toISOString()}`,
+      '----------------------------------------',
+      ''
+    ].filter(Boolean).join('\n');
+
+    const lines = effectiveSegments.map(seg => {
+      const time = seg.displayStart || seg.startTime || '00:00';
+      const speaker = seg.speaker || 'Speaker';
+      return `[${time}] ${speaker}: ${seg.text || ''}`;
+    });
+
+    const content = headerLines + '\n' + lines.join('\n');
+    const safeTag = (studentName || studentUid || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
+    exportToText(content, `Transcript_${safeTag}.txt`);
+  };
+
+  const handleExportCsv = () => {
+    const headers = ['Timestamp', 'Speaker', 'Text', 'Classification', 'Risk Level'];
+    const rows = effectiveSegments.map(seg => [
+      seg.displayStart || seg.startTime || '00:00',
+      seg.speaker || 'Speaker',
+      seg.text || '',
+      classification,
+      riskLevel
+    ]);
+    const safeTag = (studentName || studentUid || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
+    exportToCsv(headers, rows, `Transcript_${safeTag}.csv`);
+  };
+
   return (
     <div className="transcript-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="transcript-modal-title">
       <div className="transcript-modal-card">
@@ -67,9 +104,45 @@ export default function AudioTranscriptModal({
               </p>
             </div>
           </div>
-          <button className="transcript-close-btn" onClick={onClose} title="Close">
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleExportCsv}
+              disabled={effectiveSegments.length === 0}
+              title="Export transcript as CSV"
+              style={{
+                padding: '4px 10px',
+                fontSize: '0.8rem',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              📥 CSV
+            </button>
+            <button
+              onClick={handleExportText}
+              disabled={effectiveSegments.length === 0}
+              title="Export transcript as plain text"
+              style={{
+                padding: '4px 10px',
+                fontSize: '0.8rem',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              📄 TXT
+            </button>
+            <button className="transcript-close-btn" onClick={onClose} title="Close">
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}

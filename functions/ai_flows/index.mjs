@@ -49,3 +49,4 @@ export { retryVideoAnalysisJob };
 export * from './quotaTriggers.js';
 export * from './triggerAutomaticAnalysis.js';
 export * from './performanceMetrics.js';
+export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';

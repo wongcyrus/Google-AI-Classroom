@@ -29,6 +29,41 @@ function getISOString(date) {
 
 
 
+export function resolveVideoDetails(video, bucketName) {
+  let raw = video?.videoPath || video?.path || video?.url || '';
+  if (!raw || raw.endsWith('/undefined') || raw === 'undefined') return { relativePath: '', gsUri: '' };
+
+  const gsPrefix = `gs://${bucketName}/`;
+  const httpsPrefix = `https://storage.googleapis.com/${bucketName}/`;
+
+  let relativePath = raw;
+  if (relativePath.startsWith(gsPrefix)) {
+    relativePath = relativePath.substring(gsPrefix.length);
+  } else if (relativePath.startsWith('gs://')) {
+    const parts = relativePath.replace('gs://', '').split('/');
+    parts.shift();
+    relativePath = parts.join('/');
+  } else if (relativePath.startsWith(httpsPrefix)) {
+    relativePath = decodeURIComponent(relativePath.substring(httpsPrefix.length));
+  } else if (relativePath.startsWith('https://storage.googleapis.com/')) {
+    const withoutHost = decodeURIComponent(relativePath.replace('https://storage.googleapis.com/', ''));
+    const parts = withoutHost.split('/');
+    parts.shift();
+    relativePath = parts.join('/');
+  }
+
+  if (relativePath.startsWith('/')) {
+    relativePath = relativePath.substring(1);
+  }
+
+  const gsUri = `gs://${bucketName}/${relativePath}`;
+
+  return {
+    relativePath,
+    gsUri
+  };
+}
+
 export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnalysisJobs/{jobId}', region: FUNCTION_REGION, cpu: 1, memory: '2GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 5 }, async (event) => {
   const jobDoc = event.data;
   const masterJobId = event.params.jobId;
@@ -37,10 +72,18 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
   await db.collection('videoAnalysisJobs').doc(masterJobId).update({ status: 'processing', failedVideos: [] });
 
   try {
+    const bucketName = storage.bucket().name;
     let videosToAnalyze = [];
 
     if (jobData.videos) { // Job for selected videos
-      videosToAnalyze = jobData.videos;
+      videosToAnalyze = jobData.videos.map(v => {
+        const { relativePath } = resolveVideoDetails(v, bucketName);
+        return {
+          ...v,
+          videoPath: relativePath,
+          path: relativePath,
+        };
+      }).filter(v => v.videoPath);
     } else { // Job for all videos in a time range
       const videoJobsRef = db.collection('videoJobs');
       const q = videoJobsRef
@@ -56,8 +99,14 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       const videoMap = new Map();
       querySnapshot.forEach(doc => {
         const video = doc.data();
-        if (video.videoPath && !videoMap.has(video.videoPath)) {
-          videoMap.set(video.videoPath, { studentUid: video.studentUid, studentEmail: video.studentEmail, videoPath: video.videoPath });
+        const { relativePath } = resolveVideoDetails(video, bucketName);
+        if (relativePath && !videoMap.has(relativePath)) {
+          videoMap.set(relativePath, { 
+            studentUid: video.studentUid, 
+            studentEmail: video.studentEmail, 
+            videoPath: relativePath,
+            path: relativePath,
+          });
         }
       });
       videosToAnalyze = Array.from(videoMap.values());
@@ -76,7 +125,6 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
       return;
     }
 
-    const bucketName = storage.bucket().name;
     const BATCH_SIZE = 4; // Process 4 videos concurrently to avoid Gemini API 429 rate limit spikes
     
     let totalSuccesses = 0;

@@ -161,4 +161,22 @@ describe('TeacherView Component', () => {
 
     expect(await screen.findByText(/IT114115 Demo Class/i)).toBeInTheDocument();
   });
+
+  it('shows empty state and triggers create first class modal', async () => {
+    const { onSnapshot } = await import('firebase/firestore');
+    onSnapshot.mockImplementationOnce((ref, cb) => {
+      cb({ exists: () => true, data: () => ({ classes: [] }) });
+      return vi.fn();
+    });
+
+    render(
+      <BrowserRouter>
+        <TeacherView user={mockUser} />
+      </BrowserRouter>
+    );
+
+    const createFirstBtn = await screen.findByRole('button', { name: /\+ Create Your First Class/i });
+    fireEvent.click(createFirstBtn);
+    expect(screen.getAllByText(/Create New Class/i).length).toBeGreaterThan(0);
+  });
 });

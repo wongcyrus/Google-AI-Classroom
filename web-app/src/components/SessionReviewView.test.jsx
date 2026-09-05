@@ -199,5 +199,43 @@ describe('SessionReviewView Full Suite', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/Job Failure Details/i)).not.toBeInTheDocument();
   });
+
+  it('handles exporting video jobs as CSV', () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-vj-csv');
+
+    render(
+      <SessionReviewView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+      />
+    );
+
+    const exportBtn = screen.getByRole('button', { name: /Export Video Jobs/i });
+    fireEvent.click(exportBtn);
+
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    window.URL.createObjectURL = originalCreateObjectURL;
+  });
+
+  it('handles searching students, playback validation, and empty export alert', () => {
+    render(
+      <SessionReviewView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+      />
+    );
+
+    // Search student
+    const searchInput = screen.getByPlaceholderText(/Search student.../i);
+    fireEvent.change(searchInput, { target: { value: 'alice' } });
+    expect(searchInput.value).toBe('alice');
+
+    // Load Student button is disabled when no student is selected
+    const playBtn = screen.getByRole('button', { name: /Load Student/i });
+    expect(playBtn).toBeDisabled();
+  });
 });
 

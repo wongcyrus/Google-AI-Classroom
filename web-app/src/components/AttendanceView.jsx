@@ -11,7 +11,7 @@ import {
   mergeAttendanceData,
 } from '../utils/attendanceUtils';
 
-const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
+const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, timezone }) => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [lessonData, setLessonData] = useState(null);
@@ -20,41 +20,56 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
   const [csvData, setCsvData] = useState(null);
   const csvLink = useRef(null);
 
+  const matchedLesson = useMemo(() => {
+    if (selectedLesson && lessons?.length) {
+      return lessons.find((l) => l.start && l.start.toISOString() === selectedLesson);
+    }
+    return null;
+  }, [selectedLesson, lessons]);
+
+  const effectiveStart = matchedLesson ? matchedLesson.start.toISOString() : startTime;
+  const effectiveEnd = matchedLesson ? matchedLesson.end.toISOString() : endTime;
+
   const lessonDurationInMinutes = useMemo(() => {
-    return computeLessonDuration(startTime, endTime);
-  }, [startTime, endTime]);
+    return computeLessonDuration(effectiveStart, effectiveEnd, timezone);
+  }, [effectiveStart, effectiveEnd, timezone]);
 
   const combinedData = useMemo(() => {
     const lessonStudents = lessonData?.students || [];
     return mergeAttendanceData(attendanceData, lessonStudents, lessonDurationInMinutes);
   }, [attendanceData, lessonData, lessonDurationInMinutes]);
 
-  const filename = `attendance-${classId}-${formatFilenameDate(startTime)}-${formatFilenameDate(endTime)}.csv`;
+  const filename = `attendance-${classId}-${formatFilenameDate(effectiveStart)}-${formatFilenameDate(effectiveEnd)}.csv`;
 
   const handleFetchAttendance = async () => {
-    if (!classId || !startTime || !endTime) return;
+    if (!classId || !effectiveStart || !effectiveEnd) return;
 
     setLoadingAttendance(true);
     const getAttendanceData = httpsCallable(functions, 'getAttendanceData');
     try {
-      const result = await getAttendanceData({ classId, startTime, endTime });
-      setAttendanceData(result.data.attendanceData);
+      const result = await getAttendanceData({ classId, startTime: effectiveStart, endTime: effectiveEnd });
+      if (result?.data?.attendanceData) {
+        setAttendanceData(result.data.attendanceData);
+      }
     } catch (error) {
       console.error("Error fetching attendance data: ", error);
       setAttendanceData([]);
+    } finally {
+      setLoadingAttendance(false);
     }
-    setLoadingAttendance(false);
   };
 
   useEffect(() => {
     const fetchLessonData = async () => {
-      if (!classId || !startTime || !endTime) return;
+      if (!classId || !effectiveStart || !effectiveEnd) return;
       setLoadingLessonData(true);
       setAttendanceData([]); // Clear previous data
       try {
-        const lessonId = await getLessonId(startTime, endTime);
+        const lessonId = await getLessonId(effectiveStart, effectiveEnd, timezone);
         const lessonRef = doc(db, 'classes', classId, 'lessons', lessonId);
         const lessonSnap = await getDoc(lessonRef);
+
+        let hasCalculatedAttendance = false;
 
         if (lessonSnap.exists()) {
           const classRef = doc(db, 'classes', classId);
@@ -80,23 +95,36 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime }) => {
                 attendance: student.attendance || Array(lessonDurationInMinutes).fill(0),
               };
             }).filter(Boolean);
-            setAttendanceData(initialAttendance);
 
+            if (initialAttendance.length > 0) {
+              setAttendanceData(initialAttendance);
+              hasCalculatedAttendance = true;
+            }
           } else {
             setLessonData(lessonSnap.data());
           }
         } else {
           setLessonData(null);
         }
+
+        // Auto-fetch attendance calculation if not yet recorded in the lesson doc
+        if (!hasCalculatedAttendance && lessonDurationInMinutes > 0) {
+          const getAttendance = httpsCallable(functions, 'getAttendanceData');
+          const result = await getAttendance({ classId, startTime: effectiveStart, endTime: effectiveEnd });
+          if (result?.data?.attendanceData) {
+            setAttendanceData(result.data.attendanceData);
+          }
+        }
       } catch (error) {
         console.error("Error fetching lesson data:", error);
         setLessonData(null);
+      } finally {
+        setLoadingLessonData(false);
       }
-      setLoadingLessonData(false);
     };
 
     fetchLessonData();
-  }, [selectedLesson, classId, startTime, endTime, lessonDurationInMinutes]);
+  }, [selectedLesson, classId, effectiveStart, effectiveEnd, lessonDurationInMinutes, timezone]);
 
   const handleExportToCSV = () => {
     if (combinedData.length === 0) return;

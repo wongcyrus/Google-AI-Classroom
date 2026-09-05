@@ -346,6 +346,11 @@ export const recordActualWorkingTime = ai.defineTool(
       const db = getFirestore();
       const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
 
+      // Guardrail: working minutes cannot be negative and cannot exceed total lesson duration
+      const durationMinutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+      const normalizedMinutes = Math.max(0, Math.round(workingMinutes));
+      const cappedWorkingMinutes = durationMinutes > 0 ? Math.min(normalizedMinutes, durationMinutes) : normalizedMinutes;
+
       await db.runTransaction(async (transaction) => {
         const lessonDoc = await transaction.get(lessonRef);
         if (!lessonDoc.exists) {
@@ -354,22 +359,77 @@ export const recordActualWorkingTime = ai.defineTool(
             endTime: endDate,
             students: {
               [studentUid]: {
-                workingMinutes: workingMinutes
+                workingMinutes: cappedWorkingMinutes
               }
             }
           });
         } else {
           const studentPath = `students.${studentUid}.workingMinutes`;
           transaction.update(lessonRef, {
-            [studentPath]: FieldValue.increment(workingMinutes)
+            [studentPath]: cappedWorkingMinutes
           });
         }
       });
 
-      return `Successfully recorded ${workingMinutes} working minutes for student ${studentUid} in lesson.`;
+      return `Successfully recorded ${cappedWorkingMinutes} working minutes for student ${studentUid} in lesson.`;
     } catch (error) {
       console.error('Error recording actual working time:', error);
       return `Failed to record actual working time. Error: ${error.message}`;
+    }
+  }
+);
+
+export const recordTaskDuration = ai.defineTool(
+  {
+    name: 'recordTaskDuration',
+    description: 'Records the estimated duration in minutes spent on a specific coursework task or milestone during the lesson. Only invoke this tool when the prompt explicitly asks to track individual lab tasks, milestones, or coursework durations. Do NOT call this tool for general invigilation or if the prompt does not specify coursework tasks to measure.',
+    inputSchema: z.object({
+      studentUid: z.string().describe('The UID of the student.'),
+      classId: z.string().describe('The ID of the class.'),
+      taskName: z.string().describe("The name of the specific task (e.g. 'Azure Setup & MFA', 'AWS Academy Lab 2.1', 'DevOps Assignment 2', 'Troubleshooting')."),
+      durationMinutes: z.number().describe('The estimated duration spent on this task in minutes.'),
+      startTime: z.string().optional().describe('The start time of the lesson as an ISO 8601 string.'),
+      endTime: z.string().optional().describe('The end time of the lesson as an ISO 8601 string.'),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    console.log('recordTaskDuration input:', input);
+    const { studentUid, classId, taskName, durationMinutes, startTime, endTime } = input;
+    try {
+      const db = getFirestore();
+      const normalizedMinutes = Math.max(0, Math.round(durationMinutes));
+      const durationSeconds = normalizedMinutes * 60;
+
+      const record = {
+        studentUid,
+        classId,
+        taskName: (taskName || 'General Task').trim(),
+        duration: durationSeconds,
+        status: 'completed',
+        source: 'videoAnalysis',
+        timestamp: FieldValue.serverTimestamp(),
+      };
+
+      if (startTime) {
+        const parsedStart = new Date(startTime);
+        if (!isNaN(parsedStart.getTime())) {
+          record.startTime = parsedStart;
+        }
+      }
+      if (endTime) {
+        const parsedEnd = new Date(endTime);
+        if (!isNaN(parsedEnd.getTime())) {
+          record.endTime = parsedEnd;
+        }
+      }
+
+      await db.collection('performanceMetrics').add(record);
+
+      return `Successfully recorded ${normalizedMinutes} minutes for task "${taskName}".`;
+    } catch (error) {
+      console.error('Error recording task duration:', error);
+      return `Failed to record task duration. Error: ${error.message}`;
     }
   }
 );

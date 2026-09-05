@@ -1,3 +1,5 @@
+import { fromZonedTime } from 'date-fns-tz';
+
 /**
  * Utility functions for attendance formatting, hashing, and metric computations.
  */
@@ -14,18 +16,46 @@ export const formatFilenameDate = (date) => {
   return `${year}-${month}-${day}_${hours}-${minutes}`;
 };
 
-export const computeLessonDuration = (startTime, endTime) => {
+export const toIsoDateString = (input, timezone = 'UTC') => {
+  if (!input) return '';
+  if (input instanceof Date) return input.toISOString();
+  if (typeof input === 'number') return new Date(input).toISOString();
+  if (typeof input === 'string') {
+    if (input.includes('Z') || input.includes('+') || (input.includes('-') && input.lastIndexOf('-') > 10)) {
+      const d = new Date(input);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+    try {
+      const zoned = fromZonedTime(input, timezone);
+      if (!isNaN(zoned.getTime())) return zoned.toISOString();
+    } catch {
+      // fallback
+    }
+    const fallback = new Date(input);
+    return isNaN(fallback.getTime()) ? '' : fallback.toISOString();
+  }
+  const d = new Date(input);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
+export const computeLessonDuration = (startTime, endTime, timezone = 'UTC') => {
   if (!startTime || !endTime) return 0;
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const startISO = toIsoDateString(startTime, timezone);
+  const endISO = toIsoDateString(endTime, timezone);
+  if (!startISO || !endISO) return 0;
+  const start = new Date(startISO);
+  const end = new Date(endISO);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
   const duration = Math.round((end - start) / 60000);
   return duration > 0 ? duration : 0;
 };
 
-export const getLessonId = async (start, end) => {
+export const getLessonId = async (start, end, timezone = 'UTC') => {
   if (!start || !end) return '';
-  const message = `${new Date(start).toISOString()}-${new Date(end).toISOString()}`;
+  const startISO = toIsoDateString(start, timezone);
+  const endISO = toIsoDateString(end, timezone);
+  if (!startISO || !endISO) return '';
+  const message = `${startISO}-${endISO}`;
   if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
     const encoder = new TextEncoder();
     const data = encoder.encode(message);

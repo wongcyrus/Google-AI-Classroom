@@ -225,3 +225,72 @@ Instead of creating a new, confusing master job for each retry, the system updat
 
     // ... proceed with analysis only on the videosToAnalyze list
 ```
+
+---
+
+## 4. Two-Stage Lab Task Discovery, Dynamic Prompt Synthesis & Tool Safety
+
+Real-world laboratory classrooms (e.g., cloud computing labs with AWS, Azure, Docker, Kubernetes) involve distinct tasks, rubrics, and milestone requirements for each lesson session. Predefined static prompts are often too generic to measure specific task durations or evaluate complex coursework milestones.
+
+To address this without requiring teachers to author complex prompts from scratch, the system provides an automated **Two-Stage Lab Task Discovery & Dynamic Synthesis Workflow**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Teacher
+    participant UI as Web App (VideoAnalysisJobs.jsx)
+    participant Syn as generateLabTaskPrompt (Callable Cloud Function)
+    participant AI as Gemini 3.8 Flash
+    participant FS as Firestore
+    participant Runner as processVideoAnalysisJob (Firestore Trigger)
+
+    Note over Teacher, Runner: Stage 1: Initial Discovery Pass
+    Teacher->>UI: Run generic analysis across lesson videos
+    UI->>Runner: Creates videoAnalysisJobs document
+    Runner->>FS: Saves student summaries in aiJobs (status: completed)
+
+    Note over Teacher, Runner: Synthesis: Cross-Student Intelligence Aggregation
+    Teacher->>UI: Selects completed job & clicks "✨ Generate Lab Task Prompt"
+    UI->>Syn: Invokes generateLabTaskPrompt({ jobId })
+    Syn->>FS: Reads all completed child aiJobs for jobId
+    Syn->>AI: Synthesizes student observations into structured coursework prompt
+    AI-->>Syn: Tailored prompt (Coursework tasks, rubrics, technical blockers, tool directives)
+    Syn-->>UI: Returns synthesized Markdown prompt
+
+    Note over Teacher, Runner: Stage 2: Targeted Re-Analysis
+    UI->>Teacher: Opens modal with editable prompt, model selector & scope
+    Teacher->>UI: Reviews / tweaks prompt, picks model & clicks "🚀 Launch Analysis Job"
+    UI->>FS: Creates new videoAnalysisJobs document (and optionally saves to Prompt Library)
+    FS->>Runner: Triggers targeted 2nd-stage batch analysis
+    Runner->>AI: Executes tailored rubrics & records individual task durations
+    AI->>FS: Logs recordTaskDuration -> performanceMetrics collection
+```
+
+### Tool Safety & Zero Prompt Corruption Guarantees
+
+When new tools are introduced to the AI toolset, there is an important engineering consideration: *Could adding a new tool inadvertently corrupt, distract, or alter the execution of existing, working prompts (e.g., standard invigilation or simple attentiveness monitors)?*
+
+The system prevents prompt corruption through **4 Strict Architectural Safeguards**:
+
+1. **Negative Constraint Scoping in Tool Definitions**:
+   The tool definition for `recordTaskDuration` in [`functions/ai_flows/aiTools.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/aiTools.js) explicitly defines its applicability boundary:
+   ```javascript
+   description: 'Records the estimated duration in minutes spent on a specific coursework task or milestone during the lesson. Only invoke this tool when the prompt explicitly asks to track individual lab tasks, milestones, or coursework durations. Do NOT call this tool for general invigilation or if the prompt does not specify coursework tasks to measure.'
+   ```
+   Gemini's function-calling planner checks each tool's schema and description against the caller's prompt. Because existing invigilation prompts (like `AI invigilator.md`) only request attendance, distraction detection, and overall working time, Gemini's planner will **never** invoke `recordTaskDuration` during those runs.
+
+2. **Data Model Isolation (Zero Collision)**:
+   - `recordActualWorkingTime`: Writes directly to `classes/{classId}/lessons/{lessonId}` under `students.{studentUid}.workingMinutes`.
+   - `recordLessonSummary`: Writes to `classes/{classId}/lessons/{lessonId}` under `students.{studentUid}.summary`.
+   - `recordIrregularity` / `recordVideoIrregularity`: Writes to `irregularities` collection.
+   - `recordTaskDuration`: Writes exclusively to the independent `performanceMetrics` collection.
+   
+   Because each tool interacts with disjoint Firestore documents and collections, tool calls cannot overwrite, mutate, or corrupt lesson documents, student working minutes, or invigilation logs.
+
+3. **Strict Action & Response Protocols in Prompts**:
+   Built-in prompts (such as `AI invigilator.md`) enforce numbered action protocols:
+   - *"If there were no distractions at all, your final answer MUST be: 'The student remained focused and on track throughout the video.'"*
+   The model is strictly constrained to output the exact required textual response structure regardless of tool executions.
+
+4. **Idempotency & Clamping Guardrails**:
+   All metric tools enforce idempotency and boundary validation. For example, `recordActualWorkingTime` replaces `[studentPath]: cappedWorkingMinutes` (clamped between 0 and total lesson length) rather than incrementing, ensuring retries or multiple passes never inflate student working minutes.

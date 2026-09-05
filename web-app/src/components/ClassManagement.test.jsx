@@ -330,5 +330,20 @@ describe('ClassManagement Full Component Test Suite', () => {
     const intervalSelect = screen.getByDisplayValue(/Full Session/i);
     fireEvent.change(intervalSelect, { target: { value: '10' } });
   });
+
+  it('renders standalone mode with class selector and handles class switching', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Select a Class to Edit or Configure/i)).toBeInTheDocument();
+    });
+
+    const classSelect = screen.getByLabelText(/Select a Class to Edit or Configure/i);
+    fireEvent.change(classSelect, { target: { value: 'CLASS_202' } });
+
+    await waitFor(() => {
+      expect(mockGetDoc).toHaveBeenCalled();
+    });
+  });
 });
 

@@ -7,6 +7,7 @@ import { estimateCost } from './cost.js';
 import { checkQuota } from './quotaManagement.js';
 import { logJob } from './jobLogger.js';
 import { formatInTimeZone } from 'date-fns-tz';
+import { resolveVideoDetails } from './processVideoAnalysisJob.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -43,36 +44,34 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
     }
 
     const jobData = jobDoc.data();
-    let videosToAnalyze = jobData.failedVideos || [];
+    const bucketName = storage.bucket().name;
+    const rawFailed = jobData.failedVideos || [];
+    let videosToAnalyze = rawFailed.map(v => {
+        const { relativePath } = resolveVideoDetails(v, bucketName);
+        return {
+            ...v,
+            videoPath: relativePath,
+            path: relativePath,
+        };
+    }).filter(v => v.videoPath);
 
-    // Fallback for legacy jobs that don't have the failedVideos field
+    // Fallback for legacy jobs or when failedVideos had invalid entries
     if (videosToAnalyze.length === 0) {
         const aiJobsSnapshot = await db.collection('aiJobs').where('masterJobId', '==', jobId).where('status', '==', 'failed').get();
         if (!aiJobsSnapshot.empty) {
-            const bucketName = storage.bucket().name;
-            const gsPrefix = `gs://${bucketName}/`;
-            const httpsPrefix = `https://storage.googleapis.com/${bucketName}/`;
-
             videosToAnalyze = aiJobsSnapshot.docs.map(doc => {
                 const job = doc.data();
-                const url = job.mediaPaths && job.mediaPaths[0];
+                const url = (job.mediaPaths && job.mediaPaths[0]) || job.videoPath || job.path;
                 if (!url) return null;
 
-                let videoPath;
-                if (url.startsWith(gsPrefix)) {
-                    videoPath = url.substring(gsPrefix.length);
-                } else if (url.startsWith(httpsPrefix)) {
-                    videoPath = decodeURIComponent(url.substring(httpsPrefix.length));
-                } else {
-                    // Assume it's already a relative path, but log a warning.
-                    console.warn(`Unknown URL format in mediaPaths for job ${job.id}: ${url}`);
-                    videoPath = url;
-                }
+                const { relativePath } = resolveVideoDetails({ videoPath: url }, bucketName);
+                if (!relativePath) return null;
 
                 return {
                     studentUid: job.studentUid,
                     studentEmail: job.studentEmail,
-                    videoPath: videoPath
+                    videoPath: relativePath,
+                    path: relativePath,
                 };
             }).filter(v => v && v.videoPath && v.studentUid);
         }

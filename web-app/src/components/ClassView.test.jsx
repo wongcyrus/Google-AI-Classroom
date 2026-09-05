@@ -307,4 +307,18 @@ describe('ClassView Component Full Suite', () => {
       fireEvent.change(filterFieldSelect, { target: { value: 'createdAt' } });
     }
   });
+
+  it('switches class via quick switcher dropdown', async () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const switcher = await screen.findByLabelText(/Switch Class/i);
+    expect(switcher).toBeInTheDocument();
+    fireEvent.change(switcher, { target: { value: 'CLASS-202' } });
+  });
 });

@@ -59,6 +59,7 @@ import {
   recordScreenshotAnalysis,
   sendMessageToTeacher,
   recordActualWorkingTime,
+  recordTaskDuration,
   recordLessonFeedback,
   recordLessonSummary,
 } from './aiTools.js';
@@ -241,6 +242,43 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
 
       expect(mockCollection).toHaveBeenCalledWith('classes');
       expect(result).toContain('Successfully recorded 45 working minutes');
+    });
+
+    it('caps working duration at lesson duration if AI reports more minutes than the class', async () => {
+      // Lesson is 60 minutes, AI attempts to report 150 minutes
+      const result = await recordActualWorkingTime({
+        studentUid: 's1',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 150,
+      });
+
+      expect(result).toContain('Successfully recorded 60 working minutes');
+    });
+  });
+
+  describe('recordTaskDuration', () => {
+    it('records task duration in performanceMetrics', async () => {
+      const result = await recordTaskDuration({
+        studentUid: 's1',
+        classId: 'CLASS_1',
+        taskName: 'AWS Academy Lab 2.1',
+        durationMinutes: 35,
+      });
+
+      expect(mockCollection).toHaveBeenCalledWith('performanceMetrics');
+      expect(mockAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 's1',
+          classId: 'CLASS_1',
+          taskName: 'AWS Academy Lab 2.1',
+          duration: 2100, // 35 * 60 seconds
+          status: 'completed',
+          source: 'videoAnalysis',
+        })
+      );
+      expect(result).toContain('Successfully recorded 35 minutes for task "AWS Academy Lab 2.1"');
     });
   });
 

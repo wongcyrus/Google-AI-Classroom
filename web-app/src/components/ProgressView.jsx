@@ -3,6 +3,7 @@ import { db } from '../firebase-config';
 import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
+import { exportToCsv } from '../utils/exportUtils';
 
 const ProgressView = ({ classId, startTime, endTime }) => {
   const [selectedStudentUid, setSelectedStudentUid] = useState(null);
@@ -131,14 +132,57 @@ const ProgressView = ({ classId, startTime, endTime }) => {
   }, [selectedStudentUid, refetchDetail]);
 
 
+  const handleExportSummaryCsv = () => {
+    if (!latestProgress || latestProgress.length === 0) {
+      alert("No progress data to export.");
+      return;
+    }
+    const headers = ['Student Email', 'Student UID', 'Latest Progress', 'Last Updated'];
+    const rows = latestProgress.map(p => [
+      p.studentEmail || 'N/A',
+      p.studentUid || 'N/A',
+      p.progress || 'No progress recorded',
+      p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
+    ]);
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+    const filename = `Class_${classId}_Progress_Summary_Page_${summaryPage}_${dateSuffix}.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
+  const handleExportDetailCsv = (studentEmail) => {
+    if (!detailProgress || detailProgress.length === 0) {
+      alert("No progress timeline entries to export.");
+      return;
+    }
+    const headers = ['Student Email', 'Student UID', 'Progress Description', 'Timestamp'];
+    const rows = detailProgress.map(p => [
+      studentEmail,
+      selectedStudentUid,
+      p.progress || '',
+      p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
+    ]);
+    const safeTag = (studentEmail || selectedStudentUid).replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `Class_${classId}_Progress_Timeline_${safeTag}.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
   const renderDetailView = () => {
     const studentEmail = (detailProgress.length > 0 && detailProgress[0].studentEmail) || (students.find(s => s.uid === selectedStudentUid))?.email || selectedStudentUid;
 
     return (
       <div className="view-container">
-        <div className="view-header">
+        <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button onClick={() => setSelectedStudentUid(null)}>Back to Summary</button>
-            <h3>Progress for {studentEmail}</h3>
+            <h3 style={{ margin: 0 }}>Progress for {studentEmail}</h3>
+          </div>
+          <button
+            onClick={() => handleExportDetailCsv(studentEmail)}
+            disabled={detailLoading || detailProgress.length === 0}
+            style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
+          >
+            📥 Export Student Timeline (CSV)
+          </button>
         </div>
         {detailLoading ? <p>Loading...</p> : (
           <>
@@ -171,8 +215,15 @@ const ProgressView = ({ classId, startTime, endTime }) => {
 
     return (
       <div className="view-container">
-        <div className="view-header">
-          <h2>Student Progress Summary</h2>
+        <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Student Progress Summary</h2>
+          <button
+            onClick={handleExportSummaryCsv}
+            disabled={loading || latestProgress.length === 0}
+            style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
+          >
+            📥 Export Progress Summary (CSV)
+          </button>
         </div>
 
         {loading ? (

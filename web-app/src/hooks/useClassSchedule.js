@@ -138,6 +138,9 @@ export const useClassSchedule = (classId) => {
         setStartTime(toLocalISOString(selected.start));
         setEndTime(toLocalISOString(selected.end));
       }
+    } else {
+      setStartTime('');
+      setEndTime('');
     } 
   };
 

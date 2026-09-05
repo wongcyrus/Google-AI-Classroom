@@ -480,6 +480,20 @@ Stores student progress reports.
     *   `progress`: (string) A description of the student's progress.
     *   `timestamp`: (timestamp) A timestamp of when the progress was recorded.
 
+### `performanceMetrics`
+
+Stores individual and aggregated task duration records for students, tracking how long students spend completing specific lab milestones and coursework tasks. Fed by the `recordTaskDuration` AI tool during video analysis and used to render the **Performance Analytics** charts.
+
+*   **Document ID**: Auto-generated.
+*   **Fields**:
+    *   `studentUid`: (string) The UID of the student who completed the task.
+    *   `classId`: (string) The ID of the class.
+    *   `taskName`: (string) The name of the specific task or lab milestone (e.g., `'AWS Academy Lab 2.1'`, `'Azure Setup & MFA'`, `'Docker Containerization'`).
+    *   `duration`: (number) The duration in **seconds** spent on this task.
+    *   `status`: (string) The completion status (e.g., `'completed'`).
+    *   `source`: (string) The source of the measurement (e.g., `'videoAnalysis'`, `'screenshot'`).
+    *   `timestamp`: (timestamp) Timestamp when the metric was recorded.
+
 ### `prompts`
 
 Stores the AI prompts.

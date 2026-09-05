@@ -122,4 +122,29 @@ describe('AudioTranscriptModal Component', () => {
 
     expect(screen.getByText(/No speech detected or transcript empty/i)).toBeInTheDocument();
   });
+
+  it('handles exporting transcript as CSV and TXT', () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-transcript');
+
+    render(
+      <AudioTranscriptModal
+        isOpen={true}
+        onClose={vi.fn()}
+        studentUid="student_123"
+        studentName="John Doe"
+        transcriptSegments={mockTranscriptSegments}
+      />
+    );
+
+    const csvBtn = screen.getByRole('button', { name: /CSV/i });
+    fireEvent.click(csvBtn);
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+
+    const txtBtn = screen.getByRole('button', { name: /TXT/i });
+    fireEvent.click(txtBtn);
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+
+    window.URL.createObjectURL = originalCreateObjectURL;
+  });
 });

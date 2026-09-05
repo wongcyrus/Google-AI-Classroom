@@ -44,6 +44,9 @@ The project is a monorepo composed of three main parts:
     *   **Background Capture Engine:** Resilient frame acquisition using `ImageCapture` hardware track grab, isolated Web Worker timers, and Screen Wake Lock to prevent throttling when browsers (Edge / Chrome) run behind other apps.
     *   **In-Flight Upload Guards:** Channel-level concurrency locks that prevent upload backlog accumulation and latency drift.
     *   **Live Teacher Monitor & Compliance Audit:** Streamlined ControlsPanel with zero-space problem student filtering (`👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, `🚨 AI Alerts`), targeted one-click broadcast nudge (`📢 Nudge (N)`), instant compliance audit CSV export (`📥 Export CSV`), 1-to-1 WebRTC Live Peek with 2-way talkback, high-detail student inspection modals, offline screen caching (`🖥️ Screen (Offline)` badge) displaying students' last-known frames post-session, and Smart Default Lesson Resolution (`useClassSchedule.js`) detecting active morning/afternoon slots automatically via completed video jobs and student status heartbeats.
+    *   **Universal Data Export Engine & Prompt Inspector:** RFC 4180-compliant CSV exports equipped with UTF-8 BOM (`\uFEFF`) for direct Microsoft Excel compatibility, formatted JSON payloads, and plain-text reports across all teacher views (Video Analysis Jobs, Progress View, Audio Transcript Modal, Video Library, Session Review, AI Cost Report, and Job Result Modal). Full prompt visibility with Level 1 inline accordions, Level 2 expandable cards, and standalone "📜 View Prompt" modal with 1-click clipboard copying.
+    *   **Two-Stage Lab Task Synthesis & Dynamic Re-run:** Automated 1-click **"✨ Generate Lab Task Prompt"** in Video Analysis Jobs. Automatically aggregates multi-student video observations across the entire cohort, invokes Gemini 3.8 Flash to synthesize lab-specific tasks, cloud platform tools, rubrics, and technical blockers, and launches targeted 2nd-stage batch re-analysis.
+    *   **Granular Task Duration Analytics:** Automatic logging via the `recordTaskDuration` AI tool feeds the **Performance Analytics** dashboard with discrete task and lab milestone durations from video screencasts.
 *   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
@@ -239,19 +242,20 @@ The default development environment (`it114115-dev-2026`) comes pre-seeded with 
 
 ## 🧪 Testing & Quality Assurance
 
-The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests:
+The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests (**656+ tests and assertions**, exceeding the **80% line and function coverage benchmark**):
 
 ```bash
 # Run all test suites (Frontend + Functions + System Smoke Tests)
 npm test
 
-# Run all test suites with V8 code coverage report
+# Run all test suites with V8 code coverage report (Lines: 80.63%, Funcs: 80.12%)
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest)
-npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin)
+npm run test:frontend   # React component & utility unit tests (Vitest: 576 tests across 85 suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 39 tests across 6 suites)
+npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
+npm run test:security   # Real-token security rules verification (15 assertions)
 ```
 
 For complete architectural details, test matrices, and coverage reports, see the **[Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.

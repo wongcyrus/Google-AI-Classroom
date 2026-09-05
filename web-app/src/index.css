@@ -97,6 +97,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button.secondary-btn,
+button[style*="background: #fff"],
+button[style*="background: rgb(255, 255, 255)"],
+button[style*="background: white"],
+button[style*="background-color: #fff"],
+button[style*="background-color: white"] {
+  color: var(--color-text-main, #0f172a);
+}
+
 button.secondary-btn {
   background-color: var(--color-surface);
   color: var(--color-text-main);

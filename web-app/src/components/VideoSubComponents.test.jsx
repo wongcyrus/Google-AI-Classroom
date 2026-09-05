@@ -179,5 +179,69 @@ describe('Video & AI Analysis Sub-components', () => {
       fireEvent.click(deleteBtn);
       expect(onDeleteJob).toHaveBeenCalledWith('analysis_101', ['job_1']);
     });
+
+    it('triggers onViewPrompt when prompt cell or View Prompt button is clicked', () => {
+      const onViewPrompt = vi.fn();
+      render(
+        <VideoAnalysisJobsTable
+          jobs={mockJobs}
+          selectedJob={null}
+          onSelectJob={vi.fn()}
+          onDeleteJob={vi.fn()}
+          onViewPrompt={onViewPrompt}
+        />
+      );
+
+      const viewPromptBtn = screen.getByRole('button', { name: /View Prompt/i });
+      fireEvent.click(viewPromptBtn);
+      expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
+    });
+
+    it('toggles inline prompt expansion in Level 1', () => {
+      render(
+        <VideoAnalysisJobsTable
+          jobs={mockJobs}
+          selectedJob={null}
+          onSelectJob={vi.fn()}
+          onDeleteJob={vi.fn()}
+          onViewPrompt={vi.fn()}
+        />
+      );
+
+      const expandBtn = screen.getByRole('button', { name: /Expand inline/i });
+      fireEvent.click(expandBtn);
+
+      expect(screen.getByText(/Prompt for Job/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Collapse/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('PromptViewModal Component', () => {
+    it('renders full prompt text and allows copying', async () => {
+      const mockJob = {
+        id: 'job_xyz',
+        modelUsed: 'gemini-3.8-flash',
+        prompt: 'Track student progress across milestone 1 and milestone 2.',
+        createdAt: { toDate: () => new Date('2026-09-01T10:00:00Z') },
+      };
+      const onClose = vi.fn();
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: vi.fn().mockResolvedValue(undefined),
+        },
+      });
+
+      const { default: PromptViewModal } = await import('./PromptViewModal');
+      render(<PromptViewModal show={true} onClose={onClose} job={mockJob} />);
+
+      expect(screen.getByText('Video Analysis Prompt')).toBeInTheDocument();
+      expect(screen.getByText('job_xyz')).toBeInTheDocument();
+      expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
+      expect(screen.getByText(/Track student progress across milestone 1/)).toBeInTheDocument();
+
+      const copyBtn = screen.getByRole('button', { name: /Copy Prompt/i });
+      fireEvent.click(copyBtn);
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockJob.prompt);
+    });
   });
 });

@@ -1,37 +1,64 @@
-import { onCall } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp } from 'firebase-admin/app';
 import { fromZonedTime } from 'date-fns-tz';
-import { CORS_ORIGINS } from './config.js';
+import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 
 initializeApp();
 const db = getFirestore();
 
-export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
-  const { classId, startTime, endTime } = request.data;
+/**
+ * Safely parse date from string (ISO or local), number, or Date
+ */
+export function parseDateTime(time, timeZone = 'UTC') {
+  if (!time) return null;
+  if (time instanceof Date) return time;
+  if (typeof time === 'number') return new Date(time);
+  if (typeof time === 'string') {
+    if (time.includes('Z') || time.includes('+') || (time.includes('-') && time.lastIndexOf('-') > 10)) {
+      const parsed = new Date(time);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return fromZonedTime(time, timeZone);
+  }
+  const fallback = new Date(time);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+export const getAttendanceData = onCall({
+  region: FUNCTION_REGION,
+  cors: CORS_ORIGINS,
+  memory: '512MiB',
+  timeoutSeconds: 300,
+}, async (request) => {
+  const { classId, startTime, endTime } = request.data || {};
 
   if (!classId || !startTime || !endTime) {
-    throw new functions.https.HttpsError('invalid-argument', 'The function must be called with "classId", "startTime", and "endTime" arguments.');
+    throw new HttpsError('invalid-argument', 'The function must be called with "classId", "startTime", and "endTime" arguments.');
   }
 
   const classRef = db.collection('classes').doc(classId);
   const classSnap = await classRef.get();
 
   if (!classSnap.exists) {
-    throw new functions.https.HttpsError('not-found', `Class with ID ${classId} not found.`);
+    throw new HttpsError('not-found', `Class with ID ${classId} not found.`);
   }
 
   const classData = classSnap.data();
   const studentsMap = classData.students || {};
   const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
     uid: uid,
-    email: email.replace(/\s/g, '').toLowerCase(),
+    email: (email || '').replace(/\s/g, '').toLowerCase(),
   }));
   studentList.sort((a, b) => a.email.localeCompare(b.email));
 
   const timeZone = classData.schedule?.timeZone || 'UTC';
-  const lessonStartTime = fromZonedTime(startTime, timeZone);
-  const lessonEndTime = fromZonedTime(endTime, timeZone);
+  const lessonStartTime = parseDateTime(startTime, timeZone);
+  const lessonEndTime = parseDateTime(endTime, timeZone);
+
+  if (!lessonStartTime || !lessonEndTime) {
+    throw new HttpsError('invalid-argument', 'Invalid "startTime" or "endTime" provided.');
+  }
 
   const lessonDurationInMinutes = Math.round((lessonEndTime - lessonStartTime) / 60000);
 
@@ -39,9 +66,19 @@ export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }
     return { attendanceData: [] };
   }
 
-  const attendanceMap = new Map(studentList.map(s => [s.email, Array(lessonDurationInMinutes).fill(0)]));
+  // Attendance maps indexed by student email and uid for robust matching
+  const emailToStudentMap = new Map();
+  const uidToStudentMap = new Map();
+  studentList.forEach(s => {
+    const bitmask = Array(lessonDurationInMinutes).fill(0);
+    const entry = { student: s, attendance: bitmask };
+    if (s.email) emailToStudentMap.set(s.email, entry);
+    if (s.uid) uidToStudentMap.set(s.uid, entry);
+  });
 
-  const CHUNK_SIZE_MINUTES = 15;
+  // Query screenshots in parallel chunks for fast processing
+  const CHUNK_SIZE_MINUTES = 30;
+  const chunkPromises = [];
   for (let i = 0; i < lessonDurationInMinutes; i += CHUNK_SIZE_MINUTES) {
     const chunkStartTime = new Date(lessonStartTime.getTime() + i * 60000);
     let chunkEndTime = new Date(lessonStartTime.getTime() + (i + CHUNK_SIZE_MINUTES) * 60000);
@@ -49,35 +86,48 @@ export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }
       chunkEndTime = lessonEndTime;
     }
 
-    const q = db.collection('screenshots')
-      .where('classId', '==', classId)
-      .where('timestamp', '>=', chunkStartTime)
-      .where('timestamp', '<=', chunkEndTime);
-    
-    const querySnapshot = await q.get();
-
-    querySnapshot.forEach(doc => {
-      const screenshot = doc.data();
-      const studentEmail = screenshot.email.replace(/\s/g, '').toLowerCase();
-      const studentAttendance = attendanceMap.get(studentEmail);
-      if (studentAttendance) {
-        const screenshotTime = screenshot.timestamp.toDate();
-        const minuteIndex = Math.floor((screenshotTime - lessonStartTime) / 60000);
-        if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
-          studentAttendance[minuteIndex] = 1;
-        }
-      }
-    });
+    chunkPromises.push(
+      db.collection('screenshots')
+        .where('classId', '==', classId)
+        .where('timestamp', '>=', chunkStartTime)
+        .where('timestamp', '<=', chunkEndTime)
+        .get()
+    );
   }
 
+  const chunkSnapshots = await Promise.all(chunkPromises);
+
+  chunkSnapshots.forEach(snap => {
+    snap.forEach(doc => {
+      const screenshot = doc.data();
+      if (!screenshot) return;
+
+      const rawEmail = screenshot.email || screenshot.studentEmail || '';
+      const studentEmail = rawEmail.replace(/\s/g, '').toLowerCase();
+      const studentUid = screenshot.studentUid || screenshot.userId || screenshot.uid;
+
+      const entry = (studentEmail && emailToStudentMap.get(studentEmail)) || (studentUid && uidToStudentMap.get(studentUid));
+      if (!entry) return;
+
+      const rawTimestamp = screenshot.timestamp;
+      const screenshotTime = rawTimestamp?.toDate ? rawTimestamp.toDate() : (rawTimestamp ? new Date(rawTimestamp) : null);
+      if (!screenshotTime || isNaN(screenshotTime.getTime())) return;
+
+      const minuteIndex = Math.floor((screenshotTime.getTime() - lessonStartTime.getTime()) / 60000);
+      if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
+        entry.attendance[minuteIndex] = 1;
+      }
+    });
+  });
+
   const attendanceData = studentList.map(student => {
-    const email = student.email;
-    const attendance = attendanceMap.get(email) || [];
+    const entry = uidToStudentMap.get(student.uid) || emailToStudentMap.get(student.email);
+    const attendance = entry ? entry.attendance : Array(lessonDurationInMinutes).fill(0);
     const totalMinutes = attendance.reduce((sum, present) => sum + present, 0);
     const percentage = lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%';
 
     return {
-      email,
+      email: student.email,
       totalMinutes,
       percentage,
       attendance,
@@ -91,34 +141,24 @@ export const getAttendanceData = onCall({ cors: CORS_ORIGINS, memory: '512MiB' }
   const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
 
   try {
-    await db.runTransaction(async (transaction) => {
-      const lessonDoc = await transaction.get(lessonRef);
-      if (!lessonDoc.exists) {
-        transaction.set(lessonRef, {
-          startTime: lessonStartTime,
-          endTime: lessonEndTime,
-        });
-      }
-    });
-
-    const batch = db.batch();
+    const studentsPayload = {};
     attendanceData.forEach(data => {
       const student = studentList.find(s => s.email === data.email);
       if (student) {
-        batch.set(lessonRef, {
-            students: {
-                [student.uid]: {
-                    sharedScreenMinutes: data.totalMinutes,
-                    attendance: data.attendance
-                }
-            }
-        }, { merge: true });
+        studentsPayload[student.uid] = {
+          sharedScreenMinutes: data.totalMinutes,
+          attendance: data.attendance
+        };
       }
     });
-    await batch.commit();
+
+    await lessonRef.set({
+      startTime: lessonStartTime,
+      endTime: lessonEndTime,
+      students: studentsPayload
+    }, { merge: true });
   } catch (error) {
     console.error('Error persisting attendance data:', error);
-    // Decide if you want to throw an error back to the client
   }
 
   return { attendanceData };

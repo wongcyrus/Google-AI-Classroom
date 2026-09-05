@@ -1,5 +1,5 @@
 // Centralized configuration for Cloud Functions
-export const FUNCTION_REGION = 'asia-east2';
+export const FUNCTION_REGION = process.env.FUNCTION_REGION || process.env.FIREBASE_REGION || 'asia-east2';
 
 // CORS origins for callable functions
 export const CORS_ORIGINS = [

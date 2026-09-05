@@ -140,4 +140,38 @@ describe('CustomPropertiesManager Component', () => {
       expect(mockAddDoc).toHaveBeenCalled();
     });
   });
+
+  it('handles removing a property row and error states', async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ Prop1: 'Val1', Prop2: 'Val2' }),
+    });
+
+    render(
+      <CustomPropertiesManager
+        selectedClass="CLASS_101"
+        studentEmails="alice@school.edu"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Prop1')).toBeInTheDocument();
+    });
+
+    // Remove first property row
+    const removeBtns = screen.getAllByTitle(/Remove Property/i);
+    fireEvent.click(removeBtns[0]);
+    expect(screen.queryByDisplayValue('Prop1')).not.toBeInTheDocument();
+
+    // Save failure
+    mockCommit.mockRejectedValueOnce(new Error('Write permission denied'));
+    const saveBtn = screen.getByRole('button', { name: /Save Class-wide Properties/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to save properties/i)).toBeInTheDocument();
+    });
+  });
 });

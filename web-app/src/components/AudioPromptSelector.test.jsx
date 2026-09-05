@@ -57,9 +57,30 @@ describe('AudioPromptSelector Component', () => {
     expect(screen.getByText('Private Audio Prompt')).toBeInTheDocument();
     expect(screen.queryByText('Public Audio Prompt')).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByLabelText(/Public/i));
+    expect(screen.getByText('Public Audio Prompt')).toBeInTheDocument();
+    expect(screen.queryByText('Private Audio Prompt')).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByLabelText(/Shared/i));
     expect(screen.getByText('Shared Audio Prompt')).toBeInTheDocument();
     expect(screen.queryByText('Private Audio Prompt')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/^All$/i));
+    expect(screen.getByText('Public Audio Prompt')).toBeInTheDocument();
+    expect(screen.getByText('Private Audio Prompt')).toBeInTheDocument();
+  });
+
+  it('handles null user gracefully', () => {
+    render(
+      <AudioPromptSelector
+        user={null}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText=""
+        onTextChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText('-- Select a voice/audio prompt --')).toBeInTheDocument();
   });
 
   it('triggers onSelectPrompt when a prompt is picked', () => {

@@ -464,4 +464,19 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.click(camRecordBtn);
     expect(handleCaptureModeChange).toHaveBeenCalledWith('webcam');
   });
+
+  it('handles broadcasting lightweight AI preload to all students', async () => {
+    const handleBroadcastPreloadAi = vi.fn().mockResolvedValue();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        aiMonitoringMode="hybrid"
+        handleBroadcastPreloadAi={handleBroadcastPreloadAi}
+      />
+    );
+
+    const preloadBtn = screen.getByRole('button', { name: /Preload Lightweight AI for All Students/i });
+    fireEvent.click(preloadBtn);
+    expect(handleBroadcastPreloadAi).toHaveBeenCalled();
+  });
 });

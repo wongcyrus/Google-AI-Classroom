@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL, AI_TRANSCRIBE_MODEL } from './config.js';
-import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary, recordAudioIrregularity, recordAudioAudit } from './aiTools.js';
+import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary, recordAudioIrregularity, recordAudioAudit } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
@@ -15,7 +15,7 @@ function getToolsForImageAnalysis() {
 }
 
 function getToolsForVideoAnalysis() {
-  return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordLessonFeedback, recordLessonSummary];
+  return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary];
 }
 
 function getToolsForAudioAnalysis() {
@@ -26,7 +26,7 @@ function getToolsForAudioAnalysis() {
  * Executes AI generation with automatic exponential backoff, jitter,
  * connection reset recovery, and fallback to flash-lite if the primary model is overloaded.
  */
-async function generateWithResilience(generateConfig, preferredModel) {
+export async function generateWithResilience(generateConfig, preferredModel) {
   const modelsToTry = [preferredModel];
   if (preferredModel !== 'gemini-3.5-flash-lite') {
     modelsToTry.push('gemini-3.5-flash-lite');

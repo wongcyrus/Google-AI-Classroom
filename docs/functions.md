@@ -61,6 +61,18 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`analyzeFaceFallback`**: A high-efficiency callable function triggering `analyzeFaceFallbackFlow` using `gemini-3.5-flash-lite` with structured JSON output and temperature 0.1. Used for cloud-assisted face and gaze invigilation when classes operate in `hybrid` or `cloud_only` modes, or when a student browser cannot execute client-side WebGL/MediaPipe.
 -   **`analyzeAudio`**: A callable function for teachers and students triggering `analyzeAudioFlow`. Supports dual input paths: (1) Audio URL path with `gemini-3.5-transcribe-preview` (resilience fallback to `gemini-3.5-flash-lite`) for multi-speaker diarization and word-level timestamps; (2) Direct transcript path for client-side Whisper/WebSpeech STT to run fast `gemini-3.5-flash-lite` proctor reasoning with tools without re-transcription. Performs conversational exam cheating detection, whisper identification, and quota-protected execution.
 -   **`retryVideoAnalysisJob`**: A callable function allowing teachers to retry failed video analysis jobs idempotently.
+-   **`generateLabTaskPrompt`**: A callable function for teachers that synthesizes a tailored lab coursework prompt from a completed `videoAnalysisJobs` execution. Queries all completed child `aiJobs`, extracts student video summaries across the entire cohort, and invokes Gemini 3.8 Flash to discover coursework tasks, cloud platforms, rubrics, milestone checklists, and common student blockers. Outputs a ready-to-run Markdown prompt with strict tool instructions (`recordActualWorkingTime`, `recordTaskDuration`, `recordLessonSummary`).
+
+#### Genkit AI Tools (`aiTools.js`)
+
+The AI engine exposes structured Genkit tools to Gemini during video, audio, and image analysis:
+
+-   **`recordActualWorkingTime`**: Records active concentration/working minutes for a student in `classes/{classId}/lessons/{lessonId}` (`students.{studentUid}.workingMinutes`). Capped by lesson duration to prevent runaway accumulation.
+-   **`recordTaskDuration`**: Records time spent on a discrete coursework lab milestone in `performanceMetrics` (`duration: durationMinutes * 60`). Guarded by negative constraints: only invoked when prompts explicitly request coursework task tracking.
+-   **`recordLessonSummary`**: Logs qualitative student activity and distraction summaries to the lesson document.
+-   **`recordIrregularity` / `recordVideoIrregularity`**: Logs detected deviations (e.g., unauthorized window, external phone use) to the `irregularities` collection.
+-   **`recordStudentProgress`**: Logs discrete progress milestones for a student during a session.
+-   **`sendMessageToStudent` / `sendMessageToTeacher`**: Dispatches in-app warnings or alerts to private messaging subcollections.
 
 #### Firestore Triggers
 

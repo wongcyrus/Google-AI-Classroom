@@ -144,6 +144,58 @@ describe('ProgressView Component', () => {
     expect(screen.getByText(/Student Progress Summary/i)).toBeInTheDocument();
   });
 
+  it('handles exporting summary and detail progress CSVs', async () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        students: { s1: 'alice@example.com' },
+      }),
+    });
+
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'prog_1',
+          data: () => ({
+            studentEmail: 'alice@example.com',
+            studentUid: 's1',
+            progress: 'Starting test',
+            timestamp: { toDate: () => new Date('2026-08-30T00:00:00Z') },
+          }),
+        },
+      ],
+    });
+
+    render(<ProgressView classId="CLASS_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+    });
+
+    // Test Summary Export
+    const exportSummaryBtn = screen.getByRole('button', { name: /Export Progress Summary/i });
+    fireEvent.click(exportSummaryBtn);
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+
+    // Click row to enter detail
+    fireEvent.click(screen.getByText('alice@example.com'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Export Student Timeline/i })).toBeInTheDocument();
+    });
+
+    // Test Detail Export
+    const exportDetailBtn = screen.getByRole('button', { name: /Export Student Timeline/i });
+    fireEvent.click(exportDetailBtn);
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+
+    window.URL.createObjectURL = originalCreateObjectURL;
+  });
+
   it('renders empty message when no classId or class has no students', async () => {
     mockGetDoc.mockResolvedValueOnce({
       exists: () => false,

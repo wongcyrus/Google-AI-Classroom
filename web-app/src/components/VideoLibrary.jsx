@@ -10,6 +10,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 
 import VideoTable from './VideoTable';
 import VideoPlayerModal from './VideoPlayerModal';
+import { exportToCsv } from '../utils/exportUtils';
 
 const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
@@ -304,6 +305,27 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
 
 
 
+  const handleExportManifestCsv = () => {
+    if (!videos || videos.length === 0) {
+      alert("No videos available to export.");
+      return;
+    }
+    const headers = ['Video ID', 'Student Email', 'Student UID', 'Class ID', 'Start Time', 'End Time', 'Status', 'Storage Path'];
+    const rows = videos.map(v => [
+      v.id,
+      v.studentEmail || 'N/A',
+      v.studentUid || 'N/A',
+      v.classId || classId,
+      v.startTime?.toDate ? v.startTime.toDate().toISOString() : (v.startTime || 'N/A'),
+      v.endTime?.toDate ? v.endTime.toDate().toISOString() : (v.endTime || 'N/A'),
+      v.status || 'completed',
+      v.videoPath || 'N/A'
+    ]);
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+    const filename = `Class_${classId}_Video_Manifest_${dateSuffix}.csv`;
+    exportToCsv(headers, rows, filename);
+  };
+
   return (
     <div className="view-container">
       <VideoPlayerModal show={showPlayer} onClose={() => setShowPlayer(false)} videoUrl={videoUrl} loading={playerLoading} />
@@ -355,7 +377,6 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       </div>
       
 
-
       <>
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
 
@@ -366,6 +387,9 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
+          <button onClick={handleExportManifestCsv} disabled={loading || videos.length === 0}>
+            📥 Export Video Manifest (CSV)
+          </button>
         </div>
 
         {loading ? (

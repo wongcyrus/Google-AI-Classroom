@@ -32,6 +32,15 @@ describe('attendanceUtils Module', () => {
     expect(await getLessonId('', '')).toBe('');
   });
 
+  it('toIsoDateString and getLessonId handle timezone strings consistently', async () => {
+    // 09:30 in Hong Kong (UTC+8) is 01:30 UTC
+    const start = '2026-09-04 09:30:00';
+    const end = '2026-09-04 11:30:00';
+    const hashZoned = await getLessonId(start, end, 'Asia/Hong_Kong');
+    const hashUtc = await getLessonId('2026-09-04T01:30:00.000Z', '2026-09-04T03:30:00.000Z');
+    expect(hashZoned).toBe(hashUtc);
+  });
+
   it('mergeAttendanceData merges attendance server data with lesson snapshot data', () => {
     const attData = [
       { email: 'alice@school.edu', totalMinutes: 45, percentage: '75.00%', attendance: [1, 1, 0] },
