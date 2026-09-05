@@ -70,3 +70,28 @@ resource "google_project_iam_member" "aiplatform_storage_viewer" {
   member  = "serviceAccount:${google_project_service_identity.aiplatform.email}"
 }
 
+# Warm up Vertex AI regional service agents to guarantee immediate readiness on Day 0
+resource "null_resource" "warmup_vertex_ai_service_agents" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+      if [ -n "$TOKEN" ]; then
+        curl -s -X POST "https://${var.region}-aiplatform.googleapis.com/v1/projects/${var.project_id}/locations/${var.region}/endpoints" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '' >/dev/null 2>&1 || true
+        curl -s -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/${var.project_id}/locations/us-central1/endpoints" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '' >/dev/null 2>&1 || true
+      fi
+    EOT
+  }
+
+  depends_on = [
+    google_project_service_identity.aiplatform,
+    google_project_iam_member.aiplatform_storage_viewer
+  ]
+}
+
+
