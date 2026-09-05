@@ -241,7 +241,7 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
-  it('handles soft deletion of video analysis job', async () => {
+  it('handles soft deletion of video analysis job from Level 2 dashboard', async () => {
     render(
       <VideoAnalysisJobs
         classId="CLASS_101"
@@ -251,7 +251,11 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
       />
     );
 
-    const deleteBtn = screen.getByRole('button', { name: /Delete/i });
+    // Navigate to Level 2 by clicking the job row
+    const jobRow = screen.getByText('job_v1');
+    fireEvent.click(jobRow);
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete Job/i });
     await act(async () => {
       fireEvent.click(deleteBtn);
     });
@@ -352,7 +356,7 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     });
   });
 
-  it('opens and closes prompt modal from Level 1 view prompt button', () => {
+  it('opens and closes prompt modal from Level 1 prompt modal button', () => {
     render(
       <VideoAnalysisJobs
         classId="CLASS_101"
@@ -362,7 +366,7 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
       />
     );
 
-    const viewPromptBtn = screen.getByRole('button', { name: /View Prompt/i });
+    const viewPromptBtn = screen.getByRole('button', { name: /Modal/i });
     fireEvent.click(viewPromptBtn);
 
     expect(screen.getByText(/Video Analysis Prompt/i)).toBeInTheDocument();

@@ -159,7 +159,7 @@ describe('Video & AI Analysis Sub-components', () => {
       },
     ];
 
-    it('renders analysis jobs list with delete action', () => {
+    it('renders analysis jobs list and handles row selection', () => {
       const onDeleteJob = vi.fn();
       const onSelectJob = vi.fn();
 
@@ -174,13 +174,13 @@ describe('Video & AI Analysis Sub-components', () => {
 
       expect(screen.getByText('analysis_101')).toBeInTheDocument();
       expect(screen.getByText('gemini-3.7-flash')).toBeInTheDocument();
+      expect(screen.queryByText('Actions')).not.toBeInTheDocument();
 
-      const deleteBtn = screen.getByRole('button', { name: 'Delete' });
-      fireEvent.click(deleteBtn);
-      expect(onDeleteJob).toHaveBeenCalledWith('analysis_101', ['job_1']);
+      fireEvent.click(screen.getByText('analysis_101'));
+      expect(onSelectJob).toHaveBeenCalledWith(mockJobs[0]);
     });
 
-    it('triggers onViewPrompt when prompt cell or View Prompt button is clicked', () => {
+    it('triggers onViewPrompt when prompt cell or Modal button is clicked', () => {
       const onViewPrompt = vi.fn();
       render(
         <VideoAnalysisJobsTable
@@ -192,27 +192,9 @@ describe('Video & AI Analysis Sub-components', () => {
         />
       );
 
-      const viewPromptBtn = screen.getByRole('button', { name: /View Prompt/i });
-      fireEvent.click(viewPromptBtn);
+      const modalBtn = screen.getByRole('button', { name: /Modal/i });
+      fireEvent.click(modalBtn);
       expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
-    });
-
-    it('toggles inline prompt expansion in Level 1', () => {
-      render(
-        <VideoAnalysisJobsTable
-          jobs={mockJobs}
-          selectedJob={null}
-          onSelectJob={vi.fn()}
-          onDeleteJob={vi.fn()}
-          onViewPrompt={vi.fn()}
-        />
-      );
-
-      const expandBtn = screen.getByRole('button', { name: /Expand inline/i });
-      fireEvent.click(expandBtn);
-
-      expect(screen.getByText(/Prompt for Job/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Collapse/i })).toBeInTheDocument();
     });
   });
 

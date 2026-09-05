@@ -66,7 +66,7 @@ describe('VideoAnalysisJobsTable Component', () => {
     expect(screen.getByText('Default rubric')).toBeInTheDocument();
   });
 
-  it('handles row selection, details view, and deletion', () => {
+  it('handles row selection to view job details without duplicated action buttons', () => {
     const onSelectJob = vi.fn();
     const onDeleteJob = vi.fn();
     const onViewPrompt = vi.fn();
@@ -81,22 +81,20 @@ describe('VideoAnalysisJobsTable Component', () => {
       />
     );
 
-    // Click row
+    // Verify Action column and duplicated buttons are removed
+    expect(screen.queryByText('Actions')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /View Details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+
+    // Click row navigates to job details
     fireEvent.click(screen.getByText('job_1'));
     expect(onSelectJob).toHaveBeenCalledWith(mockJobs[0]);
 
-    // Click View Details button
-    const detailButtons = screen.getAllByRole('button', { name: /View Details/i });
-    fireEvent.click(detailButtons[1]);
+    fireEvent.click(screen.getByText('job_2'));
     expect(onSelectJob).toHaveBeenCalledWith(mockJobs[1]);
-
-    // Click Delete button
-    const deleteButtons = screen.getAllByRole('button', { name: /Delete/i });
-    fireEvent.click(deleteButtons[0]);
-    expect(onDeleteJob).toHaveBeenCalledWith('job_1', ['sub_1', 'sub_2']);
   });
 
-  it('handles prompt modal triggers from prompt cell, action button, and modal link', () => {
+  it('handles prompt modal triggers from prompt cell and modal link without inline expansion', () => {
     const onSelectJob = vi.fn();
     const onDeleteJob = vi.fn();
     const onViewPrompt = vi.fn();
@@ -111,12 +109,10 @@ describe('VideoAnalysisJobsTable Component', () => {
       />
     );
 
-    // Click "📜 View Prompt" button
-    const viewPromptButtons = screen.getAllByRole('button', { name: /View Prompt/i });
-    fireEvent.click(viewPromptButtons[0]);
-    expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
+    // Verify inline expand button is not present
+    expect(screen.queryByRole('button', { name: /Expand inline/i })).not.toBeInTheDocument();
 
-    // Click "🔍 Modal" link button
+    // Click "🔍 Modal" button
     const modalButtons = screen.getAllByRole('button', { name: /🔍 Modal/i });
     fireEvent.click(modalButtons[0]);
     expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
@@ -125,42 +121,5 @@ describe('VideoAnalysisJobsTable Component', () => {
     const promptSnippet = screen.getByText(/Check for unauthorized device usage/i);
     fireEvent.click(promptSnippet);
     expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
-  });
-
-  it('expands and collapses inline prompt preview and handles open modal from inline view', () => {
-    const onSelectJob = vi.fn();
-    const onDeleteJob = vi.fn();
-    const onViewPrompt = vi.fn();
-
-    render(
-      <VideoAnalysisJobsTable
-        jobs={mockJobs}
-        selectedJob={null}
-        onSelectJob={onSelectJob}
-        onDeleteJob={onDeleteJob}
-        onViewPrompt={onViewPrompt}
-      />
-    );
-
-    const expandButtons = screen.getAllByRole('button', { name: /👁️ Expand inline/i });
-    fireEvent.click(expandButtons[0]);
-
-    // Inline view should now be visible
-    expect(screen.getByText(/📝 Prompt for Job/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /🔍 Open in Modal/i })).toBeInTheDocument();
-
-    // Click open in modal from inline expansion
-    fireEvent.click(screen.getByRole('button', { name: /🔍 Open in Modal/i }));
-    expect(onViewPrompt).toHaveBeenCalledWith(mockJobs[0]);
-
-    // Collapse with close button
-    fireEvent.click(screen.getByRole('button', { name: /✕ Close/i }));
-    expect(screen.queryByText(/📝 Prompt for Job/i)).not.toBeInTheDocument();
-
-    // Re-expand and collapse using toggle button
-    fireEvent.click(screen.getAllByRole('button', { name: /👁️ Expand inline/i })[0]);
-    expect(screen.getByText(/📝 Prompt for Job/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /🔼 Collapse/i }));
-    expect(screen.queryByText(/📝 Prompt for Job/i)).not.toBeInTheDocument();
   });
 });
