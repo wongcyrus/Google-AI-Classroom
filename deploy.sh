@@ -25,22 +25,32 @@ done
 echo "Building web app..."
 (cd web-app && npm install && npm run build)
 
-echo "Deploying Storage and Firestore rules..."
-FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --only storage,firestore --force || true
+# Check if deployment is only for hosting
+ONLY_HOSTING=false
+for arg in "$@"; do
+    if [ "$arg" = "--only" ] || [ "$arg" = "hosting" ]; then
+        ONLY_HOSTING=true
+    fi
+done
 
-# Initialize function upload bucket safely to prevent Day 0 parallel race conditions
-echo "Ensuring function upload environment is ready..."
-FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --only functions:attendance --force || true
+if [ "$ONLY_HOSTING" = false ]; then
+    echo "Deploying Storage and Firestore rules..."
+    FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --only storage,firestore --force || true
 
-# Clean up any transient FAILED function state from Day 0 parallel builds
-PROJECT_ID=$(firebase use 2>/dev/null | tr -d '\n\r ')
-if [ -n "$PROJECT_ID" ]; then
-    echo "Checking for any failed function artifacts on $PROJECT_ID..."
-    FAILED_FNS=$(gcloud functions list --project="$PROJECT_ID" --filter="state:FAILED" --format="value(name)" 2>/dev/null || true)
-    for fn in $FAILED_FNS; do
-        echo "Removing transient failed function $fn..."
-        gcloud functions delete "$fn" --region=asia-east2 --gen2 --project="$PROJECT_ID" --quiet 2>/dev/null || true
-    done
+    # Initialize function upload bucket safely to prevent Day 0 parallel race conditions
+    echo "Ensuring function upload environment is ready..."
+    FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --only functions:attendance --force || true
+
+    # Clean up any transient FAILED function state from Day 0 parallel builds
+    PROJECT_ID=$(firebase use 2>/dev/null | tr -d '\n\r ')
+    if [ -n "$PROJECT_ID" ]; then
+        echo "Checking for any failed function artifacts on $PROJECT_ID..."
+        FAILED_FNS=$(gcloud functions list --project="$PROJECT_ID" --filter="state:FAILED" --format="value(name)" 2>/dev/null || true)
+        for fn in $FAILED_FNS; do
+            echo "Removing transient failed function $fn..."
+            gcloud functions delete "$fn" --region=asia-east2 --gen2 --project="$PROJECT_ID" --quiet 2>/dev/null || true
+        done
+    fi
 fi
 
 echo "Deploying to Firebase (Functions & Hosting)..."

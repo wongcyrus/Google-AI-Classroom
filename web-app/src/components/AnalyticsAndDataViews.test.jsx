@@ -107,6 +107,17 @@ describe('Analytics & Data Management Views Full Suite', () => {
       fireEvent.click(exportMatrixBtn);
       expect(screen.getAllByText('stu_1').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('stu_2').length).toBeGreaterThanOrEqual(1);
+
+      // Verify header sorting interactions
+      const studentHeader = screen.getByText(/Student ▲/i);
+      fireEvent.click(studentHeader);
+      expect(screen.getByText(/Student ▼/i)).toBeInTheDocument();
+
+      const totalTimeHeader = screen.getByText(/Total Lab Time ↕/i);
+      fireEvent.click(totalTimeHeader);
+      expect(screen.getByText(/Total Lab Time ▲/i)).toBeInTheDocument();
+      fireEvent.click(totalTimeHeader);
+      expect(screen.getByText(/Total Lab Time ▼/i)).toBeInTheDocument();
     });
 
     it('filters metrics by selected lesson matching the top filter', async () => {

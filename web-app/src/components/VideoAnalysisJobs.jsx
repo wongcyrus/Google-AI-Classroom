@@ -34,6 +34,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
   // Task Prompt Synthesis state
   const [showTaskPromptModal, setShowTaskPromptModal] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [synthesisStage, setSynthesisStage] = useState(0);
   const [generatedPromptText, setGeneratedPromptText] = useState('');
   const [taskPromptName, setTaskPromptName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
@@ -371,6 +372,16 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     if (!selectedAnalysisJob) return;
 
     setGeneratingPrompt(true);
+    setSynthesisStage(1); // Stage 1: Aggregating observations
+
+    const stage2Timer = setTimeout(() => {
+      setSynthesisStage(2); // Stage 2: Gemini 3.8 Flash Synthesizing
+    }, 2200);
+
+    const stage3Timer = setTimeout(() => {
+      setSynthesisStage(3); // Stage 3: Formatting & Rubrics
+    }, 8500);
+
     try {
       const studentSummaries = [];
       for (const job of aiJobs) {
@@ -390,16 +401,27 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         studentSummaries
       });
 
+      clearTimeout(stage2Timer);
+      clearTimeout(stage3Timer);
+      setSynthesisStage(4); // Stage 4: Done
+
       const { generatedPrompt, promptName, summaryCount } = response.data;
       setGeneratedPromptText(generatedPrompt || '');
       setTaskPromptName(promptName || `Lab Tasks - ${selectedAnalysisJob.classId}`);
       setPromptSummaryCount(summaryCount || studentSummaries.length);
-      setShowTaskPromptModal(true);
+
+      setTimeout(() => {
+        setGeneratingPrompt(false);
+        setSynthesisStage(0);
+        setShowTaskPromptModal(true);
+      }, 450);
     } catch (error) {
+      clearTimeout(stage2Timer);
+      clearTimeout(stage3Timer);
+      setGeneratingPrompt(false);
+      setSynthesisStage(0);
       console.error('Error synthesizing lab task prompt:', error);
       alert(`Failed to generate lab task prompt: ${error.message}`);
-    } finally {
-      setGeneratingPrompt(false);
     }
   };
 
@@ -933,6 +955,113 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
               </div>
             </div>
           </div>
+
+          {/* Multi-Stage Animated Prompt Synthesis Stepper */}
+          {generatingPrompt && (
+            <div style={{
+              background: 'linear-gradient(135deg, #f0fdf4 0%, #eef2ff 100%)',
+              border: '1px solid #c7d2fe',
+              borderRadius: '10px',
+              padding: '16px 20px',
+              marginBottom: '20px',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.2rem', animation: 'spin 2s linear infinite' }}>✨</span>
+                  <strong style={{ color: '#1e1b4b', fontSize: '0.98rem' }}>
+                    Synthesizing Lab Tasks & Rubric from Classroom Observations...
+                  </strong>
+                </div>
+                <span style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: '#4f46e5',
+                  background: '#e0e7ff',
+                  padding: '2px 10px',
+                  borderRadius: '12px'
+                }}>
+                  Stage {Math.min(3, Math.max(1, synthesisStage))} of 3
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden', marginBottom: '16px' }}>
+                <div style={{
+                  width: synthesisStage === 1 ? '30%' : synthesisStage === 2 ? '70%' : synthesisStage === 3 ? '92%' : '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #4f46e5 0%, #10b981 100%)',
+                  transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+                }} />
+              </div>
+
+              {/* 3 Step Indicators */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: synthesisStage >= 1 ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                  border: synthesisStage === 1 ? '1px solid #6366f1' : '1px solid #e2e8f0',
+                  opacity: synthesisStage >= 1 ? 1 : 0.6
+                }}>
+                  <span>{synthesisStage > 1 ? '✅' : '📂'}</span>
+                  <div style={{ fontSize: '0.82rem', lineHeight: '1.2' }}>
+                    <div style={{ fontWeight: 600, color: synthesisStage >= 1 ? '#1e293b' : '#64748b' }}>
+                      1. Observations
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {synthesisStage === 1 ? 'Aggregating summaries...' : 'Aggregated'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: synthesisStage >= 2 ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                  border: synthesisStage === 2 ? '1px solid #6366f1' : '1px solid #e2e8f0',
+                  opacity: synthesisStage >= 2 ? 1 : 0.6
+                }}>
+                  <span>{synthesisStage > 2 ? '✅' : synthesisStage === 2 ? '🧠' : '⏳'}</span>
+                  <div style={{ fontSize: '0.82rem', lineHeight: '1.2' }}>
+                    <div style={{ fontWeight: 600, color: synthesisStage >= 2 ? '#1e293b' : '#64748b' }}>
+                      2. Gemini 3.8 Flash
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {synthesisStage === 2 ? 'Synthesizing tasks...' : synthesisStage > 2 ? 'Synthesized' : 'Waiting...'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  background: synthesisStage >= 3 ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                  border: synthesisStage === 3 ? '1px solid #6366f1' : '1px solid #e2e8f0',
+                  opacity: synthesisStage >= 3 ? 1 : 0.6
+                }}>
+                  <span>{synthesisStage >= 4 ? '🎉' : synthesisStage === 3 ? '📐' : '⏳'}</span>
+                  <div style={{ fontSize: '0.82rem', lineHeight: '1.2' }}>
+                    <div style={{ fontWeight: 600, color: synthesisStage >= 3 ? '#1e293b' : '#64748b' }}>
+                      3. Rubric & Constraints
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {synthesisStage === 3 ? 'Validating markdown...' : synthesisStage >= 4 ? 'Complete' : 'Waiting...'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Collapsible Prompt Card */}
           {selectedAnalysisJob.prompt && (

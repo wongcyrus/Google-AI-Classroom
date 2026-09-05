@@ -60,6 +60,7 @@ const PerformanceAnalyticsView = ({
   const [classInfo, setClassInfo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortConfig, setSortConfig] = useState({ key: 'email', direction: 'asc' });
 
   // Derive matched lesson and effective time window from shared top filter
   const matchedLesson = useMemo(() => {
@@ -331,6 +332,47 @@ const PerformanceAnalyticsView = ({
     });
   }, [studentRoster, searchQuery, statusFilter, activeMilestones]);
 
+  // Sort handler
+  const handleSort = (key) => {
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  // Sorted and Filtered Students for Table and CSV Export
+  const sortedStudents = useMemo(() => {
+    const list = [...filteredStudents];
+    list.sort((a, b) => {
+      let aVal, bVal;
+      if (sortConfig.key === 'email') {
+        aVal = (a.email || '').toLowerCase();
+        bVal = (b.email || '').toLowerCase();
+        return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      } else if (sortConfig.key === 'totalMinutes') {
+        aVal = a.totalMinutes || 0;
+        bVal = b.totalMinutes || 0;
+        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      } else if (sortConfig.key === 'status') {
+        aVal = a.completedCount || 0;
+        bVal = b.completedCount || 0;
+        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      } else {
+        // Sort by milestone duration
+        const taskKey = sortConfig.key;
+        aVal = a.tasks[taskKey];
+        bVal = b.tasks[taskKey];
+        if (aVal === undefined && bVal === undefined) return 0;
+        if (aVal === undefined) return 1;
+        if (bVal === undefined) return -1;
+        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+    });
+    return list;
+  }, [filteredStudents, sortConfig]);
+
   // Export CSV
   const handleExportCsv = (customList = null) => {
     const listToExport = customList || studentRoster;
@@ -547,11 +589,11 @@ const PerformanceAnalyticsView = ({
                     background: '#ffffff',
                     color: '#0f172a'
                   }}
-                  onClick={() => handleExportCsv(filteredStudents)}
-                  disabled={filteredStudents.length === 0}
+                  onClick={() => handleExportCsv(sortedStudents)}
+                  disabled={sortedStudents.length === 0}
                   title="Export the Student Milestone Matrix table as CSV"
                 >
-                  📥 Export Matrix CSV ({filteredStudents.length})
+                  📥 Export Matrix CSV ({sortedStudents.length})
                 </button>
               </div>
             </div>
@@ -560,25 +602,48 @@ const PerformanceAnalyticsView = ({
               <table className="perf-table">
                 <thead>
                   <tr>
-                    <th>Student</th>
+                    <th
+                      onClick={() => handleSort('email')}
+                      style={{ cursor: 'pointer', userSelect: 'none', minWidth: '180px' }}
+                      title="Click to sort by Student Email"
+                    >
+                      Student {sortConfig.key === 'email' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </th>
                     {activeMilestones.map(m => (
-                      <th key={m} style={{ maxWidth: '160px' }}>
-                        {m}
+                      <th
+                        key={m}
+                        onClick={() => handleSort(m)}
+                        style={{ maxWidth: '160px', cursor: 'pointer', userSelect: 'none' }}
+                        title={`Click to sort by ${m} duration`}
+                      >
+                        {m} {sortConfig.key === m ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
                     ))}
-                    <th>Total Lab Time</th>
-                    <th>Status</th>
+                    <th
+                      onClick={() => handleSort('totalMinutes')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      title="Click to sort by Total Lab Time"
+                    >
+                      Total Lab Time {sortConfig.key === 'totalMinutes' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </th>
+                    <th
+                      onClick={() => handleSort('status')}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      title="Click to sort by Status"
+                    >
+                      Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.length === 0 ? (
+                  {sortedStudents.length === 0 ? (
                     <tr>
                       <td colSpan={activeMilestones.length + 3} style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
                         No students matching the current filter.
                       </td>
                     </tr>
                   ) : (
-                    filteredStudents.map(student => {
+                    sortedStudents.map(student => {
                       const isComplete = activeMilestones.length > 0 && student.completedCount >= activeMilestones.length;
                       return (
                         <tr key={student.studentUid}>
@@ -595,24 +660,38 @@ const PerformanceAnalyticsView = ({
 
                             if (!duration) {
                               return (
-                                <td key={m} style={{ color: '#94a3b8' }}>
+                                <td key={m} style={{ color: '#94a3b8', background: '#f8fafc', textAlign: 'center' }}>
                                   —
                                 </td>
                               );
                             }
 
+                            // Heatmap styling based on duration and outlier status
+                            let cellBg = '#ecfdf5'; // on-track green (< 20m)
+                            let cellColor = '#065f46';
+                            let cellBorder = '1px solid #a7f3d0';
+                            if (isOutlier || duration > 40) {
+                              cellBg = '#fef2f2'; // bottleneck / slow (> 40m or >1.5x avg)
+                              cellColor = '#991b1b';
+                              cellBorder = '1px solid #fecaca';
+                            } else if (duration >= 20) {
+                              cellBg = '#fffbeb'; // moderate (20-40m)
+                              cellColor = '#92400e';
+                              cellBorder = '1px solid #fde68a';
+                            }
+
                             return (
-                              <td key={m}>
+                              <td key={m} style={{ background: cellBg, border: cellBorder, borderRadius: '4px', textAlign: 'center', padding: '6px 8px' }}>
                                 <span style={{
                                   fontWeight: 600,
-                                  color: isOutlier ? '#b45309' : '#0f172a'
+                                  color: cellColor
                                 }}>
                                   {duration}m
                                 </span>
                                 {isOutlier ? (
                                   <span title="Took >1.5x class average" style={{ marginLeft: '4px' }}>⚠️</span>
                                 ) : (
-                                  <span style={{ color: '#10b981', marginLeft: '4px' }}>✓</span>
+                                  <span style={{ color: '#16a34a', marginLeft: '4px' }}>✓</span>
                                 )}
                               </td>
                             );

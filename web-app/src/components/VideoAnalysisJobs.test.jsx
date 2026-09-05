@@ -451,4 +451,56 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     });
     expect(window.confirm).toHaveBeenCalled();
   });
+
+  it('displays multi-stage animated progress stepper while synthesizing lab prompt', async () => {
+    let resolveCallable;
+    mockGeneratePromptCallable.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveCallable = resolve;
+    }));
+
+    render(
+      <VideoAnalysisJobs
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+        filterField="createdAt"
+      />
+    );
+
+    const jobRow = screen.getByText('job_v1');
+    await act(async () => {
+      fireEvent.click(jobRow);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
+    });
+
+    const generateBtn = screen.getByRole('button', { name: /✨ Generate Lab Task Prompt/i });
+    await act(async () => {
+      fireEvent.click(generateBtn);
+    });
+
+    // Check that stepper card is displayed
+    expect(screen.getByText(/Synthesizing Lab Tasks & Rubric from Classroom Observations/i)).toBeInTheDocument();
+    expect(screen.getByText(/1\. Observations/i)).toBeInTheDocument();
+    expect(screen.getByText(/2\. Gemini 3.8 Flash/i)).toBeInTheDocument();
+    expect(screen.getByText(/3\. Rubric & Constraints/i)).toBeInTheDocument();
+
+    // Now resolve the promise
+    await act(async () => {
+      resolveCallable({
+        data: {
+          generatedPrompt: '# Synthesized Prompt Test',
+          promptName: 'Test Prompt',
+          summaryCount: 1,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI-Generated Lab Task Prompt/i)).toBeInTheDocument();
+    });
+  });
 });
+
