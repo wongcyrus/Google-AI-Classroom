@@ -13,10 +13,10 @@
 | **00:00 – 06:00** | **Act I** | Introduction, Cyrus Wong Bio (Triple Cloud), The Assessment Crisis | Slides 1–4 |
 | **06:00 – 18:00** | **Act II** | 4-Tier Hybrid Cloud Architecture, Cloud Functions Gen 2, Single-Stream Firestore | Slides 5–7 |
 | **18:00 – 30:00** | **Act III** | AI Engineering: Gemini 3 Suite Routing, Genkit Tool-Calling & Production Prompts | Slides 8–10 |
-| **30:00 – 42:00** | **Act IV** | Edge-First AI: 468-Point Mesh Iris Geometry, LiteRT Whisper & Gemma, Cloud Diarization | Slides 11–14 |
-| **42:00 – 52:00** | **Act V** | Teacher Command Center, WebRTC Streaming, FinOps ($0.85/exam), Incident Dossier | Slides 15–20 |
-| **52:00 – 57:00** | **Act VI** | Live Interactive System Demonstration (5-Stage Verification Flow) | Slide 21 |
-| **57:00 – 60:00** | **Act VI** | Summary, Open-Source Access, Collaborative Research & Q&A | Slide 22 |
+| **30:00 – 40:00** | **Act IV** | Edge-First AI: 468-Point Mesh Iris Geometry, LiteRT Whisper & Gemma, Cloud Diarization | Slides 11–14 |
+| **40:00 – 52:00** | **Act V** | Teacher Command Center, WebRTC, Media Lifecycle, Map-Reduce AI Jobs, FinOps, Dossier, DevSecOps | Slides 15–21 |
+| **52:00 – 57:00** | **Act VI** | Live Interactive System Demonstration (5-Stage Verification Flow) | Slide 22 |
+| **57:00 – 60:00** | **Act VI** | Summary, Open-Source Access, Collaborative Research & Q&A | Slide 23 |
 
 ---
 
@@ -287,7 +287,25 @@
 
 ---
 
-### 48:00 – 50:00 | Slide 18: Green AI & Cloud FinOps: Institutional Cost Sustainability
+### 46:00 – 48:00 | Slide 18: Map-Reduce AI Video Analysis & Performance Reporting
+*Visual: `slide_map_reduce_ai_jobs.png`*
+
+> **Cyrus Wong:**  
+> "Once we compile 50 student screen recordings into MP4 videos, how does an instructor evaluate them? If a lab session lasts two hours, 50 students produce 100 hours of video. No teacher has the bandwidth to watch 100 hours of video recordings, nor should they have to spend hours writing custom evaluation prompts before every lab session.
+>
+> To solve this, we architected a **Map-Reduce-Map AI Video Analysis Pipeline**:
+> 
+> 1. **Map Phase 1 (Parallel Video Discovery):** When the lab finishes, the teacher clicks 'Analyze Videos'. Our serverless backend fans out parallel Gemini 3.7 vision jobs across all student recordings. Each job extracts chronological actions, shell commands, cloud console interactions, and encountered obstacles, saving structured observations into individual `aiJobs` documents.
+> 
+> 2. **Reduce Phase (Cross-Student Prompt Synthesis):** Next, the instructor clicks 'Generate Lab Task Prompt from Findings'. Our aggregator funnels all student summaries into Gemini 3.8 Flash. Acting as the Reducer, the model analyzes the collective cohort's struggles and achievements, synthesizing an **Objective Lab Milestone Rubric** and customized evaluation prompt tailored to what students actually did in the lab.
+> 
+> 3. **Map Phase 2 (Targeted Performance Reporting):** The synthesized rubric is immediately mapped across all student videos in a targeted evaluation pass. Gemini evaluates each student against the unified rubric, autonomously calling the `recordTaskDuration` tool to record exact minutes spent per milestone into Firestore's `performanceMetrics` collection.
+> 
+> The result? An instant, sortable **Student Milestone Matrix**, color-coded duration heatmaps, class bottleneck identification, and individual student performance reports—all generated autonomously without manual grading overhead!"
+
+---
+
+### 48:00 – 50:00 | Slide 19: Green AI & Cloud FinOps: Institutional Cost Sustainability
 *Visual: `slide_ai_cost_finops.png`*
 
 > **Cyrus Wong:**  
@@ -308,7 +326,7 @@
 
 ---
 
-### 50:00 – 52:00 | Slide 19: Academic Integrity Incident Dossier Pipeline
+### 50:00 – 52:00 | Slide 20: Academic Integrity Incident Dossier Pipeline
 *Visual: `slide_incident_dossier_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -325,7 +343,7 @@
 
 ---
 
-### 52:00 – 54:00 | Slide 20: DevSecOps & Software Reliability Engineering
+### 52:00 – 54:00 | Slide 21: DevSecOps & Software Reliability Engineering
 *Visual: `slide_devsecops_safeguards.png`*
 
 > **Cyrus Wong:**  
@@ -333,12 +351,12 @@
 >
 > We anchor our platform on three DevSecOps pillars:
 > 1. **Terraform Infrastructure-as-Code:** The entire Google Cloud environment—IAM roles, Cloud Run microservices, Firestore composite indexes, and Cloud Storage buckets—is defined declaratively in Terraform. Any educational institution can clone our repository and provision their own isolated cloud environment in a single command (`terraform apply`).
-> 2. **Automated Testing Pyramid:** In educational software, failures on exam day are catastrophic. Our codebase is backed by **64 Vitest test suites comprising 408 automated unit and integration tests** with 100% passing rate. We test everything from MediaPipe worker messaging to Genkit exponential backoff fallbacks and Firestore status serialization.
+> 2. **Automated Testing Pyramid:** In educational software, failures on exam day are catastrophic. Our codebase is backed by **91 Vitest test suites comprising 620+ automated unit, integration, smoke, and security rule tests** with 100% passing rate. We test everything from MediaPipe worker messaging to Genkit exponential backoff fallbacks and Firestore status serialization.
 > 3. **Production Build Guardrails:** To eliminate accidental leaks, our `vite.config.js` includes a hard pre-bundling validation check: if development staging credentials or demo API keys are detected during a production build, the build immediately aborts with a clear error."
 
 ---
 
-### 54:00 – 57:00 | Slide 21: Act VI: Live System Demonstration: 5-Stage Verification Flow
+### 54:00 – 57:00 | Slide 22: Act VI: Live System Demonstration: 5-Stage Verification Flow
 *Visual: `slide_live_demo_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -363,7 +381,7 @@
 
 ---
 
-### 57:00 – 60:00 | Slide 22: Act VI: Summary, Open-Source Access & Q&A
+### 57:00 – 60:00 | Slide 23: Act VI: Summary, Open-Source Access & Q&A
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  

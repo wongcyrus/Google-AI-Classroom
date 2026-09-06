@@ -228,11 +228,139 @@ Instead of creating a new, confusing master job for each retry, the system updat
 
 ---
 
-## 4. Two-Stage Lab Task Discovery, Dynamic Prompt Synthesis & Tool Safety
+## 4. Map-Reduce-Map AI Jobs Architecture: Performance Prompt Synthesis & Rubric Reporting
 
-Real-world laboratory classrooms (e.g., cloud computing labs with AWS, Azure, Docker, Kubernetes) involve distinct tasks, rubrics, and milestone requirements for each lesson session. Predefined static prompts are often too generic to measure specific task durations or evaluate complex coursework milestones.
+Real-world laboratory classrooms (e.g., cloud computing labs with AWS, Azure, Docker, Kubernetes) involve distinct tasks, rubrics, and milestone requirements for each lesson session. Predefined static prompts are often too generic to measure specific task durations or evaluate complex coursework milestones, while expecting instructors to manually write exhaustive 3-page rubric prompts before every lab session creates prohibitive pedagogical overhead.
 
-To address this without requiring teachers to author complex prompts from scratch, the system provides an automated **Two-Stage Lab Task Discovery & Dynamic Synthesis Workflow**:
+To solve this, the platform implements a **Map-Reduce-Map AI Jobs Architecture** that automatically discovers lab milestones from actual student activity, synthesizes a standardized rubric prompt, and then evaluates the entire cohort against that unified benchmark.
+
+### 4.1 The Map-Reduce-Map Paradigm Explained
+
+The workflow mirrors the classic distributed computing MapReduce pattern across three distinct phases:
+
+1. **Map Phase 1 (Parallel Video Discovery & Observation)**:
+   - **Input**: All student screen recording videos ($V_1, V_2, \dots, V_n$) recorded during a practical lab session.
+   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Vertex AI Gemini Multimodal Vision API (`gemini-3.7-flash` or `gemini-3.5-flash-lite`).
+   - **Output**: Each video is processed independently, extracting qualitative student observations, terminal commands executed, error messages encountered, and milestone attempts into structured text summaries saved in `aiJobs`.
+
+2. **Reduce Phase (Cross-Student Intelligence Aggregation & Prompt Synthesis)**:
+   - **Input**: The collection of all completed child `aiJob` summaries from Phase 1.
+   - **Reduction Operation**: The `generateLabTaskPrompt` Cloud Function aggregates all $N$ student summaries into a unified cross-student context payload. Gemini 3.8 Flash acts as the **Reducer**:
+     - Analyzes class-wide behavioral patterns, common error roadblocks, and genuine milestones reached.
+     - Synthesizes an **Objective Lab Milestone Rubric** and **Performance Evaluation Prompt**.
+     - Automatically embeds explicit system directives and task names tailored for the `recordTaskDuration` tool.
+   - **Output**: A comprehensive, production-ready Markdown performance evaluation prompt with standardized scoring criteria and milestone definitions.
+
+3. **Map Phase 2 (Targeted Performance Reporting & Rubric Evaluation)**:
+   - **Input**: The synthesized Performance Prompt from Phase 2 + all student screen recording videos ($V_1, V_2, \dots, V_n$).
+   - **Mapping Operation**: The instructor launches a targeted evaluation batch job. Parallel child `aiJobs` run across each student's video using the synthesized rubric.
+   - **Autonomous Tool Execution**: Gemini evaluates the student against the unified criteria and calls `recordTaskDuration(studentUid, classId, taskName, durationMinutes)` for each completed lab milestone.
+   - **Output**: Individual student performance reports with strengths and improvement recommendations, written to `aiJobs`, while structured milestone durations are persisted into `performanceMetrics` to power the **Student Milestone Matrix** and bottleneck analytics.
+
+### 4.2 Architectural Flowchart: Map-Reduce-Map Pipeline
+
+The diagram below illustrates how raw video recordings transition through the Map $\to$ Reduce $\to$ Map pipeline into actionable performance analytics:
+
+```mermaid
+flowchart TD
+    subgraph InputPool [Class Video Ingestion]
+        V1[Student A Screen Video]
+        V2[Student B Screen Video]
+        V3[Student C Screen Video]
+        Vn[Student N Screen Video]
+    end
+
+    subgraph MapPhase1 [Phase 1: MAP - Video Exploration & Activity Discovery]
+        M1[Gemini 3.7 Vision Worker A]
+        M2[Gemini 3.7 Vision Worker B]
+        M3[Gemini 3.7 Vision Worker C]
+        Mn[Gemini 3.7 Vision Worker N]
+
+        V1 --> M1
+        V2 --> M2
+        V3 --> M3
+        Vn --> Mn
+
+        S1[(aiJobs: Student A Summary)]
+        S2[(aiJobs: Student B Summary)]
+        S3[(aiJobs: Student C Summary)]
+        Sn[(aiJobs: Student N Summary)]
+
+        M1 --> S1
+        M2 --> S2
+        M3 --> S3
+        Mn --> Sn
+    end
+
+    subgraph ReducePhase [Phase 2: REDUCE - Performance Prompt & Rubric Synthesis]
+        Agg[Cross-Student Summary Funnel: generateLabTaskPrompt]
+        S1 --> Agg
+        S2 --> Agg
+        S3 --> Agg
+        Sn --> Agg
+
+        GeminiReducer[Gemini 3.8 Flash Prompt Synthesizer]
+        Agg --> GeminiReducer
+
+        RubricPrompt[Synthesized Objective Lab Rubric Prompt<br/>- Task Milestones Defined<br/>- Rubric Scoring Criteria<br/>- recordTaskDuration Directives]
+        GeminiReducer --> RubricPrompt
+    end
+
+    subgraph MapPhase2 [Phase 3: MAP - Targeted Performance Reporting & Metric Extraction]
+        RubricPrompt -.->|Injected as Master Prompt| EvalRunner[Launch Targeted Batch Job]
+
+        E1[Gemini Evaluation Worker A]
+        E2[Gemini Evaluation Worker B]
+        E3[Gemini Evaluation Worker C]
+        En[Gemini Evaluation Worker N]
+
+        EvalRunner --> E1
+        EvalRunner --> E2
+        EvalRunner --> E3
+        EvalRunner --> En
+
+        V1 -.-> E1
+        V2 -.-> E2
+        V3 -.-> E3
+        Vn -.-> En
+
+        Tool1[recordTaskDuration Tool Calls]
+        Tool2[recordTaskDuration Tool Calls]
+        Tool3[recordTaskDuration Tool Calls]
+        Tooln[recordTaskDuration Tool Calls]
+
+        E1 --> Tool1
+        E2 --> Tool2
+        E3 --> Tool3
+        En --> Tooln
+    end
+
+    subgraph AnalyticsOutputs [Persisted Analytics & Reports]
+        PM[(Firestore: performanceMetrics Collection)]
+        Tool1 --> PM
+        Tool2 --> PM
+        Tool3 --> PM
+        Tooln --> PM
+
+        Matrix[Student Milestone Matrix<br/>- Sortable Time-to-Completion Heatmap<br/>- Task Duration Badges]
+        Bottlenecks[Class Bottleneck Analysis<br/>- Average Task Durations<br/>- Drop-off / Delay Identification]
+        Reports[Individual Student Performance Reports<br/>- Qualitative Rubric Feedback<br/>- CSV / JSON / Markdown Exports]
+
+        PM --> Matrix
+        PM --> Bottlenecks
+        E1 --> Reports
+        E2 --> Reports
+        E3 --> Reports
+        En --> Reports
+    end
+
+    style MapPhase1 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style ReducePhase fill:#1e1b4b,stroke:#a855f7,stroke-width:2px,color:#f8fafc
+    style MapPhase2 fill:#022c22,stroke:#10b981,stroke-width:2px,color:#f8fafc
+    style AnalyticsOutputs fill:#18181b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc
+```
+
+### 4.3 Sequence Diagram: End-to-End Execution Flow
 
 ```mermaid
 sequenceDiagram
@@ -240,31 +368,64 @@ sequenceDiagram
     actor Teacher
     participant UI as Web App (VideoAnalysisJobs.jsx)
     participant Syn as generateLabTaskPrompt (Callable Cloud Function)
-    participant AI as Gemini 3.8 Flash
-    participant FS as Firestore
+    participant AI as Vertex AI (Gemini 3.7 / 3.8 Flash)
+    participant FS as Firestore (aiJobs & performanceMetrics)
     participant Runner as processVideoAnalysisJob (Firestore Trigger)
 
-    Note over Teacher, Runner: Stage 1: Initial Discovery Pass
-    Teacher->>UI: Run generic analysis across lesson videos
-    UI->>Runner: Creates videoAnalysisJobs document
-    Runner->>FS: Saves student summaries in aiJobs (status: completed)
+    Note over Teacher, Runner: MAP PHASE 1: Parallel Video Discovery
+    Teacher->>UI: Selects date range / class & clicks "Analyze Videos"
+    UI->>FS: Creates `videoAnalysisJobs/job1` (Level 1 Master Job)
+    FS-->>Runner: Triggered on creation
+    Runner->>FS: Queries unique student video paths
+    loop For each student video in parallel batches
+        Runner->>AI: analyzeSingleVideoFlow (Video + Discovery Prompt)
+        AI-->>Runner: Qualitative summary & timeline events
+        Runner->>FS: Writes child `aiJobs/aiJob_i` (status: 'completed')
+    end
+    Runner->>FS: Updates `videoAnalysisJobs/job1` status to 'completed'
+    FS-->>UI: Real-time listener updates UI with completed badge
 
-    Note over Teacher, Runner: Synthesis: Cross-Student Intelligence Aggregation
+    Note over Teacher, Runner: REDUCE PHASE: Cross-Student Prompt Synthesis
     Teacher->>UI: Selects completed job & clicks "✨ Generate Lab Task Prompt"
-    UI->>Syn: Invokes generateLabTaskPrompt({ jobId })
-    Syn->>FS: Reads all completed child aiJobs for jobId
-    Syn->>AI: Synthesizes student observations into structured coursework prompt
-    AI-->>Syn: Tailored prompt (Coursework tasks, rubrics, technical blockers, tool directives)
+    UI->>UI: Displays 3-Stage Animated Progress Stepper
+    UI->>Syn: Invokes generateLabTaskPrompt({ jobId: 'job1' })
+    Syn->>FS: Queries all completed child `aiJobs` for `masterJobId == 'job1'`
+    Syn->>Syn: Aggregates student observation summaries into unified context
+    Syn->>AI: Synthesizes class observations with Gemini 3.8 Flash
+    AI-->>Syn: Objective Lab Rubric (Milestones, Rubrics, Tool Directives)
     Syn-->>UI: Returns synthesized Markdown prompt
+    UI->>Teacher: Opens review modal with editable prompt, model selector & scope
 
-    Note over Teacher, Runner: Stage 2: Targeted Re-Analysis
-    UI->>Teacher: Opens modal with editable prompt, model selector & scope
-    Teacher->>UI: Reviews / tweaks prompt, picks model & clicks "🚀 Launch Analysis Job"
-    UI->>FS: Creates new videoAnalysisJobs document (and optionally saves to Prompt Library)
-    FS->>Runner: Triggers targeted 2nd-stage batch analysis
-    Runner->>AI: Executes tailored rubrics & records individual task durations
-    AI->>FS: Logs recordTaskDuration -> performanceMetrics collection
+    Note over Teacher, Runner: MAP PHASE 2: Performance Evaluation & Reporting
+    Teacher->>UI: Reviews / tweaks prompt & clicks "🚀 Launch Analysis Job"
+    UI->>FS: Creates new `videoAnalysisJobs/job2` with synthesized rubric
+    FS-->>Runner: Triggered on creation
+    loop For each student video in parallel batches
+        Runner->>AI: analyzeSingleVideoFlow with synthesized rubric
+        AI->>AI: Identifies milestone completions & durations
+        AI->>FS: Tool call: recordTaskDuration(studentUid, classId, taskName, durationMinutes)
+        Note over AI, FS: Writes directly to `performanceMetrics` collection
+        AI-->>Runner: Student performance evaluation report
+        Runner->>FS: Writes child `aiJobs/aiJob_target_i` with final report
+    end
+    Runner->>FS: Updates `videoAnalysisJobs/job2` to 'completed'
+    FS-->>UI: Real-time update in PerformanceAnalyticsView
+    Note over Teacher, UI: Teacher views sortable Milestone Matrix, duration heatmaps & exports CSV
 ```
+
+### 4.4 Phase Characteristics & Operational Matrix
+
+| Dimension | Map Phase 1 (Video Discovery) | Reduce Phase (Prompt Synthesis) | Map Phase 2 (Performance Evaluation) |
+| :--- | :--- | :--- | :--- |
+| **Primary Goal** | Ground-truth activity discovery from raw screen video | Synthesize objective rubric & milestones across cohort | Evaluate individual competencies against unified rubric |
+| **Target Dataset** | $N$ Student MP4 screen recordings | $N$ Text summaries from completed child `aiJobs` | $N$ Student MP4 screen recordings + Synthesized Rubric |
+| **Gemini Model** | `gemini-3.7-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.7-flash` (Deep Multimodal Reasoning) |
+| **Execution Layer** | Cloud Run Function (`processVideoAnalysisJob`) | Callable Cloud Function (`generateLabTaskPrompt`) | Cloud Run Function (`processVideoAnalysisJob`) |
+| **Tool Calling** | Disabled or generic invigilation tools | None (Pure prompt engineering & reasoning) | Enabled: `recordTaskDuration` tool execution |
+| **Firestore Reads** | `videoJobs` collection | `aiJobs` sub-collection | `videoJobs` collection + synthesized prompt |
+| **Firestore Writes** | `aiJobs` records (observations & summaries) | None (Prompt returned in-memory to client) | `aiJobs` (reports) + `performanceMetrics` (milestones) |
+| **UI Surface** | `VideoAnalysisJobsTable.jsx` (Level 1 Table) | Animated 3-Stage Progress Stepper Modal | `AiJobsTable.jsx` + `PerformanceAnalyticsView.jsx` |
+| **Primary Output** | Raw chronological findings per student | Tailored Markdown prompt with milestone rubric | **Student Milestone Matrix**, duration heatmaps & reports |
 
 ### Tool Safety & Zero Prompt Corruption Guarantees
 

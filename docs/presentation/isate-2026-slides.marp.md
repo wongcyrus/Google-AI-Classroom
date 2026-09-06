@@ -318,6 +318,23 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Map-Reduce AI Video Analysis & Performance Reporting
+### Map All Videos $\to$ Reduce to Performance Prompt $\to$ Map to Milestone Matrix
+
+![bg right:60% 95%](images/slide_map_reduce_ai_jobs.png)
+
+- **Map Phase 1 (Parallel Video Discovery):**
+  - Master job fans out parallel Gemini 3.7 vision jobs across all student screen recordings.
+  - Extracts timestamped terminal commands, code actions, and raw milestone attempts.
+- **Reduce Phase (Performance Prompt Synthesis):**
+  - Cross-student aggregator combines all individual findings into Gemini 3.8 Flash.
+  - Synthesizes an objective, unified coursework rubric and milestone evaluation prompt.
+- **Map Phase 2 (Targeted Performance Reporting):**
+  - Mapped AI job evaluates each student video against the synthesized milestone rubric.
+  - Autonomous tool calling (`recordTaskDuration`) logs milestones into **Student Milestone Matrix** and individual performance reports.
+
+---
+
 ## Green AI & Cloud FinOps: Institutional Cost Sustainability
 ### 99.8% Cost Reduction: $0.85 per 50-Student Exam vs. $750.00 Commercial SaaS
 
@@ -351,8 +368,8 @@ const processFrame = async (now, metadata) => {
 
 - **Terraform Infrastructure-as-Code:** 1-command deployment script provisioning GCP project, Cloud Run functions, Firestore rules, and IAM roles.
 - **Vitest Automated Testing Pyramid:**
-  - **64 test suites | 408 passing tests | 0 flaky tests**.
-  - Comprehensive coverage of Web Workers, Firestore listeners, and AI retry fallbacks.
+  - **91 test suites | 620+ passing tests | 0 flaky tests**.
+  - Comprehensive coverage of Web Workers, Firestore listeners, AI retry fallbacks, and real-token security rules.
 - **Vite Production Build Guardrail:** Pre-bundling hard validation check in `vite.config.js` instantly aborting build if development project credentials target production.
 
 ---
