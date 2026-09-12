@@ -30,3 +30,41 @@ export const VIDEO_FRAME_RATE = 1;
 // Storage related constants
 export const MAX_SCREENSHOT_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 export const DEFAULT_CLASS_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
+
+// Institutional domain configuration for multi-school deployment
+export const TEACHER_EMAIL_DOMAINS = (process.env.TEACHER_EMAIL_DOMAINS || 'vtc.edu.hk')
+  .split(',')
+  .map(d => d.trim().toLowerCase().replace(/^@/, ''))
+  .filter(Boolean);
+
+export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || 'stu.vtc.edu.hk')
+  .split(',')
+  .map(d => d.trim().toLowerCase().replace(/^@/, ''))
+  .filter(Boolean);
+
+/**
+ * Derives user role ('teacher' | 'student' | null) from an email address based on configured domains.
+ * @param {string} email
+ * @returns {'teacher' | 'student' | null}
+ */
+export function deriveUserRole(email) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return null;
+  const cleanEmail = email.trim().toLowerCase();
+  const domain = cleanEmail.substring(cleanEmail.lastIndexOf('@') + 1);
+
+  const matchesDomain = (targetDomain) => domain === targetDomain || domain.endsWith('.' + targetDomain);
+
+  // Check student domains first, since student domains are often subdomains of the institutional domain (e.g. stu.vtc.edu.hk vs vtc.edu.hk)
+  if (STUDENT_EMAIL_DOMAINS.some(matchesDomain)) {
+    return 'student';
+  }
+  if (TEACHER_EMAIL_DOMAINS.some(matchesDomain)) {
+    return 'teacher';
+  }
+  return null;
+}
+
+export function getAllowedEmailDomainsDescription() {
+  const allDomains = [...STUDENT_EMAIL_DOMAINS, ...TEACHER_EMAIL_DOMAINS].map(d => '@' + d);
+  return allDomains.join(' or ');
+}

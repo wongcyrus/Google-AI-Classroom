@@ -331,3 +331,38 @@ On brand-new projects (Day 0), Google Cloud Build enforces strict concurrency li
 1. **Pre-warm Step:** Deploys a lightweight function first to initialize the Cloud Functions upload bucket without parallel collision.
 2. **Transient Failure Cleanup:** Automatically discovers and removes any transient `FAILED` placeholders before redeployment.
 3. **Automatic Second-Pass Retry:** If GCP hits a parallel build ceiling on the first run, the script automatically retries; Firebase skips the already-deployed functions and cleanly finalizes the remaining functions with 0 manual intervention.
+
+---
+
+## 🏫 Institutional Email Domain Configuration (Multi-School Support)
+
+The platform is designed to be fully adaptable by any university, college, or K-12 institution. Role assignment (**teacher** vs **student**) and authentication boundaries are governed dynamically by institutional email domains rather than hardcoded strings.
+
+### Configuration Matrix
+
+| Layer | Environment Variable | Default (VTC Hong Kong) | Description / Example for Another Institution |
+| :--- | :--- | :--- | :--- |
+| **Backend Functions** | `TEACHER_EMAIL_DOMAINS` | `vtc.edu.hk` | Comma-separated domains for instructors (e.g. `stanford.edu,cs.stanford.edu`) |
+| **Backend Functions** | `STUDENT_EMAIL_DOMAINS` | `stu.vtc.edu.hk` | Comma-separated domains for students (e.g. `alumni.stanford.edu`) |
+| **Frontend Web App** | `VITE_TEACHER_DOMAINS` | `vtc.edu.hk` | Controls client-side registration validation & role display |
+| **Frontend Web App** | `VITE_STUDENT_DOMAINS` | `stu.vtc.edu.hk` | Enforces Google Chrome student browser requirements & placeholder text |
+| **Frontend Web App** | `VITE_INSTITUTION_NAME` | `VTC` | Displays institutional branding in authentication error dialogues |
+
+### How It Works:
+1. **Dynamic Precedence Engine (`deriveUserRole`)**:
+   - In both [`functions/config.js`](../functions/config.js) and [`web-app/src/utils/domainConfig.js`](../web-app/src/utils/domainConfig.js), student domains are evaluated prior to teacher domains. This guarantees that student subdomains (such as `stu.vtc.edu.hk` within `vtc.edu.hk` or `students.uni.edu` within `uni.edu`) are accurately classified as `student`.
+2. **Domain-Agnostic Zero-Trust Rules**:
+   - [`firestore.rules`](../firestore.rules) and [`storage.rules`](../storage.rules) rely strictly on Firebase Custom Claims (`request.auth.token.role == 'teacher'`), eliminating all hardcoded email regexes and ensuring zero domain lock-in.
+3. **Turnkey Setup for Other Schools**:
+   To deploy the system for another school (e.g. `school.edu`):
+   ```bash
+   # In web-app/.env
+   VITE_TEACHER_DOMAINS="school.edu"
+   VITE_STUDENT_DOMAINS="students.school.edu"
+   VITE_INSTITUTION_NAME="My School"
+
+   # In Google Cloud Functions environment
+   TEACHER_EMAIL_DOMAINS="school.edu"
+   STUDENT_EMAIL_DOMAINS="students.school.edu"
+   ```
+

@@ -14,7 +14,7 @@ service firebase.storage {
       allow read: if request.auth != null;
 
       // Allow authenticated teachers to delete.
-      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
 
     match /audio/{classId}/{userId}/{fileName} {
@@ -28,7 +28,7 @@ service firebase.storage {
       allow read: if request.auth != null;
 
       // Allow authenticated teachers to delete.
-      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
 
     match /irregularities/{classId}/{userId}/{fileName} {
@@ -40,7 +40,7 @@ service firebase.storage {
 
       // Teachers and students can read
       allow read: if request.auth != null;
-      allow delete: if request.auth != null && (request.auth.token.role == 'teacher' || request.auth.token.email.matches('.*@vtc\\.edu\\.hk') || request.auth.token.email.matches('.*@ive\\.edu\\.hk'));
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }
 
     match /temp_ai/{fileName} {

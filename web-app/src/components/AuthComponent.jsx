@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
 import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
+import { isValidInstitutionalEmail, isStudentEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
 import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser }) => {
@@ -37,12 +38,12 @@ const AuthComponent = ({ unverifiedUser }) => {
     if (isLoading) return;
 
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@stu.vtc.edu.hk') && !cleanEmail.endsWith('@vtc.edu.hk')) {
-      setError('Only emails ending with @stu.vtc.edu.hk or @vtc.edu.hk are allowed.');
+    if (!isValidInstitutionalEmail(cleanEmail)) {
+      setError(`Only emails ending with ${getAllowedDomainsDescription()} are allowed.`);
       return;
     }
 
-    if (cleanEmail.endsWith('@stu.vtc.edu.hk') && !isChrome) {
+    if (isStudentEmail(cleanEmail) && !isChrome) {
       setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please switch to Google Chrome.`);
       return;
     }
@@ -80,7 +81,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       return;
     }
 
-    if (cleanEmail.endsWith('@stu.vtc.edu.hk') && !isChrome) {
+    if (isStudentEmail(cleanEmail) && !isChrome) {
       setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please reopen this page in Google Chrome.`);
       return;
     }
@@ -191,7 +192,7 @@ const AuthComponent = ({ unverifiedUser }) => {
             <input
               id="auth-email"
               type="email"
-              placeholder="user@stu.vtc.edu.hk or @vtc.edu.hk"
+              placeholder={`user${getAllowedDomainsDescription()}`}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading}

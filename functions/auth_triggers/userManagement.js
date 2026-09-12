@@ -5,7 +5,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
-import { FUNCTION_REGION } from './config.js';
+import { FUNCTION_REGION, deriveUserRole, getAllowedEmailDomainsDescription } from './config.js';
 
 const db = getFirestore();
 const adminAuth = getAuth();
@@ -19,13 +19,9 @@ const getOrCreateUsers = async (emails, userType) => {
     for (const email of emails) {
         if (!email) continue;
 
-        let derivedRole;
-        if (email.endsWith('@vtc.edu.hk')) {
-            derivedRole = 'teacher';
-        } else if (email.endsWith('@stu.vtc.edu.hk')) {
-            derivedRole = 'student';
-        } else {
-            logger.warn(`Invalid email domain for '${email}'. Skipping.`);
+        const derivedRole = deriveUserRole(email);
+        if (!derivedRole) {
+            logger.warn(`Invalid institutional email domain for '${email}'. Skipping.`);
             continue;
         }
 
@@ -190,17 +186,13 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
     throw new HttpsError('invalid-argument', 'Email is required to sign up.');
   }
 
-  const newCustomClaims = {};
-  let isTeacher = false;
-
-  if (email.endsWith('@vtc.edu.hk')) {
-    newCustomClaims.role = 'teacher';
-    isTeacher = true;
-  } else if (email.endsWith('@stu.vtc.edu.hk')) {
-    newCustomClaims.role = 'student';
-  } else {
-    throw new HttpsError('invalid-argument', 'Please use a valid VTC email address (@vtc.edu.hk or @stu.vtc.edu.hk).');
+  const derivedRole = deriveUserRole(email);
+  if (!derivedRole) {
+    throw new HttpsError('invalid-argument', `Please use a valid institutional email address (${getAllowedEmailDomainsDescription()}).`);
   }
+
+  const isTeacher = (derivedRole === 'teacher');
+  const newCustomClaims = { role: derivedRole };
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
   const emailField = isTeacher ? 'teacherEmails' : 'studentEmails';
