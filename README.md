@@ -236,7 +236,31 @@ The application should now be running locally, typically at `http://localhost:51
 
 ### 👥 Demo Users & Pre-Seeded Class
 
-The default development environment (`it114115-dev-2026`) comes pre-seeded with an active 24/7 demo class (`IT114115-Demo`) and pre-configured user accounts:
+The development environment (`it114115-dev-2026`) comes pre-seeded with an active 24/7 demo class (`IT114115-Demo`) and pre-configured accounts.
+
+> [!TIP]
+> **1-Click Copy**: Hover over any code box below and click the **📋 Copy** button in the top-right corner to copy directly into your clipboard for quick sign-in.
+
+#### 📋 Quick 1-Click Copy Credentials
+
+**👨‍🏫 Demo Teacher Email:**
+```text
+teacher1@vtc.edu.hk
+```
+
+**🧑‍🎓 Demo Student Email:**
+```text
+student1@stu.vtc.edu.hk
+```
+
+**🔑 Demo Password (Identical for all demo accounts):**
+```text
+Password123!
+```
+
+---
+
+#### 📑 Complete Demo Accounts Directory
 
 | Role | Email Address | Password | Enrolled / Assigned Class |
 | :--- | :--- | :--- | :--- |
@@ -248,6 +272,9 @@ The default development environment (`it114115-dev-2026`) comes pre-seeded with 
 | **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 4** | `student4@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
 | **🧑‍🎓 Student 5** | `student5@stu.vtc.edu.hk` | `Password123!` | `IT114115-Demo` (Student) |
+
+> [!NOTE]
+> **Environment Isolation & Security**: These demo credentials are intended **strictly for the development sandbox environment** ([`https://it114115-dev-2026.web.app`](https://it114115-dev-2026.web.app)) and local testing. Demo accounts are sandboxed to the `IT114115-Demo` class with strict AI quotas (`aiQuota: 50`) and automated lifecycle resets. Production environments should never use default passwords or public demo teacher accounts.
 
 ---
 
