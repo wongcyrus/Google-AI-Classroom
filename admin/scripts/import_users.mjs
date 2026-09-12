@@ -74,9 +74,11 @@ function parseCSV(content) {
   return rows;
 }
 
-async function importSingleUser({ email, role = 'student', displayName = '', password = 'Password123!', classId = '' }) {
+const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'Password123!';
+
+async function importSingleUser({ email, role = 'student', displayName = '', password = defaultPasswordEnv, classId = '' }) {
   const finalRole = (role || 'student').toLowerCase();
-  const finalPassword = password || 'Password123!';
+  const finalPassword = password || defaultPasswordEnv;
   const finalName = displayName || email.split('@')[0];
 
   let userRecord;
@@ -179,7 +181,7 @@ async function main() {
   } else if (args.emails) {
     const defaultRole = args.role || 'student';
     const defaultClass = args.classId || '';
-    const defaultPass = args.password || 'Password123!';
+    const defaultPass = args.password || defaultPasswordEnv;
 
     const rawEmails = args.emails.split(/[\n,;]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
     userList = rawEmails.map(email => ({

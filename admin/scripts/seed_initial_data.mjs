@@ -14,7 +14,9 @@ initializeApp({ projectId });
 const auth = getAuth();
 const db = getFirestore();
 
-async function getOrCreateUser(email, role, displayName, defaultPassword = 'Password123!') {
+const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'Password123!';
+
+async function getOrCreateUser(email, role, displayName, defaultPassword = defaultPasswordEnv) {
   try {
     const existing = await auth.getUserByEmail(email);
     console.log(`ℹ️ User ${email} exists (UID: ${existing.uid}). Updating claims...`);
@@ -199,7 +201,7 @@ async function main() {
   console.log(`🎉 Demo Data Seeding Complete!`);
   console.log(`👨‍🏫 Teachers: teacher1@vtc.edu.hk, teacher2@vtc.edu.hk (Co-teaching)`);
   console.log(`🧑‍🎓 Students: student1@stu.vtc.edu.hk .. student5@stu.vtc.edu.hk`);
-  console.log(`🔑 Default Password: Password123!`);
+  console.log(`🔑 Default Password: ${defaultPasswordEnv}`);
   console.log(`==========================================================\n`);
 }
 

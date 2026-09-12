@@ -76,10 +76,11 @@ To provision a brand-new GCP/Firebase project from scratch with all APIs, databa
 
 When a project is deployed or seeded via `node admin/scripts/seed_initial_data.mjs`, the following assets are ready immediately:
 
-| Role | Email | Default Password | Verification Status |
+| Role | Email | Password Configuration | Verification Status |
 | :--- | :--- | :--- | :--- |
-| **Teacher** | `cywong@vtc.edu.hk` | `Password123!` | ✅ Pre-verified (`emailVerified: true`) |
-| **Student** | `t-cywong@stu.vtc.edu.hk` | `Password123!` | ✅ Pre-verified (`emailVerified: true`) |
+| **Demo Teacher** | `teacher1@vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | ✅ Pre-verified (`emailVerified: true`) |
+| **Demo Student** | `student1@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | ✅ Pre-verified (`emailVerified: true`) |
+| **Co-Teacher** | `cywong@vtc.edu.hk` | *(Personal account)* | ✅ Pre-verified (`emailVerified: true`) |
 
 ### Pre-enrolled Demo Class:
 - **Class ID:** `IT114115-Demo`
