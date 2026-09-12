@@ -14,7 +14,7 @@ initializeApp({ projectId });
 const auth = getAuth();
 const db = getFirestore();
 
-const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'Password123!';
+const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
 async function getOrCreateUser(email, role, displayName, defaultPassword = defaultPasswordEnv) {
   try {

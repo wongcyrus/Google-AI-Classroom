@@ -74,7 +74,7 @@ function parseCSV(content) {
   return rows;
 }
 
-const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'Password123!';
+const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
 async function importSingleUser({ email, role = 'student', displayName = '', password = defaultPasswordEnv, classId = '' }) {
   const finalRole = (role || 'student').toLowerCase();

@@ -34,7 +34,7 @@ Promise.all(
           console.log(`✨ User does not exist. Creating account for: ${email}...`);
           userRecord = await auth.createUser({
             email,
-            password: 'Password123!',
+            password: process.env.DEMO_PASSWORD || 'IT114115',
             emailVerified: true,
             displayName: email.split('@')[0]
           });
