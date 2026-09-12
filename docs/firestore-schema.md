@@ -416,7 +416,28 @@ Stores information about each class.
             *   `timestamp`: (timestamp) A timestamp of when the message was sent.
             *   `senderUid`: (string) The UID of the teacher who broadcasted the message.
             *   `senderEmail`: (string) The email of the teacher who broadcasted the message.
-            *   `classes/{classId}/irregularities`: Class-scoped incident logs for class-specific report generation and teacher dashboards.
+    *   **`screenBroadcast`**: Stores teacher live screen broadcast session metadata and the active compressed screen frame stream.
+        *   **Document `session`** (`classes/{classId}/screenBroadcast/session`):
+            *   `isBroadcasting`: (boolean) Whether teacher screen broadcasting is currently active.
+            *   `broadcastMode`: (string) Broadcast transmission mode (`'frame'`). Pure frame architecture avoiding WebRTC mesh CPU exhaustion.
+            *   `teacherUid`: (string) UID of the teacher who started the broadcast.
+            *   `teacherEmail`: (string) Email of the broadcasting teacher.
+            *   `startedAt`: (timestamp) Server timestamp when the broadcast commenced.
+            *   `endedAt`: (timestamp | null) Server timestamp when the broadcast ended.
+        *   **Document `liveFrame`** (`classes/{classId}/screenBroadcast/liveFrame`):
+            *   `frameData`: (string) Base64 Data URL (`data:image/jpeg;base64,...`) of the latest captured screen frame (clamped to 720p at 0.65 JPEG quality, ~35–65 KB, <8% of Firestore doc limit).
+            *   `frameSeq`: (number) Monotonically increasing sequence number for viewer synchronization.
+            *   `width`: (number) Frame width in pixels (clamped to max 1280).
+            *   `height`: (number) Frame height in pixels (clamped to max 720).
+            *   `timestamp`: (timestamp) Server timestamp of the emitted frame (emitted every 1.5s on visual change, or 5s heartbeat if static).
+    *   **`screenBroadcastViewers`**: Real-time viewer presence tracker for students tuned into the teacher's screen broadcast.
+        *   **Document ID**: `studentUid` (string)
+        *   **Fields**:
+            *   `studentEmail`: (string) Enrolled student email.
+            *   `joinedAt`: (timestamp) Timestamp when the student opened the viewer modal.
+            *   `status`: (string) Viewer status (`'watching'`).
+            *   `connectionState`: (string) Viewer connection state (`'connected'`).
+    *   **`classes/{classId}/irregularities`**: Class-scoped incident logs for class-specific report generation and teacher dashboards.
         *   **Document ID**: Auto-generated.
         *   **Fields**: Mirror the root `irregularities` schema (`classId`, `studentUid`, `studentEmail`, `category`, `severity`, `confidence`, `transcript`, `evidence`, `rationale`, `source`, `timestamp`).
         *   **Security & Integrity**: Protected by Firestore Security Rules. Only authenticated enrolled students can create records matching their `request.auth.uid`. **Students have ZERO update and ZERO delete permissions** (`allow update: if isTeacherInClass(classId); allow delete: if isTeacherInClass(classId);`), preventing any student tampering or deletion of flagged incidents.

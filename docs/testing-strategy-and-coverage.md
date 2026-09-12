@@ -15,7 +15,7 @@ flowchart TD
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 15 Assertions]
         L2[Level 2: Backend Cloud Functions Logic - 39 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 571 Tests across 85 Suites]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 568 Tests across 86 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,7 +47,7 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (85 Test Files / 571 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (86 Test Files / 568 Tests).
 * **Covered Modules**:
   * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
   * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, model badges, status badge variants, 3-line prompt snippet with modal link trigger, row selection to navigate to Level 2 details, and verifies removal of redundant action buttons and inline accordions.
@@ -64,9 +64,12 @@ flowchart TD
   * `web-app/src/utils/webAiModelLoader.test.js`: Validates 17 edge AI model loading scenarios including browser Cache API storage (`webai-models-v1`), `fetch()` `ReadableStream` download percentage calculation, GPU delegate allocation with automatic CPU fallback, mathematical calculation of Eye Aspect Ratio (`calculateEAR`) and Mouth Aspect Ratio (`calculateMAR`), and offline/network failure transitions.
   * `web-app/src/utils/studentCompliance.test.js`: Validates real-time student stream compliance evaluation, issue categorization (`no_screen`, `no_cam`, `no_mic`, `ai_alert`), default aggregations, filter state routing, targeted nudge messaging, and RFC-compliant CSV audit export formatting.
   * `web-app/src/utils/attendanceUtils.test.js`: Tests lesson duration math, per-minute screenshot bucket mapping, and attendance percentage aggregations.
-  * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, and 1-click CSV audit export.
+  * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, high-concurrency image resolution, in-flight deduplication, and 1-click CSV audit export.
+  * `web-app/src/components/monitor/StudentsGrid.test.jsx`: Validates negative clock-drift tolerance (student timestamp up to 60s ahead of teacher clock), freshness window boundary enforcement (`Math.max(frameRate * 3, 30)`), and empty/stale state filtering.
   * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, and the `⚡ Preload AI for All Students` class broadcast trigger.
-  * `web-app/src/components/StudentScreen.test.jsx`: Tests dual feeds, webcam placeholders, looking-away / no-face / multiple-people alerts, eyes-closed (`😴 Eyes Closed / Sleeping`) and talking (`🗣️ Talking / Whispering`) badges, and AI model loading status indicators (`⏳ 65%`).
+  * `web-app/src/components/StudentScreen.test.jsx`: Tests dual feeds, webcam placeholders, looking-away / no-face / multiple-people alerts, eyes-closed (`😴 Eyes Closed / Sleeping`) and talking (`🗣️ Talking / Whispering`) badges, eager image loading attributes (`loading="eager"`, `fetchPriority="high"`, `decoding="async"`), and AI model loading status indicators (`⏳ 65%`).
+  * `web-app/src/hooks/useTeacherScreenBroadcast.test.js`: Validates teacher pure frame broadcaster lifecycle, offscreen canvas 720p clamping, 32x18 thumbnail pixel delta diffing (emits on visual change or 5s heartbeat), viewer tracking from `screenBroadcastViewers`, and clean teardown without WebRTC peer connection overhead.
+  * `web-app/src/hooks/useTeacherScreenBroadcastStudent.test.js`: Validates student receiver subscription to `classes/{classId}/screenBroadcast/liveFrame`, presence registration in `screenBroadcastViewers`, frame sequence ordering, and clean disconnect handling.
   * `web-app/src/utils/aiCostAggregator.test.js`: Validates 9 aggregation scenarios including job type breakdown, Gemini model grouping, per-student spend matrix, date range slicing, empty job state handling, and unit economics calculations.
   * `web-app/src/utils/aiCostCsvExporter.test.js`: Validates RFC 4180 CSV generation with escaped strings, multi-section summaries, itemized audit trails, and browser Blob download triggering.
   * `web-app/src/components/AiCostReportView.test.jsx`: Tests reactive filtering by student/model/job type, live KPI card renders, breakdown progress bars, and CSV export triggers.
