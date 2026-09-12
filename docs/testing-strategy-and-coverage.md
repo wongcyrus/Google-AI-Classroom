@@ -10,12 +10,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 740+ Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 750+ Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 23 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 92 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 597 Tests across 87 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 98 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 603 Tests across 87 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,9 +47,12 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (87 Test Files / 592 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (87 Test Files / 603 Tests).
 * **Covered Modules**:
-  * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, and signed video playback modal triggers.
+  * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, signed video playback modal triggers, exam audio confidentiality shielding, irregularity evidence suppression during tests, and immediate abortion of direct GCS fallback upon backend callable permission denial.
+  * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, high-concurrency image resolution, in-flight deduplication, 1-click CSV audit export, live Exam Mode toggle button rendering, top-level `PROCTORED EXAM MODE ACTIVE` alert banner display, and Firestore atomic toggle triggers.
+  * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, the `⚡ Preload AI for All Students` class broadcast trigger, and the live `🔒 Exam Mode: ACTIVE` / `📝 Exam Mode: OFF` toggle button.
+  * `web-app/src/components/StudentView.test.jsx`: Tests dual webcam/screen sharing triggers, multi-device enumeration dropdowns, manual AI model preloading button, loading progress indicator, ready badges, 1-click Neutral Baseline Calibration (`🎯 Calibrate View` / `🎯 Calibrated`), fullscreen sharing enforcement under active exam mode, persistent `🔒 Official Examination in Progress — Proctored Session` security banner display, and stream lifecycle management.
   * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
   * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, model badges, status badge variants, 3-line prompt snippet with modal link trigger, row selection to navigate to Level 2 details, and verifies removal of redundant action buttons and inline accordions.
   * `web-app/src/components/AiJobsTable.test.jsx`: Tests sub-job rendering, cost breakdown formatting, multi-attribute media path resolution (`mediaPaths`/`videoPath`/`path`), error inspector modal, raw JSON inspection modal, and row-level 1-click CSV/JSON export actions.
@@ -89,8 +92,9 @@ flowchart TD
   * `web-app/src/components/IrregularitiesView.test.jsx`: Tests unified visual + audio evidence display, period filtering, and playback.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (10 Test Files / 42 Tests).
+* **Framework**: `vitest` with Node.js 22 runtime (11 Test Files / 98 Tests across 6 Codebases).
 * **Covered Modules**:
+  * `functions/media_processing/processVideoJob.test.js`: Validates `isExamTimeRange` mathematical detection of overlapping exam windows, boundary timestamps, non-array fallback safety, and custom metadata tagging (`isExam: 'true'`).
   * `functions/media_processing/getStudentVideoPlaybackUrl.test.js`: Validates authenticated student self-service playback access, caller identity verification (`studentUid === auth.uid`), teacher override privilege, unauthorized peer rejection, and signed v4 Cloud Storage URL generation.
   * `functions/media_processing/processReportJob.test.js`: Validates automated Microsoft Word (`.docx`) Incident Dossier generation with formatted tables, CSV exports, Cloud Storage uploads, and teacher notification emails.
   * `functions/media_processing/videoEncoding.test.js`: Verifies FFmpeg output options, 1 FPS screencast timelapses, and text banner overlay string construction.

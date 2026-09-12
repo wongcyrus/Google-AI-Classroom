@@ -49,6 +49,8 @@ erDiagram
         string captureMode "screen | dual | webcam"
         boolean isCapturing
         timestamp captureStartedAt
+        boolean isExamActive "Live proctored exam mode toggle"
+        timestamp examActiveUpdatedAt "Timestamp of last exam mode toggle"
         array examPeriods "[{ id, name, startDate, endDate }] - Exam/test periods withheld from students"
         string studentRecordingsPolicy "always_enabled | disabled | delayed_release"
         string studentRecordingsReleaseDate "ISO timestamp"
@@ -359,6 +361,8 @@ Stores information about each class.
     *   `captureMode`: (string) Default stream capture mode (`dual`, `screen`, `webcam`).
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
+    *   `isExamActive`: (boolean) Live in-class exam mode toggle managed from `ControlsPanel.jsx` / `MonitorView.jsx`. When `true`, enforces strict assessment confidentiality across all connected student portals, mandates full-screen sharing, and triggers exam metadata stamping on all recorded media.
+    *   `examActiveUpdatedAt`: (timestamp) Server timestamp recording when `isExamActive` was last toggled.
     *   `examPeriods`: (array of objects) Specific exam and test periods defined by the instructor (`[{ id, name, startDate, endDate }]`). Any sessions or video recordings falling within these defined windows are withheld from student sharing and blocked by zero-trust backend authorization to protect assessment questions from leakage.
     *   `studentRecordingsPolicy`: (string) Access policy governing student visibility and download of screen recordings (`always_enabled`, `disabled`, `delayed_release`). Prevents assessment question extraction.
     *   `studentRecordingsReleaseDate`: (string|null) Scheduled ISO 8601 release timestamp when recordings become accessible under `delayed_release`.

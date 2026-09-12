@@ -88,6 +88,47 @@ ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
 
 ---
 
+## 🔒 4. Exam Period Detection & Storage Security Stamping
+
+To protect confidential examination materials from student extraction, `processVideoJob` evaluates whether the compiled video job intersects with any instructor-scheduled `examPeriods` or if `jobData.isExam` is true:
+
+```javascript
+export const isExamTimeRange = (startTime, endTime, examPeriods = []) => {
+  if (!examPeriods || !Array.isArray(examPeriods) || examPeriods.length === 0) return false;
+  const jobStartMs = new Date(startTime).getTime();
+  const jobEndMs = new Date(endTime).getTime();
+  if (isNaN(jobStartMs) && isNaN(jobEndMs)) return false;
+
+  return examPeriods.some((p) => {
+    if (!p?.startDate || !p?.endDate) return false;
+    const pStartMs = new Date(p.startDate).getTime();
+    const pEndMs = new Date(p.endDate).getTime();
+    if (isNaN(pStartMs) || isNaN(pEndMs)) return false;
+
+    const start = isNaN(jobStartMs) ? jobEndMs : jobStartMs;
+    const end = isNaN(jobEndMs) ? jobStartMs : jobEndMs;
+    return (start >= pStartMs && start <= pEndMs) ||
+           (end >= pStartMs && end <= pEndMs) ||
+           (start <= pStartMs && end >= pEndMs);
+  });
+};
+```
+
+### Zero-Trust Metadata & Security Enforcement:
+1. **Google Cloud Storage Upload Metadata**: The compiled MP4 is uploaded with custom metadata `metadata: { ..., isExam: isExamSession ? 'true' : 'false' }`.
+2. **Storage Rules Enforcement**: `storage.rules` unconditionally rejects direct read requests from students if `resource.metadata.isExam == 'true'`:
+   ```c
+   match /videos/{classId}/{videoId} {
+     allow read: if request.auth != null && (
+       request.auth.token.role == 'teacher' ||
+       (resource.metadata.studentUid == request.auth.uid && resource.metadata.isExam != 'true')
+     );
+   }
+   ```
+3. **Firestore Job Record**: The `videoJobs` document is updated with `isExam: isExamSession` for immediate status queries in the UI.
+
+---
+
 ## 📈 Performance & Compression Benchmarks
 
 | Metric | Legacy Unoptimized Settings | Current Optimized Settings |

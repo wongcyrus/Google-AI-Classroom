@@ -257,47 +257,67 @@ All voice prompts are managed dynamically in the unified Prompt Library and inte
  
  ---
  
-+## 9. Dual-Path `analyzeAudioFlow` Architecture
-+ 
-+The server-side `analyzeAudioFlow` Genkit pipeline supports two distinct execution paths depending on client capabilities:
-+ 
-+```mermaid
-+flowchart TD
-+    Input[Client Request: analyzeAudio] --> CheckInput{Input Contains?}
-+    
-+    %% Path A: Full Audio Processing
-+    CheckInput -->|audioUrl only| Step1[Step 1: Audio Transcription via gemini-3.5-transcribe-preview]
-+    Step1 -->|Extract| WordChunks[Word-level Timestamps & Spoken Text]
-+    Step1 -.->|Vertex Fallback| FallbackModel[Fallback: gemini-3.5-flash-lite]
-+    WordChunks --> Step2[Step 2: Reason & Tool Invocations via gemini-3.5-flash-lite]
-+    
-+    %% Path B: Direct Transcript Fast Path
-+    CheckInput -->|transcript provided| DirectPath[Bypass Step 1 Transcription\n$0 Transcribe Token Cost]
-+    DirectPath --> Step2
-+    
-+    Step2 --> Tools{Cheating Detected?}
-+    Tools -->|Yes| RecordIrregularity[Tool: recordAudioIrregularity]
-+    Tools -->|No / Clean| CleanAudit[Tool: recordAudioAudit]
-+    RecordIrregularity --> SaveAudit[(Firestore: /irregularities)]
-+    CleanAudit --> SaveAudit
-+```
-+ 
-+1. **Mode A (Full Audio Pipeline)**: When raw `audioUrl` is passed, Step 1 transcribes audio via `gemini-3.5-transcribe-preview` (`temperature: 0.1`, resilience fallback to `gemini-3.5-flash-lite`). Step 2 performs cheating/collusion reasoning with tools via `gemini-3.5-flash-lite`.
-+2. **Mode B (Transcript-Only Fast Path)**: When `transcript` is passed (from on-device Whisper Tiny or Web Speech API), Step 1 is skipped completely (`actualTranscribeModel = null`, $0 transcribe cost). Step 2 immediately evaluates the transcript with proctor tools.
-+ 
-+---
-+ 
-+## 10. Persistent Cache Storage for Edge Models
-+ 
-+To avoid re-downloading large AI models on every session, the client uses the browser's Cache Storage API and Persistent Storage permission:
-+ 
-+1. **Whisper STT Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
-+2. **Gemma 4 E2B Model (`gemma-4-e2b.bin` ~1.5 GB)**:
-+   - Cached in Cache Storage namespace `litert-gemma-cache-v1`.
-+   - Background worker (`litertGemma.worker.js`) checks `caches.open('litert-gemma-cache-v1')` before initiating network download.
-+   - Upon download, streams model data directly to the LiteRT engine while writing to Cache Storage in parallel.
-+   - Subsequent sessions load the model directly from local disk/cache with zero network download.
-+3. **Eviction Prevention (`navigator.storage.persist()`)**:
-+   - `useClientLiteRTGemma.js` requests persistent storage permission to prevent the browser from evicting cached model weights during disk cleanup.
+## 9. Dual-Path `analyzeAudioFlow` Architecture
+ 
+The server-side `analyzeAudioFlow` Genkit pipeline supports two distinct execution paths depending on client capabilities:
+ 
+```mermaid
+flowchart TD
+    Input[Client Request: analyzeAudio] --> CheckInput{Input Contains?}
+    
+    %% Path A: Full Audio Processing
+    CheckInput -->|audioUrl only| Step1[Step 1: Audio Transcription via gemini-3.5-transcribe-preview]
+    Step1 -->|Extract| WordChunks[Word-level Timestamps & Spoken Text]
+    Step1 -.->|Vertex Fallback| FallbackModel[Fallback: gemini-3.5-flash-lite]
+    WordChunks --> Step2[Step 2: Reason & Tool Invocations via gemini-3.5-flash-lite]
+    
+    %% Path B: Direct Transcript Fast Path
+    CheckInput -->|transcript provided| DirectPath[Bypass Step 1 Transcription\n$0 Transcribe Token Cost]
+    DirectPath --> Step2
+    
+    Step2 --> Tools{Cheating Detected?}
+    Tools -->|Yes| RecordIrregularity[Tool: recordAudioIrregularity]
+    Tools -->|No / Clean| CleanAudit[Tool: recordAudioAudit]
+    RecordIrregularity --> SaveAudit[(Firestore: /irregularities)]
+    CleanAudit --> SaveAudit
+```
+ 
+1. **Mode A (Full Audio Pipeline)**: When raw `audioUrl` is passed, Step 1 transcribes audio via `gemini-3.5-transcribe-preview` (`temperature: 0.1`, resilience fallback to `gemini-3.5-flash-lite`). Step 2 performs cheating/collusion reasoning with tools via `gemini-3.5-flash-lite`.
+2. **Mode B (Transcript-Only Fast Path)**: When `transcript` is passed (from on-device Whisper Tiny or Web Speech API), Step 1 is skipped completely (`actualTranscribeModel = null`, $0 transcribe cost). Step 2 immediately evaluates the transcript with proctor tools.
+ 
+---
+ 
+## 10. Persistent Cache Storage for Edge Models
+ 
+To avoid re-downloading large AI models on every session, the client uses the browser's Cache Storage API and Persistent Storage permission:
+ 
+1. **Whisper STT Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
+2. **Gemma 4 E2B Model (`gemma-4-e2b.bin` ~1.5 GB)**:
+   - Cached in Cache Storage namespace `litert-gemma-cache-v1`.
+   - Background worker (`litertGemma.worker.js`) checks `caches.open('litert-gemma-cache-v1')` before initiating network download.
+   - Upon download, streams model data directly to the LiteRT engine while writing to Cache Storage in parallel.
+   - Subsequent sessions load the model directly from local disk/cache with zero network download.
+3. **Eviction Prevention (`navigator.storage.persist()`)**:
+   - `useClientLiteRTGemma.js` requests persistent storage permission to prevent the browser from evicting cached model weights during disk cleanup.
+
+---
+
+## 11. Student Portal Audio Confidentiality & Inline Playback
+
+In `StudentRecordsView.jsx`, audio transcripts and speech recordings are protected under assessment integrity guidelines:
+
+1. **Exam Period Speech Withholding**:
+   - Audio snippets logged during teacher-defined `examPeriods` or when `isExamActive` is true are filtered out of the student view (`visibleAudio`).
+   - If exam audio is withheld, a prominent security banner is rendered:
+     ```
+     🔒 Assessment Confidentiality: Exam Audio Restricted
+     Audio transcripts and recordings captured during scheduled examination periods are protected and withheld from student access to maintain test confidentiality.
+     ```
+2. **Dynamic Tab Badge Accuracy**:
+   - The Tab 5 (Audio Transcripts) counter badge dynamically reflects `visibleAudio.length` rather than total raw records.
+3. **Inline On-Demand Audio Snippet Player**:
+   - For regular (non-exam) lessons, each audio snippet provides a **"▶ Play Clip"** button.
+   - Click triggers `handleTogglePlayAudio(audioItem)` to resolve the storage URL on demand (`getDownloadURL(ref(storage, audioPath))`) and mounts a native `<audio controls autoPlay>` player with zero upfront bandwidth consumption.
+   - If an exam snippet is queried directly, playback is blocked immediately with an alert notice.
 
 

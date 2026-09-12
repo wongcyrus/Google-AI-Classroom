@@ -228,3 +228,36 @@ To support diverse student environments (e.g., desktops without webcams or micro
    - Direct fallback to HTML5 `<video>` canvas rendering ensures captures remain reliable across all browser engines.
    - Synchronizes the DOM `<video ref={screenVideoRef}>` element's `srcObject` via an active React lifecycle listener to prevent blank stream detached states.
    - Solid-frame filtering ensures no legitimate single-color app windows (e.g., dark-mode IDEs or full-screen documents) are discarded.
+
+---
+
+## Live Exam Mode Synchronization & Proctoring Enforcement
+
+`StudentView.jsx` integrates real-time exam state detection and strict proctoring enforcement:
+
+1. **Dual Exam Detection Triggers**:
+   - **Instructor Live Toggle (`isExamActive`)**: Subscribes to the class document snapshot in Firestore (`classes/{classId}`). When the teacher activates `🔒 Exam Mode: ACTIVE` in `ControlsPanel.jsx`, the student client responds immediately.
+   - **Scheduled Exam Window (`examPeriods`)**: Dynamically checks whether the current timestamp falls within any instructor-scheduled `examPeriods` array defined in class settings:
+     ```javascript
+     const isNowInExamPeriod = useMemo(() => {
+       if (isClassExamActive) return true;
+       if (!classExamPeriods || !Array.isArray(classExamPeriods)) return false;
+       const nowMs = Date.now();
+       return classExamPeriods.some(p => {
+         if (!p?.startDate || !p?.endDate) return false;
+         const s = new Date(p.startDate).getTime();
+         const e = new Date(p.endDate).getTime();
+         return !isNaN(s) && !isNaN(e) && nowMs >= s && nowMs <= e;
+       });
+     }, [isClassExamActive, classExamPeriods]);
+     ```
+2. **Mandatory Full-Screen Sharing (`requireFullScreenOnly`)**:
+   - When an exam is active (`isExamActive: true`), `setRequireFullScreenOnly(true)` is activated, requiring the student to share their entire desktop rather than a single application window or browser tab to prevent off-screen cheating.
+3. **Persistent Proctored Session Security Banner**:
+   - Renders a prominent security banner at the top of the interface:
+     ```
+     🔒 Official Examination in Progress — Proctored Session
+     Full screen sharing and continuous proctoring are mandatory. Screen recordings and audio transcripts are protected under exam confidentiality policies and will not be shared.
+     ```
+4. **Zero-Leakage Assessment Confidentiality**:
+   - All session screencasts, audio transcripts, and irregularity details recorded during active exam mode or scheduled exam periods are marked confidential and shielded from student viewing or downloading in `StudentRecordsView.jsx`.
