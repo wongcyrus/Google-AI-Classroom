@@ -1,20 +1,9 @@
 // Centralized configuration for Cloud Functions
 export const FUNCTION_REGION = process.env.FUNCTION_REGION || process.env.FIREBASE_REGION || 'asia-east2';
 
-// CORS origins for callable functions
-export const CORS_ORIGINS = [
-  'https://it114115-2627.web.app',
-  'https://it114115-2627.firebaseapp.com',
-  'https://it114115-dev-2026.web.app',
-  'https://it114115-dev-2026.firebaseapp.com',
+// CORS origins for callable functions (true reflects request origin dynamically, authenticated via request.auth)
+export const CORS_ORIGINS = true;
 
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  'http://127.0.0.1:3000'
-];
 
 // Genkit AI Model parameters
 export const AI_MODEL = 'gemini-3.5-flash-lite';

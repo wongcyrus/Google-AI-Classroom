@@ -47,29 +47,13 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # 3. Generate functions/config.js
-CORS_PROJECT_ENTRIES=""
-if [ "$PROJECT_ID" != "it114115-2627" ] && [ "$PROJECT_ID" != "it114115-dev-2026" ]; then
-  CORS_PROJECT_ENTRIES="  'https://${PROJECT_ID}.web.app',\n  'https://${PROJECT_ID}.firebaseapp.com',"
-fi
-
 cat << CONFIG_EOF > functions/config.js
 // Centralized configuration for Cloud Functions
 export const FUNCTION_REGION = process.env.FUNCTION_REGION || process.env.FIREBASE_REGION || 'asia-east2';
 
-// CORS origins for callable functions
-export const CORS_ORIGINS = [
-  'https://it114115-2627.web.app',
-  'https://it114115-2627.firebaseapp.com',
-  'https://it114115-dev-2026.web.app',
-  'https://it114115-dev-2026.firebaseapp.com',
-$( [ -n "$CORS_PROJECT_ENTRIES" ] && echo -e "$CORS_PROJECT_ENTRIES" )
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  'http://127.0.0.1:3000'
-];
+// CORS origins for callable functions (true reflects request origin dynamically, authenticated via request.auth)
+export const CORS_ORIGINS = true;
+
 
 // Genkit AI Model parameters
 export const AI_MODEL = 'gemini-3.5-flash-lite';
@@ -135,16 +119,7 @@ echo "⚙️ Synchronized functions/config.js to all 7 codebases"
 cat << CORS_EOF > cors.json
 [
   {
-    "origin": [
-      "https://${PROJECT_ID}.web.app",
-      "https://${PROJECT_ID}.firebaseapp.com",
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:3000",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:5174",
-      "http://127.0.0.1:3000"
-    ],
+    "origin": ["*"],
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
     "maxAgeSeconds": 3600,
     "responseHeader": [
