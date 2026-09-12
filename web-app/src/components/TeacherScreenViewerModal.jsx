@@ -58,7 +58,7 @@ export default function TeacherScreenViewerModal({
               🖥️ {broadcastInfo?.teacherEmail ? `${broadcastInfo.teacherEmail}'s Screen` : 'Teacher Screen'}
             </span>
             <span className={`stream-conn-status ${connectionState}`}>
-              {connectionState === 'connected' ? '🟢 Live' : '⏳ Connecting...'}
+              {connectionState === 'connected' ? '🟢 Live' : connectionState === 'queued' ? '⏳ In Queue (Capacity Reached)' : '⏳ Connecting...'}
             </span>
           </div>
 
@@ -122,6 +122,16 @@ export default function TeacherScreenViewerModal({
               playsInline
               className="teacher-live-video"
             />
+          ) : connectionState === 'queued' ? (
+            <div className="video-loading-state queued-state">
+              <div className="loading-spinner" />
+              <p style={{ fontWeight: 600, fontSize: '1rem', color: '#f59e0b', marginBottom: '8px' }}>
+                Broadcast Slot Queued
+              </p>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '340px', textAlign: 'center', lineHeight: 1.4 }}>
+                Teacher screen broadcast is currently at full capacity (maximum active viewers reached). You will connect automatically as soon as a slot opens.
+              </p>
+            </div>
           ) : (
             <div className="video-loading-state">
               <div className="loading-spinner" />

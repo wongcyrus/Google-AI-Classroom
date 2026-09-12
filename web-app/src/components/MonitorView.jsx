@@ -63,6 +63,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     screenStream: broadcastScreenStream,
     hasAudio: broadcastHasAudio,
     viewers: broadcastViewers,
+    activeViewerCount,
+    queuedViewerCount,
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
@@ -1159,7 +1161,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       gap: '5px',
                     }}
                   >
-                    🔴 Live Broadcast to Students ({broadcastViewers.length} watching)
+                    🔴 Live Broadcast to Students ({activeViewerCount ?? broadcastViewers.length} watching{queuedViewerCount > 0 ? `, ${queuedViewerCount} queued` : ''})
                   </span>
                   <button
                     type="button"

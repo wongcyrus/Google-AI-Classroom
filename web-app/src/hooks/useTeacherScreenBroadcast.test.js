@@ -305,5 +305,130 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     expect(result.current.isBroadcasting).toBe(false);
     expect(result.current.error).toBe('Permission denied');
   });
+
+  it('requests screen stream with clamped resolution and framerate to prevent high CPU', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    await act(async () => {
+      await result.current.startBroadcast();
+    });
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({
+          width: { max: 1280 },
+          height: { max: 720 },
+          frameRate: { ideal: 10, max: 12 },
+        }),
+      })
+    );
+  });
+
+  it('enforces MAX_ACTIVE_VIEWERS admission limit and queues excess students', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    await act(async () => {
+      await result.current.startBroadcast();
+    });
+
+    const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
+    expect(viewersCb).toBeDefined();
+
+    // Create 6 active student viewers (max capacity)
+    const mockDocs = [];
+    for (let i = 1; i <= 6; i++) {
+      mockDocs.push({
+        id: `student_${i}`,
+        data: () => ({
+          studentEmail: `s${i}@test.com`,
+          status: 'requesting',
+          joinedAt: 'MOCK_TIMESTAMP',
+        }),
+      });
+    }
+
+    await act(async () => {
+      viewersCb({
+        docs: mockDocs,
+        forEach: (fn) => mockDocs.forEach(fn),
+      });
+    });
+
+    expect(result.current.activeViewerCount).toBe(6);
+
+    // 7th student attempts to join
+    const mock7thDoc = {
+      id: 'student_7',
+      data: () => ({
+        studentEmail: 's7@test.com',
+        status: 'requesting',
+        joinedAt: 'MOCK_TIMESTAMP',
+      }),
+    };
+    mockDocs.push(mock7thDoc);
+
+    await act(async () => {
+      viewersCb({
+        docs: mockDocs,
+        forEach: (fn) => mockDocs.forEach(fn),
+      });
+    });
+
+    // 7th student is queued in Firestore
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_7' }),
+      expect.objectContaining({ status: 'queued' })
+    );
+  });
+
+  it('student hook transitions to queued state when teacher broadcast is full', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcastStudent({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_7',
+        studentEmail: 's7@test.com',
+      })
+    );
+
+    // Teacher session is active
+    const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
+    act(() => {
+      sessionCb({
+        exists: () => true,
+        data: () => ({ isBroadcasting: true, teacherUid: 'teacher_123', hasAudio: true }),
+      });
+    });
+
+    await act(async () => {
+      await result.current.joinBroadcast();
+    });
+
+    // Teacher marks viewer as queued
+    const viewerCb = docListeners.get('classes/CLASS_TEST/screenBroadcastViewers/student_7');
+    await act(async () => {
+      viewerCb({
+        exists: () => true,
+        data: () => ({
+          status: 'queued',
+          queueMessage: 'Teacher screen broadcast is currently at full capacity (6 active viewers). Please wait...',
+        }),
+      });
+    });
+
+    expect(result.current.connectionState).toBe('queued');
+    expect(result.current.error).toContain('full capacity');
+  });
 });
 

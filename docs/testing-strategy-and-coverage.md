@@ -10,12 +10,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 656+ Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 651+ Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 15 Assertions]
         L2[Level 2: Backend Cloud Functions Logic - 39 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 576 Tests across 85 Suites]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 571 Tests across 85 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,7 +47,7 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (85 Test Files / 576 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (85 Test Files / 571 Tests).
 * **Covered Modules**:
   * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
   * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, model badges, status badge variants, 3-line prompt snippet with modal link trigger, row selection to navigate to Level 2 details, and verifies removal of redundant action buttons and inline accordions.

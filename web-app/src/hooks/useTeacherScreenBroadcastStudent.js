@@ -27,6 +27,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
   const peerConnectionRef = useRef(null);
   const unsubscribeViewerRef = useRef(null);
   const remoteStreamRef = useRef(null);
+  const processedTeacherCandidatesRef = useRef(new Set());
 
   // 1. Listen to active broadcast session status in Firestore
   useEffect(() => {
@@ -80,6 +81,8 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
       });
       remoteStreamRef.current = null;
     }
+
+    processedTeacherCandidatesRef.current.clear();
 
     if (classId && studentUid) {
       try {
@@ -154,7 +157,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
           setConnectionState('failed');
           setError('WebRTC connection to teacher screen failed.');
         } else if (s === 'connecting' || ice === 'checking') {
-          setConnectionState('connecting');
+          setConnectionState((prev) => (prev === 'queued' ? 'queued' : 'connecting'));
         }
       };
 
@@ -170,14 +173,23 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
         joinedAt: serverTimestamp(),
       });
 
-      // Listen for teacher's SDP Offer and ICE Candidates
+      // Listen for teacher's SDP Offer, Queued status, and ICE Candidates
       let hasAnswered = false;
       unsubscribeViewerRef.current = onSnapshot(viewerDocRef, async (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
 
+        // Handle queued status when teacher broadcast is at capacity
+        if (data.status === 'queued') {
+          setConnectionState('queued');
+          setError(data.queueMessage || 'Waiting for an available teacher broadcast slot...');
+          return;
+        }
+
         if (data.status === 'offered' && data.offer && !hasAnswered && pc.signalingState !== 'closed') {
           try {
+            setConnectionState('connecting');
+            setError(null);
             hasAnswered = true;
             const offerDesc = new (window.RTCSessionDescription || window.webkitRTCSessionDescription)(data.offer);
             await pc.setRemoteDescription(offerDesc);
@@ -196,13 +208,17 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
           }
         }
 
-        // Continuously apply incoming teacher ICE candidates
+        // Apply incoming deduplicated teacher ICE candidates
         if (pc.remoteDescription && Array.isArray(data.teacherCandidates)) {
           for (const cand of data.teacherCandidates) {
             if (cand && cand.candidate) {
-              try {
-                pc.addIceCandidate(new (window.RTCIceCandidate || window.webkitRTCIceCandidate)(cand)).catch(() => {});
-              } catch {}
+              const candKey = `${cand.candidate}_${cand.sdpMid}_${cand.sdpMLineIndex}`;
+              if (!processedTeacherCandidatesRef.current.has(candKey)) {
+                processedTeacherCandidatesRef.current.add(candKey);
+                try {
+                  pc.addIceCandidate(new (window.RTCIceCandidate || window.webkitRTCIceCandidate)(cand)).catch(() => {});
+                } catch {}
+              }
             }
           }
         }

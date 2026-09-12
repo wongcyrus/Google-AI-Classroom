@@ -101,6 +101,19 @@ describe('Teacher Screen Modals Suite', () => {
       expect(video.srcObject).toBe(mockStream);
     });
 
+    it('renders queued state and capacity message when connectionState is queued', () => {
+      render(
+        <TeacherScreenViewerModal
+          {...defaultProps}
+          connectionState="queued"
+        />
+      );
+
+      expect(screen.getByText('⏳ In Queue (Capacity Reached)')).toBeInTheDocument();
+      expect(screen.getByText(/Broadcast Slot Queued/i)).toBeInTheDocument();
+      expect(screen.getByText(/Teacher screen broadcast is currently at full capacity/i)).toBeInTheDocument();
+    });
+
     it('does not render when isOpen is false', () => {
       const { container } = render(<TeacherScreenViewerModal {...defaultProps} isOpen={false} />);
       expect(container.firstChild).toBeNull();
@@ -115,8 +128,8 @@ describe('Teacher Screen Modals Suite', () => {
       isBroadcasting: true,
       hasAudio: true,
       viewers: [
-        { studentUid: 's1', studentEmail: 'student1@school.edu', status: 'answered', joinedAt: new Date() },
-        { studentUid: 's2', studentEmail: 'student2@school.edu', status: 'requesting', joinedAt: new Date() },
+        { studentUid: 's1', studentEmail: 'student1@school.edu', status: 'answered', connectionState: 'connected', joinedAt: new Date() },
+        { studentUid: 's2', studentEmail: 'student2@school.edu', status: 'requesting', connectionState: 'connecting', joinedAt: new Date() },
       ],
       onStopBroadcast: vi.fn(),
     };
@@ -128,6 +141,23 @@ describe('Teacher Screen Modals Suite', () => {
       expect(screen.getByText(/2 Students Watching/i)).toBeInTheDocument();
       expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
       expect(screen.getByText('student2@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('2 / 6')).toBeInTheDocument();
+    });
+
+    it('renders queued students count and badge when viewers have queued status', () => {
+      const propsWithQueue = {
+        ...defaultBroadcastProps,
+        viewers: [
+          ...defaultBroadcastProps.viewers,
+          { studentUid: 's3', studentEmail: 'student3@school.edu', status: 'queued', connectionState: 'queued', joinedAt: new Date() },
+        ],
+      };
+
+      render(<TeacherScreenBroadcastModal {...propsWithQueue} />);
+
+      expect(screen.getByText(/Queued Students:/i)).toBeInTheDocument();
+      expect(screen.getByText('⏳ Queued')).toBeInTheDocument();
+      expect(screen.getByText(/1 queued/i)).toBeInTheDocument();
     });
 
     it('triggers onStopBroadcast on clicking Stop Screen Broadcast', () => {
