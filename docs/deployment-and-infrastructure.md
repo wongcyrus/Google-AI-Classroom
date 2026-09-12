@@ -1,6 +1,6 @@
 # Deployment & Infrastructure Guide
 
-This document provides a comprehensive overview of the automated infrastructure provisioning, multi-codebase deployment pipeline, and environment management workflows for the **Gemini AI Classroom Assistant**.
+This document provides a comprehensive overview of the automated infrastructure provisioning, multi-codebase deployment pipeline, and environment management workflows for the **Gemini AI Classroom Assistant**. For a step-by-step walkthrough on setting up and customizing the platform for a new school or institution, see the **[Setup & Customization Guide](./setup-instructions.md)**.
 
 ---
 

@@ -11,6 +11,7 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 - [Powered by Google Technologies](#powered-by-google-technologies)
 - [Architecture Overview](#architecture-overview)
 - [Architecture Diagram](#architecture-diagram)
+- [Complete Setup & Customization Guide](./docs/setup-instructions.md)
 - [Backend Functionality](./docs/functions.md)
 - [Frontend Components](./docs/frontend-components.md)
 - [Getting Started (Local Development)](#getting-started-local-development)
@@ -194,45 +195,61 @@ The user-facing web application is built with React and Vite. For a detailed bre
 
 ## Getting Started (Local Development)
 
-Follow these instructions to set up the project for local development.
+Follow these instructions to set up the project for local development or deploy a brand-new instance for your educational institution. For the complete, detailed deployment guide, see the **[Complete Setup & Customization Guide](./docs/setup-instructions.md)**.
 
 ### Prerequisites
 
-*   [Node.js](https://nodejs.org/) (v18 or higher recommended)
+*   [Node.js](https://nodejs.org/) (v20 or higher recommended)
 *   [Git](https://git-scm.com/)
 *   [Firebase CLI](https://firebase.google.com/docs/cli#install_the_cli): `npm install -g firebase-tools`
+*   [Terraform](https://developer.hashicorp.com/terraform/install) (v1.5+ for automated cloud provisioning)
 
-### 1. Firebase Project Setup
+### 🚀 1-Command Automated Cloud Setup (Zero UI Clicks)
 
-1.  Create a new project in the [Firebase Console](https://console.firebase.google.com/).
-2.  Enable the following services:
-    *   **Authentication:** Email/Password sign-in.
-    *   **Firestore:** Create a database.
-    *   **Storage:** Create a storage bucket.
-3.  In your Firebase project settings, add a new Web App.
-4.  Copy the `firebaseConfig` object provided.
-5.  In the `web-app/` directory, create a new file named `.env` and paste your `firebaseConfig` values into it (see `.env.example` for format).
-
-### 2. Backend Setup
-
-Install dependencies for the Firebase Functions.
+To provision all Google Cloud & Firebase resources from scratch (APIs, Firestore, Storage, GCIP Auth, and Functions):
 
 ```bash
-cd functions
-npm install
+./setup-new-project.sh <PROJECT_ID> [BILLING_ACCOUNT_ID]
 ```
 
-### 3. Frontend Setup
+### 💻 Local Development Setup
 
-Install dependencies and run the local development server for the React app.
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant.git
+    cd Gemini-AI-Classroom-Assistant
+    ```
 
-```bash
-cd web-app
-npm install
-npm run dev
-```
+2.  **Environment Configuration**:
+    Copy the template to `web-app/.env` and update with your Firebase credentials:
+    ```bash
+    cp web-app/.env.example web-app/.env
+    ```
 
-The application should now be running locally, typically at `http://localhost:5173`.
+3.  **🏫 Configure Institutional Email Domains**:
+    In `web-app/.env`, customize the email domains for your school:
+    ```env
+    # Instructors & Teachers
+    VITE_TEACHER_DOMAINS="vtc.edu.hk"
+    # Students
+    VITE_STUDENT_DOMAINS="stu.vtc.edu.hk"
+    # Institution Display Name
+    VITE_INSTITUTION_NAME="VTC"
+    ```
+
+4.  **Synchronize Cloud Functions Config**:
+    ```bash
+    ./switch-env.sh dev
+    ```
+
+5.  **Start Frontend Dev Server**:
+    ```bash
+    cd web-app
+    npm install
+    npm run dev
+    ```
+
+    The application runs locally at `http://localhost:5173`. Students must open the application in **Google Chrome** on desktop.
 
 ### 👥 Demo Users & Pre-Seeded Class
 
@@ -324,7 +341,7 @@ node admin/scripts/reset_environment.mjs it114115-dev-2026 --delete-users
 
 The project uses a fully automated **Infrastructure-as-Code (Terraform) + Firebase CLI** pipeline with **Zero UI clicks** required.
 
-For complete details on infrastructure, environments, and multi-codebase architecture, see the **[Deployment & Infrastructure Guide](./docs/deployment-and-infrastructure.md)**.
+For complete details on infrastructure, environments, and multi-codebase architecture, see the **[Deployment & Infrastructure Guide](./docs/deployment-and-infrastructure.md)** and the **[Complete Setup & Customization Guide](./docs/setup-instructions.md)**.
 
 ### Quick Start: Provisioning a New Environment
 
