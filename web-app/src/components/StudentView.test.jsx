@@ -697,6 +697,39 @@ describe('StudentView Component Extended Test Suite', () => {
 
     expect(camSelect.value).toBe('cam2');
   });
+
+  it('handles permission denied error when student rejects screen sharing', async () => {
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockRejectedValue(new Error('Permission denied'));
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining('Could not start screen sharing. Please grant permission.')
+    );
+  });
+
+  it('alerts student when browser does not support getDisplayMedia', async () => {
+    const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+    navigator.mediaDevices.getDisplayMedia = undefined;
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining('Screen sharing is not supported by your browser')
+    );
+
+    navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
+  });
 });
 
 

@@ -404,4 +404,66 @@ describe('MonitorView Component Suite', () => {
       expect(mockUpdateDoc).toHaveBeenCalled();
     }
   });
+
+  it('changes grid view channel between dual, screen, and webcam', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const channelSelect = screen.getByLabelText(/Grid view channel/i);
+    expect(channelSelect).toBeInTheDocument();
+    expect(channelSelect.value).toBe('both');
+
+    await act(async () => {
+      fireEvent.change(channelSelect, { target: { value: 'screen' } });
+    });
+    expect(channelSelect.value).toBe('screen');
+
+    await act(async () => {
+      fireEvent.change(channelSelect, { target: { value: 'webcam' } });
+    });
+    expect(channelSelect.value).toBe('webcam');
+  });
+
+  it('filters students by problem status in grid header dropdown', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const filterSelect = screen.getByLabelText(/Filter students by status/i);
+    expect(filterSelect).toBeInTheDocument();
+    expect(filterSelect.value).toBe('all');
+
+    await act(async () => {
+      fireEvent.change(filterSelect, { target: { value: 'problems' } });
+    });
+    expect(filterSelect.value).toBe('problems');
+
+    await act(async () => {
+      fireEvent.change(filterSelect, { target: { value: 'no_cam' } });
+    });
+    expect(filterSelect.value).toBe('no_cam');
+
+    await act(async () => {
+      fireEvent.change(filterSelect, { target: { value: 'no_mic' } });
+    });
+    expect(filterSelect.value).toBe('no_mic');
+  });
+
+  it('toggles controls sidebar visibility', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const hideBtn = screen.getByRole('button', { name: /◀ Hide Controls/i });
+    expect(hideBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(hideBtn);
+    });
+
+    const showBtn = screen.getByRole('button', { name: /Show Controls/i });
+    expect(showBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(showBtn);
+    });
+
+    expect(screen.getByRole('button', { name: /◀ Hide Controls/i })).toBeInTheDocument();
+  });
 });
+

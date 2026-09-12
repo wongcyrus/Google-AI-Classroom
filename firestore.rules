@@ -90,7 +90,8 @@ service cloud.firestore {
       }
 
       match /lessons/{lessonId} {
-        allow read, write: if isTeacherInClass(classId);
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacherInClass(classId);
       }
 
       match /audio/{audioId} {
@@ -134,16 +135,17 @@ service cloud.firestore {
     }
 
     match /progress/{progressId} {
-      allow read, create: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
+      allow create: if isTeacher();
     }
 
     match /performanceMetrics/{metricId} {
-      allow read: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
     }
 
     match /videoJobs/{jobId} {
       allow create: if isTeacher();
-      allow read: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
       allow delete: if isTeacher();
     }
 
@@ -159,7 +161,8 @@ service cloud.firestore {
     }
 
     match /aiJobs/{jobId} {
-      allow read, create, update: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
+      allow create, update: if isTeacher();
     }
 
     match /reportJobs/{jobId} {

@@ -128,6 +128,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const studentUidMap = useRef(new Map());
   const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
 
+
   const handleAiModelChange = async (newModel) => {
     setSelectedAiModel(newModel);
     if (classId) {
@@ -350,6 +351,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         if (data.enableAudioCapture !== undefined) {
           setEnableAudioCapture(data.enableAudioCapture);
         }
+
         const classCapture = data.captureMode || data.settings?.captureMode;
         if (classCapture !== undefined) {
           setCaptureMode(classCapture);

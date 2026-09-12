@@ -47,6 +47,8 @@ The project is a monorepo composed of three main parts:
     *   **Low-Bandwidth Classroom Frame Broadcaster (Teacher Screen Sharing):** Pure lightweight frame streaming architecture delivering real-time teacher screen broadcasts to 50+ students simultaneously without WebRTC encoder strain, high CPU usage, or browser lockups. Features offscreen 720p clamping, 32x18 thumbnail pixel delta diffing (skipping emissions if static unless 5s heartbeat expires), and adaptive JPEG quality compression published directly to Firestore.
     *   **Universal Data Export Engine & Prompt Inspector:** RFC 4180-compliant CSV exports equipped with UTF-8 BOM (`\uFEFF`) for direct Microsoft Excel compatibility, formatted JSON payloads, and plain-text reports across all teacher views (Video Analysis Jobs, Progress View, Audio Transcript Modal, Video Library, Session Review, AI Cost Report, and Job Result Modal). Full prompt visibility with Level 1 inline accordions, Level 2 expandable cards, and standalone "📜 View Prompt" modal with 1-click clipboard copying.
     *   **Two-Stage Lab Task Synthesis & Dynamic Re-run:** Automated 1-click **"✨ Generate Lab Task Prompt"** in Video Analysis Jobs. Automatically aggregates multi-student video observations across the entire cohort, invokes Gemini 3.8 Flash to synthesize lab-specific tasks, cloud platform tools, rubrics, and technical blockers, and launches targeted 2nd-stage batch re-analysis.
+    *   **Student Self-Service Learning & Assessment Records Portal (`StudentRecordsView.jsx`):** Dedicated student portal providing transparent access to historical learning telemetry across 5 comprehensive tabs: **🎬 Screencasts** (itemized session recordings with inline playback and download), **📅 Attendance** (minute-by-minute visual presence heatmaps, screen share ratio, and AI working minutes), **📋 Tasks** (lab milestone completions and performance metrics), **⚠️ Irregularities** (detailed proctoring notices with severity ratings and evidence), and **🎙️ Audio** (transcription snippets and language tags). Features multi-tier lesson resolution (Firestore docs + schedule timetable engine + discovered sessions), absent lesson retention, and 6 dynamically scoped KPI summary cards.
+    *   **Assessment Integrity & Confidential Exam Protection (`examPeriods`):** Comprehensive academic integrity system allowing instructors to configure scheduled exam windows in `ClassManagement.jsx`. Automatically suppresses student screen recording sharing during exam periods, excludes exam sessions from generating public synthetic discovered lessons, presents dedicated assessment integrity security notice banners (`🔒 Exam Period Recordings Restricted`), and strictly rejects student playback requests at the backend callable Cloud Function boundary (`getStudentVideoPlaybackUrl`) via zero-trust validation, while preserving instructor audit privileges.
     *   **Granular Task Duration Analytics:** Automatic logging via the `recordTaskDuration` AI tool feeds the **Performance Analytics** dashboard with discrete task and lab milestone durations from video screencasts.
 *   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
@@ -90,8 +92,10 @@ graph TD
         end
 
         subgraph "Media Processing (`media_processing`)"
+            F_getStudentVideoPlaybackUrl["getStudentVideoPlaybackUrl (onCall)"]
             F_processVideoJob["processVideoJob (onCreate videoJobs)"]
             F_processZipJob["processZipJob (onCreate zipJobs)"]
+            F_processReportJob["processReportJob (onCreate reportJobs)"]
             F_cleanupStuckJobs["cleanupStuckJobs (onSchedule)"]
         end
 
@@ -119,6 +123,7 @@ graph TD
     WebApp -- "HTTPS Calls" --> F_analyzeAllImages
     WebApp -- "HTTPS Calls" --> F_deleteScreenshots
     WebApp -- "HTTPS Calls" --> F_getAttendanceData
+    WebApp -- "HTTPS Calls" --> F_getStudentVideoPlaybackUrl
     WebApp -- "Reads/Writes" --> Firestore
     WebApp -- "Uploads" --> Storage
     WebApp -- "Authenticates with" --> Auth
@@ -132,6 +137,7 @@ graph TD
     Firestore -- "videoJobs create" --> F_processVideoJob
     Firestore -- "videoJobs update" --> F_triggerAutomaticAnalysis
     Firestore -- "zipJobs create" --> F_processZipJob
+    Firestore -- "reportJobs create" --> F_processReportJob
     Firestore -- "videoAnalysisJobs create" --> F_processVideoAnalysisJob
     Firestore -- "aiJobs write" --> F_onAiJobCreated
 
@@ -243,20 +249,20 @@ The default development environment (`it114115-dev-2026`) comes pre-seeded with 
 
 ## 🧪 Testing & Quality Assurance
 
-The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests (**656+ tests and assertions**, exceeding the **80% line and function coverage benchmark**):
+The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests (**740+ tests and assertions**, exceeding the **80% line and function coverage benchmark**):
 
 ```bash
 # Run all test suites (Frontend + Functions + System Smoke Tests)
 npm test
 
-# Run all test suites with V8 code coverage report (Lines: 80.63%, Funcs: 80.12%)
+# Run all test suites with V8 code coverage report (Lines: 80.64%, Funcs: 80.59%)
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest: 576 tests across 85 suites)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 39 tests across 6 suites)
+npm run test:frontend   # React component & utility unit tests (Vitest: 597 tests across 87 suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 92 tests across 6 codebases)
 npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
-npm run test:security   # Real-token security rules verification (15 assertions)
+npm run test:security   # Real-token security rules verification (23 assertions)
 ```
 
 For complete architectural details, test matrices, and coverage reports, see the **[Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.

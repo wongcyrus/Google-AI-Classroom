@@ -10,12 +10,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 651+ Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 740+ Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
-        L3[Level 3: Real-Token Security Rules Verification - 15 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 39 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 568 Tests across 86 Suites]
+        L3[Level 3: Real-Token Security Rules Verification - 23 Assertions]
+        L2[Level 2: Backend Cloud Functions Logic - 92 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 597 Tests across 87 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,8 +47,9 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (86 Test Files / 568 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (87 Test Files / 592 Tests).
 * **Covered Modules**:
+  * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, and signed video playback modal triggers.
   * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
   * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, model badges, status badge variants, 3-line prompt snippet with modal link trigger, row selection to navigate to Level 2 details, and verifies removal of redundant action buttons and inline accordions.
   * `web-app/src/components/AiJobsTable.test.jsx`: Tests sub-job rendering, cost breakdown formatting, multi-attribute media path resolution (`mediaPaths`/`videoPath`/`path`), error inspector modal, raw JSON inspection modal, and row-level 1-click CSV/JSON export actions.
@@ -88,8 +89,9 @@ flowchart TD
   * `web-app/src/components/IrregularitiesView.test.jsx`: Tests unified visual + audio evidence display, period filtering, and playback.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (9 Test Files / 40 Tests).
+* **Framework**: `vitest` with Node.js 22 runtime (10 Test Files / 42 Tests).
 * **Covered Modules**:
+  * `functions/media_processing/getStudentVideoPlaybackUrl.test.js`: Validates authenticated student self-service playback access, caller identity verification (`studentUid === auth.uid`), teacher override privilege, unauthorized peer rejection, and signed v4 Cloud Storage URL generation.
   * `functions/media_processing/processReportJob.test.js`: Validates automated Microsoft Word (`.docx`) Incident Dossier generation with formatted tables, CSV exports, Cloud Storage uploads, and teacher notification emails.
   * `functions/media_processing/videoEncoding.test.js`: Verifies FFmpeg output options, 1 FPS screencast timelapses, and text banner overlay string construction.
   * `functions/ai_flows/cost.test.js`: Verifies exact token-to-USD pricing equations for Gemini 3.5 Flash-Lite, Gemini 3.7 Flash, and Gemini 3.5 Transcribe, plus dynamic in-memory caching and fallback token key normalizations.
@@ -154,4 +156,18 @@ functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Function
 | `src/hooks/useClientLiteRTWhisper.test.js` | `useClientLiteRTWhisper.js` | **75.7% Lines / 73.8% Stmts**: Tests Web Audio `ScriptProcessorNode` stream attachment, RMS VAD speech detection, model preloading deduplication, and Firestore status updates. |
 | `src/hooks/useAudioSetup.test.js` | `useAudioSetup.js` | **76.72% Lines / 75% Stmts**: Tests hardware microphone enumeration, exact `deviceId` constraints, Web Audio volume analyser, STT voice verification phrase challenge, and 3-second audio loopback test. |
 | `src/hooks/useAudioRecorder.test.js` | `useAudioRecorder.js` | **70.46% Lines / 68.9% Stmts**: Tests multi-mode sliding window chunking, silence suppression (<4% RMS), automated segment timer advance, MediaRecorder error handling, and offline IndexedDB queueing. |
+
+---
+
+## 🛡️ Screen Recording Access & Exam Integrity Test Suite Breakdown
+
+| Test Suite | Target Component / Cloud Function | Coverage Highlights |
+| :--- | :--- | :--- |
+| `functions/media_processing/getStudentVideoPlaybackUrl.test.js` | `getStudentVideoPlaybackUrl.js` | **20 Unit Tests / 91.37% Lines**: Tests zero-trust backend enforcement of defined `examPeriods` timestamp checks, `isExam === true`, `lessonType === 'exam'`, `disabled` policy, and `delayed_release` (pre-release blocked with ISO timestamp, post-release permitted). Directly validates the callable Cloud Function RPC handler (`executeGetStudentVideoPlaybackUrl`) for unauthenticated caller rejection, missing arguments, nonexistent documents, unauthorized peers, confidential exam access blocks, teacher overrides, and signed v4 Cloud Storage URL generation. |
+| `functions/scheduled_tasks/scheduledTasks.test.js` | `scheduledTasks.js` | Tests automatic video compilation skipping when `disableAutomaticVideoOnExam: true` on scheduled exam slots, and validates stamping `isExam: true` on videoJobs for exam time slots. |
+| `src/components/ClassManagement.test.jsx` | `ClassManagement.jsx` | **8 Unit Tests**: Tests Section 6 UI card: teacher configuring `examPeriods` (`name`, `startDate`, `endDate`), policy selector, conditional release date input, `disableAutomaticVideoOnExam` checkbox, and persistence via `updateDoc`/`setDoc`. |
+| `src/components/StudentRecordsView.test.jsx` | `StudentRecordsView.jsx` | **23 Unit Tests**: Tests `isExamRecord` helper across all branches (flags, timestamps, boundary conditions), Assessment Integrity alert banner (`🔒 Exam Period Recordings Restricted`), strict UI exclusion of exam videos, exclusion of exam sessions from generating synthetic discovered lessons, locked action button states, and disabled Play/Download triggers. |
+| `src/components/monitor/ControlsPanel.test.jsx` | `ControlsPanel.jsx` | Tests Exam Session Protection card: `🟢 Standard Lab` vs `🔒 Protected Exam` state display and `Switch to Exam Mode` / `Exit Exam Mode` proctor toggles. |
+
+
 

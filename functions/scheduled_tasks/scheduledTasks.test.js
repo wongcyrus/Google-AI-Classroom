@@ -47,4 +47,40 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     expect(rates['gemini-3.8-flash'].output).toBe(3.75);
     expect(rates['gemini-3.5-transcribe'].input).toBe(0.50);
   });
+
+  it('correctly tags video jobs as isExam when session overlaps with defined examPeriods', () => {
+    const isExamSession = ({ lessonStart, lessonEnd, examPeriods = [] }) => {
+      const lStart = new Date(lessonStart).getTime();
+      const lEnd = new Date(lessonEnd).getTime();
+      return examPeriods.some(period => {
+        if (!period || !period.startDate || !period.endDate) return false;
+        const pStart = new Date(period.startDate).getTime();
+        const pEnd = new Date(period.endDate).getTime();
+        return (lStart >= pStart && lStart <= pEnd) || (lEnd >= pStart && lEnd <= pEnd) || (pStart >= lStart && pEnd <= lEnd);
+      });
+    };
+
+    const examPeriods = [
+      {
+        id: 'ep1',
+        name: 'Midterm Examination',
+        startDate: '2026-10-25T14:00:00Z',
+        endDate: '2026-10-25T16:00:00Z',
+      },
+    ];
+
+    // Lesson during exam period
+    expect(isExamSession({
+      lessonStart: '2026-10-25T14:00:00Z',
+      lessonEnd: '2026-10-25T16:00:00Z',
+      examPeriods,
+    })).toBe(true);
+
+    // Regular lesson on another day
+    expect(isExamSession({
+      lessonStart: '2026-10-27T14:00:00Z',
+      lessonEnd: '2026-10-27T16:00:00Z',
+      examPeriods,
+    })).toBe(false);
+  });
 });

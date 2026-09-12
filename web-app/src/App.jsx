@@ -40,6 +40,7 @@ const MailboxView = lazyWithRetry(() => import('./components/MailboxView'));
 const EmailDetailView = lazyWithRetry(() => import('./components/EmailDetailView'));
 const PromptManagement = lazyWithRetry(() => import('./components/PromptManagement'));
 const ClassView = lazyWithRetry(() => import('./components/ClassView'));
+const StudentRecordsView = lazyWithRetry(() => import('./components/StudentRecordsView'));
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -135,6 +136,16 @@ const App = () => {
                         }}
                       />
                     )
+                  ) : (
+                    <Navigate to="/login" />
+                  )
+                }
+              />
+              <Route
+                path="/student/records"
+                element={
+                  user && role === 'student' ? (
+                    <StudentRecordsView user={user} />
                   ) : (
                     <Navigate to="/login" />
                   )
@@ -251,6 +262,17 @@ const MainHeader = ({ onLogout, user, role }) => {
           </nav>
         )}
 
+        {role === 'student' && (
+          <nav className="student-main-nav">
+            <NavLink to="/student" end>
+              <span>🎥 Live Session</span>
+            </NavLink>
+            <NavLink to="/student/records">
+              <span>📋 My Records</span>
+            </NavLink>
+          </nav>
+        )}
+
         <div className="header-right" ref={menuRef}>
           <div 
             className="user-profile-trigger"
@@ -273,6 +295,20 @@ const MainHeader = ({ onLogout, user, role }) => {
                 <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
               </div>
               <div className="profile-menu-divider" />
+              {role === 'student' && (
+                <>
+                  <Link
+                    to="/student/records"
+                    className="profile-menu-item"
+                    onClick={() => setShowProfileMenu(false)}
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <span className="menu-item-icon">📋</span>
+                    <span>My Records</span>
+                  </Link>
+                  <div className="profile-menu-divider" />
+                </>
+              )}
               <button 
                 type="button"
                 className="profile-menu-item"

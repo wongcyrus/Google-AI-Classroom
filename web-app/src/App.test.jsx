@@ -43,6 +43,10 @@ vi.mock('./components/StudentView', () => ({
   default: () => <div data-testid="student-view">Student Exam Room View</div>,
 }));
 
+vi.mock('./components/StudentRecordsView', () => ({
+  default: () => <div data-testid="student-records-view">Student Personal Records View</div>,
+}));
+
 vi.mock('./components/ClassManagement', () => ({
   default: () => <div data-testid="class-mgmt-view">Class Management View</div>,
 }));
@@ -161,6 +165,8 @@ describe('App & MainHeader Components', () => {
     expect(await screen.findByTestId('student-view')).toBeInTheDocument();
     expect(screen.getByText('student@school.edu')).toBeInTheDocument();
     expect(screen.getByText('student')).toBeInTheDocument();
+    expect(screen.getByText(/Live Session/i)).toBeInTheDocument();
+    expect(screen.getByText(/My Records/i)).toBeInTheDocument();
   });
 
   it('blocks student and forces sign out when logging in on non-Chrome browser', async () => {

@@ -73,6 +73,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [modalPromptText, setModalPromptText] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Student Screen Recording Access & Exam Integrity Settings
+  const [examPeriods, setExamPeriods] = useState([]);
+  const [newExamName, setNewExamName] = useState('');
+  const [newExamStart, setNewExamStart] = useState('');
+  const [newExamEnd, setNewExamEnd] = useState('');
+  const [examPeriodError, setExamPeriodError] = useState('');
+  const [studentRecordingsPolicy, setStudentRecordingsPolicy] = useState('always_enabled');
+  const [studentRecordingsReleaseDate, setStudentRecordingsReleaseDate] = useState('');
+
   useEffect(() => {
     if (embeddedClassId) {
       setSelectedClass(embeddedClassId);
@@ -178,6 +187,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setEnableCombinedLongAudio(classData.enableCombinedLongAudio || false);
           setAudioMovingWindowDuration(classData.audioMovingWindowDuration || 30);
           setAudioMovingWindowStride(classData.audioMovingWindowStride || 15);
+          setExamPeriods(classData.examPeriods || []);
+          setNewExamName('');
+          setNewExamStart('');
+          setNewExamEnd('');
+          setExamPeriodError('');
+          setStudentRecordingsPolicy(classData.studentRecordingsPolicy || 'always_enabled');
+          setStudentRecordingsReleaseDate(classData.studentRecordingsReleaseDate || '');
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);
@@ -214,6 +230,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setSessionAudioPrompt(null);
         setGemmaIntentPrompt(null);
         setSessionAudioIntervalMinutes(0);
+        setExamPeriods([]);
+        setNewExamName('');
+        setNewExamStart('');
+        setNewExamEnd('');
+        setExamPeriodError('');
+        setStudentRecordingsPolicy('always_enabled');
+        setStudentRecordingsReleaseDate('');
       }
     };
     fetchClassDetails();
@@ -233,6 +256,40 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       return 'Class ID cannot contain slashes.';
     }
     return null;
+  };
+
+  const handleAddExamPeriod = () => {
+    setExamPeriodError('');
+    if (!newExamStart || !newExamEnd) {
+      setExamPeriodError('Please select both a start date/time and end date/time for the exam period.');
+      return;
+    }
+    const startMs = new Date(newExamStart).getTime();
+    const endMs = new Date(newExamEnd).getTime();
+    if (isNaN(startMs) || isNaN(endMs)) {
+      setExamPeriodError('Invalid start or end date/time format.');
+      return;
+    }
+    if (startMs >= endMs) {
+      setExamPeriodError('Start date/time must be strictly before end date/time.');
+      return;
+    }
+
+    const newPeriod = {
+      id: `ep_${Date.now()}`,
+      name: newExamName.trim() || 'Exam / Test Session',
+      startDate: newExamStart,
+      endDate: newExamEnd,
+    };
+
+    setExamPeriods([...examPeriods, newPeriod]);
+    setNewExamName('');
+    setNewExamStart('');
+    setNewExamEnd('');
+  };
+
+  const handleRemoveExamPeriod = (periodId) => {
+    setExamPeriods(examPeriods.filter((p) => p.id !== periodId));
   };
 
   const handleImportEmailsFromFile = (event, type = 'students') => {
@@ -380,6 +437,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCombinedLongAudio: enableCombinedLongAudio || false,
           audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
           audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
+          examPeriods: examPeriods || [],
+          studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
+          studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
         };
         await updateDoc(classRef, updateData);
         setSuccessMessage('Class settings successfully updated!');
@@ -430,6 +490,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCombinedLongAudio: enableCombinedLongAudio || false,
           audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
           audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
+          examPeriods: examPeriods || [],
+          studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
+          studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
           aiQuota: 50,
           aiUsedQuota: 0,
         });
@@ -1058,9 +1121,106 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
       </div>
 
-      {/* Section 6: Audio & Microphone Monitoring */}
+      {/* Section 6: Exam & Test Periods (Restricted from Students) */}
       <div className="settings-section-card">
-        <h3>🎙️ 6. Audio & Microphone Monitoring</h3>
+        <h3>📝 6. Exam & Test Periods (Restricted from Students)</h3>
+        <p className="input-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
+          Define dates and time windows for exams or tests. The system will compile all MP4 recordings for instructor invigilation and auditing, but will <strong>NEVER share recordings from these periods with students</strong> to protect assessment questions.
+        </p>
+
+        {examPeriodError && (
+          <div className="error-message" style={{ marginBottom: '1rem', color: '#dc2626', fontWeight: 600 }}>
+            {examPeriodError}
+          </div>
+        )}
+
+        {/* Existing exam periods list */}
+        <div className="form-group">
+          <label>Configured Exam / Test Periods ({examPeriods.length})</label>
+          {examPeriods.length === 0 ? (
+            <p style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.875rem' }}>
+              No exam periods defined. Regular class recordings will follow standard sharing.
+            </p>
+          ) : (
+            <div className="schedules-list" style={{ marginTop: '0.5rem' }}>
+              {examPeriods.map((period) => (
+                <div
+                  key={period.id}
+                  className="schedule-item"
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff1f2', border: '1px solid #fecdd3', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#9f1239', fontSize: '0.9rem' }}>
+                      🔒 {period.name}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#4b5563', marginTop: '2px' }}>
+                      {new Date(period.startDate).toLocaleString()} — {new Date(period.endDate).toLocaleString()}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveExamPeriod(period.id)}
+                    aria-label={`Remove exam period ${period.name}`}
+                    style={{ background: '#be123c', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add Exam Period Form */}
+        <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '1rem' }}>
+          <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#1e293b' }}>➕ Add Exam / Test Window</h4>
+          <div className="form-group" style={{ marginBottom: '10px' }}>
+            <label htmlFor="exam-period-name-input">Exam / Assessment Name (Optional)</label>
+            <input
+              id="exam-period-name-input"
+              type="text"
+              placeholder="e.g. Midterm Examination, Final Practical"
+              value={newExamName}
+              onChange={(e) => setNewExamName(e.target.value)}
+              aria-label="Exam Assessment Name"
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+            <div className="form-group">
+              <label htmlFor="exam-period-start-input">Exam Start Date & Time</label>
+              <input
+                id="exam-period-start-input"
+                type="datetime-local"
+                value={newExamStart}
+                onChange={(e) => setNewExamStart(e.target.value)}
+                aria-label="Exam Period Start Date and Time"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="exam-period-end-input">Exam End Date & Time</label>
+              <input
+                id="exam-period-end-input"
+                type="datetime-local"
+                value={newExamEnd}
+                onChange={(e) => setNewExamEnd(e.target.value)}
+                aria-label="Exam Period End Date and Time"
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddExamPeriod}
+            className="action-button primary"
+            style={{ padding: '6px 14px', fontSize: '0.85rem' }}
+          >
+            Add Exam Period
+          </button>
+        </div>
+      </div>
+
+      {/* Section 7: Audio & Microphone Monitoring */}
+      <div className="settings-section-card">
+        <h3>🎙️ 7. Audio & Microphone Monitoring</h3>
         <div className="form-group">
           <label className="checkbox-toggle-label">
             <input
@@ -1240,9 +1400,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         )}
       </div>
 
-      {/* Section 7: Security & Access Restrictions */}
+      {/* Section 8: Security & Access Restrictions */}
       <div className="settings-section-card">
-        <h3>🔒 7. Security & IP Restrictions</h3>
+        <h3>🔒 8. Security & IP Restrictions</h3>
         <div className="form-group">
           <label>Allowed Classroom IP Addresses</label>
           <textarea

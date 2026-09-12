@@ -253,6 +253,94 @@ async function runSecurityRulesSuite() {
       'Student 1 CANNOT read Student 2 audio metadata'
     );
 
+    // Video Jobs isolation
+    const videoJob1Id = `vjob-1-${timestamp}`;
+    const videoJob2Id = `vjob-2-${timestamp}`;
+    await adminDb.collection('videoJobs').doc(videoJob1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      videoPath: `videos/${classA}/${videoJob1Id}.mp4`,
+      status: 'completed',
+    });
+    await adminDb.collection('videoJobs').doc(videoJob2Id).set({
+      classId: classB,
+      studentUid: student2Uid,
+      videoPath: `videos/${classB}/${videoJob2Id}.mp4`,
+      status: 'completed',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'videoJobs', videoJob1Id)),
+      'Student 1 CAN read own videoJobs document'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'videoJobs', videoJob2Id)),
+      'Student 1 CANNOT read Student 2 videoJobs document'
+    );
+
+    // AI Jobs isolation
+    const aiJob1Id = `aijob-1-${timestamp}`;
+    const aiJob2Id = `aijob-2-${timestamp}`;
+    await adminDb.collection('aiJobs').doc(aiJob1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      status: 'completed',
+    });
+    await adminDb.collection('aiJobs').doc(aiJob2Id).set({
+      classId: classB,
+      studentUid: student2Uid,
+      status: 'completed',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'aiJobs', aiJob1Id)),
+      'Student 1 CAN read own aiJobs document'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'aiJobs', aiJob2Id)),
+      'Student 1 CANNOT read Student 2 aiJobs document'
+    );
+
+    // Performance Metrics isolation
+    const metric1Id = `metric-1-${timestamp}`;
+    const metric2Id = `metric-2-${timestamp}`;
+    await adminDb.collection('performanceMetrics').doc(metric1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      taskName: 'AWS Lab',
+    });
+    await adminDb.collection('performanceMetrics').doc(metric2Id).set({
+      classId: classB,
+      studentUid: student2Uid,
+      taskName: 'AWS Lab',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'performanceMetrics', metric1Id)),
+      'Student 1 CAN read own performanceMetrics document'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'performanceMetrics', metric2Id)),
+      'Student 1 CANNOT read Student 2 performanceMetrics document'
+    );
+
+    // Lessons in enrolled vs non-enrolled class
+    const lesson1Id = `lesson-1-${timestamp}`;
+    const lesson2Id = `lesson-2-${timestamp}`;
+    await adminDb.collection('classes').doc(classA).collection('lessons').doc(lesson1Id).set({
+      startTime: new Date(),
+      students: { [student1Uid]: { sharedScreenMinutes: 45 } },
+    });
+    await adminDb.collection('classes').doc(classB).collection('lessons').doc(lesson2Id).set({
+      startTime: new Date(),
+      students: { [student2Uid]: { sharedScreenMinutes: 45 } },
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'lessons', lesson1Id)),
+      'Student 1 CAN read lessons in enrolled Class A'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classB, 'lessons', lesson2Id)),
+      'Student 1 CANNOT read lessons in non-enrolled Class B'
+    );
+
     // -------------------------------------------------------------
     // SUITE 3: Teacher Role Privileges
     // -------------------------------------------------------------
@@ -291,6 +379,14 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('screenshots').doc(shotDocId).delete();
     await adminDb.collection('audio').doc(audio1DocId).delete();
     await adminDb.collection('audio').doc(audio2DocId).delete();
+    await adminDb.collection('videoJobs').doc(videoJob1Id).delete();
+    await adminDb.collection('videoJobs').doc(videoJob2Id).delete();
+    await adminDb.collection('aiJobs').doc(aiJob1Id).delete();
+    await adminDb.collection('aiJobs').doc(aiJob2Id).delete();
+    await adminDb.collection('performanceMetrics').doc(metric1Id).delete();
+    await adminDb.collection('performanceMetrics').doc(metric2Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('lessons').doc(lesson1Id).delete();
+    await adminDb.collection('classes').doc(classB).collection('lessons').doc(lesson2Id).delete();
     await adminAuth.deleteUser(student1Uid).catch(() => {});
     await adminAuth.deleteUser(student2Uid).catch(() => {});
     await adminAuth.deleteUser(teacherUid).catch(() => {});

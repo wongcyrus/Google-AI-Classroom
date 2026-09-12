@@ -68,14 +68,16 @@ body, html, #root {
   color: var(--color-text-muted);
 }
 
-/* Teacher Main Navigation */
-.teacher-main-nav {
+/* Main Navigation */
+.teacher-main-nav,
+.student-main-nav {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.teacher-main-nav a {
+.teacher-main-nav a,
+.student-main-nav a {
   color: var(--color-text-muted);
   text-decoration: none;
   padding: 0.45rem 0.85rem;
@@ -88,12 +90,14 @@ body, html, #root {
   transition: all 0.15s ease;
 }
 
-.teacher-main-nav a:hover {
+.teacher-main-nav a:hover,
+.student-main-nav a:hover {
   color: var(--color-primary);
   background-color: var(--color-surface-hover);
 }
 
-.teacher-main-nav a.active {
+.teacher-main-nav a.active,
+.student-main-nav a.active {
   color: var(--color-primary);
   background-color: var(--color-primary-light);
   font-weight: 600;

@@ -8,13 +8,19 @@ The `web-app/src/components/` directory contains all the React components that m
 flowchart TD
     App[App.jsx - Code-Split Router] --> Auth{User Role}
     
-    Auth -->|Student Role| SV[StudentView.jsx]
+    Auth -->|Student Role| SV[StudentView.jsx - Live Classroom]
+    Auth -->|Student Role| SRV[StudentRecordsView.jsx - My Records Portal]
     subgraph StudentFlow [Student Experience]
         SV --> V1[Screen Capture Stream: getDisplayMedia]
         SV --> V2[Webcam Capture Stream: getUserMedia]
         SV --> MP[useFaceMonitor: MediaPipe Iris & Gaze Mesh]
         SV --> AR[useAudioRecorder: Moving Window 30s VAD]
         SV --> SM[MicSetupModal.jsx]
+        SRV --> T1[Tab 1: Screen Recordings & Playback]
+        SRV --> T2[Tab 2: Attendance & Activity Timeline]
+        SRV --> T3[Tab 3: Lab Tasks & AI Progress]
+        SRV --> T4[Tab 4: Integrity & Proctoring Alerts]
+        SRV --> T5[Tab 5: Audio Transcripts & Speech]
     end
 
     Auth -->|Teacher Role| TV[TeacherView.jsx]
@@ -41,6 +47,19 @@ flowchart TD
 *   **`AuthComponent.jsx`**: Handles user authentication, displaying login and logout interfaces.
 *   **`TeacherView.jsx`**: The main dashboard for teachers, showing a list of their classes and high-level statistics like storage and AI usage.
 *   **`StudentView.jsx`**: The main view for students. Supports independent dual-channel streaming for screen sharing (`getDisplayMedia`) and webcam streaming (`getUserMedia`), multi-camera enumeration with automatic camera picker dropdown when multiple webcams are available, live camera hot-plugging (`devicechange`), on-device MediaPipe face and gaze tracking via `useFaceMonitor.js`, 1-click Neutral Baseline Calibration (`🎯 Calibrate View` / `🎯 Calibrated`), manual AI preloading (`📥 Preload AI (~3.8 MB)`) with live progress HUD, and schedule-driven automatic class association. For more details on its internal logic, see the [Student View Logic Documentation](./student-view-logic.md).
+*   **`StudentRecordsView.jsx`**: The self-service records portal for students (`/student/records`). Allows students to inspect their historical classroom data with strict privacy isolation:
+    *   **Class & Lesson Scoping**: Enforces single-class selection (no mixing across classes) and provides a global **Lesson / Date** dropdown selector (including `🌐 All Lessons / Full Semester`) that filters records across all tabs simultaneously using `isRecordInLesson` matching.
+    *   **Responsive Tab Bar (No Horizontal Scroll)**: Flex-wrapping navigation tab bar with compact badges and active scope banner displaying current lesson bounds.
+    *   **Dynamic KPI Metric Cards**: Displays 6 high-level metric summaries (Class Attendance %, Screen Share Duration, AI Working Duration, Recorded Videos, Lab Tasks Completed, and Proctoring Incident Flags) dynamically scoped to the selected lesson or full semester.
+    *   **Tab 1 (Screen Recordings)**: Itemized list of student session recordings (`videoJobs`), recording timestamps, duration, file size, status badges, inline video playback modal (`VideoPlayerModal`), and direct MP4 download links generated via the `getStudentVideoPlaybackUrl` Cloud Function. Screen recordings occurring during instructor-defined **Exam & Test Periods** (`examPeriods`) or flagged with `isExam: true` are strictly withheld from students to prevent test question extraction, with dedicated assessment integrity notice banners and zero-trust backend enforcement. Enforces class recording policies (`always_enabled`, `disabled`, `delayed_release`).
+    *   **Tab 2 (Attendance & Lessons)**: Teacher-grade attendance analytics featuring the 3 core ratios:
+        1. **Attendance Presence Ratio**: Minute-by-minute presence bitmask (`attendedMinutes / duration * 100%`) with status badge (`🟢 Present`, `🟡 Partial / Late`, `🔴 Absent`).
+        2. **Screen Sharing Ratio**: Active screen broadcast time (`sharedScreenMinutes / duration * 100%`) with sharing health badge (`🟢 High Sharing`, `🟡 Moderate`, `🔴 Low Sharing`).
+        3. **AI Working Minutes Ratio**: Multimodal AI-assessed active lab task engagement (`workingMinutes / duration * 100%`) with focus badge (`🟢 High Focus`, `🟡 Moderate Focus`, `🔴 Low Focus / Idle`).
+        Includes minute-by-minute visual grid (`✓` present / `✗` absent), session feedback, and dual inspection modes: **📅 Per Lesson Breakdown** and **📊 All Lessons Summary** comparison table with one-click **"🔍 Inspect Lesson"** jump actions.
+    *   **Tab 3 (Tasks & AI Progress)**: Detailed breakdown of lab milestone completions (`performanceMetrics`), class progress achievements (`progress`), and AI job evaluations (`aiJobs`), scoped to the selected lesson.
+    *   **Tab 4 (Integrity & Alerts)**: Transparency log of invigilation incidents and AI proctoring flags (`irregularities`), complete with violation category, severity pills (`critical`, `high`, `medium`, `low`), AI confidence rating, evidence transcript quotes, and rationale, scoped to the selected lesson.
+    *   **Tab 5 (Audio Transcripts)**: Speech segments captured during sessions (`audio`), complete with language badges (`Cantonese`, `Mandarin`, `English`), timestamps, audio clip duration, and speech-to-text transcripts, scoped to the selected lesson.
 *   **`useFaceMonitor.js` (Hook in `StudentView.jsx`)**: An optimized custom hook managing on-device MediaPipe `FaceLandmarker` with Iris tracking (landmarks 468–477) powered by `faceLandmarker.worker.js` and `webAiModelLoader.js`. Computes head orientation (Yaw, Pitch, Roll), depth-from-iris metric distance (cm), Eye Aspect Ratio (EAR for sleeping/drowsiness detection), and Mouth Aspect Ratio (MAR for talking/whispering detection) in real time with zero cloud quota consumption. Features persistent Cache API caching (`webai-models-v1`), hardware frame synchronization (`requestVideoFrameCallback`), byte-accurate loading percentage telemetry, teacher remote preload trigger handling (`preloadClientAi`), and automatic fallback to Cloud Gemini Vision (`analyzeFaceFallback`) when hardware acceleration is unavailable.
 *   **`useClientLiteRTWhisper.js` (Hook in `StudentView.jsx`)**: Custom hook executing client-side Speech-to-Text (STT) via **Google LiteRT.js (`@litertjs/core`)** in background worker `litertWhisper.worker.js`. Supports mixed Cantonese, Mandarin, and English code-switching with decoder prompt biasing, writes spoken phrases directly to `classes/{classId}/status/{studentUid}` for live subtitle streaming, and saves permanent audio transcripts to `classes/{classId}/audio`.
 *   **`useClientLiteRTGemma.js` (Hook in `StudentView.jsx`)**: Custom hook executing on-device **Gemma LLM intent analysis** via Google LiteRT runtime (`litertGemma.worker.js`). Evaluates spoken transcripts for academic collusion (`COLLUSION_EXAM`), voice assistant dictation (`EXTERNAL_AI_ASSIST`), and unauthorized whispering (`UNAUTHORIZED_TALK`), while distinguishing legitimate technical questions. Automatically requests persistent browser storage (`navigator.storage.persist()`), persists downloaded model weights in Cache Storage (`litert-gemma-cache-v1`), logs verified violations to `classes/{classId}/irregularities` with `source: 'on_device_gemma'`, and runs dual local + cloud fallback transcript reasoning.
@@ -50,7 +69,7 @@ flowchart TD
 
 ## Class & User Management
 
-*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features configurable **AI Monitoring Modes** (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), customizable gaze sensitivity thresholds (Yaw/Pitch angles and debounce duration), configurable **Default Capture Mode** (`dual`, `screen`, `webcam`), one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
+*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features configurable **AI Monitoring Modes** (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), customizable gaze sensitivity thresholds (Yaw/Pitch angles and debounce duration), configurable **Default Capture Mode** (`dual`, `screen`, `webcam`), dedicated **Exam & Test Periods (Restricted from Students)** manager (`examPeriods`) allowing instructors to define specific date and time ranges for 1–2 semester exams where recordings are completely withheld from students while remaining 100% accessible to instructors for auditing, configurable **Student Screen Recording Access Policy** (`always_enabled`, `disabled`, `delayed_release`), one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
 *   **`ScheduleManager.jsx`**: A sub-component of `ClassManagement.jsx` for setting up the class schedule, including start/end dates, time zones, and recurring time slots.
 *   **`CustomPropertiesManager.jsx`**: A sub-component of `ClassManagement.jsx` for managing class-wide custom metadata and student-specific custom properties. Features one-click **CSV Template Download / Export Existing Properties**, asynchronous **CSV Property Upload** with real-time job processing badges (`completed`, `processing`, `failed`), and custom key-value field editors.
 *   **`PromptManagement.jsx`**: A view for creating, editing, and managing AI prompts. It supports different access levels (private, shared, public) and categories (for images or videos).
@@ -79,12 +98,22 @@ flowchart TD
     *   **Space-Optimized Channel Selector**: Compact dropdown for switching between `🔲 Dual View`, `🖥️ Screen`, and `📷 Webcam`.
     *   **Class Broadcast Channel**: Optimized Firestore write channel (`classes/{classId}/messages`) with pre-defined message templates.
 *   **`ControlsPanel.jsx`**: The consolidated sidebar control center for teachers during live monitoring. Reorganized in a logical top-down hierarchy:
-  1. **🎬 Session & Stream**: Capture start/stop, stream pause/resume, responsive segmented button groups for fast channel selection (`🖥️+📷 Dual`, `🖥️ Screen`, `📷 Webcam`) and audio recording/muted toggling, and compact interval/resolution grid.
+  1. **🎬 Session & Stream**: Capture start/stop, stream pause/resume, responsive segmented button groups for fast channel selection (`🖥️+📷 Dual`, `🖥️ Screen`, `📷 Webcam`), audio recording/muted toggling, live **Exam Session Protection** toggle (`isExamActive`) to instantly lock student access to recorded test questions, and compact interval/resolution grid.
   2. **📢 Class Broadcast**: Predefined template selector with instant send.
   3. **👁️ AI & Invigilation**: Real-time mode indicators, gaze sensitivity summary, **Live AI & Invigilation Suite Configuration Modal** (Tab 1: Vision/Gaze, Tab 2: Voice & Speech with Prompt Library dropdown, category filters, and `{{transcript}}` placeholder chips, Tab 3: Cloud Audio Recording & Diarization), class-wide **"⚡ Preload AI for All Students"** broadcast trigger, and Cloud Gemini Multimodal Analysis controls.
   4. **👥 Attendance & Status**: 1-click "Not Sharing" student counter/modal and Attendance CSV export.
   5. **📊 Storage & AI Quotas**: Space-efficient dual progress bars for storage usage and class AI budget.
 *   **`StudentView.jsx`**: The student interface offering a streamlined pre-session **Setup Hero Card** with readiness pills, a hardware-resilient **3-Step Exam Readiness Wizard** (`ExamReadinessWizard.jsx` with mic and webcam skip fallbacks), silent AI preloading, and a clean minimal active top bar during live streaming.
+*   **`StudentRecordsView.jsx`**: The student learning portal and attendance report view:
+    *   **Strict Class Scoping (No Mixing Up)**: Enforces individual class selection (`selectedClassId`) with no cross-class data mixing and no generic "all" classes option.
+    *   **Lesson & Date Navigation**: Allows students to select and inspect specific lessons or dates conducted by their instructor.
+    *   **Teacher-Grade Attendance System (3 Core Ratios)**:
+        1. **Attendance Presence Ratio**: Minute-by-minute presence telemetry (`attendedMinutes / duration * 100%`) with present/partial/absent status badge.
+        2. **Screen Sharing Ratio**: Desktop/window broadcast time (`sharedScreenMinutes / duration * 100%`) with high/moderate/low badges.
+        3. **AI Working Minutes Ratio**: AI-estimated working duration (`workingMinutes / duration * 100%`) from multimodal task engagement analysis.
+    *   **Minute-by-Minute Timeline**: Interactive visual grid matching the teacher view (`#2ECC71` active/present, `#FADBD8` inactive/absent).
+    *   **Dual View Modes**: Seamless toggle between **Per Lesson Breakdown** (hero stat cards, minute grid, AI & teacher summaries/feedback) and **All Lessons Summary** (cumulative class KPIs, comprehensive comparison table, and instant lesson inspection).
+    *   **Zero-Trust Assessment Integrity**: Protects assessment integrity by strictly withholding recordings recorded during defined exam periods from students with prominent security banners.
 *   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's status, supporting split-dual viewports (side-by-side feeds) or single channel views with channel badges (🖥️ / 📷), offline frame indicator pills (`🖥️ Screen (Offline)` / `📷 Webcam (Offline)`), hardware absence indicators (📷🚫, 🎙️🚫), live gaze orientation vectors, AI loading progress indicators (`⏳ 65%`), live spoken transcript subtitles with language tag badges (`💬 粵`, `💬 普`, `💬 EN`), Gemma violation alert badges (`🚨 Collusion (Gemma)`), and multi-signal face status badges (`normal`, `looking_away`, `eyes_closed`, `talking`, `no_face`, `multiple_faces`, `cloud_fallback`). Configured with modern image loading attributes (`loading="eager"`, `decoding="async"`, and `fetchPriority="high"`) for non-blocking asynchronous decoding and instantaneous render.
 *   **`useAudioRecorder.js` (Hook in `StudentView.jsx`)**: Handles continuous audio capture with sliding window (30s window, 15s stride) segmentation, Web Audio RMS silence suppression (>80% cost savings), and upload synchronization to Firebase Storage and Firestore. Fully decoupled from Vision AI monitoring modes, enabling reliable recording whenever the teacher toggles audio capture on, with automatic Diarization permission gating (`isCloudDiarizationAllowed`).
 *   **`IndividualStudentView.jsx`**: A modal overlay for inspecting an individual student's live streams in high detail with:

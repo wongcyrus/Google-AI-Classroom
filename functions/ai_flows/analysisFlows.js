@@ -10,15 +10,15 @@ import { logJob } from './jobLogger.js';
 
 const db = getFirestore();
 
-function getToolsForImageAnalysis() {
+export function getToolsForImageAnalysis() {
   return [sendMessageToStudent, recordIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis];
 }
 
-function getToolsForVideoAnalysis() {
+export function getToolsForVideoAnalysis() {
   return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary];
 }
 
-function getToolsForAudioAnalysis() {
+export function getToolsForAudioAnalysis() {
   return [recordAudioIrregularity, recordAudioAudit, sendMessageToStudent, sendMessageToTeacher];
 }
 

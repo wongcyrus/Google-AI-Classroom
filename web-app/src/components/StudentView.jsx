@@ -1754,6 +1754,15 @@ const StudentView = ({ user }) => {
                   >
                     🖥️ Quick Start (Screen Only)
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = '/student/records'; }}
+                    className="btn-quick-start-screen"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#f8fafc', color: '#1e293b', border: '1px solid #cbd5e1' }}
+                    title="View your past session recordings, attendance, and proctoring logs"
+                  >
+                    📋 My Records
+                  </button>
                 </div>
 
                 <div className="setup-system-summary">

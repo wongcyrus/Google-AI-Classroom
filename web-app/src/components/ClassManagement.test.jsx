@@ -303,7 +303,7 @@ describe('ClassManagement Full Component Test Suite', () => {
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Enable Audio Segment Recording/i)).toBeInTheDocument();
+      expect(screen.getByText(/Selected: Voice Intent/i)).toBeInTheDocument();
     });
 
     // Reset Gemma intent prompt
@@ -343,6 +343,75 @@ describe('ClassManagement Full Component Test Suite', () => {
 
     await waitFor(() => {
       expect(mockGetDoc).toHaveBeenCalled();
+    });
+  });
+
+  it('configures, toggles, and saves student screen recording policies and release date', async () => {
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          examPeriods: [
+            {
+              id: 'ep_existing',
+              name: 'Midterm Examination',
+              startDate: '2026-10-25T14:00',
+              endDate: '2026-10-25T16:00',
+            },
+          ],
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/6\. Exam & Test Periods/i)).toBeInTheDocument();
+    });
+
+    // 1. Verify existing exam period renders
+    expect(screen.getByText(/🔒 Midterm Examination/i)).toBeInTheDocument();
+
+    // 2. Add a new exam period
+    const nameInput = screen.getByLabelText(/Exam Assessment Name/i);
+    const startInput = screen.getByLabelText(/Exam Period Start Date and Time/i);
+    const endInput = screen.getByLabelText(/Exam Period End Date and Time/i);
+
+    fireEvent.change(nameInput, { target: { value: 'Final Exam' } });
+    fireEvent.change(startInput, { target: { value: '2026-12-15T09:00' } });
+    fireEvent.change(endInput, { target: { value: '2026-12-15T12:00' } });
+
+    const addPeriodBtn = screen.getByRole('button', { name: /Add Exam Period/i });
+    fireEvent.click(addPeriodBtn);
+
+    // Verify both exist
+    expect(screen.getByText(/🔒 Final Exam/i)).toBeInTheDocument();
+
+    // 3. Remove the existing one
+    const removeBtn = screen.getByLabelText(/Remove exam period Midterm Examination/i);
+    fireEvent.click(removeBtn);
+    expect(screen.queryByText(/🔒 Midterm Examination/i)).not.toBeInTheDocument();
+
+    // 4. Save settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          examPeriods: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'Final Exam',
+              startDate: '2026-12-15T09:00',
+              endDate: '2026-12-15T12:00',
+            }),
+          ]),
+        })
+      );
     });
   });
 });

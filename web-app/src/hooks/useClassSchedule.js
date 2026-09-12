@@ -13,6 +13,34 @@ const toLocalISOString = (date) => {
   return `${y}-${m}-${day}T${h}:${min}`;
 };
 
+export const generateLessons = (schedule, tz = 'UTC') => {
+  const lessons = [];
+  const { startDate, endDate, timeSlots } = schedule || {};
+  if (!startDate || !endDate || !timeSlots) return lessons;
+
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T23:59:59.999Z`);
+
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dayOfWeek = formatInTimeZone(d, tz, 'E');
+
+    timeSlots.forEach(slot => {
+      if (slot.days && slot.days.includes(dayOfWeek)) {
+        const datePart = d.toISOString().split('T')[0];
+        
+        const lessonStartString = `${datePart}T${slot.startTime}:00`;
+        const lessonEndString = `${datePart}T${slot.endTime}:00`;
+
+        const lessonStart = fromZonedTime(lessonStartString, tz);
+        const lessonEnd = fromZonedTime(lessonEndString, tz);
+        
+        lessons.push({ start: lessonStart, end: lessonEnd });
+      }
+    });
+  }
+  return lessons.sort((a, b) => b.start - a.start);
+};
+
 export const useClassSchedule = (classId) => {
   const [schedule, setSchedule] = useState(null);
   const [lessons, setLessons] = useState([]);
@@ -22,33 +50,6 @@ export const useClassSchedule = (classId) => {
   const [timezone, setTimezone] = useState('UTC');
 
   useEffect(() => {
-    const generateLessons = (schedule, tz) => {
-      const lessons = [];
-      const { startDate, endDate, timeSlots } = schedule;
-      if (!startDate || !endDate || !timeSlots) return lessons;
-
-      const start = new Date(`${startDate}T00:00:00.000Z`);
-      const end = new Date(`${endDate}T23:59:59.999Z`);
-
-      for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-        const dayOfWeek = formatInTimeZone(d, tz, 'E');
-
-        timeSlots.forEach(slot => {
-          if (slot.days.includes(dayOfWeek)) {
-            const datePart = d.toISOString().split('T')[0];
-            
-            const lessonStartString = `${datePart}T${slot.startTime}:00`;
-            const lessonEndString = `${datePart}T${slot.endTime}:00`;
-
-            const lessonStart = fromZonedTime(lessonStartString, tz);
-            const lessonEnd = fromZonedTime(lessonEndString, tz);
-            
-            lessons.push({ start: lessonStart, end: lessonEnd });
-          }
-        });
-      }
-      return lessons.sort((a, b) => b.start - a.start);
-    };
 
     const getSmartDefaultLesson = async (lessons, targetClassId) => {
       if (!lessons || lessons.length === 0) return null;

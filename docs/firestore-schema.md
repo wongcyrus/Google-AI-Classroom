@@ -49,6 +49,9 @@ erDiagram
         string captureMode "screen | dual | webcam"
         boolean isCapturing
         timestamp captureStartedAt
+        array examPeriods "[{ id, name, startDate, endDate }] - Exam/test periods withheld from students"
+        string studentRecordingsPolicy "always_enabled | disabled | delayed_release"
+        string studentRecordingsReleaseDate "ISO timestamp"
     }
 
     teacherProfiles {
@@ -136,6 +139,7 @@ erDiagram
         string errorStack
         string ffmpegError
         timestamp expireAt "Firestore TTL expiration"
+        boolean isExam "Exam session recording"
     }
 
     zipJobs {
@@ -355,6 +359,9 @@ Stores information about each class.
     *   `captureMode`: (string) Default stream capture mode (`dual`, `screen`, `webcam`).
     *   `isCapturing`: (boolean) A boolean indicating if screen capture is currently active.
     *   `captureStartedAt`: (timestamp) A timestamp indicating when the capture started.
+    *   `examPeriods`: (array of objects) Specific exam and test periods defined by the instructor (`[{ id, name, startDate, endDate }]`). Any sessions or video recordings falling within these defined windows are withheld from student sharing and blocked by zero-trust backend authorization to protect assessment questions from leakage.
+    *   `studentRecordingsPolicy`: (string) Access policy governing student visibility and download of screen recordings (`always_enabled`, `disabled`, `delayed_release`). Prevents assessment question extraction.
+    *   `studentRecordingsReleaseDate`: (string|null) Scheduled ISO 8601 release timestamp when recordings become accessible under `delayed_release`.
 *   **Subcollections**:
     *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
         *   **Document ID**: A hash of the lesson's start and end times.
@@ -656,6 +663,7 @@ Stores information about video processing jobs.
     *   `error`: (string) An error message if the job failed.
     *   `errorStack`: (string) The stack trace of the error.
     *   `ffmpegError`: (string) The error from ffmpeg if it failed.
+    *   `isExam`: (boolean) Whether the video job was recorded during an exam slot or active exam session, determining student access restrictions under exam policies.
 
 ### `zipJobs`
 
@@ -722,3 +730,20 @@ Collections with high throughput media metadata include the `expireAt` timestamp
 - **`screenshots`**: `expireAt = timestamp + (classes.retentionDays * 86400s)`. Raw screenshots are deleted automatically once retention expires.
 - **`videoJobs`**: `expireAt = finishedAt + (classes.videoRetentionDays * 86400s)`. Compiled MP4 videos are purged when class video retention limits expire.
 - **`zipJobs`**: `expireAt = createdAt + 7 days`. Ephemeral ZIP download archives are automatically removed from Cloud Storage after 7 days.
+
+---
+
+### 3. Student Self-Service Records & Security Isolation
+
+To support student transparency and review of academic and invigilation history without compromising peer privacy, specific Firestore and Cloud Storage security rules grant read access to records belonging to the authenticated student:
+
+| Collection / Resource | Permission | Rule & Ownership Predicate |
+| :--- | :--- | :--- |
+| **`classes/{classId}/lessons`** | `read` | `isTeacherInClass(classId) || isStudentInClass(classId)` — Enrolled students can read lesson logs; in-memory filtering isolates the calling student's attendance entry (`students[user.uid]`). |
+| **`videoJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read their own compiled video jobs. |
+| **`aiJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read AI analysis feedback jobs assigned to their UID. |
+| **`performanceMetrics`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only view their own lab task completion times and milestones. |
+| **`progress`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only view progress milestones stamped with their UID. |
+| **`irregularities`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can view invigilation incident notices and evidence regarding themselves. |
+| **`audio`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can view their recorded speech segments and transcripts. |
+| **Cloud Storage `videos/{classId}/{videoId}`** | `read` | `isTeacher() || resource.metadata.studentUid == request.auth.uid` — Students can directly stream and download their own compiled video MP4s via token or signed v4 URL (`getStudentVideoPlaybackUrl`). |

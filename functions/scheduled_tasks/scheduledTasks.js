@@ -139,13 +139,23 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
       // Check if the lesson ended within the last 30 minutes
       if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
         slotFound = true;
-        logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}). Triggering video combination.`);
+        const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
+
+        // Check if this lesson overlaps with any defined exam/test periods
+        const isExamSession = (classData.examPeriods || []).some(period => {
+          if (!period || !period.startDate || !period.endDate) return false;
+          const pStart = new Date(period.startDate).getTime();
+          const pEnd = new Date(period.endDate).getTime();
+          const lStart = lessonStartDateTimeInZone.getTime();
+          const lEnd = lessonEndDateTimeInZone.getTime();
+          return (lStart >= pStart && lStart <= pEnd) || (lEnd >= pStart && lEnd <= pEnd) || (pStart >= lStart && pEnd <= lEnd);
+        }) || Boolean(slot.isExam || slot.type === 'exam');
+
+        logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}, isExam=${isExamSession}). Triggering video combination.`);
 
         if (!notificationsToCreate.has(classId)) {
           notificationsToCreate.set(classId, teacherUids || []);
         }
-
-        const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
 
         for (const studentUid of studentUids) {
           const videoJobsRef = db.collection('videoJobs');
@@ -170,7 +180,7 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                 const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
 
                 const newDocRef = videoJobsRef.doc();
-                logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId}`);
+                logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId} (isExam=${isExamSession})`);
                 return newDocRef.set({
                   jobId: newDocRef.id,
                   classId: classId,
@@ -179,6 +189,7 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
                   startTime: lessonStartDateTimeInZone,
                   endTime: lessonEndDateTimeInZone,
                   status: 'pending',
+                  isExam: isExamSession,
                   createdAt: FieldValue.serverTimestamp(),
                   expireAt: videoExpireAt,
                 });

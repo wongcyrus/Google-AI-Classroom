@@ -14,6 +14,7 @@ const ControlsPanel = ({
     captureMode = 'dual', handleCaptureModeChange,
     selectedChannel = 'both', setSelectedChannel,
     isCapturing, toggleCapture, isPaused, setIsPaused, 
+    isExamActive = false, handleToggleExamMode,
     setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, setIsAllImagesAnalysisRunning,
