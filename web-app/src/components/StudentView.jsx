@@ -592,19 +592,14 @@ const StudentView = ({ user }) => {
     audioStreamRef,
   });
 
-  // Receiver Hook for Teacher Screen Broadcast (Classroom Frame Stream / WebRTC)
+  // Receiver Hook for Teacher Screen Broadcast (Classroom Frame Stream)
   const {
     isBroadcastActive: isTeacherBroadcastActive,
     broadcastInfo: teacherBroadcastInfo,
-    broadcastMode: teacherBroadcastMode,
     liveFrame: teacherLiveFrame,
-    remoteStream: teacherRemoteStream,
     connectionState: teacherConnectionState,
-    hasAudio: teacherBroadcastHasAudio,
-    isAudioMuted: isTeacherAudioMuted,
     joinBroadcast: joinTeacherBroadcast,
     leaveBroadcast: leaveTeacherBroadcast,
-    toggleAudioMute: toggleTeacherAudioMute,
   } = useTeacherScreenBroadcastStudent({
     classId: activeClass,
     studentUid: user?.uid,
@@ -1712,7 +1707,6 @@ const StudentView = ({ user }) => {
             <span className="broadcast-banner-title">
               🖥️ <strong>Teacher is sharing their screen:</strong>{' '}
               {teacherBroadcastInfo?.teacherEmail ? teacherBroadcastInfo.teacherEmail : 'Live Classroom Broadcast'}
-              {teacherBroadcastHasAudio && ' (with audio)'}
             </span>
           </div>
           <div className="broadcast-banner-action">
@@ -2354,13 +2348,8 @@ const StudentView = ({ user }) => {
           setIsViewingTeacherScreen(false);
           leaveTeacherBroadcast();
         }}
-        remoteStream={teacherRemoteStream}
         liveFrame={teacherLiveFrame}
-        broadcastMode={teacherBroadcastMode}
         connectionState={teacherConnectionState}
-        hasAudio={teacherBroadcastHasAudio}
-        isAudioMuted={isTeacherAudioMuted}
-        onToggleMute={toggleTeacherAudioMute}
         broadcastInfo={teacherBroadcastInfo}
       />
     </div>

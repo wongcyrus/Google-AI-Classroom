@@ -11,17 +11,14 @@ let docListeners = new Map();
 let collectionListeners = new Map();
 
 const mockSetDoc = vi.fn(() => Promise.resolve());
-const mockUpdateDoc = vi.fn(() => Promise.resolve());
 const mockDeleteDoc = vi.fn(() => Promise.resolve());
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, path) => ({ path, isCollection: false })),
   collection: vi.fn((db, path) => ({ path, isCollection: true })),
   setDoc: (...args) => mockSetDoc(...args),
-  updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
   serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
-  arrayUnion: vi.fn((val) => [val]),
   onSnapshot: vi.fn((targetRef, cb) => {
     const path = targetRef.path;
     if (targetRef.isCollection) {
@@ -36,46 +33,19 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
-describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks', () => {
-  let mockPeerConnection;
+describe('useTeacherScreenBroadcast Hook', () => {
+  let mockTracks;
 
   beforeEach(() => {
     vi.clearAllMocks();
     docListeners.clear();
     collectionListeners.clear();
 
-    mockPeerConnection = {
-      createOffer: vi.fn().mockResolvedValue({ type: 'offer', sdp: 'v=0...' }),
-      createAnswer: vi.fn().mockResolvedValue({ type: 'answer', sdp: 'v=0...' }),
-      remoteDescription: null,
-      setLocalDescription: vi.fn().mockResolvedValue(),
-      setRemoteDescription: vi.fn().mockImplementation((desc) => {
-        mockPeerConnection.remoteDescription = desc;
-        return Promise.resolve();
-      }),
-      addTrack: vi.fn().mockReturnValue({ replaceTrack: vi.fn() }),
-      addIceCandidate: vi.fn().mockResolvedValue(),
-      close: vi.fn(),
-      connectionState: 'connecting',
-      signalingState: 'have-local-offer',
-      ontrack: null,
-      onicecandidate: null,
-      onconnectionstatechange: null,
-    };
+    mockTracks = [
+      { id: 'track_screen', kind: 'video', readyState: 'live', stop: vi.fn() },
+    ];
 
-    function MockRTCPeerConnection() {
-      return mockPeerConnection;
-    }
-
-    function MockRTCSessionDescription(desc) {
-      return desc;
-    }
-
-    function MockRTCIceCandidate(cand) {
-      return cand;
-    }
-
-    function MockMediaStream(tracks = []) {
+    function MockMediaStream(tracks = mockTracks) {
       const internalTracks = [...tracks];
       return {
         addTrack: vi.fn((t) => internalTracks.push(t)),
@@ -85,10 +55,6 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
       };
     }
 
-    global.window.RTCPeerConnection = MockRTCPeerConnection;
-    global.window.webkitRTCPeerConnection = MockRTCPeerConnection;
-    global.window.RTCSessionDescription = MockRTCSessionDescription;
-    global.window.RTCIceCandidate = MockRTCIceCandidate;
     global.MediaStream = MockMediaStream;
 
     HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
@@ -98,18 +64,15 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mockframe123');
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue();
     HTMLMediaElement.prototype.pause = vi.fn();
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { value: 1280, configurable: true });
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoHeight', { value: 720, configurable: true });
 
     navigator.mediaDevices = {
-      getDisplayMedia: vi.fn().mockResolvedValue(
-        MockMediaStream([
-          { id: 'track_screen', kind: 'video', readyState: 'live', stop: vi.fn() },
-          { id: 'track_audio', kind: 'audio', readyState: 'live', stop: vi.fn(), enabled: true },
-        ])
-      ),
+      getDisplayMedia: vi.fn().mockResolvedValue(MockMediaStream(mockTracks)),
     };
   });
 
-  it('teacher initiates broadcast, registers session doc, and handles student connection request', async () => {
+  it('teacher initiates broadcast, captures clamped media, and writes session and liveFrame docs', async () => {
     const { result } = renderHook(() =>
       useTeacherScreenBroadcast({
         classId: 'CLASS_TEST',
@@ -121,14 +84,32 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     expect(result.current.isBroadcasting).toBe(false);
 
     await act(async () => {
-      await result.current.startBroadcast({ mode: 'webrtc' });
+      await result.current.startBroadcast();
     });
 
     expect(result.current.isBroadcasting).toBe(true);
-    expect(result.current.hasAudio).toBe(true);
+    expect(result.current.broadcastMode).toBe('frame');
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({
+          width: { ideal: 1280, max: 1280 },
+          height: { ideal: 720, max: 720 },
+          frameRate: { ideal: 10, max: 12 },
+        }),
+        audio: false,
+      })
+    );
+
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: true, teacherUid: 'teacher_123' })
+      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', teacherUid: 'teacher_123' }),
+      { merge: true }
+    );
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
+      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123' })
     );
 
     // Simulate student joining collection listener
@@ -142,7 +123,7 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
             id: 'student_456',
             data: () => ({
               studentEmail: 's456@test.com',
-              status: 'requesting',
+              status: 'watching',
               joinedAt: 'MOCK_TIMESTAMP',
             }),
           });
@@ -150,11 +131,9 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
       });
     });
 
-    expect(mockPeerConnection.createOffer).toHaveBeenCalled();
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_456' }),
-      expect.objectContaining({ status: 'offered' })
-    );
+    expect(result.current.viewers).toHaveLength(1);
+    expect(result.current.viewers[0].studentUid).toBe('student_456');
+    expect(result.current.viewers[0].connectionState).toBe('connected');
 
     // Stop broadcast
     await act(async () => {
@@ -162,137 +141,19 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     });
 
     expect(result.current.isBroadcasting).toBe(false);
-    expect(mockPeerConnection.close).toHaveBeenCalled();
-  });
+    expect(result.current.viewers).toHaveLength(0);
 
-  it('student listens to broadcast, joins, responds to offer, and toggles audio mute', async () => {
-    const { result } = renderHook(() =>
-      useTeacherScreenBroadcastStudent({
-        classId: 'CLASS_TEST',
-        studentUid: 'student_456',
-        studentEmail: 's456@test.com',
-      })
-    );
-
-    expect(result.current.isBroadcastActive).toBe(false);
-
-    // Simulate teacher activating broadcast session in Firestore
-    const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
-    expect(sessionCb).toBeDefined();
-
-    act(() => {
-      sessionCb({
-        exists: () => true,
-        data: () => ({ isBroadcasting: true, broadcastMode: 'webrtc', teacherUid: 'teacher_123', hasAudio: true }),
-      });
-    });
-
-    expect(result.current.isBroadcastActive).toBe(true);
-
-    // Student joins broadcast
-    await act(async () => {
-      await result.current.joinBroadcast();
-    });
-
-    expect(result.current.isViewing).toBe(true);
     expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_456' }),
-      expect.objectContaining({ status: 'requesting', studentUid: 'student_456' })
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
+      expect.objectContaining({ isBroadcasting: false }),
+      { merge: true }
     );
 
-    // Simulate teacher sending offer
-    const viewerCb = docListeners.get('classes/CLASS_TEST/screenBroadcastViewers/student_456');
-    expect(viewerCb).toBeDefined();
-
-    await act(async () => {
-      viewerCb({
-        exists: () => true,
-        data: () => ({
-          status: 'offered',
-          offer: { type: 'offer', sdp: 'v=0...' },
-          teacherCandidates: [{ candidate: 'cand1', sdpMid: '0', sdpMLineIndex: 0 }],
-        }),
-      });
-    });
-
-    expect(mockPeerConnection.setRemoteDescription).toHaveBeenCalled();
-    expect(mockPeerConnection.createAnswer).toHaveBeenCalled();
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_456' }),
-      expect.objectContaining({ status: 'answered' })
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
+      expect.objectContaining({ frameData: null }),
+      { merge: true }
     );
-
-    // Toggle mute
-    act(() => {
-      result.current.toggleAudioMute();
-    });
-    expect(result.current.isAudioMuted).toBe(true);
-
-    // Leave broadcast
-    await act(async () => {
-      await result.current.leaveBroadcast();
-    });
-
-    expect(result.current.isViewing).toBe(false);
-    expect(mockDeleteDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_456' })
-    );
-  });
-
-  it('applies student candidates and answers received on viewers collection', async () => {
-    mockPeerConnection.remoteDescription = { type: 'answer' };
-    const { result } = renderHook(() =>
-      useTeacherScreenBroadcast({
-        classId: 'CLASS_TEST',
-        teacherUid: 'teacher_123',
-        teacherEmail: 'teacher@school.edu',
-      })
-    );
-
-    await act(async () => {
-      await result.current.startBroadcast({ mode: 'webrtc' });
-    });
-
-    const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
-    expect(viewersCb).toBeDefined();
-
-    // 1. Initial request from student to register peer connection
-    await act(async () => {
-      const mockRequestedDocs = [
-        {
-          id: 'student_789',
-          data: () => ({
-            status: 'requesting',
-            email: 'student789@school.edu',
-          }),
-        },
-      ];
-      viewersCb({
-        docs: mockRequestedDocs,
-        forEach: (fn) => mockRequestedDocs.forEach(fn),
-      });
-    });
-
-    // 2. Student replies with answer and candidate while remoteDescription is set
-    await act(async () => {
-      const mockDocs = [
-        {
-          id: 'student_789',
-          data: () => ({
-            status: 'answered',
-            email: 'student789@school.edu',
-            answer: { type: 'answer', sdp: 'v=0...' },
-            studentCandidates: [{ candidate: 'candidate:1 1 UDP 2130706431 192.168.1.1 50000 typ host', sdpMid: '0', sdpMLineIndex: 0 }],
-          }),
-        },
-      ];
-      viewersCb({
-        docs: mockDocs,
-        forEach: (fn) => mockDocs.forEach(fn),
-      });
-    });
-
-    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalled();
   });
 
   it('handles getDisplayMedia error and cleans up broadcast state', async () => {
@@ -314,8 +175,8 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     expect(result.current.error).toBe('Permission denied');
   });
 
-  it('requests screen stream with clamped resolution and framerate to prevent high CPU', async () => {
-    const { result } = renderHook(() =>
+  it('cleans up broadcast when unmounted', async () => {
+    const { result, unmount } = renderHook(() =>
       useTeacherScreenBroadcast({
         classId: 'CLASS_TEST',
         teacherUid: 'teacher_123',
@@ -327,198 +188,16 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
       await result.current.startBroadcast();
     });
 
-    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
-      expect.objectContaining({
-        video: expect.objectContaining({
-          width: { max: 1280 },
-          height: { max: 720 },
-          frameRate: { ideal: 10, max: 12 },
-        }),
-      })
-    );
-  });
+    expect(result.current.isBroadcasting).toBe(true);
 
-  it('enforces MAX_ACTIVE_VIEWERS admission limit and queues excess students', async () => {
-    const { result } = renderHook(() =>
-      useTeacherScreenBroadcast({
-        classId: 'CLASS_TEST',
-        teacherUid: 'teacher_123',
-        teacherEmail: 'teacher@test.com',
-      })
-    );
-
-    await act(async () => {
-      await result.current.startBroadcast({ mode: 'webrtc' });
-    });
-
-    const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
-    expect(viewersCb).toBeDefined();
-
-    // Create 6 active student viewers (max capacity)
-    const mockDocs = [];
-    for (let i = 1; i <= 6; i++) {
-      mockDocs.push({
-        id: `student_${i}`,
-        data: () => ({
-          studentEmail: `s${i}@test.com`,
-          status: 'requesting',
-          joinedAt: 'MOCK_TIMESTAMP',
-        }),
-      });
-    }
-
-    await act(async () => {
-      viewersCb({
-        docs: mockDocs,
-        forEach: (fn) => mockDocs.forEach(fn),
-      });
-    });
-
-    expect(result.current.activeViewerCount).toBe(6);
-
-    // 7th student attempts to join
-    const mock7thDoc = {
-      id: 'student_7',
-      data: () => ({
-        studentEmail: 's7@test.com',
-        status: 'requesting',
-        joinedAt: 'MOCK_TIMESTAMP',
-      }),
-    };
-    mockDocs.push(mock7thDoc);
-
-    await act(async () => {
-      viewersCb({
-        docs: mockDocs,
-        forEach: (fn) => mockDocs.forEach(fn),
-      });
-    });
-
-    // 7th student is queued in Firestore
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_7' }),
-      expect.objectContaining({ status: 'queued' })
-    );
-  });
-
-  it('student hook transitions to queued state when teacher broadcast is full', async () => {
-    const { result } = renderHook(() =>
-      useTeacherScreenBroadcastStudent({
-        classId: 'CLASS_TEST',
-        studentUid: 'student_7',
-        studentEmail: 's7@test.com',
-      })
-    );
-
-    // Teacher session is active in WebRTC mode
-    const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
     act(() => {
-      sessionCb({
-        exists: () => true,
-        data: () => ({ isBroadcasting: true, broadcastMode: 'webrtc', teacherUid: 'teacher_123', hasAudio: true }),
-      });
+      unmount();
     });
 
-    await act(async () => {
-      await result.current.joinBroadcast();
-    });
-
-    // Teacher marks viewer as queued
-    const viewerCb = docListeners.get('classes/CLASS_TEST/screenBroadcastViewers/student_7');
-    await act(async () => {
-      viewerCb({
-        exists: () => true,
-        data: () => ({
-          status: 'queued',
-          queueMessage: 'Teacher screen broadcast is currently at full capacity (6 active viewers). Please wait...',
-        }),
-      });
-    });
-
-    expect(result.current.connectionState).toBe('queued');
-    expect(result.current.error).toContain('full capacity');
-  });
-
-  it('teacher initiates frame broadcast (Phase 2 Option A) and student receives live frames', async () => {
-    // 1. Teacher hook in default frame mode
-    const { result: teacherResult } = renderHook(() =>
-      useTeacherScreenBroadcast({
-        classId: 'CLASS_TEST',
-        teacherUid: 'teacher_123',
-        teacherEmail: 'teacher@test.com',
-      })
-    );
-
-    await act(async () => {
-      await teacherResult.current.startBroadcast(); // default: 'frame' mode
-    });
-
-    expect(teacherResult.current.isBroadcasting).toBe(true);
-    expect(teacherResult.current.broadcastMode).toBe('frame');
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame' })
+      expect.objectContaining({ isBroadcasting: false }),
+      { merge: true }
     );
-
-    // Initial frame written to Firestore liveFrame doc
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
-      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123' })
-    );
-
-    // 2. Student hook joins frame broadcast
-    const { result: studentResult } = renderHook(() =>
-      useTeacherScreenBroadcastStudent({
-        classId: 'CLASS_TEST',
-        studentUid: 'student_999',
-        studentEmail: 'student999@school.edu',
-      })
-    );
-
-    // Session doc updates student with active frame broadcast
-    const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
-    act(() => {
-      sessionCb({
-        exists: () => true,
-        data: () => ({ isBroadcasting: true, broadcastMode: 'frame', teacherUid: 'teacher_123' }),
-      });
-    });
-
-    expect(studentResult.current.isBroadcastActive).toBe(true);
-    expect(studentResult.current.broadcastMode).toBe('frame');
-
-    // Student joins
-    await act(async () => {
-      await studentResult.current.joinBroadcast();
-    });
-
-    // Student presence registered in Firestore
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_999' }),
-      expect.objectContaining({ status: 'watching_frame' })
-    );
-
-    // Live frame is delivered to student via Firestore snapshot
-    const liveFrameCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/liveFrame');
-    expect(liveFrameCb).toBeDefined();
-
-    await act(async () => {
-      liveFrameCb({
-        exists: () => true,
-        data: () => ({ frameData: 'data:image/jpeg;base64,mockframe123', frameSeq: 1 }),
-      });
-    });
-
-    expect(studentResult.current.liveFrame).toBe('data:image/jpeg;base64,mockframe123');
-    expect(studentResult.current.connectionState).toBe('connected');
-
-    // Student leaves broadcast
-    await act(async () => {
-      await studentResult.current.leaveBroadcast();
-    });
-
-    expect(studentResult.current.isViewing).toBe(false);
-    expect(studentResult.current.liveFrame).toBeNull();
   });
 });
-

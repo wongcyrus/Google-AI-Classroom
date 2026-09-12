@@ -1,69 +1,23 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { db } from '../firebase-config';
-import { doc, setDoc, onSnapshot, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
-
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-};
+import { doc, setDoc, onSnapshot, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 /**
- * Student-side WebRTC hook for receiving live teacher screen broadcast.
- * Automatically monitors broadcast session status and establishes WebRTC peer connection
- * when the student joins the live view.
+ * Student-side hook for receiving live teacher classroom screen broadcast.
+ * Automatically monitors broadcast session status and subscribes to live frames.
  */
 export default function useTeacherScreenBroadcastStudent({ classId, studentUid, studentEmail }) {
   const [isBroadcastActive, setIsBroadcastActive] = useState(false);
   const [broadcastInfo, setBroadcastInfo] = useState(null);
-  const [broadcastMode, setBroadcastMode] = useState('frame'); // 'frame' | 'webrtc'
   const [liveFrame, setLiveFrame] = useState(null);
   const [isViewing, setIsViewing] = useState(false);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [connectionState, setConnectionState] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'failed' | 'closed' | 'queued'
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
-  const [hasAudio, setHasAudio] = useState(false);
+  const [connectionState, setConnectionState] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'failed'
   const [error, setError] = useState(null);
 
-  const peerConnectionRef = useRef(null);
   const unsubscribeViewerRef = useRef(null);
   const unsubscribeLiveFrameRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const processedTeacherCandidatesRef = useRef(new Set());
 
-  // 1. Listen to active broadcast session status in Firestore
-  useEffect(() => {
-    if (!classId) return;
-
-    const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
-    const unsubscribeSession = onSnapshot(sessionDocRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const active = Boolean(data.isBroadcasting);
-        const mode = data.broadcastMode || 'frame';
-        setIsBroadcastActive(active);
-        setBroadcastInfo(active ? data : null);
-        setBroadcastMode(mode);
-        if (!active && isViewing) {
-          leaveBroadcast();
-        }
-      } else {
-        setIsBroadcastActive(false);
-        setBroadcastInfo(null);
-        setBroadcastMode('frame');
-        if (isViewing) {
-          leaveBroadcast();
-        }
-      }
-    });
-
-    return () => {
-      unsubscribeSession();
-    };
-  }, [classId, isViewing]);
-
-  // Clean up WebRTC connection, frame subscription, and viewer record
+  // Clean up frame subscription and viewer record
   const leaveBroadcast = useCallback(async () => {
     if (unsubscribeLiveFrameRef.current) {
       unsubscribeLiveFrameRef.current();
@@ -74,26 +28,6 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
       unsubscribeViewerRef.current();
       unsubscribeViewerRef.current = null;
     }
-
-    if (peerConnectionRef.current) {
-      try {
-        peerConnectionRef.current.close();
-      } catch (err) {
-        console.warn('[Student Screen Broadcast] Error closing peer connection:', err);
-      }
-      peerConnectionRef.current = null;
-    }
-
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((t) => {
-        try {
-          t.stop();
-        } catch {}
-      });
-      remoteStreamRef.current = null;
-    }
-
-    processedTeacherCandidatesRef.current.clear();
 
     if (classId && studentUid) {
       try {
@@ -106,10 +40,36 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
 
     setIsViewing(false);
     setLiveFrame(null);
-    setRemoteStream(null);
     setConnectionState('idle');
-    setHasAudio(false);
   }, [classId, studentUid]);
+
+  // 1. Listen to active broadcast session status in Firestore
+  useEffect(() => {
+    if (!classId) return;
+
+    const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+    const unsubscribeSession = onSnapshot(sessionDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const active = Boolean(data.isBroadcasting);
+        setIsBroadcastActive(active);
+        setBroadcastInfo(active ? data : null);
+        if (!active && isViewing) {
+          leaveBroadcast();
+        }
+      } else {
+        setIsBroadcastActive(false);
+        setBroadcastInfo(null);
+        if (isViewing) {
+          leaveBroadcast();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeSession();
+    };
+  }, [classId, isViewing, leaveBroadcast]);
 
   // Join the teacher's live screen broadcast
   const joinBroadcast = useCallback(async () => {
@@ -119,174 +79,33 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     setConnectionState('connecting');
     setIsViewing(true);
 
-    const mode = broadcastInfo?.broadcastMode || broadcastMode || 'frame';
-
-    // Phase 2 Option A: Low-Bandwidth Classroom Frame Broadcaster mode
-    if (mode === 'frame') {
-      try {
-        // Register viewer presence so teacher sees who is watching
-        const viewerDocRef = doc(db, `classes/${classId}/screenBroadcastViewers/${studentUid}`);
-        await setDoc(viewerDocRef, {
-          studentUid,
-          studentEmail: studentEmail || 'Student',
-          status: 'watching_frame',
-          joinedAt: serverTimestamp(),
-        });
-
-        // Subscribe to live frame updates from Firestore
-        const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-        unsubscribeLiveFrameRef.current = onSnapshot(liveFrameDocRef, (snap) => {
-          if (!snap.exists()) return;
-          const data = snap.data();
-          if (data.frameData) {
-            setLiveFrame(data.frameData);
-            setConnectionState('connected');
-            setError(null);
-          }
-        });
-      } catch (err) {
-        console.error('[Student Screen Broadcast] Error subscribing to frame broadcast:', err);
-        setError(err.message || 'Failed to connect to classroom screen broadcast.');
-        setConnectionState('failed');
-      }
-      return;
-    }
-
-    // Phase 1 WebRTC P2P mode (Max 6 Students)
     try {
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-
-      const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)(RTC_CONFIG);
-      peerConnectionRef.current = pc;
-
-      const stream = new MediaStream();
-      remoteStreamRef.current = stream;
-      setRemoteStream(stream);
-
-      // Handle incoming screen / audio tracks from teacher
-      pc.ontrack = (event) => {
-        const track = event.track;
-        if (event.streams?.[0]) {
-          event.streams[0].getTracks?.().forEach((t) => {
-            if (!stream.getTracks().some((existing) => existing.id === t.id)) {
-              stream.addTrack(t);
-            }
-          });
-        } else if (track) {
-          stream.addTrack(track);
-        }
-
-        if (track.kind === 'audio') {
-          setHasAudio(true);
-        }
-        setRemoteStream(new MediaStream(stream.getTracks()));
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && classId && studentUid) {
-          const viewerDocRef = doc(db, `classes/${classId}/screenBroadcastViewers/${studentUid}`);
-          updateDoc(viewerDocRef, {
-            studentCandidates: arrayUnion(event.candidate.toJSON()),
-          }).catch(() => {});
-        }
-      };
-
-      const updateStudentConnectionState = () => {
-        const s = pc.connectionState;
-        const ice = pc.iceConnectionState;
-        if (s === 'connected' || ice === 'connected' || ice === 'completed') {
-          setConnectionState('connected');
-          setError(null);
-        } else if (s === 'failed' || ice === 'failed') {
-          setConnectionState('failed');
-          setError('WebRTC connection to teacher screen failed.');
-        } else if (s === 'connecting' || ice === 'checking') {
-          setConnectionState((prev) => (prev === 'queued' ? 'queued' : 'connecting'));
-        }
-      };
-
-      pc.onconnectionstatechange = updateStudentConnectionState;
-      pc.oniceconnectionstatechange = updateStudentConnectionState;
-
-      // Register viewer in Firestore
+      // Register viewer presence so teacher sees who is watching
       const viewerDocRef = doc(db, `classes/${classId}/screenBroadcastViewers/${studentUid}`);
       await setDoc(viewerDocRef, {
         studentUid,
         studentEmail: studentEmail || 'Student',
-        status: 'requesting',
+        status: 'watching',
         joinedAt: serverTimestamp(),
       });
 
-      // Listen for teacher's SDP Offer, Queued status, and ICE Candidates
-      let hasAnswered = false;
-      unsubscribeViewerRef.current = onSnapshot(viewerDocRef, async (snap) => {
+      // Subscribe to live frame updates from Firestore
+      const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+      unsubscribeLiveFrameRef.current = onSnapshot(liveFrameDocRef, (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
-
-        // Handle queued status when teacher broadcast is at capacity
-        if (data.status === 'queued') {
-          setConnectionState('queued');
-          setError(data.queueMessage || 'Waiting for an available teacher broadcast slot...');
-          return;
-        }
-
-        if (data.status === 'offered' && data.offer && !hasAnswered && pc.signalingState !== 'closed') {
-          try {
-            setConnectionState('connecting');
-            setError(null);
-            hasAnswered = true;
-            const offerDesc = new (window.RTCSessionDescription || window.webkitRTCSessionDescription)(data.offer);
-            await pc.setRemoteDescription(offerDesc);
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            await updateDoc(viewerDocRef, {
-              status: 'answered',
-              answer: { type: answer.type, sdp: answer.sdp },
-              updatedAt: serverTimestamp(),
-            });
-          } catch (err) {
-            console.error('[Student Screen Broadcast] Error answering offer:', err);
-            setError('Failed to establish video connection with teacher.');
-          }
-        }
-
-        // Apply incoming deduplicated teacher ICE candidates
-        if (pc.remoteDescription && Array.isArray(data.teacherCandidates)) {
-          for (const cand of data.teacherCandidates) {
-            if (cand && cand.candidate) {
-              const candKey = `${cand.candidate}_${cand.sdpMid}_${cand.sdpMLineIndex}`;
-              if (!processedTeacherCandidatesRef.current.has(candKey)) {
-                processedTeacherCandidatesRef.current.add(candKey);
-                try {
-                  pc.addIceCandidate(new (window.RTCIceCandidate || window.webkitRTCIceCandidate)(cand)).catch(() => {});
-                } catch {}
-              }
-            }
-          }
+        if (data.frameData) {
+          setLiveFrame(data.frameData);
+          setConnectionState('connected');
+          setError(null);
         }
       });
     } catch (err) {
-      console.error('[Student Screen Broadcast] Error joining broadcast:', err);
-      setError(err.message || 'Failed to join screen broadcast.');
+      console.error('[Student Screen Broadcast] Error subscribing to frame broadcast:', err);
+      setError(err.message || 'Failed to connect to classroom screen broadcast.');
       setConnectionState('failed');
     }
-  }, [classId, studentUid, studentEmail, broadcastInfo, broadcastMode]);
-
-  // Toggle local mute on incoming audio
-  const toggleAudioMute = useCallback(() => {
-    if (remoteStreamRef.current) {
-      const audioTracks = remoteStreamRef.current.getAudioTracks();
-      const nextMuted = !isAudioMuted;
-      audioTracks.forEach((t) => {
-        t.enabled = !nextMuted;
-      });
-      setIsAudioMuted(nextMuted);
-    }
-  }, [isAudioMuted]);
+  }, [classId, studentUid, studentEmail]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -298,16 +117,12 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
   return {
     isBroadcastActive,
     broadcastInfo,
-    broadcastMode,
+    broadcastMode: 'frame',
     liveFrame,
     isViewing,
-    remoteStream,
     connectionState,
-    hasAudio,
-    isAudioMuted,
     error,
     joinBroadcast,
     leaveBroadcast,
-    toggleAudioMute,
   };
 }

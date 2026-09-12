@@ -7,31 +7,22 @@ vi.mock('../firebase-config', () => ({
 }));
 
 const mockUnsubscribeSession = vi.fn();
-const mockUnsubscribeViewer = vi.fn();
 const mockUnsubscribeLiveFrame = vi.fn();
 let sessionSnapshotCallback = null;
-let viewerSnapshotCallback = null;
 let liveFrameSnapshotCallback = null;
 
-const mockUpdateDoc = vi.fn(() => Promise.resolve());
 const mockSetDoc = vi.fn(() => Promise.resolve());
 const mockDeleteDoc = vi.fn(() => Promise.resolve());
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, path) => ({ path })),
   setDoc: (...args) => mockSetDoc(...args),
-  updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
   serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
-  arrayUnion: vi.fn((val) => [val]),
   onSnapshot: vi.fn((docRef, cb) => {
     if (docRef.path.includes('screenBroadcast/session')) {
       sessionSnapshotCallback = cb;
       return mockUnsubscribeSession;
-    }
-    if (docRef.path.includes('screenBroadcastViewers')) {
-      viewerSnapshotCallback = cb;
-      return mockUnsubscribeViewer;
     }
     if (docRef.path.includes('screenBroadcast/liveFrame')) {
       liveFrameSnapshotCallback = cb;
@@ -42,62 +33,10 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 describe('useTeacherScreenBroadcastStudent Hook', () => {
-  let mockPeerConnection;
-
   beforeEach(() => {
     vi.clearAllMocks();
     sessionSnapshotCallback = null;
-    viewerSnapshotCallback = null;
     liveFrameSnapshotCallback = null;
-
-    mockPeerConnection = {
-      createAnswer: vi.fn().mockResolvedValue({ type: 'answer', sdp: 'v=0...' }),
-      setLocalDescription: vi.fn().mockResolvedValue(),
-      setRemoteDescription: vi.fn().mockResolvedValue(),
-      addIceCandidate: vi.fn().mockResolvedValue(),
-      close: vi.fn(),
-      connectionState: 'connecting',
-      iceConnectionState: 'checking',
-      signalingState: 'have-remote-offer',
-      remoteDescription: { type: 'offer', sdp: 'v=0...' },
-      ontrack: null,
-      onicecandidate: null,
-      onconnectionstatechange: null,
-      oniceconnectionstatechange: null,
-    };
-
-    function MockRTCPeerConnection() {
-      return mockPeerConnection;
-    }
-
-    function MockRTCSessionDescription(desc) {
-      return desc;
-    }
-
-    function MockRTCIceCandidate(cand) {
-      return cand;
-    }
-
-    const mockTracks = [
-      { id: 'track_1', kind: 'video', stop: vi.fn() },
-      { id: 'track_2', kind: 'audio', stop: vi.fn(), enabled: true },
-    ];
-
-    function MockMediaStream(tracks = mockTracks) {
-      const localTracks = [...tracks];
-      return {
-        addTrack: vi.fn((t) => localTracks.push(t)),
-        getTracks: vi.fn().mockReturnValue(localTracks),
-        getAudioTracks: vi.fn().mockReturnValue(localTracks.filter(t => t.kind === 'audio')),
-        getVideoTracks: vi.fn().mockReturnValue(localTracks.filter(t => t.kind === 'video')),
-      };
-    }
-
-    global.window.RTCPeerConnection = MockRTCPeerConnection;
-    global.window.webkitRTCPeerConnection = MockRTCPeerConnection;
-    global.window.RTCSessionDescription = MockRTCSessionDescription;
-    global.window.RTCIceCandidate = MockRTCIceCandidate;
-    global.MediaStream = MockMediaStream;
   });
 
   it('listens to active broadcast session state and reflects it in return state', async () => {
@@ -140,7 +79,7 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
     expect(mockUnsubscribeSession).toHaveBeenCalled();
   });
 
-  it('joins broadcast, answers teacher SDP offer, receives ICE candidates and updates state', async () => {
+  it('joins broadcast, registers presence, receives live frames, and leaves broadcast cleanly', async () => {
     const { result, unmount } = renderHook(() =>
       useTeacherScreenBroadcastStudent({
         classId: 'CLASS_1',
@@ -149,120 +88,12 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
       })
     );
 
+    // Active session broadcast
     await act(async () => {
       sessionSnapshotCallback({
         exists: () => true,
         data: () => ({
           isBroadcasting: true,
-          broadcastMode: 'webrtc',
-          teacherEmail: 'teacher@school.edu',
-        }),
-      });
-    });
-
-    await act(async () => {
-      await result.current.joinBroadcast();
-    });
-
-    expect(result.current.isViewing).toBe(true);
-    expect(result.current.connectionState).toBe('connecting');
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        studentUid: 'student_123',
-        status: 'requesting',
-      })
-    );
-
-    // Simulate incoming teacher offer via viewer doc snapshot
-    expect(viewerSnapshotCallback).toBeTypeOf('function');
-    await act(async () => {
-      await viewerSnapshotCallback({
-        exists: () => true,
-        data: () => ({
-          status: 'offered',
-          offer: { type: 'offer', sdp: 'v=0...' },
-          teacherCandidates: [{ candidate: 'candidate:1 1 UDP...' }],
-        }),
-      });
-    });
-
-    expect(mockPeerConnection.setRemoteDescription).toHaveBeenCalled();
-    expect(mockPeerConnection.createAnswer).toHaveBeenCalled();
-    expect(mockPeerConnection.setLocalDescription).toHaveBeenCalled();
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        status: 'answered',
-      })
-    );
-
-    // Simulate incoming track
-    act(() => {
-      mockPeerConnection.ontrack({
-        track: { id: 't_audio', kind: 'audio', stop: vi.fn() },
-        streams: [],
-      });
-    });
-    expect(result.current.hasAudio).toBe(true);
-
-    // Simulate ICE candidate generated by student
-    act(() => {
-      mockPeerConnection.onicecandidate({
-        candidate: { toJSON: () => ({ candidate: 'candidate:student' }) },
-      });
-    });
-    expect(mockUpdateDoc).toHaveBeenCalled();
-
-    // Simulate connection state change to connected
-    mockPeerConnection.connectionState = 'connected';
-    mockPeerConnection.iceConnectionState = 'connected';
-    act(() => {
-      mockPeerConnection.onconnectionstatechange();
-    });
-    expect(result.current.connectionState).toBe('connected');
-
-    // Simulate connection state change to failed
-    mockPeerConnection.connectionState = 'failed';
-    mockPeerConnection.iceConnectionState = 'failed';
-    act(() => {
-      mockPeerConnection.onconnectionstatechange();
-    });
-    expect(result.current.connectionState).toBe('failed');
-    expect(result.current.error).toMatch(/failed/i);
-
-    // Toggle audio mute
-    act(() => {
-      result.current.toggleAudioMute();
-    });
-    expect(result.current.isAudioMuted).toBe(true);
-
-    // Leave broadcast
-    await act(async () => {
-      await result.current.leaveBroadcast();
-    });
-    expect(result.current.isViewing).toBe(false);
-    expect(mockDeleteDoc).toHaveBeenCalled();
-
-    unmount();
-  });
-
-  it('joins frame broadcast (Phase 2 Option A) and updates liveFrame and connectionState', async () => {
-    const { result, unmount } = renderHook(() =>
-      useTeacherScreenBroadcastStudent({
-        classId: 'CLASS_1',
-        studentUid: 'student_123',
-        studentEmail: 'student@school.edu',
-      })
-    );
-
-    // Default mode is frame
-    await act(async () => {
-      sessionSnapshotCallback({
-        exists: () => true,
-        data: () => ({
-          isBroadcasting: true,
-          broadcastMode: 'frame',
           teacherEmail: 'teacher@school.edu',
         }),
       });
@@ -270,32 +101,35 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
 
     expect(result.current.broadcastMode).toBe('frame');
 
+    // Join broadcast
     await act(async () => {
       await result.current.joinBroadcast();
     });
 
     expect(result.current.isViewing).toBe(true);
+    expect(result.current.connectionState).toBe('connecting');
     expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.objectContaining({ path: 'classes/CLASS_1/screenBroadcastViewers/student_123' }),
       expect.objectContaining({
         studentUid: 'student_123',
-        status: 'watching_frame',
+        studentEmail: 'student@school.edu',
+        status: 'watching',
       })
     );
 
-    // Simulate incoming liveFrame snapshot
+    // Simulate liveFrame snapshot
     expect(liveFrameSnapshotCallback).toBeTypeOf('function');
     await act(async () => {
       liveFrameSnapshotCallback({
         exists: () => true,
         data: () => ({
-          frameData: 'data:image/jpeg;base64,frame_abc',
+          frameData: 'data:image/jpeg;base64,mock_frame_123',
           frameSeq: 1,
         }),
       });
     });
 
-    expect(result.current.liveFrame).toBe('data:image/jpeg;base64,frame_abc');
+    expect(result.current.liveFrame).toBe('data:image/jpeg;base64,mock_frame_123');
     expect(result.current.connectionState).toBe('connected');
 
     // Leave broadcast
@@ -305,6 +139,10 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
 
     expect(result.current.isViewing).toBe(false);
     expect(result.current.liveFrame).toBeNull();
+    expect(result.current.connectionState).toBe('idle');
+    expect(mockDeleteDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_1/screenBroadcastViewers/student_123' })
+    );
     expect(mockUnsubscribeLiveFrame).toHaveBeenCalled();
 
     unmount();

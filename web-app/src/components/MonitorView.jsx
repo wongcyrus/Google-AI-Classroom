@@ -60,13 +60,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
   const {
     isBroadcasting: isScreenBroadcasting,
-    broadcastMode,
     frameStats,
     screenStream: broadcastScreenStream,
-    hasAudio: broadcastHasAudio,
     viewers: broadcastViewers,
-    activeViewerCount,
-    queuedViewerCount,
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
@@ -1095,10 +1091,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
         isScreenBroadcasting={isScreenBroadcasting}
-        broadcastMode={broadcastMode}
         frameStats={frameStats}
         broadcastScreenStream={broadcastScreenStream}
-        broadcastHasAudio={broadcastHasAudio}
         broadcastViewers={broadcastViewers}
         startScreenBroadcast={startScreenBroadcast}
         stopScreenBroadcast={stopScreenBroadcast}
@@ -1165,7 +1159,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       gap: '5px',
                     }}
                   >
-                    🔴 Live Broadcast to Students ({activeViewerCount ?? broadcastViewers.length} watching{queuedViewerCount > 0 ? `, ${queuedViewerCount} queued` : ''})
+                    🔴 Live Broadcast to Students ({broadcastViewers.length} watching)
                   </span>
                   <button
                     type="button"
@@ -1337,9 +1331,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         onClose={() => setShowBroadcastModal(false)}
         screenStream={broadcastScreenStream}
         isBroadcasting={isScreenBroadcasting}
-        broadcastMode={broadcastMode}
         frameStats={frameStats}
-        hasAudio={broadcastHasAudio}
         viewers={broadcastViewers}
         onStopBroadcast={stopScreenBroadcast}
       />

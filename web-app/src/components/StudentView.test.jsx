@@ -157,13 +157,10 @@ let mockGemmaReturn = {
 let mockTeacherBroadcastReturn = {
   isBroadcastActive: false,
   broadcastInfo: null,
-  remoteStream: null,
+  liveFrame: null,
   connectionState: 'idle',
-  hasAudio: false,
-  isAudioMuted: false,
   joinBroadcast: vi.fn(),
   leaveBroadcast: vi.fn(),
-  toggleAudioMute: vi.fn(),
 };
 
 vi.mock('../hooks/useClientLiteRTWhisper', () => ({
@@ -219,13 +216,10 @@ describe('StudentView Component Extended Test Suite', () => {
     mockTeacherBroadcastReturn = {
       isBroadcastActive: false,
       broadcastInfo: null,
-      remoteStream: null,
+      liveFrame: null,
       connectionState: 'idle',
-      hasAudio: false,
-      isAudioMuted: false,
       joinBroadcast: vi.fn(),
       leaveBroadcast: vi.fn(),
-      toggleAudioMute: vi.fn(),
     };
 
     const mockDevices = [
