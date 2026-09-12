@@ -1,10 +1,12 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'it114115-dev-2026';
 
 initializeApp({ projectId });
 const auth = getAuth();
+const db = getFirestore();
 
 // Default teacher emails
 const defaultEmails = [
@@ -44,9 +46,34 @@ Promise.all(
         }
       }
 
+      // 1. Set custom claims in Firebase Auth
       await auth.setCustomUserClaims(userRecord.uid, { role: 'teacher' });
       await auth.updateUser(userRecord.uid, { emailVerified: true });
       console.log(`🎉 Successfully granted { role: 'teacher' } to: ${email}`);
+
+      // 2. Migrate or ensure teacher profile document in Firestore
+      const uid = userRecord.uid;
+      const studentProfileRef = db.collection('studentProfiles').doc(uid);
+      const teacherProfileRef = db.collection('teacherProfiles').doc(uid);
+
+      const studentDoc = await studentProfileRef.get();
+      if (studentDoc.exists) {
+        const studentData = studentDoc.data() || {};
+        console.log(`🔄 Migrating profile from studentProfiles to teacherProfiles for ${email}...`);
+        await teacherProfileRef.set({
+          ...studentData,
+          migratedFromStudent: true,
+          promotedAt: new Date().toISOString()
+        }, { merge: true });
+        await studentProfileRef.delete();
+        console.log(`✅ Profile migrated to teacherProfiles/${uid}`);
+      } else {
+        await teacherProfileRef.set({
+          email,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
     } catch (error) {
       console.error(`❌ Error provisioning ${email}:`, error.message);
     }

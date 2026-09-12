@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
 import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
-import { isValidInstitutionalEmail, isStudentEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
+import { isValidInstitutionalEmail, isStudentEmail, deriveRoleFromEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
 import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser }) => {
@@ -198,6 +198,19 @@ const AuthComponent = ({ unverifiedUser }) => {
               disabled={isLoading}
               required
             />
+            {email.trim().includes('@') && (
+              <div className="auth-email-hint" style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#94a3b8' }}>
+                {deriveRoleFromEmail(email.trim()) === 'student' && (
+                  <span style={{ color: '#38bdf8' }}>🎓 Recognized as Student account</span>
+                )}
+                {deriveRoleFromEmail(email.trim()) === 'teacher' && (
+                  <span style={{ color: '#34d399' }}>👨‍🏫 Recognized as Teacher account</span>
+                )}
+                {deriveRoleFromEmail(email.trim()) === null && (
+                  <span style={{ color: '#f87171' }}>⚠️ Domain not recognized ({getAllowedDomainsDescription()})</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="auth-field">

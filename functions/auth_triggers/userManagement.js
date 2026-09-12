@@ -186,13 +186,20 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
     throw new HttpsError('invalid-argument', 'Email is required to sign up.');
   }
 
-  const derivedRole = deriveUserRole(email);
+  const classesRef = db.collection('classes');
+
+  // Check if this email was pre-registered as a teacher in any existing class
+  const teacherPreEnrollSnapshot = await classesRef.where('teacherEmails', 'array-contains', email).limit(1).get();
+  const isPreEnrolledTeacher = !teacherPreEnrollSnapshot.empty;
+
+  let derivedRole = isPreEnrolledTeacher ? 'teacher' : deriveUserRole(email);
   if (!derivedRole) {
     throw new HttpsError('invalid-argument', `Please use a valid institutional email address (${getAllowedEmailDomainsDescription()}).`);
   }
 
   const isTeacher = (derivedRole === 'teacher');
   const newCustomClaims = { role: derivedRole };
+
 
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
   const emailField = isTeacher ? 'teacherEmails' : 'studentEmails';

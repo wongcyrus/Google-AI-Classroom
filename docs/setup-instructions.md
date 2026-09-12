@@ -154,15 +154,35 @@ TEACHER_EMAIL_DOMAINS="school.edu,cs.school.edu"
 STUDENT_EMAIL_DOMAINS="students.school.edu,alumni.school.edu"
 ```
 
+### 3. Same-Domain Deployments (Username Regex & Zero-Trust Fallback)
+If teachers and students share the exact same domain (e.g., both use `@school.edu`):
+```env
+# Same institutional domain for both
+VITE_TEACHER_DOMAINS="school.edu"
+VITE_STUDENT_DOMAINS="school.edu"
+
+# Optional: Regular expression to identify student user IDs (e.g. 8 digits or s + 7 digits)
+VITE_STUDENT_USERNAME_REGEX="^[0-9]{8}$|^s[0-9]{7}$"
+
+# Optional: Regular expression to identify teacher usernames (e.g. firstname.lastname)
+VITE_TEACHER_USERNAME_REGEX="^[a-zA-Z]+\.[a-zA-Z]+$"
+
+# Zero-Trust default: anyone whose username does not match a teacher format safely defaults to student
+VITE_DEFAULT_TO_STUDENT="true"
+```
+
 ### Domain Evaluation Architecture:
 - **Subdomain Priority**: Student domains are evaluated before teacher domains. For instance, if teachers use `@school.edu` and students use `@students.school.edu`, students are correctly assigned the `student` role rather than the parent domain's `teacher` role.
+- **Regex Auto-Disambiguation**: On shared domains, `STUDENT_USERNAME_REGEX` and `TEACHER_USERNAME_REGEX` automatically separate students from instructors with zero user friction.
+- **Zero-Trust Fallback**: Ambiguous signups automatically receive the `student` role, protecting Google Gemini AI quotas and teacher controls.
+- **Class Pre-Enrollment Promotion**: When an instructor signs up for the first time, if their email is already listed in any class's `teacherEmails`, they are automatically granted the `teacher` role immediately.
 - **Security Rules Isolation**: Both `firestore.rules` and `storage.rules` use pure role claims (`request.auth.token.role == 'teacher'`), eliminating hardcoded email strings.
 
 ---
 
 ## 5. 👨‍🏫 First-Time Admin & Teacher Account Onboarding
 
-Once deployed, you need to grant the `teacher` custom claim to your instructors:
+Once deployed, you can grant the `teacher` role to instructors:
 
 ### Grant Teacher Role via CLI:
 ```bash
@@ -172,6 +192,7 @@ GOOGLE_CLOUD_PROJECT="your-project-id" node admin/scripts/grantTeacherRole.js pr
 
 > [!NOTE]
 > If the user account does not exist in Firebase Authentication yet, the script automatically creates the account, verifies their email address, sets a temporary password (`IT114115` or custom `DEMO_PASSWORD`), and assigns `{ role: 'teacher' }`.
+> If the user previously signed up as a student, the script automatically migrates their profile from `studentProfiles` to `teacherProfiles` in Firestore!
 
 ---
 

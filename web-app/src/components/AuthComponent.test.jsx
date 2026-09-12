@@ -241,4 +241,23 @@ describe('AuthComponent Component', () => {
       expect(screen.getByText(/A new verification email has been sent\. Please check your inbox\./i)).toBeInTheDocument();
     });
   });
+
+  it('displays real-time role preview hint as user types email', () => {
+    render(<AuthComponent />);
+
+    const emailInput = screen.getByLabelText(/Email Address/i);
+
+    // Student domain
+    fireEvent.change(emailInput, { target: { value: 'student1@stu.vtc.edu.hk' } });
+    expect(screen.getByText(/Recognized as Student account/i)).toBeInTheDocument();
+
+    // Teacher domain
+    fireEvent.change(emailInput, { target: { value: 'teacher1@vtc.edu.hk' } });
+    expect(screen.getByText(/Recognized as Teacher account/i)).toBeInTheDocument();
+
+    // Invalid / foreign domain
+    fireEvent.change(emailInput, { target: { value: 'outsider@gmail.com' } });
+    expect(screen.getByText(/Domain not recognized/i)).toBeInTheDocument();
+  });
 });
+

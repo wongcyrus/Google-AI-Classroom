@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   getEmailDomain,
+  getEmailUsername,
   isStudentEmail,
   isTeacherEmail,
   deriveRoleFromEmail,
@@ -11,12 +12,16 @@ import {
 } from './domainConfig';
 
 describe('domainConfig Utility', () => {
-  it('correctly extracts email domains', () => {
+  it('correctly extracts email domains and usernames', () => {
     expect(getEmailDomain('test@vtc.edu.hk')).toBe('vtc.edu.hk');
     expect(getEmailDomain('TEST@STU.VTC.EDU.HK')).toBe('stu.vtc.edu.hk');
     expect(getEmailDomain('invalid-email')).toBe('');
     expect(getEmailDomain('')).toBe('');
     expect(getEmailDomain(null)).toBe('');
+
+    expect(getEmailUsername('test@vtc.edu.hk')).toBe('test');
+    expect(getEmailUsername('23456789@stu.vtc.edu.hk')).toBe('23456789');
+    expect(getEmailUsername('invalid')).toBe('');
   });
 
   it('correctly identifies student emails and student subdomains', () => {
@@ -51,5 +56,31 @@ describe('domainConfig Utility', () => {
   it('generates allowed domains description matching the default configuration', () => {
     const desc = getAllowedDomainsDescription();
     expect(desc).toBe('@stu.vtc.edu.hk or @vtc.edu.hk');
+  });
+
+  it('supports custom dynamic regex rules and same-domain fallback', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_TEACHER_DOMAINS', 'myschool.edu');
+    vi.stubEnv('VITE_STUDENT_DOMAINS', 'myschool.edu');
+    vi.stubEnv('VITE_STUDENT_USERNAME_REGEX', '^[0-9]{8}$|^s[0-9]{7}$');
+    vi.stubEnv('VITE_TEACHER_USERNAME_REGEX', '^[a-zA-Z]+\\.[a-zA-Z]+$');
+    vi.stubEnv('VITE_DEFAULT_TO_STUDENT', 'true');
+
+    const dynamicModule = await import('./domainConfig');
+
+    // Student ID pattern matches
+    expect(dynamicModule.deriveRoleFromEmail('20261234@myschool.edu')).toBe('student');
+    expect(dynamicModule.deriveRoleFromEmail('s1234567@myschool.edu')).toBe('student');
+
+    // Teacher name pattern matches
+    expect(dynamicModule.deriveRoleFromEmail('john.smith@myschool.edu')).toBe('teacher');
+
+    // Non-standard username falls back to student (zero trust)
+    expect(dynamicModule.deriveRoleFromEmail('guest_speaker@myschool.edu')).toBe('student');
+
+    // Foreign domain still rejected
+    expect(dynamicModule.deriveRoleFromEmail('s1234567@gmail.com')).toBeNull();
+
+    vi.unstubAllEnvs();
   });
 });

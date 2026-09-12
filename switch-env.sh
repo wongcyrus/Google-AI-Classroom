@@ -81,31 +81,65 @@ export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || 'stu.
   .map(d => d.trim().toLowerCase().replace(/^@/, ''))
   .filter(Boolean);
 
+// Optional username regex patterns for same-domain or fine-grained disambiguation
+export const STUDENT_USERNAME_REGEX = process.env.STUDENT_USERNAME_REGEX ? new RegExp(process.env.STUDENT_USERNAME_REGEX, 'i') : null;
+export const TEACHER_USERNAME_REGEX = process.env.TEACHER_USERNAME_REGEX ? new RegExp(process.env.TEACHER_USERNAME_REGEX, 'i') : null;
+
+// Default fallback to student for ambiguous / same-domain signups
+export const DEFAULT_TO_STUDENT = process.env.DEFAULT_TO_STUDENT !== 'false';
+
 /**
- * Derives user role ('teacher' | 'student' | null) from an email address based on configured domains.
+ * Derives user role ('teacher' | 'student' | null) from an email address based on configured domains and username patterns.
  * @param {string} email
  * @returns {'teacher' | 'student' | null}
  */
 export function deriveUserRole(email) {
   if (!email || typeof email !== 'string' || !email.includes('@')) return null;
   const cleanEmail = email.trim().toLowerCase();
-  const domain = cleanEmail.substring(cleanEmail.lastIndexOf('@') + 1);
+  const atIndex = cleanEmail.lastIndexOf('@');
+  const username = cleanEmail.substring(0, atIndex);
+  const domain = cleanEmail.substring(atIndex + 1);
 
-  const matchesDomain = (targetDomain) => domain === targetDomain || domain.endsWith('.' + targetDomain);
+  const matchesTarget = (targetDomain) => targetDomain === '*' || domain === targetDomain || domain.endsWith('.' + targetDomain);
 
-  // Check student domains first, since student domains are often subdomains of the institutional domain (e.g. stu.vtc.edu.hk vs vtc.edu.hk)
-  if (STUDENT_EMAIL_DOMAINS.some(matchesDomain)) {
+  const isStudentDomain = STUDENT_EMAIL_DOMAINS.some(matchesTarget);
+  const isTeacherDomain = TEACHER_EMAIL_DOMAINS.some(matchesTarget);
+
+  if (!isStudentDomain && !isTeacherDomain) {
+    return null;
+  }
+
+  // 1. Username Regex check takes precedence if configured
+  if (STUDENT_USERNAME_REGEX && STUDENT_USERNAME_REGEX.test(username)) {
     return 'student';
   }
-  if (TEACHER_EMAIL_DOMAINS.some(matchesDomain)) {
+  if (TEACHER_USERNAME_REGEX && TEACHER_USERNAME_REGEX.test(username)) {
     return 'teacher';
   }
-  return null;
+
+  // 2. Check for same-domain or wildcard overlap
+  const exactStudentDomain = STUDENT_EMAIL_DOMAINS.some(d => d === '*' || domain === d);
+  const exactTeacherDomain = TEACHER_EMAIL_DOMAINS.some(d => d === '*' || domain === d);
+  const isSameDomain = exactStudentDomain && exactTeacherDomain;
+
+  if (isSameDomain) {
+    return DEFAULT_TO_STUDENT ? 'student' : null;
+  }
+
+  // 3. Subdomain hierarchy (student subdomains win over parent teacher domains, e.g. stu.vtc.edu.hk vs vtc.edu.hk)
+  if (isStudentDomain) {
+    return 'student';
+  }
+  if (isTeacherDomain) {
+    return 'teacher';
+  }
+
+  return DEFAULT_TO_STUDENT ? 'student' : null;
 }
 
 export function getAllowedEmailDomainsDescription() {
-  const allDomains = [...STUDENT_EMAIL_DOMAINS, ...TEACHER_EMAIL_DOMAINS].map(d => '@' + d);
-  return allDomains.join(' or ');
+  const allDomains = [...STUDENT_EMAIL_DOMAINS, ...TEACHER_EMAIL_DOMAINS].map(d => d === '*' ? '* (any domain)' : '@' + d);
+  return [...new Set(allDomains)].join(' or ');
 }
 CONFIG_EOF
 
