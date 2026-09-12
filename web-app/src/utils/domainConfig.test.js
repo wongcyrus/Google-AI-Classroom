@@ -83,4 +83,42 @@ describe('domainConfig Utility', () => {
 
     vi.unstubAllEnvs();
   });
+
+  it('supports open wildcard domains with regex disambiguation and fallback', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_TEACHER_DOMAINS', '*');
+    vi.stubEnv('VITE_STUDENT_DOMAINS', '*');
+    vi.stubEnv('VITE_STUDENT_USERNAME_REGEX', '^stu_');
+    vi.stubEnv('VITE_TEACHER_USERNAME_REGEX', '^prof_');
+    vi.stubEnv('VITE_DEFAULT_TO_STUDENT', 'true');
+
+    const dynamicModule = await import('./domainConfig');
+
+    expect(dynamicModule.getAllowedDomainsDescription()).toBe('* (any domain)');
+    expect(dynamicModule.isValidInstitutionalEmail('anybody@anywhere.org')).toBe(true);
+
+    // Regex matching on wildcard
+    expect(dynamicModule.deriveRoleFromEmail('stu_alex@anywhere.org')).toBe('student');
+    expect(dynamicModule.deriveRoleFromEmail('prof_oak@anywhere.org')).toBe('teacher');
+
+    // Ambiguous on wildcard defaults to student
+    expect(dynamicModule.deriveRoleFromEmail('random_user@anywhere.org')).toBe('student');
+
+    vi.unstubAllEnvs();
+  });
+
+  it('safely handles malformed and edge-case email inputs', () => {
+    expect(deriveRoleFromEmail('@')).toBeNull();
+    expect(deriveRoleFromEmail('@stu.vtc.edu.hk')).toBeNull();
+    expect(deriveRoleFromEmail('user@')).toBeNull();
+    expect(deriveRoleFromEmail('noatsign')).toBeNull();
+    expect(deriveRoleFromEmail('   ')).toBeNull();
+    expect(deriveRoleFromEmail(undefined)).toBeNull();
+    expect(deriveRoleFromEmail(12345)).toBeNull();
+
+    // Whitespace trimming
+    expect(deriveRoleFromEmail('  student@stu.vtc.edu.hk  ')).toBe('student');
+    expect(deriveRoleFromEmail('\tteacher@vtc.edu.hk\n')).toBe('teacher');
+  });
 });
+

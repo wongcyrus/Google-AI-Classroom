@@ -259,5 +259,22 @@ describe('AuthComponent Component', () => {
     fireEvent.change(emailInput, { target: { value: 'outsider@gmail.com' } });
     expect(screen.getByText(/Domain not recognized/i)).toBeInTheDocument();
   });
+
+  it('allows teacher registration on non-Chrome browser while students are blocked', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Firefox');
+    createUserWithEmailAndPassword.mockResolvedValueOnce({
+      user: { email: 'teacher1@vtc.edu.hk' },
+    });
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'teacher1@vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+
+    expect(screen.queryByText(/Google Chrome is strictly required for students/i)).not.toBeInTheDocument();
+  });
 });
+
 

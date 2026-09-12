@@ -104,6 +104,8 @@ export function deriveUserRole(email) {
   const username = cleanEmail.substring(0, atIndex);
   const domain = cleanEmail.substring(atIndex + 1);
 
+  if (!username || !domain) return null;
+
   const matchesTarget = (targetDomain) => targetDomain === '*' || domain === targetDomain || domain.endsWith('.' + targetDomain);
 
   const isStudentDomain = STUDENT_EMAIL_DOMAINS.some(matchesTarget);

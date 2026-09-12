@@ -178,39 +178,42 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   return Promise.all(promises);
 });
 
-export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, async (event) => {
-  const user = event.data;
-  const { uid, email } = user;
+export async function handleBeforeUserCreatedLogic(event, customDeps = {}) {
+  const currentDb = customDeps.db || db;
+  const currentDeriveRole = customDeps.deriveUserRole || deriveUserRole;
+  const currentGetAllowed = customDeps.getAllowedEmailDomainsDescription || getAllowedEmailDomainsDescription;
+  const currentFieldValue = customDeps.FieldValue || FieldValue;
+
+  const user = event?.data;
+  const { uid, email } = user || {};
 
   if (!email) {
     throw new HttpsError('invalid-argument', 'Email is required to sign up.');
   }
 
-  const classesRef = db.collection('classes');
+  const classesRef = currentDb.collection('classes');
 
   // Check if this email was pre-registered as a teacher in any existing class
   const teacherPreEnrollSnapshot = await classesRef.where('teacherEmails', 'array-contains', email).limit(1).get();
   const isPreEnrolledTeacher = !teacherPreEnrollSnapshot.empty;
 
-  let derivedRole = isPreEnrolledTeacher ? 'teacher' : deriveUserRole(email);
+  let derivedRole = isPreEnrolledTeacher ? 'teacher' : currentDeriveRole(email);
   if (!derivedRole) {
-    throw new HttpsError('invalid-argument', `Please use a valid institutional email address (${getAllowedEmailDomainsDescription()}).`);
+    throw new HttpsError('invalid-argument', `Please use a valid institutional email address (${currentGetAllowed()}).`);
   }
 
   const isTeacher = (derivedRole === 'teacher');
   const newCustomClaims = { role: derivedRole };
 
-
   const profileCollection = isTeacher ? 'teacherProfiles' : 'studentProfiles';
   const emailField = isTeacher ? 'teacherEmails' : 'studentEmails';
 
-  logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid}). Checking for pre-enrolled classes.`);
+  logger.info(`New ${isTeacher ? 'teacher' : 'student'} signed up: ${email} (${uid})${isPreEnrolledTeacher ? ' [Pre-enrolled Teacher]' : ''}. Checking for pre-enrolled classes.`);
 
-  const classesRef = db.collection('classes');
   const querySnapshot = await classesRef.where(emailField, 'array-contains', email).get();
 
-  const batch = db.batch();
-  const userProfileRef = db.collection(profileCollection).doc(uid);
+  const batch = currentDb.batch();
+  const userProfileRef = currentDb.collection(profileCollection).doc(uid);
   const classIds = [];
 
   if (!querySnapshot.empty) {
@@ -231,7 +234,7 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   // Create or merge the user's profile, linking any classes.
   const profileData = {};
   if (classIds.length > 0) {
-    profileData.classes = FieldValue.arrayUnion(...classIds);
+    profileData.classes = currentFieldValue.arrayUnion(...classIds);
   }
   batch.set(userProfileRef, profileData, { merge: true });
 
@@ -241,4 +244,8 @@ export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, 
   return {
     customClaims: newCustomClaims
   };
+}
+
+export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, async (event) => {
+  return handleBeforeUserCreatedLogic(event);
 });

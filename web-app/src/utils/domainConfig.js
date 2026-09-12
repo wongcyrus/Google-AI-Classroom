@@ -28,7 +28,9 @@ export const DEFAULT_TO_STUDENT = import.meta.env.VITE_DEFAULT_TO_STUDENT !== 'f
  */
 export function getEmailUsername(email) {
   if (!email || typeof email !== 'string' || !email.includes('@')) return '';
-  return email.trim().toLowerCase().substring(0, email.lastIndexOf('@'));
+  const clean = email.trim().toLowerCase();
+  const atIndex = clean.lastIndexOf('@');
+  return clean.substring(0, atIndex);
 }
 
 /**
@@ -38,7 +40,9 @@ export function getEmailUsername(email) {
  */
 export function getEmailDomain(email) {
   if (!email || typeof email !== 'string' || !email.includes('@')) return '';
-  return email.trim().toLowerCase().substring(email.lastIndexOf('@') + 1);
+  const clean = email.trim().toLowerCase();
+  const atIndex = clean.lastIndexOf('@');
+  return clean.substring(atIndex + 1);
 }
 
 const matchesDomain = (domain, targetDomain) => targetDomain === '*' || domain === targetDomain || domain.endsWith('.' + targetDomain);
@@ -71,7 +75,7 @@ export function deriveRoleFromEmail(email) {
   if (!email || typeof email !== 'string' || !email.includes('@')) return null;
   const username = getEmailUsername(email);
   const domain = getEmailDomain(email);
-  if (!domain) return null;
+  if (!username || !domain) return null;
 
   const isStudentDom = STUDENT_DOMAINS.some(target => matchesDomain(domain, target));
   const isTeacherDom = TEACHER_DOMAINS.some(target => matchesDomain(domain, target));
