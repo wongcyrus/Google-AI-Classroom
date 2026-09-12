@@ -69,28 +69,28 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 ![bg right:55% 95%](images/slide_speaker_bio_triple_cloud.png)
 
 - **Institution:** Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC)
-- **Specialization:** Cloud & Data Centre Administration, Edge AI Systems Architecture
-- **Global Recognitions (Triple Cloud):**
+- **Academic Focus:** Cloud & Data Centre Administration, Edge AI Systems Architecture
+- **Developer Community Recognitions:**
   - <span class="highlight-google">Google Developer Expert (GDE)</span> in **Google Cloud Platform (GCP)** & **AI/ML**
   - **AWS AI Hero** (since 2016; 1st AWS Academy Instructor globally)
   - **Microsoft MVP** in Azure AI
 - **Email:** `cywong@vtc.edu.hk`
-- **GitHub:** `wongcyrus/Gemini-AI-Classroom-Assistant`
+- **GitHub:** `github.com/wongcyrus/Gemini-AI-Classroom-Assistant`
 
 ---
 
-## Act I: The Assessment Trilemma in Technology Education
-### Why Traditional Invigilation and Commercial Surveillance Fail at Scale
+## 01 | The Real-Time Invigilation & Assessment Challenge
+### Why Traditional Proctoring and Commercial Surveillance Fail at Scale
 
 ![bg right:60% 95%](images/slide_assessment_trilemma.png)
 
 1. **Academic Integrity:**
    - LLMs & AI Copilots make unsupervised coding exams unreliable.
-   - Screen swapping, second monitors, and whispered peer collusion.
+   - Screen swapping, second monitors, unauthorized tabs, and peer collusion.
 2. **Student Privacy & Trust:**
-   - Hostile kernel surveillance drivers cause student backlash and privacy/GDPR violations.
+   - Hostile kernel surveillance drivers cause student backlash and severe privacy violations.
 3. **Institutional Cost Barrier:**
-   - Commercial SaaS costs $15–$25 per student per exam—unsustainable for public educational institutions.
+   - Commercial SaaS costs $15–$25 per student per exam—unsustainable for university and polytechnic budgets.
 
 ---
 
@@ -100,19 +100,19 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 ![bg right:60% 95%](images/slide_proctoring_evolution.png)
 
 - **Legacy Surveillance Proctoring:**
-  - Kernel-level drivers (risk of BSOD and system compromise).
-  - 100% continuous video streaming (Wi-Fi bandwidth collapse).
+  - Kernel-level drivers (risk of OS compromise and crashes).
+  - 100% continuous video streaming (classroom Wi-Fi saturation).
   - High false-positive flags with zero pedagogical context.
   - $15–$25/student institutional licensing fees.
 - **Our Edge-AI Classroom Assistant:**
   - **100% Browser-Native** (Zero software installation).
   - **95%+ Local Edge Compute** (Zero raw biometrics leave student laptop).
   - Real-time teacher command center with 1-click targeted nudges.
-  - <span class="highlight-green">Sub-$0.02 per student total cloud cost.</span>
+  - <span class="highlight-green">Sub-$0.02 per student total cloud cost (99.8% reduction).</span>
 
 ---
 
-## Act II: High-Level 4-Tier Hybrid Architecture
+## 02 | High-Level 4-Tier Hybrid Architecture on GCP
 ### Balancing Extreme Low Bandwidth at the Edge with Hyperscale Cloud Reasoning
 
 ![width:1050px](images/slide_hybrid_architecture.png)
@@ -163,17 +163,19 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 
 ---
 
-## Act III: Google Gemini 3 Suite & Model Routing Strategy
+## 03 | Vertex AI Gemini 3 Constellation & Model Routing
 ### Matching Model Capabilities, Latency Profiles, and Cost Parameters
 
 ![bg right:60% 95%](images/slide_gemini_models_matrix.png)
 
 - **`gemini-3.7-flash` (Deep Multimodal Reasoning):**
-  - Extended thinking budget for complex multimodal video exam analysis and cheating forensic reports.
+  - Extended thinking budget for asynchronous video auditing and cheating forensics.
+- **`gemini-3.8-flash` (Coursework Rubric & Milestone Synthesis):**
+  - High-throughput cross-student aggregator synthesizing lab task rubrics.
 - **`gemini-3.5-flash-lite` (Ultra Low Latency Workhorse):**
-  - Rapid single-frame inspection, instant tool calling, resilient failover target.
+  - Rapid single-frame inspection, instant tool calling, resilient fallback target.
 - **`gemini-3.5-transcribe-preview` (Long Audio Reasoning):**
-  - Native multi-speaker diarization, ambient noise suppression, word-level seekable timestamps.
+  - Native multi-speaker diarization, ambient noise suppression, word timestamps.
 - **`LiteRT Gemma 4 E2B` (On-Device Edge Proctor):**
   - Runs in browser Web Worker via WebGPU/WASM at $0 cloud cost.
 
@@ -227,7 +229,7 @@ Respond with ONLY one valid JSON object:
 
 ---
 
-## Act IV: On-Device Vision AI: 468-Point Mesh & Iris Geometry
+## 04 | On-Device Vision AI: 468-Point Mesh & Iris Geometry
 ### MediaPipe Landmarker in Web Workers (Zero UI Thread Jank)
 
 ![bg right:60% 95%](images/slide_edge_vision_gaze.png)
@@ -239,8 +241,8 @@ Respond with ONLY one valid JSON object:
 - **Metric Iris Distance:**
   $$D = \frac{11.7\text{ mm} \times f_x}{\Delta\text{Iris}_{\text{pixels}}}$$
 - **Facial Ratios:**
-  - **EAR (Eye Aspect Ratio):** Drowsiness & blink duration.
-  - **MAR (Mouth Aspect Ratio):** Whispering & talking detection.
+  - **EAR (Eye Aspect Ratio):** Drowsiness & blink duration (`calculateEAR`).
+  - **MAR (Mouth Aspect Ratio):** Whispering & talking detection (`calculateMAR`).
 - **1-Click Baseline Calibration HUD:** Neutral view offset zeroing.
 
 ---
@@ -296,37 +298,36 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Zero-Trust Assessment Confidentiality & Live Exam Mode
-### Protecting Exam Integrity Across Storage Rules, Backend & Student Portal
+## 05 | Zero-Trust Assessment Security & Live Exam Mode
+### Protecting Exam Confidentiality Across Storage Rules, Cloud Run & Student Portal
 
 ![bg right:60% 95%](images/slide_exam_mode_zero_trust.png)
 
 - **Zero-Trust Cloud Storage Rules:**
-  - `storage.rules`: Student video access rejected if `resource.metadata.isExam == 'true'`.
-- **Backend Metadata Stamping:**
-  - Containerized FFmpeg worker evaluates `isExamTimeRange` and stamps `isExam: 'true'` onto GCS objects & Firestore jobs.
-- **Student Portal Hardening (`StudentRecordsView.jsx`):**
-  - Withholds exam videos, audio transcripts, and irregularity evidence behind security shields.
-  - Aborts direct download fallbacks immediately on permission denial.
-- **Live Classroom Exam Mode:**
-  - Instructor toggles `🔒 Exam Mode: ACTIVE` in Teacher Command Center.
-  - Student client enforces mandatory full-screen desktop sharing (`requireFullScreenOnly: true`).
+  - `storage.rules`: Student read access to `/videos/{classId}/{videoId}` rejected if `resource.metadata.isExam == 'true'`.
+- **Scheduled Exam Periods & Metadata Stamping:**
+  - Class-level scheduled `examPeriods: [{ name, startTime, endTime, requireFullScreenOnly }]`.
+  - Cloud Run FFmpeg container evaluates `isExamTimeRange` and stamps `isExam: 'true'` onto GCS objects & Firestore jobs.
+- **Mandatory Full-Screen Enforcement (`requireFullScreenOnly: true`):**
+  - Reject window/tab sharing to prevent students hiding unauthorized AI windows.
+- **Student Records Portal Shielding (`StudentRecordsView.jsx`):**
+  - Confidentially shields exam videos, transcripts, and irregularity evidence during exam windows.
 
 ---
 
-## Act V: Dual Real-Time WebRTC Media Streaming Topologies
-### 1-to-1 Live Peek & 1-to-Many Teacher Screen Broadcasting
+## 06 | Real-Time Classroom Media Pipelines
+### 1-to-1 WebRTC Live Peek & Pure Frame Classroom Broadcaster
 
-![bg right:60% 95%](images/slide_webrtc_topologies.png)
+![bg right:60% 95%](images/slide_realtime_media_pipelines.png)
 
 - **1-to-1 WebRTC Live Peek & Talkback:**
-  - Direct P2P connection between teacher and student.
-  - 30 FPS smooth video verification.
-  - Zero cloud storage cost and zero intermediary servers.
-- **1-to-Many Teacher Screen Broadcast:**
-  - Lightweight frame streaming delivering teacher screen to 50+ students.
-  - Offscreen 720p clamping with 32x18 thumbnail pixel delta diffing.
-  - Displays inside student browser as a floating Picture-in-Picture (PiP) modal.
+  - Direct P2P connection between teacher and student via Firestore signaling.
+  - 30 FPS smooth video verification & two-way talkback without loading cloud storage.
+- **1-to-Many Classroom Frame Broadcaster (Scales to 50+ Students):**
+  - Eliminates the 6-peer limit & CPU exhaustion of WebRTC star-mesh networks.
+  - Screen captured into offscreen canvas, clamped to **720p**, and diffed via **32x18 thumbnail pixel delta engine**.
+  - Emits compressed JPEG (~35–65 KB, <8% doc limit) to Firestore `screenBroadcast/liveFrame`.
+  - Keeps teacher CPU <2% and renders in student Picture-in-Picture (PiP) window.
 
 ---
 
@@ -356,24 +357,23 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Map-Reduce AI Video Analysis & Performance Reporting
-### Map All Videos $\to$ Reduce to Performance Prompt $\to$ Map to Milestone Matrix
+## 07 | Serverless Map-Reduce-Map Video Intelligence Pipeline
+### Fan-Out Discovery $\to$ Prompt Synthesis $\to$ Sortable Milestone Matrix
 
 ![bg right:60% 95%](images/slide_map_reduce_ai_jobs.png)
 
-- **Map Phase 1 (Parallel Video Discovery):**
-  - Master job fans out parallel Gemini 3.7 vision jobs across all student screen recordings.
-  - Extracts timestamped terminal commands, code actions, and raw milestone attempts.
-- **Reduce Phase (Performance Prompt Synthesis):**
-  - Cross-student aggregator combines all individual findings into Gemini 3.8 Flash.
-  - Synthesizes an objective, unified coursework rubric and milestone evaluation prompt.
-- **Map Phase 2 (Targeted Performance Reporting):**
-  - Mapped AI job evaluates each student video against the synthesized milestone rubric.
-  - Autonomous tool calling (`recordTaskDuration`) logs milestones into **Student Milestone Matrix**.
+- **Phase 1: Map (Parallel Video Discovery):**
+  - Master job fans out parallel Gemini 3.7 vision jobs across student screen recordings to extract actions and shell logs.
+- **Phase 2: Reduce (Coursework Rubric Synthesis):**
+  - Cross-student aggregator combines findings into Gemini 3.8 Flash, generating a unified coursework rubric.
+  - UI displays an animated multi-stage progress stepper (Aggregating $\to$ Synthesis $\to$ Rubric formatting).
+- **Phase 3: Map (Milestone Evaluation & Matrix):**
+  - Evaluates student videos against synthesized rubric; autonomous tool calls log milestones into `StudentMilestoneMatrix.jsx`.
+  - Color-coded heatmap duration badges (<20m emerald, 20-40m amber, >40m ruby red) with RFC 4180 CSV export.
 
 ---
 
-## Green AI & Cloud FinOps: Institutional Cost Sustainability
+## 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
 ### 99.8% Cost Reduction: $0.85 per 50-Student Exam vs. $750.00 Commercial SaaS
 
 ![bg right:60% 95%](images/slide_ai_cost_finops.png)
@@ -390,7 +390,7 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## Academic Integrity Incident Dossier Pipeline
-### Automated 1-Click Export to Verifiable Microsoft Word (.docx) & CSV
+### Automated 1-Click Export to Verifiable Microsoft Word (.docx) & RFC 4180 CSV
 
 ![bg right:60% 95%](images/slide_incident_dossier_workflow.png)
 
@@ -401,13 +401,13 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## DevSecOps & Production Reliability Engineering
+## 09 | DevSecOps & Production Reliability Engineering
 ### Multi-Tier Automated Testing Pyramid & Dual-Environment Deployments
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **750+ Automated Tests & Assertions:**
-  - **Level 1 (Frontend):** 603 tests across 87 suites (MediaPipe, Web Workers, Hooks, UI components).
+- **750+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 603 tests across 87 suites (>80% code coverage across all core modules).
   - **Level 2 (Backend Cloud Functions):** 98 tests across 6 domain codebases.
   - **Level 3 (Security Rules):** 23 real-token isolation test scenarios.
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
@@ -417,7 +417,7 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Act VI: Live System Demonstration: 5-Stage Verification Flow
+## Live System Demonstration: 5-Stage Verification Flow
 
 ![bg right:60% 95%](images/slide_live_demo_workflow.png)
 
@@ -430,7 +430,7 @@ const processFrame = async (now, metadata) => {
 ---
 
 <!-- _class: lead -->
-## Empowering Education with Google Cloud & Edge AI
+## 10 | Empowering Education with Google Cloud & Edge AI
 ### Live System & Open-Source Repository
 
 ![bg right:55% 95%](images/slide_closing_summary.png)
