@@ -73,7 +73,7 @@ const StudentsGrid = ({
             const refTime = reviewTime ? new Date(reviewTime) : now;
             const secondsDiff = (refTime.getTime() - screenshotTime.getTime()) / 1000;
             const freshnessWindow = Math.max(frameRate * 3, 30);
-            if (isPaused || (secondsDiff >= 0 && secondsDiff <= freshnessWindow)) {
+            if (isPaused || (secondsDiff >= -60 && secondsDiff <= freshnessWindow)) {
               isFresh = true;
             }
           }

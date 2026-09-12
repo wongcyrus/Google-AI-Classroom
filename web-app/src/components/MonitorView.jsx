@@ -245,6 +245,31 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const screenshotsRef = useRef(screenshots);
   useEffect(() => { screenshotsRef.current = screenshots; }, [screenshots]);
   const urlCacheRef = useRef(new Map());
+  const inFlightUrlPromisesRef = useRef(new Map());
+
+  const getStorageDownloadUrl = useCallback(async (path) => {
+    if (!path) return null;
+    if (urlCacheRef.current.has(path)) {
+      return urlCacheRef.current.get(path);
+    }
+    if (inFlightUrlPromisesRef.current.has(path)) {
+      return inFlightUrlPromisesRef.current.get(path);
+    }
+    const promise = (async () => {
+      try {
+        const url = await getDownloadURL(ref(storage, path));
+        urlCacheRef.current.set(path, url);
+        return url;
+      } catch (error) {
+        console.error(`Error getting download URL for ${path}:`, error);
+        return null;
+      } finally {
+        inFlightUrlPromisesRef.current.delete(path);
+      }
+    })();
+    inFlightUrlPromisesRef.current.set(path, promise);
+    return promise;
+  }, []);
 
   const frameRateOptions = [1, 5, 10, 15, 20, 25, 30];
   const maxImageSizeOptions = [
@@ -424,25 +449,26 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   useEffect(() => {
     if (!reviewTime || classList.length === 0) return;
 
+    let isCancelled = false;
+
     const fetchScreenshotsForReview = async () => {
-      const newScreenshots = {};
       const reviewTimeDate = new Date(reviewTime);
+      const studentTasks = classList.filter(Boolean);
 
-      for (const studentUid of classList) {
-        if (!studentUid) continue;
+      const resolveStudentReview = async (studentUid) => {
+        try {
+          const screenshotsQuery = query(
+            collection(db, 'screenshots'),
+            where('classId', '==', classId),
+            where('studentUid', '==', studentUid),
+            where('timestamp', '<=', reviewTimeDate),
+            orderBy('timestamp', 'desc'),
+            limit(6)
+          );
 
-        // Fetch latest screenshot up to reviewTime
-        const screenshotsQuery = query(
-          collection(db, 'screenshots'),
-          where('classId', '==', classId),
-          where('studentUid', '==', studentUid),
-          where('timestamp', '<=', reviewTimeDate),
-          orderBy('timestamp', 'desc'),
-          limit(6)
-        );
+          const snapshot = await getDocs(screenshotsQuery);
+          if (snapshot.empty) return null;
 
-        const snapshot = await getDocs(screenshotsQuery);
-        if (!snapshot.empty) {
           let screenItem = null;
           let webcamItem = null;
 
@@ -450,40 +476,63 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
             const data = docSnap.data();
             const channel = data.channel || 'screen';
             if (channel === 'screen' && !screenItem) {
-              try {
-                const url = await getDownloadURL(ref(storage, data.imagePath));
+              const url = await getStorageDownloadUrl(data.imagePath);
+              if (url) {
                 screenItem = { url, timestamp: data.timestamp, imagePath: data.imagePath, channel: 'screen' };
-              } catch (e) {
-                console.error("Error getting screen review URL:", e);
               }
             } else if (channel === 'webcam' && !webcamItem) {
-              try {
-                const url = await getDownloadURL(ref(storage, data.imagePath));
+              const url = await getStorageDownloadUrl(data.imagePath);
+              if (url) {
                 webcamItem = { url, timestamp: data.timestamp, imagePath: data.imagePath, channel: 'webcam' };
-              } catch (e) {
-                console.error("Error getting webcam review URL:", e);
               }
             }
             if (screenItem && webcamItem) break;
           }
 
           const primaryItem = screenItem || webcamItem;
-          if (primaryItem) {
-            newScreenshots[studentUid] = {
+          if (!primaryItem) return null;
+
+          return {
+            studentUid,
+            entry: {
               screen: screenItem,
               webcam: webcamItem,
               url: primaryItem.url,
               timestamp: primaryItem.timestamp,
-              imagePath: primaryItem.imagePath
-            };
+              imagePath: primaryItem.imagePath,
+            },
+          };
+        } catch (e) {
+          console.error(`Error fetching review screenshots for ${studentUid}:`, e);
+          return null;
+        }
+      };
+
+      const CONCURRENCY = 10;
+      const newScreenshots = {};
+
+      for (let i = 0; i < studentTasks.length; i += CONCURRENCY) {
+        if (isCancelled) break;
+        const chunk = studentTasks.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(chunk.map(resolveStudentReview));
+        for (const res of results) {
+          if (res?.studentUid && res?.entry) {
+            newScreenshots[res.studentUid] = res.entry;
           }
         }
       }
-      setScreenshots(newScreenshots);
+
+      if (!isCancelled) {
+        setScreenshots(newScreenshots);
+      }
     };
 
     fetchScreenshotsForReview();
-  }, [reviewTime, classList, classId]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [reviewTime, classList, classId, getStorageDownloadUrl]);
 
   const students = useMemo(() => {
     const currentNow = now.getTime();
@@ -535,14 +584,13 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     });
   }, [classList, studentStatuses, uidToEmailMap, now, frameRate, reviewTime]);
 
+  // Live screenshot URL resolution with bounded concurrency and in-flight deduplication
   useEffect(() => {
-    if (reviewTime || students.length === 0 || pausedRef.current) return;
+    if (reviewTime || studentStatuses.length === 0 || pausedRef.current) return;
 
     let isCancelled = false;
 
     const resolveAllStatuses = async () => {
-      const updates = {};
-      const analysisQueue = [];
       const currentNow = Date.now();
       const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
 
@@ -555,93 +603,84 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         return 0;
       };
 
-      for (const status of studentStatuses) {
-        const studentUid = status.id;
-        if (!studentUid) continue;
+      const studentTasks = studentStatuses.filter(
+        (s) => s?.id && (s.latestScreenPath || s.latestImagePath || s.latestWebcamPath)
+      );
 
+      const resolveStudent = async (status) => {
+        const studentUid = status.id;
         const statusTs = getTs(status);
-        const isFresh = statusTs > 0 && (currentNow - statusTs) <= staleThresholdMs;
+        const isFresh = (currentNow - statusTs) <= staleThresholdMs;
         const isActivelySharing = Boolean(status.isSharing && isFresh);
 
-        // Resolve latest screenshot for all students with saved paths (both live and offline)
         const screenPath = status.latestScreenPath || status.latestImagePath;
         const webcamPath = status.latestWebcamPath;
-        if (!screenPath && !webcamPath) continue;
 
-        let resolvedScreenUrl = screenPath ? urlCacheRef.current.get(screenPath) : null;
-        let resolvedWebcamUrl = webcamPath ? urlCacheRef.current.get(webcamPath) : null;
-
-        if (screenPath && !resolvedScreenUrl) {
-          try {
-            resolvedScreenUrl = await getDownloadURL(ref(storage, screenPath));
-            urlCacheRef.current.set(screenPath, resolvedScreenUrl);
-          } catch (error) {
-            console.error(`Error getting download URL for screen ${screenPath}: `, error);
-          }
-        }
-
-        if (webcamPath && !resolvedWebcamUrl) {
-          try {
-            resolvedWebcamUrl = await getDownloadURL(ref(storage, webcamPath));
-            urlCacheRef.current.set(webcamPath, resolvedWebcamUrl);
-          } catch (error) {
-            console.error(`Error getting download URL for webcam ${webcamPath}: `, error);
-          }
-        }
+        const [resolvedScreenUrl, resolvedWebcamUrl] = await Promise.all([
+          screenPath ? getStorageDownloadUrl(screenPath) : Promise.resolve(null),
+          webcamPath ? getStorageDownloadUrl(webcamPath) : Promise.resolve(null),
+        ]);
 
         const primaryUrl = resolvedScreenUrl || resolvedWebcamUrl;
         const primaryPath = screenPath || webcamPath;
 
-        updates[studentUid] = {
-          screen: resolvedScreenUrl ? {
-            url: resolvedScreenUrl,
+        return {
+          studentUid,
+          entry: {
+            screen: resolvedScreenUrl
+              ? {
+                  url: resolvedScreenUrl,
+                  timestamp: status.timestamp,
+                  imagePath: screenPath,
+                  isLive: isActivelySharing,
+                }
+              : null,
+            webcam: resolvedWebcamUrl
+              ? {
+                  url: resolvedWebcamUrl,
+                  timestamp: status.timestamp,
+                  imagePath: webcamPath,
+                  isLive: isActivelySharing,
+                }
+              : null,
+            url: primaryUrl,
             timestamp: status.timestamp,
-            imagePath: screenPath,
-            isLive: isActivelySharing
-          } : null,
-          webcam: resolvedWebcamUrl ? {
-            url: resolvedWebcamUrl,
-            timestamp: status.timestamp,
-            imagePath: webcamPath,
-            isLive: isActivelySharing
-          } : null,
-          url: primaryUrl,
-          timestamp: status.timestamp,
-          imagePath: primaryPath,
-          isLive: isActivelySharing
+            imagePath: primaryPath,
+            isLive: isActivelySharing,
+          },
         };
+      };
 
-        if (isPerImageAnalysisRunning && isActivelySharing && primaryUrl && primaryPath) {
-          const lastAnalysis = lastAnalyzedPathMapRef.current.get(studentUid);
-          const minIntervalMs = (Number(samplingRate) || 5) * (Number(frameRate) || 15) * 1000;
-          const isSameImage = lastAnalysis && lastAnalysis.imagePath === primaryPath;
-          const isCoolingDown = lastAnalysis && (currentNow - lastAnalysis.timestamp) < minIntervalMs;
-          const isInFlight = activeAnalysisInFlightRef.current.has(studentUid);
+      const CONCURRENCY = 10;
+      const resolvedEntries = [];
 
-          // Deduplication Guard: Never analyze the exact same screenshot twice, enforce cooldown & prevent overlapping calls
-          if (!isSameImage && !isCoolingDown && !isInFlight) {
-            analysisQueue.push({ studentUid, status, targetUrl: primaryUrl, targetPath: primaryPath });
-          }
-        }
+      for (let i = 0; i < studentTasks.length; i += CONCURRENCY) {
+        if (isCancelled) break;
+        const chunk = studentTasks.slice(i, i + CONCURRENCY);
+        const chunkResults = await Promise.all(chunk.map(resolveStudent));
+        resolvedEntries.push(...chunkResults);
       }
 
       if (!isCancelled) {
-        // Set screenshots for students (live and offline last known)
-        setScreenshots(updates);
-
-        for (const item of analysisQueue) {
-          const studentEmail = uidToEmailMap.get(item.studentUid) || item.status.email;
-          lastAnalyzedPathMapRef.current.set(item.studentUid, { imagePath: item.targetPath, timestamp: Date.now() });
-          activeAnalysisInFlightRef.current.add(item.studentUid);
-
-          runPerImageAnalysis({ [item.studentUid]: { url: item.targetUrl, email: studentEmail } }, editablePromptText, selectedAiModel)
-            .catch(err => {
-              console.error(`[MonitorView] Error during per-image analysis for ${studentEmail}:`, err);
-            })
-            .finally(() => {
-              activeAnalysisInFlightRef.current.delete(item.studentUid);
-            });
-        }
+        setScreenshots((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const item of resolvedEntries) {
+            if (item?.studentUid && item?.entry?.url) {
+              const currentItem = next[item.studentUid];
+              if (
+                !currentItem ||
+                currentItem.url !== item.entry.url ||
+                currentItem.imagePath !== item.entry.imagePath ||
+                currentItem.isLive !== item.entry.isLive
+              ) {
+                next[item.studentUid] = item.entry;
+                changed = true;
+              }
+            }
+          }
+          return changed ? next : prev;
+        });
       }
     };
 
@@ -650,7 +689,59 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     return () => {
       isCancelled = true;
     };
-  }, [studentStatuses, reviewTime, isPaused, isPerImageAnalysisRunning, samplingRate, runPerImageAnalysis, editablePromptText, selectedAiModel, uidToEmailMap, students.length, frameRate]);
+  }, [studentStatuses, reviewTime, isPaused, frameRate, getStorageDownloadUrl]);
+
+  // Decoupled Per-Image AI Analysis Effect
+  useEffect(() => {
+    if (!isPerImageAnalysisRunning || isPaused || reviewTime || studentStatuses.length === 0) return;
+
+    const currentNow = Date.now();
+    const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
+    const minIntervalMs = (Number(samplingRate) || 5) * (Number(frameRate) || 15) * 1000;
+
+    const getTs = (obj) => {
+      if (!obj?.timestamp) return 0;
+      if (typeof obj.timestamp.toMillis === 'function') return obj.timestamp.toMillis();
+      if (obj.timestamp.seconds) return obj.timestamp.seconds * 1000;
+      if (obj.timestamp instanceof Date) return obj.timestamp.getTime();
+      if (typeof obj.timestamp === 'number') return obj.timestamp;
+      return 0;
+    };
+
+    for (const status of studentStatuses) {
+      const studentUid = status?.id;
+      if (!studentUid) continue;
+
+      const statusTs = getTs(status);
+      const isFresh = (currentNow - statusTs) <= staleThresholdMs;
+      const isActivelySharing = Boolean(status.isSharing && isFresh);
+      const primaryPath = status.latestScreenPath || status.latestImagePath || status.latestWebcamPath;
+      const studentScreenshot = screenshots[studentUid];
+      const primaryUrl = studentScreenshot?.url;
+
+      if (isActivelySharing && primaryUrl && primaryPath) {
+        const lastAnalysis = lastAnalyzedPathMapRef.current.get(studentUid);
+        const isSameImage = lastAnalysis && lastAnalysis.imagePath === primaryPath;
+        const isCoolingDown = lastAnalysis && (currentNow - lastAnalysis.timestamp) < minIntervalMs;
+        const isInFlight = activeAnalysisInFlightRef.current.has(studentUid);
+
+        // Deduplication Guard: Never analyze the exact same screenshot twice, enforce cooldown & prevent overlapping calls
+        if (!isSameImage && !isCoolingDown && !isInFlight) {
+          const studentEmail = uidToEmailMap.get(studentUid) || status.email;
+          lastAnalyzedPathMapRef.current.set(studentUid, { imagePath: primaryPath, timestamp: Date.now() });
+          activeAnalysisInFlightRef.current.add(studentUid);
+
+          runPerImageAnalysis({ [studentUid]: { url: primaryUrl, email: studentEmail } }, editablePromptText, selectedAiModel)
+            .catch((err) => {
+              console.error(`[MonitorView] Error during per-image analysis for ${studentEmail}:`, err);
+            })
+            .finally(() => {
+              activeAnalysisInFlightRef.current.delete(studentUid);
+            });
+        }
+      }
+    }
+  }, [studentStatuses, screenshots, isPerImageAnalysisRunning, isPaused, reviewTime, frameRate, samplingRate, editablePromptText, selectedAiModel, uidToEmailMap, runPerImageAnalysis]);
 
   useEffect(() => {
     if (!isAllImagesAnalysisRunning) {

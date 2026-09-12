@@ -70,13 +70,13 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             {showScreen && (
               <div className="feed-viewport">
                 <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
-                <img src={screenUrl} alt={`Screen from ${student.email}`} />
+                <img src={screenUrl} alt={`Screen from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
               </div>
             )}
             {showWebcam && (
               <div className="feed-viewport">
                 <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
-                <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
+                <img src={webcamUrl} alt={`Webcam from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
               </div>
             )}
             {!showScreen && !showWebcam && (
@@ -89,7 +89,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           showScreen ? (
             <div className="feed-viewport single">
               <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
-              <img src={screenUrl} alt={`Screen from ${student.email}`} />
+              <img src={screenUrl} alt={`Screen from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
             </div>
           ) : (
             <div className="no-screenshot-placeholder">
@@ -100,7 +100,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           showWebcam ? (
             <div className="feed-viewport single">
               <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
-              <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
+              <img src={webcamUrl} alt={`Webcam from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
             </div>
           ) : (
             <div className="no-screenshot-placeholder">
