@@ -132,67 +132,122 @@ gcloud services enable \
 
 ## 4. 🏫 Multi-School & Domain Customization
 
-The system is completely domain-agnostic and uses dynamic domain configuration to separate **teachers** from **students**.
+The platform is 100% domain-agnostic and uses an integrated **Hybrid Role Resolution Architecture** to distinguish **instructors** from **students**.
 
-### 1. Configure Frontend Domains (`web-app/.env`)
-Edit `web-app/.env` with your institution's email suffixes:
+> [!NOTE]
+> For a deep-dive into the underlying architecture, GCIP blocking lifecycle, FinOps cost protections, and Firestore profile migration, see the dedicated [Hybrid Role Resolution & Identity Architecture](./hybrid-role-resolution-and-auth.md) document.
+
+---
+
+### Configuration Recipes
+
+Select the scenario matching your institution's email domain setup:
+
+#### Recipe 1: Dedicated Subdomains (e.g. VTC, Universities)
+*Students use a distinct subdomain (`@stu.school.edu`), faculty use the parent domain (`@school.edu`).*
+
 ```env
-# Comma-separated domains for instructors
+# web-app/.env
 VITE_TEACHER_DOMAINS="school.edu,cs.school.edu"
-
-# Comma-separated domains for students
-VITE_STUDENT_DOMAINS="students.school.edu,alumni.school.edu"
-
-# Display name for login dialogs & error messages
+VITE_STUDENT_DOMAINS="stu.school.edu,alumni.school.edu"
 VITE_INSTITUTION_NAME="My University"
 ```
+*How it works*: Subdomain priority ensures `@stu.school.edu` matches the student rule first without erroneously falling into the parent `@school.edu` teacher domain.
 
-### 2. Configure Backend Cloud Functions (`functions/config.js`)
-Set the environment variables in your deployment environment or update [`functions/config.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/config.js):
-```env
-TEACHER_EMAIL_DOMAINS="school.edu,cs.school.edu"
-STUDENT_EMAIL_DOMAINS="students.school.edu,alumni.school.edu"
-```
+---
 
-### 3. Same-Domain Deployments (Username Regex & Zero-Trust Fallback)
-If teachers and students share the exact same domain (e.g., both use `@school.edu`):
+#### Recipe 2: Same Domain with Student ID Regex (Seamless Auto-Detection)
+*Both students and faculty use the exact same root domain (`@school.edu`), but student IDs follow a predictable pattern (e.g. 8 digits or starting with 's').*
+
 ```env
-# Same institutional domain for both
+# web-app/.env
 VITE_TEACHER_DOMAINS="school.edu"
 VITE_STUDENT_DOMAINS="school.edu"
+VITE_INSTITUTION_NAME="My College"
 
-# Optional: Regular expression to identify student user IDs (e.g. 8 digits or s + 7 digits)
+# Student ID pattern: 8 digits (e.g. 20261234) or 's' + 7 digits (e.g. s1234567)
 VITE_STUDENT_USERNAME_REGEX="^[0-9]{8}$|^s[0-9]{7}$"
 
-# Optional: Regular expression to identify teacher usernames (e.g. firstname.lastname)
-VITE_TEACHER_USERNAME_REGEX="^[a-zA-Z]+\.[a-zA-Z]+$"
+# Optional: Teacher name pattern (e.g. firstname.lastname)
+VITE_TEACHER_USERNAME_REGEX="^[a-zA-Z]+\\.[a-zA-Z]+$"
 
-# Zero-Trust default: anyone whose username does not match a teacher format safely defaults to student
+# Zero-trust fallback: ambiguous accounts safely default to student
 VITE_DEFAULT_TO_STUDENT="true"
 ```
+*How it works*: On same-domain signups, the username is tested against regex rules. Students are classified automatically with zero extra clicks.
 
-### Domain Evaluation Architecture:
-- **Subdomain Priority**: Student domains are evaluated before teacher domains. For instance, if teachers use `@school.edu` and students use `@students.school.edu`, students are correctly assigned the `student` role rather than the parent domain's `teacher` role.
-- **Regex Auto-Disambiguation**: On shared domains, `STUDENT_USERNAME_REGEX` and `TEACHER_USERNAME_REGEX` automatically separate students from instructors with zero user friction.
-- **Zero-Trust Fallback**: Ambiguous signups automatically receive the `student` role, protecting Google Gemini AI quotas and teacher controls.
-- **Class Pre-Enrollment Promotion**: When an instructor signs up for the first time, if their email is already listed in any class's `teacherEmails`, they are automatically granted the `teacher` role immediately.
-- **Security Rules Isolation**: Both `firestore.rules` and `storage.rules` use pure role claims (`request.auth.token.role == 'teacher'`), eliminating hardcoded email strings.
+---
+
+#### Recipe 3: Same Domain Zero-Trust (Strict Access Control)
+*Both use `@school.edu`, but email formats are unstructured or indistinguishable.*
+
+```env
+# web-app/.env
+VITE_TEACHER_DOMAINS="school.edu"
+VITE_STUDENT_DOMAINS="school.edu"
+VITE_DEFAULT_TO_STUDENT="true"
+```
+*How it works*:
+1. Any self-registered user receives `{ role: 'student' }`, completely safeguarding Gemini AI quotas.
+2. Instructors are elevated through either:
+   - **Class Pre-Enrollment**: When an existing teacher adds their email to any class's `teacherEmails`, their next sign-in automatically promotes them.
+   - **Admin CLI Script**: Admin runs `node admin/scripts/grantTeacherRole.js <email>`.
+
+---
+
+#### Recipe 4: Open / Any Domain with Regex Disambiguation (Workshops, MOOCs)
+*Students and instructors register using arbitrary personal or corporate email addresses.*
+
+```env
+# web-app/.env
+VITE_TEACHER_DOMAINS="*"
+VITE_STUDENT_DOMAINS="*"
+VITE_STUDENT_USERNAME_REGEX="^stu_|^student_"
+VITE_TEACHER_USERNAME_REGEX="^prof_|^instructor_"
+VITE_DEFAULT_TO_STUDENT="true"
+```
+*How it works*: Anyone can register; usernames matching teacher patterns receive the `teacher` role, while others default to `student`.
+
+---
+
+### Applying Domain Configurations Across All Codebases
+
+After updating `web-app/.env`, propagate the settings to all 7 Cloud Function codebases and Terraform:
+
+```bash
+# 1. Synchronize to all Cloud Functions (automatically generates functions/config.js in all 7 directories)
+./switch-env.sh dev
+
+# 2. (Optional) Run automated tests to verify the new domain rules
+npm --prefix web-app test src/utils/domainConfig.test.js
+npm --prefix functions/auth_triggers test
+
+# 3. Deploy configuration to production
+./deploy.sh
+```
 
 ---
 
 ## 5. 👨‍🏫 First-Time Admin & Teacher Account Onboarding
 
-Once deployed, you can grant the `teacher` role to instructors:
+Once deployed, grant the `teacher` role to instructors using the administrative CLI tool:
 
-### Grant Teacher Role via CLI:
+### Usage:
 ```bash
-# Usage: node admin/scripts/grantTeacherRole.js <email1> [email2] ...
-GOOGLE_CLOUD_PROJECT="your-project-id" node admin/scripts/grantTeacherRole.js professor@school.edu dean@school.edu
+GOOGLE_CLOUD_PROJECT="<PROJECT_ID>" node admin/scripts/grantTeacherRole.js <email1> [email2] ...
 ```
 
-> [!NOTE]
-> If the user account does not exist in Firebase Authentication yet, the script automatically creates the account, verifies their email address, sets a temporary password (`IT114115` or custom `DEMO_PASSWORD`), and assigns `{ role: 'teacher' }`.
-> If the user previously signed up as a student, the script automatically migrates their profile from `studentProfiles` to `teacherProfiles` in Firestore!
+**Example:**
+```bash
+GOOGLE_CLOUD_PROJECT="it114115-dev-2026" node admin/scripts/grantTeacherRole.js professor@school.edu dean@school.edu
+```
+
+### What the Admin Script Executes Automatically:
+1. **Account Existence Check**: If the email does not exist in Firebase Auth yet, it automatically creates the account with email verified and a default password (`IT114115` or `DEMO_PASSWORD` env variable).
+2. **Custom Claims Assignment**: Calls `auth.setCustomUserClaims(uid, { role: 'teacher' })`.
+3. **Two-Phase Profile Migration**:
+   - If the user had previously signed up as a student, it migrates their profile data from `studentProfiles/${uid}` to `teacherProfiles/${uid}`, preserves enrolled class IDs, sets `migratedFromStudent: true`, and deletes the old `studentProfiles` document.
+   - If it is a fresh account, it initializes a clean `teacherProfiles/${uid}` document.
 
 ---
 

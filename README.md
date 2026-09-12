@@ -11,6 +11,7 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 - [Powered by Google Technologies](#powered-by-google-technologies)
 - [Architecture Overview](#architecture-overview)
 - [Architecture Diagram](#architecture-diagram)
+- [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md)
 - [Complete Setup & Customization Guide](./docs/setup-instructions.md)
 - [Backend Functionality](./docs/functions.md)
 - [Frontend Components](./docs/frontend-components.md)
@@ -58,7 +59,7 @@ The project is a monorepo composed of three main parts:
 *   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
-For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
+For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For identity lifecycle and domain resolution, see [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
 
 ## Architecture Diagram
 
