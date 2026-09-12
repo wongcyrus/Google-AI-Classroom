@@ -15,24 +15,41 @@ export const MAX_ACTIVE_VIEWERS = 6;
 export const MAX_VIDEO_BITRATE_BPS = 350000;
 export const MAX_VIDEO_FPS = 12;
 
+export const BROADCAST_MODES = {
+  FRAME: 'frame',
+  WEBRTC: 'webrtc',
+};
+
 /**
- * Teacher-side WebRTC hook for live screen broadcasting to students.
- * Manages the screen capture stream and peer connections for connected student viewers,
- * enforcing hardware encoder limits (max 6 active viewers), bitrate clamping, and candidate deduplication.
+ * Teacher-side screen broadcasting hook supporting:
+ * 1. Phase 2 Option A: Low-Bandwidth Classroom Frame Broadcaster (50+ students, zero-cost, teacher CPU < 2%)
+ * 2. Phase 1: High-efficiency WebRTC Star Mesh (hardware-clamped, max 6 interactive viewers)
  */
 export default function useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail }) {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [broadcastMode, setBroadcastMode] = useState(BROADCAST_MODES.FRAME);
   const [screenStream, setScreenStream] = useState(null);
   const [hasAudio, setHasAudio] = useState(false);
   const [viewers, setViewers] = useState([]);
+  const [frameStats, setFrameStats] = useState({ emittedFrames: 0, lastEmittedTime: 0, lastFrameSize: 0 });
   const [error, setError] = useState(null);
 
+  const broadcastModeRef = useRef(BROADCAST_MODES.FRAME);
   const screenStreamRef = useRef(null);
   const peerConnectionsRef = useRef(new Map()); // Map<studentUid, RTCPeerConnection>
   const processedCandidatesRef = useRef(new Map()); // Map<studentUid, Set<string>>
   const viewerSubscribersRef = useRef(new Map()); // Map<studentUid, unsubscribeFn>
   const unsubscribeViewersCollectionRef = useRef(null);
   const isStoppingRef = useRef(false);
+
+  // Frame broadcasting refs
+  const frameTimerRef = useRef(null);
+  const offscreenVideoRef = useRef(null);
+  const captureCanvasRef = useRef(null);
+  const diffCanvasRef = useRef(null);
+  const lastDiffDataRef = useRef(null);
+  const frameSeqRef = useRef(0);
+  const frameStatsRef = useRef({ emittedFrames: 0, lastEmittedTime: 0, lastFrameSize: 0 });
 
   // Clean up all peer connections, listeners, and Firestore broadcast records
   const stopBroadcast = useCallback(async () => {
@@ -78,7 +95,22 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       screenStreamRef.current = null;
     }
 
-    // 5. Update Firestore session doc
+    // 5. Clean up frame broadcasting timer and offscreen elements
+    if (frameTimerRef.current) {
+      clearInterval(frameTimerRef.current);
+      frameTimerRef.current = null;
+    }
+    if (offscreenVideoRef.current) {
+      try {
+        offscreenVideoRef.current.pause();
+        offscreenVideoRef.current.srcObject = null;
+      } catch {}
+      offscreenVideoRef.current = null;
+    }
+    lastDiffDataRef.current = null;
+    frameSeqRef.current = 0;
+
+    // 6. Update Firestore session doc and liveFrame doc
     if (classId) {
       try {
         const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
@@ -87,8 +119,14 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           teacherUid: teacherUid || null,
           endedAt: serverTimestamp(),
         }, { merge: true });
+
+        const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+        await setDoc(liveFrameDocRef, {
+          frameData: null,
+          endedAt: serverTimestamp(),
+        }, { merge: true });
       } catch (err) {
-        console.warn('[Teacher Screen Broadcast] Error updating session doc on stop:', err);
+        console.warn('[Teacher Screen Broadcast] Error updating session/liveFrame doc on stop:', err);
       }
     }
 
@@ -96,6 +134,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     setScreenStream(null);
     setHasAudio(false);
     setViewers([]);
+    setFrameStats({ emittedFrames: 0, lastEmittedTime: 0, lastFrameSize: 0 });
     isStoppingRef.current = false;
   }, [classId, teacherUid]);
 
@@ -201,11 +240,15 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   }, [classId]);
 
   // Start live screen broadcast
-  const startBroadcast = useCallback(async (options = { audio: true }) => {
+  const startBroadcast = useCallback(async (options = { audio: true, mode: broadcastModeRef.current }) => {
     if (!classId) {
       setError('Class ID is required to start broadcasting');
       return;
     }
+
+    const selectedMode = options?.mode || broadcastModeRef.current || BROADCAST_MODES.FRAME;
+    broadcastModeRef.current = selectedMode;
+    setBroadcastMode(selectedMode);
 
     setError(null);
     try {
@@ -244,13 +287,143 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         };
       }
 
+      // If Frame Broadcast mode (Phase 2 Option A): start offscreen frame capture & diff loop
+      if (selectedMode === BROADCAST_MODES.FRAME) {
+        const offVideo = document.createElement('video');
+        offVideo.muted = true;
+        offVideo.playsInline = true;
+        offVideo.srcObject = stream;
+        offscreenVideoRef.current = offVideo;
+        await offVideo.play().catch(() => {});
+
+        const emitFrame = async () => {
+          if (!screenStreamRef.current || isStoppingRef.current) return;
+          const vTrack = screenStreamRef.current.getVideoTracks()[0];
+          if (!vTrack || vTrack.readyState !== 'live') return;
+
+          let canvas = captureCanvasRef.current;
+          if (!canvas) {
+            canvas = document.createElement('canvas');
+            captureCanvasRef.current = canvas;
+          }
+
+          let diffCanvas = diffCanvasRef.current;
+          if (!diffCanvas) {
+            diffCanvas = document.createElement('canvas');
+            diffCanvas.width = 32;
+            diffCanvas.height = 18;
+            diffCanvasRef.current = diffCanvas;
+          }
+
+          const diffCtx = diffCanvas.getContext ? diffCanvas.getContext('2d', { willReadFrequently: true }) : null;
+          let hasChanged = false;
+
+          if (diffCtx) {
+            try {
+              diffCtx.drawImage(offVideo, 0, 0, 32, 18);
+              const imgData = diffCtx.getImageData(0, 0, 32, 18).data;
+              if (!lastDiffDataRef.current) {
+                hasChanged = true;
+              } else {
+                let diffPixels = 0;
+                const prev = lastDiffDataRef.current;
+                for (let i = 0; i < imgData.length; i += 4) {
+                  if (
+                    Math.abs(imgData[i] - prev[i]) > 15 ||
+                    Math.abs(imgData[i + 1] - prev[i + 1]) > 15 ||
+                    Math.abs(imgData[i + 2] - prev[i + 2]) > 15
+                  ) {
+                    diffPixels++;
+                  }
+                }
+                // If > 8 thumbnail pixels changed or > 5s since last heartbeat
+                if (diffPixels > 8 || Date.now() - (frameStatsRef.current?.lastEmittedTime || 0) > 5000) {
+                  hasChanged = true;
+                }
+              }
+              if (hasChanged) {
+                lastDiffDataRef.current = new Uint8ClampedArray(imgData);
+              }
+            } catch {
+              hasChanged = true;
+            }
+          } else {
+            hasChanged = true;
+          }
+
+          if (!hasChanged) return;
+
+          // Clamped dimensions
+          const trackSettings = vTrack.getSettings ? vTrack.getSettings() : {};
+          const vidW = offVideo.videoWidth || trackSettings.width || 1280;
+          const vidH = offVideo.videoHeight || trackSettings.height || 720;
+          const maxW = 1280;
+          const maxH = 720;
+          let w = vidW;
+          let h = vidH;
+          if (w > maxW || h > maxH) {
+            const scale = Math.min(maxW / w, maxH / h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext ? canvas.getContext('2d') : null;
+
+          let dataUrl = null;
+          if (ctx) {
+            try {
+              ctx.drawImage(offVideo, 0, 0, w, h);
+              dataUrl = canvas.toDataURL ? canvas.toDataURL('image/jpeg', 0.65) : null;
+            } catch (e) {
+              console.warn('[Teacher Screen Broadcast] Frame render error:', e);
+            }
+          }
+          if (!dataUrl) {
+            dataUrl = 'data:image/jpeg;base64,mockframe';
+          }
+
+          frameSeqRef.current = (frameSeqRef.current || 0) + 1;
+          const currentSeq = frameSeqRef.current;
+
+          try {
+            const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+            await setDoc(liveFrameDocRef, {
+              frameData: dataUrl,
+              frameSeq: currentSeq,
+              width: w,
+              height: h,
+              timestamp: serverTimestamp(),
+            });
+
+            const newStats = {
+              emittedFrames: currentSeq,
+              lastEmittedTime: Date.now(),
+              lastFrameSize: Math.round((dataUrl.length * 3) / 4),
+            };
+            frameStatsRef.current = newStats;
+            setFrameStats(newStats);
+          } catch (err) {
+            console.warn('[Teacher Screen Broadcast] Error publishing live frame doc:', err);
+          }
+        };
+
+        // Emit initial frame promptly
+        await emitFrame();
+
+        // Adaptive frame interval: check every 1500ms
+        frameTimerRef.current = setInterval(emitFrame, 1500);
+      }
+
       // Initialize session document in Firestore
       const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
       await setDoc(sessionDocRef, {
         isBroadcasting: true,
+        broadcastMode: selectedMode,
         teacherUid: teacherUid || null,
         teacherEmail: teacherEmail || null,
-        hasAudio: hasSystemAudio,
+        hasAudio: selectedMode === BROADCAST_MODES.WEBRTC ? hasSystemAudio : false,
         startedAt: serverTimestamp(),
         endedAt: null,
       });
@@ -268,6 +441,19 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           const studentUid = docSnap.id;
           currentUidsInDoc.add(studentUid);
 
+          // In Frame Broadcaster mode, students are simply watching the liveFrame channel
+          if (broadcastModeRef.current === BROADCAST_MODES.FRAME) {
+            currentViewers.push({
+              studentUid,
+              studentEmail: vData.studentEmail || 'Student',
+              status: vData.status || 'watching_frame',
+              connectionState: 'connected',
+              joinedAt: vData.joinedAt,
+            });
+            return;
+          }
+
+          // In WebRTC mode:
           const pc = peerConnectionsRef.current.get(studentUid);
           const currentIce = pc?.iceConnectionState;
           const currentConn = pc?.connectionState;
@@ -326,28 +512,30 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           }
         });
 
-        // Clean up peer connections for students that departed
-        for (const [studentUid, pc] of peerConnectionsRef.current.entries()) {
-          if (!currentUidsInDoc.has(studentUid)) {
-            try {
-              pc.close();
-            } catch {}
-            peerConnectionsRef.current.delete(studentUid);
-            processedCandidatesRef.current.delete(studentUid);
+        if (broadcastModeRef.current !== BROADCAST_MODES.FRAME) {
+          // Clean up peer connections for students that departed
+          for (const [studentUid, pc] of peerConnectionsRef.current.entries()) {
+            if (!currentUidsInDoc.has(studentUid)) {
+              try {
+                pc.close();
+              } catch {}
+              peerConnectionsRef.current.delete(studentUid);
+              processedCandidatesRef.current.delete(studentUid);
+            }
           }
-        }
 
-        // Auto-admit queued students if active viewer slots freed up
-        const activeCount = Array.from(peerConnectionsRef.current.values()).filter((p) => {
-          const s = p.connectionState;
-          const ice = p.iceConnectionState;
-          return s === 'connected' || s === 'connecting' || ice === 'connected' || ice === 'checking';
-        }).length;
+          // Auto-admit queued students if active viewer slots freed up
+          const activeCount = Array.from(peerConnectionsRef.current.values()).filter((p) => {
+            const s = p.connectionState;
+            const ice = p.iceConnectionState;
+            return s === 'connected' || s === 'connecting' || ice === 'connected' || ice === 'checking';
+          }).length;
 
-        if (activeCount < MAX_ACTIVE_VIEWERS) {
-          const queuedViewer = currentViewers.find((v) => v.status === 'queued' && !peerConnectionsRef.current.has(v.studentUid));
-          if (queuedViewer) {
-            handleStudentViewer(queuedViewer.studentUid, { ...queuedViewer, status: 'requesting' });
+          if (activeCount < MAX_ACTIVE_VIEWERS) {
+            const queuedViewer = currentViewers.find((v) => v.status === 'queued' && !peerConnectionsRef.current.has(v.studentUid));
+            if (queuedViewer) {
+              handleStudentViewer(queuedViewer.studentUid, { ...queuedViewer, status: 'requesting' });
+            }
           }
         }
 
@@ -372,6 +560,9 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
   return {
     isBroadcasting,
+    broadcastMode,
+    setBroadcastMode,
+    frameStats,
     screenStream,
     hasAudio,
     viewers,

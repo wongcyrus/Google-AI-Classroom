@@ -91,6 +91,14 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     global.window.RTCIceCandidate = MockRTCIceCandidate;
     global.MediaStream = MockMediaStream;
 
+    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({ data: new Uint8ClampedArray(32 * 18 * 4) }),
+    });
+    HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mockframe123');
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue();
+    HTMLMediaElement.prototype.pause = vi.fn();
+
     navigator.mediaDevices = {
       getDisplayMedia: vi.fn().mockResolvedValue(
         MockMediaStream([
@@ -113,7 +121,7 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     expect(result.current.isBroadcasting).toBe(false);
 
     await act(async () => {
-      await result.current.startBroadcast();
+      await result.current.startBroadcast({ mode: 'webrtc' });
     });
 
     expect(result.current.isBroadcasting).toBe(true);
@@ -175,7 +183,7 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     act(() => {
       sessionCb({
         exists: () => true,
-        data: () => ({ isBroadcasting: true, teacherUid: 'teacher_123', hasAudio: true }),
+        data: () => ({ isBroadcasting: true, broadcastMode: 'webrtc', teacherUid: 'teacher_123', hasAudio: true }),
       });
     });
 
@@ -242,7 +250,7 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     );
 
     await act(async () => {
-      await result.current.startBroadcast();
+      await result.current.startBroadcast({ mode: 'webrtc' });
     });
 
     const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
@@ -340,7 +348,7 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
     );
 
     await act(async () => {
-      await result.current.startBroadcast();
+      await result.current.startBroadcast({ mode: 'webrtc' });
     });
 
     const viewersCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
@@ -402,12 +410,12 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
       })
     );
 
-    // Teacher session is active
+    // Teacher session is active in WebRTC mode
     const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
     act(() => {
       sessionCb({
         exists: () => true,
-        data: () => ({ isBroadcasting: true, teacherUid: 'teacher_123', hasAudio: true }),
+        data: () => ({ isBroadcasting: true, broadcastMode: 'webrtc', teacherUid: 'teacher_123', hasAudio: true }),
       });
     });
 
@@ -429,6 +437,88 @@ describe('useTeacherScreenBroadcast and useTeacherScreenBroadcastStudent Hooks',
 
     expect(result.current.connectionState).toBe('queued');
     expect(result.current.error).toContain('full capacity');
+  });
+
+  it('teacher initiates frame broadcast (Phase 2 Option A) and student receives live frames', async () => {
+    // 1. Teacher hook in default frame mode
+    const { result: teacherResult } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    await act(async () => {
+      await teacherResult.current.startBroadcast(); // default: 'frame' mode
+    });
+
+    expect(teacherResult.current.isBroadcasting).toBe(true);
+    expect(teacherResult.current.broadcastMode).toBe('frame');
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
+      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame' })
+    );
+
+    // Initial frame written to Firestore liveFrame doc
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
+      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123' })
+    );
+
+    // 2. Student hook joins frame broadcast
+    const { result: studentResult } = renderHook(() =>
+      useTeacherScreenBroadcastStudent({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_999',
+        studentEmail: 'student999@school.edu',
+      })
+    );
+
+    // Session doc updates student with active frame broadcast
+    const sessionCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/session');
+    act(() => {
+      sessionCb({
+        exists: () => true,
+        data: () => ({ isBroadcasting: true, broadcastMode: 'frame', teacherUid: 'teacher_123' }),
+      });
+    });
+
+    expect(studentResult.current.isBroadcastActive).toBe(true);
+    expect(studentResult.current.broadcastMode).toBe('frame');
+
+    // Student joins
+    await act(async () => {
+      await studentResult.current.joinBroadcast();
+    });
+
+    // Student presence registered in Firestore
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcastViewers/student_999' }),
+      expect.objectContaining({ status: 'watching_frame' })
+    );
+
+    // Live frame is delivered to student via Firestore snapshot
+    const liveFrameCb = docListeners.get('classes/CLASS_TEST/screenBroadcast/liveFrame');
+    expect(liveFrameCb).toBeDefined();
+
+    await act(async () => {
+      liveFrameCb({
+        exists: () => true,
+        data: () => ({ frameData: 'data:image/jpeg;base64,mockframe123', frameSeq: 1 }),
+      });
+    });
+
+    expect(studentResult.current.liveFrame).toBe('data:image/jpeg;base64,mockframe123');
+    expect(studentResult.current.connectionState).toBe('connected');
+
+    // Student leaves broadcast
+    await act(async () => {
+      await studentResult.current.leaveBroadcast();
+    });
+
+    expect(studentResult.current.isViewing).toBe(false);
+    expect(studentResult.current.liveFrame).toBeNull();
   });
 });
 

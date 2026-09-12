@@ -592,10 +592,12 @@ const StudentView = ({ user }) => {
     audioStreamRef,
   });
 
-  // WebRTC Receiver Hook for Teacher Screen Broadcast
+  // Receiver Hook for Teacher Screen Broadcast (Classroom Frame Stream / WebRTC)
   const {
     isBroadcastActive: isTeacherBroadcastActive,
     broadcastInfo: teacherBroadcastInfo,
+    broadcastMode: teacherBroadcastMode,
+    liveFrame: teacherLiveFrame,
     remoteStream: teacherRemoteStream,
     connectionState: teacherConnectionState,
     hasAudio: teacherBroadcastHasAudio,
@@ -2353,6 +2355,8 @@ const StudentView = ({ user }) => {
           leaveTeacherBroadcast();
         }}
         remoteStream={teacherRemoteStream}
+        liveFrame={teacherLiveFrame}
+        broadcastMode={teacherBroadcastMode}
         connectionState={teacherConnectionState}
         hasAudio={teacherBroadcastHasAudio}
         isAudioMuted={isTeacherAudioMuted}

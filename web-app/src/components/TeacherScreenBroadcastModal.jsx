@@ -6,6 +6,8 @@ export default function TeacherScreenBroadcastModal({
   onClose,
   screenStream,
   isBroadcasting,
+  broadcastMode = 'frame',
+  frameStats,
   hasAudio,
   viewers = [],
   onStopBroadcast,
@@ -17,6 +19,8 @@ export default function TeacherScreenBroadcastModal({
       videoRef.current.srcObject = screenStream;
     }
   }, [screenStream]);
+
+  if (!isOpen) return null;
 
   const activeCount = viewers.filter((v) => v.status !== 'queued' && (v.connectionState === 'connected' || v.connectionState === 'connecting' || !v.connectionState)).length;
   const queuedCount = viewers.filter((v) => v.status === 'queued').length;
@@ -52,8 +56,19 @@ export default function TeacherScreenBroadcastModal({
             )}
             <div className="broadcast-status-badge">
               <span className="badge-pill live-pill">🔴 LIVE</span>
-              {hasAudio && <span className="badge-pill audio-pill">🔊 Audio Active</span>}
-              <span className="badge-pill viewer-pill">👥 {activeCount} Students Watching {queuedCount > 0 ? `(${queuedCount} queued)` : ''}</span>
+              {broadcastMode === 'frame' ? (
+                <span className="badge-pill" style={{ background: '#059669', color: '#fff' }}>
+                  🌐 Classroom Stream (50+ Students)
+                </span>
+              ) : (
+                <span className="badge-pill" style={{ background: '#2563eb', color: '#fff' }}>
+                  ⚡ WebRTC Video (Max 6)
+                </span>
+              )}
+              {hasAudio && broadcastMode !== 'frame' && <span className="badge-pill audio-pill">🔊 Audio Active</span>}
+              <span className="badge-pill viewer-pill">
+                👥 {activeCount} Students Watching {queuedCount > 0 ? `(${queuedCount} queued)` : ''}
+              </span>
             </div>
           </div>
 
@@ -68,18 +83,41 @@ export default function TeacherScreenBroadcastModal({
                 </span>
               </div>
               <div className="stat-row">
-                <span className="stat-label">Active Slots:</span>
-                <span className="stat-value font-bold">{activeCount} / 6</span>
+                <span className="stat-label">Mode:</span>
+                <span className="stat-value font-bold" style={{ color: broadcastMode === 'frame' ? '#059669' : '#2563eb' }}>
+                  {broadcastMode === 'frame' ? 'Classroom Frame Stream' : 'WebRTC Star Mesh'}
+                </span>
               </div>
-              {queuedCount > 0 && (
-                <div className="stat-row">
-                  <span className="stat-label">Queued Students:</span>
-                  <span className="stat-value text-amber-500 font-bold">{queuedCount}</span>
-                </div>
+              {broadcastMode === 'frame' ? (
+                <>
+                  <div className="stat-row">
+                    <span className="stat-label">Class Capacity:</span>
+                    <span className="stat-value text-success font-bold">50+ Students (Unlimited)</span>
+                  </div>
+                  {frameStats?.emittedFrames > 0 && (
+                    <div className="stat-row">
+                      <span className="stat-label">Frames Published:</span>
+                      <span className="stat-value">{frameStats.emittedFrames}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="stat-row">
+                    <span className="stat-label">Active Slots:</span>
+                    <span className="stat-value font-bold">{activeCount} / 6</span>
+                  </div>
+                  {queuedCount > 0 && (
+                    <div className="stat-row">
+                      <span className="stat-label">Queued Students:</span>
+                      <span className="stat-value text-amber-500 font-bold">{queuedCount}</span>
+                    </div>
+                  )}
+                </>
               )}
               <div className="stat-row">
                 <span className="stat-label">Audio Transport:</span>
-                <span className="stat-value">{hasAudio ? 'Included' : 'Video Only'}</span>
+                <span className="stat-value">{hasAudio && broadcastMode !== 'frame' ? 'Included' : 'Visual Stream'}</span>
               </div>
             </div>
 
@@ -95,7 +133,11 @@ export default function TeacherScreenBroadcastModal({
                     <div key={v.studentUid} className="viewer-item">
                       <span className="viewer-email">{v.studentEmail}</span>
                       <span className={`viewer-status-badge ${v.connectionState}`}>
-                        {v.status === 'queued' ? '⏳ Queued' : v.connectionState === 'connected' ? '🟢 Live' : '⏳ Connecting'}
+                        {v.status === 'queued'
+                          ? '⏳ Queued'
+                          : (broadcastMode === 'frame' || v.status === 'watching_frame' || v.connectionState === 'connected')
+                          ? '🟢 Watching'
+                          : '⏳ Connecting'}
                       </span>
                     </div>
                   ))}

@@ -5,6 +5,8 @@ export default function TeacherScreenViewerModal({
   isOpen,
   onClose,
   remoteStream,
+  liveFrame,
+  broadcastMode = 'frame',
   connectionState,
   hasAudio,
   isAudioMuted,
@@ -58,13 +60,17 @@ export default function TeacherScreenViewerModal({
               🖥️ {broadcastInfo?.teacherEmail ? `${broadcastInfo.teacherEmail}'s Screen` : 'Teacher Screen'}
             </span>
             <span className={`stream-conn-status ${connectionState}`}>
-              {connectionState === 'connected' ? '🟢 Live' : connectionState === 'queued' ? '⏳ In Queue (Capacity Reached)' : '⏳ Connecting...'}
+              {connectionState === 'connected'
+                ? (broadcastMode === 'frame' ? '🟢 Live Classroom Stream (50+ Students)' : '🟢 Live')
+                : connectionState === 'queued'
+                ? '⏳ In Queue (Capacity Reached)'
+                : '⏳ Connecting...'}
             </span>
           </div>
 
           <div className="stream-header-right">
-            {/* Audio Toggle */}
-            {hasAudio && (
+            {/* Audio Toggle (WebRTC only) */}
+            {hasAudio && broadcastMode !== 'frame' && (
               <button
                 className={`stream-tool-btn ${isAudioMuted ? 'muted' : 'active'}`}
                 onClick={onToggleMute}
@@ -113,9 +119,23 @@ export default function TeacherScreenViewerModal({
           </div>
         </div>
 
-        {/* Video Display Area */}
+        {/* Video / Frame Display Area */}
         <div className="teacher-stream-video-box">
-          {remoteStream ? (
+          {broadcastMode === 'frame' || liveFrame ? (
+            liveFrame ? (
+              <img
+                src={liveFrame}
+                alt="Teacher Live Screen"
+                className="teacher-live-video"
+                style={{ objectFit: 'contain', width: '100%', height: '100%', display: 'block', backgroundColor: '#090d16' }}
+              />
+            ) : (
+              <div className="video-loading-state">
+                <div className="loading-spinner" />
+                <p>Receiving classroom screen broadcast...</p>
+              </div>
+            )
+          ) : remoteStream ? (
             <video
               ref={videoRef}
               autoPlay

@@ -17,17 +17,26 @@ describe('Teacher Screen Modals Suite', () => {
       broadcastInfo: { teacherEmail: 'teacher@school.edu' },
     };
 
-    it('renders teacher screen viewer modal with teacher email and controls', () => {
-      render(<TeacherScreenViewerModal {...defaultProps} />);
+    it('renders teacher screen viewer modal with teacher email and live classroom frame stream badge', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} broadcastMode="frame" liveFrame="data:image/jpeg;base64,frame_data" />);
 
       expect(screen.getByText(/teacher@school.edu's Screen/i)).toBeInTheDocument();
+      expect(screen.getByText('🟢 Live Classroom Stream (50+ Students)')).toBeInTheDocument();
+      const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
+      expect(frameImg).toBeInTheDocument();
+      expect(frameImg).toHaveAttribute('src', 'data:image/jpeg;base64,frame_data');
+    });
+
+    it('renders WebRTC live stream badge and sound button when in webrtc mode', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} broadcastMode="webrtc" />);
+
       expect(screen.getByText('🟢 Live')).toBeInTheDocument();
       expect(screen.getByText('🔊 Sound')).toBeInTheDocument();
     });
 
-    it('toggles audio mute when button clicked', () => {
+    it('toggles audio mute when button clicked in webrtc mode', () => {
       const onToggleMute = vi.fn();
-      render(<TeacherScreenViewerModal {...defaultProps} onToggleMute={onToggleMute} />);
+      render(<TeacherScreenViewerModal {...defaultProps} broadcastMode="webrtc" onToggleMute={onToggleMute} />);
 
       const soundBtn = screen.getByRole('button', { name: /Sound/i });
       fireEvent.click(soundBtn);
@@ -78,6 +87,7 @@ describe('Teacher Screen Modals Suite', () => {
       render(
         <TeacherScreenViewerModal
           {...defaultProps}
+          broadcastMode="webrtc"
           broadcastInfo={null}
           connectionState="connecting"
           isAudioMuted={true}
@@ -89,12 +99,12 @@ describe('Teacher Screen Modals Suite', () => {
       expect(screen.getByText('🔇 Muted')).toBeInTheDocument();
     });
 
-    it('attaches remoteStream to video element and calls play', () => {
+    it('attaches remoteStream to video element and calls play in webrtc mode', () => {
       const mockStream = { id: 'stream-1' };
       const playMock = vi.fn().mockRejectedValue(new Error('Autoplay blocked'));
       window.HTMLMediaElement.prototype.play = playMock;
 
-      render(<TeacherScreenViewerModal {...defaultProps} remoteStream={mockStream} />);
+      render(<TeacherScreenViewerModal {...defaultProps} broadcastMode="webrtc" remoteStream={mockStream} />);
 
       const video = document.querySelector('video.teacher-live-video');
       expect(video).toBeInTheDocument();
@@ -105,6 +115,7 @@ describe('Teacher Screen Modals Suite', () => {
       render(
         <TeacherScreenViewerModal
           {...defaultProps}
+          broadcastMode="webrtc"
           connectionState="queued"
         />
       );
@@ -126,35 +137,43 @@ describe('Teacher Screen Modals Suite', () => {
       onClose: vi.fn(),
       screenStream: null,
       isBroadcasting: true,
-      hasAudio: true,
+      broadcastMode: 'frame',
+      frameStats: { emittedFrames: 42 },
+      hasAudio: false,
       viewers: [
-        { studentUid: 's1', studentEmail: 'student1@school.edu', status: 'answered', connectionState: 'connected', joinedAt: new Date() },
-        { studentUid: 's2', studentEmail: 'student2@school.edu', status: 'requesting', connectionState: 'connecting', joinedAt: new Date() },
+        { studentUid: 's1', studentEmail: 'student1@school.edu', status: 'watching_frame', connectionState: 'connected', joinedAt: new Date() },
+        { studentUid: 's2', studentEmail: 'student2@school.edu', status: 'watching_frame', connectionState: 'connected', joinedAt: new Date() },
       ],
       onStopBroadcast: vi.fn(),
     };
 
-    it('renders broadcasting modal with live indicator and viewer count', () => {
+    it('renders broadcasting modal with classroom frame stream metrics', () => {
       render(<TeacherScreenBroadcastModal {...defaultBroadcastProps} />);
 
       expect(screen.getByText(/Live Class Screen Broadcast/i)).toBeInTheDocument();
       expect(screen.getByText(/2 Students Watching/i)).toBeInTheDocument();
       expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
       expect(screen.getByText('student2@school.edu')).toBeInTheDocument();
-      expect(screen.getByText('2 / 6')).toBeInTheDocument();
+      expect(screen.getByText(/Classroom Frame Stream/i)).toBeInTheDocument();
+      expect(screen.getByText(/50\+ Students \(Unlimited\)/i)).toBeInTheDocument();
+      expect(screen.getByText('42')).toBeInTheDocument();
     });
 
-    it('renders queued students count and badge when viewers have queued status', () => {
-      const propsWithQueue = {
+    it('renders WebRTC mode with active slots and queued count', () => {
+      const webrtcProps = {
         ...defaultBroadcastProps,
+        broadcastMode: 'webrtc',
+        hasAudio: true,
         viewers: [
           ...defaultBroadcastProps.viewers,
           { studentUid: 's3', studentEmail: 'student3@school.edu', status: 'queued', connectionState: 'queued', joinedAt: new Date() },
         ],
       };
 
-      render(<TeacherScreenBroadcastModal {...propsWithQueue} />);
+      render(<TeacherScreenBroadcastModal {...webrtcProps} />);
 
+      expect(screen.getByText(/WebRTC Star Mesh/i)).toBeInTheDocument();
+      expect(screen.getByText('2 / 6')).toBeInTheDocument();
       expect(screen.getByText(/Queued Students:/i)).toBeInTheDocument();
       expect(screen.getByText('⏳ Queued')).toBeInTheDocument();
       expect(screen.getByText(/1 queued/i)).toBeInTheDocument();

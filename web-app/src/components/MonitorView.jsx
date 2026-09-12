@@ -60,6 +60,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
   const {
     isBroadcasting: isScreenBroadcasting,
+    broadcastMode,
+    frameStats,
     screenStream: broadcastScreenStream,
     hasAudio: broadcastHasAudio,
     viewers: broadcastViewers,
@@ -1093,6 +1095,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
         isScreenBroadcasting={isScreenBroadcasting}
+        broadcastMode={broadcastMode}
+        frameStats={frameStats}
         broadcastScreenStream={broadcastScreenStream}
         broadcastHasAudio={broadcastHasAudio}
         broadcastViewers={broadcastViewers}
@@ -1333,6 +1337,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         onClose={() => setShowBroadcastModal(false)}
         screenStream={broadcastScreenStream}
         isBroadcasting={isScreenBroadcasting}
+        broadcastMode={broadcastMode}
+        frameStats={frameStats}
         hasAudio={broadcastHasAudio}
         viewers={broadcastViewers}
         onStopBroadcast={stopScreenBroadcast}

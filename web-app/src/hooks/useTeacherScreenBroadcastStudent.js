@@ -17,15 +17,18 @@ const RTC_CONFIG = {
 export default function useTeacherScreenBroadcastStudent({ classId, studentUid, studentEmail }) {
   const [isBroadcastActive, setIsBroadcastActive] = useState(false);
   const [broadcastInfo, setBroadcastInfo] = useState(null);
+  const [broadcastMode, setBroadcastMode] = useState('frame'); // 'frame' | 'webrtc'
+  const [liveFrame, setLiveFrame] = useState(null);
   const [isViewing, setIsViewing] = useState(false);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [connectionState, setConnectionState] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'failed' | 'closed'
+  const [connectionState, setConnectionState] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'failed' | 'closed' | 'queued'
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
   const [error, setError] = useState(null);
 
   const peerConnectionRef = useRef(null);
   const unsubscribeViewerRef = useRef(null);
+  const unsubscribeLiveFrameRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const processedTeacherCandidatesRef = useRef(new Set());
 
@@ -38,14 +41,17 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
       if (snap.exists()) {
         const data = snap.data();
         const active = Boolean(data.isBroadcasting);
+        const mode = data.broadcastMode || 'frame';
         setIsBroadcastActive(active);
         setBroadcastInfo(active ? data : null);
+        setBroadcastMode(mode);
         if (!active && isViewing) {
           leaveBroadcast();
         }
       } else {
         setIsBroadcastActive(false);
         setBroadcastInfo(null);
+        setBroadcastMode('frame');
         if (isViewing) {
           leaveBroadcast();
         }
@@ -57,8 +63,13 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     };
   }, [classId, isViewing]);
 
-  // Clean up WebRTC connection and viewer record
+  // Clean up WebRTC connection, frame subscription, and viewer record
   const leaveBroadcast = useCallback(async () => {
+    if (unsubscribeLiveFrameRef.current) {
+      unsubscribeLiveFrameRef.current();
+      unsubscribeLiveFrameRef.current = null;
+    }
+
     if (unsubscribeViewerRef.current) {
       unsubscribeViewerRef.current();
       unsubscribeViewerRef.current = null;
@@ -94,6 +105,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     }
 
     setIsViewing(false);
+    setLiveFrame(null);
     setRemoteStream(null);
     setConnectionState('idle');
     setHasAudio(false);
@@ -107,6 +119,40 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     setConnectionState('connecting');
     setIsViewing(true);
 
+    const mode = broadcastInfo?.broadcastMode || broadcastMode || 'frame';
+
+    // Phase 2 Option A: Low-Bandwidth Classroom Frame Broadcaster mode
+    if (mode === 'frame') {
+      try {
+        // Register viewer presence so teacher sees who is watching
+        const viewerDocRef = doc(db, `classes/${classId}/screenBroadcastViewers/${studentUid}`);
+        await setDoc(viewerDocRef, {
+          studentUid,
+          studentEmail: studentEmail || 'Student',
+          status: 'watching_frame',
+          joinedAt: serverTimestamp(),
+        });
+
+        // Subscribe to live frame updates from Firestore
+        const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+        unsubscribeLiveFrameRef.current = onSnapshot(liveFrameDocRef, (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data();
+          if (data.frameData) {
+            setLiveFrame(data.frameData);
+            setConnectionState('connected');
+            setError(null);
+          }
+        });
+      } catch (err) {
+        console.error('[Student Screen Broadcast] Error subscribing to frame broadcast:', err);
+        setError(err.message || 'Failed to connect to classroom screen broadcast.');
+        setConnectionState('failed');
+      }
+      return;
+    }
+
+    // Phase 1 WebRTC P2P mode (Max 6 Students)
     try {
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
@@ -228,7 +274,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
       setError(err.message || 'Failed to join screen broadcast.');
       setConnectionState('failed');
     }
-  }, [classId, studentUid, studentEmail]);
+  }, [classId, studentUid, studentEmail, broadcastInfo, broadcastMode]);
 
   // Toggle local mute on incoming audio
   const toggleAudioMute = useCallback(() => {
@@ -252,6 +298,8 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
   return {
     isBroadcastActive,
     broadcastInfo,
+    broadcastMode,
+    liveFrame,
     isViewing,
     remoteStream,
     connectionState,

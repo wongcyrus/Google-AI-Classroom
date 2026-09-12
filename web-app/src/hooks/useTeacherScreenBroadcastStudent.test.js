@@ -8,8 +8,10 @@ vi.mock('../firebase-config', () => ({
 
 const mockUnsubscribeSession = vi.fn();
 const mockUnsubscribeViewer = vi.fn();
+const mockUnsubscribeLiveFrame = vi.fn();
 let sessionSnapshotCallback = null;
 let viewerSnapshotCallback = null;
+let liveFrameSnapshotCallback = null;
 
 const mockUpdateDoc = vi.fn(() => Promise.resolve());
 const mockSetDoc = vi.fn(() => Promise.resolve());
@@ -31,6 +33,10 @@ vi.mock('firebase/firestore', () => ({
       viewerSnapshotCallback = cb;
       return mockUnsubscribeViewer;
     }
+    if (docRef.path.includes('screenBroadcast/liveFrame')) {
+      liveFrameSnapshotCallback = cb;
+      return mockUnsubscribeLiveFrame;
+    }
     return vi.fn();
   }),
 }));
@@ -42,6 +48,7 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
     vi.clearAllMocks();
     sessionSnapshotCallback = null;
     viewerSnapshotCallback = null;
+    liveFrameSnapshotCallback = null;
 
     mockPeerConnection = {
       createAnswer: vi.fn().mockResolvedValue({ type: 'answer', sdp: 'v=0...' }),
@@ -143,6 +150,17 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
     );
 
     await act(async () => {
+      sessionSnapshotCallback({
+        exists: () => true,
+        data: () => ({
+          isBroadcasting: true,
+          broadcastMode: 'webrtc',
+          teacherEmail: 'teacher@school.edu',
+        }),
+      });
+    });
+
+    await act(async () => {
       await result.current.joinBroadcast();
     });
 
@@ -225,6 +243,69 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
     });
     expect(result.current.isViewing).toBe(false);
     expect(mockDeleteDoc).toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('joins frame broadcast (Phase 2 Option A) and updates liveFrame and connectionState', async () => {
+    const { result, unmount } = renderHook(() =>
+      useTeacherScreenBroadcastStudent({
+        classId: 'CLASS_1',
+        studentUid: 'student_123',
+        studentEmail: 'student@school.edu',
+      })
+    );
+
+    // Default mode is frame
+    await act(async () => {
+      sessionSnapshotCallback({
+        exists: () => true,
+        data: () => ({
+          isBroadcasting: true,
+          broadcastMode: 'frame',
+          teacherEmail: 'teacher@school.edu',
+        }),
+      });
+    });
+
+    expect(result.current.broadcastMode).toBe('frame');
+
+    await act(async () => {
+      await result.current.joinBroadcast();
+    });
+
+    expect(result.current.isViewing).toBe(true);
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        studentUid: 'student_123',
+        status: 'watching_frame',
+      })
+    );
+
+    // Simulate incoming liveFrame snapshot
+    expect(liveFrameSnapshotCallback).toBeTypeOf('function');
+    await act(async () => {
+      liveFrameSnapshotCallback({
+        exists: () => true,
+        data: () => ({
+          frameData: 'data:image/jpeg;base64,frame_abc',
+          frameSeq: 1,
+        }),
+      });
+    });
+
+    expect(result.current.liveFrame).toBe('data:image/jpeg;base64,frame_abc');
+    expect(result.current.connectionState).toBe('connected');
+
+    // Leave broadcast
+    await act(async () => {
+      await result.current.leaveBroadcast();
+    });
+
+    expect(result.current.isViewing).toBe(false);
+    expect(result.current.liveFrame).toBeNull();
+    expect(mockUnsubscribeLiveFrame).toHaveBeenCalled();
 
     unmount();
   });

@@ -55,6 +55,8 @@ const ControlsPanel = ({
     handleRunAllImagesAnalysis,
     isAnalyzing = false,
     isScreenBroadcasting: propIsScreenBroadcasting,
+    broadcastMode: propBroadcastMode,
+    frameStats: propFrameStats,
     broadcastScreenStream: propBroadcastScreenStream,
     broadcastHasAudio: propBroadcastHasAudio,
     broadcastViewers: propBroadcastViewers,
@@ -82,6 +84,8 @@ const ControlsPanel = ({
     });
 
     const isScreenBroadcasting = propIsScreenBroadcasting !== undefined ? propIsScreenBroadcasting : localBroadcast.isBroadcasting;
+    const broadcastMode = propBroadcastMode !== undefined ? propBroadcastMode : localBroadcast.broadcastMode;
+    const frameStats = propFrameStats !== undefined ? propFrameStats : localBroadcast.frameStats;
     const broadcastScreenStream = propBroadcastScreenStream !== undefined ? propBroadcastScreenStream : localBroadcast.screenStream;
     const broadcastHasAudio = propBroadcastHasAudio !== undefined ? propBroadcastHasAudio : localBroadcast.hasAudio;
     const broadcastViewers = propBroadcastViewers !== undefined ? propBroadcastViewers : localBroadcast.viewers;
@@ -1483,6 +1487,8 @@ const ControlsPanel = ({
           onClose={() => setShowBroadcastModal(false)}
           screenStream={broadcastScreenStream}
           isBroadcasting={isScreenBroadcasting}
+          broadcastMode={broadcastMode}
+          frameStats={frameStats}
           hasAudio={broadcastHasAudio}
           viewers={broadcastViewers}
           onStopBroadcast={stopScreenBroadcast}
