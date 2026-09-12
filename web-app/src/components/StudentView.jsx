@@ -212,6 +212,8 @@ const StudentView = ({ user }) => {
   const [isAudioUserEnabled, setIsAudioUserEnabled] = useState(true);
   const [classSpeechLanguage, setClassSpeechLanguage] = useState('zh-HK');
   const [lastAudioSegmentStatus, setLastAudioSegmentStatus] = useState(null);
+  const [isClassExamActive, setIsClassExamActive] = useState(false);
+  const [classExamPeriods, setClassExamPeriods] = useState([]);
 
   // Log state updates to selectedMicDeviceId
   useEffect(() => {
@@ -318,7 +320,19 @@ const StudentView = ({ user }) => {
     }
     setSelectedMicDeviceId(actualDeviceId);
   }, [selectedMicDeviceId]);
-  const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady);
+  const isNowInExamPeriod = useMemo(() => {
+    if (isClassExamActive) return true;
+    if (!classExamPeriods || !Array.isArray(classExamPeriods)) return false;
+    const nowMs = Date.now();
+    return classExamPeriods.some(p => {
+      if (!p?.startDate || !p?.endDate) return false;
+      const s = new Date(p.startDate).getTime();
+      const e = new Date(p.endDate).getTime();
+      return !isNaN(s) && !isNaN(e) && nowMs >= s && nowMs <= e;
+    });
+  }, [isClassExamActive, classExamPeriods]);
+
+  const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady || isNowInExamPeriod);
   const isAudioCaptureActive =
     Boolean(enableAudioCapture) &&
     (isSharing || isWebcamSharing || isScreenSharing || isExamActive) &&
@@ -1362,6 +1376,15 @@ const StudentView = ({ user }) => {
         setGemmaIntentPrompt(data.gemmaIntentPrompt || null);
         setLiveAudioPrompt(data.liveAudioPrompt || null);
         setSessionAudioPrompt(data.sessionAudioPrompt || null);
+        if (data.isExamActive !== undefined) {
+          setIsClassExamActive(Boolean(data.isExamActive));
+        }
+        if (data.examPeriods !== undefined) {
+          setClassExamPeriods(data.examPeriods || []);
+        }
+        if (data.isExamActive) {
+          setRequireFullScreenOnly(true);
+        }
       }
     }, (error) => {
       console.error(`Firestore: Error subscribing to class document ${activeClass}:`, error);
@@ -1696,6 +1719,33 @@ const StudentView = ({ user }) => {
           >
             Resume Here
           </button>
+        </div>
+      )}
+
+      {/* Live Exam Mode Protected Session Banner */}
+      {isExamActive && (
+        <div
+          className="exam-security-banner"
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #ef4444',
+            borderRadius: '8px',
+            padding: '0.75rem 1rem',
+            margin: '0.75rem 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <span style={{ fontSize: '1.4rem' }}>🔒</span>
+          <div>
+            <strong style={{ color: '#991b1b', fontSize: '0.92rem' }}>
+              Official Examination in Progress — Proctored Session
+            </strong>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#7f1d1d' }}>
+              Full screen sharing and continuous proctoring are mandatory. Screen recordings and audio transcripts are protected under exam confidentiality policies and will not be shared.
+            </p>
+          </div>
         </div>
       )}
 

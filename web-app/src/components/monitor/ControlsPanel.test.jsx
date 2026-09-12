@@ -479,4 +479,30 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.click(preloadBtn);
     expect(handleBroadcastPreloadAi).toHaveBeenCalled();
   });
+
+  it('renders Live Exam Mode button and calls handleToggleExamMode when clicked', () => {
+    const handleToggleExamMode = vi.fn();
+    const { rerender } = render(
+      <ControlsPanel
+        {...defaultProps}
+        isExamActive={false}
+        handleToggleExamMode={handleToggleExamMode}
+      />
+    );
+
+    const examBtn = screen.getByRole('button', { name: /Exam Mode: OFF/i });
+    expect(examBtn).toBeInTheDocument();
+    fireEvent.click(examBtn);
+    expect(handleToggleExamMode).toHaveBeenCalledTimes(1);
+
+    // Re-render as active
+    rerender(
+      <ControlsPanel
+        {...defaultProps}
+        isExamActive={true}
+        handleToggleExamMode={handleToggleExamMode}
+      />
+    );
+    expect(screen.getByRole('button', { name: /Exam Mode: ACTIVE/i })).toBeInTheDocument();
+  });
 });

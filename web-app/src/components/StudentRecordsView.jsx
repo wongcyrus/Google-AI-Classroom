@@ -137,6 +137,11 @@ const StudentRecordsView = ({ user }) => {
   const [playerVideoUrl, setPlayerVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
 
+  // Audio player state
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const [audioUrlMap, setAudioUrlMap] = useState({});
+  const [audioLoadingId, setAudioLoadingId] = useState(null);
+
   // 1. Fetch Enrolled Classes for Student
   useEffect(() => {
     if (!user?.uid) return;
@@ -602,6 +607,15 @@ const StudentRecordsView = ({ user }) => {
     return classAudioList.filter((a) => isRecordInLesson(a, activeLesson));
   }, [audioRecords, selectedClassId, activeLesson, selectedLessonId]);
 
+  // Audio recorded during exam periods is strictly excluded to protect assessment integrity
+  const visibleAudio = useMemo(() => {
+    return filteredAudio.filter((a) => !isExamRecord(a, activeClassObj));
+  }, [filteredAudio, activeClassObj]);
+
+  const excludedExamAudioCount = useMemo(() => {
+    return filteredAudio.filter((a) => isExamRecord(a, activeClassObj)).length;
+  }, [filteredAudio, activeClassObj]);
+
   // Evaluates recording access status for a given video
   const getRecordingAccessStatus = useCallback((video) => {
     if (isExamVideo(video)) {
@@ -707,6 +721,14 @@ const StudentRecordsView = ({ user }) => {
           return;
         }
       } catch (callErr) {
+        if (
+          callErr.code === 'permission-denied' ||
+          callErr.message?.includes('denied') ||
+          callErr.message?.includes('restricted') ||
+          isExamRecord(video, activeClassObj)
+        ) {
+          throw new Error(callErr.message || 'Access denied: Screen recording is restricted.');
+        }
         console.warn('Callable function getStudentVideoPlaybackUrl failed, falling back to direct storage URL:', callErr);
       }
 
@@ -745,8 +767,16 @@ const StudentRecordsView = ({ user }) => {
         const getStudentVideoPlaybackUrl = httpsCallable(functions, 'getStudentVideoPlaybackUrl');
         const res = await getStudentVideoPlaybackUrl({ jobId: video.id });
         downloadUrl = res?.data?.url;
-      } catch {
-        // fallback
+      } catch (callErr) {
+        if (
+          callErr.code === 'permission-denied' ||
+          callErr.message?.includes('denied') ||
+          callErr.message?.includes('restricted') ||
+          isExamRecord(video, activeClassObj)
+        ) {
+          throw new Error(callErr.message || 'Access denied: Screen recording download is restricted.');
+        }
+        console.warn('Callable function getStudentVideoPlaybackUrl failed for download, falling back to direct storage URL:', callErr);
       }
 
       if (!downloadUrl) {
@@ -765,6 +795,44 @@ const StudentRecordsView = ({ user }) => {
     } catch (err) {
       console.error('Error downloading video:', err);
       alert(`Could not initiate download: ${err.message}`);
+    }
+  };
+
+  // On-demand audio snippet playback handler
+  const handleTogglePlayAudio = async (audioItem) => {
+    if (isExamRecord(audioItem, activeClassObj)) {
+      alert('Audio playback is restricted for exam sessions to safeguard assessment materials.');
+      return;
+    }
+
+    if (playingAudioId === audioItem.id) {
+      setPlayingAudioId(null);
+      return;
+    }
+
+    if (audioUrlMap[audioItem.id]) {
+      setPlayingAudioId(audioItem.id);
+      return;
+    }
+
+    try {
+      setAudioLoadingId(audioItem.id);
+      let resolvedUrl = audioItem.audioUrl;
+      if (!resolvedUrl && audioItem.audioPath) {
+        const fileRef = ref(storage, audioItem.audioPath);
+        resolvedUrl = await getDownloadURL(fileRef);
+      }
+      if (resolvedUrl) {
+        setAudioUrlMap((prev) => ({ ...prev, [audioItem.id]: resolvedUrl }));
+        setPlayingAudioId(audioItem.id);
+      } else {
+        alert('No audio file found for this recording.');
+      }
+    } catch (err) {
+      console.error('Error resolving audio URL:', err);
+      alert('Unable to load audio playback snippet.');
+    } finally {
+      setAudioLoadingId(null);
     }
   };
 
@@ -979,8 +1047,8 @@ const StudentRecordsView = ({ user }) => {
           aria-selected={activeTab === 'audio'}
         >
           <span>🎙️</span> Audio Transcripts
-          {filteredAudio.length > 0 && (
-            <span className="tab-badge">{filteredAudio.length}</span>
+          {visibleAudio.length > 0 && (
+            <span className="tab-badge">{visibleAudio.length}</span>
           )}
         </button>
       </div>
@@ -1774,7 +1842,11 @@ const StudentRecordsView = ({ user }) => {
                       </td>
                       <td>
                         <div>{irreg.reason || 'Telemetry deviation detected.'}</div>
-                        {irreg.metadata && (
+                        {isExamRecord(irreg, activeClassObj) ? (
+                          <div className="pill-badge pill-neutral" style={{ marginTop: '4px', fontSize: '0.72rem' }}>
+                            🔒 Exam Session: Media and snapshots shielded for test confidentiality
+                          </div>
+                        ) : irreg.metadata && (
                           <div className="evidence-box">
                             {irreg.metadata.details || JSON.stringify(irreg.metadata)}
                           </div>
@@ -1798,13 +1870,26 @@ const StudentRecordsView = ({ user }) => {
               Speech-to-text transcript snippets logged during active audio monitoring for {activeClassObj?.name || selectedClassId}
             </small>
           </div>
-          {filteredAudio.length === 0 ? (
+
+          {(excludedExamAudioCount > 0 || isExamRecord(activeLesson, activeClassObj)) && (
+            <div className="exam-security-banner" style={{ marginBottom: '1rem' }}>
+              <div className="exam-security-banner-icon">🔒</div>
+              <div className="exam-security-banner-content">
+                <strong>Assessment Confidentiality: Exam Audio Restricted</strong>
+                <p>
+                  Audio transcripts and recordings captured during scheduled examination periods are protected and withheld from student access to maintain test confidentiality.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {visibleAudio.length === 0 ? (
             <div className="empty-state-box">
               <div className="empty-state-icon">🎙️</div>
               <div className="empty-state-text">
                 {activeLesson
-                  ? `No audio transcripts recorded for this lesson (${formatDate(activeLesson.startTime)}). Transcripts from lab discussions and AI speech audits will appear here.`
-                  : 'No audio transcripts recorded yet for this class. Transcripts from lab discussions and AI speech audits will appear here.'}
+                  ? `No audio transcripts available for this lesson (${formatDate(activeLesson.startTime)}). Transcripts from non-exam discussions will appear here.`
+                  : 'No audio transcripts recorded yet for this class.'}
               </div>
               {activeLesson && (
                 <button
@@ -1825,10 +1910,11 @@ const StudentRecordsView = ({ user }) => {
                     <th>Timestamp</th>
                     <th>Language</th>
                     <th>Detected Speech Transcript</th>
+                    <th>Audio Clip</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAudio.map((a) => (
+                  {visibleAudio.map((a) => (
                     <tr key={a.id}>
                       <td style={{ fontWeight: 600 }}>{formatDate(a.timestamp)}</td>
                       <td>
@@ -1839,6 +1925,36 @@ const StudentRecordsView = ({ user }) => {
                           <blockquote className="transcript-quote">{a.transcript}</blockquote>
                         ) : (
                           <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>[No speech detected in sample]</span>
+                        )}
+                      </td>
+                      <td>
+                        {(a.audioPath || a.audioUrl) ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <button
+                              type="button"
+                              className="action-btn-small"
+                              onClick={() => handleTogglePlayAudio(a)}
+                              disabled={audioLoadingId === a.id}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
+                            >
+                              {audioLoadingId === a.id
+                                ? '⏳ Loading...'
+                                : playingAudioId === a.id
+                                ? '⏹ Stop'
+                                : '▶ Play Clip'}
+                            </button>
+                            {playingAudioId === a.id && audioUrlMap[a.id] && (
+                              <audio
+                                controls
+                                autoPlay
+                                src={audioUrlMap[a.id]}
+                                style={{ height: '30px', width: '180px', marginTop: '4px' }}
+                                onEnded={() => setPlayingAudioId(null)}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>No audio file</span>
                         )}
                       </td>
                     </tr>

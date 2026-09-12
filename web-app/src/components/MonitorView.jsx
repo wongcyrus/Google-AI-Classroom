@@ -106,6 +106,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [enableCloudFallback, setEnableCloudFallback] = useState(false);
   const [cloudFallbackRate, setCloudFallbackRate] = useState(3);
+  const [isExamActive, setIsExamActive] = useState(false);
 
   // Voice AI States
   const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
@@ -350,6 +351,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         }
         if (data.enableAudioCapture !== undefined) {
           setEnableAudioCapture(data.enableAudioCapture);
+        }
+        if (data.isExamActive !== undefined) {
+          setIsExamActive(Boolean(data.isExamActive));
         }
 
         const classCapture = data.captureMode || data.settings?.captureMode;
@@ -845,6 +849,22 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     }
   }, [classId]);
 
+  const handleToggleExamMode = useCallback(async () => {
+    if (!classId) return;
+    try {
+      const classRef = doc(db, 'classes', classId);
+      const nextState = !isExamActive;
+      await updateDoc(classRef, {
+        isExamActive: nextState,
+        examActiveUpdatedAt: serverTimestamp(),
+      });
+      setIsExamActive(nextState);
+    } catch (err) {
+      console.error('Error toggling exam mode:', err);
+      alert(`Could not update Exam Mode: ${err.message}`);
+    }
+  }, [classId, isExamActive]);
+
   const handleDownloadAttendance = () => {
     const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
@@ -1125,6 +1145,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         toggleCapture={toggleCapture}
         isPaused={isPaused}
         setIsPaused={setIsPaused}
+        isExamActive={isExamActive}
+        handleToggleExamMode={handleToggleExamMode}
         setShowPromptModal={setShowPromptModal}
         notSharingStudents={notSharingStudents}
         setShowNotSharingModal={setShowNotSharingModal}
@@ -1359,6 +1381,31 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
             />
           )}
         </div>
+        {isExamActive && (
+          <div
+            className="exam-security-banner"
+            style={{
+              margin: '0.5rem 1rem 0.75rem',
+              background: '#fef2f2',
+              border: '1px solid #f87171',
+              borderRadius: '8px',
+              padding: '0.65rem 1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}
+          >
+            <span style={{ fontSize: '1.25rem' }}>🔒</span>
+            <div>
+              <strong style={{ color: '#991b1b', fontSize: '0.9rem' }}>
+                PROCTORED EXAM MODE ACTIVE
+              </strong>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#7f1d1d' }}>
+                Assessment confidentiality safeguards are enforced. Screen recordings, audio transcripts, and irregularity evidence will be withheld from student records.
+              </p>
+            </div>
+          </div>
+        )}
         <StudentsGrid
           reviewTime={reviewTime}
           classList={classList}

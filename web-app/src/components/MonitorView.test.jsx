@@ -5,6 +5,52 @@ import MonitorView from './MonitorView';
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg_1' });
 const mockUpdateDoc = vi.fn().mockResolvedValue();
+let currentExamActive = false;
+const fixedDate = new Date('2026-08-30T08:30:00Z');
+
+const mockOnSnapshot = vi.fn((ref, cb) => {
+  // Return sample student data
+  cb({
+    exists: () => true,
+    docs: [
+      {
+        id: 's_1',
+        data: () => ({
+          email: 'student1@school.edu',
+          isSharing: true,
+          isWebcamSharing: true,
+          isAudioSharing: true,
+          faceStatus: 'normal',
+          timestamp: fixedDate,
+        }),
+      },
+      {
+        id: 's_2',
+        data: () => ({
+          email: 'student2@school.edu',
+          isSharing: false,
+          isWebcamSharing: false,
+          isAudioSharing: false,
+          faceStatus: 'looking_away',
+          yawAngle: 32,
+          timestamp: fixedDate,
+        }),
+      },
+    ],
+    data: () => ({
+      students: {
+        s_1: 'student1@school.edu',
+        s_2: 'student2@school.edu',
+      },
+      settings: {
+        captureMode: 'dual',
+        enableAudioCapture: true,
+      },
+      isExamActive: currentExamActive,
+    }),
+  });
+  return () => {};
+});
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -13,8 +59,6 @@ vi.mock('../firebase-config', () => ({
     currentUser: { uid: 'teacher_1', email: 'teacher@school.edu' },
   },
 }));
-
-const fixedDate = new Date('2026-08-30T08:30:00Z');
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
@@ -27,48 +71,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: (...args) => mockUpdateDoc(...args),
   serverTimestamp: vi.fn(),
   getDocs: vi.fn().mockResolvedValue({ docs: [] }),
-  onSnapshot: vi.fn((ref, cb) => {
-    // Return sample student data
-    cb({
-      exists: () => true,
-      docs: [
-        {
-          id: 's_1',
-          data: () => ({
-            email: 'student1@school.edu',
-            isSharing: true,
-            isWebcamSharing: true,
-            isAudioSharing: true,
-            faceStatus: 'normal',
-            timestamp: fixedDate,
-          }),
-        },
-        {
-          id: 's_2',
-          data: () => ({
-            email: 'student2@school.edu',
-            isSharing: false,
-            isWebcamSharing: false,
-            isAudioSharing: false,
-            faceStatus: 'looking_away',
-            yawAngle: 32,
-            timestamp: fixedDate,
-          }),
-        },
-      ],
-      data: () => ({
-        students: {
-          s_1: 'student1@school.edu',
-          s_2: 'student2@school.edu',
-        },
-        settings: {
-          captureMode: 'dual',
-          enableAudioCapture: true,
-        },
-      }),
-    });
-    return () => {};
-  }),
+  onSnapshot: (...args) => mockOnSnapshot(...args),
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -141,6 +144,7 @@ describe('MonitorView Component Suite', () => {
   };
 
   beforeEach(() => {
+    currentExamActive = false;
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     window.alert = vi.fn();
@@ -464,6 +468,30 @@ describe('MonitorView Component Suite', () => {
     });
 
     expect(screen.getByRole('button', { name: /◀ Hide Controls/i })).toBeInTheDocument();
+  });
+
+  it('renders PROCTORED EXAM MODE ACTIVE banner and updates Firestore when toggled', async () => {
+    currentExamActive = true;
+
+    render(<MonitorView {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/PROCTORED EXAM MODE ACTIVE/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Assessment confidentiality safeguards are enforced/i)).toBeInTheDocument();
+
+    // The Exam Mode button in ControlsPanel should show ACTIVE
+    const examModeBtn = screen.getByRole('button', { name: /Exam Mode: ACTIVE/i });
+    expect(examModeBtn).toBeInTheDocument();
+
+    // Clicking it should call updateDoc with isExamActive: false
+    await act(async () => {
+      fireEvent.click(examModeBtn);
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ isExamActive: false })
+    );
   });
 });
 

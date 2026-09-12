@@ -18,6 +18,8 @@ vi.mock('../firebase-config', () => ({
   functions: {},
 }));
 
+let testExamActive = false;
+let testExamPeriods = [];
 let snapshotCallbacks = [];
 const mockDoc = vi.fn((db, ...args) => ({ path: args.join('/'), id: args[args.length - 1] }));
 const mockCollection = vi.fn((db, ...args) => ({ path: args.join('/') }));
@@ -35,6 +37,8 @@ const mockOnSnapshot = vi.fn((refOrQuery, callback) => {
           enableAudioCapture: true,
           audioCaptureMode: 'optional',
           captureMode: 'dual',
+          isExamActive: testExamActive,
+          examPeriods: testExamPeriods,
           schedule: {
             startDate: '2026-08-01',
             endDate: '2026-12-31',
@@ -53,6 +57,8 @@ const mockOnSnapshot = vi.fn((refOrQuery, callback) => {
       enableAudioCapture: true,
       audioCaptureMode: 'optional',
       captureMode: 'dual',
+      isExamActive: testExamActive,
+      examPeriods: testExamPeriods,
       schedule: {
         startDate: '2026-08-01',
         endDate: '2026-12-31',
@@ -190,6 +196,8 @@ describe('StudentView Component Extended Test Suite', () => {
   };
 
   beforeEach(() => {
+    testExamActive = false;
+    testExamPeriods = [];
     vi.clearAllMocks();
     window.alert = vi.fn();
     snapshotCallbacks = [];
@@ -729,6 +737,18 @@ describe('StudentView Component Extended Test Suite', () => {
     );
 
     navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
+  });
+
+  it('renders Official Examination banner when exam is active in class', async () => {
+    testExamActive = true;
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Official Examination in Progress — Proctored Session/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/Full screen sharing and continuous proctoring are mandatory/i)
+    ).toBeInTheDocument();
   });
 });
 

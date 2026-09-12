@@ -31,6 +31,26 @@ const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after mul
   }
 };
 
+export const isExamTimeRange = (startTime, endTime, examPeriods = []) => {
+  if (!examPeriods || !Array.isArray(examPeriods) || examPeriods.length === 0) return false;
+  const jobStartMs = new Date(startTime).getTime();
+  const jobEndMs = new Date(endTime).getTime();
+  if (isNaN(jobStartMs) && isNaN(jobEndMs)) return false;
+
+  return examPeriods.some((p) => {
+    if (!p?.startDate || !p?.endDate) return false;
+    const pStartMs = new Date(p.startDate).getTime();
+    const pEndMs = new Date(p.endDate).getTime();
+    if (isNaN(pStartMs) || isNaN(pEndMs)) return false;
+
+    const start = isNaN(jobStartMs) ? jobEndMs : jobStartMs;
+    const end = isNaN(jobEndMs) ? jobStartMs : jobEndMs;
+    return (start >= pStartMs && start <= pEndMs) ||
+           (end >= pStartMs && end <= pEndMs) ||
+           (start <= pStartMs && end >= pEndMs);
+  });
+};
+
 export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
   if (!ffmpegPathSet) {
     ffmpeg.setFfmpegPath(ffmpeg_static);
@@ -201,18 +221,39 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     const duration = videoStats.format.duration;
     const size = videoStats.format.size;
 
+    const isExamSession = Boolean(
+      jobData.isExam ||
+      isExamTimeRange(startTime, endTime, classData?.examPeriods)
+    );
+
     const destinationPath = `videos/${classId}/${outputVideoName}`;
     await retry(() => bucket.upload(outputVideoPath, {
       destination: destinationPath,
       metadata: {
         contentType: 'video/mp4',
-        metadata: { classId, studentUid, studentEmail, startTime, endTime, duration, size }
+        metadata: {
+          classId,
+          studentUid,
+          studentEmail,
+          startTime,
+          endTime,
+          duration,
+          size,
+          isExam: isExamSession ? 'true' : 'false'
+        }
       }
     }), 3, 2000, 'Failed to upload video after multiple retries.');
 
-    console.log(`Video uploaded to ${destinationPath}`);
+    console.log(`Video uploaded to ${destinationPath} (isExam: ${isExamSession})`);
 
-    await jobRef.update({ status: 'completed', finishedAt: new Date(), videoPath: destinationPath, duration, size });
+    await jobRef.update({
+      status: 'completed',
+      finishedAt: new Date(),
+      videoPath: destinationPath,
+      duration,
+      size,
+      isExam: isExamSession
+    });
 
     // Clean up local files
     fs.rmSync(tempDir, { recursive: true, force: true });

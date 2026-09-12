@@ -50,10 +50,11 @@ service firebase.storage {
     }
 
     match /videos/{classId}/{videoId} {
-      // Allow authenticated teachers to read any video in a class, or the student who owns the video.
+      // Allow authenticated teachers to read any video in a class.
+      // Students can only read non-exam videos that belong to them.
       allow read: if request.auth != null && (
         request.auth.token.role == 'teacher' ||
-        resource.metadata.studentUid == request.auth.uid
+        (resource.metadata.studentUid == request.auth.uid && resource.metadata.isExam != 'true')
       );
       allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }

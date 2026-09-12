@@ -295,6 +295,33 @@ const ControlsPanel = ({
               </div>
             )}
 
+            {/* Live Exam Mode Toggle */}
+            <div style={{ marginTop: '6px' }}>
+              <button 
+                type="button"
+                onClick={handleToggleExamMode} 
+                className={isExamActive ? 'danger-action-btn' : 'secondary-action'}
+                style={{ 
+                  width: '100%',
+                  fontSize: '0.84rem', 
+                  padding: '0.55rem 0.75rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '6px', 
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  background: isExamActive ? '#dc2626' : '#ffffff',
+                  color: isExamActive ? '#ffffff' : '#475569',
+                  border: isExamActive ? '1px solid #b91c1c' : '1px solid #cbd5e1',
+                  boxShadow: isExamActive ? '0 0 8px rgba(220,38,38,0.35)' : 'none'
+                }}
+                title={isExamActive ? 'Click to deactivate live exam mode' : 'Click to activate official exam protection'}
+              >
+                <span>{isExamActive ? '🔒 Exam Mode: ACTIVE' : '📝 Exam Mode: OFF'}</span>
+              </button>
+            </div>
+
             {/* Media Stream Channels (Screen, Webcam, Voice) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px' }}>
               {/* Channel 1: Video Recording Mode (Class Setting) */}

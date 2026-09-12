@@ -1191,6 +1191,230 @@ describe('StudentRecordsView Component', () => {
         expect(screen.getByText(/All Lessons \/ Full Semester \(1\)/i)).toBeInTheDocument();
       });
     });
+
+    it('shields exam speech transcripts and displays confidentiality banner in Tab 5', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM_AUDIO'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM_AUDIO') {
+          return {
+            exists: () => true,
+            id: 'CLASS_EXAM_AUDIO',
+            data: () => ({
+              name: 'Exam Audio Test Class',
+              examPeriods: [
+                {
+                  id: 'ep-1',
+                  startDate: '2026-09-15T09:00:00Z',
+                  endDate: '2026-09-15T11:00:00Z'
+                }
+              ]
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'audio-regular',
+                data: () => ({
+                  classId: 'CLASS_EXAM_AUDIO',
+                  studentUid: 'student-test-123',
+                  transcript: 'Regular class group discussion on linked lists.',
+                  timestamp: '2026-09-14T10:00:00Z',
+                  language: 'en',
+                  audioPath: 'audio/CLASS_EXAM_AUDIO/student-test-123/regular.webm'
+                })
+              },
+              {
+                id: 'audio-exam',
+                data: () => ({
+                  classId: 'CLASS_EXAM_AUDIO',
+                  studentUid: 'student-test-123',
+                  transcript: 'Secret exam answer discussion for question 3.',
+                  timestamp: '2026-09-15T09:30:00Z',
+                  language: 'en',
+                  audioPath: 'audio/CLASS_EXAM_AUDIO/student-test-123/exam.webm'
+                })
+              }
+            ]
+          };
+        }
+        return { docs: [] };
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Exam Audio Test Class/i).length).toBeGreaterThan(0);
+      });
+
+      // Navigate to Tab 5: Audio Transcripts
+      const audioTabBtn = screen.getByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTabBtn);
+
+      // Verify confidentiality banner
+      await waitFor(() => {
+        expect(screen.getByText(/Assessment Confidentiality: Exam Audio Restricted/i)).toBeInTheDocument();
+      });
+
+      // Regular audio should be visible
+      expect(screen.getByText(/Regular class group discussion on linked lists/i)).toBeInTheDocument();
+
+      // Exam audio MUST NOT be visible!
+      expect(screen.queryByText(/Secret exam answer discussion for question 3/i)).not.toBeInTheDocument();
+    });
+
+    it('shields irregularity evidence details during exam sessions in Tab 4', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM_IRREG'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM_IRREG') {
+          return {
+            exists: () => true,
+            id: 'CLASS_EXAM_IRREG',
+            data: () => ({
+              name: 'Exam Irregularity Class',
+              examPeriods: [
+                {
+                  id: 'ep-1',
+                  startDate: '2026-09-15T09:00:00Z',
+                  endDate: '2026-09-15T11:00:00Z'
+                }
+              ]
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+
+        if (colPath && colPath.includes('irregularities')) {
+          return {
+            docs: [
+              {
+                id: 'irreg-exam',
+                data: () => ({
+                  classId: 'CLASS_EXAM_IRREG',
+                  studentUid: 'student-test-123',
+                  type: 'MULTI_FACE',
+                  severity: 'high',
+                  reason: 'Secondary person detected in test area.',
+                  timestamp: '2026-09-15T10:00:00Z',
+                  metadata: {
+                    details: 'Confidential prompt injection payload or screenshot evidence',
+                    imagePath: 'irregularities/CLASS_EXAM_IRREG/test.jpg'
+                  }
+                })
+              }
+            ]
+          };
+        }
+        return { docs: [] };
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Exam Irregularity Class/i).length).toBeGreaterThan(0);
+      });
+
+      // Switch to Tab 4: Integrity & Alerts
+      const tabBtn = screen.getByRole('tab', { name: /Integrity & Alerts/i });
+      fireEvent.click(tabBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText(/MULTI_FACE/i)).toBeInTheDocument();
+        expect(screen.getByText(/Secondary person detected in test area/i)).toBeInTheDocument();
+      });
+
+      // Shield banner should be shown instead of raw metadata details
+      expect(screen.getByText(/🔒 Exam Session: Media and snapshots shielded for test confidentiality/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Confidential prompt injection payload/i)).not.toBeInTheDocument();
+    });
+
+    it('aborts getDownloadURL fallback if backend callable denies permission', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_SEC'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_SEC') {
+          return {
+            exists: () => true,
+            id: 'CLASS_SEC',
+            data: () => ({
+              name: 'Security Test Class',
+              studentRecordingsPolicy: 'always_enabled'
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('videoJobs')) {
+          return {
+            docs: [
+              {
+                id: 'job-sec-1',
+                data: () => ({
+                  classId: 'CLASS_SEC',
+                  studentUid: 'student-test-123',
+                  videoPath: 'videos/CLASS_SEC/secret.mp4',
+                  status: 'completed',
+                  duration: 60,
+                  size: 1024,
+                  startTime: '2026-09-12T10:00:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      // Mock callable to reject with permission-denied
+      mockHttpsCallable.mockImplementation(() => {
+        return vi.fn().mockRejectedValue({
+          code: 'permission-denied',
+          message: 'Access denied by instructor exam policy.'
+        });
+      });
+
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Security Test Class/i).length).toBeGreaterThan(0);
+      });
+
+      const watchBtn = await screen.findByRole('button', { name: /▶ Watch/i });
+      fireEvent.click(watchBtn);
+
+      await waitFor(() => {
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Access denied by instructor exam policy'));
+      });
+
+      // getDownloadURL must NEVER have been called!
+      expect(mockGetDownloadURL).not.toHaveBeenCalled();
+
+      alertSpy.mockRestore();
+    });
   });
 });
 
