@@ -15,10 +15,10 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **06:00 – 18:00** | **02 | Hybrid Architecture** | 4-Tier Hybrid Cloud on GCP, Cloud Functions Gen 2 on Cloud Run, Firestore Optimization | Slides 5–7 |
 | **18:00 – 30:00** | **03 | Vertex AI & Gemini** | Gemini 3 Suite Routing, Genkit Resilience Interceptor, Structured Schemas | Slides 8–10 |
 | **30:00 – 42:00** | **04 | Edge AI & Privacy** | MediaPipe Mesh, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 11–14 |
-| **42:00 – 47:00** | **05 & 06 | Security & Media** | Zero-Trust Exam Mode & Portal Shielding, WebRTC Peek & Pure Frame Broadcaster | Slides 15–16 |
-| **47:00 – 52:00** | **07 & 08 | Video AI & FinOps** | Teacher Command Center, FFmpeg TTL, Map-Reduce-Map Milestone Matrix, Cloud FinOps | Slides 17–20 |
-| **52:00 – 56:00** | **09 | DevSecOps & Demo** | Incident Dossier Pipeline, 750+ Tests Testing Pyramid, 5-Stage Live Verification | Slides 21–23 |
-| **56:00 – 60:00** | **10 | Conclusion & Q&A** | Summary, Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 24 |
+| **42:00 – 47:00** | **05 & 06 | Security & Media** | Zero-Trust Exam Mode, Bingo Active Presence & 2-Strike Verification, WebRTC Peek & Pure Frame Broadcaster | Slides 15–17 |
+| **47:00 – 52:00** | **07 & 08 | Video AI & FinOps** | Teacher Command Center, FFmpeg TTL, Map-Reduce-Map Milestone Matrix, Cloud FinOps | Slides 18–21 |
+| **52:00 – 56:00** | **09 | DevSecOps & Demo** | Incident Dossier Pipeline, 831+ Tests Testing Pyramid, 5-Stage Live Verification | Slides 22–24 |
+| **56:00 – 60:00** | **10 | Conclusion & Q&A** | Summary, Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 25 |
 
 ---
 
@@ -238,7 +238,33 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 45:00 – 47:00 | Slide 16: 06 | Real-Time Classroom Media Pipelines
+### 44:00 – 46:00 | Slide 16: Bingo Active Presence & 2-Strike Anti-AFK Verification
+*Visual: `slide_bingo_active_presence.png`*
+
+> **Cyrus Wong:**  
+> "In hybrid and remote technical learning, a persistent challenge is students leaving laptops running while physically walking away—Away From Keyboard (AFK)—or running pre-recorded loopers.
+>
+> To solve this with absolute fairness and zero cognitive overhead, we architected the **Bingo Active Presence & 2-Strike Anti-AFK Verification System**:
+>
+> 1. **3 Sourced FinOps Question Modes:**
+>    - **Predefined Question Bank ($0.00 zero-AI cost):** Instantly selects verified questions from the class pool with zero cloud AI API overhead.
+>    - **Teacher Screen Broadcast:** 1 single Gemini call analyzes the teacher's current slide or code snippet and broadcasts the challenge to 50+ students simultaneously—costing less than a fraction of a penny.
+>    - **Student Screen Inspection:** On-demand individual inspection for flagged anomaly cases.
+> 2. **Student Experience & Anti-Cheat Controls:**
+>    - When challenged, a gentle Web Audio chime alerts the student, triggering a modal with a **45-second circular countdown timer** that shifts to a pulsing red warning under 10 seconds.
+>    - The system inspects `document.hasFocus()` to ensure the student was actively interacting with the assessment environment.
+>    - Answer indices are strictly validated server-side and never leaked into client DOM.
+> 3. **2-Strike Cloud Tasks State Machine:**
+>    - **Strike 1 Miss / Timeout:** Rather than penalizing a student who was momentarily in the restroom, the system enqueues a delayed retry into **Google Cloud Tasks** (`dispatchBingoRetryTask`) with a configurable teacher grace delay (1 to 15 minutes, defaulting to 3 minutes).
+>    - **Strike 2 Miss / Timeout:** Consecutive failure confirms unverified absence, immediately triggering an **Attendance Penalty**.
+> 4. **Attendance Penalty Voiding:**
+>    - Automatically voids unverified elapsed minutes using attendance bitmask code `2` (`attendanceAdjustments`), dynamically updating lesson duration, screen-time heatmaps, and student record audit logs.
+> 5. **Question Bank Management:**
+>    - Teachers import questions in bulk via Aiken format or JSON arrays, or click **Generate with AI** where **Gemini 3.5 Flash Lite** drafts multiple-choice questions with structured schemas in seconds."
+
+---
+
+### 46:00 – 48:00 | Slide 17: 06 | Real-Time Classroom Media Pipelines
 *Visual: `slide_realtime_media_pipelines.png`*
 
 > **Cyrus Wong:**  
@@ -253,7 +279,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 47:00 – 49:00 | Slide 17: Teacher Command Center: Solving Cognitive Overload
+### 48:00 – 50:00 | Slide 18: Teacher Command Center: Solving Cognitive Overload
 *Visual: `slide_teacher_command_center.png`*
 
 > **Cyrus Wong:**  
@@ -266,7 +292,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 49:00 – 51:00 | Slide 18: Cloud Media Lifecycle & Automated Storage Governance
+### 50:00 – 51:00 | Slide 19: Cloud Media Lifecycle & Automated Storage Governance
 *Visual: `slide_cloud_storage_ffmpeg_ttl.png`*
 
 > **Cyrus Wong:**  
@@ -284,7 +310,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 51:00 – 53:00 | Slide 19: 07 | Serverless Map-Reduce-Map Video Intelligence Pipeline
+### 51:00 – 53:00 | Slide 20: 07 | Serverless Map-Reduce-Map Video Intelligence Pipeline
 *Visual: `slide_map_reduce_ai_jobs.png`*
 
 > **Cyrus Wong:**  
@@ -296,7 +322,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 53:00 – 54:00 | Slide 20: 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
+### 53:00 – 54:00 | Slide 21: 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
 *Visual: `slide_ai_cost_finops.png`*
 
 > **Cyrus Wong:**  
@@ -304,12 +330,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > - Commercial surveillance SaaS costs **$15 to $25 per student per exam**. For a 50-student class, that is $750.00 to $1,250.00.
 > - With our edge-first hybrid architecture, 95% of compute occurs locally on student devices. Cloud audio is pre-filtered by 80% silence reduction, and screenshots are compiled into compact MP4s.
+> - In active presence verification, our Predefined Question Bank mode incurs **$0.00 AI cost**, while 1-to-many Teacher Broadcast runs at just **$0.000075 per check** for 50 students!
 > - The total Google Cloud cost for a 50-student, 2-hour exam is **$0.85 total—less than two cents per student!**
 > - In addition, we ingest live Google Cloud Billing Catalog API SKU rates to provide real-time budget forecasting and automated alerts in the teacher dashboard."
 
 ---
 
-### 54:00 – 55:00 | Slide 21: Academic Integrity Incident Dossier Pipeline
+### 54:00 – 55:00 | Slide 22: Academic Integrity Incident Dossier Pipeline
 *Visual: `slide_incident_dossier_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -322,22 +349,23 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 55:00 – 56:00 | Slide 22: 09 | DevSecOps & Production Reliability Engineering
+### 55:00 – 56:00 | Slide 23: 09 | DevSecOps & Production Reliability Engineering
 *Visual: `slide_devsecops_safeguards.png`*
 
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **750+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 603 tests across 87 suites achieving **>80% code coverage** in `web-app`.
->   - **Level 2 (Backend Cloud Functions):** 98 tests across 6 domain codebases.
->   - **Level 3 (Security Rules):** 23 real-token isolation test scenarios.
+> - **831+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 633 tests across 90 suites achieving **>80% code coverage** in `web-app`.
+>   - **Level 2 (Backend Cloud Functions):** 139 tests across 6 domain codebases (including 94.2% attendance coverage).
+>   - **Level 3 (Security Rules):** 29 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
+>   - **Admin Suite:** 2 validation tests.
 > - **Dual-Environment CI/CD:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects, with pre-bundling validation in `vite.config.js` to prevent credential cross-contamination."
 
 ---
 
-### 56:00 – 58:00 | Slide 23: Live System Demonstration: 5-Stage Verification Flow
+### 56:00 – 58:00 | Slide 24: Live System Demonstration: 5-Stage Verification Flow
 *Visual: `slide_live_demo_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -345,13 +373,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > 1. **Student Onboarding:** The student launches the web app, completing the 3-step hardware readiness wizard with full-screen display sharing, dual webcam calibration, and microphone check.
 > 2. **Teacher Live Grid:** The instructor opens the Command Center, filtering students by zero-space compliance status.
-> 3. **Simulated Anomaly:** A student looks away toward a phone; on-device MediaPipe flags looking-away telemetry in under 200 milliseconds.
+> 3. **Active Presence Check:** The teacher triggers a Bingo check; students receive the chime alert and respond within 45 seconds with window focus detection, while delayed Cloud Tasks handle retries.
 > 4. **Targeted Intervention:** The instructor presses `N` to send an instant focus alert, or initiates a 30 FPS WebRTC Live Peek.
-> 5. **Instant Verification:** The instructor reviews the synchronized audio waveform seek player and exports the formal incident dossier."
+> 5. **Instant Verification:** The instructor reviews the synchronized audio waveform seek player, inspects attendance adjustments, and exports the formal incident dossier."
 
 ---
 
-### 58:00 – 60:00 | Slide 24: 10 | Empowering Education with Google Cloud & Edge AI
+### 58:00 – 60:00 | Slide 25: 10 | Empowering Education with Google Cloud & Edge AI
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  

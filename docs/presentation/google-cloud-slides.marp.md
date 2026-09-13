@@ -315,6 +315,28 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Bingo Active Presence & 2-Strike Anti-AFK Verification
+### Sourced Question Modes, Cloud Tasks Delayed Retries & Attendance Voiding
+
+![bg right:60% 95%](images/slide_bingo_active_presence.png)
+
+- **3 Sourced FinOps Question Modes:**
+  - **Question Bank ($0.00 zero-AI):** Instant local dispatch from class question pool.
+  - **Teacher Screen Broadcast:** 1 single Gemini call generates questions for 50+ students.
+  - **Student Screen Inspection:** On-demand individual deep verification.
+- **Client Experience & Anti-Cheat:**
+  - Web Audio chime synthesis alert + 45s countdown timer (pulsing red under 10s).
+  - Window focus detection (`document.hasFocus()`) + zero DOM answer leakage.
+- **2-Strike Cloud Tasks State Machine:**
+  - **Strike 1 Miss / Timeout:** Enqueues delayed retry via Google Cloud Tasks with configurable teacher grace delay (`bingoRetryDelayMinutes`: 1m, 2m, 3m, 5m, 10m).
+  - **Strike 2 Miss:** Unverified AFK confirmed; applies Attendance Penalty.
+- **Attendance Penalty Voiding:**
+  - Voids unverified elapsed minutes with Bitmask Code `2` (`attendanceAdjustments`).
+- **Question Bank Ingestion:**
+  - Aiken format parser, JSON batch import & Gemini 3.5 Flash Lite Question Drafter.
+
+---
+
 ## 06 | Real-Time Classroom Media Pipelines
 ### 1-to-1 WebRTC Live Peek & Pure Frame Classroom Broadcaster
 
@@ -383,9 +405,11 @@ const processFrame = async (now, metadata) => {
 | **Compute Location** | 100% Cloud Servers | 95%+ Local Student Edge | **-95% Server Load** |
 | **Audio Processing** | Continuous 100% Streaming | Local Whisper + RMS Silence Cut | **-80% Ingestion** |
 | **Video Storage** | Uncompressed Continuous Video | Discrete Frames $\to$ MP4 FFmpeg | **-90% Storage** |
+| **Active Presence** | High-Egress Polling Streams | $0.00 Question Bank / Tasks | **-100% Idle Load** |
 | **Total Cost / Student** | **$15.00 – $25.00** | **<$0.02** | **99.8% Reduction** |
 
 - **Live Google Cloud Billing Catalog API:** Ingests dynamic SKU rates into `system_config/pricing`.
+- **Bingo FinOps:** $0.00 local Question Bank mode vs $0.000075/check 1-to-many Teacher Broadcast.
 
 ---
 
@@ -406,11 +430,12 @@ const processFrame = async (now, metadata) => {
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **750+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 603 tests across 87 suites (>80% code coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 98 tests across 6 domain codebases.
-  - **Level 3 (Security Rules):** 23 real-token isolation test scenarios.
+- **831+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 633 tests across 90 suites (>80% code coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 139 tests across 6 domain codebases (including 94.2% attendance coverage).
+  - **Level 3 (Security Rules):** 29 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
+  - **Admin Suite:** 2 validation tests.
 - **Automated Dual-Environment CI/CD:**
   - Development (`it114115-dev-2026`) & Production (`it114115-2627`).
   - Pre-bundling credential mismatch guardrails in `vite.config.js`.
@@ -423,9 +448,9 @@ const processFrame = async (now, metadata) => {
 
 1. **Student Onboarding:** 3-step hardware readiness wizard (Screen share + Dual webcam + 1-Click calibration).
 2. **Teacher Live Grid:** Multi-camera invigilation grid with zero-space problem filters.
-3. **Simulated Anomaly:** Student look-away / whisper triggering on-device telemetry.
+3. **Active Presence Check:** Teacher triggers Bingo check; student responds with focus detection or triggers Cloud Tasks 2-strike retry.
 4. **Targeted Intervention:** 1-click broadcast nudge (`N`) & 30 FPS WebRTC Live Peek.
-5. **Instant Verification:** Audio waveform seek player & 1-click Word dossier export.
+5. **Instant Verification:** Audio waveform seek player, attendance adjustment audit & 1-click Word dossier export.
 
 ---
 
