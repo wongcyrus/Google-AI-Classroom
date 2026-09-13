@@ -26,7 +26,7 @@ The Gemini AI Classroom Assistant is engineered as a **100% serverless, zero-mai
 
 1. **Edge Intelligence First**: Lightweight machine learning models (MediaPipe Iris/Face Mesh, LiteRT Whisper STT, and LiteRT Gemma 4 E2B) execute directly in student browser Web Workers on the client's local CPU/GPU.
 2. **Event-Driven Cloud Backplane**: Google Cloud Functions Gen 2 (running on Google Cloud Run) ingest asynchronous signals, manage multi-speaker transcription healing, execute two-strike active presence checks via Google Cloud Tasks, and orchestrate map-reduce-map video synthesis.
-3. **Multimodal Frontier Reasoning**: Google Vertex AI and the Gemini 3 suite (`gemini-3.7-pro`, `gemini-3.7-flash`, `gemini-3.8-flash`, and `gemini-3.5-transcribe-preview`) provide deep multimodal reasoning and rubric synthesis only when targeted intervention or assessment auditing is required.
+3. **Multimodal Frontier Reasoning**: Google Gemini Enterprise Agent Platform (formerly Vertex AI) and the Gemini 3 suite (`gemini-3.7-pro`, `gemini-3.7-flash`, `gemini-3.8-flash`, and `gemini-3.5-transcribe-preview`) provide deep multimodal reasoning and rubric synthesis only when targeted intervention or assessment auditing is required.
 
 ---
 
@@ -46,7 +46,7 @@ graph TD
     end
 
     subgraph "Google Cloud AI Tier"
-        VertexAI["Google GenAI (Gemini 3 Suite)"]
+        VertexAI["Gemini Enterprise Agent Platform (Gemini 3 Suite)"]
     end
 
     subgraph "Serverless Backend Tier (Cloud Functions Gen 2)"
@@ -190,7 +190,7 @@ The repository is structured as a modular monorepo composed of three decoupled f
 
 | Google Technology | Role in System Architecture | Operational Benefit |
 | :--- | :--- | :--- |
-| **Vertex AI & Gemini 3** | Multimodal video understanding, audio diarization, and lab rubric synthesis | State-of-the-art reasoning across text, code, audio, and visual timelines. |
+| **Gemini Enterprise Agent Platform & Gemini 3** | Multimodal video understanding, audio diarization, and lab rubric synthesis | State-of-the-art reasoning across text, code, audio, and visual timelines. |
 | **Google Cloud Identity Platform** | Blocking authentication triggers (`beforeUserCreated`, `beforeUserSignedIn`) | 4-tier domain hierarchy security, time-gated IP CIDR checks, and role immutability. |
 | **Cloud Firestore** | Real-time NoSQL state database with subcollection hierarchy | Reactive client UI updates, granular security rules, and automatic TTL document expiration. |
 | **Cloud Storage for Firebase** | Scalable object storage for raw screenshots, compressed MP4s, and dossiers | Fine-grained metadata security rules (`resource.metadata.isExam`) and event triggers. |

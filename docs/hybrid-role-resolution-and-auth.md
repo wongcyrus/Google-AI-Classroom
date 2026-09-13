@@ -30,7 +30,7 @@ Educational institutions employ varied email domain strategies:
 
 ### The FinOps & Security Trilemma:
 In an AI-powered proctoring platform:
-- **Teachers** trigger high-quota Google GenAI/Vertex AI operations (e.g. Gemini 3.7 Pro reasoning, multi-student video batch analysis, dynamic lab task synthesis, and audio diarization).
+- **Teachers** trigger high-quota Google GenAI/Gemini Enterprise Agent Platform operations (e.g. Gemini 3.7 Pro reasoning, multi-student video batch analysis, dynamic lab task synthesis, and audio diarization).
 - **Students** only stream sensor telemetry (screen captures, audio chunks, and presence heartbeats) and must **never** have permission to initiate expensive AI jobs or access other students' recordings.
 - If an unknown or malicious user registers on a shared domain, granting teacher privileges by default would expose the institution's cloud budget to severe depletion and compromise exam confidentiality.
 

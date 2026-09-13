@@ -3,13 +3,13 @@
 # Gemini AI Classroom Assistant & Multimodal Invigilator
 
 [![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com)
-[![Vertex AI](https://img.shields.io/badge/Vertex_AI-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com/vertex-ai)
+[![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Functions_Gen_2_|_Firestore_|_Storage-FFA611?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![React 18](https://img.shields.io/badge/React_18-Vite_SPA-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Tests](https://img.shields.io/badge/Tests-846+_Passing_(>80%_Coverage)-brightgreen)](./docs/testing-strategy-and-coverage.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Vertex AI**, the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
+A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform** (formerly Vertex AI), the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
 
 Rather than acting as a punitive monitoring tool, the platform functions as an empathetic **Proactive Proctor**, **Technical Support Assistant**, and **Wellness Coach**—intervening before academic integrity issues or technical hurdles arise.
 
@@ -46,7 +46,7 @@ graph LR
     end
 
     subgraph "Multimodal AI"
-        Vertex["Vertex AI (Gemini 3 Suite)<br/>• Gemini 3.7 Pro / Flash<br/>• Gemini 3.8 Flash<br/>• Transcribe Preview"]
+        Vertex["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.7 Pro / Flash<br/>• Gemini 3.8 Flash<br/>• Transcribe Preview"]
     end
 
     Client <--> Auth

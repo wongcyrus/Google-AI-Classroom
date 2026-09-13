@@ -18,7 +18,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | :--- | :--- | :--- | :--- |
 | **00:00 – 06:00** | **01 | System Overview** | Welcome, Cyrus Wong GDE Bio, The Real-Time Invigilation & Proctoring Challenge | Slides 1–4 |
 | **06:00 – 18:00** | **02 | Hybrid Architecture** | 4-Tier Hybrid Cloud on GCP, Cloud Functions Gen 2 on Cloud Run, Firestore Optimization | Slides 5–7 |
-| **18:00 – 30:00** | **03 | Vertex AI & Gemini** | Gemini 3 Suite Routing, Genkit Resilience Interceptor, Structured Schemas | Slides 8–10 |
+| **18:00 – 30:00** | **03 | Gemini Enterprise Agent Platform & Gemini** | Gemini 3 Suite Routing, Genkit Resilience Interceptor, Structured Schemas | Slides 8–10 |
 | **30:00 – 42:00** | **04 | Edge AI & Privacy** | MediaPipe Mesh, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 11–14 |
 | **42:00 – 47:00** | **05 & 06 | Security & Media** | Zero-Trust Exam Mode, Bingo Active Presence & 2-Strike Verification, WebRTC Peek & Pure Frame Broadcaster | Slides 15–17 |
 | **47:00 – 52:00** | **07 & 08 | Video AI & FinOps** | Teacher Command Center, FFmpeg TTL, Map-Reduce-Map Milestone Matrix, Cloud FinOps | Slides 18–21 |
@@ -104,7 +104,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > "Behind the scenes, we leverage **Firebase Functions Gen 2**, which run directly on **Google Cloud Run** in `asia-east2` (Hong Kong).
 >
 > We split our backend into **7 isolated domain micro-codebases**:
-> 1. `ai_flows`: Houses our Genkit AI workflows and Vertex AI Gemini integrations.
+> 1. `ai_flows`: Houses our Genkit AI workflows and Gemini Enterprise Agent Platform integrations.
 > 2. `attendance`: Computes per-minute screenshot bucket mapping and attendance percentage aggregations.
 > 3. `auth_triggers`: Enforces role-based access control (RBAC), domain auto-provisioning, and campus IP CIDR boundary gating.
 > 4. `media_processing`: Executes containerized FFmpeg tasks with hardware acceleration.
@@ -132,7 +132,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 21:00 – 24:00 | Slide 8: 03 | Vertex AI Gemini 3 Constellation & Model Routing
+### 21:00 – 24:00 | Slide 8: 03 | Gemini Enterprise Agent Platform: Gemini 3 Constellation & Model Routing
 *Visual: `slide_gemini_models_matrix.png`*
 
 > **Cyrus Wong:**  
@@ -403,7 +403,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "To conclude, the Gemini AI Classroom Assistant demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
 >
-> By pairing Google Cloud's world-class **Vertex AI Gemini 3 suite** with **browser-native edge computing**, we achieved:
+> By pairing Google Cloud's world-class **Gemini Enterprise Agent Platform (Gemini 3 suite)** with **browser-native edge computing**, we achieved:
 > - Complete privacy-by-design with zero raw biometrics egress.
 > - 99.8% cost reduction at sub-$0.02 per student.
 > - High-density teacher ergonomics that eliminate cognitive overload.

@@ -33,7 +33,7 @@ This document provides an exhaustive, granular inventory of every User Interface
 
 ## 🏛️ Comprehensive Platform Control & Data Flow Architecture
 
-The diagram below maps all 19 UI control domains to client edge runtimes, Firebase serverless data stores, and Vertex AI multimodal intelligence:
+The diagram below maps all 19 UI control domains to client edge runtimes, Firebase serverless data stores, and Gemini Enterprise Agent Platform multimodal intelligence:
 
 ```mermaid
 flowchart TD
@@ -79,7 +79,7 @@ flowchart TD
         Domain Claims & Quotas"]
     end
 
-    subgraph AI_Foundations ["🧠 Google Vertex AI & Edge Models"]
+    subgraph AI_Foundations ["🧠 Gemini Enterprise Agent Platform & Edge Models"]
         GEM["Gemini 3.5 Lite, 3.7 Flash, 3.8 Flash, 3.7 Pro"]
         DIA["Gemini 3.5 Transcribe Preview (Speech Diarization)"]
         EDGE["Edge Workers: MediaPipe 468-pt Mesh + LiteRT Whisper/Gemma"]
@@ -639,7 +639,7 @@ flowchart TD
 - **Application Scope Checkboxes:** Configures where the prompt appears in dropdowns across the application.
 - **Access Level Radio Buttons:** `Private` vs `Shared`.
   - **Shared With User Group:** Add co-teacher emails to grant collaborative prompt access.
-- **AI Prompt Optimizer (`✨ Optimize` Button):** Calls Vertex AI/Gemini to enhance prompt clarity, specify explicit JSON output schemas, and reduce hallucination.
+- **AI Prompt Optimizer (`✨ Optimize` Button):** Calls Gemini Enterprise Agent Platform/Gemini to enhance prompt clarity, specify explicit JSON output schemas, and reduce hallucination.
 - **`Undo` Button:** Reverts AI optimization back to original text.
 - **Action Buttons:** `Save Prompt` / `Save Changes`, `Duplicate Prompt`, `Delete Prompt`, and `Clear Form`.
 

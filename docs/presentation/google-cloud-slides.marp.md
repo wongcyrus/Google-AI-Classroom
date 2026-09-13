@@ -119,7 +119,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 
 1. **Student Browser Edge:** MediaPipe FaceLandmarker, LiteRT Whisper STT, LiteRT Gemma 4 E2B Web Workers.
 2. **Realtime Signaling & Data:** Firestore single-stream status channel + Cloud Storage chunks.
-3. **Cloud Intelligence & Serverless:** Cloud Run Functions Gen 2, Vertex AI Gemini 3.7 & 3.5.
+3. **Cloud Intelligence & Serverless:** Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 3.7 & 3.5).
 4. **Teacher Command Center:** Live compliance matrix, WebRTC live peek, and broadcast nudges.
 
 ---
@@ -130,7 +130,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 ![bg right:60% 95%](images/slide_cloud_functions_gen2.png)
 
 - **Modular Domain Boundaries:**
-  1. `ai_flows`: Genkit & Vertex AI Gemini reasoning
+  1. `ai_flows`: Genkit & Gemini Enterprise Agent Platform reasoning
   2. `attendance`: Aggregated status rollups & screen-time heatmaps
   3. `auth_triggers`: Domain auto-provisioning & IP CIDR gating
   4. `media_processing`: Containerized FFmpeg workers
@@ -163,7 +163,7 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 
 ---
 
-## 03 | Vertex AI Gemini 3 Constellation & Model Routing
+## 03 | Gemini Enterprise Agent Platform: Gemini 3 Constellation & Model Routing
 ### Matching Model Capabilities, Latency Profiles, and Cost Parameters
 
 ![bg right:60% 95%](images/slide_gemini_models_matrix.png)
@@ -293,7 +293,7 @@ const processFrame = async (now, metadata) => {
 
 - **Rolling 30-Second Window:** 15-second overlapping stride ensures continuous context across boundaries.
 - **Web Audio RMS Silence Detection:** Silent audio chunks are dropped right in the browser. Quota saved: >80%!
-- **Google Cloud Vertex AI Gemini 3.5 Transcribe:** Multi-speaker separation (`Student` vs `External Voice`).
+- **Google Cloud Gemini Enterprise Agent Platform (Gemini 3.5 Transcribe):** Multi-speaker separation (`Student` vs `External Voice`).
 - **Synchronized Waveform Seek:** Teachers click any word to jump audio directly to that exact millisecond.
 
 ---

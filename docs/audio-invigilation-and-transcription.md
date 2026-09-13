@@ -78,7 +78,7 @@ flowchart TD
 | Specification | Mode 1: On-Device LiteRT Whisper + Gemma | Mode 2: Real-Time Rolling Moving Window | Mode 3: Discussion / Session Summarization | Mode 4: Offline Hybrid Queue |
 | :--- | :--- | :--- | :--- | :--- |
 | **Primary Model** | Local LiteRT Whisper + Gemma 4 E2B | Cloud `gemini-3.5-transcribe-preview` (fallback to `gemini-3.5-flash-lite`) | Cloud `gemini-3.5-transcribe-preview` & Gemini Pro | Local IndexedDB + Post-Sync Cloud |
-| **Execution Tier** | 100% Client Browser (WebGPU / WASM) | Cloud Function + Vertex AI / Genkit | Cloud Function + Vertex AI / Genkit | Client-side buffered queue |
+| **Execution Tier** | 100% Client Browser (WebGPU / WASM) | Cloud Function + Gemini Enterprise Agent Platform / Genkit | Cloud Function + Gemini Enterprise Agent Platform / Genkit | Client-side buffered queue |
 | **Network Egress** | Zero audio upload (transcripts/alerts only) | WebM chunks uploaded via HTTPS | WebM chunks uploaded per interval | Zero until connection restored |
 | **Timing Cadence** | Continuous stream (~1-2s latency) | 15s stride / 30s sliding window | 5 min, 10 min, 15 min, 30 min, or Full Session | Automatic re-flush on reconnection |
 | **Prompt Customization** | Configurable Gemma Proctor Prompt | Configurable Live Invigilation Prompt | Configurable Discussion Summary Prompt | Inherited from selected cloud mode |
@@ -268,12 +268,12 @@ All voice prompts are managed dynamically in the unified Prompt Library and inte
 
 | Dimension | Client-Side LiteRT Gemma (`hybrid` / `client_only`) | Server-Side Cloud Genkit (`cloud_only`) |
 | :--- | :--- | :--- |
-| **Model** | Gemma 4 E2B (`@litert-lm/core`) via WebGPU/WASM | Gemini 3.5 Flash-Lite via Vertex AI / Cloud Functions |
+| **Model** | Gemma 4 E2B (`@litert-lm/core`) via WebGPU/WASM | Gemini 3.5 Flash-Lite via Gemini Enterprise Agent Platform / Cloud Functions |
 | **Tool Calling Support** | **No native tool calling** (model generates constrained JSON) | **Native Genkit tool calling** (`ai.defineTool`) |
 | **Output Contract** | Structured JSON schema: `{"isViolation": bool, "category": string, "severity": string, "confidence": number, "evidence": string, "rationale": string}` | Autonomous Tool Invocations: `recordAudioIrregularity()`, `recordAudioAudit()` |
 | **Irregularity Logging** | **Client Hook Execution (`useClientLiteRTGemma.js`)**: Hook detects `isViolation === true` and executes direct Firestore writes to `/irregularities` and `/classes/{classId}/irregularities` | **Cloud Function Execution (`aiTools.js`)**: Cloud Genkit agent invokes `recordAudioIrregularity` tool during generation |
 | **Telemetry Updates** | Merges `gemmaAlert`, `gemmaSeverity`, `gemmaConfidence`, `lastGemmaTimestamp` directly into `/classes/{classId}/status/{studentUid}` | Cloud Function writes to class subcollections and logs audits |
-| **Cloud Quota & Latency** | **$0.00 / 0 Cloud API tokens**, ~1-2s local inference | Standard Vertex AI token billing, ~3-5s network + generation roundtrip |
+| **Cloud Quota & Latency** | **$0.00 / 0 Cloud API tokens**, ~1-2s local inference | Standard Gemini Enterprise Agent Platform token billing, ~3-5s network + generation roundtrip |
  
  ---
  
@@ -288,7 +288,7 @@ flowchart TD
     %% Path A: Full Audio Processing
     CheckInput -->|audioUrl only| Step1[Step 1: Audio Transcription via gemini-3.5-transcribe-preview]
     Step1 -->|Extract| WordChunks[Word-level Timestamps & Spoken Text]
-    Step1 -.->|Vertex Fallback| FallbackModel[Fallback: gemini-3.5-flash-lite]
+    Step1 -.->|Agent Platform Fallback| FallbackModel[Fallback: gemini-3.5-flash-lite]
     WordChunks --> Step2[Step 2: Reason & Tool Invocations via gemini-3.5-flash-lite]
     
     %% Path B: Direct Transcript Fast Path

@@ -4,7 +4,7 @@
 
 ---
 
-This document provides a detailed explanation of the video analysis workflow, which is powered by Google's Vertex AI. Given that this is the most resource-intensive and expensive feature in the application, several safeguards have been implemented to ensure it runs efficiently and to prevent unnecessary costs from duplicate or runaway jobs.
+This document provides a detailed explanation of the video analysis workflow, which is powered by Google's Gemini Enterprise Agent Platform (formerly Vertex AI). Given that this is the most resource-intensive and expensive feature in the application, several safeguards have been implemented to ensure it runs efficiently and to prevent unnecessary costs from duplicate or runaway jobs.
 
 ---
 
@@ -266,7 +266,7 @@ The workflow mirrors the classic distributed computing MapReduce pattern across 
 
 1. **Map Phase 1 (Parallel Video Discovery & Observation)**:
    - **Input**: All student screen recording videos ($V_1, V_2, \dots, V_n$) recorded during a practical lab session.
-   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Vertex AI Gemini Multimodal Vision API (`gemini-3.7-flash` or `gemini-3.5-flash-lite`).
+   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Gemini Enterprise Agent Platform Multimodal Vision API (`gemini-3.7-flash` or `gemini-3.5-flash-lite`).
    - **Output**: Each video is processed independently, extracting qualitative student observations, terminal commands executed, error messages encountered, and milestone attempts into structured text summaries saved in `aiJobs`.
 
 2. **Reduce Phase (Cross-Student Intelligence Aggregation & Prompt Synthesis)**:
@@ -394,7 +394,7 @@ sequenceDiagram
     actor Teacher
     participant UI as Web App (VideoAnalysisJobs.jsx)
     participant Syn as generateLabTaskPrompt (Callable Cloud Function)
-    participant AI as Vertex AI (Gemini 3.7 / 3.8 Flash)
+    participant AI as Gemini Enterprise Agent Platform (Gemini 3.7 / 3.8 Flash)
     participant FS as Firestore (aiJobs & performanceMetrics)
     participant Runner as processVideoAnalysisJob (Firestore Trigger)
 

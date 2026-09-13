@@ -32,8 +32,8 @@ The platform operates on a serverless, zero-maintenance Google Cloud and Firebas
 │                        Google Cloud Platform                           │
 │                                                                        │
 │   ┌─────────────────────┐   ┌──────────────────────────────────────┐   │
-│   │ Vertex AI (Gemini)  │   │ Cloud Tasks Queue                    │   │
-│   │ 3.5 Lite, 3.8 Flash │   │ dispatchBingoRetryTask (2-Strike)    │   │
+│   │ Gemini Enterprise   │   │ Cloud Tasks Queue                    │   │
+│   │ Agent Platform      │   │ dispatchBingoRetryTask (2-Strike)    │   │
 │   └──────────▲──────────┘   └──────────────────▲───────────────────┘   │
 │              │                                 │                       │
 │   ┌──────────┴─────────────────────────────────┴───────────────────┐   │
@@ -53,7 +53,7 @@ The platform operates on a serverless, zero-maintenance Google Cloud and Firebas
 ```
 
 ### Key Infrastructure Components
-- **Vertex AI / Google GenAI SDK:** Real-time multimodal analysis using Gemini 3 Series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
+- **Gemini Enterprise Agent Platform / Google GenAI SDK:** Real-time multimodal analysis using Gemini 3 Series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
 - **Cloud Functions for Firebase (Gen 2):** Eventarc, HTTPS callable, and scheduled triggers distributed across 7 isolated codebases running on Google Cloud Run.
 - **Cloud Tasks:** Serverless HTTP retry queue for Bingo presence retries with zero idle compute cost.
 - **Cloud Storage:** High-capacity object storage with automated lifecycle rules for screenshot and MP4 video retention.
@@ -314,7 +314,7 @@ flowchart TD
     subgraph Sinks ["3. Data Sinks & AI Foundation Models"]
         FS[("Cloud Firestore (Native)")]
         GCS[("Cloud Storage Buckets")]
-        VAI["Vertex AI (Gemini 3.5 / 3.7 / 3.8)"]
+        VAI["Gemini Enterprise Agent Platform (Gemini 3.5 / 3.7 / 3.8)"]
     end
 
     HTTP --> CB1
@@ -367,7 +367,7 @@ sequenceDiagram
     autonumber
     participant Cron as ⏱️ Cloud Scheduler (Daily 00:00)
     participant PriceFn as 🔄 syncGeminiPricing
-    participant Vertex as 🧠 Vertex AI (Gemini)
+    participant Vertex as 🧠 Gemini Enterprise Agent Platform
     participant AIFlow as ⚡ ai_flows (Cloud Function)
     participant FS as 🗄️ Firestore (/classes/{id})
     participant Teacher as 👨‍🏫 Instructor (AiCostReportView)
@@ -405,7 +405,7 @@ The following Cloud Scheduler cron jobs operate continuously in the background:
 | `firebase-schedule-handleAutomaticCapture` | `*/5 * * * *` | `handleAutomaticCapture` | Inspects class timetables every 5 minutes and marks classes as active when scheduled lesson slots begin. |
 | `firebase-schedule-handleAutomaticVideoCombination` | `*/10 * * * *` | `handleAutomaticVideoCombination` | Scans for concluded lessons and automatically dispatches video compilation jobs for all attending students. |
 | `firebase-schedule-cleanupStuckJobs` | `*/15 * * * *` | `cleanupStuckJobs` | Detects video or ZIP jobs stuck in `processing` state for $>30$ minutes and resets or marks them as failed. |
-| `firebase-schedule-syncGeminiPricing` | `0 0 * * *` | `syncGeminiPricing` | Daily update of Vertex AI token pricing models in Firestore. |
+| `firebase-schedule-syncGeminiPricing` | `0 0 * * *` | `syncGeminiPricing` | Daily update of Gemini Enterprise Agent Platform token pricing models in Firestore. |
 
 ---
 
