@@ -1,4 +1,4 @@
-# 🏗️ Terraform Infrastructure for Gemini AI Classroom Assistant
+# 🏗️ Terraform Infrastructure for Gemini Multimodal Classroom Agent
 
 [🏠 Back to Documentation Index](../README.md#documentation-index) | [🛠️ Admin Manual](../docs/user-manual-admin.md) | [🏗️ Deployment & Infrastructure](../docs/deployment-and-infrastructure.md)
 

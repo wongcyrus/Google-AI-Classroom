@@ -4,7 +4,7 @@
 
 ---
 
-The frontend client of **Gemini AI Classroom Assistant** is a high-performance React Single Page Application (SPA) built with [Vite](https://vitejs.dev/). It features route-level code splitting, on-device AI computer vision via MediaPipe & Web Workers, edge audio inference via LiteRT Whisper & Gemma, and real-time synchronization with Cloud Firestore and Firebase Storage.
+The frontend client of **Gemini Multimodal Classroom Agent** is a high-performance React Single Page Application (SPA) built with [Vite](https://vitejs.dev/). It features route-level code splitting, on-device AI computer vision via MediaPipe & Web Workers, edge audio inference via LiteRT Whisper & Gemma, and real-time synchronization with Cloud Firestore and Firebase Storage.
 
 ## 📑 Quick Links
 

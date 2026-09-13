@@ -4,7 +4,7 @@
 
 ---
 
-This guide provides end-to-end instructions for deploying, customizing, and running the **Gemini AI Classroom Assistant** for any school, university, or educational institution.
+This guide provides end-to-end instructions for deploying, customizing, and running the **Gemini Multimodal Classroom Agent** for any school, university, or educational institution.
 
 > [!NOTE]
 > For day-to-day administrative operations, security rules testing, and AI FinOps management, see the **[System Administrator & DevOps User Manual](./user-manual-admin.md)**.

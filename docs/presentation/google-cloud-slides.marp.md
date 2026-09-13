@@ -2,7 +2,7 @@
 marp: true
 theme: default
 paginate: true
-header: "Google Cloud Tech Talk | Gemini AI Classroom Assistant & Invigilator | Cyrus Wong (GDE)"
+header: "Google Cloud Tech Talk | Gemini Multimodal Classroom Agent | Cyrus Wong (GDE)"
 footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-AI-Classroom-Assistant"
 style: |
   section {
@@ -53,7 +53,7 @@ style: |
 ---
 
 <!-- _class: lead -->
-# Gemini AI Classroom Assistant & Multimodal Invigilator
+# Gemini Multimodal Classroom Agent
 ### Architecting Edge-to-Cloud Multimodal AI with Google Cloud, Firebase & Gemini
 **Google Cloud Tech Talk & Developer Conference Series**  
 **Presenter:** **Cyrus Wong (黃俊彥)** — Google Developer Expert (GCP & AI/ML)  
@@ -104,7 +104,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
   - 100% continuous video streaming (classroom Wi-Fi saturation).
   - High false-positive flags with zero pedagogical context.
   - $15–$25/student institutional licensing fees.
-- **Our Edge-AI Classroom Assistant:**
+- **Our Multimodal Edge Classroom Agent:**
   - **100% Browser-Native** (Zero software installation).
   - **95%+ Local Edge Compute** (Zero raw biometrics leave student laptop).
   - Real-time teacher command center with 1-click targeted nudges.
@@ -400,7 +400,7 @@ const processFrame = async (now, metadata) => {
 
 ![bg right:60% 95%](images/slide_ai_cost_finops.png)
 
-| Resource Layer | Commercial Surveillance SaaS | Gemini AI Classroom Assistant | Savings |
+| Resource Layer | Commercial Surveillance SaaS | Gemini Multimodal Classroom Agent | Savings |
 | :--- | :--- | :--- | :--- |
 | **Compute Location** | 100% Cloud Servers | 95%+ Local Student Edge | **-95% Server Load** |
 | **Audio Processing** | Continuous 100% Streaming | Local Whisper + RMS Silence Cut | **-80% Ingestion** |

@@ -457,7 +457,7 @@ export const processReportJob = onDocumentCreated(
           to: requesterEmail,
           message: {
             subject: `🎓 Exam Incident Dossier Ready: ${classInfo.name || classId}`,
-            text: `Hello,\n\nYour official proctoring incident dossier for ${classInfo.name || classId} (${startDate.toLocaleDateString()}) is ready.\n\nDownload Word Document (.docx): ${docxDownloadUrl || 'N/A'}\nDownload CSV Log: ${csvDownloadUrl || 'N/A'}\n\nLinks are valid for 7 days.\n\nBest regards,\nAI Classroom Assistant`,
+            text: `Hello,\n\nYour official proctoring incident dossier for ${classInfo.name || classId} (${startDate.toLocaleDateString()}) is ready.\n\nDownload Word Document (.docx): ${docxDownloadUrl || 'N/A'}\nDownload CSV Log: ${csvDownloadUrl || 'N/A'}\n\nLinks are valid for 7 days.\n\nBest regards,\nGemini Multimodal Classroom Agent`,
           },
           createdAt: new Date(),
         });

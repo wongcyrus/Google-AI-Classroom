@@ -4,7 +4,7 @@
 
 ---
 
-Welcome to the **Gemini AI Classroom Assistant** Instructor Guide. This manual details everything you need to know to create classes, configure proctoring settings, monitor live student sessions, conduct one-on-one interventions, trigger active presence challenges, review synthesized AI rubrics, and export formal academic incident dossiers.
+Welcome to the **Gemini Multimodal Classroom Agent** Instructor Guide. This manual details everything you need to know to create classes, configure proctoring settings, monitor live student sessions, conduct one-on-one interventions, trigger active presence challenges, review synthesized AI rubrics, and export formal academic incident dossiers.
 
 ---
 

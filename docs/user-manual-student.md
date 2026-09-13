@@ -4,7 +4,7 @@
 
 ---
 
-Welcome to the **Gemini AI Classroom Assistant** Student Guide. This manual walks you through system requirements, the pre-flight readiness test, in-session proctoring indicators, active presence verification challenges, and how to access your learning records, attendance breakdowns, and feedback.
+Welcome to the **Gemini Multimodal Classroom Agent** Student Guide. This manual walks you through system requirements, the pre-flight readiness test, in-session proctoring indicators, active presence verification challenges, and how to access your learning records, attendance breakdowns, and feedback.
 
 ---
 

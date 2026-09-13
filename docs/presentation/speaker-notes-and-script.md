@@ -4,7 +4,7 @@
 
 ---
 
-## Gemini AI Classroom Assistant & Multimodal Invigilator
+## Gemini Multimodal Classroom Agent
 **Presenter:** Cyrus Wong (黃俊彥) — Google Developer Expert (GCP & AI/ML)  
 Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC) Hong Kong  
 **Event:** Google Cloud Tech Talk & Developer Conference Series  
@@ -37,7 +37,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > In technical education and software engineering training, our primary objective is to verify real hands-on competency. But with the rapid emergence of generative AI code copilots, instructors face an unprecedented dilemma: take-home assignments and unmonitored exams no longer reflect authentic student capability.
 >
-> Over the past year at HKIIT / VTC Hong Kong, we engineered a completely new approach. Rather than relying on invasive, brittle, and expensive commercial proctoring software, we harmonized Google's **Gemini 3 model constellation**, **Google Genkit**, **Google Cloud Run Functions Gen 2**, and browser-native **LiteRT** and **MediaPipe** edge intelligence. The result is an open-source, privacy-preserving classroom assistant that operates at **sub-$0.02 per student per exam**.
+> Over the past year at HKIIT / VTC Hong Kong, we engineered a completely new approach. Rather than relying on invasive, brittle, and expensive commercial proctoring software, we harmonized Google's **Gemini 3 model constellation**, **Google Genkit**, **Google Cloud Run Functions Gen 2**, and browser-native **LiteRT** and **MediaPipe** edge intelligence. The result is an open-source, privacy-preserving multimodal classroom agent that operates at **sub-$0.02 per student per exam**.
 >
 > Today, I'll walk you through our production architecture, cloud optimizations, zero-trust security model, and the hard lessons learned deploying this system to live computer labs."
 
@@ -401,7 +401,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  
-> "To conclude, the Gemini AI Classroom Assistant demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
+> "To conclude, the Gemini Multimodal Classroom Agent demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
 >
 > By pairing Google Cloud's world-class **Gemini Enterprise Agent Platform (Gemini 3 suite)** with **browser-native edge computing**, we achieved:
 > - Complete privacy-by-design with zero raw biometrics egress.

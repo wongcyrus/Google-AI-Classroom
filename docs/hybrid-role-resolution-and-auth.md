@@ -4,7 +4,7 @@
 
 ---
 
-This document details the technical design, lifecycle events, and security mechanics behind the **Hybrid Role Resolution Architecture** in the Gemini AI Classroom Assistant.
+This document details the technical design, lifecycle events, and security mechanics behind the **Hybrid Role Resolution Architecture** in the Gemini Multimodal Classroom Agent.
 
 ---
 

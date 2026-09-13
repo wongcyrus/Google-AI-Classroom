@@ -4,7 +4,7 @@
 
 ---
 
-This document outlines the architectural blueprint, data-flow topology, and technology stack powering the **Gemini AI Classroom Assistant**.
+This document outlines the architectural blueprint, data-flow topology, and technology stack powering the **Gemini Multimodal Classroom Agent**.
 
 ---
 
@@ -22,7 +22,7 @@ This document outlines the architectural blueprint, data-flow topology, and tech
 
 ## Executive Architectural Vision
 
-The Gemini AI Classroom Assistant is engineered as a **100% serverless, zero-maintenance, hybrid Edge/Cloud AI platform**. Rather than streaming continuous, multi-gigabyte video feeds to expensive cloud GPUs, the architecture implements a **privacy-first, edge-computing paradigm**:
+The Gemini Multimodal Classroom Agent is engineered as a **100% serverless, zero-maintenance, hybrid Edge/Cloud AI platform**. Rather than streaming continuous, multi-gigabyte video feeds to expensive cloud GPUs, the architecture implements a **privacy-first, edge-computing paradigm**:
 
 1. **Edge Intelligence First**: Lightweight machine learning models (MediaPipe Iris/Face Mesh, LiteRT Whisper STT, and LiteRT Gemma 4 E2B) execute directly in student browser Web Workers on the client's local CPU/GPU.
 2. **Event-Driven Cloud Backplane**: Google Cloud Functions Gen 2 (running on Google Cloud Run) ingest asynchronous signals, manage multi-speaker transcription healing, execute two-strike active presence checks via Google Cloud Tasks, and orchestrate map-reduce-map video synthesis.

@@ -118,8 +118,8 @@ const Layout = ({ children, banner, title, logoutButton, user }) => {
                 </div>
               )}
             </div>
-            <img src={logo} alt="Gemini AI Classroom Assistant Logo" style={{ height: '40px' }} />
-            <h1 style={{ fontSize: '1.2rem', margin: 0 }}>Gemini AI Classroom Assistant</h1>
+            <img src={logo} alt="Gemini Multimodal Classroom Agent Logo" style={{ height: '40px' }} />
+            <h1 style={{ fontSize: '1.2rem', margin: 0 }}>Gemini Multimodal Classroom Agent</h1>
             {logoutButton}
           </div>
         </div>

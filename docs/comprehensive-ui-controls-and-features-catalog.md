@@ -1,10 +1,10 @@
-# 📘 Gemini AI Classroom Assistant: Comprehensive UI Controls & Feature Catalog
+# 📘 Gemini Multimodal Classroom Agent: Comprehensive UI Controls & Feature Catalog
 
 [🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md)
 
 ---
 
-This document provides an exhaustive, granular inventory of every User Interface (UI) control, interactive element, configuration toggle, analytics view, and operational capability across the entire Gemini AI Classroom Assistant platform.
+This document provides an exhaustive, granular inventory of every User Interface (UI) control, interactive element, configuration toggle, analytics view, and operational capability across the entire Gemini Multimodal Classroom Agent platform.
 
 ---
 
@@ -675,7 +675,7 @@ flowchart TD
   - Downloadable File Attachments: Secure Cloud Storage links to generated PDF/DOCX reports and exported spreadsheets.
 
 ---
-*Catalog Version: 2026.3.0 &bull; Platform: Gemini AI Classroom Assistant &bull; Audited from Source Code*
+*Catalog Version: 2026.3.0 &bull; Platform: Gemini Multimodal Classroom Agent &bull; Audited from Source Code*
 
 ---
 

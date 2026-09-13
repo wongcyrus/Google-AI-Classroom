@@ -4,7 +4,7 @@
 
 ---
 
-This directory contains scripts for administering the Gemini AI Classroom Assistant application's Firebase backend.
+This directory contains scripts for administering the Gemini Multimodal Classroom Agent application's Firebase backend.
 
 ## Prerequisites
 
