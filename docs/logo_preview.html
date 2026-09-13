@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Logo Design Preview - Gemini Multimodal Classroom Agent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 40px 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #38bdf8;
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+    p.subtitle {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 1rem;
+      margin-bottom: 40px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+    .card.highlight {
+      border: 2px solid #38bdf8;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+    .badge.current { background: #334155; color: #94a3b8; }
+    .badge.concept { background: #0284c7; color: #ffffff; }
+    .img-box {
+      width: 260px;
+      height: 260px;
+      background: #ffffff;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .img-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .desc {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .navbar-preview {
+      width: 100%;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .navbar-preview img {
+      height: 36px;
+      width: 36px;
+      object-fit: contain;
+    }
+    .navbar-preview span {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gemini Multimodal Classroom Agent</h1>
+  <p class="subtitle">Logo Design Comparison & Evolution</p>
+
+  <div class="grid">
+    <!-- Current -->
+    <div class="card">
+      <span class="badge current">Current Original</span>
+      <div class="img-box">
+        <img src="../web-app/src/assets/logo.jpg" alt="Current Logo">
+      </div>
+      <div class="title">Legacy Mortarboard</div>
+      <div class="desc">Original design featuring navy mortarboard cap, circuit traces, Roman numeral II Gemini glyph, and gold tassel.</div>
+      <div class="navbar-preview">
+        <img src="../web-app/src/assets/logo.jpg" alt="Nav Preview">
+        <span>Navbar Preview (36px)</span>
+      </div>
+    </div>
+
+    <!-- Concept 1 -->
+    <div class="card highlight">
+      <span class="badge concept">Concept 1 (Recommended)</span>
+      <div class="img-box">
+        <img src="../web-app/src/assets/logo_concept1.png" alt="Concept 1">
+      </div>
+      <div class="title">Modernized Mortarboard</div>
+      <div class="desc">Direct evolution of the cap silhouette. Features Google Gemini glowing 4-pointed star, camera iris aperture, audio waveforms, and silver bevel border.</div>
+      <div class="navbar-preview">
+        <img src="../web-app/src/assets/logo_concept1.png" alt="Nav Preview">
+        <span>Navbar Preview (36px)</span>
+      </div>
+    </div>
+
+    <!-- Concept 2 -->
+    <div class="card">
+      <span class="badge concept">Concept 2 (App Badge)</span>
+      <div class="img-box">
+        <img src="../web-app/src/assets/logo_concept2.png" alt="Concept 2">
+      </div>
+      <div class="title">Circular Cyber Badge</div>
+      <div class="desc">Futuristic circular emblem badge with neon cyan/indigo lines, optical aperture center, soundwaves, and geometric mortarboard cap crown.</div>
+      <div class="navbar-preview">
+        <img src="../web-app/src/assets/logo_concept2.png" alt="Nav Preview">
+        <span>Navbar Preview (36px)</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
