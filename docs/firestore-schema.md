@@ -1,6 +1,43 @@
 # Firestore Schema
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document outlines the Firestore database schema for the AI Invigilator application.
+
+---
+
+## 📑 Table of Contents
+
+1. [Schema Diagram & Entity Relationships](#schema-diagram)
+2. [Collections](#collections)
+   - [`aiJobs`](#aijobs)
+   - [`audio`](#audio)
+   - [`classes`](#classes)
+   - [`irregularities`](#irregularities)
+   - [`mails`](#mails)
+   - [`notifications`](#notifications)
+   - [`progress`](#progress)
+   - [`performanceMetrics`](#performancemetrics)
+   - [`prompts`](#prompts)
+   - [`propertyUploadJobs`](#propertyuploadjobs)
+   - [`screenshots`](#screenshots)
+   - [`studentProfiles`](#studentprofiles)
+   - [`students`](#students)
+   - [`teacherProfiles`](#teacherprofiles)
+   - [`teachers`](#teachers)
+   - [`users`](#users)
+   - [`videoAnalysisJobs`](#videoanalysisjobs)
+   - [`videoJobs`](#videojobs)
+   - [`zipJobs`](#zipjobs)
+3. [Relationships](#relationships)
+4. [Indexes & Query Optimization](#-indexes--query-optimization)
+   - [1. Composite Index Matrix](#1-composite-index-matrix)
+   - [2. Time-To-Live (TTL) Automatic Deletion Policies](#2-time-to-live-ttl-automatic-deletion-policies)
+   - [3. Student Self-Service Records & Security Isolation](#3-student-self-service-records--security-isolation)
+
+---
 
 ## Schema Diagram
 
@@ -862,3 +899,7 @@ To support student transparency and review of academic and invigilation history 
 | **`classes/{classId}/questionBank`** | `read/write` | `isTeacherInClass(classId)` — Predefined question bank containing questions and correct indices is strictly teacher-only; students have zero access. |
 | **`users`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == userId)` — Teachers can search user directory for prompt collaboration; students can only view their own user document. Client writes are forbidden. |
 | **Cloud Storage `videos/{classId}/{videoId}`** | `read` | `isTeacher() || resource.metadata.studentUid == request.auth.uid` — Students can directly stream and download their own compiled video MP4s via token or signed v4 URL (`getStudentVideoPlaybackUrl`). |
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)

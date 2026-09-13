@@ -1,6 +1,26 @@
 # 🧪 Testing Strategy, Quality Assurance & Coverage
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document outlines the testing architecture, test suites, execution commands, and coverage targets for the **Gemini AI Classroom Assistant**.
+
+---
+
+## 📑 Table of Contents
+
+1. [Multi-Tier Testing Pyramid](#️-multi-tier-testing-pyramid)
+2. [Test Execution Commands](#-test-execution-commands)
+3. [Test Suite Breakdown](#-test-suite-breakdown)
+   - [1. Frontend Component & Hook Suite (`web-app/src/`)](#1-frontend-component--hook-suite-web-appsrc)
+   - [2. Backend Cloud Functions Logic Suite (`functions/`)](#2-backend-cloud-functions-logic-suite-functions)
+   - [3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)](#3-live-system-smoke--cascade-suite-adminscriptssmoke_testmjs)
+   - [4. Firestore Security Rules Suite (`tests/security_rules.test.mjs`)](#4-firestore-security-rules-suite-testssecurity_rulestestmjs)
+4. [Code Coverage Benchmarks](#-code-coverage-benchmarks)
+5. [Audio & Voice AI Test Suite Breakdown](#-audio--voice-ai-test-suite-breakdown)
+6. [Screen Recording Access & Exam Integrity Test Suite Breakdown](#️-screen-recording-access--exam-integrity-test-suite-breakdown)
+7. [Automated Active Presence & Attention Verification ("Bingo") Test Suite Breakdown](#-automated-active-presence--attention-verification-bingo-test-suite-breakdown)
 
 ---
 
@@ -179,6 +199,11 @@ functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Function
 | `src/components/BingoModal.test.jsx` | `BingoModal.jsx` | **Unit & Interaction Verification**: Validates dual-tone Web Audio chime synthesis on modal mount; tests 45-second animated countdown timer bar; verifies color shift to pulsating red state under 10 seconds; tests multiple choice button clicks dispatching `submitBingoAnswer` with focus detection (`document.hasFocus()`) and response time; tests timer expiration triggering auto-submission with `selectedIndex: null`; validates UI feedback states (`Verified Present!`, `Incorrect Choice`, `Time Expired`). |
 | `src/components/BingoQuestionBankModal.test.jsx` | `BingoQuestionBankModal.jsx` | **Question Bank Suite**: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing generated questions, and 1-click batch appending to class pool; tests plain-text Aiken format parser and raw JSON batch importer with real-time error handling; tests Questions Pool tab rendering active questions, option lists, highlighted correct answers, topic chips, and individual deletion handlers. |
 | `tests/security_rules.test.mjs` | `firestore.rules` (Suites 1-3) | **Real-Token Security Verification (42 Assertions)**: Tests anonymous denial across core collections; validates student read isolation on profiles, enrolled classes, lessons, audio metadata, video/AI jobs, performance metrics, and own attendance adjustments; proves students have strictly zero write permissions (`create`, `update`, `delete`) on `bingoRecords`, `attendanceAdjustments`, and `audio_audits`; proves role escalation and peer reading are blocked on `users`; validates that teachers retain full authorized access across all classes, jobs, audio audits, and user directories. |
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+
 
 
 

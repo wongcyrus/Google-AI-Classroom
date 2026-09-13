@@ -1,6 +1,23 @@
 # Hybrid Role Resolution & Identity Architecture
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document details the technical design, lifecycle events, and security mechanics behind the **Hybrid Role Resolution Architecture** in the Gemini AI Classroom Assistant.
+
+---
+
+## 📑 Table of Contents
+
+1. [1. Executive Summary & Problem Space](#1-executive-summary--problem-space)
+2. [2. 4-Tier Role Resolution Pipeline](#2-4-tier-role-resolution-pipeline)
+3. [3. Google Cloud Identity Platform (GCIP) Lifecycle](#3-google-cloud-identity-platform-gcip-lifecycle)
+4. [4. Two-Phase Admin Role Elevation & Profile Migration](#4-two-phase-admin-role-elevation--profile-migration)
+5. [5. Security Rules Integration](#5-security-rules-integration)
+6. [6. Frontend Client-Side UX & Enforcement](#6-frontend-client-side-ux--enforcement)
+7. [7. Configuration Matrix Reference](#7-configuration-matrix-reference)
+8. [8. Verification & Test Suite](#8-verification--test-suite)
 
 ---
 
@@ -279,3 +296,8 @@ The entire hybrid architecture is verified across 5 test suites (774 automated t
    - Verified with real Firebase Auth tokens on Firestore emulator
 5. **End-to-End Cloud Smoke Suite** (`admin/scripts/smoke_test.mjs`):
    - Live cloud pipeline verification on active GCP project
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

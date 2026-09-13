@@ -1,5 +1,9 @@
 # Admin Scripts
 
+[🏠 Back to Documentation Index](../README.md#documentation-index) | [🛠️ Admin Manual](../docs/user-manual-admin.md)
+
+---
+
 This directory contains scripts for administering the Gemini AI Classroom Assistant application's Firebase backend.
 
 ## Prerequisites

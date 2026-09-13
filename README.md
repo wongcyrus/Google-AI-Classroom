@@ -8,20 +8,52 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 
 ## Table of Contents
 
-- [User Manuals & Role-Based Guides](#-user-manuals--role-based-guides)
-- [Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md)
+- [📚 Documentation Index](#-documentation-index)
+- [📖 User Manuals & Role-Based Guides](#-user-manuals--role-based-guides)
 - [Powered by Google Technologies](#powered-by-google-technologies)
 - [Architecture Overview](#architecture-overview)
 - [Architecture Diagram](#architecture-diagram)
-- [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md)
-- [Complete Setup & Customization Guide](./docs/setup-instructions.md)
-- [Backend Functionality](./docs/functions.md)
-- [Frontend Components](./docs/frontend-components.md)
 - [Getting Started (Local Development)](#getting-started-local-development)
 - [Demo Users & Pre-Seeded Class](#-demo-users--pre-seeded-class)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
 - [Environment Reset & Admin Scripts](#-environment-reset--admin-scripts)
 - [Deployment & Infrastructure](#deployment--infrastructure)
+
+---
+
+<a id="documentation-index"></a>
+## 📚 Documentation Index
+
+Every component, operational workflow, AI pipeline, security policy, and data schema is documented with architectural diagrams and step-by-step guides:
+
+| Category | Document | Description |
+| :--- | :--- | :--- |
+| **User Manuals & UI Catalogs** | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | End-to-end operational manual covering live grid invigilation, WebRTC peek & talkback, Bingo checks, rubric studio, and incident dossiers. |
+| | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, on-device AI HUD, and self-service records portal. |
+| | 🛠️ **[System Admin & DevOps Manual](./docs/user-manual-admin.md)** | Cloud provisioning, Terraform IaC, GCIP blocking functions, zero-trust storage rules, and disaster recovery. |
+| | 📘 **[Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md)** | Exhaustive 19-domain UI inventory detailing every button, slider, modal, toggle, and data flow. |
+| **Architecture & Data Models** | 🔑 **[Hybrid Role Resolution & Identity](./docs/hybrid-role-resolution-and-auth.md)** | 4-tier domain hierarchy, GCIP before-create triggers, role elevation, and zero-trust security. |
+| | 🗄️ **[Firestore Schema & Database Design](./docs/firestore-schema.md)** | Complete collection schemas, field definitions, ER diagrams, composite indexes, and TTL policies. |
+| | ⚡ **[Cloud Functions Gen 2 Architecture](./docs/functions.md)** | Micro-codebase topology across 6 runtimes, callable endpoints, task queues, and storage triggers. |
+| | 🧭 **[Frontend React Components & State Flows](./docs/frontend-components.md)** | React component hierarchy, code-splitting router, custom hooks, and shared UI utilities. |
+| | ⏱️ **[Student View Logic & Timetable Engine](./docs/student-view-logic.md)** | Schedule-driven class matching, multi-stream capture, edge Web Workers, and live exam mode. |
+| **AI, Acoustic & Media Processing** | 🎙️ **[Audio Invigilation & Voice AI Architecture](./docs/audio-invigilation-and-transcription.md)** | Dual-mode acoustic processing: LiteRT edge Whisper/Gemma and rolling moving window cloud diarization. |
+| | 🎥 **[Image-to-Video Compilation Pipeline](./docs/image-to-video-compilation.md)** | Discrete screenshot upload, FFmpeg H.264 MP4 encoding, SVG timestamp overlays, and exam tagging. |
+| | 🎬 **[Video Analysis & Map-Reduce Prompt Synthesis](./docs/video-analysis-workflow.md)** | Gemini 3.7 vision discovery, Gemini 3.8 Flash rubric synthesis studio, and milestone matrix generation. |
+| | 🔄 **[Data Retention & Media Lifecycle](./docs/data-retention-and-storage-lifecycle.md)** | Native Firestore TTL expiration, GCS event-driven cleanup triggers, and cascading class deletion. |
+| **DevOps, Setup & Testing** | 🚀 **[Complete Setup & Customization Guide](./docs/setup-instructions.md)** | Step-by-step institutional deployment, automated 1-click script, and multi-school customization. |
+| | 🏗️ **[Deployment & Infrastructure Guide](./docs/deployment-and-infrastructure.md)** | Dual-environment setup (`it114115-dev-2026` / `it114115-2627`), Terraform specs, and build guardrails. |
+| | 🧪 **[Testing Strategy, Pyramid & Coverage](./docs/testing-strategy-and-coverage.md)** | 846+ tests across 4 tiers: Frontend React suites, Cloud Functions, real-token security rules, and smoke tests. |
+| **Presentations & Tech Talks** | 📊 **[Google Cloud Presentation Deck (Marp)](./docs/presentation/google-cloud-slides.marp.md)** | 26-slide presentation deck covering edge AI, Genkit resilience, FinOps, and live demo flows. |
+| | 🌐 **[Interactive HTML Presentation](./docs/presentation/google-cloud-slides.html)** | Bespoke interactive web presentation deck with transitions and presenter controls. |
+| | 📄 **[Printable Vector PDF Presentation](./docs/presentation/google-cloud-slides.pdf)** | 16:9 high-resolution vector PDF slide export. |
+| | 📽️ **[PowerPoint Presentation (.pptx)](./docs/presentation/google-cloud-slides.pptx)** | Microsoft PowerPoint presentation deck. |
+| | 🎙️ **[Masterclass Speaker Notes & Delivery Script](./docs/presentation/speaker-notes-and-script.md)** | Minute-by-minute talking points, technical deep dives, and live demonstration script. |
+| **Subsystem Modules** | 💻 **[`web-app/` Client README](./web-app/README.md)** | Frontend React + Vite SPA structure, scripts, and edge worker bundles. |
+| | 🛠️ **[`admin/` Scripts README](./admin/README.md)** | Administrative automation scripts, role provisioning, and smoke test execution. |
+| | 🌐 **[`terraform/` IaC README](./terraform/README.md)** | Terraform infrastructure definitions, IAM roles, and Google Cloud resource provisioning. |
+
+---
 
 ## 📖 User Manuals & Role-Based Guides
 

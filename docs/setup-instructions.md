@@ -1,5 +1,9 @@
 # Complete Setup & Customization Guide
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This guide provides end-to-end instructions for deploying, customizing, and running the **Gemini AI Classroom Assistant** for any school, university, or educational institution.
 
 > [!NOTE]
@@ -315,3 +319,8 @@ npm run test:smoke
 ### Issue 3: Screen capture / microphone permission issues
 - **Cause**: Browser permissions blocked or non-HTTPS origin.
 - **Solution**: WebRTC screen capture and audio APIs require either `https://` or `http://localhost`. Ensure your domain is served over HTTPS or use the Firebase Hosting default domain (`https://<project-id>.web.app`).
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

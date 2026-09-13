@@ -1,10 +1,27 @@
 # Frontend Components
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 The `web-app/src/components/` directory contains all the React components that make up the user interface. Below is a breakdown of the main components, component hierarchy, and navigation flows.
 
 > [!TIP]
 > For a complete, control-by-control audit of every UI button, modal, slider, and workflow, see the **[Comprehensive UI Controls & Features Catalog](./comprehensive-ui-controls-and-features-catalog.md)**.
 > For user-facing guides, see the **[Teacher User Manual](./user-manual-teacher.md)** and **[Student User Manual](./user-manual-student.md)**.
+
+---
+
+## 📑 Table of Contents
+
+1. [Component Hierarchy & State Flow Diagram](#-component-hierarchy--state-flow-diagram)
+2. [Class & User Management](#class--user-management)
+3. [Real-time & Session Views](#real-time--session-views)
+4. [Data & Analysis Views](#data--analysis-views)
+5. [Communication](#communication)
+6. [Reusable & Utility Components](#reusable--utility-components)
+
+---
 
 ## 🧭 Component Hierarchy & State Flow Diagram
 
@@ -228,3 +245,7 @@ flowchart TD
 *   **`MicSetupModal.jsx`**: Microphone selection, live RMS volume VU metering, speech verification challenge (STT), and audio playback test modal for students.
 *   **`AudioTranscriptModal.jsx`**: Dialogue playback modal for teachers displaying multi-speaker turns, synchronized webcam snapshots, clickable seek buttons, and CSV/TXT transcript exports.
 *   **`IncidentDossierExportModal.jsx`**: Comprehensive export modal allowing teachers to select incident periods (session-specific or custom range), choose target students, select output format (Microsoft Word `.docx`, CSV, or both), and trigger cloud compilation jobs.
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)

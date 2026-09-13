@@ -1,5 +1,9 @@
 # 🛠️ System Administrator & DevOps User Manual
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 Welcome to the **Gemini AI Classroom Assistant** Administrator and DevOps Manual. This guide details cloud provisioning, Terraform infrastructure-as-code, Firebase security rules governance, multi-codebase Cloud Functions, automated identity lifecycle management, AI FinOps budgeting, and disaster recovery.
 
 ---
@@ -489,3 +493,7 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
 | **New teacher cannot log in** | Email domain does not match `VITE_TEACHER_DOMAINS`. | Run `node admin/scripts/grantTeacherRole.js <email>` to grant manual teacher claims, or update domain whitelist in `.env`. |
 | **Cloud Tasks retries failing** | Cloud Tasks queue permissions or queue deletion. | Verify that the queue `bingo-retry-queue` exists in Google Cloud Tasks console and has the Cloud Run Invoker role granted to the default compute service account. |
 | **Firestore index missing errors** | Complex query executed before composite index deployment. | Deploy index definitions using `npx firebase-tools deploy --only firestore:indexes`. |
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)

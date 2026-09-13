@@ -1,6 +1,26 @@
 # Audio Invigilation & Voice AI Architecture
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document provides a comprehensive technical guide to the complete Audio Invigilation, Moving Window Audio Segmentation, Edge LiteRT Whisper & Gemma Intent Proctoring, and Session Summarization systems powered by Google LiteRT and Gemini AI.
+
+---
+
+## 📑 Table of Contents
+
+1. [High-Level Architecture Overview](#1-high-level-architecture-overview)
+2. [Multi-Mode Voice Processing Matrix](#2-multi-mode-voice-processing-matrix)
+3. [Mode 1: On-Device LiteRT Whisper + Gemma Intent Proctoring (Zero Cloud Egress)](#3-mode-1-on-device-litert-whisper--gemma-intent-proctoring-zero-cloud-egress)
+4. [Mode 2: Real-Time Rolling Moving Window Audio Invigilation](#4-mode-2-real-time-rolling-moving-window-audio-invigilation)
+5. [Mode 3: Classroom Discussion & Long Session Audio Summarization](#5-mode-3-classroom-discussion--long-session-audio-summarization)
+6. [Mode 4: Offline Queue & Cloud Hybrid Fallback](#6-mode-4-offline-queue--cloud-hybrid-fallback)
+7. [Dynamic Voice Prompt Library & Teacher Configuration Modal](#7-dynamic-voice-prompt-library--teacher-configuration-modal)
+8. [Client-Side Gemma vs. Server-Side Genkit: Irregularity & Tool Handling](#8-client-side-gemma-vs-server-side-genkit-irregularity--tool-handling)
+9. [Dual-Path analyzeAudioFlow Architecture](#9-dual-path-analyzeaudioflow-architecture)
+10. [Persistent Cache Storage for Edge Models](#10-persistent-cache-storage-for-edge-models)
+11. [Student Portal Audio Confidentiality & Inline Playback](#11-student-portal-audio-confidentiality--inline-playback)
 
 ---
 
@@ -319,5 +339,10 @@ In `StudentRecordsView.jsx`, audio transcripts and speech recordings are protect
    - For regular (non-exam) lessons, each audio snippet provides a **"▶ Play Clip"** button.
    - Click triggers `handleTogglePlayAudio(audioItem)` to resolve the storage URL on demand (`getDownloadURL(ref(storage, audioPath))`) and mounts a native `<audio controls autoPlay>` player with zero upfront bandwidth consumption.
    - If an exam snippet is queried directly, playback is blocked immediately with an alert notice.
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+
 
 

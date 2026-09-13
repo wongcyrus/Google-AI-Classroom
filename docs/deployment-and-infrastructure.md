@@ -1,6 +1,27 @@
 # Deployment & Infrastructure Guide
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document provides a comprehensive overview of the automated infrastructure provisioning, multi-codebase deployment pipeline, and environment management workflows for the **Gemini AI Classroom Assistant**. For a step-by-step walkthrough on setting up and customizing the platform for a new school or institution, see the **[Setup & Customization Guide](./setup-instructions.md)**.
+
+---
+
+## 📑 Table of Contents
+
+1. [Architecture & Technology Stack](#️-architecture--technology-stack)
+2. [Creating a New Environment (Zero UI Clicks)](#-creating-a-new-environment-zero-ui-clicks)
+3. [Default Seeded Accounts & Demo Class](#-default-seeded-accounts--demo-class)
+4. [Switching Between Environments (Dev vs Prod)](#-switching-between-environments-dev-vs-prod)
+5. [Firestore Composite Index Architecture](#️-firestore-composite-index-architecture-firestoreindexesjson)
+6. [Future Project ID & Name Migration (Yearly Rollover)](#-future-project-id--name-migration-yearly-rollover)
+7. [Security Audit & Key Exposure Risk Analysis](#-security-audit--key-exposure-risk-analysis)
+8. [Email Delivery & Custom SMTP Configuration](#️-email-delivery--custom-smtp-configuration)
+9. [Multi-Codebase Cloud Functions Architecture](#-multi-codebase-cloud-functions-architecture)
+10. [Genkit AI Modern Integration](#-genkit-ai-modern-integration)
+11. [Self-Healing & Resilience Features in deploy.sh](#️-self-healing--resilience-features-in-deploysh)
+12. [Institutional Email Domain Configuration (Multi-School Support)](#-institutional-email-domain-configuration-multi-school-support)
 
 ---
 
@@ -365,4 +386,9 @@ The platform is designed to be fully adaptable by any university, college, or K-
    TEACHER_EMAIL_DOMAINS="school.edu"
    STUDENT_EMAIL_DOMAINS="students.school.edu"
    ```
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+
 

@@ -1,6 +1,25 @@
 # Student View: Schedule-Driven Logic
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document outlines the automated, schedule-driven logic implemented in the `StudentView.jsx` component. The primary goal of this architecture is to ensure that a student's screen capture data is always associated with the correct, currently active class, especially in scenarios with back-to-back lessons.
+
+---
+
+## 📑 Table of Contents
+
+1. [Core Architecture & State Flow](#core-architecture--state-flow)
+2. [Handling Overlap in Back-to-Back Classes](#handling-overlap-in-back-to-back-classes)
+3. [Dual Stream & Split-Channel Capture](#dual-stream--split-channel-capture)
+4. [Real-Time On-Device Face & Gaze Tracking (`useFaceMonitor.js`)](#real-time-on-device-face--gaze-tracking-usefacemonitorjs)
+5. [Microphone Input Selection & Moving Window Audio (`useAudioSetup.js` & `useAudioRecorder.js`)](#microphone-input-selection--moving-window-audio-useaudiosetupjs--useaudiorecorderjs)
+6. [Independent Multi-Stream Architecture & Robust Hardware Handling](#independent-multi-stream-architecture--robust-hardware-handling)
+7. [Live Exam Mode Synchronization & Proctoring Enforcement](#live-exam-mode-synchronization--proctoring-enforcement)
+8. [Automated Active Presence & Attention Verification ("Bingo") Lifecycle](#automated-active-presence--attention-verification-bingo-lifecycle)
+
+---
 
 ## Core Architecture & State Flow
 
@@ -317,3 +336,8 @@ Students are provided with complete transparency regarding any attendance deduct
    - Explicit reason: `"Failed consecutive presence checks (Bingo strike 1 & 2 timed out)"`.
    - Precise lesson timestamp intervals voided.
 2. **Timeline Heatmap Cells**: In the minute-by-minute timeline grid, minutes deducted due to missed presence checks are clearly rendered with diagonal orange stripes (`#F39C12`) and marked with a target icon (`🎯`), clearly distinguishing unacknowledged periods from offline periods (`#FADBD8`) or verified presence (`#2ECC71`).
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

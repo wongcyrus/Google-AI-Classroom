@@ -1,5 +1,9 @@
 # 🏗️ Terraform Infrastructure for Gemini AI Classroom Assistant
 
+[🏠 Back to Documentation Index](../README.md#documentation-index) | [🛠️ Admin Manual](../docs/user-manual-admin.md) | [🏗️ Deployment & Infrastructure](../docs/deployment-and-infrastructure.md)
+
+---
+
 This directory contains the Infrastructure as Code (IaC) configuration to provision and configure all Google Cloud and Firebase resources automatically with **Zero UI Clicks**.
 
 ---
@@ -39,3 +43,8 @@ cd terraform
 terraform init
 terraform apply -var="project_id=YOUR_PROJECT_ID" -var="billing_account=YOUR_BILLING_ID"
 ```
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

@@ -1,6 +1,25 @@
 # Cloud Functions
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document provides an overview of all the backend Cloud Functions used in the AI Invigilator application. The functions are organized across 6 isolated Gen 2 runtime modules.
+
+---
+
+## 📑 Table of Contents
+
+1. [Cloud Functions Architecture & Event Matrix](#-cloud-functions-architecture--event-matrix)
+2. [AI Flows Module (`ai_flows`)](#functions)
+3. [Auth Triggers Module (`auth_triggers`)](#auth-triggers)
+4. [Media Processing Module (`media_processing`)](#media-processing)
+5. [Property Processing Module (`property_processing`)](#property-processing)
+6. [Scheduled Tasks Module (`scheduled_tasks`)](#scheduled-tasks)
+7. [Storage Triggers Module (`storage_triggers`)](#storage-triggers)
+8. [Attendance Module (`attendance`)](#attendance)
+
+---
 
 ## ⚡ Cloud Functions Architecture & Event Matrix
 
@@ -347,3 +366,8 @@ This directory contains the Cloud Function for calculating student attendance.
         -   **Strict Verified Math**: Attended minutes (`totalMinutes` / `sharedScreenMinutes`) strictly counts slots where the student was active and verified (`val === 1`). Slots marked `2` are excluded from attended time.
         -   Calculates `deductedMinutes` (`count(val === 2)`), representing the total penalty time docked.
     -   **Persistence**: Persists the calculated data into `classes/{classId}/lessons/{lessonId}` (`students[uid].attendance`, `students[uid].sharedScreenMinutes`, and `students[uid].deductedMinutes`) and returns the complete payload to the client.
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

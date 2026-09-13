@@ -1,6 +1,21 @@
 # 🎥 Image-to-Video Compilation Pipeline
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document details the complete end-to-end architecture, technical optimizations, and parameters governing how student screenshots are transformed into compressed, high-clarity lesson timelapse videos (`.mp4`).
+
+---
+
+## 📑 Table of Contents
+
+1. [Pipeline Architecture](#️-pipeline-architecture)
+2. [1. Source Standardization (Student Client)](#️-1-source-standardization-student-client-studentviewjsx)
+3. [2. Video Processing Function](#️-2-video-processing-function-functionsmedia_processingprocessvideojobjs)
+4. [3. Optimized FFmpeg Encoding Parameters](#-3-optimized-ffmpeg-encoding-parameters)
+5. [4. Exam Period Detection & Storage Security Stamping](#-4-exam-period-detection--storage-security-stamping)
+6. [Performance & Compression Benchmarks](#-performance--compression-benchmarks)
 
 ---
 
@@ -137,3 +152,8 @@ export const isExamTimeRange = (startTime, endTime, examPeriods = []) => {
 | **Encoding Speed (360 frames)** | 45 – 65 seconds | **12 – 15 seconds** (3.5x faster) |
 | **Memory Footprint** | Spikes up to 6+ GB RAM | Stable at < 1.8 GB RAM |
 | **Text & Code Readability** | Sharp | Sharp & Crystal Clear |
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

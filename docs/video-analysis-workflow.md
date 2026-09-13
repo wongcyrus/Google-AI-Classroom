@@ -1,6 +1,32 @@
 # Video Analysis Workflow
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document provides a detailed explanation of the video analysis workflow, which is powered by Google's Vertex AI. Given that this is the most resource-intensive and expensive feature in the application, several safeguards have been implemented to ensure it runs efficiently and to prevent unnecessary costs from duplicate or runaway jobs.
+
+---
+
+## 📑 Table of Contents
+
+1. [Workflow Overview](#workflow-overview)
+2. [1. Initial Job Creation (`processVideoAnalysisJob`)](#1-initial-job-creation-processvideoanalysisjob)
+   - [Safeguard 1: De-duplication](#safeguard-1-de-duplication)
+   - [Safeguard 2: Job Size Limiting](#safeguard-2-job-size-limiting)
+   - [Safeguard 3: Batch Quota Checking](#safeguard-3-batch-quota-checking)
+3. [2. Preventing Duplicate Analysis (Idempotency)](#2-preventing-duplicate-analysis-idempotency)
+   - [Safeguard 4: Idempotency Check](#safeguard-4-idempotency-check)
+4. [3. Retry Mechanism](#3-retry-mechanism)
+   - [In-Place Retry with History](#in-place-retry-with-history)
+5. [4. Map-Reduce-Map AI Jobs Architecture: Performance Prompt Synthesis & Rubric Reporting](#4-map-reduce-map-ai-jobs-architecture-performance-prompt-synthesis--rubric-reporting)
+   - [4.1 The Map-Reduce-Map Paradigm Explained](#41-the-map-reduce-map-paradigm-explained)
+   - [4.2 Architectural Flowchart: Map-Reduce-Map Pipeline](#42-architectural-flowchart-map-reduce-map-pipeline)
+   - [4.3 Sequence Diagram: End-to-End Execution Flow](#43-sequence-diagram-end-to-end-execution-flow)
+   - [4.4 Phase Characteristics & Operational Matrix](#44-phase-characteristics--operational-matrix)
+   - [Tool Safety & Zero Prompt Corruption Guarantees](#tool-safety--zero-prompt-corruption-guarantees)
+
+---
 
 ## Workflow Overview
 
@@ -455,3 +481,8 @@ The system prevents prompt corruption through **4 Strict Architectural Safeguard
 
 4. **Idempotency & Clamping Guardrails**:
    All metric tools enforce idempotency and boundary validation. For example, `recordActualWorkingTime` replaces `[studentPath]: cappedWorkingMinutes` (clamped between 0 and total lesson length) rather than incrementing, ensuring retries or multiple passes never inflate student working minutes.
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

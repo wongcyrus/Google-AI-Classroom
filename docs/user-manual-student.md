@@ -1,5 +1,9 @@
 # 🧑‍🎓 Student User Manual & Guide
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 Welcome to the **Gemini AI Classroom Assistant** Student Guide. This manual walks you through system requirements, the pre-flight readiness test, in-session proctoring indicators, active presence verification challenges, and how to access your learning records, attendance breakdowns, and feedback.
 
 ---
@@ -378,3 +382,7 @@ During formal examinations, strict academic confidentiality rules apply:
 
 ### Q: Can my instructor hear everything I say?
 **A:** The microphone only records when audio monitoring is enabled for your class. When enabled, audio is processed locally or in short 30-second clips for academic integrity. Quiet periods are automatically suppressed and discarded.
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)

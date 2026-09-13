@@ -1,6 +1,21 @@
 # 🔄 Data Retention & Autonomous Media Lifecycle Architecture
 
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md) | [📘 UI Catalog](./comprehensive-ui-controls-and-features-catalog.md)
+
+---
+
 This document provides a comprehensive technical reference for the real-time data retention, autonomous Firestore TTL lifecycle, Storage event-driven deletion triggers, and cascading class removal in the Gemini AI Classroom Assistant.
+
+---
+
+## 📑 Table of Contents
+
+1. [System Architecture Overview](#️-system-architecture-overview)
+2. [1. Per-Class Dual Retention Configuration](#️-1-per-class-dual-retention-configuration)
+3. [2. Real-Time Event-Driven Deletion Triggers](#-2-real-time-event-driven-deletion-triggers-functionsstorage_triggers)
+4. [3. Comprehensive Cascading Class Deletion](#️-3-comprehensive-cascading-class-deletion-onclassdocdeleted)
+5. [4. Data Safety & Isolation Model](#️-4-data-safety--isolation-model)
+6. [5. Firestore Native TTL Policy Setup](#️-5-firestore-native-ttl-policy-setup)
 
 ---
 
@@ -158,3 +173,8 @@ gcloud firestore fields ttls update expireAt --collection-group=videoJobs --enab
 # Enable TTL on zipJobs
 gcloud firestore fields ttls update expireAt --collection-group=zipJobs --enable-ttl
 ```
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

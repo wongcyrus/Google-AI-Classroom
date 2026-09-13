@@ -1,12 +1,36 @@
-# React + Vite
+# 💻 Web Application Client (`web-app`)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[🏠 Back to Documentation Index](../README.md#documentation-index) | [🧭 Frontend Components](../docs/frontend-components.md) | [📘 UI Catalog](../docs/comprehensive-ui-controls-and-features-catalog.md)
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend client of **Gemini AI Classroom Assistant** is a high-performance React Single Page Application (SPA) built with [Vite](https://vitejs.dev/). It features route-level code splitting, on-device AI computer vision via MediaPipe & Web Workers, edge audio inference via LiteRT Whisper & Gemma, and real-time synchronization with Cloud Firestore and Firebase Storage.
 
-## Expanding the ESLint configuration
+## 📑 Quick Links
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 🧭 **[Frontend Components & State Architecture](../docs/frontend-components.md)**
+- 📘 **[Comprehensive UI Controls & Features Catalog (19 Domains)](../docs/comprehensive-ui-controls-and-features-catalog.md)**
+- 👨‍🏫 **[Instructor & TA User Manual](../docs/user-manual-teacher.md)**
+- 🧑‍🎓 **[Student User Manual & Guide](../docs/user-manual-student.md)**
+- 🧪 **[Frontend Test Suite (636 Tests)](../docs/testing-strategy-and-coverage.md#1-frontend-component--hook-suite-web-appsrc)**
+
+## 🚀 Local Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start Vite development server
+npm run dev
+
+# Run Vitest unit & integration test suite
+npm test
+
+# Build production bundle with code-splitting
+npm run build
+```
+
+---
+
+[← Back to Documentation Index](../README.md#documentation-index)
+

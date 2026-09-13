@@ -1,4 +1,9 @@
 # Google Cloud Presentation Masterclass Script & Speaker Notes
+
+[🏠 Documentation Index](../../README.md#documentation-index) | [📊 Presentation Slides (Marp)](./google-cloud-slides.marp.md) | [🌐 Interactive HTML Deck](./google-cloud-slides.html) | [📄 PDF Deck](./google-cloud-slides.pdf) | [📽️ PPTX Deck](./google-cloud-slides.pptx)
+
+---
+
 ## Gemini AI Classroom Assistant & Multimodal Invigilator
 **Presenter:** Cyrus Wong (黃俊彥) — Google Developer Expert (GCP & AI/ML)  
 Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC) Hong Kong  
@@ -407,3 +412,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > The entire project is open-source on GitHub, and our live production environment is accessible right now at `https://it114115-2627.web.app`.
 >
 > Thank you so much for your time today. Let's open the floor for questions and discussion on Edge AI, Google Genkit, and Gemini 3 architecture!"
+
+---
+
+[← Back to Documentation Index](../../README.md#documentation-index)
+
