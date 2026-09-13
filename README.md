@@ -8,6 +8,8 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 
 ## Table of Contents
 
+- [User Manuals & Role-Based Guides](#-user-manuals--role-based-guides)
+- [Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md)
 - [Powered by Google Technologies](#powered-by-google-technologies)
 - [Architecture Overview](#architecture-overview)
 - [Architecture Diagram](#architecture-diagram)
@@ -20,6 +22,17 @@ Instead of being a simple proctoring tool, the AI acts as a **Proactive Proctor*
 - [Testing & Quality Assurance](#-testing--quality-assurance)
 - [Environment Reset & Admin Scripts](#-environment-reset--admin-scripts)
 - [Deployment & Infrastructure](#deployment--infrastructure)
+
+## 📖 User Manuals & Role-Based Guides
+
+Tailored, step-by-step user manuals and technical references are provided for every user persona:
+
+*   👨‍🏫 **[Instructor & Teaching Assistant User Manual](./docs/user-manual-teacher.md):** Complete guide to classroom setup, schedule configuration, live invigilation, 2-way WebRTC talkback intercom, interactive Bingo presence challenges, task rubric synthesis, synchronized video review, and formal incident dossier exports.
+*   🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md):** Step-by-step onboarding covering Google Chrome requirements, the 3-step Exam Readiness Wizard (mic, neutral gaze calibration, and entire-screen verification), in-session HUD indicators, responding to Bingo challenges, and navigating the self-service records portal.
+*   🛠️ **[System Administrator & DevOps User Manual](./docs/user-manual-admin.md):** Production operations manual covering automated 1-command cloud provisioning (`setup-new-project.sh`), Terraform IaC, multi-codebase Cloud Functions, Firestore & Storage zero-trust security rules, AI FinOps budgeting, and automated disaster recovery.
+*   📘 **[Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md):** Exhaustive source-code level inventory of all 19 functional domains, detailing every button, slider, toggle, modal dialog, and data flow across the platform.
+
+---
 
 ## Powered by Google Technologies
 
@@ -61,11 +74,15 @@ The project is a monorepo composed of three main parts:
         *   **Student Interactive Challenge (`BingoModal.jsx`)**: Synthesized dual-tone Web Audio chime (659Hz $\to$ 880Hz) + desktop notifications, 45-second animated countdown timer bar with urgent pulse below 10 seconds, and 4 shuffled multiple-choice options with cheat-resistant server-side verification.
         *   **Two-Strike Attendance Deduction Engine**: Distinguishes between wrong answers (`failed_incorrect` $\to$ physical presence verified, attendance NOT docked) and timeouts/AFK (`missed_timeout` $\to$ Strike 1 triggers configurable 1–15m grace retry via **Google Cloud Tasks** with zero idle polling cost; Strike 2 voiding elapsed unverified attendance minutes between checks with bitmask code `2`).
         *   **Transparent Reflection**: Itemized attendance deduction alert card in `StudentRecordsView.jsx` explaining policy reasons, orange-striped timeline grid cells (`🎯`), and 3-state teacher attendance heatmap in `AttendanceView.jsx`.
+    *   **Formal Exam Incident Dossier Generator (`IncidentDossierExportModal.jsx`):** Asynchronous compiler generating signed academic misconduct reports as formatted Microsoft Word (`.docx`) documents and spreadsheets (`.csv`), complete with embedded high-resolution side-by-side screen and webcam evidence snapshots, diarized speech transcripts, and biometric gaze logs.
+    *   **AI FinOps, Quota Governance & Cost Audit Dashboard (`AiCostReportView.jsx`):** Enterprise financial accounting displaying real-time class AI spend against budget limits ($10.00 default cap), token consumption (input vs output), execution volume, unit economics ($/job), model spend breakdowns, and per-student token consumption matrices with CSV export.
+    *   **Student 3-Step Exam Readiness Wizard (`ExamReadinessWizard.jsx` & `MicSetupModal.jsx`):** Comprehensive pre-flight onboarding enforcing microphone hardware verification with spoken challenge & 3-second loopback playback, webcam alignment with 1-click neutral gaze pose calibration, and full desktop monitor sharing verification (`displaySurface === 'monitor'`).
+    *   **Prompt Management Studio & AI Prompt Optimizer (`PromptManagement.jsx`):** Centralized studio for vision, video, and audio rubric templates featuring a split Markdown editor (`@uiw/react-md-editor`), application scope toggles, shared collaborative permissions, and one-click Vertex AI / Gemini prompt optimization with undo.
     *   **Granular Task Duration Analytics:** Automatic logging via the `recordTaskDuration` AI tool feeds the **Performance Analytics** dashboard with discrete task and lab milestone durations from video screencasts.
-*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`), with callable endpoints for real-time multimodal analysis and presence verification (`triggerBingoCheck`, `submitBingoAnswer`, `generateQuestionBankAi`), plus Google Cloud Tasks queue workers for automated serverless retry scheduling (`dispatchBingoRetryTask`).
+*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`), with callable endpoints for real-time multimodal analysis and presence verification (`triggerBingoCheck`, `submitBingoAnswer`, `generateQuestionBankAi`), formal dossier compilation (`processReportJob`), video and zip processing (`processVideoJob`, `processZipJob`), plus Google Cloud Tasks queue workers for automated serverless retry scheduling (`dispatchBingoRetryTask`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
-For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For identity lifecycle and domain resolution, see [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
+For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For identity lifecycle and domain resolution, see [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md). For full UI control specifications, see the [Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md).
 
 ## Architecture Diagram
 
@@ -309,20 +326,20 @@ student1@stu.vtc.edu.hk
 
 ## 🧪 Testing & Quality Assurance
 
-The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests (**740+ tests and assertions**, exceeding the **80% line and function coverage benchmark**):
+The repository includes a comprehensive multi-tier testing framework spanning React component tests, Cloud Function logic tests, and live cloud smoke tests (**844 tests and assertions**, exceeding the **80% line and function coverage benchmark**):
 
 ```bash
 # Run all test suites (Frontend + Functions + System Smoke Tests)
 npm test
 
-# Run all test suites with V8 code coverage report (Lines: 80.64%, Funcs: 80.59%)
+# Run all test suites with V8 code coverage report (Lines: >80%, Funcs: >80%)
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest: 597 tests across 87 suites)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 92 tests across 6 codebases)
+npm run test:frontend   # React component & utility unit tests (Vitest: 636 tests across 90 suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 138 tests across 6 codebases)
 npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
-npm run test:security   # Real-token security rules verification (23 assertions)
+npm run test:security   # Real-token security rules verification (42 assertions)
 ```
 
 For complete architectural details, test matrices, and coverage reports, see the **[Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.

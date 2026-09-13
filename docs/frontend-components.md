@@ -2,6 +2,10 @@
 
 The `web-app/src/components/` directory contains all the React components that make up the user interface. Below is a breakdown of the main components, component hierarchy, and navigation flows.
 
+> [!TIP]
+> For a complete, control-by-control audit of every UI button, modal, slider, and workflow, see the **[Comprehensive UI Controls & Features Catalog](./comprehensive-ui-controls-and-features-catalog.md)**.
+> For user-facing guides, see the **[Teacher User Manual](./user-manual-teacher.md)** and **[Student User Manual](./user-manual-student.md)**.
+
 ## 🧭 Component Hierarchy & State Flow Diagram
 
 ```mermaid
