@@ -17,8 +17,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **30:00 – 42:00** | **04 | Edge AI & Privacy** | MediaPipe Mesh, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 11–14 |
 | **42:00 – 47:00** | **05 & 06 | Security & Media** | Zero-Trust Exam Mode, Bingo Active Presence & 2-Strike Verification, WebRTC Peek & Pure Frame Broadcaster | Slides 15–17 |
 | **47:00 – 52:00** | **07 & 08 | Video AI & FinOps** | Teacher Command Center, FFmpeg TTL, Map-Reduce-Map Milestone Matrix, Cloud FinOps | Slides 18–21 |
-| **52:00 – 56:00** | **09 | DevSecOps & Demo** | Incident Dossier Pipeline, 831+ Tests Testing Pyramid, 5-Stage Live Verification | Slides 22–24 |
-| **56:00 – 60:00** | **10 | Conclusion & Q&A** | Summary, Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 25 |
+| **52:00 – 57:00** | **09 | Operations & DevSecOps** | Incident Dossiers, Multi-Persona 19 UI Domains, 846+ Tests Testing Pyramid, 5-Stage Live Verification | Slides 22–25 |
+| **57:00 – 60:00** | **10 | Conclusion & Q&A** | Summary, Enterprise Docs & Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 26 |
 
 ---
 
@@ -349,23 +349,36 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 55:00 – 56:00 | Slide 23: 09 | DevSecOps & Production Reliability Engineering
+### 55:00 – 56:00 | Slide 23: Multi-Persona Operations & 19 UI Control Domains
+*Visual: `slide_multipersona_operations.png`*
+
+> **Cyrus Wong:**  
+> "A common failure mode in academic software is the gap between code capabilities and user accessibility. To ensure seamless institutional adoption, we published exhaustive role-based user documentation and mapped all 19 UI control domains across the platform:
+>
+> - **Instructor & TA Command Center (17 Chapters):** Operational guidance covering timetable automation, zero-space problem filters, 1-to-1 WebRTC Live Peek and Opus intercom, Pure Frame Broadcaster, 60-second Bingo challenge dispatches, Two-Stage Rubric Synthesis Studio, and Word/CSV incident dossiers.
+> - **Student & Examinee Portal (11 Chapters):** Self-service workflows detailing the 3-step hardware readiness wizard, dual-stream webcam/screen capture, on-device LiteRT Whisper and Gemma proctoring, 60s Bingo focus HUD, and IndexedDB offline resilience.
+> - **Admin & DevOps Governance (11 Chapters):** Enterprise administration detailing GCIP blocking auth triggers for institutional domain claim mapping, zero-trust exam confidentiality storage rules, the 7 isolated Cloud Run Functions codebases, and daily FinOps Gemini pricing sync.
+> - **13 Mermaid Interaction & State Diagrams:** We mapped every critical interaction—from lesson lifecycle and WebRTC signaling to the Bingo Cloud Tasks retry state machine and two-stage rubric synthesis—into clear, auditable diagrams with zero guesswork."
+
+---
+
+### 56:00 – 57:00 | Slide 24: 09 | DevSecOps & Production Reliability Engineering
 *Visual: `slide_devsecops_safeguards.png`*
 
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **831+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 633 tests across 90 suites achieving **>80% code coverage** in `web-app`.
->   - **Level 2 (Backend Cloud Functions):** 139 tests across 6 domain codebases (including 94.2% attendance coverage).
->   - **Level 3 (Security Rules):** 29 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
+> - **846+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 636 tests across 90 suites achieving **>80% code coverage** in `web-app`.
+>   - **Level 2 (Backend Cloud Functions):** 138 tests across 6 domain codebases (including 94.2% attendance coverage).
+>   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 >   - **Admin Suite:** 2 validation tests.
 > - **Dual-Environment CI/CD:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects, with pre-bundling validation in `vite.config.js` to prevent credential cross-contamination."
 
 ---
 
-### 56:00 – 58:00 | Slide 24: Live System Demonstration: 5-Stage Verification Flow
+### 57:00 – 58:30 | Slide 25: Live System Demonstration: 5-Stage Verification Flow
 *Visual: `slide_live_demo_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -379,7 +392,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 58:00 – 60:00 | Slide 25: 10 | Empowering Education with Google Cloud & Edge AI
+### 58:30 – 60:00 | Slide 26: 10 | Empowering Education with Google Cloud & Edge AI
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  
@@ -389,6 +402,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - Complete privacy-by-design with zero raw biometrics egress.
 > - 99.8% cost reduction at sub-$0.02 per student.
 > - High-density teacher ergonomics that eliminate cognitive overload.
+> - Enterprise-grade documentation with comprehensive user manuals and 13 system interaction diagrams.
 >
 > The entire project is open-source on GitHub, and our live production environment is accessible right now at `https://it114115-2627.web.app`.
 >

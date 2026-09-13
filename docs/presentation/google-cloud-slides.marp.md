@@ -425,15 +425,31 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Multi-Persona Operations & 19 UI Control Domains
+### Role-Based Manuals, 13 End-to-End System Diagrams & Granular UI Controls
+
+![bg right:60% 95%](images/slide_multipersona_operations.png)
+
+- **Instructor & TA Command Center (17 Chapters):**
+  - Live invigilation grid with zero-space filters, 1-to-1 WebRTC Live Peek & Talkback Opus intercom, Pure Frame Broadcaster, 60s Bingo dispatches, rubric synthesis studio & Word/CSV incident dossiers.
+- **Student & Examinee Portal (11 Chapters):**
+  - 3-step hardware readiness wizard, dual-stream webcam/screen capture, on-device LiteRT Whisper & Gemma AI proctor, 60s Bingo focus HUD & IndexedDB offline resilience.
+- **Admin & DevOps Governance (11 Chapters):**
+  - GCIP blocking functions for institutional domain custom claims, zero-trust exam storage rules, 7 Cloud Run Functions codebases & daily FinOps Gemini pricing sync.
+- **19 Audited UI Control Domains & 13 Mermaid Diagrams:**
+  - Complete operational transparency with zero guesswork across all platform features.
+
+---
+
 ## 09 | DevSecOps & Production Reliability Engineering
 ### Multi-Tier Automated Testing Pyramid & Dual-Environment Deployments
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **831+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 633 tests across 90 suites (>80% code coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 139 tests across 6 domain codebases (including 94.2% attendance coverage).
-  - **Level 3 (Security Rules):** 29 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
+- **846+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 636 tests across 90 suites (>80% code coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 138 tests across 6 domain codebases (including 94.2% attendance coverage).
+  - **Level 3 (Security Rules):** 42 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
   - **Admin Suite:** 2 validation tests.
 - **Automated Dual-Environment CI/CD:**
@@ -462,6 +478,7 @@ const processFrame = async (now, metadata) => {
 
 - **Live Application:** [https://it114115-2627.web.app](https://it114115-2627.web.app)
 - **Open-Source Repository:** [github.com/wongcyrus/Gemini-AI-Classroom-Assistant](https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant)
+- **Enterprise Documentation:** Comprehensive User Manuals (Teacher, Student, Admin) & 19 UI Control Domains Catalog with 13 Mermaid interaction diagrams.
 - **Presenter:** **Cyrus Wong (黃俊彥)**
   - Google Developer Expert in GCP & AI/ML
   - Senior Lecturer, HKIIT / VTC Hong Kong
