@@ -110,8 +110,8 @@ Provision all 15 GCP services, Firestore, Storage buckets, GCIP Auth, and Cloud 
 ### 💻 Local Development Setup
 ```bash
 # 1. Clone the repository
-git clone https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant.git
-cd Gemini-AI-Classroom-Assistant
+git clone https://github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent.git
+cd Gemini-Multimodal-Classroom-Agent
 
 # 2. Configure environment credentials
 cp web-app/.env.example web-app/.env

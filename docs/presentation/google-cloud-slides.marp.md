@@ -3,7 +3,7 @@ marp: true
 theme: default
 paginate: true
 header: "Google Cloud Tech Talk | Gemini Multimodal Classroom Agent | Cyrus Wong (GDE)"
-footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-AI-Classroom-Assistant"
+footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent"
 style: |
   section {
     background-color: #0f172a;
@@ -75,7 +75,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
   - **AWS AI Hero** (since 2016; 1st AWS Academy Instructor globally)
   - **Microsoft MVP** in Azure AI
 - **Email:** `cywong@vtc.edu.hk`
-- **GitHub:** `github.com/wongcyrus/Gemini-AI-Classroom-Assistant`
+- **GitHub:** `github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent`
 
 ---
 
