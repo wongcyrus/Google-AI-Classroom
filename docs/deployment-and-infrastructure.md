@@ -95,7 +95,7 @@ To provision a brand-new GCP/Firebase project from scratch with all APIs, databa
 
 ## 👥 Default Seeded Accounts & Demo Class
 
-When a project is deployed or seeded via `node admin/scripts/seed_initial_data.mjs`, the following assets are ready immediately:
+When a project is deployed or seeded via `node admin/scripts/seed_initial_data.mjs`, the following assets are ready immediately (see full reference in **[👥 Demo Accounts & Development Sandbox Guide](./demo-accounts-and-sandbox.md)**):
 
 | Role | Email | Password Configuration | Verification Status |
 | :--- | :--- | :--- | :--- |
