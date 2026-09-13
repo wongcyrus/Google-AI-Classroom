@@ -261,3 +261,59 @@ To support diverse student environments (e.g., desktops without webcams or micro
      ```
 4. **Zero-Leakage Assessment Confidentiality**:
    - All session screencasts, audio transcripts, and irregularity details recorded during active exam mode or scheduled exam periods are marked confidential and shielded from student viewing or downloading in `StudentRecordsView.jsx`.
+
+---
+
+## Automated Active Presence & Attention Verification ("Bingo") Lifecycle
+
+`StudentView.jsx` integrates real-time presence challenge interception and student interaction workflows to distinguish between active human engagement, passive tab inactivity, and complete student absence.
+
+### 1. Challenge Dispatch & Non-Blocking Audio Alert
+1. **Real-time Document Subscription**: `StudentView.jsx` listens to changes on the student's property document at `classes/{classId}/studentProperties/{studentUid}` (as well as class-level broadcast alerts).
+2. **Detection of `activeBingo`**: When `myProperties.activeBingo` contains an unresolved challenge (`{ bingoId, question, options, timeLimitSeconds, expiresAtMillis, strikeNumber }`), the student view initiates the challenge workflow:
+   - **Synthesized Dual-Tone Web Audio Chime**: An `AudioContext` synthesizes a non-blocking ascending dual-tone chime (E5 659.25Hz for 150ms $\to$ A5 880.00Hz for 300ms) with an exponential decay envelope. This audible cue alerts the student even if they are focused on secondary monitors, physical textbooks, or full-screen IDEs.
+   - **Desktop Notification**: If permitted by the browser, dispatches a native desktop notification (`🎯 Classroom Attendance Check: Please answer the verification prompt on your screen`).
+   - **Dialog Presentation**: Mounts `<BingoModal>` directly over the student interface with a dimmed backdrop.
+
+### 2. 45-Second Countdown & Anti-Tamper Interaction
+1. **Countdown Timer Bar**: Renders an animated SVG/CSS timer bar spanning 45 seconds (or configured `timeLimitSeconds`). When less than 10 seconds remain, the progress bar transitions to an urgent pulsing red state (`#E74C3C`).
+2. **Focus & Environmental Telemetry**: When the student selects one of the 4 multiple-choice options:
+   - Evaluates `document.hasFocus()` to log whether the classroom browser window had active operating system focus.
+   - Calculates elapsed response time (`responseTimeSec = (Date.now() - receivedAt) / 1000`).
+   - Disables all option buttons immediately to prevent duplicate submissions.
+3. **Callable Function Execution**: Invokes the secure Cloud Function `submitBingoAnswer` passing `{ classId, bingoId, selectedIndex, responseTimeSec, windowFocused }`.
+
+### 3. Two-Strike Presence Rule & Absenteeism Handling
+The backend and frontend collaboratively enforce the fair two-strike presence policy:
+1. **Case A: Correct Choice (`passed`)**:
+   - `submitBingoAnswer` flags the record as `passed`.
+   - `BingoModal` displays a green confirmation (`🎯 Verified Present!`) and auto-closes after 2 seconds.
+   - No attendance impact.
+2. **Case B: Incorrect Choice (`failed_incorrect`)**:
+   - The student answered before timeout, proving they are physically seated at their computer, but selected the wrong option.
+   - Marked as `failed_incorrect`.
+   - `BingoModal` displays an informative notice (`🎯 Incorrect Choice — Presence Verified`).
+   - **Attendance is NOT deducted**: Physical attendance is honored; academic comprehension notes may be logged for teacher review.
+3. **Case C: Timeout / AFK (`missed_timeout`)**:
+   - If the 45-second timer reaches zero without user interaction, the modal automatically submits with `selectedIndex: null`.
+   - **Strike 1 (First Timeout)**:
+     - Physical presence unverified (student may be AFK, running unattended video loops, or stepped away).
+     - The modal closes with a warning: `⚠️ Presence check missed. A retry challenge will be issued shortly.`
+     - Backend queries class configuration (`classes/{classId}.bingoRetryDelayMinutes`, 1–15 mins, default 3 mins).
+     - Enqueues a serverless **Google Cloud Task** to `dispatchBingoRetryTask` (`locations/asia-east2/functions/dispatchBingoRetryTask`) with scheduled delay `scheduleDelaySeconds = retryDelayMinutes * 60` and deterministic deduplication ID `retry-${classId}-${studentUid}-${priorBingoId}`.
+     - Saves `pendingRetryBingo: true`, `priorMissedBingoId: bingoId`, `retryBingoScheduledAtMillis`, and `retryDelayMinutes` to `studentProperties/{studentUid}`.
+   - **Strike 2 (Consecutive Timeout)**:
+     - Dispatched automatically by Google Cloud Tasks when the scheduled grace delay elapses (guarded by pre-flight checks ensuring student is still enrolled and did not already clear the check).
+     - If the follow-up retry is also missed/timed out:
+       - Confirms student is absent from their workstation.
+       - Backend dynamically calculates the exact elapsed minutes between Strike 1 issuance and Strike 2 timeout (`deductedMinutes = Math.max(1, Math.round((endMillis - startMillis) / 60000))`).
+       - Creates an `attendanceAdjustments` record voiding all attendance minutes between Strike 1 and Strike 2 with attendance bitmask `2`.
+       - Emits a high-severity incident to `irregularities` for instructor auditing and clears `activeBingo`.
+
+### 4. Transparent Attendance Deduction UI Reflection
+Students are provided with complete transparency regarding any attendance deductions in their portal (`StudentRecordsView.jsx`):
+1. **Deductions Warning Banner**: When viewing a lesson where `deductedMinutes > 0`, an amber/red warning card displays:
+   - Total minutes deducted from their attendance calculation.
+   - Explicit reason: `"Failed consecutive presence checks (Bingo strike 1 & 2 timed out)"`.
+   - Precise lesson timestamp intervals voided.
+2. **Timeline Heatmap Cells**: In the minute-by-minute timeline grid, minutes deducted due to missed presence checks are clearly rendered with diagonal orange stripes (`#F39C12`) and marked with a target icon (`🎯`), clearly distinguishing unacknowledged periods from offline periods (`#FADBD8`) or verified presence (`#2ECC71`).

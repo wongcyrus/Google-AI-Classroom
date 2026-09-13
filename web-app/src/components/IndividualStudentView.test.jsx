@@ -3,9 +3,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import IndividualStudentView from './IndividualStudentView';
 
+const mockCallable = vi.fn().mockResolvedValue({ data: { success: true } });
+vi.mock('firebase/functions', () => ({
+  httpsCallable: () => mockCallable,
+}));
+
 vi.mock('../firebase-config', () => ({
   db: {},
   storage: {},
+  functions: {},
 }));
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg_1' });
@@ -517,6 +523,32 @@ describe('IndividualStudentView Component', () => {
 
     // Verify it restored 'screen' tab instead of 'dual'
     expect(screen.getByRole('tab', { name: /Screen Tab/i })).toHaveClass('active');
+  });
+
+  it('triggers triggerBingoCheck callable when Call Bingo button is clicked', async () => {
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        onClose={vi.fn()}
+      />
+    );
+
+    const callBingoBtn = screen.getByRole('button', { name: /Call Bingo/i });
+    expect(callBingoBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(callBingoBtn);
+    });
+
+    expect(mockCallable).toHaveBeenCalledWith({
+      classId: 'CLASS_1',
+      targetStudentUid: 's_1',
+      questionSource: 'student_screen',
+      triggerType: 'teacher_manual_single',
+    });
   });
 });
 

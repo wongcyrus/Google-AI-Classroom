@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './IndividualStudentView.css';
-import { db, storage } from '../firebase-config';
+import { db, storage, functions } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import useWebRTCPeekTeacher from '../hooks/useWebRTCPeekTeacher';
@@ -272,6 +273,34 @@ const IndividualStudentView = ({
     }
   };
 
+  const [isCallingStudentBingo, setIsCallingStudentBingo] = useState(false);
+  const [studentBingoStatus, setStudentBingoStatus] = useState(null);
+
+  const handleCallStudentBingo = async () => {
+    const studentUid = student?.id || student?.uid || student?.studentUid;
+    if (!classId || !studentUid || isCallingStudentBingo) return;
+    setIsCallingStudentBingo(true);
+    setStudentBingoStatus(null);
+
+    try {
+      const triggerBingoFn = httpsCallable(functions, 'triggerBingoCheck');
+      await triggerBingoFn({
+        classId,
+        targetStudentUid: studentUid,
+        questionSource: 'student_screen',
+        triggerType: 'teacher_manual_single',
+      });
+      setStudentBingoStatus('🎯 Bingo Sent!');
+      setTimeout(() => setStudentBingoStatus(null), 4000);
+    } catch (err) {
+      console.error('[IndividualStudentView] Error calling student bingo:', err);
+      setStudentBingoStatus('❌ Failed');
+      setTimeout(() => setStudentBingoStatus(null), 4000);
+    } finally {
+      setIsCallingStudentBingo(false);
+    }
+  };
+
   const handleShare = async (urlToShare) => {
     const targetUrl = urlToShare || screenUrl || webcamUrl;
     if (navigator.share && targetUrl) {
@@ -416,6 +445,25 @@ const IndividualStudentView = ({
                 title="Send Face Centering Reminder"
               >
                 👁️ Face Screen
+              </button>
+              <button
+                type="button"
+                className="btn-mini"
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '2px 8px',
+                  background: '#dbeafe',
+                  color: '#1d4ed8',
+                  border: '1px solid #93c5fd',
+                  borderRadius: '4px',
+                  cursor: isCallingStudentBingo ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                }}
+                onClick={handleCallStudentBingo}
+                disabled={isCallingStudentBingo}
+                title="Call Bingo challenge on this student's screen"
+              >
+                {isCallingStudentBingo ? '⏳ Sending...' : studentBingoStatus || '🎯 Call Bingo'}
               </button>
             </div>
           </div>

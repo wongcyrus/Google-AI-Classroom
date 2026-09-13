@@ -154,4 +154,43 @@ describe('AttendanceView Component Suite', () => {
       expect(mockCallable).toHaveBeenCalled();
     });
   });
+
+  it('renders Bingo deducted minute cells and legend correctly', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u1: {
+              sharedScreenMinutes: 40,
+              workingMinutes: 35,
+              summary: 'Engaged',
+              attendance: [1, 2, 0], // Min 1 present, Min 2 deducted by Bingo, Min 3 absent
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u1: 'bob@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00"
+        endTime="2026-08-30T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Deducted \(Failed Bingo Checks\)/i)).toBeInTheDocument();
+    expect(screen.getByTitle('Min 2: Deducted (Failed consecutive Bingo checks)')).toBeInTheDocument();
+  });
 });

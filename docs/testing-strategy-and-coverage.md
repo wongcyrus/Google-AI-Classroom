@@ -10,21 +10,21 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 750+ Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 831 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
-        L3[Level 3: Real-Token Security Rules Verification - 23 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 98 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 603 Tests across 87 Suites]
+        L3[Level 3: Real-Token Security Rules Verification - 29 Assertions]
+        L2[Level 2: Backend Cloud Functions Logic - 139 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 633 Tests across 90 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
 
     subgraph Details [Verification Scope]
         L4 -.->|Validates| D4[Class Lifecycle, Ingestion, Moving Window Audio, Dynamic Pricing & Cascading Deletions]
-        L3 -.->|Validates| D3[Anonymous vs Student vs Teacher Data Isolation & Firestore Rules]
-        L2 -.->|Validates| D2[DOCX Report Generation, AI Pricing Math, Genkit AI Tools, Quotas & Timestamps]
-        L1 -.->|Validates| D1[MediaPipe FaceLandmarker, Audio Moving Windows, AI Cost Reporting, WebRTC Peeking & React UI]
+        L3 -.->|Validates| D3[Anonymous vs Student vs Teacher Data Isolation, Exam Confidentiality & Bingo Privacy]
+        L2 -.->|Validates| D2[DOCX Dossiers, AI Pricing Math, Bingo 2-Strike Flows, Attendance Voiding & Quotas]
+        L1 -.->|Validates| D1[Bingo Modal & Bank, FaceLandmarker, Audio Moving Windows, AI Cost Reporting & React UI]
     end
 ```
 
@@ -47,11 +47,12 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (87 Test Files / 603 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (90 Test Files / 633 Tests).
 * **Covered Modules**:
+  * `web-app/src/components/ClassManagement.test.jsx`: Validates class creation, settings persistence, exam period definitions, roster CSV exports/imports, custom gaze thresholds, and configurable **Bingo Active Presence Retry Grace Delay** dropdown (`bingoRetryDelayMinutes`: 1m, 2m, 3m default, 5m, 10m).
   * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, signed video playback modal triggers, exam audio confidentiality shielding, irregularity evidence suppression during tests, and immediate abortion of direct GCS fallback upon backend callable permission denial.
   * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, high-concurrency image resolution, in-flight deduplication, 1-click CSV audit export, live Exam Mode toggle button rendering, top-level `PROCTORED EXAM MODE ACTIVE` alert banner display, and Firestore atomic toggle triggers.
-  * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, the `⚡ Preload AI for All Students` class broadcast trigger, and the live `🔒 Exam Mode: ACTIVE` / `📝 Exam Mode: OFF` toggle button.
+  * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, the `⚡ Preload AI for All Students` class broadcast trigger, the live `🔒 Exam Mode: ACTIVE` / `📝 Exam Mode: OFF` toggle button, and the **Strike 2 Grace Delay** selector with instant Firestore update.
   * `web-app/src/components/StudentView.test.jsx`: Tests dual webcam/screen sharing triggers, multi-device enumeration dropdowns, manual AI model preloading button, loading progress indicator, ready badges, 1-click Neutral Baseline Calibration (`🎯 Calibrate View` / `🎯 Calibrated`), fullscreen sharing enforcement under active exam mode, persistent `🔒 Official Examination in Progress — Proctored Session` security banner display, and stream lifecycle management.
   * `web-app/src/utils/exportUtils.test.js`: Validates RFC 4180 CSV export compliance, UTF-8 BOM prefix (`\uFEFF`) for Microsoft Excel compatibility, complex string quoting and newline escaping, ISO date serialization, and client-side browser download triggers for CSV, JSON, and TXT files.
   * `web-app/src/components/VideoAnalysisJobsTable.test.jsx`: Tests Level 1 video jobs table rendering, model badges, status badge variants, 3-line prompt snippet with modal link trigger, row selection to navigate to Level 2 details, and verifies removal of redundant action buttons and inline accordions.
@@ -68,9 +69,7 @@ flowchart TD
   * `web-app/src/utils/webAiModelLoader.test.js`: Validates 17 edge AI model loading scenarios including browser Cache API storage (`webai-models-v1`), `fetch()` `ReadableStream` download percentage calculation, GPU delegate allocation with automatic CPU fallback, mathematical calculation of Eye Aspect Ratio (`calculateEAR`) and Mouth Aspect Ratio (`calculateMAR`), and offline/network failure transitions.
   * `web-app/src/utils/studentCompliance.test.js`: Validates real-time student stream compliance evaluation, issue categorization (`no_screen`, `no_cam`, `no_mic`, `ai_alert`), default aggregations, filter state routing, targeted nudge messaging, and RFC-compliant CSV audit export formatting.
   * `web-app/src/utils/attendanceUtils.test.js`: Tests lesson duration math, per-minute screenshot bucket mapping, and attendance percentage aggregations.
-  * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, high-concurrency image resolution, in-flight deduplication, and 1-click CSV audit export.
   * `web-app/src/components/monitor/StudentsGrid.test.jsx`: Validates negative clock-drift tolerance (student timestamp up to 60s ahead of teacher clock), freshness window boundary enforcement (`Math.max(frameRate * 3, 30)`), and empty/stale state filtering.
-  * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, and the `⚡ Preload AI for All Students` class broadcast trigger.
   * `web-app/src/components/StudentScreen.test.jsx`: Tests dual feeds, webcam placeholders, looking-away / no-face / multiple-people alerts, eyes-closed (`😴 Eyes Closed / Sleeping`) and talking (`🗣️ Talking / Whispering`) badges, eager image loading attributes (`loading="eager"`, `fetchPriority="high"`, `decoding="async"`), and AI model loading status indicators (`⏳ 65%`).
   * `web-app/src/hooks/useTeacherScreenBroadcast.test.js`: Validates teacher pure frame broadcaster lifecycle, offscreen canvas 720p clamping, 32x18 thumbnail pixel delta diffing (emits on visual change or 5s heartbeat), viewer tracking from `screenBroadcastViewers`, and clean teardown without WebRTC peer connection overhead.
   * `web-app/src/hooks/useTeacherScreenBroadcastStudent.test.js`: Validates student receiver subscription to `classes/{classId}/screenBroadcast/liveFrame`, presence registration in `screenBroadcastViewers`, frame sequence ordering, and clean disconnect handling.
@@ -85,27 +84,21 @@ flowchart TD
   * `web-app/src/utils/transcriptMerger.test.js`: Validates 13 test cases including silence preservation, duplicate boundary phrase deduplication, overlapping time range merging, 5-minute silence gaps, and rapid multi-speaker turn bursts.
   * `web-app/src/utils/offlineBufferManager.test.js`: Validates IndexedDB offline queueing, chunk serialization, and backfill flush triggers upon reconnect.
   * `web-app/src/utils/formatters.test.js`: Validates byte conversion and micro-cent AI pricing formats (`$0.0042`).
-  * `web-app/src/components/StudentView.test.jsx`: Tests dual webcam/screen sharing triggers, multi-device enumeration dropdowns, manual AI model preloading button, loading progress indicator, ready badges, 1-click Neutral Baseline Calibration (`🎯 Calibrate View` / `🎯 Calibrated`), and stream lifecycle management.
   * `web-app/src/components/ClassSettingsComponents.test.jsx`: Tests AI monitoring mode selectors (`hybrid`, `client_only`, `cloud_only`, `disabled`), audio configuration, and dynamic pricing updates.
   * `web-app/src/components/IncidentDossierExportModal.test.jsx`: Tests period filtering, student selection, and report generation triggers.
   * `web-app/src/components/AudioTranscriptModal.test.jsx`: Tests audio player seek synchronization, multi-speaker colored tags, and timestamp navigation.
   * `web-app/src/components/IrregularitiesView.test.jsx`: Tests unified visual + audio evidence display, period filtering, and playback.
+  * `web-app/src/components/BingoModal.test.jsx`: Tests Web Audio chime synthesis on mount, 45-second timer countdown, visual shift to pulsing red below 10 seconds, option click submitting `submitBingoAnswer` with focus detection (`document.hasFocus()`) and response time, automatic timeout submission on expiration, and visual feedback states (`Verified Present!`, `Incorrect Choice`, `Time Expired`).
+  * `web-app/src/components/BingoQuestionBankModal.test.jsx`: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing questions, and 1-click addition to class pool; tests Aiken format parser and JSON array batch importer with syntax validation; tests Question Pool tab displaying questions, answers, explanations, and delete actions.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (11 Test Files / 98 Tests across 6 Codebases).
+* **Framework**: `vitest` with Node.js 22 runtime (15 Test Files / 139 Tests across 6 Codebases).
 * **Covered Modules**:
-  * `functions/media_processing/processVideoJob.test.js`: Validates `isExamTimeRange` mathematical detection of overlapping exam windows, boundary timestamps, non-array fallback safety, and custom metadata tagging (`isExam: 'true'`).
-  * `functions/media_processing/getStudentVideoPlaybackUrl.test.js`: Validates authenticated student self-service playback access, caller identity verification (`studentUid === auth.uid`), teacher override privilege, unauthorized peer rejection, and signed v4 Cloud Storage URL generation.
-  * `functions/media_processing/processReportJob.test.js`: Validates automated Microsoft Word (`.docx`) Incident Dossier generation with formatted tables, CSV exports, Cloud Storage uploads, and teacher notification emails.
-  * `functions/media_processing/videoEncoding.test.js`: Verifies FFmpeg output options, 1 FPS screencast timelapses, and text banner overlay string construction.
-  * `functions/ai_flows/cost.test.js`: Verifies exact token-to-USD pricing equations for Gemini 3.5 Flash-Lite, Gemini 3.7 Flash, and Gemini 3.5 Transcribe, plus dynamic in-memory caching and fallback token key normalizations.
-  * `functions/ai_flows/aiTools.test.js`: Verifies `recordAudioIrregularity`, `recordAudioAudit`, `sendMessageToStudent`, `recordLessonFeedback`, and `recordLessonSummary` Genkit tool executions with nested Firestore collections.
-  * `functions/auth_triggers/userManagement.test.js`: Verifies domain-to-role provisioning (`@stu.vtc.edu.hk` vs `@vtc.edu.hk`), pre-enrolled class auto-linking, and email array sanitization.
-  * `functions/auth_triggers/ipRestriction.test.js`: Verifies CIDR IP subnet mask matching (`Address4.isInSubnet`) and scheduled class session time slot gating across timezones.
-  * `functions/storage_triggers/storageQuota.test.js`: Verifies storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`) and quota limit overflow triggers.
-  * `functions/storage_triggers/cleanupTriggers.test.js`: Verifies Firestore TTL `expireAt` timestamp calculation and class retention change detection.
-  * `functions/scheduled_tasks/scheduledTasks.test.js`: Verifies auto-capture interval start detection (5-min lookahead) and Google Cloud Billing catalog SKU pricing rate mapping.
-  * `functions/attendance/attendance.test.js`: Verifies lesson duration calculation and per-minute screenshot bucket mapping for student screen-time heatmaps.
+  * `functions/ai_flows/bingoFlows.test.js`: Validates `triggerBingoCheck` across all 3 FinOps modes (`question_bank`, `teacher_screen`, `student_screen`), payload security (stripping `correctIndex` from student payloads), `submitBingoAnswer` 2-strike state machine (correct $\to$ `passed`, incorrect $\to$ `failed_incorrect`, timeout Strike 1 reading configurable `bingoRetryDelayMinutes` and enqueuing Cloud Task with sanitized task ID, consecutive timeout Strike 2 $\to$ attendance adjustment penalty with dynamic elapsed minute boundaries), `enqueueBingoRetryTask` (regional queue targeting `locations/asia-east2/functions/dispatchBingoRetryTask`, deterministic task ID formatting), `handleDispatchBingoRetry` (pre-flight checks, skipping already cleared students, generating Strike 2 challenge on pending students, and fallback to `classes/{classId}.questionBank`), and `generateQuestionBankAi` with Gemini 3.5 Flash Lite drafting multiple choice questions with structured JSON output schema.
+  * `functions/attendance/attendance.test.js`: Direct testing of `parseDateTime` (null safety, Date passthrough, millisecond timestamps, ISO offsets, and timezone parsing) and the `getAttendanceData` Callable Cloud Function (argument verification, not-found error handling, duration calculation, screenshot chunk querying, attendance adjustment voiding code `2`, and Firestore persistence).
+  * `functions/storage_triggers/storageQuota.test.js`: Verifies `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` triggers, storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`), and quota limit overflow evaluations.
+  * `functions/storage_triggers/cleanupTriggers.test.js`: Verifies `onScreenshotDocDeleted`, `onAudioDocDeleted`, `onClassDocDeleted` cascading asset purge across Cloud Storage and Firestore collections, and `onClassRetentionUpdated` TTL `expireAt` recalculations.
+  * `functions/scheduled_tasks/scheduledTasks.test.js`: Verifies `handleAutomaticCapture` and `handleAutomaticVideoCombination` scheduler triggers, auto-capture interval start detection (5-min lookahead), exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
 
 ### 3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)
 * **Framework**: Node.js + Firebase Admin SDK.
@@ -121,11 +114,13 @@ flowchart TD
   * **Test 9**: Cascading deletion execution proving zero leftover documents in Firestore across screenshots, videoJobs, audio chunks, irregularities, and audio audits.
 
 ### 4. Firestore Security Rules Suite (`tests/security_rules.test.mjs`)
-* **Framework**: Firebase Admin SDK + Firebase Client SDK (15 Real-Token Isolation Scenarios).
+* **Framework**: Firebase Admin SDK + Firebase Client SDK (29 Real-Token Isolation Scenarios).
 * **Tested Scenarios**:
-  * **Suite 1 (Anonymous)**: Blocks unauthenticated reads to classes, student profiles, and screenshots.
+  * **Suite 1 (Anonymous)**: Blocks unauthenticated reads to classes, student profiles, screenshots, and `bingoRecords`.
   * **Suite 2 (Student)**: Enforces student isolation (cannot read other student profiles, non-enrolled classes, or other students' audio metadata; cannot tamper with class settings).
-  * **Suite 3 (Teacher)**: Authorizes teacher access to enrolled classes, screenshot documents, audio metadata, and class setting mutations.
+  * **Suite 3 (Teacher)**: Authorizes teacher access to enrolled classes, screenshot documents, audio metadata, class setting mutations, full read/write management of `bingoRecords`, and full read/write management of `attendanceAdjustments`.
+  * **Suite 4 (Bingo Verification & Privacy Isolation)**: Verifies that enrolled students can read their own `bingoRecords` and `'all'` broadcast challenges, but cannot read challenges addressed to peers; verifies that students are strictly rejected when trying to create/update/delete `bingoRecords`.
+  * **Suite 5 (Attendance Adjustments Isolation)**: Verifies that enrolled students can read their own penalty deduction records under `classes/{classId}/attendanceAdjustments`, cannot read peers' deduction records, and cannot create/mutate deduction records directly.
 
 ---
 
@@ -172,6 +167,19 @@ functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Function
 | `src/components/ClassManagement.test.jsx` | `ClassManagement.jsx` | **8 Unit Tests**: Tests Section 6 UI card: teacher configuring `examPeriods` (`name`, `startDate`, `endDate`), policy selector, conditional release date input, `disableAutomaticVideoOnExam` checkbox, and persistence via `updateDoc`/`setDoc`. |
 | `src/components/StudentRecordsView.test.jsx` | `StudentRecordsView.jsx` | **23 Unit Tests**: Tests `isExamRecord` helper across all branches (flags, timestamps, boundary conditions), Assessment Integrity alert banner (`🔒 Exam Period Recordings Restricted`), strict UI exclusion of exam videos, exclusion of exam sessions from generating synthetic discovered lessons, locked action button states, and disabled Play/Download triggers. |
 | `src/components/monitor/ControlsPanel.test.jsx` | `ControlsPanel.jsx` | Tests Exam Session Protection card: `🟢 Standard Lab` vs `🔒 Protected Exam` state display and `Switch to Exam Mode` / `Exit Exam Mode` proctor toggles. |
+
+---
+
+## 🎯 Automated Active Presence & Attention Verification ("Bingo") Test Suite Breakdown
+
+| Test Suite | Target Component / Function | Coverage & Assertion Highlights |
+| :--- | :--- | :--- |
+| `functions/ai_flows/bingoFlows.test.js` | `triggerBingoCheck`, `submitBingoAnswer`, `generateQuestionBankAi` | **Full Coverage**: Validates challenge creation across 3 FinOps modes (`question_bank`, `teacher_screen`, `student_screen`); validates client payload sanitization (`correctIndex` omitted); tests full two-strike state machine (passed on correct answer, failed on incorrect with zero attendance penalty, missed Strike 1 scheduling 3-minute grace retry, missed Strike 2 recording attendance penalty adjustment with exact voided minute boundaries); validates Gemini 3.5 Flash Lite 5-question AI drafting with structured JSON schema. |
+| `functions/attendance/attendance.test.js` | `getAttendanceData` | **100% Logic Verification**: Validates minute-by-minute heatmap array calculation; verifies query against `attendanceAdjustments`; tests stamping voided intervals with status code `2`; validates that `val === 2` minutes are strictly excluded from `totalMinutes` / `sharedScreenMinutes`; validates computation of `deductedMinutes` count and persistence into `classes/{classId}/lessons/{lessonId}`. |
+| `src/components/BingoModal.test.jsx` | `BingoModal.jsx` | **Unit & Interaction Verification**: Validates dual-tone Web Audio chime synthesis on modal mount; tests 45-second animated countdown timer bar; verifies color shift to pulsating red state under 10 seconds; tests multiple choice button clicks dispatching `submitBingoAnswer` with focus detection (`document.hasFocus()`) and response time; tests timer expiration triggering auto-submission with `selectedIndex: null`; validates UI feedback states (`Verified Present!`, `Incorrect Choice`, `Time Expired`). |
+| `src/components/BingoQuestionBankModal.test.jsx` | `BingoQuestionBankModal.jsx` | **Question Bank Suite**: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing generated questions, and 1-click batch appending to class pool; tests plain-text Aiken format parser and raw JSON batch importer with real-time error handling; tests Questions Pool tab rendering active questions, option lists, highlighted correct answers, topic chips, and individual deletion handlers. |
+| `tests/security_rules.test.mjs` | `firestore.rules` (Suite 4) | **Real-Token Security Verification**: Tests that authenticated enrolled students can read their own `bingoRecords` and `'all'` broadcast challenges; proves that students are denied access to other students' private `bingoRecords`; proves that students have strictly zero write permissions (`create`, `update`, `delete`) on `bingoRecords`; validates that teachers have unrestricted read and write privileges over all class `bingoRecords`. |
+
 
 
 

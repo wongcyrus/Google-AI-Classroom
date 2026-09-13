@@ -55,8 +55,14 @@ The project is a monorepo composed of three main parts:
         2. **Video Encoder Exam Metadata Stamping**: `processVideoJob.js` evaluates `isExamTimeRange` against active `examPeriods` and stamps `isExam: 'true'` onto GCS custom metadata and Firestore `videoJobs` records.
         3. **Student Portal Confidentiality**: Screen recordings, Tab 5 speech transcripts, and Tab 4 raw irregularity evidence and media paths are automatically withheld behind assessment confidentiality banners during exams. Regular lessons feature an on-demand HTML5 `<audio controls>` player.
         4. **Live Student Enforcement**: `StudentView.jsx` enforces full-screen desktop sharing (`requireFullScreenOnly: true`) and mounts a persistent `🔒 Official Examination in Progress — Proctored Session` security banner whenever an exam is active.
+    *   **"Bingo" Automated Active Presence & Attention Verification Engine:** An interactive presence-verification system designed to distinguish between active students, wrong answers, and absent/AFK users running automated loopers or static screens:
+        *   **3 FinOps Cost Modes**: Flexible selection between **Predefined Question Bank** ($0.00 / 0 AI tokens), **Teacher Screen Broadcast** (1 shared Gemini call per lecture frame, ~$0.00015 total for entire class), and **Student Individual Screens** (targeted individual screenshot evaluation).
+        *   **Class Question Bank Management (`BingoQuestionBankModal.jsx`)**: 3-in-1 manager featuring Gemini 3.5 Flash Lite automatic question drafting from lecture topics, batch plain-text Aiken / JSON array importing, and manual question CRUD.
+        *   **Student Interactive Challenge (`BingoModal.jsx`)**: Synthesized dual-tone Web Audio chime (659Hz $\to$ 880Hz) + desktop notifications, 45-second animated countdown timer bar with urgent pulse below 10 seconds, and 4 shuffled multiple-choice options with cheat-resistant server-side verification.
+        *   **Two-Strike Attendance Deduction Engine**: Distinguishes between wrong answers (`failed_incorrect` $\to$ physical presence verified, attendance NOT docked) and timeouts/AFK (`missed_timeout` $\to$ Strike 1 triggers configurable 1–15m grace retry via **Google Cloud Tasks** with zero idle polling cost; Strike 2 voiding elapsed unverified attendance minutes between checks with bitmask code `2`).
+        *   **Transparent Reflection**: Itemized attendance deduction alert card in `StudentRecordsView.jsx` explaining policy reasons, orange-striped timeline grid cells (`🎯`), and 3-state teacher attendance heatmap in `AttendanceView.jsx`.
     *   **Granular Task Duration Analytics:** Automatic logging via the `recordTaskDuration` AI tool feeds the **Performance Analytics** dashboard with discrete task and lab milestone durations from video screencasts.
-*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
+*   **`functions/`**: A Node.js backend using Firebase Functions Gen 2 across 7 isolated codebases. This includes the core AI logic powered by Google Genkit and the Gemini 3 series (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`), with callable endpoints for real-time multimodal analysis and presence verification (`triggerBingoCheck`, `submitBingoAnswer`, `generateQuestionBankAi`), plus Google Cloud Tasks queue workers for automated serverless retry scheduling (`dispatchBingoRetryTask`).
 *   **`admin/`**: A collection of Node.js scripts for administrative tasks, such as granting teacher roles, environment resets, and smoke test suites.
 
 For a detailed breakdown of the Firestore data model, please see the [Firestore Schema Documentation](./docs/firestore-schema.md). For audio invigilation architecture, see [Audio Invigilation & Transcription Documentation](./docs/audio-invigilation-and-transcription.md). For identity lifecycle and domain resolution, see [Hybrid Role Resolution & Identity Architecture](./docs/hybrid-role-resolution-and-auth.md). For frontend architecture and schedule logic, see [Frontend Components](./docs/frontend-components.md) and [Student View Logic](./docs/student-view-logic.md).
@@ -86,6 +92,10 @@ graph TD
             F_analyzeAllImages["analyzeAllImages (onCall)"]
             F_analyzeFaceFallback["analyzeFaceFallback (onCall)"]
             F_analyzeAudio["analyzeAudio (onCall: gemini-3.5-transcribe-preview)"]
+            F_triggerBingoCheck["triggerBingoCheck (onCall: 3 FinOps modes)"]
+            F_submitBingoAnswer["submitBingoAnswer (onCall: 2-Strike presence)"]
+            F_dispatchBingoRetryTask["dispatchBingoRetryTask (onTaskDispatched: Cloud Tasks)"]
+            F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 3.5 Flash Lite)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]
@@ -120,13 +130,16 @@ graph TD
         end
 
         subgraph "Attendance (`attendance`)"
-            F_getAttendanceData["getAttendanceData (onCall)"]
+            F_getAttendanceData["getAttendanceData (onCall: includes Bingo deductions)"]
         end
     end
 
     %% Client to Firebase
     WebApp -- "HTTPS Calls" --> F_analyzeImage
     WebApp -- "HTTPS Calls" --> F_analyzeAllImages
+    WebApp -- "HTTPS Calls" --> F_triggerBingoCheck
+    WebApp -- "HTTPS Calls" --> F_submitBingoAnswer
+    WebApp -- "HTTPS Calls" --> F_generateQuestionBankAi
     WebApp -- "HTTPS Calls" --> F_deleteScreenshots
     WebApp -- "HTTPS Calls" --> F_getAttendanceData
     WebApp -- "HTTPS Calls" --> F_getStudentVideoPlaybackUrl

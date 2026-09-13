@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '../Modal';
 import AiCostReportView from '../AiCostReportView';
 import TeacherScreenBroadcastModal from '../TeacherScreenBroadcastModal';
+import BingoQuestionBankModal from '../BingoQuestionBankModal';
 import useTeacherScreenBroadcast from '../../hooks/useTeacherScreenBroadcast';
-import { auth } from '../../firebase-config';
+import { auth, functions, db } from '../../firebase-config';
+import { httpsCallable } from 'firebase/functions';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { formatBytes, formatAiCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
@@ -69,6 +72,90 @@ const ControlsPanel = ({
     const [localShowBroadcastModal, setLocalShowBroadcastModal] = useState(false);
     const [isPreloadSent, setIsPreloadSent] = useState(false);
     const [modalConfigTab, setModalConfigTab] = useState('webcam'); // 'webcam' | 'voice' | 'screen'
+
+    // Bingo States
+    const [bingoMode, setBingoMode] = useState('question_bank'); // 'question_bank' | 'teacher_screen' | 'student_screen'
+    const [showBankModal, setShowBankModal] = useState(false);
+    const [isCallingBingo, setIsCallingBingo] = useState(false);
+    const [bingoFeedback, setBingoFeedback] = useState(null);
+    const [questionBank, setQuestionBank] = useState([]);
+    const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
+
+    // Load question bank and class bingo settings from Firestore
+    useEffect(() => {
+      if (!classId) return;
+      const loadBankAndConfig = async () => {
+        try {
+          const classRef = doc(db, 'classes', classId);
+          const classSnap = await getDoc(classRef);
+          if (classSnap.exists() && classSnap.data()?.bingoRetryDelayMinutes !== undefined) {
+            setBingoRetryDelayMinutes(Number(classSnap.data().bingoRetryDelayMinutes) || 3);
+          }
+
+          const configRef = doc(db, 'classes', classId, 'classProperties', 'config');
+          const snap = await getDoc(configRef);
+          if (snap.exists() && Array.isArray(snap.data()?.bingoQuestionBank)) {
+            setQuestionBank(snap.data().bingoQuestionBank);
+          } else if (classSnap.exists() && Array.isArray(classSnap.data()?.questionBank)) {
+            setQuestionBank(classSnap.data().questionBank);
+          }
+        } catch (err) {
+          console.warn('[ControlsPanel] Error loading bingo question bank or settings:', err);
+        }
+      };
+      loadBankAndConfig();
+    }, [classId]);
+
+    const handleUpdateRetryDelay = async (minutes) => {
+      const safeMinutes = Math.min(15, Math.max(1, Number(minutes) || 3));
+      setBingoRetryDelayMinutes(safeMinutes);
+      if (!classId) return;
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { bingoRetryDelayMinutes: safeMinutes });
+      } catch (err) {
+        console.error('[ControlsPanel] Error updating bingoRetryDelayMinutes:', err);
+      }
+    };
+
+    const handleSaveQuestionBank = async (updatedBank) => {
+      setQuestionBank(updatedBank);
+      if (!classId) return;
+      try {
+        const configRef = doc(db, 'classes', classId, 'classProperties', 'config');
+        await setDoc(configRef, { bingoQuestionBank: updatedBank }, { merge: true });
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { questionBank: updatedBank });
+      } catch (err) {
+        console.error('[ControlsPanel] Error saving bingo question bank:', err);
+      }
+    };
+
+    const handleTriggerClassBingo = async () => {
+      if (!classId || isCallingBingo) return;
+      setIsCallingBingo(true);
+      setBingoFeedback(null);
+
+      try {
+        const triggerBingoFn = httpsCallable(functions, 'triggerBingoCheck');
+        const res = await triggerBingoFn({
+          classId,
+          targetStudentUid: 'all',
+          questionSource: bingoMode,
+          triggerType: 'teacher_manual_all',
+        });
+
+        const count = res.data?.createdCount || 0;
+        setBingoFeedback(`✅ Bingo dispatched to ${count} student(s)!`);
+        setTimeout(() => setBingoFeedback(null), 4000);
+      } catch (err) {
+        console.error('[ControlsPanel] Error triggering Bingo:', err);
+        setBingoFeedback(`❌ Failed to trigger Bingo: ${err.message}`);
+        setTimeout(() => setBingoFeedback(null), 5000);
+      } finally {
+        setIsCallingBingo(false);
+      }
+    };
 
     const showBroadcastModal = propShowBroadcastModal !== undefined ? propShowBroadcastModal : localShowBroadcastModal;
     const setShowBroadcastModal = propSetShowBroadcastModal || setLocalShowBroadcastModal;
@@ -690,6 +777,120 @@ const ControlsPanel = ({
                 >
                   {isPreloadSent ? '✅ Lightweight AI Preload Broadcasted' : '⚡ Preload Lightweight AI for All Students'}
                 </button>
+              )}
+            </div>
+        </div>
+
+        {/* 3.5. 🎯 Bingo Active Presence Verification */}
+        <div className="control-section bingo-control-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 className="control-section-header" style={{ margin: 0 }}>🎯 Bingo Presence Check</h4>
+              <button
+                type="button"
+                className="outline-action-btn"
+                style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                onClick={() => setShowBankModal(true)}
+                title="Manage predefined question bank or generate with AI"
+              >
+                📚 Question Bank ({questionBank.length})
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <label style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                Question Generation Mode:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="bingoMode"
+                    value="question_bank"
+                    checked={bingoMode === 'question_bank'}
+                    onChange={(e) => setBingoMode(e.target.value)}
+                  />
+                  <span>📚 <strong>Question Bank</strong> ($0.00 / Zero AI Tokens)</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="bingoMode"
+                    value="teacher_screen"
+                    checked={bingoMode === 'teacher_screen'}
+                    onChange={(e) => setBingoMode(e.target.value)}
+                  />
+                  <span>📺 <strong>Teacher Screen</strong> (1 AI call for whole lecture)</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="bingoMode"
+                    value="student_screen"
+                    checked={bingoMode === 'student_screen'}
+                    onChange={(e) => setBingoMode(e.target.value)}
+                  />
+                  <span>💻 <strong>Student Screens</strong> (AI anti-decoy check)</span>
+                </label>
+              </div>
+
+              <button
+                type="button"
+                className="action-btn"
+                style={{
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  padding: '8px 12px',
+                  borderRadius: '0.5rem',
+                  cursor: isCallingBingo ? 'not-allowed' : 'pointer',
+                  opacity: isCallingBingo ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  marginTop: '0.25rem',
+                }}
+                disabled={isCallingBingo}
+                onClick={handleTriggerClassBingo}
+              >
+                {isCallingBingo ? '⏳ Dispatching...' : '🎯 Call Bingo (All Students)'}
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem', paddingTop: '0.35rem', borderTop: '1px solid #f1f5f9' }}>
+                <label htmlFor="bingo-retry-delay-select" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                  Strike 2 Grace Delay:
+                </label>
+                <select
+                  id="bingo-retry-delay-select"
+                  aria-label="Strike 2 Grace Delay"
+                  value={bingoRetryDelayMinutes}
+                  onChange={(e) => handleUpdateRetryDelay(parseInt(e.target.value, 10))}
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#334155',
+                  }}
+                >
+                  <option value={1}>⚡ 1 min</option>
+                  <option value={2}>⏱️ 2 mins</option>
+                  <option value={3}>🎯 3 mins (Default)</option>
+                  <option value={5}>☕ 5 mins</option>
+                </select>
+              </div>
+
+              {bingoFeedback && (
+                <div style={{
+                  fontSize: '0.8rem',
+                  padding: '6px 8px',
+                  borderRadius: '0.375rem',
+                  background: bingoFeedback.startsWith('✅') ? '#dcfce7' : '#fee2e2',
+                  color: bingoFeedback.startsWith('✅') ? '#166534' : '#b91c1c',
+                }}>
+                  {bingoFeedback}
+                </div>
               )}
             </div>
         </div>
@@ -1514,6 +1715,14 @@ const ControlsPanel = ({
           frameStats={frameStats}
           viewers={broadcastViewers}
           onStopBroadcast={stopScreenBroadcast}
+        />
+
+        {/* Bingo Predefined Question Bank Modal */}
+        <BingoQuestionBankModal
+          isOpen={showBankModal}
+          onClose={() => setShowBankModal(false)}
+          questionBank={questionBank}
+          onSaveBank={handleSaveQuestionBank}
         />
     </div>
     );

@@ -54,6 +54,8 @@ erDiagram
         array examPeriods "[{ id, name, startDate, endDate }] - Exam/test periods withheld from students"
         string studentRecordingsPolicy "always_enabled | disabled | delayed_release"
         string studentRecordingsReleaseDate "ISO timestamp"
+        array questionBank "[{ id, question, options, correctIndex, explanation, topic }] - Predefined MCQ pool"
+        number bingoRetryDelayMinutes "Strike 2 grace retry delay in minutes (1-15m)"
     }
 
     teacherProfiles {
@@ -248,9 +250,50 @@ erDiagram
         timestamp lastSyncedAt "Daily sync timestamp"
     }
 
+    bingoRecords "classes/{classId}/bingoRecords" {
+        string bingoId PK
+        string classId FK
+        string studentUid FK "Target student UID or 'all'"
+        string questionSource "question_bank | teacher_screen | student_screen"
+        string triggerType "manual | scheduled | retry"
+        string question
+        array options "4 MC options"
+        number correctIndex "0-3"
+        number timeLimitSeconds "45s default"
+        number expiresAtMillis
+        string status "pending | passed | failed_incorrect | missed_timeout"
+        number strikeNumber "1 | 2"
+        number selectedIndex "Student selected choice"
+        number responseTimeSec
+        boolean windowFocused
+        timestamp createdAt
+        timestamp answeredAt
+    }
+
+    attendanceAdjustments "classes/{classId}/attendanceAdjustments" {
+        string adjustmentId PK
+        string classId FK
+        string studentUid FK
+        timestamp startTime
+        timestamp endTime
+        number startMillis
+        number endMillis
+        number deductedMinutes
+        number voidedMinutesCount
+        string strike1BingoId
+        string strike2BingoId
+        string reason
+        timestamp appliedAt
+        timestamp createdAt
+    }
+
     classes ||--o{ studentProfiles : "enrolled in"
     classes ||--o{ teacherProfiles : "managed by"
     classes }o--|| users : "created by teachers"
+    classes ||--o{ bingoRecords : "dispatches"
+    classes ||--o{ attendanceAdjustments : "penalizes unacknowledged presence"
+    bingoRecords }o--|| studentProfiles : "challenges"
+    attendanceAdjustments }o--|| studentProfiles : "adjusts attendance for"
     screenshots }o--|| classes : "captured in"
     screenshots }o--|| studentProfiles : "captured for"
     audio }o--|| classes : "recorded in"
@@ -366,6 +409,8 @@ Stores information about each class.
     *   `examPeriods`: (array of objects) Specific exam and test periods defined by the instructor (`[{ id, name, startDate, endDate }]`). Any sessions or video recordings falling within these defined windows are withheld from student sharing and blocked by zero-trust backend authorization to protect assessment questions from leakage.
     *   `studentRecordingsPolicy`: (string) Access policy governing student visibility and download of screen recordings (`always_enabled`, `disabled`, `delayed_release`). Prevents assessment question extraction.
     *   `studentRecordingsReleaseDate`: (string|null) Scheduled ISO 8601 release timestamp when recordings become accessible under `delayed_release`.
+    *   `questionBank`: (array of objects) Predefined multiple-choice question pool for the Bingo verification system (`[{ id, question, options, correctIndex, explanation, topic, createdAt }]`). Managed via `BingoQuestionBankModal.jsx`. Synchronized across both `classes/{classId}.questionBank` (class-level field) and `classes/{classId}/classProperties/config.bingoQuestionBank` (subcollection configuration) for seamless operational compatibility.
+    *   `bingoRetryDelayMinutes`: (number) Configurable grace period delay in minutes (integer between 1 and 15, default `3`) before Google Cloud Tasks automatically dispatches a Strike 2 follow-up verification challenge to an unacknowledged student.
 *   **Subcollections**:
     *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
         *   **Document ID**: A hash of the lesson's start and end times.
@@ -377,7 +422,8 @@ Stores information about each class.
             *   `students`: (map) A map where each key is a `studentUid`.
                 *   `workingMinutes`: (number) AI-estimated working minutes.
                 *   `sharedScreenMinutes`: (number) Minutes calculated from screen sharing.
-                *   `attendance`: (array) A per-minute array of 0s and 1s representing attendance.
+                *   `attendance`: (array) A per-minute array of numbers representing attendance state: `0` = absent / no screen, `1` = present & screen verified, `2` = voided presence due to consecutive unacknowledged Bingo checks.
+                *   `deductedMinutes`: (number) Cumulative minutes deducted from the student's attendance total due to consecutive failed or missed Bingo verification checks.
                 *   `feedback`: (array) An array of strings containing student-specific AI feedback.
                 *   `summary`: (string) A student-specific AI-generated summary.
     *   **`classProperties`**: Stores class-wide custom properties.
@@ -452,6 +498,66 @@ Stores information about each class.
         *   **Document ID**: Auto-generated.
         *   **Fields**: Mirror the root `irregularities` schema (`classId`, `studentUid`, `studentEmail`, `category`, `severity`, `confidence`, `transcript`, `evidence`, `rationale`, `source`, `timestamp`).
         *   **Security & Integrity**: Protected by Firestore Security Rules. Only authenticated enrolled students can create records matching their `request.auth.uid`. **Students have ZERO update and ZERO delete permissions** (`allow update: if isTeacherInClass(classId); allow delete: if isTeacherInClass(classId);`), preventing any student tampering or deletion of flagged incidents.
+    *   **`classes/{classId}/bingoRecords`**: Stores live and historical presence verification challenge records ("Bingo") dispatched to verify physical student presence and attention.
+        *   **Document ID**: `bingoId` (string, generated UUID or timestamp key).
+        *   **Fields**:
+            *   `bingoId`: (string) Unique challenge identifier.
+            *   `classId`: (string) Class ID where the challenge was issued.
+            *   `targetStudentUid`: (string) Target student UID, or `'all'` for class-wide broadcast challenges.
+            *   `questionSource`: (string) Challenge generation method (`'question_bank'` for predefined class bank [$0.00 / 0 AI tokens], `'teacher_screen'` for Gemini analysis of teacher's broadcast screen [1 call per cohort], or `'student_screen'` for targeted individual screenshot evaluation).
+            *   `triggerType`: (string) Trigger invocation context (`'manual'`, `'scheduled'`, `'retry'`).
+            *   `question`: (string) Prompt text of the multiple-choice presence challenge.
+            *   `options`: (array of 4 strings) 4 multiple-choice options.
+            *   `correctIndex`: (number) 0-indexed integer (0–3) indicating the correct option. Evaluated strictly server-side; NEVER sent down to the student client `activeBingo` payload.
+            *   `timeLimitSeconds`: (number) Permitted interaction window in seconds (default `45`s).
+            *   `expiresAtMillis`: (number) Epoch timestamp in milliseconds after which the challenge is flagged as timed out.
+            *   `status`: (string) Current state (`'pending'`, `'passed'`, `'failed_incorrect'`, `'missed_timeout'`).
+            *   `strikeNumber`: (number) `1` for initial check; `2` for scheduled follow-up check after an initial timeout.
+            *   `retryScheduledAt`: (timestamp | null) Server timestamp when a Strike 2 follow-up was scheduled after a Strike 1 timeout.
+            *   `selectedIndex`: (number | null) Student's selected option index (0–3), or `null` if timed out.
+            *   `responseTimeSec`: (number | null) Elapsed seconds between challenge dispatch and student submission.
+            *   `windowFocused`: (boolean) Whether the browser window was active/focused during interaction.
+            *   `result`: (object) Structured scoring and explanation payload (`{ score, isCorrect, explanation, feedback }`).
+            *   `createdAt`: (timestamp) Server timestamp when the challenge was created.
+            *   `answeredAt`: (timestamp | null) Server timestamp when student submitted their choice.
+        *   **Security & Integrity**: Governed by Firestore Security Rules:
+            ```javascript
+            match /classes/{classId}/bingoRecords/{bingoId} {
+              allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
+              allow write: if isTeacherInClass(classId);
+            }
+            ```
+            Enrolled students can only read challenges dispatched to themselves or class-wide broadcasts. Students cannot read peers' records and cannot write/tamper directly with records.
+    *   **`classes/{classId}/attendanceAdjustments`**: Stores penalty deduction records applied to a student's attendance when they miss consecutive presence checks.
+        *   **Document ID**: Auto-generated (`adjustmentId`).
+        *   **Fields**:
+            *   `classId`: (string) Parent class identifier.
+            *   `studentUid`: (string) UID of the student incurring the deduction.
+            *   `startTime`: (timestamp) Timestamp when Strike 1 was issued.
+            *   `endTime`: (timestamp) Timestamp when Strike 2 timed out.
+            *   `startMillis`: (number) Epoch millisecond when Strike 1 was issued.
+            *   `endMillis`: (number) Epoch millisecond when Strike 2 timed out.
+            *   `deductedMinutes` / `voidedMinutesCount`: (number) Number of attendance minutes voided between the two checkpoints.
+            *   `reason`: (string) Clear human-readable justification (e.g. `'Missed 2 consecutive Bingo checks (AFK/Decoy)'`).
+            *   `check1Id` / `strike1BingoId`: (string) ID of the initial timed-out check (Strike 1).
+            *   `check2Id` / `strike2BingoId`: (string) ID of the second timed-out check (Strike 2).
+            *   `appliedAt` / `createdAt`: (timestamp) Server timestamp when the penalty was registered.
+        *   **Security Rules**:
+            ```javascript
+            match /classes/{classId}/attendanceAdjustments/{adjustmentId} {
+              allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
+              allow write: if isTeacherInClass(classId);
+            }
+            ```
+    *   **`classes/{classId}/studentProperties`**: Stores per-student runtime state and active challenge payloads.
+        *   **Document ID**: `studentUid` (string).
+        *   **Fields**:
+            *   `activeBingo`: (object | null) Active challenge dispatched to student (`{ bingoId, question, options, timeLimitSeconds, expiresAtMillis, strikeNumber }`). Excluded `correctIndex` prevents client inspection exploitation. Cleared or stamped with `{ status: 'passed' | 'failed_incorrect' }` on completion.
+            *   `pendingRetryBingo`: (boolean) Flag indicating student missed Strike 1 and is awaiting scheduled Strike 2 retry challenge.
+            *   `priorMissedBingoId`: (string | null) The `bingoId` of the missed Strike 1 verification used for linkage and attendance deduction accounting.
+            *   `retryBingoScheduledAtMillis`: (number | null) Epoch timestamp in milliseconds indicating when the Strike 2 retry challenge is scheduled to fire.
+            *   `retryDelayMinutes`: (number | null) Configured grace period delay applied for this retry schedule.
+            *   `lastRetryDispatchedAt`: (timestamp | null) Server timestamp of when Strike 2 challenge was dispatched via Cloud Tasks.
 
 ### `irregularities`
 
@@ -743,7 +849,9 @@ To support student transparency and review of academic and invigilation history 
 
 | Collection / Resource | Permission | Rule & Ownership Predicate |
 | :--- | :--- | :--- |
-| **`classes/{classId}/lessons`** | `read` | `isTeacherInClass(classId) || isStudentInClass(classId)` — Enrolled students can read lesson logs; in-memory filtering isolates the calling student's attendance entry (`students[user.uid]`). |
+| **`classes/{classId}/lessons`** | `read` | `isTeacherInClass(classId) || isStudentInClass(classId)` — Enrolled students can read lesson logs; in-memory filtering isolates the calling student's attendance entry (`students[user.uid]`), including deducted minutes. |
+| **`classes/{classId}/bingoRecords`** | `read` | `isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'))` — Students can read challenges addressed to them or class broadcasts; peers' records are isolated. Writes strictly restricted to teachers. |
+| **`classes/{classId}/attendanceAdjustments`** | `read` | `isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid)` — Students can view their own transparent attendance adjustment and strike history. |
 | **`videoJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read their own compiled video jobs. |
 | **`aiJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read AI analysis feedback jobs assigned to their UID. |
 | **`performanceMetrics`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only view their own lab task completion times and milestones. |

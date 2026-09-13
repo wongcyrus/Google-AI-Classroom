@@ -15,9 +15,10 @@ flowchart TD
         SV --> V2[Webcam Capture Stream: getUserMedia]
         SV --> MP[useFaceMonitor: MediaPipe Iris & Gaze Mesh]
         SV --> AR[useAudioRecorder: Moving Window 30s VAD]
+        SV --> BM[BingoModal.jsx: Presence Verification & 45s Countdown]
         SV --> SM[MicSetupModal.jsx]
         SRV --> T1[Tab 1: Screen Recordings & Playback]
-        SRV --> T2[Tab 2: Attendance & Activity Timeline]
+        SRV --> T2[Tab 2: Attendance & Deductions Timeline]
         SRV --> T3[Tab 3: Lab Tasks & AI Progress]
         SRV --> T4[Tab 4: Integrity & Proctoring Alerts]
         SRV --> T5[Tab 5: Audio Transcripts & Speech]
@@ -28,13 +29,14 @@ flowchart TD
         TV --> CV[ClassView.jsx - Tabbed Management]
         CV --> TAB1[MonitorView.jsx - Live Class Grid]
         CV --> TAB2[VideoLibrary.jsx - Recorded MP4s]
-        CV --> TAB3[AttendanceView.jsx - Heatmaps]
+        CV --> TAB3[AttendanceView.jsx - 3-State Heatmaps]
         CV --> TAB4[IrregularitiesView.jsx - AI Audit Evidence]
         CV --> TAB5[ClassManagement.jsx - Roster & Settings]
 
-        TAB1 --> CP[ControlsPanel.jsx - Session Actions & Broadcast]
-        TAB1 --> SS[StudentScreen.jsx - Dual Feed & Gaze Badges]
-        TAB1 --> ISV[IndividualStudentView.jsx - 1-on-1 Inspect]
+        TAB1 --> CP[ControlsPanel.jsx - Actions & Bingo Verification]
+        TAB1 --> SS[StudentScreen.jsx - Dual Feed, Gaze & Bingo Badges]
+        TAB1 --> ISV[IndividualStudentView.jsx - 1-on-1 Inspect & Call Bingo]
+        CP --> BQBM[BingoQuestionBankModal.jsx - AI Drafter & Importer]
         TAB4 --> ATM[AudioTranscriptModal.jsx - Diarization Seek Player]
     end
 ```
@@ -69,7 +71,7 @@ flowchart TD
 
 ## Class & User Management
 
-*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features configurable **AI Monitoring Modes** (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), customizable gaze sensitivity thresholds (Yaw/Pitch angles and debounce duration), configurable **Default Capture Mode** (`dual`, `screen`, `webcam`), dedicated **Exam & Test Periods (Restricted from Students)** manager (`examPeriods`) allowing instructors to define specific date and time ranges for 1–2 semester exams where recordings are completely withheld from students while remaining 100% accessible to instructors for auditing, configurable **Student Screen Recording Access Policy** (`always_enabled`, `disabled`, `delayed_release`), one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
+*   **`ClassManagement.jsx`**: A comprehensive component that allows teachers to create new classes and manage existing ones. Features configurable **AI Monitoring Modes** (`⚡ Client AI + Fallback`, `💻 Client AI Only`, `☁️ Cloud AI Only`, `🚫 AI Disabled`), customizable gaze sensitivity thresholds (Yaw/Pitch angles and debounce duration), configurable **Bingo Active Presence Retry Grace Delay** (`1m`, `2m`, `3m default`, `5m`, `10m`) controlling the schedule delay before Google Cloud Tasks dispatches a Strike 2 follow-up verification, configurable **Default Capture Mode** (`dual`, `screen`, `webcam`), dedicated **Exam & Test Periods (Restricted from Students)** manager (`examPeriods`) allowing instructors to define specific date and time ranges for 1–2 semester exams where recordings are completely withheld from students while remaining 100% accessible to instructors for auditing, configurable **Student Screen Recording Access Policy** (`always_enabled`, `disabled`, `delayed_release`), one-click **Roster Import (CSV/TXT)** and **Roster Export (CSV)** for both student rosters and co-teaching teams, plus sub-components for handling class schedules and custom student metadata.
 *   **`ScheduleManager.jsx`**: A sub-component of `ClassManagement.jsx` for setting up the class schedule, including start/end dates, time zones, and recurring time slots.
 *   **`CustomPropertiesManager.jsx`**: A sub-component of `ClassManagement.jsx` for managing class-wide custom metadata and student-specific custom properties. Features one-click **CSV Template Download / Export Existing Properties**, asynchronous **CSV Property Upload** with real-time job processing badges (`completed`, `processing`, `failed`), and custom key-value field editors.
 *   **`PromptManagement.jsx`**: A view for creating, editing, and managing AI prompts. It supports different access levels (private, shared, public) and categories (for images or videos).
@@ -103,24 +105,45 @@ flowchart TD
   2. **📢 Class Broadcast**: Predefined template selector with instant send.
   3. **👁️ AI & Invigilation**: Real-time mode indicators, gaze sensitivity summary, **Live AI & Invigilation Suite Configuration Modal** (Tab 1: Vision/Gaze, Tab 2: Voice & Speech with Prompt Library dropdown, category filters, and `{{transcript}}` placeholder chips, Tab 3: Cloud Audio Recording & Diarization), class-wide **"⚡ Preload AI for All Students"** broadcast trigger, and Cloud Gemini Multimodal Analysis controls.
   4. **👥 Attendance & Status**: 1-click "Not Sharing" student counter/modal and Attendance CSV export.
-  5. **📊 Storage & AI Quotas**: Space-efficient dual progress bars for storage usage and class AI budget.
-*   **`StudentView.jsx`**: The student interface offering a streamlined pre-session **Setup Hero Card** with readiness pills, a hardware-resilient **3-Step Exam Readiness Wizard** (`ExamReadinessWizard.jsx` with mic and webcam skip fallbacks), silent AI preloading, and a clean minimal active top bar during live streaming. When a live exam is active or the current time overlaps an instructor-scheduled `examPeriods` window:
-    *   Enforces full-screen sharing (`requireFullScreenOnly: true`).
-    *   Displays a persistent top security banner: `🔒 Official Examination in Progress — Proctored Session`.
-    *   Restricts generated screencasts, audio transcripts, and irregularity evidence from being shared in the student's self-service portal.
+  5. **🎯 Bingo Presence Verification**: Dedicated active presence and attention verification suite:
+      * **3 FinOps Mode Selector**: Toggle between **Predefined Question Bank** ($0.00 / 0 AI tokens), **Teacher Screen Broadcast** (1 shared Gemini call per lecture frame, ~$0.00015 for entire class), and **Student Individual Screens** (targeted individual screenshot evaluation).
+      * **"🎯 Call Class Bingo"**: 1-click cohort broadcast trigger that dispatches interactive verification challenges to all connected students with live countdown and in-flight spinner.
+      * **"Strike 2 Grace Delay" Selector**: Real-time dropdown (`1 min`, `2 mins`, `3 mins Default`, `5 mins`) persisting directly to Firestore `classes/{classId}.bingoRetryDelayMinutes` without leaving the live monitoring dashboard.
+      * **"📚 Question Bank"**: Launches `BingoQuestionBankModal.jsx` with active question count badge.
+  6. **📊 Storage & AI Quotas**: Space-efficient dual progress bars for storage usage and class AI budget.
+*   **`StudentView.jsx`**: The student interface offering a streamlined pre-session **Setup Hero Card** with readiness pills, a hardware-resilient **3-Step Exam Readiness Wizard** (`ExamReadinessWizard.jsx` with mic and webcam skip fallbacks), silent AI preloading, and a clean minimal active top bar during live streaming.
+    *   **Automated Bingo Presence Verification**: Real-time subscription to `myProperties.activeBingo`. When an active challenge is detected, synthesizes a dual-tone Web Audio attention chime (659Hz $\to$ 880Hz), dispatches a system desktop notification, and mounts `<BingoModal>`.
+    *   **Exam Mode Protections**: When a live exam is active or the current time overlaps an instructor-scheduled `examPeriods` window:
+        *   Enforces full-screen sharing (`requireFullScreenOnly: true`).
+        *   Displays a persistent top security banner: `🔒 Official Examination in Progress — Proctored Session`.
+        *   Restricts generated screencasts, audio transcripts, and irregularity evidence from being shared in the student's self-service portal.
+*   **`BingoModal.jsx`**: The student-facing interactive verification dialog mounted automatically during active Bingo checks:
+    *   **Audio Chime & Attention Cue**: Synthesizes a non-blocking dual-frequency Web Audio tone (E5 659Hz $\to$ A5 880Hz) to immediately alert students who may have minimized the window or are reading secondary materials.
+    *   **45-Second Timer Bar**: Smooth animated CSS progress bar counting down from 45 seconds, shifting into an urgent pulsating red state when under 10 seconds remaining.
+    *   **Interactive 4-Option Multiple Choice Grid**: Displays randomized response options. One-click selection immediately locks the UI, computes response time, detects browser window focus state (`document.hasFocus()`), and calls `submitBingoAnswer`.
+    *   **Auto-Timeout Submission**: If the 45-second timer expires with no selection, automatically invokes `submitBingoAnswer` with `selectedIndex: null` to register a timeout and initiate Strike 1 grace retry or Strike 2 attendance penalty.
+    *   **Live Feedback States**: Displays instantaneous visual status upon submission (`Verified Present!`, `Incorrect (Presence Verified)`, or `Time Expired`).
+*   **`BingoQuestionBankModal.jsx`**: The instructor's comprehensive question bank management suite (`ControlsPanel.jsx` $\to$ `📚 Question Bank`):
+    *   **Tab 1: AI Question Drafter**: Integrates `gemini-3.5-flash-lite` (`generateQuestionBankAi`) with temperature 0.2 and structured JSON schema to automatically draft 5 topical multiple-choice questions from lecture concepts or course outlines. Features instant question review, option editing, and one-click batch appending to the class question bank.
+    *   **Tab 2: Batch Importer (Aiken & JSON)**: Robust text parser supporting standard educational Aiken format (`Question text... A) ... B) ... C) ... D) ... ANSWER: B`) with inline syntax checking, alongside raw JSON array imports.
+    *   **Tab 3: Questions Pool & Manual Editor**: Tabular review of all active questions in `classes/{classId}.questionBank` with correct answer highlight badges, topic tags, explanations, and individual delete controls.
 *   **`StudentRecordsView.jsx`**: The student learning portal and attendance report view:
     *   **Strict Class Scoping (No Mixing Up)**: Enforces individual class selection (`selectedClassId`) with no cross-class data mixing and no generic "all" classes option.
-    *   **Lesson & Date Navigation**: Allows students to select and inspect specific lessons or dates conducted by their instructor.
+    *   **Attendance Deductions Alert Card**: Prominently displayed whenever `deductedMinutes > 0`. Outlines total minutes deducted, lists each voided interval (`startMinute` – `endMinute`), and explains the regulatory policy justification (`"Failed consecutive presence checks (Bingo strike 1 & 2 timed out)"`).
+    *   **Minute-by-Minute 3-State Timeline**: Interactive visual grid matching the teacher view:
+        *   `#2ECC71` (Green): Active and screen verified (`1`).
+        *   `#FADBD8` (Red): Inactive / not sharing screen (`0`).
+        *   `#F39C12` (Striped Orange with `🎯` badge): Voided attendance due to unacknowledged presence checks (`2`).
     *   **Teacher-Grade Attendance System (3 Core Ratios)**:
-        1. **Attendance Presence Ratio**: Minute-by-minute presence telemetry (`attendedMinutes / duration * 100%`) with present/partial/absent status badge.
+        1. **Attendance Presence Ratio**: Minute-by-minute presence telemetry (`attendedMinutes / duration * 100%`) with present/partial/absent status badge. Deducted minutes are strictly excluded from `attendedMinutes`.
         2. **Screen Sharing Ratio**: Desktop/window broadcast time (`sharedScreenMinutes / duration * 100%`) with high/moderate/low badges.
         3. **AI Working Minutes Ratio**: AI-estimated working duration (`workingMinutes / duration * 100%`) from multimodal task engagement analysis.
-    *   **Minute-by-Minute Timeline**: Interactive visual grid matching the teacher view (`#2ECC71` active/present, `#FADBD8` inactive/absent).
-    *   **Dual View Modes**: Seamless toggle between **Per Lesson Breakdown** (hero stat cards, minute grid, AI & teacher summaries/feedback) and **All Lessons Summary** (cumulative class KPIs, comprehensive comparison table, and instant lesson inspection).
+    *   **Dual View Modes**: Seamless toggle between **Per Lesson Breakdown** (hero stat cards, minute grid, deduction breakdown, AI & teacher summaries/feedback) and **All Lessons Summary** (cumulative class KPIs, comprehensive comparison table, and instant lesson inspection).
     *   **Zero-Trust Assessment Integrity**: Protects assessment integrity by strictly withholding recordings recorded during defined exam periods from students with prominent security banners.
-*   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's status, supporting split-dual viewports (side-by-side feeds) or single channel views with channel badges (🖥️ / 📷), offline frame indicator pills (`🖥️ Screen (Offline)` / `📷 Webcam (Offline)`), hardware absence indicators (📷🚫, 🎙️🚫), live gaze orientation vectors, AI loading progress indicators (`⏳ 65%`), live spoken transcript subtitles with language tag badges (`💬 粵`, `💬 普`, `💬 EN`), Gemma violation alert badges (`🚨 Collusion (Gemma)`), and multi-signal face status badges (`normal`, `looking_away`, `eyes_closed`, `talking`, `no_face`, `multiple_faces`, `cloud_fallback`). Configured with modern image loading attributes (`loading="eager"`, `decoding="async"`, and `fetchPriority="high"`) for non-blocking asynchronous decoding and instantaneous render.
+*   **`StudentScreen.jsx`**: A component used within `MonitorView.jsx` to display a single student's status, supporting split-dual viewports (side-by-side feeds) or single channel views with channel badges (🖥️ / 📷), offline frame indicator pills (`🖥️ Screen (Offline)` / `📷 Webcam (Offline)`), hardware absence indicators (📷🚫, 🎙️🚫), live gaze orientation vectors, AI loading progress indicators (`⏳ 65%`), live spoken transcript subtitles with language tag badges (`💬 粵`, `💬 普`, `💬 EN`), Gemma violation alert badges (`🚨 Collusion (Gemma)`), multi-signal face status badges (`normal`, `looking_away`, `eyes_closed`, `talking`, `no_face`, `multiple_faces`, `cloud_fallback`), and **Live Bingo Status Badges** in the top-right corner (`🎯 Pending`, `🎯✓ Verified`, `🎯? Inattentive`, `🎯✕ Timed Out`). Configured with modern image loading attributes (`loading="eager"`, `decoding="async"`, and `fetchPriority="high"`) for non-blocking asynchronous decoding and instantaneous render.
 *   **`useAudioRecorder.js` (Hook in `StudentView.jsx`)**: Handles continuous audio capture with sliding window (30s window, 15s stride) segmentation, Web Audio RMS silence suppression (>80% cost savings), and upload synchronization to Firebase Storage and Firestore. Fully decoupled from Vision AI monitoring modes, enabling reliable recording whenever the teacher toggles audio capture on, with automatic Diarization permission gating (`isCloudDiarizationAllowed`).
 *   **`IndividualStudentView.jsx`**: A modal overlay for inspecting an individual student's live streams in high detail with:
+    *   **1-on-1 "🎯 Call Bingo" Verification Action**: Dedicated button in the top action bar allowing the teacher to dispatch a targeted presence challenge directly to this specific student, with real-time status feedback.
     *   **Multi-Tab Feed Switcher**: `Dual View`, `🖥️ Screen Feed`, and `📷 Webcam Feed`.
     *   **Space-Efficient Voice Recording Bar**: Low-profile horizontal audio control bar (~38px height) with inline HTML5 player, live RMS telemetry, subtitle transcript snippets, and collapsible recording clip history drawer (`📋 Clips (N) ▾`).
     *   **Direct Quick Nudge Chips**: One-click intervention buttons (`🖥️ Screen`, `📷 Cam`, `🎙️ Mic`, `👁️ Face Screen`) that immediately dispatch targeted compliance notices to the student.
@@ -150,7 +173,15 @@ flowchart TD
     * **Interactive Sorting**: Clickable column headers (`Student`, each dynamic milestone column, `Total Lab Time`, `Status`) with visual direction indicators (`▲` / `▼` / `↕`) and smart nulls-last sorting.
     * **Duration Heatmap Tinting**: High-contrast, accessibility-tested cell badges highlighting on-track pace (`< 20m`, emerald/green), moderate duration (`20–40m`, amber), bottleneck pace (`> 40m` or outlier `> 1.5x` class average, ruby/red), and incomplete (`—`, slate).
   * **Dual CSV Export Capabilities**: Includes a top-level **`📥 Export CSV`** button for the full class milestone report, plus a dedicated **`📥 Export Matrix CSV ({count})`** button directly in the table header to export the actively sorted and filtered student cohort.
-*   **`AttendanceView.jsx`**: Provides a comprehensive view of student attendance and AI analysis for a selected lesson. It displays a unified table showing screen share attendance (total minutes, percentage, and a per-minute heatmap), alongside AI-estimated working minutes and percentage. On initial load, it fetches pre-calculated summary data from the database. A "Calculate Live Attendance" button allows teachers to trigger a fresh calculation, which populates the detailed per-minute grid. The view also allows exporting the combined data to a CSV file and provides a modal to view detailed AI-generated summaries and feedback for each student.
+*   **`AttendanceView.jsx`**: Provides a comprehensive view of student attendance and AI analysis for a selected lesson. It displays a unified table showing screen share attendance (total minutes, percentage, and a per-minute heatmap), alongside AI-estimated working minutes and percentage. Features:
+    *   **3-State Per-Minute Heatmap Grid**:
+        *   `#2ECC71` (Green): Screen active and verified present (`1`).
+        *   `#FADBD8` (Red): Offline / not sharing screen (`0`).
+        *   `#F39C12` (Striped Orange with `🎯` icon): Presence voided due to consecutive missed/timed-out Bingo verification challenges (`2`).
+    *   **Strict Verified Attendance Math**: Screen sharing minutes and attendance ratios strictly aggregate active verified slots (`val === 1`). Deducted/voided slots (`val === 2`) are excluded from attended time.
+    *   **Deducted Minutes Column**: Dedicated table column displaying docked time (`deductedMinutes`), providing immediate transparency into who lost attendance due to AFK or unacknowledged presence challenges.
+    *   **Live & Pre-Calculated Sync**: On initial load, fetches stored data from `classes/{classId}/lessons/{lessonId}`. A **"Calculate Live Attendance"** button triggers the backend Cloud Function `getAttendanceData` to re-query recent screenshots and `attendanceAdjustments` for live synchronization.
+    *   **Export Options**: Exports the full multi-metric roster including attended minutes, deducted minutes, working time, and individual per-minute status codes directly to CSV. Includes student-specific AI summary modal.
 *   **`VideoAnalysisJobs.jsx`**: Master dashboard for tracking, retrying, and synthesizing video analysis jobs.
   * Displays master analysis jobs with real-time status (`pending`, `processing`, `completed`, `failed`), timestamps, video counts, and prompt snippets.
   * Provides in-place retry (`Retry Failed Jobs`) with historical audit tracking.

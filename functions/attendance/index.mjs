@@ -120,15 +120,51 @@ export const getAttendanceData = onCall({
     });
   });
 
+  // Apply Bingo attendance adjustments (deduct unverified AFK minutes)
+  try {
+    const adjustmentsSnap = await db.collection(`classes/${classId}/attendanceAdjustments`)
+      .where('startTime', '<=', lessonEndTime)
+      .get();
+
+    adjustmentsSnap.forEach(doc => {
+      const adj = doc.data();
+      if (!adj) return;
+      const studentUid = adj.studentUid;
+      const entry = uidToStudentMap.get(studentUid);
+      if (!entry) return;
+
+      const rawStart = adj.startTime;
+      const rawEnd = adj.endTime;
+      const adjStart = rawStart?.toDate ? rawStart.toDate() : (rawStart ? new Date(rawStart) : null);
+      const adjEnd = rawEnd?.toDate ? rawEnd.toDate() : (rawEnd ? new Date(rawEnd) : null);
+      if (!adjStart || !adjEnd) return;
+
+      // Check overlap with lesson window
+      if (adjEnd >= lessonStartTime && adjStart <= lessonEndTime) {
+        const startMinute = Math.max(0, Math.floor((adjStart.getTime() - lessonStartTime.getTime()) / 60000));
+        const endMinute = Math.min(lessonDurationInMinutes - 1, Math.floor((adjEnd.getTime() - lessonStartTime.getTime()) / 60000));
+
+        for (let m = startMinute; m <= endMinute; m++) {
+          // 2 = Voided/Deducted by failed consecutive Bingo checks
+          entry.attendance[m] = 2;
+        }
+      }
+    });
+  } catch (adjErr) {
+    console.warn('Error querying attendanceAdjustments:', adjErr);
+  }
+
   const attendanceData = studentList.map(student => {
     const entry = uidToStudentMap.get(student.uid) || emailToStudentMap.get(student.email);
     const attendance = entry ? entry.attendance : Array(lessonDurationInMinutes).fill(0);
-    const totalMinutes = attendance.reduce((sum, present) => sum + present, 0);
+    const totalMinutes = attendance.reduce((sum, val) => sum + (val === 1 ? 1 : 0), 0);
+    const deductedMinutes = attendance.reduce((sum, val) => sum + (val === 2 ? 1 : 0), 0);
     const percentage = lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%';
 
     return {
       email: student.email,
       totalMinutes,
+      deductedMinutes,
       percentage,
       attendance,
     };
@@ -147,6 +183,7 @@ export const getAttendanceData = onCall({
       if (student) {
         studentsPayload[student.uid] = {
           sharedScreenMinutes: data.totalMinutes,
+          deductedMinutes: data.deductedMinutes,
           attendance: data.attendance
         };
       }

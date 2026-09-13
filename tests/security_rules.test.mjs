@@ -341,6 +341,54 @@ async function runSecurityRulesSuite() {
       'Student 1 CANNOT read lessons in non-enrolled Class B'
     );
 
+    // Bingo records isolation
+    const bingo1Id = `bingo-1-${timestamp}`;
+    const bingo2Id = `bingo-2-${timestamp}`;
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      status: 'pending',
+      question: 'What is cloud computing?',
+    });
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo2Id).set({
+      classId: classA,
+      studentUid: student2Uid,
+      status: 'pending',
+      question: 'What is virtualization?',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id)),
+      'Student 1 CAN read own bingoRecords in enrolled Class A'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo2Id)),
+      'Student 1 CANNOT read Student 2 bingoRecords in Class A'
+    );
+
+    // Attendance Adjustments isolation
+    const adj1Id = `adj-1-${timestamp}`;
+    const adj2Id = `adj-2-${timestamp}`;
+    await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      deductedMinutes: 6,
+      reason: 'Missed 2 consecutive Bingo checks (AFK/Decoy)',
+    });
+    await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj2Id).set({
+      classId: classA,
+      studentUid: student2Uid,
+      deductedMinutes: 6,
+      reason: 'Missed 2 consecutive Bingo checks (AFK/Decoy)',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj1Id)),
+      'Student 1 CAN read own attendanceAdjustments in enrolled Class A'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj2Id)),
+      'Student 1 CANNOT read Student 2 attendanceAdjustments in Class A'
+    );
+
     // -------------------------------------------------------------
     // SUITE 3: Teacher Role Privileges
     // -------------------------------------------------------------
@@ -367,6 +415,14 @@ async function runSecurityRulesSuite() {
       updateDoc(doc(clientDb, 'classes', classA), { frameRate: 15 }),
       'Teacher can update class monitoring settings'
     );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id)),
+      'Teacher can read bingoRecords in Class A'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj1Id)),
+      'Teacher can read attendanceAdjustments in Class A'
+    );
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users
@@ -379,6 +435,10 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('screenshots').doc(shotDocId).delete();
     await adminDb.collection('audio').doc(audio1DocId).delete();
     await adminDb.collection('audio').doc(audio2DocId).delete();
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo1Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo2Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj1Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj2Id).delete();
     await adminDb.collection('videoJobs').doc(videoJob1Id).delete();
     await adminDb.collection('videoJobs').doc(videoJob2Id).delete();
     await adminDb.collection('aiJobs').doc(aiJob1Id).delete();

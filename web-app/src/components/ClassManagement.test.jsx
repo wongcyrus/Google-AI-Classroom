@@ -414,5 +414,41 @@ describe('ClassManagement Full Component Test Suite', () => {
       );
     });
   });
+
+  it('renders and updates Bingo retry grace delay in class settings', async () => {
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          bingoRetryDelayMinutes: 5,
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/🎯 Bingo Active Presence Retry Grace Delay/i).value).toBe('5');
+    });
+
+    const selectEl = screen.getByLabelText(/🎯 Bingo Active Presence Retry Grace Delay/i);
+    fireEvent.change(selectEl, { target: { value: '2' } });
+    expect(selectEl.value).toBe('2');
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          bingoRetryDelayMinutes: 2,
+        })
+      );
+    });
+  });
 });
 

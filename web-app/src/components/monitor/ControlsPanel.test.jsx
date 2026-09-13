@@ -505,4 +505,25 @@ describe('ControlsPanel Full Component Suite', () => {
     );
     expect(screen.getByRole('button', { name: /Exam Mode: ACTIVE/i })).toBeInTheDocument();
   });
+
+  it('renders Bingo Presence Check section with modes and call button', () => {
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="CLASS_TEST_101"
+      />
+    );
+
+    expect(screen.getByText('🎯 Bingo Presence Check')).toBeInTheDocument();
+    expect(screen.getAllByText(/Question Bank/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Teacher Screen/i)).toBeInTheDocument();
+    expect(screen.getByText(/Student Screens/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Call Bingo \(All Students\)/i })).toBeInTheDocument();
+
+    const delaySelect = screen.getByLabelText(/Strike 2 Grace Delay/i);
+    expect(delaySelect).toBeInTheDocument();
+    expect(delaySelect.value).toBe('3');
+    fireEvent.change(delaySelect, { target: { value: '5' } });
+    expect(delaySelect.value).toBe('5');
+  });
 });

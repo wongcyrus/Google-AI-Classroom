@@ -1,0 +1,221 @@
+.bingo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: bingoFadeIn 0.2s ease-out;
+}
+
+@keyframes bingoFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.bingo-modal-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  max-width: 38rem;
+  width: 100%;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  font-family: inherit;
+  color: #1e293b;
+}
+
+.bingo-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bingo-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bingo-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bingo-timer-badge {
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  background: #f1f5f9;
+  color: #334155;
+  border-radius: 9999px;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.3s ease;
+}
+
+.bingo-timer-badge.warning {
+  background: #fee2e2;
+  color: #b91c1c;
+  animation: pulseTimer 1s infinite alternate;
+}
+
+@keyframes pulseTimer {
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
+}
+
+.bingo-progress-track {
+  width: 100%;
+  height: 0.5rem;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.bingo-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 9999px;
+  transition: width 0.4s linear, background-color 0.3s ease;
+}
+
+.bingo-progress-fill.warning {
+  background: #ef4444;
+}
+
+.bingo-question-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.bingo-question-text {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+.bingo-options-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .bingo-options-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.bingo-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease-in-out;
+  font-size: 0.975rem;
+  color: #334155;
+  outline: none;
+}
+
+.bingo-option-btn:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.bingo-option-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.bingo-option-btn.selected {
+  border-color: #2563eb;
+  background: #dbeafe;
+}
+
+.bingo-option-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.bingo-option-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: #f1f5f9;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.bingo-option-btn.selected .bingo-option-tag {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.bingo-option-label {
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.bingo-feedback-banner {
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: center;
+  animation: bingoFeedbackFade 0.2s ease-out;
+}
+
+@keyframes bingoFeedbackFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bingo-feedback-banner.passed {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.bingo-feedback-banner.wrong {
+  background: #fef9c3;
+  color: #a16207;
+  border: 1px solid #fef08a;
+}
+
+.bingo-feedback-banner.timeout {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.bingo-footer-note {
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: center;
+}

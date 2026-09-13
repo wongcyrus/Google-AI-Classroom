@@ -201,6 +201,21 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         {(loadingAttendance || loadingLessonData) && <p>Loading data...</p>}
         {combinedData.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+              <span style={{ fontWeight: 600 }}>Legend:</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#2ECC71', borderRadius: '2px' }}></span>
+                Present (Verified)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#f97316', borderRadius: '2px' }}></span>
+                Deducted (Failed Bingo Checks)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#FADBD8', borderRadius: '2px' }}></span>
+                Absent (No Screen Share)
+              </span>
+            </div>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
                 <tr>
@@ -224,18 +239,30 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>
                       {student.workingMinutes && lessonDurationInMinutes > 0 ? `${((student.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2)}%` : 'N/A'}
                     </td>
-                    {student.attendance.map((present, index) => (
-                      <td
-                        key={index}
-                        title={`Min ${index + 1}: ${present ? 'Present' : 'Absent'}`}
-                        style={{
-                          border: '1px solid #ddd',
-                          backgroundColor: present ? '#2ECC71' : '#FADBD8',
-                          width: '25px',
-                          height: '25px',
-                        }}
-                      ></td>
-                    ))}
+                    {student.attendance.map((present, index) => {
+                      const isPresent = present === 1;
+                      const isVoided = present === 2;
+                      const bg = isPresent ? '#2ECC71' : isVoided ? '#f97316' : '#FADBD8';
+                      const titleText = isPresent
+                        ? `Min ${index + 1}: Present (Verified)`
+                        : isVoided
+                        ? `Min ${index + 1}: Deducted (Failed consecutive Bingo checks)`
+                        : `Min ${index + 1}: Absent (No screen share)`;
+
+                      return (
+                        <td
+                          key={index}
+                          title={titleText}
+                          style={{
+                            border: '1px solid #ddd',
+                            backgroundColor: bg,
+                            backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
+                            width: '25px',
+                            height: '25px',
+                          }}
+                        ></td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

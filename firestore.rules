@@ -106,6 +106,18 @@ service cloud.firestore {
         allow update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(classId));
         allow delete: if isTeacherInClass(classId);
       }
+
+      match /bingoRecords/{bingoId} {
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
+        allow create: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.resource.data.studentUid == request.auth.uid);
+        allow update: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
+        allow delete: if isTeacherInClass(classId);
+      }
+
+      match /attendanceAdjustments/{adjustmentId} {
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
+        allow write: if isTeacherInClass(classId);
+      }
     }
 
     match /screenshots/{screenshotId} {

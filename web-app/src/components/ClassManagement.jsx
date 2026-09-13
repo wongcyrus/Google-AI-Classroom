@@ -36,6 +36,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [aiMonitoringMode, setAiMonitoringMode] = useState('hybrid');
   const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
+  const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
   const [enableClientAi, setEnableClientAi] = useState(true);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
   const [customYawAngle, setCustomYawAngle] = useState(25);
@@ -156,6 +157,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setAiModel(classData.aiModel || 'gemini-3.5-flash-lite');
           setRequireFullScreenOnly(classData.requireFullScreenOnly !== false);
           setFaceDebounceSeconds(classData.faceDebounceSeconds || 3);
+          setBingoRetryDelayMinutes(classData.bingoRetryDelayMinutes !== undefined ? classData.bingoRetryDelayMinutes : 3);
           
           let derivedMode = classData.aiMonitoringMode;
           if (!derivedMode) {
@@ -415,6 +417,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           aiModel: aiModel || 'gemini-3.5-flash-lite',
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
+          bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -468,6 +471,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           aiModel: aiModel || 'gemini-3.5-flash-lite',
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
+          bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -1023,6 +1027,22 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             <p className="input-hint">Duration a student must continuously look away or step away from camera before registering an irregularity.</p>
           </div>
         )}
+
+        <div className="form-group">
+          <label htmlFor="bingo-retry-delay-config">🎯 Bingo Active Presence Retry Grace Delay</label>
+          <select 
+            id="bingo-retry-delay-config"
+            value={bingoRetryDelayMinutes} 
+            onChange={(e) => setBingoRetryDelayMinutes(parseInt(e.target.value, 10))}
+          >
+            <option value={1}>⚡ 1 Minute (Strict — Fast Verification)</option>
+            <option value={2}>⏱️ 2 Minutes (Accelerated)</option>
+            <option value={3}>🎯 3 Minutes (Standard Default)</option>
+            <option value={5}>☕ 5 Minutes (Relaxed Lecture)</option>
+            <option value={10}>🛋️ 10 Minutes (Extended Grace)</option>
+          </select>
+          <p className="input-hint">Delay before Google Cloud Tasks automatically dispatches a Strike 2 follow-up verification after a student misses Strike 1.</p>
+        </div>
 
         {(aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only') && (
           <div className="form-group">

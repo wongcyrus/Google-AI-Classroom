@@ -252,4 +252,38 @@ describe('StudentScreen Component', () => {
       'Gemma unavailable: WebGPU is unavailable on this device'
     )).toHaveTextContent('⛔🤖');
   });
+
+  it('renders Bingo active status badges accurately', () => {
+    const { rerender } = render(
+      <StudentScreen
+        student={{ ...mockStudent, activeBingo: { status: 'pending' } }}
+        isSharing={true}
+      />
+    );
+    expect(screen.getByText('🎯 Pending')).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, activeBingo: { status: 'passed', responseTimeSec: 12 } }}
+        isSharing={true}
+      />
+    );
+    expect(screen.getByText('🎯✓')).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, activeBingo: { status: 'failed_incorrect' } }}
+        isSharing={true}
+      />
+    );
+    expect(screen.getByText('🎯?')).toBeInTheDocument();
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, activeBingo: { status: 'missed_timeout' } }}
+        isSharing={true}
+      />
+    );
+    expect(screen.getByText('🎯✕')).toBeInTheDocument();
+  });
 });

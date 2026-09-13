@@ -1465,11 +1465,39 @@ const StudentRecordsView = ({ user }) => {
                       <span>Present (Active)</span>
                     </div>
                     <div className="legend-item">
+                      <span className="legend-swatch" style={{ background: '#f97316' }}></span>
+                      <span>Deducted (Bingo)</span>
+                    </div>
+                    <div className="legend-item">
                       <span className="legend-swatch legend-swatch-inactive"></span>
                       <span>Inactive / Absent</span>
                     </div>
                   </div>
                 </div>
+
+                {/* Bingo Attendance Deduction Notice */}
+                {(activeLesson.deductedMinutes > 0 || (activeLesson.attendance && activeLesson.attendance.some(v => v === 2))) && (
+                  <div className="attendance-deduction-alert" style={{
+                    background: '#fff7ed',
+                    border: '1px solid #fdba74',
+                    borderRadius: '0.75rem',
+                    padding: '1rem',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                  }}>
+                    <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+                    <div>
+                      <h4 style={{ margin: '0 0 0.25rem 0', color: '#c2410c', fontSize: '0.95rem' }}>
+                        Attendance Deducted ({activeLesson.deductedMinutes || activeLesson.attendance.filter(v => v === 2).length} Minutes Voided)
+                      </h4>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#7c2d12', lineHeight: 1.5 }}>
+                        <strong>Reason:</strong> Presence verification (Bingo) was sent during this session but was not answered in time across two consecutive checks. Attendance between the unacknowledged checkpoints was voided per classroom policy.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {activeLesson.attendance && activeLesson.attendance.length > 0 ? (
                   <div className="minute-grid-scroll-wrapper">
@@ -1485,19 +1513,33 @@ const StudentRecordsView = ({ user }) => {
                       </thead>
                       <tbody>
                         <tr>
-                          {activeLesson.attendance.map((present, idx) => (
-                            <td
-                              key={idx}
-                              className="minute-state-cell"
-                              style={{
-                                backgroundColor: present ? '#2ecc71' : '#fadbd8',
-                                color: present ? '#065f46' : '#991b1b',
-                              }}
-                              title={`Minute ${idx + 1}: ${present ? 'Present' : 'Absent'}`}
-                            >
-                              {present ? '✓' : '✗'}
-                            </td>
-                          ))}
+                          {activeLesson.attendance.map((present, idx) => {
+                            const isPresent = present === 1;
+                            const isVoided = present === 2;
+                            const bg = isPresent ? '#2ecc71' : isVoided ? '#f97316' : '#fadbd8';
+                            const fg = isPresent ? '#065f46' : isVoided ? '#ffffff' : '#991b1b';
+                            const title = isPresent
+                              ? `Minute ${idx + 1}: Present (Verified)`
+                              : isVoided
+                              ? `Minute ${idx + 1}: Deducted (Failed consecutive Bingo checks)`
+                              : `Minute ${idx + 1}: Absent (No screen share)`;
+                            const symbol = isPresent ? '✓' : isVoided ? '🎯' : '✗';
+
+                            return (
+                              <td
+                                key={idx}
+                                className="minute-state-cell"
+                                style={{
+                                  backgroundColor: bg,
+                                  color: fg,
+                                  backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
+                                }}
+                                title={title}
+                              >
+                                {symbol}
+                              </td>
+                            );
+                          })}
                         </tr>
                       </tbody>
                     </table>
@@ -1651,8 +1693,11 @@ const StudentRecordsView = ({ user }) => {
                                 {l.attendance.map((val, idx) => (
                                   <div
                                     key={idx}
-                                    style={{ flex: 1 }}
-                                    className={val === 1 ? 'timeline-segment-active' : 'timeline-segment-inactive'}
+                                    style={{
+                                      flex: 1,
+                                      backgroundColor: val === 1 ? '#2ecc71' : val === 2 ? '#f97316' : '#fadbd8',
+                                    }}
+                                    title={val === 1 ? 'Present' : val === 2 ? 'Deducted (Bingo)' : 'Absent'}
                                   />
                                 ))}
                               </div>

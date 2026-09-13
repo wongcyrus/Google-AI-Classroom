@@ -60,6 +60,29 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           {student?.gemmaModelStatus === 'not_loaded' && (
             <span className="ai-status-badge fallback" title="Student has not chosen to load Gemma 4 E2B">○🤖</span>
           )}
+
+          {/* Bingo Active Status Badge */}
+          {student?.activeBingo?.status === 'pending' && (
+            <span className="ai-status-badge warn" title="Bingo Check in progress" style={{ background: '#fef08a', color: '#854d0e', fontWeight: 700 }}>
+              🎯 Pending
+            </span>
+          )}
+          {student?.activeBingo?.status === 'passed' && (
+            <span className="ai-status-badge normal" title={`Bingo Verified (${student.activeBingo.responseTimeSec || ''}s)`} style={{ background: '#dcfce7', color: '#166534' }}>
+              🎯✓
+            </span>
+          )}
+          {student?.activeBingo?.status === 'failed_incorrect' && (
+            <span className="ai-status-badge warn" title="Bingo: Wrong Option (Inattentive)" style={{ background: '#fef9c3', color: '#a16207' }}>
+              🎯?
+            </span>
+          )}
+          {student?.activeBingo?.status === 'missed_timeout' && (
+            <span className="ai-status-badge danger" title="Bingo: Timed Out / AFK" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+              🎯✕
+            </span>
+          )}
+
           <span className={`status-indicator ${isSharing ? 'on' : 'off'}`}></span>
         </div>
       </div>

@@ -18,6 +18,7 @@ import useTeacherScreenBroadcastStudent from '../hooks/useTeacherScreenBroadcast
 import TeacherScreenViewerModal from './TeacherScreenViewerModal';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
+import BingoModal from './BingoModal';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome } from '../utils/browserDetection';
@@ -1427,6 +1428,35 @@ const StudentView = ({ user }) => {
     };
   }, [activeClass, user]);
 
+  const handleBingoSubmit = async ({ bingoId, selectedIndex, responseTimeSec, windowFocused }) => {
+    if (!activeClass || !bingoId) return;
+    try {
+      const submitBingoFn = httpsCallable(functions, 'submitBingoAnswer');
+      const res = await submitBingoFn({
+        classId: activeClass,
+        bingoId,
+        selectedIndex,
+        responseTimeSec,
+        windowFocused,
+      });
+      return res.data;
+    } catch (err) {
+      console.warn('[StudentView] Callable submitBingoAnswer failed, writing to Firestore:', err);
+      try {
+        const bDocRef = doc(db, 'classes', activeClass, 'bingoRecords', bingoId);
+        await updateDoc(bDocRef, {
+          selectedIndex,
+          responseTimeSec,
+          windowFocused,
+          answeredAt: serverTimestamp(),
+        });
+      } catch (e2) {
+        console.error('[StudentView] Direct write to bingoRecords failed:', e2);
+      }
+      return { success: false };
+    }
+  };
+
   // Listen for class-wide messages
   useEffect(() => {
     if (!activeClass) {
@@ -2411,6 +2441,20 @@ const StudentView = ({ user }) => {
         connectionState={teacherConnectionState}
         broadcastInfo={teacherBroadcastInfo}
       />
+
+      {/* Active Bingo Verification Modal */}
+      {myProperties?.activeBingo?.status === 'pending' && (
+        <BingoModal
+          activeBingo={myProperties.activeBingo}
+          onSubmit={handleBingoSubmit}
+          onClose={() => {
+            setMyProperties(prev => prev ? {
+              ...prev,
+              activeBingo: { ...prev.activeBingo, status: 'closed' }
+            } : null);
+          }}
+        />
+      )}
     </div>
   );
 };
