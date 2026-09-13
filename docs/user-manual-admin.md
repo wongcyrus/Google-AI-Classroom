@@ -154,6 +154,44 @@ node admin/scripts/grantTeacherRole.js instructor@school.edu
 node admin/scripts/verifyUser.js student@stu.school.edu
 ```
 
+### 🔐 GCIP Blocking Function & Role Resolution Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 👤 User (Teacher / Student)
+    participant Client as 💻 Web App (Vite/React)
+    participant GCIP as 🔑 Firebase Auth / GCIP
+    participant BlkFunc as 🛡️ beforeUserCreated (auth_triggers)
+    participant IPFunc as 🌐 beforeUserSignedIn (checkipaddress)
+    participant FS as 🗄️ Firestore (/users)
+
+    User->>Client: Clicks "Sign in with Google"
+    Client->>GCIP: OAuth Credential Submission
+    GCIP->>BlkFunc: Trigger blocking event with UserRecord
+    
+    alt Domain == @vtc.edu.hk
+        BlkFunc-->>GCIP: Set Custom Claims: { teacher: true, role: 'teacher' }
+    else Domain == @stu.vtc.edu.hk
+        BlkFunc-->>GCIP: Set Custom Claims: { student: true, role: 'student' }
+    else Unknown Domain
+        BlkFunc-->>GCIP: Abort: HttpsError('permission-denied')
+        GCIP-->>Client: Registration Denied Toast
+    end
+
+    GCIP->>IPFunc: Validate client IP against class CIDR
+    IPFunc-->>GCIP: IP Allowed
+    GCIP-->>Client: Return Signed JWT ID Token with Custom Claims
+    
+    Client->>FS: Mirror profile data to /users/{uid}
+    
+    alt Has teacher Claim
+        Client->>User: Route to Teacher Command Center (/)
+    else Has student Claim
+        Client->>User: Route to Student Classroom View (/student)
+    end
+```
+
 ---
 
 ## 5. Firestore & Cloud Storage Security Governance
@@ -184,6 +222,27 @@ Security is governed by strict, real-token database rules and storage metadata v
   ```
   Students are unconditionally blocked from downloading or streaming any asset flagged with `resource.metadata.isExam == 'true'`.
 
+### 🛡️ Zero-Trust Exam Confidentiality Security Enforcement Flow
+
+```mermaid
+flowchart TD
+    REQ["📥 Client Request: Stream / Download Media File"] --> AUTH{"User Authenticated in Firebase Auth?"}
+    AUTH -->|No| DENY["⛔ HTTP 403: Forbidden (Unauthenticated)"]
+    AUTH -->|Yes| ROLE{"Is Primary Teacher or in coTeachers?"}
+    
+    ROLE -->|Yes| GRANT["✅ Access Granted: Full Unrestricted Playback & Download"]
+    ROLE -->|No| STUD{"Is UID in Class students[] Array?"}
+    
+    STUD -->|No| DENY2["⛔ HTTP 403: Access Denied (Not Enrolled in Class)"]
+    STUD -->|Yes| EXAM{"resource.metadata.isExam == 'true'?"}
+    
+    EXAM -->|Yes: Proctored Exam Asset| LOCK["🔒 Zero-Trust Exam Shield Active:
+    - storage.rules blocks raw binary download (HTTP 403)
+    - getStudentVideoPlaybackUrl refuses signed URL
+    - StudentRecordsView displays Assessment Lock Banner"]
+    EXAM -->|No: Regular Lab Lesson| GRANT2["✅ Access Granted: Student Video Playback & Download"]
+```
+
 ---
 
 ## 6. Cloud Functions Architecture (7 Multi-Codebases)
@@ -209,6 +268,72 @@ npx firebase-tools deploy --only functions:ai_flows --project it114115-2627
 npx firebase-tools deploy --only functions:media_processing --project it114115-2627
 ```
 
+### 🌐 Cloud Functions Event Topology & Service Architecture
+
+```mermaid
+flowchart TD
+    subgraph Triggers ["1. Ingress & Event Triggers"]
+        HTTP["HTTPS Callable Endpoints"]
+        TASKS["Google Cloud Tasks Queue (bingo-retry-queue)"]
+        CRON["Google Cloud Scheduler (Cron Jobs)"]
+        GCS_EV["Cloud Storage Finalize / Delete Events"]
+        DB_EV["Firestore Document Write Events"]
+        AUTH_EV["GCIP Blocking Auth Triggers"]
+    end
+
+    subgraph Codebases ["2. Isolated Cloud Run Services (7 Codebases)"]
+        CB1["ai_flows:
+        - Gemini Vision / Audio Analysis
+        - Bingo Verification & Tasks Retries
+        - AI Question Bank Generator"]
+        CB2["media_processing:
+        - FFmpeg Video Combiner
+        - ZIP Archive Packaging
+        - Formal Incident Dossiers (.docx/.csv)
+        - Stuck Job Janitor"]
+        CB3["auth_triggers:
+        - Domain-Based Claims Assignment
+        - Class IP Range Restrictions"]
+        CB4["storage_triggers:
+        - Real-Time Storage Quota Counter
+        - Screenshot Retention Lifecycles"]
+        CB5["scheduled_tasks:
+        - Class Schedule Automated Capture
+        - Auto Video Compilation Dispatcher
+        - Daily Gemini Pricing Sync"]
+        CB6["property_processing:
+        - Batch Student CSV Metadata Job"]
+        CB7["attendance:
+        - Lesson Bitmask Presence Aggregator"]
+    end
+
+    subgraph Sinks ["3. Data Sinks & AI Foundation Models"]
+        FS[("Cloud Firestore (Native)")]
+        GCS[("Cloud Storage Buckets")]
+        VAI["Vertex AI (Gemini 3.5 / 3.7 / 3.8)"]
+    end
+
+    HTTP --> CB1
+    TASKS --> CB1
+    HTTP --> CB2
+    CRON --> CB2
+    AUTH_EV --> CB3
+    GCS_EV --> CB4
+    CRON --> CB5
+    DB_EV --> CB6
+    HTTP --> CB7
+
+    CB1 --> VAI
+    CB1 --> FS
+    CB2 --> GCS
+    CB2 --> FS
+    CB3 --> FS
+    CB4 --> FS
+    CB5 --> FS
+    CB6 --> FS
+    CB7 --> FS
+```
+
 ---
 
 ## 7. AI FinOps, Model Pricing & Quota Governance
@@ -230,6 +355,40 @@ Every 24 hours, Cloud Scheduler triggers `syncGeminiPricing` to ensure token cal
 - Every class has a configurable budget limit (default: **$10.00**).
 - Whenever an AI job completes, `onAiJobCreated` increments the class spend total.
 - If cumulative spend reaches 100% of the budget cap, non-essential continuous vision scanning is automatically halted while essential presence verification remains active.
+
+### 💰 Real-Time AI FinOps Accounting & Dynamic Pricing Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cron as ⏱️ Cloud Scheduler (Daily 00:00)
+    participant PriceFn as 🔄 syncGeminiPricing
+    participant Vertex as 🧠 Vertex AI (Gemini)
+    participant AIFlow as ⚡ ai_flows (Cloud Function)
+    participant FS as 🗄️ Firestore (/classes/{id})
+    participant Teacher as 👨‍🏫 Instructor (AiCostReportView)
+
+    %% 1. Daily Sync
+    Cron->>PriceFn: Trigger scheduled sync
+    PriceFn->>FS: Update active token pricing tiers (/system/geminiPricing)
+
+    %% 2. Execution & Accounting
+    Teacher->>AIFlow: Request AI Job (Vision / Video / Diarization)
+    AIFlow->>Vertex: Inference call with payload
+    Vertex-->>AIFlow: Result + usageMetadata (Input & Output Token Counts)
+    AIFlow->>FS: Save job record into /classes/{id}/aiJobs/{jobId}
+    
+    %% 3. Budget & Throttle Gate
+    FS->>FS: Trigger onAiJobCreated:
+    note over FS: Calculate Cost = (InTokens * RateIn) + (OutTokens * RateOut)<br/>Atomically increment class 'spentBudget'
+    
+    alt spentBudget < budgetLimit ($10.00)
+        FS-->>Teacher: Live spend updates cleanly in FinOps Dashboard
+    else spentBudget >= budgetLimit
+        FS->>FS: Set aiThrottled = true
+        FS-->>Teacher: Alert: Class AI Budget Limit Reached (Scanning Paused)
+    end
+```
 
 ---
 

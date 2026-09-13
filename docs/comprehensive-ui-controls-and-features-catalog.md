@@ -27,6 +27,74 @@ This document provides an exhaustive, granular inventory of every User Interface
 
 ---
 
+## 🏛️ Comprehensive Platform Control & Data Flow Architecture
+
+The diagram below maps all 19 UI control domains to client edge runtimes, Firebase serverless data stores, and Vertex AI multimodal intelligence:
+
+```mermaid
+flowchart TD
+    subgraph UI_Teacher ["👨‍🏫 Teacher UI Views & Control Domains"]
+        T_MON["Domain 3: MonitorView & StudentGrid"]
+        T_CTRL["Domain 3: ControlsPanel & Quality Sliders"]
+        T_IND["Domain 4: IndividualStudentView & Intercom"]
+        T_BIN["Domain 9: BingoQuestionBankModal"]
+        T_DOS["Domain 10: IncidentDossierExportModal"]
+        T_VID["Domain 11: SessionReview & VideoLibrary"]
+        T_JOB["Domain 12: VideoAnalysisJobs & Rubric Studio"]
+        T_ATT["Domain 13: AttendanceView & Matrix Grid"]
+        T_IRR["Domain 14: IrregularitiesView & Audio Diarization"]
+        T_PERF["Domain 15: PerformanceAnalyticsView"]
+        T_FIN["Domain 16: AiCostReportView (FinOps)"]
+        T_PRM["Domain 17: PromptManagement Studio"]
+    end
+
+    subgraph UI_Student ["🧑‍🎓 Student UI Views & Controls"]
+        S_WIZ["Domain 6: ExamReadinessWizard (3-Step)"]
+        S_RUN["Domain 5: StudentView (Dual Stream & PiP)"]
+        S_MOD["Domain 9: BingoModal (60s Countdown)"]
+        S_REC["Domain 7: StudentRecordsView (5 Tabs)"]
+        S_BRD["Domain 3: TeacherScreenViewerModal"]
+    end
+
+    subgraph Backend_Sync ["⚡ Real-Time Data & Storage Layer"]
+        FS[("Cloud Firestore:
+        /classes, /users, /bingoRecords,
+        /aiJobs, /lessons, /questionBank")]
+        GCS[("Cloud Storage Buckets:
+        /screenshots, /videos, /audio, /reports")]
+    end
+
+    subgraph Cloud_Functions ["⚙️ Gen 2 Cloud Functions (7 Codebases)"]
+        CF_AI["ai_flows:
+        Gemini Vision & Bingo Retries"]
+        CF_MED["media_processing:
+        FFmpeg, ZIP & Dossier Engine"]
+        CF_SCH["scheduled_tasks:
+        Timetables & Pricing Sync"]
+        CF_SEC["auth_triggers & storage_triggers:
+        Domain Claims & Quotas"]
+    end
+
+    subgraph AI_Foundations ["🧠 Google Vertex AI & Edge Models"]
+        GEM["Gemini 3.5 Lite, 3.7 Flash, 3.8 Flash, 3.7 Pro"]
+        DIA["Gemini 3.5 Transcribe Preview (Speech Diarization)"]
+        EDGE["Edge Workers: MediaPipe 468-pt Mesh + LiteRT Whisper/Gemma"]
+    end
+
+    UI_Teacher <--> FS
+    UI_Teacher <--> GCS
+    UI_Student <--> FS
+    UI_Student <--> GCS
+    UI_Student <--> EDGE
+
+    FS <--> Cloud_Functions
+    GCS <--> Cloud_Functions
+    Cloud_Functions <--> GEM
+    Cloud_Functions <--> DIA
+```
+
+---
+
 ## 1. Application Shell, Navigation & System Gating
 **Primary Source:** [`App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx)
 

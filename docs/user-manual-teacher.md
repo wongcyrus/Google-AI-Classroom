@@ -40,6 +40,36 @@ Welcome to the **Gemini AI Classroom Assistant** Instructor Guide. This manual d
   - `Mailbox`: Displays system notices, asynchronous export downloads, and background job alerts (badged with unread count).
 - **Profile Menu & Role Switcher:** Click your avatar in the upper right corner to view your account details, trigger password changes, or sign out. On administrative accounts, you can toggle between **Teacher** and **Student** view simulations.
 
+### 🔄 End-to-End Instructor Lesson Lifecycle Flow
+
+```mermaid
+flowchart TD
+    subgraph PreLesson ["1. Pre-Lesson Preparation"]
+        C1["Create Class & Quota Limit"] --> C2["Schedule Recurring Slots"]
+        C2 --> C3["Import Student Roster & Properties"]
+        C3 --> C4["Configure AI Vision & Gaze Presets"]
+        C4 --> C5["(Optional) Define Exam Windows"]
+    end
+
+    subgraph ActiveLesson ["2. Live Classroom Invigilation"]
+        L1["Open Monitor Grid View"] --> L2["Broadcast Teacher Screen (WebRTC)"]
+        L1 --> L3["Filter Problem Students (Missing Cam/Mic/Screen)"]
+        L3 --> L4["1-on-1 Inspection: Live Peek & Talkback Intercom"]
+        L1 --> L5["Call Interactive Bingo (Presence Verification)"]
+    end
+
+    subgraph PostLesson ["3. Post-Lesson Review & Analytics"]
+        P1["Dual Synchronized Video Playback"] --> P2["Task Prompt Synthesis (Gemini 3.8)"]
+        P2 --> P3["Calculate Live Attendance Bitmasks"]
+        P3 --> P4["Review Biometric Alerts & Audio Diarization"]
+        P4 --> P5["Monitor AI Token Cost & Quota"]
+        P5 --> P6["Export Formal Incident Dossier (.docx/.csv)"]
+    end
+
+    PreLesson --> ActiveLesson
+    ActiveLesson --> PostLesson
+```
+
 ---
 
 ## 2. Classroom Setup & Timetable Configuration
@@ -221,6 +251,50 @@ Click **`🎯 Call Bingo`** inside the student modal to trigger a surprise prese
 - **`📋 Clips Drawer`**: Expand to see the playlist of all recorded audio segments for this student during the lesson.
 - **`📜 View Transcript & Diarization`**: Opens the full diarization modal showing multi-speaker turn-taking, risk level, and Gemini cheat-detection rationale.
 
+### 📡 Real-Time Broadcasting, Live Peek & Intercom Signaling Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Teacher as 👨‍🏫 Instructor
+    participant TApp as Teacher Web App
+    participant FS as ⚡ Firestore Signaling
+    participant SApp as Student Web App
+    actor Student as 🧑‍🎓 Student
+
+    %% 1. Broadcast
+    rect rgb(240, 248, 255)
+    note over Teacher,Student: Scenario A: One-to-Many Teacher Screen Broadcast
+    Teacher->>TApp: Clicks "Broadcast Screen"
+    TApp->>TApp: Offscreen canvas diff & JPEG compression
+    TApp->>FS: Publish frame delta to /classes/{id}/screensharing
+    FS-->>SApp: Real-time snapshot listener receives frame
+    SApp->>Student: Renders in TeacherScreenViewerModal (Float/Docked)
+    end
+
+    %% 2. Live Peek & Talkback
+    rect rgb(245, 255, 245)
+    note over Teacher,Student: Scenario B: 1-to-1 WebRTC Live Peek & Talkback Intercom
+    Teacher->>TApp: Opens Student Modal & clicks "Live Peek"
+    TApp->>FS: Post WebRTC Offer SDP to /webrtc_signals
+    FS-->>SApp: Snapshot listener receives Offer
+    SApp->>TApp: Sends WebRTC Answer SDP & ICE Candidates
+    SApp-->>TApp: Direct Peer-to-Peer 30 FPS Video Stream established
+    Teacher->>TApp: Holds "Intercom Active" (Talkback)
+    TApp-->>SApp: Streams low-latency Opus audio track
+    SApp->>Student: Audio plays through student headphones
+    end
+
+    %% 3. Quick Nudge
+    rect rgb(255, 250, 240)
+    note over Teacher,Student: Scenario C: Instant Nudge Intervention
+    Teacher->>TApp: Clicks "Screen Share Reminder" Nudge
+    TApp->>FS: Write toast to /classes/{id}/students/{id}/direct_messages
+    FS-->>SApp: Receives message
+    SApp->>Student: Displays urgent onscreen warning banner
+    end
+```
+
 ---
 
 ## 9. Interactive "Bingo" Active Presence Verification
@@ -249,6 +323,49 @@ In the Question Bank Modal:
 - **Timeout / AFK (`missed_timeout`):** The student did not respond within 60 seconds.
   - **Strike 1:** Schedules a grace retry in 1–5 minutes (handled serverlessly via Google Cloud Tasks).
   - **Strike 2:** If the retry also times out, elapsed minutes between the checks are automatically voided (coded as bitmask state `2` / Orange in the attendance matrix).
+
+### 🎯 Interactive Bingo Challenge & Cloud Tasks Two-Strike Grace Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Teacher as 👨‍🏫 Instructor
+    participant CF as ⚡ Cloud Functions (ai_flows)
+    participant FS as 🗄️ Firestore (bingoRecords)
+    participant CT as ⏱️ Google Cloud Tasks
+    participant SApp as 🧑‍🎓 Student Client
+
+    Teacher->>CF: triggerBingoCheck(classId, mode, questionId)
+    CF->>FS: Create challenge record in /bingoRecords
+    FS-->>SApp: Snapshot listener detects pending check
+    SApp->>SApp: Play dual-tone Web Audio chime (659Hz ➔ 880Hz)
+    SApp->>SApp: Open BingoModal with 60s countdown timer
+
+    alt Student Answers Within 60s (Correct OR Incorrect)
+        SApp->>CF: submitBingoAnswer(selectedOption)
+        CF->>FS: Update status = 'verified_present'
+        FS-->>Teacher: Monitor grid updates with green badge (🎯✓)
+        note over SApp,Teacher: Physical presence verified — NO attendance deducted
+    else Student Times Out / AFK (Strike 1)
+        SApp->>CF: Auto-submit 'missed_timeout'
+        CF->>FS: Mark Strike 1 in student record
+        CF->>CT: dispatchBingoRetryTask(scheduledTime: now + 3min)
+        note over CT: Serverless zero-idle-cost queue delay
+        CT->>CF: Trigger retry execution endpoint
+        CF->>FS: Dispatch Grace Retry Challenge
+        FS-->>SApp: Student receives Retry Bingo Modal
+
+        alt Student Answers Grace Retry
+            SApp->>CF: submitBingoAnswer(selectedOption)
+            CF->>FS: Clear strike & mark 'verified_present'
+        else Student Misses Grace Retry (Strike 2)
+            SApp->>CF: Auto-submit 'missed_timeout'
+            CF->>FS: Log Strike 2 (Confirmed Non-Presence)
+            CF->>FS: Void elapsed minutes between checks (Bitmask = 2)
+            FS-->>Teacher: Attendance Matrix flags striped orange cells (🎯)
+        end
+    end
+```
 
 ---
 
@@ -294,6 +411,36 @@ Rather than writing grading rubrics by hand, let Gemini synthesize rubrics from 
 - Click **`👁️ View Prompt`** to inspect the exact prompt used.
 - Click **`📥 Export Results (CSV)`** or **`📥 Export Results (JSON)`** to download comprehensive grades and feedback.
 - If any video timed out, click **`🔄 Retry Failed Videos`** to re-queue the evaluation.
+
+### 🔬 Two-Stage AI Video Analysis & Rubric Synthesis Architecture
+
+```mermaid
+flowchart TD
+    subgraph Stage1 ["Stage 1: Multi-Student Video Observation Aggregation"]
+        V1["Student 1 Screencast (MP4)"] --> MAP["processVideoAnalysisJob"]
+        V2["Student 2 Screencast (MP4)"] --> MAP
+        V3["Student N Screencast (MP4)"] --> MAP
+        MAP --> OBS["Aggregated Multi-Student Video Observations"]
+    end
+
+    subgraph Synthesis ["Stage 2A: Gemini Task Rubric Synthesis Studio"]
+        OBS --> G38["Gemini 3.8 Flash / 3.7 Pro Synthesizer"]
+        G38 --> SYN["Synthesized Output:
+        - Canonical Milestones & Sub-tasks
+        - Expected Commands & Software
+        - Common Hurdles & Troubleshooting
+        - Numerical Grading Rubric Criteria"]
+        SYN --> EDIT["Teacher Split Markdown Editor (@uiw/react-md-editor)"]
+        EDIT -->|Save| LIB["Class Prompt Library (Firestore)"]
+    end
+
+    subgraph BatchEval ["Stage 2B: Targeted Cohort Re-Evaluation"]
+        EDIT -->|Launch Job| BATCH["Map-Reduce Batch Job Evaluation"]
+        BATCH --> SCORES["Granular Student Grades & Timestamps"]
+        SCORES --> EXP["Universal Export: RFC 4180 CSV / JSON Matrix"]
+        SCORES --> PERF["Performance Analytics & Bottleneck Chart"]
+    end
+```
 
 ---
 
@@ -398,6 +545,42 @@ When academic misconduct or severe proctoring violations occur during an exam, y
 7. Click **`🚀 Generate Incident Dossier`**.
 8. Cloud Functions compile the Word document, embed the full-resolution evidence images, and format standard academic misconduct declarations.
 9. When the progress pill displays `✅ Completed`, click **`⬇ Download Dossier`**.
+
+### 📋 Formal Incident Dossier Export Pipeline
+
+```mermaid
+flowchart LR
+    subgraph Input ["1. Instructor Parameter Selection"]
+        T1["Select Time Range (e.g., Past 1 Hour)"]
+        T2["Target Students (All or Specific)"]
+        T3["Evidence Toggles:
+        - Side-by-Side Screenshots
+        - Diarized Audio Transcripts
+        - Head Pose / Gaze Yaw & Pitch Logs"]
+    end
+
+    subgraph Compiler ["2. Cloud Function (media_processing: processReportJob)"]
+        JOB["Job Document in /reportJobs"] --> FETCH["Fetch High-Res JPEGs & Audio"]
+        FETCH --> DOCX["docx Engine:
+        - Academic Misconduct Headers
+        - Chronological Incident Matrix
+        - Embedded High-Res Image Proof"]
+        FETCH --> CSV["CSV Engine:
+        - RFC 4180 Data Rows
+        - Millisecond Timestamps"]
+    end
+
+    subgraph Delivery ["3. Delivery & Governance"]
+        DOCX --> STORE["Upload to Cloud Storage:
+        /classes/{id}/reports/{reportId}.docx"]
+        CSV --> STORE
+        STORE --> MAIL["Notification in Mailbox Center"]
+        STORE --> SIGN["1-Click Secure Signed Download"]
+    end
+
+    Input --> Compiler
+    Compiler --> Delivery
+```
 
 ---
 

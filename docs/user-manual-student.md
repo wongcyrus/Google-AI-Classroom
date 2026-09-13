@@ -53,10 +53,36 @@ To protect academic integrity and ensure smooth on-device AI performance, **you 
 
 Before entering any proctored session or exam, you must complete the 3-step **Exam Readiness Wizard** ([`ExamReadinessWizard.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ExamReadinessWizard.jsx)).
 
-```
-┌─────────────────┐       ┌──────────────────────┐       ┌────────────────────────┐
-│ 1. 🎙️ Mic Test   │ ────> │ 2. 📷 Camera & Gaze  │ ────> │ 3. 🖥️ Full Screen Share │
-└─────────────────┘       └──────────────────────┘       └────────────────────────┘
+```mermaid
+flowchart TD
+    START["🚀 Launch Readiness Wizard"] --> S1["Step 1: 🎙️ Microphone Test"]
+    
+    S1 --> S1_TEST{"Microphone Hardware Detected?"}
+    S1_TEST -->|Yes| S1_VAD["Live VU Volume Bar (15%-65%)"]
+    S1_VAD --> S1_CHALLENGE["Read Spoken Challenge Sentence"]
+    S1_CHALLENGE --> S1_LOOP["3s Audio Loopback Playback"]
+    S1_LOOP --> S1_OK["✅ Mic Verified"]
+    S1_TEST -->|No / Skip| S1_FALLBACK["🟡 Proceed Without Mic (Muted Mode)"]
+    
+    S1_OK --> S2["Step 2: 📷 Camera & Gaze Calibration"]
+    S1_FALLBACK --> S2
+    
+    S2 --> S2_TEST{"Webcam Detected?"}
+    S2_TEST -->|Yes| S2_GUIDE["Align Face in Oval Target"]
+    S2_GUIDE --> S2_POSE["Click '🎯 Set Center Pose'"]
+    S2_POSE --> S2_OK["✓ Baseline Pitch & Yaw Calibrated"]
+    S2_TEST -->|No / Skip| S2_FALLBACK["🟡 Proceed Without Camera (Screen-Only)"]
+    
+    S2_OK --> S3["Step 3: 🖥️ Desktop Display Surface Check"]
+    S2_FALLBACK --> S3
+    
+    S3 --> S3_PROMPT["Prompt Chrome Screen Picker"]
+    S3_PROMPT --> S3_SURFACE{"displaySurface === 'monitor'?"}
+    S3_SURFACE -->|Tab or Window Selected| S3_ERR["❌ Error: Full Desktop Required"]
+    S3_ERR --> S3_PROMPT
+    S3_SURFACE -->|Entire Screen Selected| S3_OK["✅ Integrity Gate Passed"]
+    
+    S3_OK --> S_ENTER["🚀 Enter Proctored Classroom Session"]
 ```
 
 ### Step 1: Microphone & Voice Verification
@@ -138,6 +164,53 @@ A status pill at the top of your webcam feed shows your alignment:
   - `🚨 FLAGGED (COLLUSION_EXAM)`: Discussing test answers or questions.
   - `🚨 FLAGGED (EXTERNAL_AI_ASSIST)`: Querying Siri, Google Assistant, or an external AI tool.
 
+### 🔄 In-Session Runtime Streaming & Edge AI Processing Architecture
+
+```mermaid
+flowchart TD
+    subgraph MediaInputs ["1. Hardware Media Streams"]
+        M1["🖥️ Screen Stream (getDisplayMedia)"]
+        M2["📷 Webcam Stream (getUserMedia)"]
+        M3["🎙️ Mic Audio (AudioContext VAD)"]
+    end
+
+    subgraph Resilience ["2. OS & Background Resilience"]
+        WAKE["navigator.wakeLock (Screen Wake Lock)"]
+        TICK["isolated Web Worker Timer (Prevents Background Throttling)"]
+    end
+
+    subgraph EdgeAI ["3. On-Device Edge Web Workers (WASM / WebGPU)"]
+        M2 --> W1["faceLandmarker.worker.js
+        - 468-Point 3D Iris & Mesh
+        - Gaze Yaw / Pitch Deviation
+        - EAR (Drowsiness) & MAR (Speech)"]
+        M3 --> W2["litertWhisper.worker.js
+        - Multilingual Speech-to-Text
+        - Cantonese / Mandarin / English"]
+        W2 --> W3["litertGemma.worker.js
+        - Zero-Cloud Edge LLM
+        - Academic Intent Classification"]
+    end
+
+    subgraph ClientHUD ["4. Real-Time Student HUD"]
+        W1 --> HUD1["Biometric Status Pill (Angles & Posture)"]
+        W2 --> HUD2["Live Speech Subtitle Drawer"]
+        W3 --> HUD3["Integrity Badges (Clean / Flagged)"]
+    end
+
+    subgraph SyncEngine ["5. Network & Storage Engine"]
+        TICK --> GRAB["Periodic Snapshot Capture (15s/30s)"]
+        GRAB --> NET{"Browser Online?"}
+        NET -->|Yes| CLOUD["Direct Upload to Cloud Storage & Firestore"]
+        NET -->|No / Network Drop| IDB["IndexedDB Local Buffer (offlineFrames)"]
+        IDB -->|Network Restored| CLOUD
+    end
+
+    MediaInputs --> Resilience
+    Resilience --> EdgeAI
+    MediaInputs --> SyncEngine
+```
+
 ---
 
 ## 6. Viewing the Teacher's Screen Broadcast
@@ -186,6 +259,41 @@ To confirm that students are actively attending lectures and not running automat
 - **What if I miss the countdown (AFK)?**
   - **Strike 1 (Warning):** If you fail to respond before the 60-second timer expires, the system schedules a **grace retry in 1–5 minutes**.
   - **Strike 2 (Deduction):** If you also miss the grace retry, the system logs consecutive non-presence and voids elapsed unverified attendance minutes between the checks (recorded as code `2` / orange stripes in your attendance matrix).
+
+### 🎯 Bingo Challenge Response & Attendance State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> IdleSession: In Classroom Session
+
+    IdleSession --> ChallengePrompted: Teacher Dispatches Bingo Check
+    note right of ChallengePrompted
+        - Web Audio Chime (659Hz ➔ 880Hz)
+        - Desktop Notification Toast
+        - 60s Animated Countdown Modal
+    end note
+
+    ChallengePrompted --> OptionSelected: Student clicks Option A/B/C/D
+    OptionSelected --> VerifiedPresent: Click "✓ Submit Answer"
+    VerifiedPresent --> IdleSession: Attendance Verified (Bitmask = 1)
+
+    ChallengePrompted --> Strike1Pending: Timer Reaches 0s (AFK / Ignored)
+    note right of Strike1Pending
+        - Cloud Tasks Queue Delay (1-5 min)
+        - Student marked as Pending Retry
+    end note
+
+    Strike1Pending --> GraceRetryActive: Cloud Tasks Triggers Retry Challenge
+    GraceRetryActive --> VerifiedPresent: Student Submits Retry Answer
+    
+    GraceRetryActive --> Strike2Deduction: Grace Timer Expires (Second Timeout)
+    note right of Strike2Deduction
+        - Strike 2: Confirmed Non-Presence
+        - Unverified minutes voided (Bitmask = 2)
+        - Orange striped timeline cells in Records
+    end note
+    Strike2Deduction --> IdleSession: Session Continues
+```
 
 ---
 
