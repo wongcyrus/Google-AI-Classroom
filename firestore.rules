@@ -9,7 +9,7 @@ service cloud.firestore {
 
     function isTeacherInClass(classId) {
       let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let isTeacherByEmail = request.auth.token.email in classData.teacherEmails;
+      let isTeacherByEmail = classData.teacherEmails != null && request.auth.token.email in classData.teacherEmails;
       let isTeacherByUid = classData.teachers != null && request.auth.uid in classData.teachers;
       return isTeacherByEmail || isTeacherByUid;
     }
@@ -109,14 +109,21 @@ service cloud.firestore {
 
       match /bingoRecords/{bingoId} {
         allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
-        allow create: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.resource.data.studentUid == request.auth.uid);
-        allow update: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
-        allow delete: if isTeacherInClass(classId);
+        allow write: if isTeacherInClass(classId);
       }
 
       match /attendanceAdjustments/{adjustmentId} {
         allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
         allow write: if isTeacherInClass(classId);
+      }
+
+      match /audio_audits/{studentUid} {
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow write: if isTeacherInClass(classId);
+      }
+
+      match /questionBank/{questionId} {
+        allow read, write: if isTeacherInClass(classId);
       }
     }
 
@@ -206,6 +213,10 @@ service cloud.firestore {
     }
     match /system_config/{docId} {
       allow read: if request.auth != null;
+      allow write: if false; // Only backend functions / admin SDK can write
+    }
+    match /users/{userId} {
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == userId);
       allow write: if false; // Only backend functions / admin SDK can write
     }
   }

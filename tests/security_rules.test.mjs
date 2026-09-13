@@ -3,7 +3,7 @@ import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeApp as initClient } from 'firebase/app';
 import { getAuth as getClientAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore as getClientFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore as getClientFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 import fs from 'fs';
 import path from 'path';
@@ -364,6 +364,23 @@ async function runSecurityRulesSuite() {
       getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo2Id)),
       'Student 1 CANNOT read Student 2 bingoRecords in Class A'
     );
+    // Bingo records write protection (Student cannot write/update/delete)
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id), { result: 'passed' }),
+      'Student 1 CANNOT update bingoRecords (tampering protection)'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'classes', classA, 'bingoRecords', `fake-${timestamp}`), {
+        classId: classA,
+        studentUid: student1Uid,
+        result: 'passed',
+      }),
+      'Student 1 CANNOT create fake bingoRecords'
+    );
+    await expectPermissionDenied(
+      deleteDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id)),
+      'Student 1 CANNOT delete bingoRecords'
+    );
 
     // Attendance Adjustments isolation
     const adj1Id = `adj-1-${timestamp}`;
@@ -387,6 +404,75 @@ async function runSecurityRulesSuite() {
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj2Id)),
       'Student 1 CANNOT read Student 2 attendanceAdjustments in Class A'
+    );
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj1Id), { deductedMinutes: 0 }),
+      'Student 1 CANNOT update attendanceAdjustments'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', `fake-adj-${timestamp}`), {
+        classId: classA,
+        studentUid: student1Uid,
+        deductedMinutes: 0,
+      }),
+      'Student 1 CANNOT create fake attendanceAdjustments'
+    );
+
+    // Audio Audits subcollection isolation
+    const audit1Id = student1Uid;
+    const audit2Id = student2Uid;
+    await adminDb.collection('classes').doc(classA).collection('audio_audits').doc(audit1Id).set({
+      classId: classA,
+      studentUid: student1Uid,
+      verdict: 'clean_exam',
+      speakerCount: 1,
+    });
+    await adminDb.collection('classes').doc(classA).collection('audio_audits').doc(audit2Id).set({
+      classId: classA,
+      studentUid: student2Uid,
+      verdict: 'suspicious_collaboration',
+      speakerCount: 2,
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'audio_audits', audit1Id)),
+      'Student 1 CAN read own audio_audits in enrolled Class A'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'audio_audits', audit2Id)),
+      'Student 1 CANNOT read Student 2 audio_audits in Class A'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'classes', classA, 'audio_audits', `fake-audit-${timestamp}`), {
+        classId: classA,
+        studentUid: student1Uid,
+      }),
+      'Student 1 CANNOT create audio_audits'
+    );
+
+    // Users directory permissions
+    await adminDb.collection('users').doc(student1Uid).set({
+      email: student1Email,
+      role: 'student',
+    });
+    await adminDb.collection('users').doc(student2Uid).set({
+      email: student2Email,
+      role: 'student',
+    });
+    await adminDb.collection('users').doc(teacherUid).set({
+      email: teacherEmail,
+      role: 'teacher',
+    });
+    await expectAllowed(
+      getDoc(doc(clientDb, 'users', student1Uid)),
+      'Student 1 CAN read own user document'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'users', student2Uid)),
+      'Student 1 CANNOT read Student 2 user document'
+    );
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'users', student1Uid), { role: 'teacher' }),
+      'Student 1 CANNOT escalate role in users document'
     );
 
     // -------------------------------------------------------------
@@ -423,6 +509,14 @@ async function runSecurityRulesSuite() {
       getDoc(doc(clientDb, 'classes', classA, 'attendanceAdjustments', adj1Id)),
       'Teacher can read attendanceAdjustments in Class A'
     );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'audio_audits', audit1Id)),
+      'Teacher can read audio_audits in Class A'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'users', student1Uid)),
+      'Teacher can read student user document'
+    );
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users
@@ -439,6 +533,11 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo2Id).delete();
     await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj1Id).delete();
     await adminDb.collection('classes').doc(classA).collection('attendanceAdjustments').doc(adj2Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('audio_audits').doc(audit1Id).delete();
+    await adminDb.collection('classes').doc(classA).collection('audio_audits').doc(audit2Id).delete();
+    await adminDb.collection('users').doc(student1Uid).delete();
+    await adminDb.collection('users').doc(student2Uid).delete();
+    await adminDb.collection('users').doc(teacherUid).delete();
     await adminDb.collection('videoJobs').doc(videoJob1Id).delete();
     await adminDb.collection('videoJobs').doc(videoJob2Id).delete();
     await adminDb.collection('aiJobs').doc(aiJob1Id).delete();

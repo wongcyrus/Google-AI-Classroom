@@ -1441,18 +1441,7 @@ const StudentView = ({ user }) => {
       });
       return res.data;
     } catch (err) {
-      console.warn('[StudentView] Callable submitBingoAnswer failed, writing to Firestore:', err);
-      try {
-        const bDocRef = doc(db, 'classes', activeClass, 'bingoRecords', bingoId);
-        await updateDoc(bDocRef, {
-          selectedIndex,
-          responseTimeSec,
-          windowFocused,
-          answeredAt: serverTimestamp(),
-        });
-      } catch (e2) {
-        console.error('[StudentView] Direct write to bingoRecords failed:', e2);
-      }
+      console.warn('[StudentView] Callable submitBingoAnswer failed:', err);
       return { success: false };
     }
   };

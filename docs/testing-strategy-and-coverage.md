@@ -10,12 +10,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 831 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 845 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
-        L3[Level 3: Real-Token Security Rules Verification - 29 Assertions]
+        L3[Level 3: Real-Token Security Rules Verification - 42 Assertions]
         L2[Level 2: Backend Cloud Functions Logic - 139 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 633 Tests across 90 Suites]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 636 Tests across 90 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -47,7 +47,7 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (90 Test Files / 633 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (90 Test Files / 636 Tests).
 * **Covered Modules**:
   * `web-app/src/components/ClassManagement.test.jsx`: Validates class creation, settings persistence, exam period definitions, roster CSV exports/imports, custom gaze thresholds, and configurable **Bingo Active Presence Retry Grace Delay** dropdown (`bingoRetryDelayMinutes`: 1m, 2m, 3m default, 5m, 10m).
   * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, signed video playback modal triggers, exam audio confidentiality shielding, irregularity evidence suppression during tests, and immediate abortion of direct GCS fallback upon backend callable permission denial.
@@ -178,7 +178,7 @@ functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Function
 | `functions/attendance/attendance.test.js` | `getAttendanceData` | **100% Logic Verification**: Validates minute-by-minute heatmap array calculation; verifies query against `attendanceAdjustments`; tests stamping voided intervals with status code `2`; validates that `val === 2` minutes are strictly excluded from `totalMinutes` / `sharedScreenMinutes`; validates computation of `deductedMinutes` count and persistence into `classes/{classId}/lessons/{lessonId}`. |
 | `src/components/BingoModal.test.jsx` | `BingoModal.jsx` | **Unit & Interaction Verification**: Validates dual-tone Web Audio chime synthesis on modal mount; tests 45-second animated countdown timer bar; verifies color shift to pulsating red state under 10 seconds; tests multiple choice button clicks dispatching `submitBingoAnswer` with focus detection (`document.hasFocus()`) and response time; tests timer expiration triggering auto-submission with `selectedIndex: null`; validates UI feedback states (`Verified Present!`, `Incorrect Choice`, `Time Expired`). |
 | `src/components/BingoQuestionBankModal.test.jsx` | `BingoQuestionBankModal.jsx` | **Question Bank Suite**: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing generated questions, and 1-click batch appending to class pool; tests plain-text Aiken format parser and raw JSON batch importer with real-time error handling; tests Questions Pool tab rendering active questions, option lists, highlighted correct answers, topic chips, and individual deletion handlers. |
-| `tests/security_rules.test.mjs` | `firestore.rules` (Suite 4) | **Real-Token Security Verification**: Tests that authenticated enrolled students can read their own `bingoRecords` and `'all'` broadcast challenges; proves that students are denied access to other students' private `bingoRecords`; proves that students have strictly zero write permissions (`create`, `update`, `delete`) on `bingoRecords`; validates that teachers have unrestricted read and write privileges over all class `bingoRecords`. |
+| `tests/security_rules.test.mjs` | `firestore.rules` (Suites 1-3) | **Real-Token Security Verification (42 Assertions)**: Tests anonymous denial across core collections; validates student read isolation on profiles, enrolled classes, lessons, audio metadata, video/AI jobs, performance metrics, and own attendance adjustments; proves students have strictly zero write permissions (`create`, `update`, `delete`) on `bingoRecords`, `attendanceAdjustments`, and `audio_audits`; proves role escalation and peer reading are blocked on `users`; validates that teachers retain full authorized access across all classes, jobs, audio audits, and user directories. |
 
 
 
