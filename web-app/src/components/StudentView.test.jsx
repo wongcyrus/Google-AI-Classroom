@@ -750,6 +750,67 @@ describe('StudentView Component Extended Test Suite', () => {
       screen.getByText(/Full screen sharing and continuous proctoring are mandatory/i)
     ).toBeInTheDocument();
   });
+
+  it('does NOT popup BingoModal when activeBingo in studentProperties has expired', async () => {
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+      expect(studentPropsCallback).toBeDefined();
+    });
+
+    const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+    act(() => {
+      studentPropsCallback.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'expired_bingo_123',
+            question: 'What is Kubernetes?',
+            options: ['Tool', 'Car', 'Book', 'Game'],
+            timeLimitSeconds: 45,
+            status: 'pending',
+            expiresAtMillis: Date.now() - 60000, // Expired 1 minute ago
+          },
+        }),
+      });
+    });
+
+    // Bingo modal must NOT appear
+    expect(screen.queryByText('🎯 Class Bingo Check')).toBeNull();
+    expect(screen.queryByText('What is Kubernetes?')).toBeNull();
+  });
+
+  it('renders BingoModal when activeBingo is fresh and pending', async () => {
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+      expect(studentPropsCallback).toBeDefined();
+    });
+
+    const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+    act(() => {
+      studentPropsCallback.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'fresh_bingo_123',
+            question: 'What is React JSX?',
+            options: ['Syntax extension', 'Database', 'Operating System', 'Network Cable'],
+            timeLimitSeconds: 45,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 45000, // Valid for 45s
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('🎯 Class Bingo Check')).toBeInTheDocument();
+      expect(screen.getByText('What is React JSX?')).toBeInTheDocument();
+    });
+  });
 });
 
 

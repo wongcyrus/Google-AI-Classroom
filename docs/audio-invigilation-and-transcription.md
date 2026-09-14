@@ -133,14 +133,14 @@ Mode 2 resolves the classic **boundary truncation problem** using a 50% overlapp
 
 ```mermaid
 flowchart LR
-    subgraph Stride1 [Window 1: 0s - 30s]
-        W1A["...What is the ans- [CUT]"]
+    subgraph Stride1 ["Window 1: 0s - 30s"]
+        W1A["...What is the ans- (CUT)"]
     end
-    subgraph Stride2 [Window 2: 15s - 45s (50% Overlap)]
-        W2A["[HEALED] What is the answer for question four?"]
+    subgraph Stride2 ["Window 2: 15s - 45s (50% Overlap)"]
+        W2A["(HEALED) What is the answer for question four?"]
     end
-    subgraph Merger [transcriptMerger.js]
-        W1A --> Matcher[Timestamp Alignment & Overlap Matcher]
+    subgraph Merger ["transcriptMerger.js"]
+        W1A --> Matcher["Timestamp Alignment & Overlap Matcher"]
         W2A --> Matcher
         Matcher --> FinalTranscript["'What is the answer for question four?' (Deduplicated)"]
     end

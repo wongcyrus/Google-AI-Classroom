@@ -12,6 +12,7 @@ const JOB_TYPE_LABELS = {
   analyzeSingleVideo: '🎥 Screencast Video Inspection',
   cloudFallbackFaceAnalysis: '👁️ Cloud Gaze Fallback',
   analyzeAudio: '🎙️ Audio STT & Diarization',
+  liveSubtitleStream: '🌐 Gemini Live Subtitle Stream',
   other: '⚙️ General AI Processing',
 };
 
@@ -22,6 +23,8 @@ const MODEL_COLORS = {
   'gemini-3.7-pro': '#8b5cf6',
   'gemini-3.5-transcribe': '#10b981',
   'gemini-3.5-transcribe-live': '#f59e0b',
+  'gemini-3.1-flash-live-preview': '#ef4444',
+  'gemini-2.5-flash-native-audio-preview-12-2025': '#f97316',
 };
 
 const AiCostReportView = ({

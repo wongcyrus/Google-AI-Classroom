@@ -8,17 +8,114 @@ import { FUNCTION_REGION } from './config.js';
 const db = getFirestore();
 const adminAuth = getAuth();
 
-// Helper to get local time and day in a specific timezone
-function getLocalTimeInfo(date, timeZone) {
-  const options = { timeZone, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false };
+// Helper to get local time, day, and date in a specific timezone
+export function getLocalTimeAndDay(date, timeZone) {
+  const options = {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
   const formatter = new Intl.DateTimeFormat('en-US', options);
   const parts = formatter.formatToParts(date);
 
   const localTime = parts.find(p => p.type === 'hour').value + ':' + parts.find(p => p.type === 'minute').value;
   const localDay = parts.find(p => p.type === 'weekday').value;
+  const year = parts.find(p => p.type === 'year')?.value;
+  const month = parts.find(p => p.type === 'month')?.value;
+  const day = parts.find(p => p.type === 'day')?.value;
+  const localDate = year && month && day ? `${year}-${month}-${day}` : '';
 
-  return { localTime, localDay };
+  return { localTime, localDay, localDate };
 }
+
+// Helper to get local time and day in a specific timezone
+export function getLocalTimeInfo(date, timeZone) {
+  return getLocalTimeAndDay(date, timeZone);
+}
+
+/**
+ * Evaluates whether a class session is currently active across 3 operational cases:
+ *  - Case 1: Scheduled class with active capture (isCapturing === true AND within schedule). Stops when slot ends.
+ *  - Case 2: Manual capture class without schedule (isCapturing === true and < 3 hours). Stops when isCapturing === false.
+ *  - Case 3: Scheduled class without capture (isCapturing === false, mode === 'question_bank', within schedule slot). Stops when slot ends.
+ */
+export function isClassSessionActive(classData, now = new Date()) {
+  if (!classData) return false;
+
+  const { isCapturing, schedule, autoBingoMode, captureStartedAt } = classData;
+
+  // Case 1 & 2: Capturing is explicitly true
+  if (isCapturing) {
+    // Case 1: Scheduled class with capture
+    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
+      try {
+        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
+
+        if (schedule.startDate && schedule.endDate) {
+          if (localDate < schedule.startDate || localDate > schedule.endDate) {
+            return false;
+          }
+        }
+
+        const activeSlot = schedule.timeSlots.find(slot => {
+          if (!slot.days || !slot.days.includes(localDay)) return false;
+          if (slot.startTime > slot.endTime) {
+            return localTime >= slot.startTime || localTime <= slot.endTime;
+          }
+          return localTime >= slot.startTime && localTime <= slot.endTime;
+        });
+
+        return Boolean(activeSlot);
+      } catch {
+        return false;
+      }
+    }
+
+    // Case 2: Manual capture without a schedule
+    if (captureStartedAt) {
+      const startedMillis = captureStartedAt.toMillis ? captureStartedAt.toMillis() : new Date(captureStartedAt).getTime();
+      if ((now.getTime() - startedMillis) > 3 * 60 * 60 * 1000) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Case 3: Capturing is false, but class is schedule-driven with question_bank mode
+  if (!isCapturing && (autoBingoMode === 'question_bank' || !autoBingoMode)) {
+    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
+      try {
+        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
+
+        if (schedule.startDate && schedule.endDate) {
+          if (localDate < schedule.startDate || localDate > schedule.endDate) {
+            return false;
+          }
+        }
+
+        const activeSlot = schedule.timeSlots.find(slot => {
+          if (!slot.days || !slot.days.includes(localDay)) return false;
+          if (slot.startTime > slot.endTime) {
+            return localTime >= slot.startTime || localTime < slot.endTime;
+          }
+          return localTime >= slot.startTime && localTime < slot.endTime;
+        });
+
+        return Boolean(activeSlot);
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 const scheduleOptions = {
   schedule: '5,25,35,55 * * * *',
@@ -267,4 +364,80 @@ export const syncGeminiPricing = onSchedule({
   } catch (error) {
     logger.error('Error syncing Gemini pricing:', error);
   }
+});
+
+const bingoScheduleOptions = {
+  schedule: '*/5 * * * *',
+  memory: '512MB',
+  region: FUNCTION_REGION,
+};
+
+export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () => {
+  const now = new Date();
+  logger.info(`handleAutomaticBingo triggered at ${now.toISOString()}`);
+
+  const classesRef = db.collection('classes');
+  const snapshot = await classesRef
+    .where('autoBingoEnabled', '==', true)
+    .get();
+
+  if (snapshot.empty) {
+    logger.info('No classes with autoBingoEnabled found.');
+    return;
+  }
+
+  const batchJobs = [];
+
+  for (const doc of snapshot.docs) {
+    const classId = doc.id;
+    const classData = doc.data() || {};
+
+    // Stop bingo if class has ended or is not active (evaluated across 3 cases)
+    if (!isClassSessionActive(classData, now)) {
+      logger.info(`Class '${classId}' is not in an active session (evaluated across 3 cases). Skipping auto-bingo.`);
+      continue;
+    }
+    const intervalMinutes = Number(classData.autoBingoIntervalMinutes) || 20;
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const mode = classData.autoBingoMode || 'question_bank';
+    const jitterMinutes = classData.autoBingoJitterMinutes !== undefined ? Number(classData.autoBingoJitterMinutes) : 3;
+
+    let isDue = false;
+    if (classData.lastAutoBingoAt) {
+      const lastAtMillis = classData.lastAutoBingoAt.toMillis ? classData.lastAutoBingoAt.toMillis() : new Date(classData.lastAutoBingoAt).getTime();
+      if ((now.getTime() - lastAtMillis) >= intervalMs) {
+        isDue = true;
+      }
+    } else if (classData.captureStartedAt) {
+      const startedAtMillis = classData.captureStartedAt.toMillis ? classData.captureStartedAt.toMillis() : new Date(classData.captureStartedAt).getTime();
+      if ((now.getTime() - startedAtMillis) >= 5 * 60 * 1000) {
+        isDue = true;
+      }
+    } else {
+      isDue = true;
+    }
+
+    if (isDue) {
+      logger.info(`Class '${classId}' is due for automated Bingo check (interval: ${intervalMinutes}m, mode: ${mode}).`);
+      
+      const jobRef = db.collection('bingoJobs').doc();
+      const jobPromise = (async () => {
+        await jobRef.set({
+          jobId: jobRef.id,
+          classId,
+          mode,
+          jitterMinutes,
+          status: 'pending',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        await doc.ref.update({
+          lastAutoBingoAt: FieldValue.serverTimestamp(),
+        });
+      })();
+
+      batchJobs.push(jobPromise);
+    }
+  }
+
+  await Promise.all(batchJobs);
 });

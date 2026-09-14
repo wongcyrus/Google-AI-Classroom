@@ -83,6 +83,10 @@ import {
   submitBingoResponse,
   enqueueBingoRetryTask,
   handleDispatchBingoRetry,
+  enqueueScheduledBingoTask,
+  handleDispatchScheduledBingo,
+  handleProcessBingoJob,
+  isClassSessionActive,
 } from './bingoFlows.js';
 import { generateWithResilience } from './analysisFlows.js';
 
@@ -545,4 +549,275 @@ describe('bingoFlows', () => {
       expect(mockDocUpdate).not.toHaveBeenCalled();
     });
   });
+
+  describe('enqueueScheduledBingoTask', () => {
+    it('enqueues a task to dispatchScheduledBingoTask with scheduleDelaySeconds', async () => {
+      const res = await enqueueScheduledBingoTask({
+        classId: 'class_1',
+        studentUid: 'stu_1',
+        questionSource: 'question_bank',
+        delaySeconds: 120,
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockTaskQueue).toHaveBeenCalledWith(
+        expect.stringContaining('dispatchScheduledBingoTask')
+      );
+      expect(mockTaskQueueEnqueue).toHaveBeenCalledWith(
+        { classId: 'class_1', studentUid: 'stu_1', questionSource: 'question_bank' },
+        expect.objectContaining({
+          scheduleDelaySeconds: 120,
+          id: expect.stringMatching(/^auto-class_1-stu_1-/),
+        })
+      );
+    });
+  });
+
+  describe('handleDispatchScheduledBingo', () => {
+    it('skips if class is no longer capturing', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ isCapturing: false }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const res = await handleDispatchScheduledBingo({
+        classId: 'class_1',
+        studentUid: 'stu_1',
+      });
+
+      expect(res.skipped).toBe(true);
+      expect(res.reason).toBe('class_session_ended');
+    });
+
+    it('skips if student is not enrolled', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isCapturing: true,
+              students: { other_student: 'other@test.com' },
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const res = await handleDispatchScheduledBingo({
+        classId: 'class_1',
+        studentUid: 'stu_1',
+      });
+
+      expect(res.skipped).toBe(true);
+      expect(res.reason).toBe('student_not_enrolled');
+    });
+
+    it('dispatches bingo challenge if class is capturing and student enrolled', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isCapturing: true,
+              students: { stu_1: 'stu_1@test.com' },
+              questionBank: [
+                { id: 'q1', question: 'What is 2+2?', options: ['3', '4'], correctIndex: 1 }
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const res = await handleDispatchScheduledBingo({
+        classId: 'class_1',
+        studentUid: 'stu_1',
+        questionSource: 'question_bank',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDocSet).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleProcessBingoJob', () => {
+    it('skips job if class is not capturing', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ isCapturing: false }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const res = await handleProcessBingoJob({
+        jobId: 'job_1',
+        classId: 'class_1',
+        mode: 'question_bank',
+        jitterMinutes: 3,
+      });
+
+      expect(res.skipped).toBe(true);
+      expect(res.reason).toBe('class_session_ended');
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'skipped_session_ended' })
+      );
+    });
+
+    it('enqueues staggered tasks when jitterMinutes > 0', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isCapturing: true,
+              students: {
+                stu_1: 'stu1@test.com',
+                stu_2: 'stu2@test.com',
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      mockCollectionGet.mockImplementation((collPath) => {
+        if (collPath === 'classes/class_1/status') {
+          return Promise.resolve({
+            forEach: vi.fn(),
+          });
+        }
+        return Promise.resolve({ forEach: vi.fn() });
+      });
+
+      const res = await handleProcessBingoJob({
+        jobId: 'job_2',
+        classId: 'class_1',
+        mode: 'question_bank',
+        jitterMinutes: 3,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.enqueuedCount).toBe(2);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'enqueued',
+          totalStudentsTargeted: 2,
+        })
+      );
+    });
+
+    it('dispatches immediately when jitterMinutes == 0', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_1') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isCapturing: true,
+              students: {
+                stu_1: 'stu1@test.com',
+              },
+              questionBank: [
+                { id: 'q1', question: 'Q?', options: ['A', 'B'], correctIndex: 0 }
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      mockCollectionGet.mockImplementation(() => Promise.resolve({ forEach: vi.fn() }));
+
+      const res = await handleProcessBingoJob({
+        jobId: 'job_3',
+        classId: 'class_1',
+        mode: 'question_bank',
+        jitterMinutes: 0,
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'completed',
+          totalStudentsTargeted: 1,
+        })
+      );
+    });
+  });
+
+  describe('isClassSessionActive helper (3 session lifecycle cases)', () => {
+    const fixedMonday = new Date('2026-09-14T09:30:00Z'); // Monday 09:30 UTC
+
+    it('Case 1: Scheduled class with active capture is active during slot, inactive when slot ends', () => {
+      const classData = {
+        isCapturing: true,
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-12-31',
+          timeSlots: [
+            { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
+          ],
+        },
+      };
+
+      expect(isClassSessionActive(classData, fixedMonday)).toBe(true);
+
+      const afterSlot = new Date('2026-09-14T10:15:00Z');
+      expect(isClassSessionActive(classData, afterSlot)).toBe(false);
+    });
+
+    it('Case 2: Manual capture class without schedule stops when isCapturing is false or stale', () => {
+      const classDataActive = {
+        isCapturing: true,
+        captureStartedAt: { toMillis: () => fixedMonday.getTime() - (15 * 60 * 1000) },
+      };
+      expect(isClassSessionActive(classDataActive, fixedMonday)).toBe(true);
+
+      const classDataStopped = {
+        isCapturing: false,
+      };
+      expect(isClassSessionActive(classDataStopped, fixedMonday)).toBe(false);
+
+      const classDataStale = {
+        isCapturing: true,
+        captureStartedAt: { toMillis: () => fixedMonday.getTime() - (4 * 60 * 60 * 1000) },
+      };
+      expect(isClassSessionActive(classDataStale, fixedMonday)).toBe(false);
+    });
+
+    it('Case 3: Scheduled class without capture is active during slot if question_bank mode, inactive after', () => {
+      const classDataCase3 = {
+        isCapturing: false,
+        autoBingoMode: 'question_bank',
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-12-31',
+          timeSlots: [
+            { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
+          ],
+        },
+      };
+
+      expect(isClassSessionActive(classDataCase3, fixedMonday)).toBe(true);
+
+      const afterSlot = new Date('2026-09-14T10:05:00Z');
+      expect(isClassSessionActive(classDataCase3, afterSlot)).toBe(false);
+
+      const classDataScreen = {
+        ...classDataCase3,
+        autoBingoMode: 'teacher_screen',
+      };
+      expect(isClassSessionActive(classDataScreen, fixedMonday)).toBe(false);
+    });
+  });
 });
+

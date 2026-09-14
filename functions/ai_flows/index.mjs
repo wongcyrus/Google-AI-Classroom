@@ -6,6 +6,7 @@ import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyz
 import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
+import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
 import { generateBingoChallenge, submitBingoResponse, generateBingoQuestionBank, handleDispatchBingoRetry, enqueueBingoRetryTask } from './bingoFlows.js';
 export { generateBingoChallenge, submitBingoResponse, generateBingoQuestionBank, handleDispatchBingoRetry, enqueueBingoRetryTask };
 
@@ -83,6 +84,41 @@ export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';
    const { topic, count } = request.data || {};
    return await generateBingoQuestionBank({ topic, count });
  });
+
+export const translateTeacherSpeech = onCall(callOptions, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  let isTeacher = request.auth?.token?.role === 'teacher';
+  const classId = request.data?.classId;
+  if (!isTeacher && classId && request.auth?.uid) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error verifying teacher status for subtitle translation:', e);
+    }
+  }
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers can request live subtitle translation.');
+  }
+  const { text, sourceLang, targetLangs, context } = request.data || {};
+  return await translateTeacherSpeechInternal({
+    classId,
+    teacherUid: request.auth.uid,
+    teacherEmail: request.auth.token?.email || '',
+    text,
+    sourceLang,
+    targetLangs,
+    context,
+  });
+});
 
  export const dispatchBingoRetryTask = onTaskDispatched(
    {

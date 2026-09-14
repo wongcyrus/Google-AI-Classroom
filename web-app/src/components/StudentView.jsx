@@ -16,6 +16,8 @@ import { useClientLiteRTGemma } from '../hooks/useClientLiteRTGemma';
 import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
 import useTeacherScreenBroadcastStudent from '../hooks/useTeacherScreenBroadcastStudent';
 import TeacherScreenViewerModal from './TeacherScreenViewerModal';
+import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
+import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
 import BingoModal from './BingoModal';
@@ -53,9 +55,26 @@ const StudentView = ({ user }) => {
   const [webcamError, setWebcamError] = useState('');
   const isSharing = isScreenSharing || isWebcamSharing;
 
-  // Schedule-driven class state
-  const { currentActiveClassId } = useStudentClassSchedule(user);
-  const activeClass = currentActiveClassId;
+  // Schedule-driven class state with enrolled classes fallback
+  const { userClasses, currentActiveClassId } = useStudentClassSchedule(user);
+  const [selectedClassId, setSelectedClassId] = useState(() => {
+    try {
+      return localStorage.getItem('selectedStudentClassId') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const activeClass = useMemo(() => {
+    if (currentActiveClassId) return currentActiveClassId;
+    if (selectedClassId && userClasses?.some(c => c.id === selectedClassId)) {
+      return selectedClassId;
+    }
+    if (userClasses && userClasses.length > 0) {
+      return userClasses[0].id;
+    }
+    return null;
+  }, [currentActiveClassId, selectedClassId, userClasses]);
   const [frameRate, setFrameRate] = useState(15);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
@@ -164,6 +183,93 @@ const StudentView = ({ user }) => {
   // Custom Properties State
   const [classProperties, setClassProperties] = useState(null);
   const [myProperties, setMyProperties] = useState(null);
+
+  const isClassSessionOngoing = Boolean(isCapturing || activeClass);
+
+  // Compute whether an active Bingo challenge is genuinely active, valid, and unexpired
+  const isBingoActiveAndValid = useMemo(() => {
+    if (!isClassSessionOngoing) return false;
+    const ab = myProperties?.activeBingo;
+    if (!ab) return false;
+
+    // Must be strictly 'pending'
+    if (ab.status !== 'pending') return false;
+
+    // Must not already have a finalized result
+    if (ab.result) return false;
+
+    // Check legacy flat field
+    if (myProperties['activeBingo.status'] && myProperties['activeBingo.status'] !== 'pending') return false;
+
+    // Crucial: Must NOT be expired! If expiresAtMillis is in the past, do not popup!
+    const expiresAt = ab.expiresAtMillis || (ab.issuedAtMillis ? ab.issuedAtMillis + (ab.timeLimitSeconds || 45) * 1000 : null);
+    if (expiresAt && expiresAt <= Date.now()) {
+      return false;
+    }
+
+    return true;
+  }, [isClassSessionOngoing, myProperties]);
+
+  // Auto-dismiss pending Bingo modal if class session ends
+  useEffect(() => {
+    if (!isClassSessionOngoing && myProperties?.activeBingo?.status === 'pending') {
+      setMyProperties((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeBingo: { ...prev.activeBingo, status: 'closed' },
+            }
+          : null
+      );
+    }
+  }, [isClassSessionOngoing, myProperties?.activeBingo?.status]);
+
+  // Silently mark expired Bingo challenges as closed in Firestore without popping up to student
+  useEffect(() => {
+    if (!activeClass || !user?.uid) return;
+    const ab = myProperties?.activeBingo;
+    if (!ab || ab.status !== 'pending') return;
+
+    const expiresAt = ab.expiresAtMillis || (ab.issuedAtMillis ? ab.issuedAtMillis + (ab.timeLimitSeconds || 45) * 1000 : null);
+    const isExpired = Boolean(expiresAt && expiresAt <= Date.now());
+
+    if (isExpired) {
+      console.log('[StudentView] Bingo challenge expired before student viewed. Silently closing.');
+      setMyProperties((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeBingo: { ...prev.activeBingo, status: 'closed', result: prev.activeBingo.result || 'missed_timeout' },
+            }
+          : null
+      );
+
+      const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+      setDoc(
+        studentPropsRef,
+        {
+          activeBingo: {
+            ...ab,
+            status: 'closed',
+            result: ab.result || 'missed_timeout',
+          },
+        },
+        { merge: true }
+      ).catch((err) => {
+        console.warn('[StudentView] Silently closing expired bingo in Firestore:', err);
+      });
+
+      // Submit background timeout if not already submitted
+      if (ab.bingoId && !ab.result) {
+        handleBingoSubmit({
+          bingoId: ab.bingoId,
+          selectedIndex: null,
+          responseTimeSec: ab.timeLimitSeconds || 45,
+          windowFocused: false,
+        }).catch(() => {});
+      }
+    }
+  }, [activeClass, user?.uid, myProperties?.activeBingo?.status, myProperties?.activeBingo?.expiresAtMillis]);
 
   const recentMessages = useMemo(() => {
     const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
@@ -619,6 +725,10 @@ const StudentView = ({ user }) => {
     classId: activeClass,
     studentUid: user?.uid,
     studentEmail: user?.email,
+  });
+
+  const studentSubtitles = useStudentLiveSubtitles({
+    classId: activeClass,
   });
 
   // Automatically open teacher broadcast viewer for student when teacher starts sharing
@@ -1417,7 +1527,21 @@ const StudentView = ({ user }) => {
     console.log(`Firestore: Subscribing to student properties for ${user.uid} in ${activeClass}`);
     const unsubStudentProps = onSnapshot(studentPropsRef, (docSnap) => {
         console.log("Firestore: Received student properties snapshot.");
-        setMyProperties(docSnap.exists() ? docSnap.data() : null);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          // Normalize legacy activeBingo fields if activeBingo.status was stored as a flat key
+          if (data['activeBingo.status'] && data.activeBingo && data.activeBingo.status === 'pending') {
+            data.activeBingo = {
+              ...data.activeBingo,
+              status: data['activeBingo.status'],
+              result: data['activeBingo.result'] || data['activeBingo.status'],
+              responseTimeSec: data['activeBingo.responseTimeSec'] || data.activeBingo.responseTimeSec,
+            };
+          }
+          setMyProperties(data);
+        } else {
+          setMyProperties(null);
+        }
     }, (error) => {
         console.error(`Firestore: Error subscribing to student properties for ${user.uid}:`, error);
     });
@@ -1798,8 +1922,34 @@ const StudentView = ({ user }) => {
             {!isSharing ? (
               <div className="student-setup-hero-card">
                 <div className="setup-hero-header">
-                  <div className="setup-class-tag">
-                    {activeClass ? `Class: ${activeClass}` : 'No active class'}
+                  <div className="setup-class-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{activeClass ? `Class: ${activeClass}` : 'No active class'}</span>
+                    {userClasses && userClasses.length > 1 && (
+                      <select
+                        aria-label="Select Enrolled Class"
+                        value={activeClass || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedClassId(val);
+                          try {
+                            localStorage.setItem('selectedStudentClassId', val);
+                          } catch {}
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.9)',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '0.8rem',
+                          color: '#1e293b',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {userClasses.map(c => (
+                          <option key={c.id} value={c.id}>{c.name || c.id}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <h2 className="setup-hero-title">Welcome to Your Classroom Session</h2>
                   <p className="setup-hero-subtitle">
@@ -2429,10 +2579,32 @@ const StudentView = ({ user }) => {
         liveFrame={teacherLiveFrame}
         connectionState={teacherConnectionState}
         broadcastInfo={teacherBroadcastInfo}
+        classId={activeClass}
       />
 
-      {/* Active Bingo Verification Modal */}
-      {myProperties?.activeBingo?.status === 'pending' && (
+      {/* Floating Subtitle Overlay when not viewing screen broadcast */}
+      {!isViewingTeacherScreen && (
+        <LiveSubtitleOverlay
+          active={studentSubtitles.active}
+          originalText={studentSubtitles.originalText}
+          sourceLang={studentSubtitles.sourceLang}
+          currentTranslation={studentSubtitles.currentTranslation}
+          translations={studentSubtitles.translations}
+          selectedLanguage={studentSubtitles.selectedLanguage}
+          onSelectLanguage={studentSubtitles.setSelectedLanguage}
+          displayMode={studentSubtitles.displayMode}
+          onSelectDisplayMode={studentSubtitles.setDisplayMode}
+          fontSize={studentSubtitles.fontSize}
+          onSelectFontSize={studentSubtitles.setFontSize}
+          isVisible={studentSubtitles.isVisible}
+          onToggleVisible={studentSubtitles.setIsVisible}
+          isDocked={false}
+          engine={studentSubtitles.engine}
+        />
+      )}
+
+      {/* Active Bingo Verification Modal (dismissed when class ends or expired) */}
+      {isBingoActiveAndValid && (
         <BingoModal
           activeBingo={myProperties.activeBingo}
           onSubmit={handleBingoSubmit}
@@ -2441,6 +2613,19 @@ const StudentView = ({ user }) => {
               ...prev,
               activeBingo: { ...prev.activeBingo, status: 'closed' }
             } : null);
+            if (activeClass && user?.uid && myProperties?.activeBingo) {
+              const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+              setDoc(
+                studentPropsRef,
+                {
+                  activeBingo: {
+                    ...myProperties.activeBingo,
+                    status: 'closed',
+                  },
+                },
+                { merge: true }
+              ).catch(() => {});
+            }
           }}
         />
       )}

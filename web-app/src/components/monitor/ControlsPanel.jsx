@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../Modal';
 import AiCostReportView from '../AiCostReportView';
-import TeacherScreenBroadcastModal from '../TeacherScreenBroadcastModal';
 import BingoQuestionBankModal from '../BingoQuestionBankModal';
-import useTeacherScreenBroadcast from '../../hooks/useTeacherScreenBroadcast';
 import { auth, functions, db } from '../../firebase-config';
 import { httpsCallable } from 'firebase/functions';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
@@ -58,18 +56,9 @@ const ControlsPanel = ({
     handleRunAnalysis,
     handleRunAllImagesAnalysis,
     isAnalyzing = false,
-    isScreenBroadcasting: propIsScreenBroadcasting,
-    frameStats: propFrameStats,
-    broadcastScreenStream: propBroadcastScreenStream,
-    broadcastViewers: propBroadcastViewers,
-    startScreenBroadcast: propStartScreenBroadcast,
-    stopScreenBroadcast: propStopScreenBroadcast,
-    showBroadcastModal: propShowBroadcastModal,
-    setShowBroadcastModal: propSetShowBroadcastModal,
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
-    const [localShowBroadcastModal, setLocalShowBroadcastModal] = useState(false);
     const [isPreloadSent, setIsPreloadSent] = useState(false);
     const [modalConfigTab, setModalConfigTab] = useState('webcam'); // 'webcam' | 'voice' | 'screen'
 
@@ -80,6 +69,9 @@ const ControlsPanel = ({
     const [bingoFeedback, setBingoFeedback] = useState(null);
     const [questionBank, setQuestionBank] = useState([]);
     const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
+    const [autoBingoEnabled, setAutoBingoEnabled] = useState(false);
+    const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(20);
+    const [autoBingoJitterMinutes, setAutoBingoJitterMinutes] = useState(3);
 
     // Load question bank and class bingo settings from Firestore
     useEffect(() => {
@@ -88,8 +80,23 @@ const ControlsPanel = ({
         try {
           const classRef = doc(db, 'classes', classId);
           const classSnap = await getDoc(classRef);
-          if (classSnap.exists() && classSnap.data()?.bingoRetryDelayMinutes !== undefined) {
-            setBingoRetryDelayMinutes(Number(classSnap.data().bingoRetryDelayMinutes) || 3);
+          if (classSnap.exists()) {
+            const data = classSnap.data() || {};
+            if (data.bingoRetryDelayMinutes !== undefined) {
+              setBingoRetryDelayMinutes(Number(data.bingoRetryDelayMinutes) || 3);
+            }
+            if (data.autoBingoEnabled !== undefined) {
+              setAutoBingoEnabled(Boolean(data.autoBingoEnabled));
+            }
+            if (data.autoBingoIntervalMinutes !== undefined) {
+              setAutoBingoIntervalMinutes(Number(data.autoBingoIntervalMinutes) || 20);
+            }
+            if (data.autoBingoJitterMinutes !== undefined) {
+              setAutoBingoJitterMinutes(Number(data.autoBingoJitterMinutes) || 3);
+            }
+            if (data.autoBingoMode) {
+              setBingoMode(data.autoBingoMode);
+            }
           }
 
           const configRef = doc(db, 'classes', classId, 'classProperties', 'config');
@@ -105,6 +112,52 @@ const ControlsPanel = ({
       };
       loadBankAndConfig();
     }, [classId]);
+
+    const handleToggleAutoBingo = async (enabled) => {
+      setAutoBingoEnabled(enabled);
+      if (!classId) return;
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { autoBingoEnabled: enabled });
+      } catch (err) {
+        console.error('[ControlsPanel] Error toggling autoBingoEnabled:', err);
+      }
+    };
+
+    const handleUpdateAutoBingoInterval = async (minutes) => {
+      const safeMins = Math.max(5, Number(minutes) || 20);
+      setAutoBingoIntervalMinutes(safeMins);
+      if (!classId) return;
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { autoBingoIntervalMinutes: safeMins });
+      } catch (err) {
+        console.error('[ControlsPanel] Error updating autoBingoIntervalMinutes:', err);
+      }
+    };
+
+    const handleUpdateAutoBingoJitter = async (jitterMins) => {
+      const safeJitter = Math.max(0, Number(jitterMins) || 0);
+      setAutoBingoJitterMinutes(safeJitter);
+      if (!classId) return;
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { autoBingoJitterMinutes: safeJitter });
+      } catch (err) {
+        console.error('[ControlsPanel] Error updating autoBingoJitterMinutes:', err);
+      }
+    };
+
+    const handleModeChange = async (newMode) => {
+      setBingoMode(newMode);
+      if (!classId) return;
+      try {
+        const classRef = doc(db, 'classes', classId);
+        await updateDoc(classRef, { autoBingoMode: newMode });
+      } catch (err) {
+        console.warn('[ControlsPanel] Error saving autoBingoMode:', err);
+      }
+    };
 
     const handleUpdateRetryDelay = async (minutes) => {
       const safeMinutes = Math.min(15, Math.max(1, Number(minutes) || 3));
@@ -156,25 +209,6 @@ const ControlsPanel = ({
         setIsCallingBingo(false);
       }
     };
-
-    const showBroadcastModal = propShowBroadcastModal !== undefined ? propShowBroadcastModal : localShowBroadcastModal;
-    const setShowBroadcastModal = propSetShowBroadcastModal || setLocalShowBroadcastModal;
-
-    const teacherUid = auth?.currentUser?.uid || null;
-    const teacherEmail = auth?.currentUser?.email || null;
-
-    const localBroadcast = useTeacherScreenBroadcast({
-      classId: propIsScreenBroadcasting === undefined ? classId : null,
-      teacherUid,
-      teacherEmail
-    });
-
-    const isScreenBroadcasting = propIsScreenBroadcasting !== undefined ? propIsScreenBroadcasting : localBroadcast.isBroadcasting;
-    const frameStats = propFrameStats !== undefined ? propFrameStats : localBroadcast.frameStats;
-    const broadcastScreenStream = propBroadcastScreenStream !== undefined ? propBroadcastScreenStream : localBroadcast.screenStream;
-    const broadcastViewers = propBroadcastViewers !== undefined ? propBroadcastViewers : localBroadcast.viewers;
-    const startScreenBroadcast = propStartScreenBroadcast || localBroadcast.startBroadcast;
-    const stopScreenBroadcast = propStopScreenBroadcast || localBroadcast.stopBroadcast;
 
     // Derive current modes with fallback
     const currentMode = (() => {
@@ -468,82 +502,6 @@ const ControlsPanel = ({
                 </div>
               </div>
 
-              {/* Channel 3: Live Screen Broadcast to Class */}
-              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    🖥️ Share Screen to Class
-                  </label>
-                  <span style={{ fontSize: '0.72rem', color: isScreenBroadcasting ? '#dc2626' : '#64748b', fontWeight: 600 }}>
-                    {isScreenBroadcasting ? `🔴 Live (${broadcastViewers.length} watching)` : '⚪ Off'}
-                  </span>
-                </div>
-                {!isScreenBroadcasting ? (
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    style={{
-                      width: '100%',
-                      fontSize: '0.84rem',
-                      padding: '0.55rem 0.75rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      borderRadius: '6px',
-                      background: '#ffffff',
-                      color: '#1e293b',
-                      borderColor: '#cbd5e1',
-                      fontWeight: 600
-                    }}
-                    onClick={async () => {
-                      await startScreenBroadcast();
-                    }}
-                  >
-                    🖥️ Share Screen to Students
-                  </button>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className="secondary-action"
-                      style={{
-                        fontSize: '0.82rem',
-                        padding: '0.5rem 0.6rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        borderRadius: '6px',
-                        background: '#eff6ff',
-                        color: '#1d4ed8',
-                        borderColor: '#bfdbfe',
-                        fontWeight: 600
-                      }}
-                      onClick={() => setShowBroadcastModal(true)}
-                    >
-                      👁️ Preview
-                    </button>
-                    <button
-                      type="button"
-                      className="danger-action-btn"
-                      style={{
-                        fontSize: '0.82rem',
-                        padding: '0.5rem 0.6rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        borderRadius: '6px'
-                      }}
-                      onClick={stopScreenBroadcast}
-                    >
-                      ⏹ Stop Share
-                    </button>
-                  </div>
-                )}
-              </div>
-
               {/* Cadence & Size Settings */}
               <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
@@ -555,6 +513,7 @@ const ControlsPanel = ({
                       ⏱️ Interval
                     </label>
                     <select 
+                      aria-label="Webcam capture interval"
                       value={frameRate} 
                       onChange={handleFrameRateChange}
                       style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
@@ -567,6 +526,7 @@ const ControlsPanel = ({
                       📦 Max Size
                     </label>
                     <select 
+                      aria-label="Webcam max image size"
                       value={maxImageSize} 
                       onChange={handleMaxImageSizeChange}
                       style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
@@ -807,7 +767,7 @@ const ControlsPanel = ({
                     name="bingoMode"
                     value="question_bank"
                     checked={bingoMode === 'question_bank'}
-                    onChange={(e) => setBingoMode(e.target.value)}
+                    onChange={(e) => handleModeChange(e.target.value)}
                   />
                   <span>📚 <strong>Question Bank</strong> ($0.00 / Zero AI Tokens)</span>
                 </label>
@@ -817,7 +777,7 @@ const ControlsPanel = ({
                     name="bingoMode"
                     value="teacher_screen"
                     checked={bingoMode === 'teacher_screen'}
-                    onChange={(e) => setBingoMode(e.target.value)}
+                    onChange={(e) => handleModeChange(e.target.value)}
                   />
                   <span>📺 <strong>Teacher Screen</strong> (1 AI call for whole lecture)</span>
                 </label>
@@ -827,7 +787,7 @@ const ControlsPanel = ({
                     name="bingoMode"
                     value="student_screen"
                     checked={bingoMode === 'student_screen'}
-                    onChange={(e) => setBingoMode(e.target.value)}
+                    onChange={(e) => handleModeChange(e.target.value)}
                   />
                   <span>💻 <strong>Student Screens</strong> (AI anti-decoy check)</span>
                 </label>
@@ -880,6 +840,72 @@ const ControlsPanel = ({
                   <option value={5}>☕ 5 mins</option>
                 </select>
               </div>
+
+              {/* Automated Periodic Bingo Controls */}
+              <div style={{ marginTop: '0.35rem', paddingTop: '0.35rem', borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label htmlFor="auto-bingo-toggle" style={{ fontSize: '0.75rem', color: '#1e293b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}>
+                    <input
+                      id="auto-bingo-toggle"
+                      type="checkbox"
+                      checked={autoBingoEnabled}
+                      onChange={(e) => handleToggleAutoBingo(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>🔄 <strong>Auto-Dispatch Bingo</strong></span>
+                  </label>
+                  {autoBingoEnabled && (
+                    <span style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600, background: '#dcfce7', padding: '1px 6px', borderRadius: '999px' }}>
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                {autoBingoEnabled && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.35rem', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label htmlFor="auto-bingo-interval-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 500 }}>
+                        Interval:
+                      </label>
+                      <select
+                        id="auto-bingo-interval-select"
+                        aria-label="Auto-Bingo Interval"
+                        value={autoBingoIntervalMinutes}
+                        onChange={(e) => handleUpdateAutoBingoInterval(parseInt(e.target.value, 10))}
+                        style={{ fontSize: '0.72rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      >
+                        <option value={15}>⏱️ Every 15m</option>
+                        <option value={20}>🎯 Every 20m (Default)</option>
+                        <option value={30}>⏱️ Every 30m</option>
+                        <option value={45}>⏱️ Every 45m</option>
+                        <option value={60}>⏱️ Every 60m</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label htmlFor="auto-bingo-jitter-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 500 }}>
+                        Stagger Jitter:
+                      </label>
+                      <select
+                        id="auto-bingo-jitter-select"
+                        aria-label="Anti-Collusion Stagger Jitter"
+                        value={autoBingoJitterMinutes}
+                        onChange={(e) => handleUpdateAutoBingoJitter(parseInt(e.target.value, 10))}
+                        style={{ fontSize: '0.72rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      >
+                        <option value={0}>🚫 No Jitter (Same time)</option>
+                        <option value={2}>🎲 ±2m Jitter</option>
+                        <option value={3}>🎲 ±3m Jitter (Default)</option>
+                        <option value={5}>🎲 ±5m Jitter</option>
+                      </select>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748b', lineHeight: 1.2 }}>
+                      Staggers student delivery to prevent classroom/Discord collusion.
+                    </p>
+                  </div>
+                )}
+              </div>
+
 
               {bingoFeedback && (
                 <div style={{
@@ -1705,17 +1731,6 @@ const ControlsPanel = ({
             </div>
           </Modal>
         )}
-
-        {/* Teacher Screen Broadcast Live Preview & Control Modal */}
-        <TeacherScreenBroadcastModal
-          isOpen={showBroadcastModal}
-          onClose={() => setShowBroadcastModal(false)}
-          screenStream={broadcastScreenStream}
-          isBroadcasting={isScreenBroadcasting}
-          frameStats={frameStats}
-          viewers={broadcastViewers}
-          onStopBroadcast={stopScreenBroadcast}
-        />
 
         {/* Bingo Predefined Question Bank Modal */}
         <BingoQuestionBankModal

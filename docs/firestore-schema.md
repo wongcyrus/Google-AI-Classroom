@@ -93,6 +93,11 @@ erDiagram
         string studentRecordingsReleaseDate "ISO timestamp"
         array questionBank "[{ id, question, options, correctIndex, explanation, topic }] - Predefined MCQ pool"
         number bingoRetryDelayMinutes "Strike 2 grace retry delay in minutes (1-15m)"
+        boolean autoBingoEnabled "Toggle periodic automated Bingo verification"
+        number autoBingoIntervalMinutes "Interval in minutes (15-60m, default 20m)"
+        string autoBingoMode "question_bank | teacher_screen | student_screen"
+        number autoBingoJitterMinutes "Anti-collusion stagger jitter in minutes (0-5m)"
+        timestamp lastAutoBingoAt "Timestamp of last automated Bingo execution"
     }
 
     teacherProfiles {
@@ -362,8 +367,9 @@ Stores complete audit trails and billing telemetry for all AI processing jobs.
     *   `classId`: (string) The ID of the class.
     *   `studentUid`: (string) The UID of the student associated with the job (or `null` for class-wide grid analyses).
     *   `studentEmail`: (string) The student's email, denormalized for search and reporting.
-    *   `jobType`: (string) The category of analysis (`analyzeImage`, `analyzeAllImages`, `analyzeSingleVideo`, `cloudFallbackFaceAnalysis`, `analyzeAudio`, `other`).
-    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`, `gemini-3.5-transcribe-live`).
+    *   `jobType`: (string) The category of analysis (`analyzeImage`, `analyzeAllImages`, `analyzeSingleVideo`, `cloudFallbackFaceAnalysis`, `analyzeAudio`, `liveSubtitleStream`, `other`).
+    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`, `gemini-3.5-transcribe-live`, `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-preview-12-2025`).
+    *   `durationSeconds`: (number, optional) Live streaming session duration in seconds (for `liveSubtitleStream`).
     *   `prompt`: (string) The prompt or instruction text sent to the model.
     *   `status`: (string) Execution status (`pending`, `processing`, `completed`, `failed`, `blocked-by-quota`).
     *   `cost`: (number) Exact cost computed in USD (6 decimal places, e.g. `0.000420`).
@@ -448,6 +454,11 @@ Stores information about each class.
     *   `studentRecordingsReleaseDate`: (string|null) Scheduled ISO 8601 release timestamp when recordings become accessible under `delayed_release`.
     *   `questionBank`: (array of objects) Predefined multiple-choice question pool for the Bingo verification system (`[{ id, question, options, correctIndex, explanation, topic, createdAt }]`). Managed via `BingoQuestionBankModal.jsx`. Synchronized across both `classes/{classId}.questionBank` (class-level field) and `classes/{classId}/classProperties/config.bingoQuestionBank` (subcollection configuration) for seamless operational compatibility.
     *   `bingoRetryDelayMinutes`: (number) Configurable grace period delay in minutes (integer between 1 and 15, default `3`) before Google Cloud Tasks automatically dispatches a Strike 2 follow-up verification challenge to an unacknowledged student.
+    *   `autoBingoEnabled`: (boolean) Toggle enabling periodic automated Bingo verification during active capture sessions.
+    *   `autoBingoIntervalMinutes`: (number) Configurable cadence in minutes (between 15 and 60, default `20`) between automatic Bingo dispatches.
+    *   `autoBingoMode`: (string) Question generation strategy for automated runs (`question_bank`, `teacher_screen`, `student_screen`). Defaults to zero-token `question_bank` ($0.00).
+    *   `autoBingoJitterMinutes`: (number) Maximum randomized anti-collusion jitter window in minutes (0–5, default `3`) used to stagger student challenge deliveries via Google Cloud Tasks.
+    *   `lastAutoBingoAt`: (timestamp) Server timestamp recording when the automated scheduler last triggered a Bingo run for this class.
 *   **Subcollections**:
     *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
         *   **Document ID**: A hash of the lesson's start and end times.
@@ -531,6 +542,18 @@ Stores information about each class.
             *   `joinedAt`: (timestamp) Timestamp when the student opened the viewer modal.
             *   `status`: (string) Viewer status (`'watching'`).
             *   `connectionState`: (string) Viewer connection state (`'connected'`).
+    *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual translation stream.
+        *   **Document `current`** (`classes/{classId}/liveSubtitles/current`):
+            *   `active`: (boolean) Whether live subtitling is currently active for this class.
+            *   `engineMode`: (string) Selected translation engine architecture (`'client'` [LiteRT + Chrome Nano], `'server'` [LiteRT + Cloud Function Gemini 2.5 Flash], or `'firebase_live'` [Firebase AI Logic Gemini Live WebSocket]).
+            *   `original`: (string) Original spoken transcript (Cantonese with English technical terms).
+            *   `translations`: (map of string -> string) Keyed by language code (e.g. `{ "en": "...", "zh-Hant": "...", "zh-Hans": "...", "ja": "...", "ko": "...", "es": "...", "fr": "..." }`).
+            *   `isFinal`: (boolean) Flag indicating whether the turn is complete/finalized (`true`) or actively receiving token streaming (`false`).
+            *   `speechLanguage`: (string) Teacher's primary spoken language code (`'zh-HK'`).
+            *   `targetLanguages`: (array of strings) Enabled target languages for translation.
+            *   `updatedAt`: (timestamp) Server timestamp of the latest subtitle update.
+            *   `history`: (array of objects) Rolling buffer of the last 5 finalized turns (`[{ original, translations, timestamp }]`) for UI history and contextual recall.
+        *   **Security Rules**: Enrolled students have real-time read access (`allow read: if isTeacherInClass(classId) || isStudentInClass(classId);`), while writes are restricted exclusively to the authorized teacher (`allow write: if isTeacherInClass(classId);`).
     *   **`classes/{classId}/irregularities`**: Class-scoped incident logs for class-specific report generation and teacher dashboards.
         *   **Document ID**: Auto-generated.
         *   **Fields**: Mirror the root `irregularities` schema (`classId`, `studentUid`, `studentEmail`, `category`, `severity`, `confidence`, `transcript`, `evidence`, `rationale`, `source`, `timestamp`).

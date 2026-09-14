@@ -69,6 +69,7 @@ vi.mock('firebase/firestore', () => ({
   limit: vi.fn(),
   addDoc: (...args) => mockAddDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
+  setDoc: vi.fn().mockResolvedValue(),
   serverTimestamp: vi.fn(),
   getDocs: vi.fn().mockResolvedValue({ docs: [] }),
   onSnapshot: (...args) => mockOnSnapshot(...args),
@@ -289,12 +290,20 @@ describe('MonitorView Component Suite', () => {
   it('triggers teacher screen broadcast start and stop', async () => {
     render(<MonitorView {...defaultProps} />);
 
-    // Find and click Screen Broadcast button
-    const broadcastBtn = screen.getByRole('button', { name: /Share Screen to Students/i });
+    // Find and click Screen Broadcast button in top bar next to Live
+    const broadcastBtn = screen.getByRole('button', { name: /Share Screen to Class/i });
     expect(broadcastBtn).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(broadcastBtn);
+    });
+
+    // Setup modal opens with Start Sharing Screen button
+    const startBtn = screen.getByRole('button', { name: /Start Sharing Screen/i });
+    expect(startBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(startBtn);
     });
 
     expect(mockStartBroadcast).toHaveBeenCalled();

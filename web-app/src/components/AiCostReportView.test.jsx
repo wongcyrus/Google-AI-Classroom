@@ -192,4 +192,31 @@ describe('AiCostReportView Component', () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Error fetching aiJobs'), expect.any(Error));
   });
+
+  it('renders liveSubtitleStream job breakdown with correct label and model color', () => {
+    const liveJob = [
+      {
+        id: 'job_live_1',
+        studentUid: 'class_wide',
+        jobType: 'liveSubtitleStream',
+        modelUsed: 'gemini-3.1-flash-live-preview',
+        status: 'completed',
+        cost: 0.008500,
+        usage: { inputTokens: 10000, outputTokens: 1000 },
+        timestamp: new Date('2026-08-30T10:00:00Z'),
+      },
+    ];
+
+    render(
+      <AiCostReportView
+        classId="CLASS_LIVE_1"
+        className="CS Live Class"
+        aiJobs={liveJob}
+      />
+    );
+
+    expect(screen.getByText(/Gemini Live Subtitle Stream/i)).toBeInTheDocument();
+    expect(screen.getByText(/gemini-3.1-flash-live-preview/i)).toBeInTheDocument();
+  });
 });
+

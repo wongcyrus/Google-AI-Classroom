@@ -1,6 +1,6 @@
 import './firebase.js';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getStorage } from 'firebase-admin/storage';
+import { getStorage, getDownloadURL } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
 import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
 
@@ -94,27 +94,41 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
 
   const jobData = jobDoc.data();
   const isOwner = jobData.studentUid === request.auth.uid;
-  const isTeacher = request.auth.token?.role === 'teacher';
+  let isTeacher = request.auth.token?.role === 'teacher';
+
+  let classData = null;
+  if (jobData.classId) {
+    try {
+      const classDoc = await db.collection('classes').doc(jobData.classId).get();
+      if (classDoc.exists) {
+        classData = classDoc.data();
+        if (!isTeacher) {
+          if ((classData.teacherEmails && classData.teacherEmails.includes(request.auth.token?.email)) ||
+              (classData.teachers && (classData.teachers[request.auth.uid] || Object.keys(classData.teachers).includes(request.auth.uid)))) {
+            isTeacher = true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking class teacher authorization:', e);
+    }
+  }
 
   if (!isOwner && !isTeacher) {
     throw new HttpsError('permission-denied', 'You do not have permission to view this video.');
   }
 
   // If calling as a student, enforce class-level screen recording access policy & exam periods
-  if (!isTeacher && jobData.classId) {
-    const classDoc = await db.collection('classes').doc(jobData.classId).get();
-    if (classDoc.exists) {
-      const classData = classDoc.data();
-      const accessCheck = evaluateStudentRecordingsAccess({
-        examPeriods: classData.examPeriods || [],
-        policy: classData.studentRecordingsPolicy || 'always_enabled',
-        releaseDate: classData.studentRecordingsReleaseDate || null,
-        jobData,
-      });
+  if (!isTeacher && classData) {
+    const accessCheck = evaluateStudentRecordingsAccess({
+      examPeriods: classData.examPeriods || [],
+      policy: classData.studentRecordingsPolicy || 'always_enabled',
+      releaseDate: classData.studentRecordingsReleaseDate || null,
+      jobData,
+    });
 
-      if (!accessCheck.allowed) {
-        throw new HttpsError('permission-denied', accessCheck.reason);
-      }
+    if (!accessCheck.allowed) {
+      throw new HttpsError('permission-denied', accessCheck.reason);
     }
   }
 
@@ -128,12 +142,19 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
     throw new HttpsError('not-found', 'Video file not found in storage.');
   }
 
-  // Generate signed URL valid for 2 hours
-  const [url] = await file.getSignedUrl({
-    version: 'v4',
-    action: 'read',
-    expires: Date.now() + 2 * 60 * 60 * 1000,
-  });
+  // Generate signed URL valid for 2 hours, fallback to getDownloadURL if signBlob is unavailable
+  let url = null;
+  try {
+    const [signedUrl] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + 2 * 60 * 60 * 1000,
+    });
+    url = signedUrl;
+  } catch (signErr) {
+    console.warn('file.getSignedUrl failed, falling back to getDownloadURL:', signErr.message);
+    url = await getDownloadURL(file);
+  }
 
   return { url, videoPath: jobData.videoPath, duration: jobData.duration, size: jobData.size };
 }

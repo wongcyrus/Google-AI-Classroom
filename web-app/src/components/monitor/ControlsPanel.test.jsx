@@ -108,11 +108,13 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(selects.length).toBeGreaterThanOrEqual(2);
 
     // Frame rate select
-    fireEvent.change(selects[0], { target: { value: '5' } });
+    const frameRateSelect = screen.getByLabelText('Webcam capture interval');
+    fireEvent.change(frameRateSelect, { target: { value: '5' } });
     expect(handleFrameRateChange).toHaveBeenCalled();
 
     // Max image size select
-    fireEvent.change(selects[1], { target: { value: String(500 * 1024) } });
+    const maxImageSizeSelect = screen.getByLabelText('Webcam max image size');
+    fireEvent.change(maxImageSizeSelect, { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
   });
 
@@ -440,9 +442,9 @@ describe('ControlsPanel Full Component Suite', () => {
     }));
   });
 
-  it('renders the teacher screen broadcast control button', () => {
+  it('does not render teacher screen broadcast controls in panel as it is managed by the modal', () => {
     render(<ControlsPanel {...defaultProps} classId="CLASS_101" />);
-    expect(screen.getByRole('button', { name: /Share Screen to Students/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Share Screen to Class/i)).not.toBeInTheDocument();
   });
 
   it('handles Video Recording Mode changes in class settings', () => {

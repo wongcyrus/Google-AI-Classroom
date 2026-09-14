@@ -16,7 +16,7 @@ resource "google_project_service_identity" "pubsub" {
 }
 
 data "google_storage_project_service_account" "gcs_account" {
-  project = var.project_id
+  project    = var.project_id
   depends_on = [google_project_service.apis]
 }
 
@@ -38,6 +38,14 @@ resource "google_project_iam_member" "compute_event_receiver" {
 resource "google_project_iam_member" "compute_run_invoker" {
   project = var.project_id
   role    = "roles/run.invoker"
+  member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+# Service Account Token Creator role for compute engine default service account
+# Required for Cloud Functions Gen 2 (running on Cloud Run) to sign V4 video playback URLs
+resource "google_project_iam_member" "compute_token_creator" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
   member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 

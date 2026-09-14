@@ -721,12 +721,16 @@ const StudentRecordsView = ({ user }) => {
           return;
         }
       } catch (callErr) {
-        if (
+        const isPolicyDenial =
           callErr.code === 'permission-denied' ||
-          callErr.message?.includes('denied') ||
+          callErr.message?.includes('Screen recording') ||
+          callErr.message?.includes('confidential') ||
           callErr.message?.includes('restricted') ||
-          isExamRecord(video, activeClassObj)
-        ) {
+          callErr.message?.includes('disabled') ||
+          callErr.message?.includes('locked') ||
+          isExamRecord(video, activeClassObj);
+
+        if (isPolicyDenial) {
           throw new Error(callErr.message || 'Access denied: Screen recording is restricted.');
         }
         console.warn('Callable function getStudentVideoPlaybackUrl failed, falling back to direct storage URL:', callErr);
@@ -768,12 +772,16 @@ const StudentRecordsView = ({ user }) => {
         const res = await getStudentVideoPlaybackUrl({ jobId: video.id });
         downloadUrl = res?.data?.url;
       } catch (callErr) {
-        if (
+        const isPolicyDenial =
           callErr.code === 'permission-denied' ||
-          callErr.message?.includes('denied') ||
+          callErr.message?.includes('Screen recording') ||
+          callErr.message?.includes('confidential') ||
           callErr.message?.includes('restricted') ||
-          isExamRecord(video, activeClassObj)
-        ) {
+          callErr.message?.includes('disabled') ||
+          callErr.message?.includes('locked') ||
+          isExamRecord(video, activeClassObj);
+
+        if (isPolicyDenial) {
           throw new Error(callErr.message || 'Access denied: Screen recording download is restricted.');
         }
         console.warn('Callable function getStudentVideoPlaybackUrl failed for download, falling back to direct storage URL:', callErr);

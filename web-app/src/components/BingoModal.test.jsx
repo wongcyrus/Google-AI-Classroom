@@ -77,6 +77,24 @@ describe('BingoModal Component', () => {
     expect(screen.getByTestId('bingo-feedback')).toHaveTextContent(/Time Expired/);
   });
 
+  it('does not render or popup when challenge is already expired before mount', () => {
+    const expiredBingo = {
+      ...mockBingo,
+      expiresAtMillis: Date.now() - 5000,
+    };
+    const mockClose = vi.fn();
+    const mockSubmit = vi.fn();
+    const { container } = render(<BingoModal activeBingo={expiredBingo} onSubmit={mockSubmit} onClose={mockClose} />);
+    expect(container.firstChild).toBeNull();
+    expect(mockClose).toHaveBeenCalled();
+    expect(mockSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bingoId: 'bingo_abc123',
+        selectedIndex: null,
+      })
+    );
+  });
+
   it('executes playBingoChime without throwing even if Web Audio is unsupported or restricted', () => {
     expect(() => playBingoChime()).not.toThrow();
   });

@@ -59,6 +59,7 @@ graph TD
             F_submitBingoAnswer["submitBingoAnswer (onCall: 2-Strike presence)"]
             F_dispatchBingoRetryTask["dispatchBingoRetryTask (onTaskDispatched: Cloud Tasks)"]
             F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 3.5 Flash Lite)"]
+            F_translateTeacherSpeech["translateTeacherSpeech (onCall: Gemini 2.5 Flash)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]
@@ -174,11 +175,13 @@ The repository is structured as a modular monorepo composed of three decoupled f
   - `litertGemma.worker.js`: On-device intent classification via quantized LiteRT Gemma 4 E2B.
 * **Real-Time Data Engine**: Direct, low-latency Firestore listeners (`onSnapshot`) with offline screen frame caching and positive clock-drift tolerances.
 * **Low-Bandwidth Screen Broadcaster**: Lightweight, delta-compressed JPEG canvas streaming for 1-to-many teacher screen sharing without WebRTC server strain.
+* **Live Lecture Subtitles & Translation**: 3-tier selectable pipeline (Client Mode: LiteRT Whisper + Chrome Nano; Server Mode: LiteRT Whisper + Cloud Function Gemini 2.5 Flash; Gemini Live Mode: Firebase AI Logic WebSocket streaming `gemini-3.1-flash-live-preview`) with 350ms debounced Firestore synchronization to `classes/{classId}/liveSubtitles/current`.
 
 ### 2. Serverless Backend (`functions/`)
 * **Runtime**: Google Cloud Functions Gen 2 running on Google Cloud Run container instances.
 * **Micro-Codebase Isolation**: 7 isolated packages (`ai_flows`, `media_processing`, `auth_triggers`, `storage_triggers`, `scheduled_tasks`, `property_processing`, `attendance`) guaranteeing separate memory configurations (up to 4 GiB for FFmpeg and 2 GiB for Genkit), independent failure domains, and rapid parallel deployments.
 * **Asynchronous Queue Workers**: Cloud Tasks integration via `dispatchBingoRetryTask` providing zero-idle-cost scheduling for 2-strike active presence timeouts.
+* **Multilingual Lecture Translation**: Serverless `translateTeacherSpeech` onCall function using Gemini 2.5 Flash with strict technical term preservation for computer science education.
 
 ### 3. Infrastructure & Administration (`terraform/` & `admin/`)
 * **Infrastructure as Code**: Pure Terraform automation provisioning all 15 GCP services, Firestore native databases, storage buckets, and IAM roles with zero manual console interaction.
@@ -191,6 +194,7 @@ The repository is structured as a modular monorepo composed of three decoupled f
 | Google Technology | Role in System Architecture | Operational Benefit |
 | :--- | :--- | :--- |
 | **Gemini Enterprise Agent Platform & Gemini 3** | Multimodal video understanding, audio diarization, and lab rubric synthesis | State-of-the-art reasoning across text, code, audio, and visual timelines. |
+| **Firebase AI Logic (`firebase/ai`)** | Gemini Live Multimodal WebSocket bidirectional audio streaming | Sub-second real-time lecture translation with zero teacher client GPU/CPU load. |
 | **Google Cloud Identity Platform** | Blocking authentication triggers (`beforeUserCreated`, `beforeUserSignedIn`) | 4-tier domain hierarchy security, time-gated IP CIDR checks, and role immutability. |
 | **Cloud Firestore** | Real-time NoSQL state database with subcollection hierarchy | Reactive client UI updates, granular security rules, and automatic TTL document expiration. |
 | **Cloud Storage for Firebase** | Scalable object storage for raw screenshots, compressed MP4s, and dossiers | Fine-grained metadata security rules (`resource.metadata.isExam`) and event triggers. |

@@ -129,8 +129,22 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   **Zero Idle Cost**: Unlike cron polling functions that run every 60 seconds (accumulating 43,200 invocations and database reads/month regardless of activity), Cloud Tasks incurs **$0.00** when no retries are pending.
         -   **Generous Free Tier**: Google Cloud Tasks includes **1,000,000 free task operations/month**, making serverless presence retries completely free under normal classroom operations.
         -   **Cohort Scaling**: Ingests hundreds of tasks per second without latency degradation, automatically distributing dispatch callbacks evenly across parallel worker instances.
+-   **`onBingoJobCreated`**:
+    -   **Trigger**: `onDocumentCreated` in `bingoJobs/{jobId}`.
+    -   **Description**: Processes an automated Bingo job emitted by Cloud Scheduler. Identifies all enrolled or active students. If `jitterMinutes > 0`, calculates randomized staggered delay offsets and enqueues individual tasks to `dispatchScheduledBingoTask` via Google Cloud Tasks to prevent peer/Discord collusion. If `jitterMinutes == 0`, dispatches challenges to all students immediately. Updates job document status to `enqueued` or `completed`.
+-   **`dispatchScheduledBingoTask`**:
+    -   **Trigger**: Google Cloud Tasks queue target (`locations/asia-east2/functions/dispatchScheduledBingoTask`).
+    -   **Description**: Executes staggered student challenge dispatches following individual jitter delays. Verifies that the class session is still active (`isCapturing == true`) before generating the challenge; automatically drops obsolete tasks if the teacher stopped the capture session during the jitter window. Dispatches `generateBingoChallenge` (`triggerType: 'automated_periodic_staggered'`).
 -   **`retryVideoAnalysisJob`**: A callable function allowing teachers to retry failed video analysis jobs idempotently.
 -   **`generateLabTaskPrompt`**: A callable function for teachers that synthesizes a tailored lab coursework prompt from a completed `videoAnalysisJobs` execution. Queries all completed child `aiJobs`, extracts student video summaries across the entire cohort, and invokes Gemini 3.8 Flash to discover coursework tasks, cloud platforms, rubrics, milestone checklists, and common student blockers. Outputs a ready-to-run Markdown prompt with strict tool instructions (`recordActualWorkingTime`, `recordTaskDuration`, `recordLessonSummary`).
+-   **`translateTeacherSpeech`**:
+    -   **Trigger**: `onCall` (`functions/ai_flows/subtitleFlows.js`).
+    -   **Authentication & Security**: Protected by Firebase Auth (`context.auth`) and App Check. Enforces teacher authorization in `classes/{classId}` and checks classroom monthly AI quota limits in `classes/{classId}/aiUsage`.
+    -   **Description**: Translates spoken Cantonese lecture sentences into multiple target languages simultaneously (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) using Gemini 2.5 Flash with structured JSON output schema.
+    -   **Technical Lexicon Integrity**: System instructions strictly enforce preservation of English programming terminology, variable names, keywords, and command lines (e.g., `useState`, `Docker`, `git commit`, `npm`, `SQL`, `flexbox`).
+    -   **Input Schema**: `{ text: string, sourceLang: string, targetLangs: string[], classId: string, courseContext?: string }`.
+    -   **Output Schema**: `{ translations: { [langCode: string]: string } }`.
+
 
 #### Genkit AI Tools (`aiTools.js`)
 
@@ -155,7 +169,7 @@ The AI engine exposes structured Genkit tools to Gemini during video, audio, and
 
 -   **`onAiJobCreated`**:
     -   **Trigger**: `onDocumentCreated` in `aiJobs/{jobId}`.
-    -   **Description**: Responsible for atomic, real-time AI financial quota enforcement and accounting. Every AI flow (`analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, `analyzeAudioFlow`) writes token usage metadata (`inputTokens` / `promptTokenCount`, `outputTokens` / `candidatesTokenCount`) and calculates the exact USD cost using `calculateCost()`. When the `aiJobs` document is created, `onAiJobCreated` increments the class `aiUsedQuota` field atomically (`FieldValue.increment(cost)`). If the cumulative usage exceeds the class's `aiQuota`, further AI jobs are blocked.
+    -   **Description**: Responsible for atomic, real-time AI financial quota enforcement and accounting. Every AI flow (`analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, `analyzeAudioFlow`, and client live broadcasts via `liveSubtitleStream`) writes token usage metadata (`inputTokens` / `promptTokenCount`, `outputTokens` / `candidatesTokenCount`) and calculates the exact USD cost using `calculateCost()`. When the `aiJobs` document is created, `onAiJobCreated` increments the class `aiUsedQuota` field atomically (`FieldValue.increment(cost)`). If the cumulative usage exceeds the class's `aiQuota`, further AI jobs are blocked.
 
 -   **`aggregatePerformanceMetrics`**:
     -   **Trigger**: `onDocumentCreated` in `screenshotAnalyses/{analysisId}`.
@@ -289,6 +303,11 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
 -   **`syncGeminiPricing`**:
     -   **Trigger**: Scheduled to run once every 24 hours (`schedule: 'every 24 hours'`).
     -   **Description**: Automatically synchronizes live model token prices from the Google Cloud Billing Catalog API (`services/C7E2-9256-1C43`) for all Gemini models (Flash, Pro, Transcribe), saving the latest rate matrix to `system_config/pricing` in Firestore for warm in-memory caching.
+
+-   **`handleAutomaticBingo`**:
+    -   **Trigger**: Scheduled to run every 5 minutes (`schedule: '*/5 * * * *'`).
+    -   **Description**: Scans active classroom capture sessions (`isCapturing == true` and `autoBingoEnabled == true`). Verifies elapsed minutes against the class's configurable `autoBingoIntervalMinutes` (default `20m`). When due, creates a new `bingoJobs` document with mode, jitter settings, and student roster metadata, and records `lastAutoBingoAt`. Triggers downstream serverless worker execution decoupled from the scheduler runtime.
+
 
 ### Data Models
 

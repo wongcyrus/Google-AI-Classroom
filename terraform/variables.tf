@@ -5,8 +5,8 @@ variable "project_id" {
 
 variable "project_name" {
   type        = string
-  description = "Display name for the project"
-  default     = "Gemini Multimodal Classroom Agent"
+  description = "Display name for the project (max 30 characters)"
+  default     = "Classroom Assistant"
 }
 
 variable "create_project" {

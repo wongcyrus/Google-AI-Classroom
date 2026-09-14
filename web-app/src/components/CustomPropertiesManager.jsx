@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, serverTimestamp, orderBy, limit, getDocs } from 'firebase/firestore';
 import { CSVLink } from 'react-csv';
 import { db, auth } from '../firebase-config';
+import { isInternalPropertyKey } from './student/PropertiesWidget';
 import './ClassManagement.css';
 
 const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
@@ -95,7 +96,11 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         // 2. Determine all possible property keys for headers ONLY from student-specific properties.
         const allPropertyKeys = new Set();
         Object.values(studentPropertiesData).forEach(props => {
-            Object.keys(props).forEach(key => allPropertyKeys.add(key));
+            Object.keys(props).forEach(key => {
+                if (!isInternalPropertyKey(key)) {
+                    allPropertyKeys.add(key);
+                }
+            });
         });
 
         const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];

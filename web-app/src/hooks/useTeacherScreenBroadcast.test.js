@@ -93,9 +93,8 @@ describe('useTeacherScreenBroadcast Hook', () => {
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
       expect.objectContaining({
         video: expect.objectContaining({
-          width: { ideal: 1280, max: 1280 },
-          height: { ideal: 720, max: 720 },
-          frameRate: { ideal: 10, max: 12 },
+          displaySurface: 'monitor',
+          frameRate: expect.objectContaining({ ideal: 10, max: 15 }),
         }),
         audio: false,
       })
@@ -103,13 +102,13 @@ describe('useTeacherScreenBroadcast Hook', () => {
 
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', teacherUid: 'teacher_123' }),
+      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', resolution: '1080p', teacherUid: 'teacher_123' }),
       { merge: true }
     );
 
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
-      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123' })
+      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123', resolution: '1080p' })
     );
 
     // Simulate student joining collection listener
@@ -200,4 +199,152 @@ describe('useTeacherScreenBroadcast Hook', () => {
       { merge: true }
     );
   });
+
+  it('uses inline Web Worker ticker when Worker and Blob are available', async () => {
+    let workerInstance = null;
+    const mockPostMessage = vi.fn();
+    const mockTerminate = vi.fn();
+
+    class MockWorker {
+      constructor(url) {
+        this.url = url;
+        this.postMessage = mockPostMessage;
+        this.terminate = mockTerminate;
+        // eslint-disable-next-line consistent-this
+        workerInstance = this;
+      }
+    }
+
+    const originalWorker = window.Worker;
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+
+    window.Worker = MockWorker;
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-worker-url');
+    URL.revokeObjectURL = vi.fn();
+
+    try {
+      const { result } = renderHook(() =>
+        useTeacherScreenBroadcast({
+          classId: 'CLASS_WORKER',
+          teacherUid: 'teacher_123',
+          teacherEmail: 'teacher@test.com',
+        })
+      );
+
+      await act(async () => {
+        await result.current.startBroadcast();
+      });
+
+      expect(result.current.isBroadcasting).toBe(true);
+      expect(mockPostMessage).toHaveBeenCalledWith({ action: 'start', interval: 1500 });
+      expect(workerInstance).not.toBeNull();
+
+      // Simulate a tick from background worker
+      await act(async () => {
+        workerInstance.onmessage({ data: 'tick' });
+      });
+
+      // Stop broadcast terminates worker and revokes blob url
+      await act(async () => {
+        await result.current.stopBroadcast();
+      });
+
+      expect(mockPostMessage).toHaveBeenCalledWith({ action: 'stop' });
+      expect(mockTerminate).toHaveBeenCalled();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-worker-url');
+    } finally {
+      window.Worker = originalWorker;
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
+  it('uses hardware ImageCapture API directly when available on window', async () => {
+    const mockGrabFrame = vi.fn().mockResolvedValue({
+      width: 1280,
+      height: 720,
+    });
+
+    class MockImageCapture {
+      constructor(track) {
+        this.track = track;
+        this.grabFrame = mockGrabFrame;
+      }
+    }
+
+    const originalImageCapture = window.ImageCapture;
+    window.ImageCapture = MockImageCapture;
+
+    try {
+      const { result } = renderHook(() =>
+        useTeacherScreenBroadcast({
+          classId: 'CLASS_IC',
+          teacherUid: 'teacher_123',
+          teacherEmail: 'teacher@test.com',
+        })
+      );
+
+      await act(async () => {
+        await result.current.startBroadcast();
+      });
+
+      expect(result.current.isBroadcasting).toBe(true);
+      expect(mockGrabFrame).toHaveBeenCalled();
+
+      await act(async () => {
+        await result.current.stopBroadcast();
+      });
+    } finally {
+      window.ImageCapture = originalImageCapture;
+    }
+  });
+
+  it('allows teacher to configure resolution and framerate interval dynamically', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_RES_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    // Initial default is 1080p and 1500ms
+    expect(result.current.broadcastResolution).toBe('1080p');
+    expect(result.current.broadcastInterval).toBe(1500);
+
+    // Change resolution to native and interval to 1000ms
+    act(() => {
+      result.current.setBroadcastResolution('native');
+      result.current.setBroadcastInterval(1000);
+    });
+
+    expect(result.current.broadcastResolution).toBe('native');
+    expect(result.current.broadcastInterval).toBe(1000);
+    expect(localStorage.getItem('gemini_teacher_broadcast_resolution')).toBe('native');
+    expect(localStorage.getItem('gemini_teacher_broadcast_interval')).toBe('1000');
+
+    // Start broadcast with custom options
+    await act(async () => {
+      await result.current.startBroadcast({ resolution: '720p', interval: 2000 });
+    });
+
+    expect(result.current.isBroadcasting).toBe(true);
+    expect(result.current.broadcastResolution).toBe('720p');
+    expect(result.current.broadcastInterval).toBe(2000);
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({
+          displaySurface: 'monitor',
+          frameRate: expect.objectContaining({ ideal: 10, max: 15 }),
+        }),
+      })
+    );
+
+    await act(async () => {
+      await result.current.stopBroadcast();
+    });
+  });
 });
+

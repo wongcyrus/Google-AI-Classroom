@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './TeacherScreenViewerModal.css';
+import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
+import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 
 export default function TeacherScreenViewerModal({
   isOpen,
@@ -7,8 +9,11 @@ export default function TeacherScreenViewerModal({
   liveFrame,
   connectionState,
   broadcastInfo,
+  classId,
 }) {
   const [viewMode, setViewMode] = useState('floating'); // 'floating' | 'docked' | 'fullscreen' | 'minimized'
+
+  const subtitleState = useStudentLiveSubtitles({ classId });
 
   if (!isOpen) return null;
 
@@ -49,6 +54,11 @@ export default function TeacherScreenViewerModal({
                 ? '🟢 Live Classroom Stream (50+ Students)'
                 : '⏳ Connecting...'}
             </span>
+            {broadcastInfo?.resolution && (
+              <span className="badge-pill" style={{ background: '#2563eb', color: '#fff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '9999px', fontWeight: 700 }}>
+                {broadcastInfo.resolution.toUpperCase()}
+              </span>
+            )}
           </div>
 
           <div className="stream-header-right">
@@ -106,6 +116,25 @@ export default function TeacherScreenViewerModal({
               <p>Receiving classroom screen broadcast...</p>
             </div>
           )}
+
+          {/* Real-time Subtitles Overlay */}
+          <LiveSubtitleOverlay
+            active={subtitleState.active}
+            originalText={subtitleState.originalText}
+            sourceLang={subtitleState.sourceLang}
+            currentTranslation={subtitleState.currentTranslation}
+            translations={subtitleState.translations}
+            selectedLanguage={subtitleState.selectedLanguage}
+            onSelectLanguage={subtitleState.setSelectedLanguage}
+            displayMode={subtitleState.displayMode}
+            onSelectDisplayMode={subtitleState.setDisplayMode}
+            fontSize={subtitleState.fontSize}
+            onSelectFontSize={subtitleState.setFontSize}
+            isVisible={subtitleState.isVisible}
+            onToggleVisible={subtitleState.setIsVisible}
+            isDocked={true}
+            engine={subtitleState.engine}
+          />
         </div>
       </div>
     </div>

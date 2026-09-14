@@ -89,6 +89,11 @@ service cloud.firestore {
         allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
       }
 
+      match /liveSubtitles/{docId} {
+        allow read: if isTeacher() || isStudentInClass(classId);
+        allow write: if isTeacher();
+      }
+
       match /lessons/{lessonId} {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacherInClass(classId);

@@ -49,12 +49,21 @@ service firebase.storage {
       allow delete: if request.auth != null;
     }
 
+    match /mock/{allPaths=**} {
+      allow read: if request.auth != null;
+    }
+
     match /videos/{classId}/{videoId} {
       // Allow authenticated teachers to read any video in a class.
       // Students can only read non-exam videos that belong to them.
       allow read: if request.auth != null && (
         request.auth.token.role == 'teacher' ||
-        (resource.metadata.studentUid == request.auth.uid && resource.metadata.isExam != 'true')
+        (
+          resource.metadata != null &&
+          'studentUid' in resource.metadata &&
+          resource.metadata.studentUid == request.auth.uid &&
+          (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
+        )
       );
       allow delete: if request.auth != null && request.auth.token.role == 'teacher';
     }

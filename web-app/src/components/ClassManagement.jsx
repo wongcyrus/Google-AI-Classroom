@@ -37,6 +37,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
+  const [autoBingoEnabled, setAutoBingoEnabled] = useState(false);
+  const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(20);
+  const [autoBingoMode, setAutoBingoMode] = useState('question_bank');
+  const [autoBingoJitterMinutes, setAutoBingoJitterMinutes] = useState(3);
   const [enableClientAi, setEnableClientAi] = useState(true);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
   const [customYawAngle, setCustomYawAngle] = useState(25);
@@ -158,6 +162,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setRequireFullScreenOnly(classData.requireFullScreenOnly !== false);
           setFaceDebounceSeconds(classData.faceDebounceSeconds || 3);
           setBingoRetryDelayMinutes(classData.bingoRetryDelayMinutes !== undefined ? classData.bingoRetryDelayMinutes : 3);
+          setAutoBingoEnabled(Boolean(classData.autoBingoEnabled));
+          setAutoBingoIntervalMinutes(classData.autoBingoIntervalMinutes !== undefined ? classData.autoBingoIntervalMinutes : 20);
+          setAutoBingoMode(classData.autoBingoMode || 'question_bank');
+          setAutoBingoJitterMinutes(classData.autoBingoJitterMinutes !== undefined ? classData.autoBingoJitterMinutes : 3);
           
           let derivedMode = classData.aiMonitoringMode;
           if (!derivedMode) {
@@ -239,6 +247,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setExamPeriodError('');
         setStudentRecordingsPolicy('always_enabled');
         setStudentRecordingsReleaseDate('');
+        setAutoBingoEnabled(false);
+        setAutoBingoIntervalMinutes(20);
+        setAutoBingoMode('question_bank');
+        setAutoBingoJitterMinutes(3);
       }
     };
     fetchClassDetails();
@@ -418,6 +430,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
+          autoBingoEnabled: Boolean(autoBingoEnabled),
+          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 20,
+          autoBingoMode: autoBingoMode || 'question_bank',
+          autoBingoJitterMinutes: parseInt(autoBingoJitterMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -472,6 +488,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
+          autoBingoEnabled: Boolean(autoBingoEnabled),
+          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 20,
+          autoBingoMode: autoBingoMode || 'question_bank',
+          autoBingoJitterMinutes: parseInt(autoBingoJitterMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -1043,6 +1063,67 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </select>
           <p className="input-hint">Delay before Google Cloud Tasks automatically dispatches a Strike 2 follow-up verification after a student misses Strike 1.</p>
         </div>
+
+        <div className="form-group">
+          <label htmlFor="auto-bingo-enabled-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input 
+              id="auto-bingo-enabled-checkbox"
+              type="checkbox"
+              checked={autoBingoEnabled}
+              onChange={(e) => setAutoBingoEnabled(e.target.checked)}
+            />
+            <span>🔄 Enable Automated Periodic Bingo Verification</span>
+          </label>
+          <p className="input-hint">When active, the serverless scheduler automatically dispatches Bingo challenges to students periodically during class capture.</p>
+        </div>
+
+        {autoBingoEnabled && (
+          <>
+            <div className="form-group">
+              <label htmlFor="auto-bingo-interval-config">⏱️ Auto-Bingo Periodic Interval</label>
+              <select 
+                id="auto-bingo-interval-config"
+                value={autoBingoIntervalMinutes} 
+                onChange={(e) => setAutoBingoIntervalMinutes(parseInt(e.target.value, 10))}
+              >
+                <option value={15}>⚡ Every 15 Minutes (Frequent Check)</option>
+                <option value={20}>🎯 Every 20 Minutes (Standard Default)</option>
+                <option value={30}>⏱️ Every 30 Minutes (Half-Hour)</option>
+                <option value={45}>☕ Every 45 Minutes</option>
+                <option value={60}>🛋️ Every 60 Minutes (Hourly)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="auto-bingo-mode-config">📚 Auto-Bingo Question Generation Mode</label>
+              <select 
+                id="auto-bingo-mode-config"
+                value={autoBingoMode} 
+                onChange={(e) => setAutoBingoMode(e.target.value)}
+              >
+                <option value="question_bank">📚 Question Bank ($0.00 / Zero AI Tokens)</option>
+                <option value="teacher_screen">📺 Teacher Screen (1 AI call for whole lecture)</option>
+                <option value="student_screen">💻 Student Screens (AI anti-decoy check)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="auto-bingo-jitter-config">🎲 Anti-Collusion Stagger Jitter</label>
+              <select 
+                id="auto-bingo-jitter-config"
+                value={autoBingoJitterMinutes} 
+                onChange={(e) => setAutoBingoJitterMinutes(parseInt(e.target.value, 10))}
+              >
+                <option value={0}>🚫 No Jitter (Simultaneous Dispatch)</option>
+                <option value={2}>🎲 ±2 Minutes Randomized Jitter</option>
+                <option value={3}>🎲 ±3 Minutes Randomized Jitter (Standard Default)</option>
+                <option value={5}>🎲 ±5 Minutes Randomized Jitter (Spread Out)</option>
+              </select>
+              <p className="input-hint">Staggers individual student challenge popups across this jitter window via Google Cloud Tasks to prevent classroom collusion.</p>
+            </div>
+          </>
+        )}
+
 
         {(aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only') && (
           <div className="form-group">

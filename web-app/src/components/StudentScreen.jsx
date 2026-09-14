@@ -62,9 +62,14 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           )}
 
           {/* Bingo Active Status Badge */}
-          {student?.activeBingo?.status === 'pending' && (
+          {student?.activeBingo?.status === 'pending' && (!student.activeBingo.expiresAtMillis || student.activeBingo.expiresAtMillis > Date.now()) && (
             <span className="ai-status-badge warn" title="Bingo Check in progress" style={{ background: '#fef08a', color: '#854d0e', fontWeight: 700 }}>
               🎯 Pending
+            </span>
+          )}
+          {student?.activeBingo?.status === 'pending' && student?.activeBingo?.expiresAtMillis && student.activeBingo.expiresAtMillis <= Date.now() && (
+            <span className="ai-status-badge danger" title="Bingo: Timed Out / AFK" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+              🎯 Expired
             </span>
           )}
           {student?.activeBingo?.status === 'passed' && (

@@ -22,6 +22,8 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 * 🎬 **Two-Stage Map-Reduce-Map Lab Rubric Synthesis**: Discovers cohort-wide lab milestones and friction points using Gemini 3.7 Vision, automatically synthesizes structured rubrics with Gemini 3.8 Flash, and executes high-precision batch re-analysis.
 * 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement, and 1-click Microsoft Word (`.docx`) incident dossier exports complete with embedded side-by-side screen/webcam evidence.
 * 🎯 **"Bingo" Active Presence Verification**: Interactive challenge engine with 3 FinOps cost modes and a cheat-resistant Two-Strike attendance deduction system scheduled through serverless **Google Cloud Tasks**.
+* 🖥️ **Teacher Screen Broadcast (WebRTC P2P Mesh)**: High-resolution, low-latency instructor screen sharing with dynamic WebRTC mesh signaling via Firestore, viewer roster tracking, and zero external media server overhead.
+* 🌐 **Multimodal Live Subtitles & Multilingual Translation**: 3 selectable translation modes (Mode 1: LiteRT Whisper + Chrome Nano; Mode 2: LiteRT Whisper + Cloud Function Gemini 2.5 Flash; Mode 3: Firebase AI Logic Gemini Live WebSocket) delivering real-time dual-line subtitles across 7 languages with a live token telemetry HUD and centralized Firestore AI FinOps billing integration.
 * 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard.
 
 ---
@@ -81,6 +83,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | | 🧭 **[Frontend React Components & State Flows](./docs/frontend-components.md)** | React component hierarchy, code-splitting router, custom hooks, and shared UI utilities. |
 | | ⏱️ **[Student View Logic & Timetable Engine](./docs/student-view-logic.md)** | Schedule-driven class matching, multi-stream capture, edge Web Workers, and live exam mode. |
 | **AI, Acoustic & Media Processing** | 🎙️ **[Audio Invigilation & Voice AI Architecture](./docs/audio-invigilation-and-transcription.md)** | Dual-mode acoustic processing: LiteRT edge Whisper/Gemma and rolling window cloud diarization. |
+| | 🌐 **[Live Subtitles & Multilingual Translation](./docs/live-subtitles-and-translation.md)** | 3-tier selectable subtitle pipeline (LiteRT + Chrome Nano, Cloud Function Gemini 2.5 Flash, Firebase AI Logic Gemini Live WebSocket) with 350ms debounced Firestore delivery. |
 | | 🎥 **[Image-to-Video Compilation Pipeline](./docs/image-to-video-compilation.md)** | Discrete screenshot upload, FFmpeg H.264 MP4 encoding, SVG timestamp overlays, and exam tagging. |
 | | 🎬 **[Video Analysis & Map-Reduce Prompt Synthesis](./docs/video-analysis-workflow.md)** | Gemini 3.7 vision discovery, Gemini 3.8 Flash rubric synthesis studio, and milestone matrix generation. |
 | | 🔄 **[Data Retention & Media Lifecycle](./docs/data-retention-and-storage-lifecycle.md)** | Native Firestore TTL expiration, GCS event-driven cleanup triggers, and cascading class deletion. |

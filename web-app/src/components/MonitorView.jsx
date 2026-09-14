@@ -7,6 +7,8 @@ import { ref, getDownloadURL } from 'firebase/storage';
 
 import Modal from './Modal';
 import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
+import TeacherSubtitleControlModal from './subtitles/TeacherSubtitleControlModal';
+import { useTeacherLiveSubtitles } from '../hooks/useTeacherLiveSubtitles';
 
 import ControlsPanel from './monitor/ControlsPanel';
 import StudentsGrid from './monitor/StudentsGrid';
@@ -62,10 +64,27 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     isBroadcasting: isScreenBroadcasting,
     frameStats,
     screenStream: broadcastScreenStream,
+    lastFrameData: broadcastLastFrameData,
     viewers: broadcastViewers,
+    broadcastResolution,
+    broadcastInterval,
+    setBroadcastResolution,
+    setBroadcastInterval,
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
+
+  const [showSubtitleModal, setShowSubtitleModal] = useState(false);
+  const [isSubtitleBroadcastEnabled, setIsSubtitleBroadcastEnabled] = useState(false);
+
+  const teacherSubtitles = useTeacherLiveSubtitles({
+    classId,
+    teacherUid,
+    teacherEmail,
+    enabled: isSubtitleBroadcastEnabled,
+    audioStream: broadcastScreenStream,
+    courseContext: `Class ${classId}`,
+  });
 
   const handleLessonChange = (e) => {
     originalHandleLessonChange(e);
@@ -1205,14 +1224,6 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAnalysis={handleRunAnalysis}
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
-        isScreenBroadcasting={isScreenBroadcasting}
-        frameStats={frameStats}
-        broadcastScreenStream={broadcastScreenStream}
-        broadcastViewers={broadcastViewers}
-        startScreenBroadcast={startScreenBroadcast}
-        stopScreenBroadcast={stopScreenBroadcast}
-        showBroadcastModal={showBroadcastModal}
-        setShowBroadcastModal={setShowBroadcastModal}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -1237,9 +1248,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
               {!isScreenBroadcasting ? (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await startScreenBroadcast();
-                  }}
+                  onClick={() => setShowBroadcastModal(true)}
                   style={{
                     background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
                     color: '#ffffff',
@@ -1254,13 +1263,14 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                     gap: '6px',
                     boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
                   }}
-                  title="Broadcast your screen live to all students in this class"
+                  title="Configure and broadcast your screen live to all students in this class"
                 >
                   🖥️ Share Screen to Class
                 </button>
               ) : (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                   <span
+                    onClick={() => setShowBroadcastModal(true)}
                     style={{
                       background: '#fee2e2',
                       color: '#b91c1c',
@@ -1272,9 +1282,11 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '5px',
+                      cursor: 'pointer',
                     }}
+                    title="Click to view live broadcast preview and controls"
                   >
-                    🔴 Live Broadcast to Students ({broadcastViewers.length} watching)
+                    🔴 Live Broadcast ({broadcastViewers.length} watching)
                   </span>
                   <button
                     type="button"
@@ -1287,11 +1299,14 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       borderRadius: '6px',
                       fontWeight: 600,
                       fontSize: '0.8rem',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
                     }}
-                    title="View connected students list and preview"
+                    title="View live broadcast screen preview and viewers"
                   >
-                    👥 Viewers
+                    👁️ Preview & Viewers
                   </button>
                   <button
                     type="button"
@@ -1312,6 +1327,31 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                   </button>
                 </div>
               )}
+
+              {/* Prominent Live Subtitle Broadcast Button */}
+              <button
+                type="button"
+                onClick={() => setShowSubtitleModal(true)}
+                style={{
+                  background: isSubtitleBroadcastEnabled
+                    ? 'linear-gradient(135deg, #059669, #047857)'
+                    : '#f1f5f9',
+                  color: isSubtitleBroadcastEnabled ? '#ffffff' : '#334155',
+                  border: isSubtitleBroadcastEnabled ? 'none' : '1px solid #cbd5e1',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: isSubtitleBroadcastEnabled ? '0 2px 4px rgba(5, 150, 105, 0.3)' : 'none',
+                }}
+                title="即時課堂字幕與多語言翻譯設定 (Live Subtitles & Translation)"
+              >
+                {isSubtitleBroadcastEnabled ? '🔴 即時字幕 (廣播中)' : '🎙️ 即時字幕'}
+              </button>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1470,10 +1510,44 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         isOpen={showBroadcastModal}
         onClose={() => setShowBroadcastModal(false)}
         screenStream={broadcastScreenStream}
+        lastFrameData={broadcastLastFrameData}
         isBroadcasting={isScreenBroadcasting}
         frameStats={frameStats}
         viewers={broadcastViewers}
+        onStartBroadcast={startScreenBroadcast}
         onStopBroadcast={stopScreenBroadcast}
+        broadcastResolution={broadcastResolution}
+        broadcastInterval={broadcastInterval}
+        setBroadcastResolution={setBroadcastResolution}
+        setBroadcastInterval={setBroadcastInterval}
+        onOpenSubtitles={() => setShowSubtitleModal(true)}
+        isSubtitlesEnabled={isSubtitleBroadcastEnabled}
+      />
+
+      {/* Teacher Live Subtitle Control Modal */}
+      <TeacherSubtitleControlModal
+        isOpen={showSubtitleModal}
+        onClose={() => setShowSubtitleModal(false)}
+        enabled={isSubtitleBroadcastEnabled}
+        onToggleEnabled={() => setIsSubtitleBroadcastEnabled((prev) => !prev)}
+        engineMode={teacherSubtitles.engineMode}
+        onSelectEngineMode={teacherSubtitles.setEngineMode}
+        speechLanguage={teacherSubtitles.speechLanguage}
+        onSelectSpeechLanguage={teacherSubtitles.setSpeechLanguage}
+        targetLanguages={teacherSubtitles.targetLanguages}
+        onToggleTargetLanguage={(langCode) => {
+          teacherSubtitles.setTargetLanguages((prev) =>
+            prev.includes(langCode)
+              ? (prev.length > 1 ? prev.filter((l) => l !== langCode) : prev)
+              : [...prev, langCode]
+          );
+        }}
+        isNanoAvailable={teacherSubtitles.isNanoAvailable}
+        latestTranscript={teacherSubtitles.latestTranscript}
+        latestTranslations={teacherSubtitles.latestTranslations}
+        status={teacherSubtitles.status}
+        error={teacherSubtitles.error}
+        liveUsageStats={teacherSubtitles.liveUsageStats}
       />
     </div>
   );

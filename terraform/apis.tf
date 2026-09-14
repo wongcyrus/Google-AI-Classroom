@@ -18,7 +18,9 @@ locals {
     "generativelanguage.googleapis.com",
     "appengine.googleapis.com",
     "cloudbilling.googleapis.com",
-    "bigquery.googleapis.com"
+    "bigquery.googleapis.com",
+    "iam.googleapis.com",
+    "iamcredentials.googleapis.com"
   ]
 }
 

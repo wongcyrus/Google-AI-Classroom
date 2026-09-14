@@ -43,17 +43,43 @@ export default function BingoModal({
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'passed' | 'wrong' | 'timeout', text: string }
-  const [secondsRemaining, setSecondsRemaining] = useState(
-    activeBingo?.timeLimitSeconds || 45
-  );
+
+  const totalSeconds = activeBingo?.timeLimitSeconds || 45;
+  const expiresAt = activeBingo?.expiresAtMillis || (activeBingo?.issuedAtMillis ? activeBingo.issuedAtMillis + totalSeconds * 1000 : null);
+  
+  // Track if this challenge was already expired before mount
+  const isExpiredOnMountRef = useRef(Boolean(expiresAt && expiresAt <= Date.now()));
+
+  const [secondsRemaining, setSecondsRemaining] = useState(() => {
+    if (expiresAt) {
+      return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    }
+    return totalSeconds;
+  });
 
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef(null);
   const hasSubmittedRef = useRef(false);
 
-  // Play audio chime and trigger OS notification on mount
+  // If challenge is already expired before mount, trigger background submit/close and never render
   useEffect(() => {
-    if (!activeBingo) return;
+    if (isExpiredOnMountRef.current) {
+      if (onClose) onClose();
+      if (!hasSubmittedRef.current && onSubmit && activeBingo?.bingoId) {
+        hasSubmittedRef.current = true;
+        onSubmit({
+          bingoId: activeBingo.bingoId,
+          selectedIndex: null,
+          responseTimeSec: totalSeconds,
+          windowFocused: false,
+        });
+      }
+    }
+  }, []);
+
+  // Play audio chime and trigger OS notification on mount ONLY if challenge is fresh
+  useEffect(() => {
+    if (!activeBingo || isExpiredOnMountRef.current) return;
     playBingoChime();
 
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -75,14 +101,13 @@ export default function BingoModal({
 
   // Synchronized countdown timer
   useEffect(() => {
-    if (!activeBingo || hasSubmittedRef.current) return;
+    if (!activeBingo || isExpiredOnMountRef.current || hasSubmittedRef.current) return;
 
-    const totalSeconds = activeBingo.timeLimitSeconds || 45;
-    const expiresAt = activeBingo.expiresAtMillis || (Date.now() + totalSeconds * 1000);
+    const expiresAtTime = expiresAt || (Date.now() + totalSeconds * 1000);
 
     const updateTimer = () => {
       const now = Date.now();
-      const diffMs = expiresAt - now;
+      const diffMs = expiresAtTime - now;
       const secLeft = Math.max(0, Math.ceil(diffMs / 1000));
       setSecondsRemaining(secLeft);
 
@@ -99,7 +124,7 @@ export default function BingoModal({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeBingo?.expiresAtMillis]);
+  }, [expiresAt]);
 
   const handleTimeout = async () => {
     setIsSubmitting(true);
@@ -159,7 +184,7 @@ export default function BingoModal({
     }
   };
 
-  if (!activeBingo) return null;
+  if (!activeBingo || isExpiredOnMountRef.current) return null;
 
   const totalTime = activeBingo.timeLimitSeconds || 45;
   const progressPercent = Math.min(100, Math.max(0, (secondsRemaining / totalTime) * 100));

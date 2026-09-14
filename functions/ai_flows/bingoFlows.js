@@ -238,7 +238,10 @@ export async function generateBingoChallenge({
     const statusSnap = await db.collection(`classes/${classId}/status`).get();
     const activeUids = new Set();
     statusSnap.forEach(doc => {
-      if (doc.data()?.isCapturing) activeUids.add(doc.id);
+      const data = doc.data() || {};
+      if (data.isCapturing || data.isSharing || (Array.isArray(data.activeStreams) && data.activeStreams.length > 0)) {
+        activeUids.add(doc.id);
+      }
     });
 
     if (activeUids.size > 0) {
@@ -251,9 +254,6 @@ export async function generateBingoChallenge({
   if (targetUids.length === 0) {
     return { success: false, message: 'No target students found' };
   }
-
-  const nowMillis = Date.now();
-  const expiresAtMillis = nowMillis + (timeLimitSeconds * 1000);
 
   // If questionSource is 'teacher_screen' or 'question_bank', generate question ONCE for all targets!
   let sharedQuestionData = null;
@@ -277,6 +277,9 @@ export async function generateBingoChallenge({
       questionSource,
     });
 
+    const studentIssuedAtMillis = Date.now();
+    const studentExpiresAtMillis = studentIssuedAtMillis + (timeLimitSeconds * 1000);
+
     const bingoRef = db.collection(`classes/${classId}/bingoRecords`).doc();
     const bingoRecord = {
       id: bingoRef.id,
@@ -298,8 +301,8 @@ export async function generateBingoChallenge({
       strikeNumber: Number(strikeNumber) || 1,
       priorBingoId: priorBingoId || null,
       issuedAt: FieldValue.serverTimestamp(),
-      issuedAtMillis: nowMillis,
-      expiresAtMillis,
+      issuedAtMillis: studentIssuedAtMillis,
+      expiresAtMillis: studentExpiresAtMillis,
       timeLimitSeconds,
     };
 
@@ -313,8 +316,8 @@ export async function generateBingoChallenge({
         question: qData.question,
         options: qData.options,
         timeLimitSeconds,
-        issuedAtMillis: nowMillis,
-        expiresAtMillis,
+        issuedAtMillis: studentIssuedAtMillis,
+        expiresAtMillis: studentExpiresAtMillis,
         status: 'pending',
         strikeNumber: Number(strikeNumber) || 1,
         questionSource: qData.questionSource,
@@ -406,10 +409,15 @@ export async function submitBingoResponse({
     lastResult: result,
   };
 
+  const existingActiveBingo = (studentPropsDoc.exists && studentPropsDoc.data()?.activeBingo) || {};
+
   const updatePayload = {
-    'activeBingo.status': result,
-    'activeBingo.result': result,
-    'activeBingo.responseTimeSec': actualLatency,
+    activeBingo: {
+      ...existingActiveBingo,
+      status: result,
+      result: result,
+      responseTimeSec: actualLatency,
+    },
     bingoStats: newStats,
   };
 
@@ -601,3 +609,255 @@ export async function handleDispatchBingoRetry({ classId, studentUid, priorBingo
 
   return { success: true, result };
 }
+
+/**
+ * Enqueue a periodic staggered Bingo task to Google Cloud Tasks
+ */
+export async function enqueueScheduledBingoTask({ classId, studentUid, questionSource = 'question_bank', delaySeconds = 0 }) {
+  try {
+    const queue = getFunctions().taskQueue(`locations/${FUNCTION_REGION}/functions/dispatchScheduledBingoTask`);
+    const sanitizedTaskId = `auto-${classId}-${studentUid}-${Date.now()}`
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 100);
+
+    await queue.enqueue(
+      { classId, studentUid, questionSource },
+      {
+        scheduleDelaySeconds: Math.max(0, delaySeconds),
+        id: sanitizedTaskId,
+      }
+    );
+    console.log(`[enqueueScheduledBingoTask] Enqueued scheduled Bingo for student ${studentUid} in ${delaySeconds}s`);
+    return { success: true, taskId: sanitizedTaskId };
+  } catch (err) {
+    console.warn(`[enqueueScheduledBingoTask] Task queue enqueue warning/skipped:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// Helper to get local time, day, and date in a specific timezone
+export function getLocalTimeAndDay(date, timeZone) {
+  const options = {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  const formatter = new Intl.DateTimeFormat('en-US', options);
+  const parts = formatter.formatToParts(date);
+
+  const localTime = parts.find(p => p.type === 'hour').value + ':' + parts.find(p => p.type === 'minute').value;
+  const localDay = parts.find(p => p.type === 'weekday').value;
+  const year = parts.find(p => p.type === 'year')?.value;
+  const month = parts.find(p => p.type === 'month')?.value;
+  const day = parts.find(p => p.type === 'day')?.value;
+  const localDate = year && month && day ? `${year}-${month}-${day}` : '';
+
+  return { localTime, localDay, localDate };
+}
+
+/**
+ * Evaluates whether a class session is currently active across 3 operational cases:
+ *  - Case 1: Scheduled class with active capture (isCapturing === true AND within schedule). Stops when slot ends.
+ *  - Case 2: Manual capture class without schedule (isCapturing === true and < 3 hours). Stops when isCapturing === false.
+ *  - Case 3: Scheduled class without capture (isCapturing === false, mode === 'question_bank', within schedule slot). Stops when slot ends.
+ */
+export function isClassSessionActive(classData, now = new Date()) {
+  if (!classData) return false;
+
+  const { isCapturing, schedule, autoBingoMode, captureStartedAt } = classData;
+
+  // Case 1 & 2: Capturing is explicitly true
+  if (isCapturing) {
+    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
+      try {
+        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
+
+        if (schedule.startDate && schedule.endDate) {
+          if (localDate < schedule.startDate || localDate > schedule.endDate) {
+            return false;
+          }
+        }
+
+        const activeSlot = schedule.timeSlots.find(slot => {
+          if (!slot.days || !slot.days.includes(localDay)) return false;
+          if (slot.startTime > slot.endTime) {
+            return localTime >= slot.startTime || localTime <= slot.endTime;
+          }
+          return localTime >= slot.startTime && localTime <= slot.endTime;
+        });
+
+        return Boolean(activeSlot);
+      } catch {
+        return false;
+      }
+    }
+
+    if (captureStartedAt) {
+      const startedMillis = captureStartedAt.toMillis ? captureStartedAt.toMillis() : new Date(captureStartedAt).getTime();
+      if ((now.getTime() - startedMillis) > 3 * 60 * 60 * 1000) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Case 3: Capturing is false, but class is schedule-driven with question_bank mode
+  if (!isCapturing && (autoBingoMode === 'question_bank' || !autoBingoMode)) {
+    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
+      try {
+        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
+
+        if (schedule.startDate && schedule.endDate) {
+          if (localDate < schedule.startDate || localDate > schedule.endDate) {
+            return false;
+          }
+        }
+
+        const activeSlot = schedule.timeSlots.find(slot => {
+          if (!slot.days || !slot.days.includes(localDay)) return false;
+          if (slot.startTime > slot.endTime) {
+            return localTime >= slot.startTime || localTime < slot.endTime;
+          }
+          return localTime >= slot.startTime && localTime < slot.endTime;
+        });
+
+        return Boolean(activeSlot);
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Worker for dispatchScheduledBingoTask (called by Cloud Tasks queue worker)
+ */
+export async function handleDispatchScheduledBingo({ classId, studentUid, questionSource = 'question_bank' }) {
+  if (!classId || !studentUid) {
+    console.warn('[handleDispatchScheduledBingo] Missing classId or studentUid. Skipping.');
+    return { skipped: true, reason: 'missing_arguments' };
+  }
+
+  // Pre-flight check: Verify class exists and session is actively ongoing
+  const classDoc = await db.doc(`classes/${classId}`).get();
+  if (!classDoc.exists) {
+    console.warn(`[handleDispatchScheduledBingo] Class ${classId} no longer exists.`);
+    return { skipped: true, reason: 'class_not_found' };
+  }
+
+  const classData = classDoc.data() || {};
+  if (!isClassSessionActive(classData)) {
+    console.log(`[handleDispatchScheduledBingo] Class ${classId} session has ended or is not active (evaluated across 3 cases). Skipping scheduled task.`);
+    return { skipped: true, reason: 'class_session_ended' };
+  }
+
+  if (!classData.students || !classData.students[studentUid]) {
+    console.warn(`[handleDispatchScheduledBingo] Student ${studentUid} not enrolled in class ${classId}.`);
+    return { skipped: true, reason: 'student_not_enrolled' };
+  }
+
+  console.log(`[handleDispatchScheduledBingo] Dispatching periodic Bingo challenge to ${studentUid} in ${classId}`);
+  const result = await generateBingoChallenge({
+    classId,
+    targetStudentUid: studentUid,
+    questionSource,
+    triggerType: 'automated_periodic_staggered',
+  });
+
+  return { success: true, result };
+}
+
+/**
+ * Process a bingoJob created by handleAutomaticBingo
+ */
+export async function handleProcessBingoJob({ jobId, classId, mode = 'question_bank', jitterMinutes = 3 }) {
+  if (!classId) {
+    console.warn('[handleProcessBingoJob] Missing classId.');
+    return { skipped: true, reason: 'missing_class_id' };
+  }
+
+  const classDoc = await db.doc(`classes/${classId}`).get();
+  if (!classDoc.exists) {
+    console.warn(`[handleProcessBingoJob] Class ${classId} does not exist.`);
+    return { skipped: true, reason: 'class_not_found' };
+  }
+
+  const classData = classDoc.data() || {};
+  if (!isClassSessionActive(classData)) {
+    console.log(`[handleProcessBingoJob] Class ${classId} session has ended or is not active. Skipping job.`);
+    if (jobId) {
+      await db.doc(`bingoJobs/${jobId}`).update({ status: 'skipped_session_ended', completedAt: FieldValue.serverTimestamp() });
+    }
+    return { skipped: true, reason: 'class_session_ended' };
+  }
+
+  const studentsMap = classData.students || {};
+  // Check active student status first
+  const statusSnap = await db.collection(`classes/${classId}/status`).get();
+  const activeUids = new Set();
+  statusSnap.forEach(doc => {
+    if (doc.data()?.isCapturing) activeUids.add(doc.id);
+  });
+
+  let targetUids = activeUids.size > 0 ? Array.from(activeUids) : Object.keys(studentsMap);
+  if (targetUids.length === 0) {
+    console.log(`[handleProcessBingoJob] No students enrolled or active for class ${classId}.`);
+    if (jobId) {
+      await db.doc(`bingoJobs/${jobId}`).update({ status: 'completed', totalStudentsTargeted: 0, completedAt: FieldValue.serverTimestamp() });
+    }
+    return { success: true, totalStudentsTargeted: 0 };
+  }
+
+  const maxJitterSeconds = Math.max(0, Number(jitterMinutes) || 0) * 60;
+
+  if (maxJitterSeconds === 0) {
+    // Simultaneous dispatch for all students
+    const challengeRes = await generateBingoChallenge({
+      classId,
+      targetStudentUid: 'all',
+      questionSource: mode,
+      triggerType: 'automated_periodic',
+    });
+
+    if (jobId) {
+      await db.doc(`bingoJobs/${jobId}`).update({
+        status: 'completed',
+        totalStudentsTargeted: targetUids.length,
+        completedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return { success: true, challengeRes, totalStudentsTargeted: targetUids.length };
+  }
+
+  // Staggered delivery with anti-collusion jitter via Cloud Tasks
+  const enqueuePromises = targetUids.map(studentUid => {
+    const delaySeconds = Math.floor(Math.random() * maxJitterSeconds);
+    return enqueueScheduledBingoTask({
+      classId,
+      studentUid,
+      questionSource: mode,
+      delaySeconds,
+    });
+  });
+
+  await Promise.all(enqueuePromises);
+
+  if (jobId) {
+    await db.doc(`bingoJobs/${jobId}`).update({
+      status: 'enqueued',
+      totalStudentsTargeted: targetUids.length,
+      completedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  return { success: true, enqueuedCount: targetUids.length };
+}
+

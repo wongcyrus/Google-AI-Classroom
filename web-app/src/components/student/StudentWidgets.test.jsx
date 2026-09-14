@@ -70,7 +70,7 @@ describe('Student View Widgets', () => {
       expect(screen.getByText('true')).toBeInTheDocument();
     });
 
-    it('formats examReadiness and complex nested objects without rendering [object Object]', () => {
+    it('excludes examReadiness and formats complex nested objects without rendering [object Object]', () => {
       render(
         <PropertiesWidget
           classProperties={{ tags: ['midterm', 'section-A'] }}
@@ -81,8 +81,8 @@ describe('Student View Widgets', () => {
         />
       );
 
-      expect(screen.getByText('examReadiness')).toBeInTheDocument();
-      expect(screen.getByText('✅ Verified (Ready)')).toBeInTheDocument();
+      expect(screen.queryByText('examReadiness')).not.toBeInTheDocument();
+      expect(screen.queryByText('✅ Verified (Ready)')).not.toBeInTheDocument();
       expect(screen.getByText('tags')).toBeInTheDocument();
       expect(screen.getByText('midterm, section-A')).toBeInTheDocument();
       expect(screen.getByText('customMetadata')).toBeInTheDocument();

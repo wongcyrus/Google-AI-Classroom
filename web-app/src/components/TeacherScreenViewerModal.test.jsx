@@ -4,6 +4,25 @@ import { describe, it, expect, vi } from 'vitest';
 import TeacherScreenViewerModal from './TeacherScreenViewerModal';
 import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
 
+vi.mock('../hooks/useStudentLiveSubtitles', () => ({
+  useStudentLiveSubtitles: vi.fn(() => ({
+    active: true,
+    originalText: '今日我哋講 React Hooks',
+    sourceLang: 'zh-HK',
+    currentTranslation: 'Today we discuss React Hooks',
+    translations: { en: 'Today we discuss React Hooks' },
+    selectedLanguage: 'en',
+    setSelectedLanguage: vi.fn(),
+    displayMode: 'bilingual',
+    setDisplayMode: vi.fn(),
+    fontSize: 'medium',
+    setFontSize: vi.fn(),
+    isVisible: true,
+    setIsVisible: vi.fn(),
+    engine: 'client',
+  })),
+}));
+
 describe('Teacher Screen Modals Suite', () => {
   describe('TeacherScreenViewerModal', () => {
     const defaultProps = {
@@ -63,7 +82,7 @@ describe('Teacher Screen Modals Suite', () => {
       expect(maxBtn).toHaveClass('active');
 
       // Minimize to floating pill
-      const minBtn = screen.getByRole('button', { name: /Min/i });
+      const minBtn = screen.getByRole('button', { name: /➖ Min/i });
       fireEvent.click(minBtn);
       const pill = screen.getByText(/Teacher Screen Sharing \(Click to Expand\)/i);
       expect(pill).toBeInTheDocument();
@@ -73,7 +92,7 @@ describe('Teacher Screen Modals Suite', () => {
       expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
 
       // Minimize again and click pill close button
-      fireEvent.click(screen.getByRole('button', { name: /Min/i }));
+      fireEvent.click(screen.getByRole('button', { name: /➖ Min/i }));
       const pillCloseBtn = screen.getByTitle('Close Screen Share');
       fireEvent.click(pillCloseBtn);
       expect(onClose).toHaveBeenCalledTimes(2);
@@ -82,6 +101,15 @@ describe('Teacher Screen Modals Suite', () => {
     it('does not render when isOpen is false', () => {
       const { container } = render(<TeacherScreenViewerModal {...defaultProps} isOpen={false} />);
       expect(container.firstChild).toBeNull();
+    });
+
+    it('renders docked LiveSubtitleOverlay inside the video box', () => {
+      const { container } = render(<TeacherScreenViewerModal {...defaultProps} classId="CLASS_TEST" />);
+      const videoBox = container.querySelector('.teacher-stream-video-box');
+      expect(videoBox).toBeInTheDocument();
+      // Subtitle overlay container is mounted inside videoBox with docked class
+      const overlay = container.querySelector('.live-subtitle-container.docked');
+      expect(overlay).toBeInTheDocument();
     });
   });
 

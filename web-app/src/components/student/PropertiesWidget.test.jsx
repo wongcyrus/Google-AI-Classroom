@@ -60,5 +60,61 @@ describe('PropertiesWidget Component and Helpers', () => {
       expect(screen.getByText('Seat')).toBeInTheDocument();
       expect(screen.getByText('Row 3, Desk 4')).toBeInTheDocument();
     });
+
+    it('filters out internal bingo and operational state machine keys from My Properties', () => {
+      const myPropsWithInternal = {
+        Seat: 'B-12',
+        team: 'Red Dragons',
+        pendingRetryBingo: false,
+        'activeBingo.status': 'passed',
+        activeBingo: {
+          question: 'What is shown on slide 3?',
+          status: 'closed',
+          options: ['A', 'B', 'C'],
+        },
+        strikeNumber: 0,
+        bingoStats: { passed: 1, failed: 0 },
+        lastBingoIssuedAt: { seconds: 1789349510 },
+        priorMissedBingoId: 'xyz123',
+        retryBingoScheduledAtMillis: 1789349555,
+        retryDelayMinutes: 3,
+        lastRetryDispatchedAt: { seconds: 1789349560 },
+        examReadiness: { isReady: true },
+      };
+
+      render(<PropertiesWidget classProperties={{}} myProperties={myPropsWithInternal} />);
+
+      // Real properties should be visible
+      expect(screen.getByText('Seat')).toBeInTheDocument();
+      expect(screen.getByText('B-12')).toBeInTheDocument();
+      expect(screen.getByText('team')).toBeInTheDocument();
+      expect(screen.getByText('Red Dragons')).toBeInTheDocument();
+
+      // Internal bingo keys and examReadiness must NOT be in the document
+      expect(screen.queryByText('examReadiness')).not.toBeInTheDocument();
+      expect(screen.queryByText('✅ Verified (Ready)')).not.toBeInTheDocument();
+      expect(screen.queryByText('pendingRetryBingo')).not.toBeInTheDocument();
+      expect(screen.queryByText('activeBingo.status')).not.toBeInTheDocument();
+      expect(screen.queryByText('activeBingo')).not.toBeInTheDocument();
+      expect(screen.queryByText('strikeNumber')).not.toBeInTheDocument();
+      expect(screen.queryByText('bingoStats')).not.toBeInTheDocument();
+      expect(screen.queryByText('lastBingoIssuedAt')).not.toBeInTheDocument();
+      expect(screen.queryByText('priorMissedBingoId')).not.toBeInTheDocument();
+      expect(screen.queryByText('retryBingoScheduledAtMillis')).not.toBeInTheDocument();
+      expect(screen.queryByText('retryDelayMinutes')).not.toBeInTheDocument();
+      expect(screen.queryByText('lastRetryDispatchedAt')).not.toBeInTheDocument();
+    });
+
+    it('does not render My Properties if only internal operational fields exist', () => {
+      const internalOnly = {
+        pendingRetryBingo: false,
+        strikeNumber: 0,
+        activeBingo: { status: 'passed' },
+      };
+
+      render(<PropertiesWidget classProperties={{}} myProperties={internalOnly} />);
+      expect(screen.queryByText(/My Properties/i)).not.toBeInTheDocument();
+    });
   });
 });
+
