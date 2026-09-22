@@ -3,6 +3,7 @@ import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, 
 import { CSVLink } from 'react-csv';
 import { db, auth } from '../firebase-config';
 import { isInternalPropertyKey } from './student/PropertiesWidget';
+import { readTextFileWithEncoding } from '../utils/studentDisplayUtils';
 import './ClassManagement.css';
 
 const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
@@ -185,28 +186,28 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
     if (!file) return;
     event.target.value = null; // Reset file input
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        const csvData = e.target.result;
-        if (!selectedClass) {
-            setError("Please select a class first.");
-            return;
-        }
-        try {
-            const jobsRef = collection(db, 'propertyUploadJobs');
-            await addDoc(jobsRef, {
-                classId: selectedClass,
-                csvData,
-                requesterUid: auth.currentUser.uid,
-                status: 'pending',
-                createdAt: serverTimestamp(),
-            });
-            setSuccessMessage("CSV uploaded for processing. Properties will be updated in the background.");
-        } catch (err) {
-            setError("Failed to upload CSV for processing. " + err.message);
-        }
-    };
-    reader.readAsText(file);
+    if (!selectedClass) {
+      setError("Please select a class first.");
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage('');
+
+    try {
+      const csvData = await readTextFileWithEncoding(file);
+      const jobsRef = collection(db, 'propertyUploadJobs');
+      await addDoc(jobsRef, {
+        classId: selectedClass,
+        csvData,
+        requesterUid: auth.currentUser.uid,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      setSuccessMessage("CSV uploaded for processing. Properties will be updated in the background.");
+    } catch (err) {
+      setError("Failed to upload CSV for processing. " + err.message);
+    }
   };
 
   return (
@@ -294,6 +295,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
               headers={downloadProps.headers}
               data={downloadProps.data}
               filename={`${selectedClass}-student-properties.csv`}
+              uFEFF={true}
               style={{ display: "none" }}
               ref={csvLink}
               target="_blank"

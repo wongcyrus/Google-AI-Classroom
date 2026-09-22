@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   parseStudentRosterCsv,
   generateStudentRosterTemplateCsv,
+  readTextFileWithEncoding,
   normalizeStudentEmail,
 } from '../utils/studentDisplayUtils';
 import StudentBadge from './common/StudentBadge';
@@ -9,7 +10,7 @@ import './BatchStudentUploadModal.css';
 
 /**
  * Modal dialog for batch uploading or pasting student rosters.
- * Supports: First Name, Last Name, Nickname, Programme, and Student Class (Cohort).
+ * Supports: Student Name, Nickname (including Chinese), Programme, and Student Class (Cohort).
  * Accommodates students with partial or missing profile fields.
  */
 const BatchStudentUploadModal = ({
@@ -42,23 +43,21 @@ const BatchStudentUploadModal = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setFileName(file.name);
     setParseError(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result || '';
+    try {
+      const content = await readTextFileWithEncoding(file);
       setInputText(content);
       processRosterText(content);
-    };
-    reader.onerror = () => {
-      setParseError('Failed to read selected file. Please try again.');
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error('Error reading roster file:', err);
+      setParseError('Failed to read selected file. Please ensure it is a valid CSV or text file.');
+    }
     e.target.value = '';
   };
 
@@ -209,14 +208,14 @@ const BatchStudentUploadModal = ({
           <textarea
             className="batch-roster-textarea"
             rows="5"
-            placeholder="StudentEmail,StudentName,Nickname,Programme,Class
-230123456@stu.vtc.edu.hk,Chan Tai Man,David,Higher Diploma in Software Engineering,IT114115/1A
-..."
+            placeholder={`StudentEmail,StudentName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Chan Tai Man,大文,Higher Diploma in Software Engineering,IT114115/1A
+230987654@stu.vtc.edu.hk,Wong Ka Yan,阿欣,Higher Diploma in Software Engineering,IT114115/1B`}
             value={inputText}
             onChange={handleTextChange}
           />
           <p className="batch-roster-hint">
-            💡 <em>Note:</em> <strong>Class</strong> refers to the student's academic cohort (e.g. <code>IT114115/1A</code>), distinct from this course's system ID. Students missing names or cohorts will gracefully fall back to email or nickname.
+            💡 <em>Note:</em> Headers are <strong>English only</strong>. Unicode characters (including Chinese names and Chinese nicknames) are fully supported across CSV export and import. Students missing names or cohorts will gracefully fall back to email or nickname.
           </p>
         </div>
 

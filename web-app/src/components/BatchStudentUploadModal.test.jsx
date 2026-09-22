@@ -122,4 +122,50 @@ bob@school.edu,,,,`;
     expect(payload.studentEmails).toEqual(['only_new@school.edu']);
     expect(payload.studentEmails).not.toContain('existing@school.edu');
   });
+
+  it('correctly parses and applies roster containing Chinese nicknames and names', () => {
+    const onApply = vi.fn();
+    render(
+      <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={onApply} />
+    );
+
+    const textarea = screen.getByPlaceholderText(/StudentEmail,StudentName/i);
+    const chineseCsv = `StudentEmail,StudentName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Chan Tai Man,大文,軟體工程,IT114115/1A
+230987654@stu.vtc.edu.hk,Wong Ka Yan,阿欣,軟體工程,IT114115/1B`;
+
+    fireEvent.change(textarea, { target: { value: chineseCsv } });
+
+    // Live preview table verifies display names
+    expect(screen.getByText(/大文 \(Chan Tai Man\)/i)).toBeDefined();
+    expect(screen.getByText(/阿欣 \(Wong Ka Yan\)/i)).toBeDefined();
+
+    const applyButton = screen.getByRole('button', { name: /Apply to Class Roster/i });
+    fireEvent.click(applyButton);
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const payload = onApply.mock.calls[0][0];
+    expect(payload.studentProfiles['230123456@stu.vtc.edu.hk'].nickname).toBe('大文');
+    expect(payload.studentProfiles['230123456@stu.vtc.edu.hk'].studentName).toBe('Chan Tai Man');
+    expect(payload.studentProfiles['230987654@stu.vtc.edu.hk'].nickname).toBe('阿欣');
+  });
+
+  it('handles file upload containing Chinese characters', async () => {
+    const onApply = vi.fn();
+    const { container } = render(
+      <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={onApply} />
+    );
+
+    const fileContent = 'StudentEmail,StudentName,Nickname,Class\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文,IT114115/1A';
+    const file = new File([fileContent], 'roster.csv', { type: 'text/csv' });
+
+    const fileInput = container.querySelector('input[type="file"]');
+    expect(fileInput).toBeDefined();
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Wait for async file decoding
+    const previewName = await screen.findByText(/大文 \(Chan Tai Man\)/i);
+    expect(previewName).toBeDefined();
+  });
 });

@@ -11,7 +11,7 @@ import CustomPropertiesManager from './CustomPropertiesManager';
 import ScheduleManager from './ScheduleManager';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
 import StudentBadge from './common/StudentBadge';
-import { exportStudentRosterCsv, normalizeStudentEmail } from '../utils/studentDisplayUtils';
+import { exportStudentRosterCsv, normalizeStudentEmail, readTextFileWithEncoding } from '../utils/studentDisplayUtils';
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const [classId, setClassId] = useState(embeddedClassId || '');
@@ -397,13 +397,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setExamPeriods(examPeriods.filter((p) => p.id !== periodId));
   };
 
-  const handleImportEmailsFromFile = (event, type = 'students') => {
+  const handleImportEmailsFromFile = async (event, type = 'students') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target.result || '';
+    try {
+      const content = await readTextFileWithEncoding(file);
       const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
       const matchedEmails = content.match(emailRegex) || [];
       const cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
@@ -424,9 +423,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setTeacherEmails(merged.join('\n'));
         alert(`Successfully imported ${cleanUnique.length} teacher email(s)!`);
       }
-      event.target.value = '';
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error('Failed to import emails from file:', err);
+      alert('Failed to read selected file: ' + err.message);
+    }
+    event.target.value = '';
   };
 
   const handleExportEmailsToCSV = (type = 'students') => {
@@ -453,9 +454,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       return;
     }
 
-    const header = 'TeacherEmail,ClassID\n';
-    const rows = emails.map(email => `"${email}","${activeExportId}"`).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    const header = 'TeacherEmail,ClassID\r\n';
+    const rows = emails.map(email => `"${email}","${activeExportId}"`).join('\r\n');
+    const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

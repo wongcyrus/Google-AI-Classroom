@@ -225,7 +225,7 @@ export function exportComplianceResultsToCsv(filteredStudents = [], filterType =
   const csvContent = [headers.join(','), ...rows].join('\n');
 
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);

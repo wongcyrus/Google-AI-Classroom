@@ -7,6 +7,7 @@ import {
   parseStudentRosterCsv,
   generateStudentRosterTemplateCsv,
   exportStudentRosterCsv,
+  readTextFileWithEncoding,
 } from './studentDisplayUtils';
 
 describe('studentDisplayUtils Utility', () => {
@@ -271,20 +272,32 @@ not-an-email,Invalid User
   });
 
   describe('generateStudentRosterTemplateCsv and exportStudentRosterCsv', () => {
-    it('generates downloadable template containing proper headers and example data', () => {
+    it('generates downloadable template with English headers, Unicode BOM, and Chinese nickname examples', () => {
       const template = generateStudentRosterTemplateCsv();
+      // Must start with UTF-8 BOM \uFEFF for Microsoft Excel Unicode support
+      expect(template.startsWith('\uFEFF')).toBe(true);
+      // Header MUST be strictly English
       expect(template).toContain('StudentEmail,StudentName,Nickname,Programme,Class');
+      // Example row with Chinese nickname
+      expect(template).toContain('Chan Tai Man,大文');
+      expect(template).toContain('Wong Ka Yan,阿欣');
       expect(template).toContain('230123456@stu.vtc.edu.hk');
       expect(template).toContain('IT114115/1A');
     });
 
-    it('exports current roster with StudentName column properly escaped', () => {
-      const emails = ['alice@school.edu', 'bob@school.edu'];
+    it('exports current roster with English headers, Unicode BOM, and Chinese nicknames', () => {
+      const emails = ['alice@school.edu', 'chan@school.edu', 'bob@school.edu'];
       const profiles = {
         'alice@school.edu': {
           studentName: 'Alice Chan',
           nickname: 'Ali',
           programme: 'HD in Software Engineering, VTC',
+          studentClass: 'IT114115/1A',
+        },
+        'chan@school.edu': {
+          studentName: 'Chan Tai Man',
+          nickname: '大文',
+          programme: '軟體工程高級文憑',
           studentClass: 'IT114115/1A',
         },
         'bob@school.edu': {
@@ -296,9 +309,77 @@ not-an-email,Invalid User
       };
 
       const exported = exportStudentRosterCsv(emails, profiles, 'IT114115-DEV');
+      // Starts with BOM
+      expect(exported.startsWith('\uFEFF')).toBe(true);
+      // English-only headers
       expect(exported).toContain('StudentEmail,StudentName,Nickname,Programme,Class,CourseID');
       expect(exported).toContain('alice@school.edu,Alice Chan,Ali,"HD in Software Engineering, VTC",IT114115/1A,IT114115-DEV');
+      expect(exported).toContain('chan@school.edu,Chan Tai Man,大文,軟體工程高級文憑,IT114115/1A,IT114115-DEV');
       expect(exported).toContain('bob@school.edu,,,,,IT114115-DEV');
+
+      // Roundtrip parsing preserves Chinese characters perfectly
+      const parsed = parseStudentRosterCsv(exported);
+      expect(parsed.students).toHaveLength(3);
+      const chanStudent = parsed.students.find(s => s.email === 'chan@school.edu');
+      expect(chanStudent.studentName).toBe('Chan Tai Man');
+      expect(chanStudent.nickname).toBe('大文');
+      expect(chanStudent.programme).toBe('軟體工程高級文憑');
+      expect(chanStudent.displayName).toBe('大文 (Chan Tai Man)');
+    });
+  });
+
+  describe('readTextFileWithEncoding', () => {
+    it('returns empty string for null/empty file', async () => {
+      expect(await readTextFileWithEncoding(null)).toBe('');
+      expect(await readTextFileWithEncoding(new Blob([]))).toBe('');
+    });
+
+    it('decodes UTF-8 file with Chinese nickname and name', async () => {
+      const content = 'StudentEmail,StudentName,Nickname\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文';
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+      const decoded = await readTextFileWithEncoding(blob);
+      expect(decoded).toBe(content);
+    });
+
+    it('decodes UTF-8 file containing UTF-8 BOM', async () => {
+      const content = '\uFEFFStudentEmail,StudentName,Nickname\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文';
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+      const decoded = await readTextFileWithEncoding(blob);
+      expect(decoded).toContain('大文');
+    });
+
+    it('decodes Big5-encoded file with Chinese nickname (common Windows Excel export)', async () => {
+      // In Big5: '大' is 0xA4 0x6A, '文' is 0xA4 0xE5
+      const big5Bytes = new Uint8Array([
+        0x53, 0x74, 0x75, 0x64, 0x65, 0x6E, 0x74, 0x45, 0x6D, 0x61, 0x69, 0x6C, 0x2C, // StudentEmail,
+        0x53, 0x74, 0x75, 0x64, 0x65, 0x6E, 0x74, 0x4E, 0x61, 0x6D, 0x65, 0x2C,       // StudentName,
+        0x4E, 0x69, 0x63, 0x6B, 0x6E, 0x61, 0x6D, 0x65, 0x0A,                         // Nickname\n
+        0x63, 0x68, 0x61, 0x6E, 0x40, 0x76, 0x74, 0x63, 0x2E, 0x65, 0x64, 0x75, 0x2C, // chan@vtc.edu,
+        0x43, 0x68, 0x61, 0x6E, 0x20, 0x54, 0x61, 0x69, 0x20, 0x4D, 0x61, 0x6E, 0x2C, // Chan Tai Man,
+        0xA4, 0x6A, 0xA4, 0xE5                                                         // 大文
+      ]);
+      const blob = new Blob([big5Bytes]);
+      const decoded = await readTextFileWithEncoding(blob);
+      expect(decoded).toContain('大文');
+      const parsed = parseStudentRosterCsv(decoded);
+      expect(parsed.students[0].nickname).toBe('大文');
+    });
+
+    it('decodes UTF-16LE encoded file with BOM', async () => {
+      const text = 'StudentEmail,Nickname\n230123456@stu.vtc.edu.hk,大文';
+      // UTF-16LE BOM: 0xFF, 0xFE
+      const buffer = new ArrayBuffer(2 + text.length * 2);
+      const view = new DataView(buffer);
+      view.setUint8(0, 0xFF);
+      view.setUint8(1, 0xFE);
+      for (let i = 0; i < text.length; i++) {
+        view.setUint16(2 + i * 2, text.charCodeAt(i), true);
+      }
+      const blob = new Blob([buffer]);
+      const decoded = await readTextFileWithEncoding(blob);
+      expect(decoded).toContain('大文');
+      const parsed = parseStudentRosterCsv(decoded);
+      expect(parsed.students[0].nickname).toBe('大文');
     });
   });
 });

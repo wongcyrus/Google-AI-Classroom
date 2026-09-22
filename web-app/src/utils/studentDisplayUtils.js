@@ -164,8 +164,8 @@ export const parseStudentRosterCsv = (rawText) => {
     };
   }
 
-  // Strip UTF-8 BOM if exported by Windows Excel
-  const sanitizedText = rawText.replace(/^\uFEFF/, '');
+  // Strip UTF-8 / UTF-16 BOM if exported by Windows Excel or Unicode text editors
+  const sanitizedText = rawText.replace(/^[\uFEFF\uFFFE]/, '');
 
   // Helper to split CSV line into cells respecting quotes (RFC-4180)
   const parseLine = (line, delimiter = ',') => {
@@ -329,15 +329,17 @@ export const parseStudentRosterCsv = (rawText) => {
 
 /**
  * Generates a ready-to-download CSV template with header and illustrative example rows.
- * Uses unified 'StudentName' column.
- * @returns {string}
+ * Features English-only headers with UTF-8 Unicode BOM (\uFEFF) to guarantee correct rendering
+ * of Chinese nicknames and names in Microsoft Excel.
+ * 
+ * @returns {string} RFC-4180 CSV string starting with UTF-8 BOM
  */
 export const generateStudentRosterTemplateCsv = () => {
   const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class'];
   const examples = [
-    ['230123456@stu.vtc.edu.hk', 'Chan Tai Man', 'David', 'Higher Diploma in Software Engineering', 'IT114115/1A'],
-    ['230987654@stu.vtc.edu.hk', 'Wong Ka Yan', 'Kelly', 'Higher Diploma in Software Engineering', 'IT114115/1B'],
-    ['230555666@stu.vtc.edu.hk', 'Lee Siu Ming', '', 'Higher Diploma in Cloud & Data Centre Admin', 'IT114115/1A'],
+    ['230123456@stu.vtc.edu.hk', 'Chan Tai Man', '大文', 'Higher Diploma in Software Engineering', 'IT114115/1A'],
+    ['230987654@stu.vtc.edu.hk', 'Wong Ka Yan', '阿欣', 'Higher Diploma in Software Engineering', 'IT114115/1B'],
+    ['230555666@stu.vtc.edu.hk', 'Lee Siu Ming', 'David', 'Higher Diploma in Cloud & Data Centre Admin', 'IT114115/1A'],
     ['alex.smith@school.edu', 'Alex Smith', 'Alex', '', 'SE101-Cohort2'],
     ['email.only@school.edu', '', '', '', ''],
   ];
@@ -355,16 +357,18 @@ export const generateStudentRosterTemplateCsv = () => {
     ...examples.map(ex => ex.map(escapeCell).join(',')),
   ];
 
-  return rows.join('\r\n');
+  return '\uFEFF' + rows.join('\r\n');
 };
 
 /**
  * Serializes the current class roster (emails + profiles) to an RFC-4180 CSV string.
- * Uses unified 'StudentName' column.
+ * Features English-only headers with UTF-8 Unicode BOM (\uFEFF) to guarantee correct rendering
+ * of Chinese nicknames and names in Microsoft Excel.
+ * 
  * @param {string[]} studentEmails 
  * @param {object} studentProfiles 
  * @param {string} classId 
- * @returns {string}
+ * @returns {string} RFC-4180 CSV string starting with UTF-8 BOM
  */
 export const exportStudentRosterCsv = (studentEmails = [], studentProfiles = {}, classId = '') => {
   const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class', 'CourseID'];
@@ -396,5 +400,72 @@ export const exportStudentRosterCsv = (studentEmails = [], studentProfiles = {},
     rows.push(row.join(','));
   });
 
-  return rows.join('\r\n');
+  return '\uFEFF' + rows.join('\r\n');
+};
+
+/**
+ * Reads a File or Blob with automatic Unicode and legacy encoding detection.
+ * Prioritizes:
+ * 1. UTF-16 LE / BE BOM detection.
+ * 2. UTF-8 (strict validation with error check).
+ * 3. Big5 (Traditional Chinese, common default in Excel on Windows in HK/TW).
+ * 4. GBK (Simplified Chinese, common default in Excel on Windows in Mainland China).
+ * 5. UTF-8 (permissive fallback).
+ * 
+ * @param {Blob|File} file 
+ * @returns {Promise<string>} Decoded Unicode text content
+ */
+export const readTextFileWithEncoding = async (file) => {
+  if (!file) return '';
+
+  let buffer;
+  if (typeof file.arrayBuffer === 'function') {
+    buffer = await file.arrayBuffer();
+  } else if (typeof FileReader !== 'undefined') {
+    buffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result);
+      reader.onerror = (err) => reject(err);
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    return '';
+  }
+
+  if (!buffer || buffer.byteLength === 0) return '';
+  const bytes = new Uint8Array(buffer);
+
+  // 1. Check for UTF-16 LE BOM (FF FE) or BE BOM (FE FF)
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder('utf-16le').decode(buffer);
+    }
+    if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder('utf-16be').decode(buffer);
+    }
+  }
+
+  // 2. Try strict UTF-8
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    // If strict UTF-8 fails, try legacy encodings used by Windows Excel
+  }
+
+  // 3. Try Big5 (common in HK / Taiwan Windows Excel)
+  try {
+    return new TextDecoder('big5', { fatal: true }).decode(buffer);
+  } catch {
+    // Not valid Big5
+  }
+
+  // 4. Try GBK (common in Mainland China Windows Excel)
+  try {
+    return new TextDecoder('gbk', { fatal: true }).decode(buffer);
+  } catch {
+    // Not valid GBK
+  }
+
+  // 5. Fallback to standard UTF-8 (permissive)
+  return new TextDecoder('utf-8').decode(buffer);
 };
