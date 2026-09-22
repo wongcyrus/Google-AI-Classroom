@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/Tests-846+_Passing_(>80%_Coverage)-brightgreen)](./docs/testing-strategy-and-coverage.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform** (formerly Vertex AI), the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
+A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform**, the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
 
 Rather than acting as a punitive monitoring tool, the platform functions as an empathetic **Proactive Proctor**, **Technical Support Assistant**, and **Wellness Coach**—intervening before academic integrity issues or technical hurdles arise.
 
@@ -23,7 +23,7 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 * 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement, and 1-click Microsoft Word (`.docx`) incident dossier exports complete with embedded side-by-side screen/webcam evidence.
 * 🎯 **"Bingo" Active Presence Verification**: Interactive challenge engine with 3 FinOps cost modes and a cheat-resistant Two-Strike attendance deduction system scheduled through serverless **Google Cloud Tasks**.
 * 🖥️ **Teacher Screen Broadcast (WebRTC P2P Mesh)**: High-resolution, low-latency instructor screen sharing with dynamic WebRTC mesh signaling via Firestore, viewer roster tracking, and zero external media server overhead.
-* 🌐 **Multimodal Live Subtitles & Multilingual Translation**: 3 selectable translation modes (Mode 1: LiteRT Whisper + Chrome Nano; Mode 2: LiteRT Whisper + Cloud Function Gemini 2.5 Flash; Mode 3: Firebase AI Logic Gemini Live WebSocket) delivering real-time dual-line subtitles across 7 languages with a live token telemetry HUD and centralized Firestore AI FinOps billing integration.
+* 🌐 **Multimodal Live Subtitles & Multilingual Translation**: 3 selectable translation modes (Mode 1: LiteRT Whisper + Chrome Nano; Mode 2: LiteRT Whisper + Cloud Function Gemini 3.8 Flash; Mode 3: Firebase AI Logic Gemini Live WebSocket) powered by modern `AudioWorkletNode` background resampling. Features class-configurable subject domain glossaries (Healthcare, Business, Design, Engineering, Hospitality, Humanities, IT, or custom) and custom translation AI prompts saved directly per class in Cloud Firestore, with full Prompt Library integration (dedicated "Translation Prompts" tab, Gemini AI optimization, and repository markdown presets), delivering real-time dual-line bilingual subtitles across 7 languages.
 * 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard.
 
 ---
@@ -48,7 +48,7 @@ graph LR
     end
 
     subgraph "Multimodal AI"
-        Vertex["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.7 Pro / Flash<br/>• Gemini 3.8 Flash<br/>• Transcribe Preview"]
+        GeminiPlatform["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.7 Pro / Flash<br/>• Gemini 3.8 Flash<br/>• Transcribe Preview"]
     end
 
     Client <--> Auth
@@ -58,7 +58,7 @@ graph LR
     CF <--> DB
     CF <--> GCS
     CF <--> Tasks
-    CF <--> Vertex
+    CF <--> GeminiPlatform
 ```
 
 > 📖 **Deep Dive**: For full sequence diagrams, Cloud Function triggers, and data pipeline topologies, see **[🏛️ End-to-End System Architecture & Design](./docs/system-architecture.md)**.
@@ -72,6 +72,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 
 | Category | Document | Description |
 | :--- | :--- | :--- |
+| **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: Gemini 3 migration, multi-location architecture, Bingo 1-min scheduler & FinOps, Live Subtitles, and Chrome enforcement. |
 | **User Manuals & UI Catalogs** | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | Live grid invigilation, WebRTC peek & talkback, Bingo challenges, rubric studio, and incident dossiers. |
 | | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, HUD indicators, and self-service portal. |
 | | 🛠️ **[System Admin & DevOps Manual](./docs/user-manual-admin.md)** | Cloud provisioning, Terraform IaC, GCIP blocking functions, zero-trust storage rules, and disaster recovery. |
@@ -82,9 +83,11 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | | ⚡ **[Cloud Functions Gen 2 Architecture](./docs/functions.md)** | Micro-codebase topology across 7 runtimes, callable endpoints, task queues, and storage triggers. |
 | | 🧭 **[Frontend React Components & State Flows](./docs/frontend-components.md)** | React component hierarchy, code-splitting router, custom hooks, and shared UI utilities. |
 | | ⏱️ **[Student View Logic & Timetable Engine](./docs/student-view-logic.md)** | Schedule-driven class matching, multi-stream capture, edge Web Workers, and live exam mode. |
-| **AI, Acoustic & Media Processing** | 🎙️ **[Audio Invigilation & Voice AI Architecture](./docs/audio-invigilation-and-transcription.md)** | Dual-mode acoustic processing: LiteRT edge Whisper/Gemma and rolling window cloud diarization. |
-| | 🌐 **[Live Subtitles & Multilingual Translation](./docs/live-subtitles-and-translation.md)** | 3-tier selectable subtitle pipeline (LiteRT + Chrome Nano, Cloud Function Gemini 2.5 Flash, Firebase AI Logic Gemini Live WebSocket) with 350ms debounced Firestore delivery. |
-| | 🎥 **[Image-to-Video Compilation Pipeline](./docs/image-to-video-compilation.md)** | Discrete screenshot upload, FFmpeg H.264 MP4 encoding, SVG timestamp overlays, and exam tagging. |
+| **AI, Acoustic & Media Processing** | 🧠 **[Teacher AI Prompt & Domain Configuration](./docs/teacher-ai-prompt-configuration-guide.md)** | Universal prompt library, dual-surface configuration, real-time live modal sync, and multi-modal inference trace. |
+| | 🎙️ **[Audio Invigilation & Voice AI Architecture](./docs/audio-invigilation-and-transcription.md)** | Dual-mode acoustic processing: LiteRT edge Whisper/Gemma and rolling window cloud diarization. |
+| | 🌐 **[Live Subtitles & Multilingual Translation](./docs/live-subtitles-and-translation.md)** | 3-tier selectable subtitle pipeline (LiteRT + Chrome Nano, Cloud Function Gemini 3.8 Flash, Firebase AI Logic Gemini Live WebSocket) with 350ms debounced Firestore delivery. |
+| | 🎥 **[Teacher Lecture Recording & YouTube CC](./docs/teacher-lecture-recording-and-youtube-workflow.md)** | Sovereign dual-stream recording (WebM + Opus), automated multi-clip merging with fuzzy schedule tolerance (-45m early / +60m overrun), class-level default recording policy, Studio 2-card mode selector, and offline Gemini 3.8 multilingual CC. |
+| | 🎞️ **[Image-to-Video Compilation Pipeline](./docs/image-to-video-compilation.md)** | Discrete screenshot upload, FFmpeg H.264 MP4 encoding, SVG timestamp overlays, and exam tagging. |
 | | 🎬 **[Video Analysis & Map-Reduce Prompt Synthesis](./docs/video-analysis-workflow.md)** | Gemini 3.7 vision discovery, Gemini 3.8 Flash rubric synthesis studio, and milestone matrix generation. |
 | | 🔄 **[Data Retention & Media Lifecycle](./docs/data-retention-and-storage-lifecycle.md)** | Native Firestore TTL expiration, GCS event-driven cleanup triggers, and cascading class deletion. |
 | **DevOps, Setup & Testing** | 🚀 **[Complete Setup & Customization Guide](./docs/setup-instructions.md)** | Step-by-step institutional deployment, automated 1-click script, and multi-school customization. |

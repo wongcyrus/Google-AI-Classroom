@@ -149,6 +149,62 @@ In **Class Settings (`⚙️ Settings`)**, configure the automated proctoring in
 - **Mode 1 (Moving Window Transcription):** Continuously transcribes 20s–45s rolling audio slices using on-device Whisper or `gemini-3.5-transcribe-preview`.
 - **Mode 2 (Session Audio Diarization):** Assembles recorded audio clips into a full session timeline with speaker separation.
 
+### Universal AI Prompt Studio & Multi-Modal Class Configuration
+All AI models across the entire classroom lifecycle are configurable directly by the teacher. Instructors are never locked into static prompts. Configuration occurs across two complementary surfaces:
+1. **Class Settings (`ClassManagement.jsx`)**: Sets persistent default prompts stored in `classes/{classId}`.
+2. **Live Monitor Subtitle Modal (`TeacherSubtitleControlModal.jsx`)**: Allows in-flight prompt selection, discipline switching, and inline prompt editing during live broadcast.
+
+```mermaid
+flowchart LR
+    subgraph UI ["Teacher Configuration"]
+        CM["Class Settings\n(ClassManagement.jsx)"]
+        Mon["Live Monitor Controls\n(TeacherSubtitleControlModal.jsx)"]
+    end
+
+    subgraph DB ["Cloud Firestore"]
+        Doc["Document: /classes/{classId}\n- subtitlePrompt\n- gemmaIntentPrompt\n- liveImagePrompt\n- bingoPrompt\n- liveAudioPrompt\n- sessionAudioPrompt\n- afterClassVideoPrompt\n- subjectDomain"]
+    end
+
+    subgraph Runtime ["Execution Points"]
+        E1["Live Subtitle Engines\n(Client / CF / Gemini Live)"]
+        E2["LiteRT Gemma 4 E2B\n(Edge Web Worker)"]
+        E3["Cloud Gemini Vision\n(Fallback Invigilation)"]
+        E4["Bingo Presence Engine\n(Question Bank & Challenges)"]
+        E5["Video Rubric Synthesizer\n(Two-Stage Map-Reduce)"]
+    end
+
+    CM -->|Save| Doc
+    Mon -->|Real-Time Update| Doc
+    Doc --> E1
+    Doc --> E2
+    Doc --> E3
+    Doc --> E4
+    Doc --> E5
+```
+
+#### Complete Multi-Modal Prompt Configuration Matrix
+
+| Modality & Setting | Configuration UI Surface | Firestore Field | Runtime Inference Engine | Purpose & Customization Options |
+| :--- | :--- | :--- | :--- | :--- |
+| **Live Subtitles & Translation** | Class Settings (Sec 8) & Live Subtitle Modal | `subtitlePrompt` & `subjectDomain` | Cloud Function `translateTeacherSpeech` / Chrome Nano / Gemini Live | Select discipline (Healthcare, CS, Business, etc.) and custom prompt preserving technical glossaries. |
+| **On-Device Gemma Voice Intent** | Class Settings (Sec 6) | `gemmaIntentPrompt` | Edge Web Worker `litertGemma.worker.js` (LiteRT-LM Gemma 4 E2B) | Detects vocal exam collusion (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`) 100% on-device. |
+| **Live Image & Screen Invigilation** | Class Settings (Sec 6) | `liveImagePrompt` | Cloud Function `analyzeFaceFallbackFlow` (Gemini Vision) | Guides visual fallback checks (face presence, looking away, suspicious screen states) with template tags (`{{studentEmail}}`, etc.). |
+| **Bingo Active Presence Challenge** | Class Settings (Sec 5) | `bingoPrompt` | Cloud Functions `resolveBingoQuestion` & `generateBingoQuestionBank` | Shapes presence verification questions from teacher screen, student screen, or question bank generator (`{{topic}}`, `{{count}}`). |
+| **Live Audio Acoustic Invigilation** | Class Settings (Sec 6) | `liveAudioPrompt` | Cloud Function `analyzeAudioChunk` (Gemini Audio) | Evaluates rolling 30s student audio chunks for background collusion or unauthorized proctoring anomalies. |
+| **Discussion Diarization Summary** | Class Settings (Sec 6) | `sessionAudioPrompt` | Cloud Function `summarizeSessionAudio` (Gemini Audio) | Synthesizes multi-speaker student group discussion transcripts and evaluates collaborative engagement. |
+| **After-Class Video Analysis Rubric** | Class Settings (Sec 6) & Video Analysis Studio | `afterClassVideoPrompt` | Cloud Function `processVideoJob` (Gemini Vision Map-Reduce) | Directs two-stage rubric synthesis and grading across recorded student MP4 screencasts. |
+
+> 📘 **Architectural Deep Dive:** For an exhaustive code trace of all prompt execution paths, template variable tags, and fallback hierarchies, refer to [**Teacher AI Prompt & Discipline Domain Configuration Architecture**](./teacher-ai-prompt-configuration-guide.md).
+
+### Live Subtitles, Translation & Course Discipline Domain
+In **Class Settings ➔ Section 8: Live Subtitles, Translation & Subject Domain** and in the live **Monitor View (`🎙️ Subtitle Settings`)**:
+- **Course Subject / Discipline Domain**: Select your field of study (`Computer Science & Software Development`, `Business, Finance & Accounting`, `Design, Media & Visual Arts`, `Healthcare, Nursing & Medical Sciences`, `Engineering & Construction`, `Hospitality, Culinary & Tourism`, `Languages, Humanities & Social Sciences`, `General Studies & Interdisciplinary`, or `Custom Subject Domain...`).
+  - *Prevents IT Bias*: Ensures speech recognizers and translation engines preserve medical, financial, culinary, or engineering terminologies instead of mistranslating them as software keywords.
+- **Live Subtitle & Speech Translation AI Prompt**: Click **`Select Subtitle Translation Prompt`** to choose or write a specialized translation system prompt.
+  - Custom prompts can specify translation tone, code-switching guidelines (e.g. colloquial Cantonese with English technical acronyms), and glossary definitions.
+  - In the live **Monitor View**, click **`✏️ Edit Prompt`** inside the Subtitle Control Modal to tweak prompt instructions on the fly and click **`Apply Custom Instructions`**—changes take effect immediately for all students without stopping the broadcast.
+  - **Saved with Class**: The selected domain and translation prompt are saved directly to the class document in Cloud Firestore (`classes/{classId}`), persisting across all lectures and automatically synchronizing to all co-instructors in real time.
+
 ---
 
 ## 5. Exam Mode & Assessment Confidentiality Safeguards
@@ -311,10 +367,15 @@ Open **`📚 Bingo Question Bank`** in the controls panel:
 2. **Mode 2: Teacher Screen Broadcast (1 AI Call per Lecture):** Gemini analyzes your instructor screen, automatically drafts a question based on what you are presenting, and sends it to all students. Costs ~$0.00015 for the whole class.
 3. **Mode 3: Student Individual Screens:** Gemini reviews each student's current coding screen to verify active task work.
 
-### Launching a Class-Wide Bingo Check
-1. On the live monitor controls bar, click **`🎯 Call Class Bingo`**.
-2. Every student receives an audio chime and an urgent 60-second countdown popup with 4 multiple-choice options.
-3. The Student Grid immediately shows countdown progress for each student.
+### Launching a Class-Wide Bingo Check & Auto-Bingo
+1. **Manual Bingo Dispatch:** On the live monitor controls bar, click **`🎯 Call Bingo (All Students)`**. Every student receives an audio chime and an urgent 45-to-60 second countdown popup with 4 multiple-choice options.
+2. **Auto-Dispatch Bingo:** Enable the **`🔄 Auto-Dispatch Bingo`** switch in the controls sidebar to schedule automatic presence checks. Use the slider to set intervals between 1 and 30 minutes (with 1-min Fast Test available for rapid verification).
+3. **Fail-Safe Auto-Stop Guarantees:**
+   - **Capture Dependency:** Auto-Bingo *never* fires if class capture is inactive (`isCapturing == false`), even if a scheduled lesson timetable is running.
+   - **Screen Share Dependency:** Auto-Bingo strictly requires the teacher to be actively sharing their screen (`isBroadcasting === true`). If screen sharing stops, scheduled jobs automatically skip.
+4. **Instant Cancellation & Abort:**
+   - Click the **`⏹️ Cancel`** button beside **`🎯 Call Bingo`** at any time to immediately dismiss pending challenges on all student screens and abort scheduled retries.
+   - Stopping class capture or toggling Auto-Bingo off automatically triggers `cancelActiveBingo`, ensuring no orphan challenges remain when a session ends.
 
 ### Question Bank Management Studio
 In the Question Bank Modal:
@@ -371,6 +432,47 @@ sequenceDiagram
     end
 ```
 
+### 📊 Classroom Bingo Presence Report & Student Performance Review
+
+Instructors can review all dispatched questions, correct answers, individual student selections, response latencies, and window focus status in real time through the dedicated **Classroom Bingo Presence Report** view:
+
+#### 1. How to Access (No Modals)
+- **Primary Access (Analytics Dedicated Sub-tab):** Click the **AI Analytics & Insights** tab and select the **`🎲 Bingo Presence Report`** sub-tab (`/class/:classId?tab=analytics&sub=bingo`).
+- **Cross-Link from Attendance Matrix:** In **`Attendance`** (`/class/:classId?tab=analytics&sub=attendance`), the legend row provides a direct link: **`🎲 View Bingo Presence Report →`**, allowing instant correlation of attendance deductions with failed or missed Bingo challenges.
+
+#### 2. Lesson Schedule Filter Integration
+The Bingo Presence Report is deeply integrated with the class schedule:
+- **Automatic Lesson Window Scoping:** When a lesson is selected in the global date filter or lesson schedule, records are automatically scoped to that lesson period (with 15-minute grace padding before and after class bells to preserve prompt checks issued right around start/dismissal).
+- **Interactive Lesson Scope Banner:** Prominently displays the active lesson period (e.g., `Sep 17, 2026 (09:00 AM - 11:00 AM)`), the count of student responses within this scope, and total historical challenges recorded.
+- **Banner Quick-Switch Dropdown:** Instructors can swiftly toggle between lessons or select **"All Lessons (All History)"** directly from within the report banner.
+- **Lesson-Specific Empty State:** If no challenges were dispatched during the chosen lesson, an empty state card displays the lesson hours, indicates the number of records available in other sessions, and provides a one-click button to reset the view to all lessons.
+
+#### 3. Key Interface Features
+1. **Real-Time Live Sync Indicator:** A pulsing green dot (`LIVE SYNC`) confirms an active Firestore snapshot listener on `classes/{classId}/bingoRecords`. Incoming student answers pop up automatically without manual page refreshing.
+2. **Aggregated KPI Summary Cards:**
+   - **Total Challenged:** Total number of student verification requests dispatched within the active lesson scope.
+   - **Verified Present (%):** Percentage of students who actively answered within the countdown window.
+   - **Incorrect Choice (%):** Percentage who selected an incorrect distractor (presence verified; no penalty).
+   - **Timed Out / AFK (%):** Percentage who failed to answer within 45s (accruing attendance strikes).
+   - **Average Response Latency (s):** Mean reaction time from dispatch to student submission.
+   - **OS Window Focus (%):** Rate of students whose browser window was in active OS focus when answering.
+3. **Challenge Round Selector & History:**
+   - Automatically groups records into timestamped rounds within the selected lesson.
+   - Allows instructors to inspect historical questions dispatched earlier in the lecture or choose **"All Challenges"** for cumulative review.
+4. **Question & Correct Answer Showcase:**
+   - Displays full question text and origin pill (`Question Bank`, `Instructor Screen`, or `Student Screen`).
+   - Renders all 4 options ($A, B, C, D$) with the designated correct answer highlighted in emerald green with a bold **`✓ Correct Answer`** badge.
+   - For vision-generated challenges, renders the captured screenshot thumbnail with one-click lightbox enlargement and the AI model's observed evidence explanation.
+5. **Detailed Student Response Table:**
+   - **Student Email & UID:** Direct identity breakdown.
+   - **Chosen Answer:** Displays option letter pill ($A, B, C, D$) and selected text, or `⏱️ No answer (Countdown expired)`.
+   - **Result Badges:** Color-coded status (`✅ Verified Present`, `❌ Incorrect Choice`, `⚠️ Timed Out`, `⏳ Pending`).
+   - **Latency:** Seconds taken to answer.
+   - **Window Focus:** `🖥️ Focused` (green) or `❌ Unfocused` (rose red).
+   - **Strike Indicator:** `Strike 1` or `🚨 Strike 2 (Deduction)` badges.
+6. **Student Search & Status Filtering:** Search by email prefix or student UID, and filter by status tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
+7. **RFC 4180 CSV Export:** Click **`⬇️ Export CSV`** to download a spreadsheet with timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `bingo-report-CLASS101-2026_09_17.csv`).
+
 ---
 
 ## 10. Session Review, Video Library & Synchronized Scrubbing
@@ -383,7 +485,27 @@ Navigate to the **`🎥 Videos`** tab to inspect completed screencasts.
 3. The player loads both the student's desktop recording and webcam recording.
 4. Dragging the timeline scrubber advances both video streams in synchronized lock-step, allowing you to cross-examine what was on the student's screen with their physical head posture.
 
-### Video Library & Bulk Downloads
+### Teacher Lecture Recordings & Multilingual YouTube CC (`LectureRecordingsView.jsx`)
+
+Teachers can review their own screen/microphone lecture recordings, play them with AI-generated multilingual subtitles, and retrieve YouTube-ready upload packages:
+
+1. **How to Access:**
+   - **Main Class Navigation:** Go to **`🎬 Video Archive & AI Analysis`** tab ➔ **`🎥 Teacher Lecture Recordings`** sub-tab (`/class/:classId?tab=video&sub=recordings`).
+   - **Screen Broadcast HUD:** When screen broadcasting, click the **`View Past Recordings`** link in the floating recording HUD.
+2. **Automated Lecture Concatenation & Multi-Clip Merging:**
+   - **Automated Broadcast Auto-Merge:** If you pause, stop, or restart screen sharing during a lecture, multiple recording clips are generated. When you click **"Stop Sharing"** in the monitor view, the system automatically runs a serverless stream-copy merge in the background.
+   - **Fuzzy Timetable Tolerance:** If you start recording up to 45 minutes before class begins (e.g. 10:28 AM for a 10:30 AM class) or overrun by up to 60 minutes after class ends, all clips are automatically clustered into the same session group.
+   - **Smart Detection Alert Banner:** If unmerged clips exist from the same class period, a blue alert banner appears:
+     > 💡 **2 separate recording clips detected from 9/21/2026** (53m 5s total). Would you like to merge them into a single continuous full lecture? `[ 🔗 Merge into Full Lecture ]`
+   - **🔗 Custom Merge:** Click "Custom Merge" to select specific clips with checkboxes and merge them on demand.
+   - **Badges:** Combined master lectures display `🌟 Combined Full Lecture`, while individual clips display `✂️ Part 1` / `✂️ Part 2 (Merged into master lecture)`.
+3. **Features & Retrieval:**
+   - **HTML5 Player with Subtitle Tracks:** Preview the recorded lecture with synchronized closed captions in Original, English (`en`), Traditional Chinese (`zh-Hant`), Simplified Chinese (`zh-Hans`), and Japanese (`ja`).
+   - **📥 Download YouTube Package (.zip):** One-click bundle containing the clean high-definition video, multi-language `.srt` subtitle files, and a pre-formatted `youtube_metadata.txt`.
+   - **📋 1-Click Clipboard Copy:** Instant buttons to copy the generated YouTube Title and YouTube Description (complete with timestamped chapter markers like `00:00 - Introduction`, `14:20 - Code Walkthrough`).
+   - **🔄 Subtitle Regeneration:** If Gemini AI processing needs to be re-run, click **`Generate Subtitles`** to trigger fresh multi-language closed captions without re-uploading the video.
+
+### Student Video Library & Bulk Downloads (`VideoLibrary.jsx`)
 1. Select the **Video Library** subtab.
 2. Review the table of compiled MP4 recordings with date, duration, and file size.
 3. Select checkboxes for specific recordings or select all.
@@ -411,10 +533,17 @@ Rather than writing grading rubrics by hand, let Gemini synthesize rubrics from 
 7. Click **`🚀 Launch Analysis Job`**.
 
 ### Reviewing and Exporting Results
-- Click any completed job to open the **Level 2 Detail Matrix** (powered by View Transitions API).
-- Click **`👁️ View Prompt`** to inspect the exact prompt used.
-- Click **`📥 Export Results (CSV)`** or **`📥 Export Results (JSON)`** to download comprehensive grades and feedback.
-- If any video timed out, click **`🔄 Retry Failed Videos`** to re-queue the evaluation.
+- **Live Progress Monitoring**: As jobs run, track real-time progress via the live counter: **`Progress: {processedCount} / {totalVideos}`**. Because evaluation is orchestrated via Google Cloud Tasks push queues, jobs of arbitrary cohort size (e.g. 40, 80, 100+ students) execute to completion without timeout constraints.
+- Click any job to open the **Level 2 Detail Matrix** (powered by View Transitions API) showing individual student subjobs.
+- **Inspecting Single-Student Findings (`JobResultModal`)**:
+  - Click any student subjob row to inspect their AI evaluation report.
+  - **Dynamic Labeling**: The modal accurately indicates **`Analysis Output:`** for text and Markdown narratives, or **`Analysis Output (JSON):`** for structured objects.
+  - **Automatic Word Wrap**: Long continuous evaluation text wraps cleanly within the window (`whiteSpace: pre-wrap`), completely eliminating horizontal scrolling across long single-line outputs.
+  - **Wrap Toggle (`↩ Wrap: ON` / `➡ Wrap: OFF`)**: Toggle between word-wrapped reading mode and raw unformatted monospace layout.
+  - **Single-Student Export Toolbar**: Download findings instantly via **`📥 CSV`**, **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, or copy to clipboard with **`📋 Copy`**.
+- Click **`👁️ View Prompt`** to inspect the exact system prompt applied during evaluation.
+- Click **`📥 Export Results (CSV)`** or **`📥 Export Results (JSON)`** to download comprehensive grades and feedback across the entire class.
+- **One-Click In-Place Retry**: If any video encountered errors (e.g. quota limits or video encoding anomalies), the master job status will display **`PARTIAL_FAILURE (N failed)`**. Click **`🔄 Retry Failed Jobs (N)`** to instantly re-queue only the failed videos into the Cloud Tasks queue. The operation returns immediately to the browser without HTTP timeouts while workers process in the background.
 
 ### 🔬 Two-Stage AI Video Analysis & Rubric Synthesis Architecture
 

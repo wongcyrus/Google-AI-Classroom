@@ -82,7 +82,7 @@ The entire Google Cloud and Firebase environment can be provisioned from scratch
 ```
 
 ### What the Provisioner Automates
-1. Enables all necessary Google Cloud APIs (`aiplatform.googleapis.com`, `firestore.googleapis.com`, `cloudfunctions.googleapis.com`, `cloudscheduler.googleapis.com`, `cloudtasks.googleapis.com`, etc.).
+1. Enables all necessary Google Cloud APIs (`aiplatform.googleapis.com`, `firebasevertexai.googleapis.com`, `generativelanguage.googleapis.com`, `firestore.googleapis.com`, `cloudfunctions.googleapis.com`, `cloudscheduler.googleapis.com`, `cloudtasks.googleapis.com`, etc.).
 2. Creates the default Firestore database in Native mode.
 3. Provisions Cloud Storage buckets with default CORS policies.
 4. Initializes Firebase Authentication and binds GCIP blocking functions.

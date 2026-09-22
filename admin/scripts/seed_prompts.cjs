@@ -55,7 +55,13 @@ async function seedPrompts(db) {
 
         let applyTo;
         if (category === 'images') {
-            applyTo = ['Per Image', 'All Images'];
+            if (name.includes('Teacher Screen')) {
+                applyTo = ['All Images', 'Per Image'];
+            } else if (name.includes('Student Screen') || name.includes('Face & Gaze')) {
+                applyTo = ['Per Image'];
+            } else {
+                applyTo = ['Per Image', 'All Images'];
+            }
         } else if (category === 'videos') {
             applyTo = ['Per Video'];
         } else if (category === 'audios') {
@@ -66,6 +72,16 @@ async function seedPrompts(db) {
             } else {
                 applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
             }
+        } else if (category === 'translations') {
+            applyTo = ['Live Subtitles & Translation'];
+            if (name.includes('Code-Switching')) {
+                applyTo.push('Code-Switching Lectures');
+            }
+            if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
+                applyTo.push('Technical Discipline Glossary');
+            }
+        } else {
+            applyTo = [];
         }
 
         const promptData = {
@@ -74,13 +90,19 @@ async function seedPrompts(db) {
             category: category,
             applyTo: applyTo,
             accessLevel: 'public',
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
             lastUpdated: admin.firestore.FieldValue.serverTimestamp()
         };
 
         try {
-            const docRef = await db.collection('prompts').add(promptData);
-            console.log(`Successfully seeded prompt "${name}" from category "${category}" with ID: ${docRef.id}`);
+            const snap = await db.collection('prompts').where('name', '==', name).limit(1).get();
+            if (!snap.empty) {
+                await snap.docs[0].ref.update(promptData);
+                console.log(`Updated existing prompt "${name}" (${category})`);
+            } else {
+                promptData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+                const docRef = await db.collection('prompts').add(promptData);
+                console.log(`Successfully seeded prompt "${name}" from category "${category}" with ID: ${docRef.id}`);
+            }
         } catch (error) {
             console.error(`Error seeding prompt "${name}":`, error);
         }

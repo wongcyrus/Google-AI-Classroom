@@ -93,11 +93,22 @@ erDiagram
         string studentRecordingsReleaseDate "ISO timestamp"
         array questionBank "[{ id, question, options, correctIndex, explanation, topic }] - Predefined MCQ pool"
         number bingoRetryDelayMinutes "Strike 2 grace retry delay in minutes (1-15m)"
+        number bingoTimeLimitSeconds "Student countdown response limit in seconds (15-120s, default 45s)"
         boolean autoBingoEnabled "Toggle periodic automated Bingo verification"
         number autoBingoIntervalMinutes "Interval in minutes (15-60m, default 20m)"
         string autoBingoMode "question_bank | teacher_screen | student_screen"
         number autoBingoJitterMinutes "Anti-collusion stagger jitter in minutes (0-5m)"
         timestamp lastAutoBingoAt "Timestamp of last automated Bingo execution"
+        string subjectDomain "Academic discipline context"
+        string customSubjectDomain "Custom academic discipline text"
+        object subtitlePrompt "{ id, name, promptText } - Class translation AI prompt"
+        object liveImagePrompt "{ id, name, promptText } - Cloud fallback face/gaze/screen invigilation prompt"
+        object bingoPrompt "{ id, name, promptText } - Active presence challenge prompt"
+        object liveAudioPrompt "{ id, name, promptText } - Acoustic invigilation prompt"
+        object sessionAudioPrompt "{ id, name, promptText } - Discussion diarization & summary prompt"
+        object gemmaIntentPrompt "{ id, name, promptText } - On-device voice intent classifier prompt"
+        object afterClassVideoPrompt "{ id, name, promptText } - Post-class video evaluation rubric prompt"
+        boolean defaultLectureRecording "Defaults to true (record & stream by default)"
     }
 
     teacherProfiles {
@@ -269,7 +280,7 @@ erDiagram
     prompts {
         string promptId PK
         string name
-        string category "image | video | audio"
+        string category "image | video | audio | translation"
         string prompt
         array applyTo
         string accessLevel "private | shared | public"
@@ -368,7 +379,7 @@ Stores complete audit trails and billing telemetry for all AI processing jobs.
     *   `studentUid`: (string) The UID of the student associated with the job (or `null` for class-wide grid analyses).
     *   `studentEmail`: (string) The student's email, denormalized for search and reporting.
     *   `jobType`: (string) The category of analysis (`analyzeImage`, `analyzeAllImages`, `analyzeSingleVideo`, `cloudFallbackFaceAnalysis`, `analyzeAudio`, `liveSubtitleStream`, `other`).
-    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`, `gemini-3.5-transcribe-live`, `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-preview-12-2025`).
+    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`, `gemini-3.5-transcribe-live`, `gemini-3.1-flash-live-preview`).
     *   `durationSeconds`: (number, optional) Live streaming session duration in seconds (for `liveSubtitleStream`).
     *   `prompt`: (string) The prompt or instruction text sent to the model.
     *   `status`: (string) Execution status (`pending`, `processing`, `completed`, `failed`, `blocked-by-quota`).
@@ -454,11 +465,21 @@ Stores information about each class.
     *   `studentRecordingsReleaseDate`: (string|null) Scheduled ISO 8601 release timestamp when recordings become accessible under `delayed_release`.
     *   `questionBank`: (array of objects) Predefined multiple-choice question pool for the Bingo verification system (`[{ id, question, options, correctIndex, explanation, topic, createdAt }]`). Managed via `BingoQuestionBankModal.jsx`. Synchronized across both `classes/{classId}.questionBank` (class-level field) and `classes/{classId}/classProperties/config.bingoQuestionBank` (subcollection configuration) for seamless operational compatibility.
     *   `bingoRetryDelayMinutes`: (number) Configurable grace period delay in minutes (integer between 1 and 15, default `3`) before Google Cloud Tasks automatically dispatches a Strike 2 follow-up verification challenge to an unacknowledged student.
+    *   `bingoTimeLimitSeconds`: (number) Configurable student countdown response limit in seconds (15, 30, 45, 60, 90, 120, default `45`) defining how long students have to answer a Bingo challenge before it expires and records a strike.
     *   `autoBingoEnabled`: (boolean) Toggle enabling periodic automated Bingo verification during active capture sessions.
     *   `autoBingoIntervalMinutes`: (number) Configurable cadence in minutes (between 15 and 60, default `20`) between automatic Bingo dispatches.
     *   `autoBingoMode`: (string) Question generation strategy for automated runs (`question_bank`, `teacher_screen`, `student_screen`). Defaults to zero-token `question_bank` ($0.00).
     *   `autoBingoJitterMinutes`: (number) Maximum randomized anti-collusion jitter window in minutes (0–5, default `3`) used to stagger student challenge deliveries via Google Cloud Tasks.
     *   `lastAutoBingoAt`: (timestamp) Server timestamp recording when the automated scheduler last triggered a Bingo run for this class.
+    *   `subjectDomain`: (string) The course academic discipline/domain context (`'Computer Science & Software Development'`, `'Business, Finance & Accounting'`, `'Design, Media & Visual Arts'`, `'Healthcare, Nursing & Medical Sciences'`, `'Engineering & Construction'`, `'Hospitality, Culinary & Tourism'`, `'Languages, Humanities & Social Sciences'`, `'General Studies & Interdisciplinary'`, or `'custom'`). Injected into live subtitle and translation prompts to preserve domain-specific vocabulary and technical terminology.
+    *   `subtitlePrompt`: (object | null) Specialized AI translation prompt configuration object (`{ id, name, promptText }`) selected or authored in Prompt Management (`applyTo: 'Live Subtitles & Translation'`). Governs translation tone, glossary definitions, dialect preservation (Cantonese/English code-switching), and domain terminology rules.
+    *   `liveImagePrompt`: (object | null) Cloud fallback face/gaze/screen invigilation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Injected into `analyzeFaceFallbackFlow` with template tags (`{{studentEmail}}`, `{{studentUid}}`, `{{classId}}`).
+    *   `bingoPrompt`: (object | null) Active presence challenge generation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 5. Directs Gemini in `resolveBingoQuestion` and `generateBingoQuestionBank` with template tags (`{{topic}}`, `{{count}}`, `{{studentUid}}`).
+    *   `liveAudioPrompt`: (object | null) Real-time acoustic invigilation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Directs Gemini in `analyzeAudioChunk` to evaluate 30s rolling audio slices for proctoring anomalies.
+    *   `sessionAudioPrompt`: (object | null) Full-session discussion diarization and summary prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Used by `summarizeSessionAudio` to audit peer collaboration.
+    *   `gemmaIntentPrompt`: (object | null) Edge on-device voice intent classification prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Transferred to `litertGemma.worker.js` for zero-cloud-cost exam collusion detection.
+    *   `afterClassVideoPrompt`: (object | null) Post-class video evaluation rubric prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6 and Video Analysis Studio. Used by `processVideoJob` in two-stage Map-Reduce rubric synthesis.
+    *   `defaultLectureRecording`: (boolean) Classroom-level recording policy default for teacher screen broadcasts. Defaults to `true` (**Record & Stream by Default**), ensuring that when a teacher opens the screen broadcast studio, HD composite WebM video and pure audio recording to Cloud Storage are automatically pre-armed so lectures are never accidentally forgotten. When toggled to `false` (**Live Stream Only by Default**), the broadcaster initializes in ephemeral zero-storage mode where screen frames are streamed in real-time to student monitors without saving files to Google Cloud Storage.
 *   **Subcollections**:
     *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
         *   **Document ID**: A hash of the lesson's start and end times.
@@ -545,7 +566,7 @@ Stores information about each class.
     *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual translation stream.
         *   **Document `current`** (`classes/{classId}/liveSubtitles/current`):
             *   `active`: (boolean) Whether live subtitling is currently active for this class.
-            *   `engineMode`: (string) Selected translation engine architecture (`'client'` [LiteRT + Chrome Nano], `'server'` [LiteRT + Cloud Function Gemini 2.5 Flash], or `'firebase_live'` [Firebase AI Logic Gemini Live WebSocket]).
+            *   `engineMode`: (string) Selected translation engine architecture (`'client'` [LiteRT + Chrome Nano], `'server'` [LiteRT + Cloud Function Gemini 3.5 Flash-Lite], or `'firebase_live'` [Firebase AI Logic Gemini Live WebSocket]).
             *   `original`: (string) Original spoken transcript (Cantonese with English technical terms).
             *   `translations`: (map of string -> string) Keyed by language code (e.g. `{ "en": "...", "zh-Hant": "...", "zh-Hans": "...", "ja": "...", "ko": "...", "es": "...", "fr": "..." }`).
             *   `isFinal`: (boolean) Flag indicating whether the turn is complete/finalized (`true`) or actively receiving token streaming (`false`).
@@ -618,6 +639,42 @@ Stores information about each class.
             *   `retryBingoScheduledAtMillis`: (number | null) Epoch timestamp in milliseconds indicating when the Strike 2 retry challenge is scheduled to fire.
             *   `retryDelayMinutes`: (number | null) Configured grace period delay applied for this retry schedule.
             *   `lastRetryDispatchedAt`: (timestamp | null) Server timestamp of when Strike 2 challenge was dispatched via Cloud Tasks.
+    *   **`classes/{classId}/lectureRecordings`**: Stores metadata, video download URLs, multilingual subtitle track URLs, and YouTube upload metadata for teacher lecture recordings.
+        *   **Document ID**: `sessionId` (string, e.g. `rec_1773910000000`).
+        *   **Fields**:
+            *   `sessionId`: (string) Unique recording session ID.
+            *   `classId`: (string) Parent class identifier.
+            *   `teacherUid`: (string) UID of the teacher who created the recording.
+            *   `teacherEmail`: (string) Email of the teacher.
+            *   `title`: (string) Lecture title (e.g. `IT114115 - React Hooks & State Management`).
+            *   `topic`: (string) Course topic or domain context.
+            *   `status`: (string) Lifecycle status (`recording`, `paused`, `generating_subtitles`, `ready`, `subtitles_failed`, `discarded`).
+            *   `videoUrl`: (string) Direct HTTPS download URL of the clean recorded video (`.webm` or `.mp4`).
+            *   `storagePath`: (string) Cloud Storage file path (`classes/{classId}/lectureRecordings/{sessionId}/raw_recording.webm` or `recordings/.../lecture.webm`).
+            *   `audioUrl`: (string | null) Direct HTTPS download URL of the dedicated pure audio track (`.webm`, `.ogg`, `.mp4`).
+            *   `audioStoragePath`: (string | null) Cloud Storage path for the pure audio track (`recordings/{classId}/{sessionId}/lecture_audio.webm`).
+            *   `audioFileSize`: (number | null) Size of the pure audio file in bytes (~20–30 MB for 90-minute lecture).
+            *   `transcriptionSource`: (string | null) Processing source ingested by Gemini (`'audio_only'` or `'video'`).
+            *   `mimeType`: (string) Video MIME type (`video/webm;codecs=vp9,opus`).
+            *   `durationSeconds`: (number) Total net recording duration in seconds (excluding pauses).
+            *   `startedAt`: (timestamp) Timestamp when recording commenced.
+            *   `endedAt`: (timestamp | null) Timestamp when recording was stopped.
+            *   `sessionGroupId`: (string | null) Fuzzy timetable slot identifier (`${classId}_${date}_slot_${start}_${end}`) or broadcast session anchor (`bcast_${broadcastSessionId}`) used to group fragments across a class period.
+            *   `broadcastSessionId`: (string | null) Broadcast session ID if recorded during a synchronized live screen broadcast.
+            *   `isCombined`: (boolean) Flag indicating if this is a master recording merged from multiple source clips.
+            *   `sourceRecordingIds`: (array of strings | null) Array of original `sessionId`s concatenated into this master recording.
+            *   `isFragment`: (boolean) Flag indicating if this recording is an individual segment of a merged session.
+            *   `fragmentIndex`: (number | null) 1-indexed order of this clip within the session group (e.g. 1 for Part 1).
+            *   `totalFragments`: (number | null) Total count of clips in the merged group.
+            *   `mergedIntoSessionId`: (string | null) The master combined `sessionId` that this fragment was merged into.
+            *   `vttUrls`: (map of string -> string) URLs for WebVTT subtitle files (`{ original, en, "zh-Hant", "zh-Hans", ja }`).
+            *   `srtUrls`: (map of string -> string) URLs for SubRip subtitle files (`{ original, en, "zh-Hant", "zh-Hans", ja }`) designed for YouTube Creator Studio upload.
+            *   `youtubeMetadata`: (map) Pre-formatted YouTube publish information:
+                *   `title`: (string) Optimized YouTube video title.
+                *   `description`: (string) Description containing timestamped chapter markers (`00:00 - Introduction`).
+                *   `chapters`: (array of objects) Array of `{ time: "00:00", title: "Introduction" }`.
+        *   **Security Rules**: Enrolled teachers have read/write access. Enrolled students have read access to published recordings (`status == 'ready'`).
+
 
 ### `irregularities`
 
@@ -694,17 +751,18 @@ Stores individual and aggregated task duration records for students, tracking ho
 
 ### `prompts`
 
-Stores the AI prompts.
+Stores the system and instructor AI prompts. Under the system rule, **all** AI prompts across the platform—including client-side Web Worker prompts (LiteRT Gemma voice intent & multilingual translation), Firebase AI Logic streaming prompts (Gemini Live WebSocket subtitles & speech transcriber), Cloud Function Genkit flows (audio invigilation diarizer, cloud face fallback, rubric synthesizer), and Bingo active presence question generators—are maintained in this collection and seeded from `admin/prompts/`.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
-    *   `name`: (string) The name of the prompt.
-    *   `category`: (string) The category of the prompt (e.g., `images`, `videos`).
-    *   `prompt`: (string) The prompt text.
-    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (e.g., `Per Image`, `All Images`, `Per Video`).
+    *   `name`: (string) The name of the prompt (e.g. `'On-Device Gemma Multilingual Lecture Translator'`, `'Gemini Live Multimodal Lecture Translator'`, `'Cloud Fallback Face & Gaze Invigilator'`, `'Two-Stage Map-Reduce Lab Rubric Synthesizer'`).
+    *   `category`: (string) The category of the prompt (`images`, `videos`, `audios`, or `translations`).
+    *   `promptText`: (string) The prompt text markdown body. May include variable placeholders like `{{transcript}}`, `{{courseContext}}`, `{{sourceLang}}`, `{{targetLangs}}`, `{{studentEmail}}`, etc.
+    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`).
     *   `createdAt`: (timestamp) A timestamp of when the prompt was created.
+    *   `lastUpdated`: (timestamp) A timestamp of when the prompt was last edited.
     *   `accessLevel`: (string) The access level of the prompt (`private`, `shared`, `public`).
-    *   `owner`: (string) The UID of the user who created the prompt.
+    *   `owner`: (string) The UID of the user who created the prompt (empty string for system public prompts).
     *   `sharedWith`: (array) An array of UIDs with whom the prompt is shared.
 
 ### `propertyUploadJobs`
@@ -802,14 +860,23 @@ Stores information about video analysis jobs.
         *   `studentEmail`: (string) The student's email.
         *   `videoPath`: (string) The path to the video in Cloud Storage.
     *   `prompt`: (string) The AI prompt to be used for the analysis.
-    *   `status`: (string) The status of the job (e.g., `pending`, `processing`, `completed`, `failed`).
+    *   `status`: (string) The status of the job (`pending`, `processing`, `completed`, `partial_failure`, `failed`).
+    *   `modelUsed`: (string) Gemini model identifier used for analysis (e.g. `gemini-3.5-flash-lite`, `gemini-3.7-flash`).
+    *   `totalVideos`: (number) Total number of unique student videos queued for this job execution.
+    *   `processedCount`: (number) Monotonically incremented count of finished video tasks.
+    *   `successCount`: (number) Count of successfully analyzed videos.
+    *   `failureCount`: (number) Count of videos that encountered fatal errors or quota blocks.
+    *   `failedVideos`: (array) An array of objects for videos that failed analysis, preserving student details, storage path, and error string for subsequent retry.
+    *   `notes`: (string | null) Diagnostic notes, truncation warnings, or execution context.
+    *   `dispatchedAt`: (timestamp) Timestamp when tasks were fanned out to Cloud Tasks queue.
+    *   `finishedAt`: (timestamp) Timestamp when all tasks completed and final status was recorded.
     *   `createdAt`: (timestamp) When the job was created.
     *   `startTime`: (timestamp) The start time for the range of videos to be analyzed (for "all videos" jobs).
     *   `endTime`: (timestamp) The end time for the range of videos to be analyzed (for "all videos" jobs).
     *   `filterField`: (string) The field to filter by (`startTime` or `createdAt`).
     *   `aiJobIds`: (array) An array of `aiJob` IDs associated with this analysis.
-    *   `completedAt`: (timestamp) When the job was completed.
-    *   `error`: (string) An error message if the job failed.
+    *   `completedAt`: (timestamp) Legacy timestamp when the job was completed.
+    *   `error`: (string) An error message if the job failed during initial dispatch.
     *   `deleted`: (boolean) A flag to mark the job as deleted.
 
 ### `videoJobs`
@@ -859,7 +926,7 @@ Stores information about zip file creation jobs.
 
 ## Relationships
 
-*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, and a user can be in many classes. This relationship is the core of the authorization system, managed by a cloud function that syncs the `students` and `teachers` maps in the `classes` collection with the `classes` array in the respective user profile collections.
+*   **`classes` <-> `studentProfiles` / `teacherProfiles`**: Many-to-many. A class has many users, and a user can be in many classes. This relationship is the core of the authorization system, managed by a cloud function (`onClassUpdate`) that syncs the `students` and `teachers` maps in the `classes` collection with the `classes` array in the respective user profile collections. Instructors can also create school-wide or special cross-cohort classes using the **"🎓 Input All Students"** action in Class Management, which invokes the `getAllSystemStudentEmails` callable function (`auth_triggers`) to aggregate and merge all system-wide student accounts into `studentEmails`.
 *   **`classes` -> `students` / `teachers`**: One-to-many. A class has lists of student and teacher UIDs, which are used as keys in the `students` and `teachers` collections for direct messaging.
 *   **`screenshots` -> `classes` & `studentProfiles`**: Many-to-one. A screenshot belongs to one class and one student, linked via `studentUid`.
 *   **`videoJobs` -> `classes` & `studentProfiles`**: Many-to-one. A video job belongs to one class and one student, linked via `studentUid`.

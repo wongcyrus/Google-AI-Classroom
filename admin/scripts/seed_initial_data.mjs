@@ -8,11 +8,18 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.argv[2] || 'it114115-dev-2026';
+const explicitProjectArg = process.argv.slice(2).find(arg => !arg.startsWith('-'));
+const projectId = (explicitProjectArg || 'it114115-dev-2026').trim();
 
-initializeApp({ projectId });
-const auth = getAuth();
-const db = getFirestore();
+// Sanitize ambient environment variables so Google SDKs never touch system default project
+delete process.env.GCLOUD_PROJECT;
+delete process.env.GOOGLE_CLOUD_PROJECT;
+delete process.env.CLOUDSDK_CORE_PROJECT;
+process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
+
+const app = initializeApp({ projectId }, `seed-app-${Date.now()}`);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
@@ -43,13 +50,7 @@ async function seedPrompts() {
   const promptsDir = path.join(__dirname, '..', 'prompts');
   if (!fs.existsSync(promptsDir)) return;
 
-  const existingPrompts = await db.collection('prompts').limit(1).get();
-  if (!existingPrompts.empty) {
-    console.log('ℹ️ System prompts already seeded.');
-    return;
-  }
-
-  console.log('📝 Seeding AI system prompts...');
+  console.log('📝 Checking & seeding AI system prompts...');
   function getMdFiles(dir) {
     let files = [];
     for (const item of fs.readdirSync(dir)) {
@@ -65,14 +66,28 @@ async function seedPrompts() {
 
   const files = getMdFiles(promptsDir);
   const createdPrompts = {};
+  let addedCount = 0;
   for (const filePath of files) {
     const content = fs.readFileSync(filePath, 'utf8');
     const name = path.basename(filePath, '.md');
     const category = path.basename(path.dirname(filePath));
+
+    const existingSnap = await db.collection('prompts').where('name', '==', name).limit(1).get();
+    if (!existingSnap.empty) {
+      const existingDoc = existingSnap.docs[0];
+      createdPrompts[name] = { id: existingDoc.id, ...existingDoc.data() };
+      continue;
+    }
     
     let applyTo;
     if (category === 'images') {
-      applyTo = ['Per Image', 'All Images'];
+      if (name.includes('Teacher Screen')) {
+        applyTo = ['All Images', 'Per Image'];
+      } else if (name.includes('Student Screen') || name.includes('Face & Gaze')) {
+        applyTo = ['Per Image'];
+      } else {
+        applyTo = ['Per Image', 'All Images'];
+      }
     } else if (category === 'videos') {
       applyTo = ['Per Video'];
     } else if (category === 'audios') {
@@ -82,6 +97,14 @@ async function seedPrompts() {
         applyTo = ['Session Audio Summary'];
       } else {
         applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
+      }
+    } else if (category === 'translations') {
+      applyTo = ['Live Subtitles & Translation'];
+      if (name.includes('Code-Switching')) {
+        applyTo.push('Code-Switching Lectures');
+      }
+      if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
+        applyTo.push('Technical Discipline Glossary');
       }
     } else {
       applyTo = [];
@@ -97,8 +120,10 @@ async function seedPrompts() {
       lastUpdated: FieldValue.serverTimestamp()
     });
     createdPrompts[name] = { id: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public' };
+    addedCount++;
+    console.log(`✨ Seeded new prompt: "${name}" (${category})`);
   }
-  console.log(`✅ Seeded ${files.length} AI prompts.`);
+  console.log(`✅ System prompts up to date (${addedCount} newly added).`);
   return createdPrompts;
 }
 
@@ -107,11 +132,11 @@ async function main() {
   console.log(`🌱 Seeding Initial Demo Data for Project: ${projectId}`);
   console.log(`==========================================================`);
 
+  const isDev = projectId.includes('dev');
   const demoTeacherEmails = [
     'teacher1@vtc.edu.hk',
     'teacher2@vtc.edu.hk',
     'cywong@vtc.edu.hk',
-    'cy.gdoc@gmail.com',
     'kcheung@vtc.edu.hk',
     'rontam@vtc.edu.hk',
     'hli852@vtc.edu.hk',
@@ -190,10 +215,10 @@ async function main() {
 
   await db.collection('classes').doc(classId).set(classData, { merge: true });
   for (const tUid of Object.keys(teacherMap)) {
-    await db.collection('teacherProfiles').doc(tUid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
+    await db.collection('teacherProfiles').doc(tUid).set({ classes: FieldValue.arrayUnion(classId), email: teacherMap[tUid] }, { merge: true });
   }
   for (const sUser of studentUsers) {
-    await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId) }, { merge: true });
+    await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId), email: sUser.email }, { merge: true });
   }
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5).`);
 

@@ -108,7 +108,9 @@ gcloud services enable \
   firebasestorage.googleapis.com \
   firestore.googleapis.com \
   identitytoolkit.googleapis.com \
-  aiplatform.googleapis.com
+  aiplatform.googleapis.com \
+  generativelanguage.googleapis.com \
+  firebasevertexai.googleapis.com
 ```
 
 ### Step 2: Configure Firebase Services
@@ -119,6 +121,15 @@ gcloud services enable \
    ```bash
    gsutil cors set cors.json gs://<PROJECT_ID>.firebasestorage.app
    ```
+5. **App Check for Firebase AI Logic**:
+   Ensure Firebase AI Logic permits API requests during development/testing (required due to open issue `firebase/firebase-js-sdk#10018` where browser Gemini Live WebSockets omit the App Check token):
+   ```bash
+   firebase experiments:enable appcheckadmin
+   firebase appcheck:services:set ailogic unenforced --project="$PROJECT_ID" --force
+   ```
+   > **Note on Mandatory Enforcement (Nov 2, 2026)**:
+   > Starting November 2, 2026, Firebase enforces App Check for all Firebase AI Logic Gemini API requests. Until `@firebase/ai` supports App Check tokens over browser WebSockets, Live audio must either use unenforced mode in dev or rely on a trusted server relay / the built-in LiteRT Whisper + Cloud Functions mode.
+
 
 ### Step 3: Configure Environment Files
 1. Copy template to `web-app/.env`:

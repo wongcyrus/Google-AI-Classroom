@@ -52,6 +52,7 @@ flowchart TD
 
     subgraph MediaModule [media_processing]
         T_Call -->|getStudentVideoPlaybackUrl| GVP[getStudentVideoPlaybackUrl: Zero-Trust Exam Integrity & Signed URLs]
+        T_Call -->|mergeLectureRecordings| MLR[mergeLectureRecordings: Serverless FFmpeg Stream-Copy Concat]
         T_Doc -->|videoJobs created| PVJ[processVideoJob: FFmpeg Screencast Encoding]
         T_Doc -->|zipJobs created| PZJ[processZipJob: Multi-Stream Archive]
         T_Doc -->|reportJobs created| PRJ[processReportJob: DOCX & CSV Dossier Generation]
@@ -104,6 +105,34 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`generateQuestionBankAi`**: A callable function for teachers that drafts a batch of 5 multiple-choice questions for the class Question Bank using `gemini-3.5-flash-lite` with structured JSON output schema.
     -   **Parameters**: `topic` (string), `count` (number, default 5).
     -   **Output**: Array of `{ id, question, options: string[4], correctIndex: 0..3, explanation }`.
+-   **`cancelActiveBingo`**: A callable function restricted to users with a 'teacher' role that immediately purges and aborts all active Bingo presence challenges and pending retries across a class cohort.
+    -   **Parameters**: `classId` (string).
+    -   **Actions**:
+        1. Queries `classes/{classId}/studentProperties` and finds all students with `activeBingo.status` in `['pending', 'active']` or `pendingRetryBingo === true`.
+        2. Batches an atomic Firestore update: sets `activeBingo.status = 'cancelled'`, `activeBingo.result = 'cancelled'`, `pendingRetryBingo = false`, and records `cancelledAt: serverTimestamp()`.
+        3. Queries any `bingoJobs` for `classId` with `status == 'pending'` and marks them as `'cancelled'`.
+        4. Closes the Bingo modal on all connected student screens instantly without penalizing attendance or registering Strike absences.
+    -   **Automatic Invocation**: Automatically called when a teacher clicks "Stop Capture" in `MonitorView` or disables the "Auto-Dispatch Bingo" switch in `ControlsPanel`. Also accessible via a manual "⏹️ Cancel" button in the teacher's controls sidebar.
+-   **`processLectureSubtitles`**: A callable function for teachers to process completed lecture recordings for in-browser playback and YouTube publishing.
+    -   **Configuration**:
+        -   `region`: `asia-east2` (Hong Kong).
+        -   `memory`: `2GiB`.
+        -   `timeoutSeconds`: `540` (9 minutes).
+    -   **Parameters**: `classId` (string), `sessionId` (string), `storagePath` (optional string fallback), `title` (optional string), `topic` (optional string), `targetLanguages` (array of strings, default `['en', 'zh-Hant', 'zh-Hans', 'ja']`), `preferredModel` (optional string).
+    -   **Audio Prioritization & Ingestion**:
+        -   Invokes `resolveEffectiveStoragePath(sessionData, storagePath)`.
+        -   Automatically prioritizes the parallel pure audio stream (`audioStoragePath`: `recordings/{classId}/{sessionId}/lecture_audio.webm`, ~25 MB Opus) over the full composite video (`storagePath`: ~1.2 GB VP9).
+        -   Records `transcriptionSource: 'audio_only'` (or `'video'` fallback) into Firestore.
+        -   Constructs `gs://${bucket.name}/${effectiveStoragePath}` and passes it directly to Gemini via `generateWithResilience` using `gemini-3.8-flash` (or `gemini-3.5-flash-lite`).
+    -   **Generation & Formatting**:
+        -   Extracts verbatim speech transcript preserving technical keywords and Cantonese-English code-switching.
+        -   Translates into requested target languages (`en`, `zh-Hant`, `zh-Hans`, `ja`).
+        -   Extracts timestamped YouTube chapter markers (`00:00 - Introduction`).
+        -   Generates WebVTT (`.vtt`, period millisecond delimiter) and SubRip (`.srt`, comma millisecond delimiter) files via integer millisecond arithmetic, preventing floating-point drift.
+        -   Uploads all `.vtt` and `.srt` files to Cloud Storage at `recordings/{classId}/{sessionId}/subtitles_{lang}.vtt` and `.srt`.
+    -   **Output & State Persistence**:
+        -   Updates `classes/{classId}/lectureRecordings/{sessionId}`: sets `status = 'ready'`, `vttUrls`, `srtUrls`, and `youtubeMetadata` (including formatted title, description with chapters, and chapter array).
+        -   Logs FinOps token consumption and dollar cost to `classes/{classId}/aiCosts` via `logJob` and `calculateCost`.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
@@ -129,18 +158,32 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   **Zero Idle Cost**: Unlike cron polling functions that run every 60 seconds (accumulating 43,200 invocations and database reads/month regardless of activity), Cloud Tasks incurs **$0.00** when no retries are pending.
         -   **Generous Free Tier**: Google Cloud Tasks includes **1,000,000 free task operations/month**, making serverless presence retries completely free under normal classroom operations.
         -   **Cohort Scaling**: Ingests hundreds of tasks per second without latency degradation, automatically distributing dispatch callbacks evenly across parallel worker instances.
--   **`onBingoJobCreated`**:
-    -   **Trigger**: `onDocumentCreated` in `bingoJobs/{jobId}`.
+-   **`processBingoJob`**:
+    -   **Trigger**: `onDocumentCreated` in `bingoJobs/{jobId}` (`functions/ai_flows/index.mjs`).
     -   **Description**: Processes an automated Bingo job emitted by Cloud Scheduler. Identifies all enrolled or active students. If `jitterMinutes > 0`, calculates randomized staggered delay offsets and enqueues individual tasks to `dispatchScheduledBingoTask` via Google Cloud Tasks to prevent peer/Discord collusion. If `jitterMinutes == 0`, dispatches challenges to all students immediately. Updates job document status to `enqueued` or `completed`.
 -   **`dispatchScheduledBingoTask`**:
     -   **Trigger**: Google Cloud Tasks queue target (`locations/asia-east2/functions/dispatchScheduledBingoTask`).
     -   **Description**: Executes staggered student challenge dispatches following individual jitter delays. Verifies that the class session is still active (`isCapturing == true`) before generating the challenge; automatically drops obsolete tasks if the teacher stopped the capture session during the jitter window. Dispatches `generateBingoChallenge` (`triggerType: 'automated_periodic_staggered'`).
--   **`retryVideoAnalysisJob`**: A callable function allowing teachers to retry failed video analysis jobs idempotently.
+-   **`analyzeSingleVideoTask`**:
+    -   **Trigger**: Google Cloud Tasks queue target (`locations/asia-east2/functions/analyzeSingleVideoTask`).
+    -   **Description**: Serverless worker for individual student video AI multimodal analysis. Eliminates the 540-second Firestore trigger timeout wall for arbitrary cohort sizes by processing each student video in an isolated task container.
+    -   **Worker Configuration**:
+        -   `region`: `asia-east2` (Hong Kong).
+        -   `rateLimits`: `{ maxConcurrentDispatches: 4, maxDispatchesPerSecond: 2 }` — Smooths token consumption and strictly guarantees compliance with Gemini API RPM/TPM concurrency quotas without 429 rate limit errors.
+        -   `retryConfig`: `{ maxAttempts: 2 }` — Retries on transient network failures.
+        -   `memory`: `2GiB`, `timeoutSeconds`: `300`.
+    -   **Atomic Transaction & State Transition**:
+        -   Executes an atomic Firestore transaction (`recordTaskResult`) on `videoAnalysisJobs/{masterJobId}` on task completion.
+        -   Atomically increments `processedCount` and `successCount` (or `failureCount`). Appends `jobId` to `aiJobIds` (or failed video payload to `failedVideos`).
+        -   When `newProcessedCount >= totalVideos`, flips `status` to `'completed'` (if zero failures) or `'partial_failure'` (if any failures) and stamps `finishedAt`.
+-   **`retryVideoAnalysisJob`**:
+    -   **Trigger**: `onCall` (`functions/ai_flows/retryVideoAnalysisJob.js`).
+    -   **Description**: A callable function allowing teachers to retry failed videos in a `videoAnalysisJob`. Enqueues failed videos directly into the `analyzeSingleVideoTask` Cloud Tasks queue, updates `totalVideos` to `existingSuccessCount + retryCount`, and returns immediately without client HTTP timeouts.
 -   **`generateLabTaskPrompt`**: A callable function for teachers that synthesizes a tailored lab coursework prompt from a completed `videoAnalysisJobs` execution. Queries all completed child `aiJobs`, extracts student video summaries across the entire cohort, and invokes Gemini 3.8 Flash to discover coursework tasks, cloud platforms, rubrics, milestone checklists, and common student blockers. Outputs a ready-to-run Markdown prompt with strict tool instructions (`recordActualWorkingTime`, `recordTaskDuration`, `recordLessonSummary`).
 -   **`translateTeacherSpeech`**:
     -   **Trigger**: `onCall` (`functions/ai_flows/subtitleFlows.js`).
     -   **Authentication & Security**: Protected by Firebase Auth (`context.auth`) and App Check. Enforces teacher authorization in `classes/{classId}` and checks classroom monthly AI quota limits in `classes/{classId}/aiUsage`.
-    -   **Description**: Translates spoken Cantonese lecture sentences into multiple target languages simultaneously (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) using Gemini 2.5 Flash with structured JSON output schema.
+    -   **Description**: Translates spoken Cantonese lecture sentences into multiple target languages simultaneously (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) using Gemini 3.8 Flash (with automatic fallback to Gemini 3.5 Flash-Lite) with structured JSON output schema.
     -   **Technical Lexicon Integrity**: System instructions strictly enforce preservation of English programming terminology, variable names, keywords, and command lines (e.g., `useState`, `Docker`, `git commit`, `npm`, `SQL`, `flexbox`).
     -   **Input Schema**: `{ text: string, sourceLang: string, targetLangs: string[], classId: string, courseContext?: string }`.
     -   **Output Schema**: `{ translations: { [langCode: string]: string } }`.
@@ -161,7 +204,7 @@ The AI engine exposes structured Genkit tools to Gemini during video, audio, and
 
 -   **`processVideoAnalysisJob`**:
     -   **Trigger**: `onDocumentCreated` in `videoAnalysisJobs/{jobId}`.
-    -   **Description**: This function orchestrates the AI analysis of multiple videos. When a new job is created in the `videoAnalysisJobs` collection, this function collects the target videos (either from a provided list or by querying a time range) and creates individual AI analysis jobs for each one using the `analyzeSingleVideoFlow`. It updates the master job document with the status (`processing`, `completed`, `failed`) and the IDs of the individual AI jobs.
+    -   **Description**: Lightweight Map-Reduce dispatcher function. When a new job is created in `videoAnalysisJobs`, this function queries matching video records from `videoJobs` (or resolves the provided list), deduplicates video paths, initializes the master document (`totalVideos`, `processedCount: 0`, `status: 'processing'`), and fans out individual analysis tasks to Google Cloud Tasks (`analyzeSingleVideoTask`). Exits in ~2–3 seconds, completely decoupling job orchestration from video cohort execution time.
 
 -   **`triggerAutomaticAnalysis`**:
     -   **Trigger**: `onDocumentUpdated` in `videoJobs/{jobId}`.
@@ -234,6 +277,23 @@ This directory contains Cloud Functions responsible for handling media-related t
         -   `delayed_release`: Blocks student access until the specified `releaseTimestamp` has elapsed.
     -   **Ephemeral Signed URL Broker**: Upon successful authorization, signs a 60-minute Google Cloud Storage v4 signed URL (`getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60 * 1000 })`) pointing directly to the MP4 file in Cloud Storage, preventing public bucket exposure.
 
+-   **`mergeLectureRecordings`**:
+    -   **Type**: Callable Function (`onCall`).
+    -   **Configuration**: `region: asia-east2`, `memory: 2GiB`, `cpu: 2`, `timeoutSeconds: 540`.
+    -   **Security & Authorization**: Requires authenticated caller verified as a teacher in the class (`isTeacherInClass(classId)` or global teacher claim).
+    -   **Parameters**: `classId` (string), `sessionGroupId` (optional string), `recordingIds` (optional array of strings), `customTitle` (optional string).
+    -   **Fast Stream-Copy Concatenation (`ffmpeg -c copy`)**:
+        -   Fetches source clips matching `recordingIds` or `sessionGroupId` from `classes/{classId}/lectureRecordings`.
+        -   Filters out existing merged recordings to eliminate infinite concatenation recursion.
+        -   Sorts clips chronologically by `startedAt`.
+        -   Streams WebM clips into a local temporary directory `/tmp` and executes `ffmpeg -f concat -safe 0 -i list.txt -c copy -y combined.webm`.
+        -   Runs in **~2 seconds** with zero re-encoding CPU overhead or video quality degradation.
+        -   Synthesizes standard Matroska EBML `Duration` headers and seek indexes (`Cues`), healing the Chromium browser `MediaRecorder` duration bug.
+        -   Extracts synchronized pure Opus audio track: `ffmpeg -i combined.webm -vn -c:a copy combined_audio.webm`.
+        -   Uploads both combined media artifacts to Cloud Storage (`recordings/{classId}/{combinedSessionId}/`).
+        -   Creates a new master Firestore document (`isCombined: true`, `sourceRecordingIds: [...]`) and updates source clips with `isFragment: true`, `fragmentIndex`, and `mergedIntoSessionId: combinedSessionId`.
+        -   Automatically triggers the AI subtitle pipeline (`processLectureSubtitles`) on the merged lecture.
+
 #### Firestore Triggers
 
 -   **`processVideoJob`**:
@@ -305,8 +365,13 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
     -   **Description**: Automatically synchronizes live model token prices from the Google Cloud Billing Catalog API (`services/C7E2-9256-1C43`) for all Gemini models (Flash, Pro, Transcribe), saving the latest rate matrix to `system_config/pricing` in Firestore for warm in-memory caching.
 
 -   **`handleAutomaticBingo`**:
-    -   **Trigger**: Scheduled to run every 5 minutes (`schedule: '*/5 * * * *'`).
-    -   **Description**: Scans active classroom capture sessions (`isCapturing == true` and `autoBingoEnabled == true`). Verifies elapsed minutes against the class's configurable `autoBingoIntervalMinutes` (default `20m`). When due, creates a new `bingoJobs` document with mode, jitter settings, and student roster metadata, and records `lastAutoBingoAt`. Triggers downstream serverless worker execution decoupled from the scheduler runtime.
+    -   **Trigger**: Scheduled to run every minute (`schedule: '* * * * *'`).
+    -   **Description**: Scans active classroom capture sessions (`isCapturing == true` and `autoBingoEnabled == true`). Verifies elapsed minutes against the class's configurable `autoBingoIntervalMinutes` (default `20m`). When due, creates a new `bingoJobs` document with mode, jitter settings, and student roster metadata, and records `lastAutoBingoAt`. Triggers downstream serverless worker execution (`processBingoJob`) decoupled from the scheduler runtime.
+    -   **FinOps & Scaling Profile**:
+        -   **Execution Latency**: Runs in ~150ms – 500ms (always < 1 second). Because heavy AI prompt generation and student delivery are offloaded asynchronously to `processBingoJob` and Cloud Tasks, `handleAutomaticBingo` never blocks or times out within the 60-second schedule window.
+        -   **Cloud Scheduler Cost**: Flat $0.10/job/month across unlimited invocations ($0.00 within GCP's first 3 free jobs).
+        -   **Cloud Functions Invocations**: 43,200 runs/month = 2.16% of Google Cloud's 2,000,000 free monthly tier ($0.00).
+        -   **Firestore Reads**: 1 read/min = 1,440 reads/day = 2.88% of Google Cloud's 50,000 free daily tier ($0.00). Total monthly infrastructure cost: **$0.00**.
 
 
 ### Data Models

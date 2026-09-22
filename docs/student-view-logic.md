@@ -18,6 +18,7 @@ This document outlines the automated, schedule-driven logic implemented in the `
 6. [Independent Multi-Stream Architecture & Robust Hardware Handling](#independent-multi-stream-architecture--robust-hardware-handling)
 7. [Live Exam Mode Synchronization & Proctoring Enforcement](#live-exam-mode-synchronization--proctoring-enforcement)
 8. [Automated Active Presence & Attention Verification ("Bingo") Lifecycle](#automated-active-presence--attention-verification-bingo-lifecycle)
+9. [Mobile Student Companion View (3 Core Features)](#9-mobile-student-companion-view-3-core-features)
 
 ---
 
@@ -53,7 +54,7 @@ flowchart TD
 
 This hook is the brain of the operation and works in three stages:
 
-1.  **Fetch Student's Class List:** The hook subscribes to the logged-in student's profile document at `studentProfiles/{user.uid}`. It maintains a real-time list of all classes the student is enrolled in.
+1.  **Fetch Student's Class List:** The hook subscribes to the logged-in student's profile document at `studentProfiles/{user.uid}`. It maintains a real-time list of all classes the student is enrolled in. When instructors create a school-wide or special class using the **"🎓 Input All Students"** button in Class Management, all system student accounts are populated into the roster; the `onClassUpdate` cloud function automatically syncs the new class into every student's `studentProfiles/{uid}` record, immediately exposing the class to all students without manual enrollment codes.
 
 2.  **Fetch All Schedules:** Whenever the student's list of classes changes, the hook fetches the `schedule` object from each corresponding class document (`classes/{classId}`). This object contains the `timeSlots` and, crucially, the `timeZone` for that class.
 
@@ -86,42 +87,26 @@ To handle edge cases or provide user flexibility, a manual override system is in
 
 - The class dropdown now visually indicates which class is currently **"(Live)"** according to the schedule, guiding the user to the correct class without requiring them to think about it.
 
-## Handling Overlap in Back-to-Back Classes
+## Handling Overlap in Back-to-Back Classes & Concurrent Class Enrollment
 
-A key design consideration is how the system handles the transition between two classes scheduled back-to-back (e.g., Class A from 8:00-9:00 and Class B from 9:00-10:00).
+When a student is enrolled in classes that have concurrent or overlapping scheduled slots (or during the 10-minute back-to-back buffer period where `handleAutomaticCapture` sets `isCapturing: true` with a 5-minute look-ahead/look-behind), the system handles ingestion across **all** overlapping classes simultaneously:
 
-The backend's `handleAutomaticCapture` function uses a 5-minute look-ahead to start capturing and a 5-minute look-behind to stop. This creates a 10-minute "overlap" in the database where both class documents may have `isCapturing: true`.
+### 1. Multi-Class Schedule Detection (`activeClassIds`)
+- The hook `useStudentClassSchedule` examines all enrolled class schedules concurrently without terminating early.
+- It returns both `currentActiveClassId` (the primary active class) and `activeClassIds: string[]` (an array of all classes whose schedule is active right now).
 
-The schedule-driven frontend logic ensures this overlap does not affect the student's device. Here is a timeline of events:
+### 2. Multi-Class Media Ingestion (Screen, Webcam, Video, Voice)
+- **Zero-Waste Single Storage Upload**: When capturing screen or webcam frames, the image blob is uploaded **once** to Cloud Storage (`screenshots/{primaryClass}/{studentUid}/{channel}_{timestamp}.jpg`).
+- **Multi-Class Firestore Records (`targetClasses`)**: Firestore `screenshots` metadata records and status telemetry documents (`classes/{classId}/status/{studentUid}`) are created for **all** overlapping active classes (`targetClasses`). Neither teacher's live monitor misses student activity.
+- **Asynchronous Video Generation**: In the backend, `processVideoJob` compiles MP4 videos from the `screenshots` collection where `classId == job.classId`. Because screenshots exist with valid metadata for all overlapping classes, video compilation succeeds cleanly for both classes without any redundant video encoding on the client.
+- **Audio Presence & Live Transcripts**: Real-time microphone status (`isSpeaking`, `audioLevel`) and Whisper transcripts are mirrored to `classes/{classId}/status/{studentUid}` across all overlapping classes.
 
-**Scenario:**
-*   **Class A:** 8:00 AM - 9:00 AM
-*   **Class B:** 9:00 AM - 10:00 AM
-
----
-
-### **At 8:55 AM**
-
-*   **Backend:** Sets `isCapturing: true` for the upcoming **Class B**.
-*   **Frontend:** The `activeClass` is still **Class A** based on the schedule. The app continues to capture and save screenshots for **Class A**, unaware of the change to Class B's database record.
-
----
-
-### **At 9:00:00 AM (The Instant of Transition)**
-
-*   **Frontend:** The `useStudentClassSchedule` hook detects the schedule change. The `activeClass` instantly switches from **Class A** to **Class B**.
-*   The component begins listening to the Class B document, sees `isCapturing: true`, and starts saving all new screenshots for **Class B**.
-
----
-
-### **At 9:05 AM**
-
-*   **Backend:** Sets `isCapturing: false` for the now-finished **Class A**.
-*   **Frontend:** The `activeClass` is **Class B**. The app is unaffected by the change to the Class A document it is no longer listening to.
-
-### Conclusion
-
-The backend flags may overlap in the database, but the frontend logic ensures a clean and instantaneous handoff. The student's screen is captured continuously, but the `classId` associated with the saved screenshots switches precisely at the scheduled time, ensuring data integrity.
+### 3. Student Dropdown Manual Override Precedence
+To ensure students can switch between teachers (e.g. to view **Teacher Live Screen Broadcast** or read **Live Subtitles** from a specific teacher):
+- When a student picks a class from the dropdown, `isManualScheduleOverride` is set to `true` (and persisted to `localStorage`).
+- Manual student choice takes **strict precedence** over schedule-driven `currentActiveClassId`, eliminating the previous bug where the dropdown would immediately snap back to the scheduled class.
+- A **"↩ Follow Schedule"** button appears next to the dropdown whenever an override is active, allowing the student to revert to automated scheduling with a single click.
+- An **Active Session HUD Class Switcher** is also present in the streaming top bar (`isSharing: true`), enabling seamless switching between teacher feeds during active streaming sessions without stopping screen or webcam capture.
 
 ---
 
@@ -336,6 +321,119 @@ Students are provided with complete transparency regarding any attendance deduct
    - Explicit reason: `"Failed consecutive presence checks (Bingo strike 1 & 2 timed out)"`.
    - Precise lesson timestamp intervals voided.
 2. **Timeline Heatmap Cells**: In the minute-by-minute timeline grid, minutes deducted due to missed presence checks are clearly rendered with diagonal orange stripes (`#F39C12`) and marked with a target icon (`🎯`), clearly distinguishing unacknowledged periods from offline periods (`#FADBD8`) or verified presence (`#2ECC71`).
+
+### 5. Multi-Class Bingo Challenge Ingestion & Class Badge Routing
+To support students enrolled in multiple classes where an instructor in an off-schedule or inactive class issues an attention or presence check:
+1. **Universal Enrolled Class Subscription**:
+   - In addition to subscribing to the scheduled `activeClass`, `StudentView.jsx` and `StudentMobileView.jsx` maintain real-time `onSnapshot` listeners across every class in `userClasses` at `classes/${classId}/studentProperties/${user.uid}`.
+   - Incoming active challenges are stored in an `enrolledBingoChallenges` map keyed by `classId`.
+2. **Challenge Resolver & Precedence**:
+   - `currentBingoChallenge` dynamically resolves pending challenges (`status === 'pending' || status === 'active'`) that have not expired.
+   - If a challenge is active in the currently selected `activeClass`, it is prioritized.
+   - If no challenge is active in `activeClass` but an enrolled off-schedule class (e.g. `itp4120-l`) issues a challenge, the resolver yields that challenge.
+3. **Class Identifier Badge (`.bingo-class-pill`)**:
+   - When a challenge originates from a class other than the student's current view (or for general clarity), the modal renders a high-visibility badge in the header displaying the class name (e.g., `DevOps & CI/CD` or `Data Centre Technologies`), clearly informing the student which course issued the check.
+4. **Targeted Submission Routing**:
+   - When the student clicks an answer or times out, `handleBingoSubmit` extracts `classId = currentBingoChallenge.classId || activeClass`, ensuring that Cloud Function `submitBingoAnswer` validates against the correct class's `bingoRecords` collection.
+
+### 6. High-Contrast Typography & CSS Scoping Architecture
+To guarantee immediate readability under any ambient lighting, dark mode, or mobile viewport:
+1. **Vite Bundle CSS Scoping**:
+   - Mobile sheet rules in `StudentMobileView.css` were fully scoped under `.mobile-bingo-sheet` to eliminate CSS cascade pollution into the global modal styles.
+2. **Dark Slate Typography Guarantee (`#0f172a`)**:
+   - `BingoModal.css` enforces high-contrast text rules using `!important` declarations:
+     - `.bingo-modal-container .bingo-question-box`: `#f8fafc` background with `#cbd5e1` borders and `#0f172a` text.
+     - `.bingo-modal-container .bingo-question-text`: `#0f172a` primary question text.
+     - `.bingo-modal-container .bingo-option-btn`: `#f1f5f9` button surface with `#0f172a` dark text and `#475569` subtext.
+3. **Defensive Inline Styles**:
+   - `BingoModal.jsx` sets explicit inline style attributes (`style={{ color: '#0f172a' }}`) directly on the question container, preventing any external CSS from rendering white text on white backgrounds.
+
+### 7. Snapshot Normalization Safeguards (Flat-Key Quarantine)
+A critical defensive mechanism ensures student document snapshots in Firestore cannot accidentally suppress incoming challenges:
+1. **The Issue of Dot-Notation Flat Keys**:
+   - In Firestore, writing with field paths like `'activeBingo.status': 'passed'` creates a literal field whose key name contains a period, rather than a nested map.
+   - Subsequent `set(..., { merge: true })` calls updating the nested map `activeBingo` leave the flat field intact.
+2. **Strict Fallback Scoping**:
+   - Legacy normalization routines in `StudentView.jsx` and `StudentMobileView.jsx` were hardened:
+     ```javascript
+     // Fallback to legacy flat keys ONLY if structured activeBingo map does not exist
+     if (!data.activeBingo && data['activeBingo.status']) {
+       data.activeBingo = {
+         status: data['activeBingo.status'],
+         result: data['activeBingo.result'] || data['activeBingo.status'],
+         responseTimeSec: data['activeBingo.responseTimeSec'] || null,
+       };
+     }
+     ```
+   - If `data.activeBingo` map exists, its own `.status` (`'pending'`) is the single canonical source of truth and is **never** overwritten by stale flat keys.
+
+### 8. Case Study: Diagnostic Trace of `student1@stu.vtc.edu.hk`
+- **Identity**: `student1@stu.vtc.edu.hk` (`UID: 0UkmjdeNXXcYax9iEfn0wMi4nEA2`).
+- **Enrolled Classes**:
+  1. `IT114115-Demo` (Active schedule: Mon–Sun `00:00–23:59`, capturing enabled).
+  2. `itp4120-l` (Active schedule: Thu `08:30–09:30`, capturing disabled).
+- **Observed Failure**: When the instructor launched Bingo, `student1` never saw the challenge modal in either class.
+- **Root Cause Discovered via Live Tracing**:
+  - `classes/IT114115-Demo/studentProperties/0UkmjdeNXXcYax9iEfn0wMi4nEA2` contained stale literal keys:
+    `activeBingo.status = "passed"`
+    `activeBingo.result = "passed"`
+  - When a new challenge was dispatched, `activeBingo.status` was created as `"pending"`.
+  - However, client code previously executed:
+    ```javascript
+    if (data['activeBingo.status'] && data.activeBingo && data.activeBingo.status === 'pending') {
+      data.activeBingo.status = data['activeBingo.status']; // Overwrote 'pending' to 'passed'!
+    }
+    ```
+  - This immediately altered the client state from `"pending"` to `"passed"`, silencing the modal and audio chime completely.
+- **Resolution**:
+  - Executed a Firestore admin update using `new FieldPath('activeBingo.status')` to purge the corrupted flat keys.
+  - Refactored `StudentView.jsx` and `StudentMobileView.jsx` so flat keys are ignored whenever `data.activeBingo` is present.
+  - Deployed verified build to production hosting and Cloud Functions.
+
+---
+
+## 9. Mobile Student Companion View (Mobile-First Experience)
+
+To support students participating via smartphones or tablets (iOS Safari, Android Chrome, mobile Firefox, etc.), the student portal provides a lightweight, focused mobile companion mode (`StudentMobileView.jsx`) with 3 dedicated mobile viewing modes:
+
+### 1. Scope & Device Auto-Detection
+- **Auto-Detection**: `isMobileDevice()` detects mobile user agents (`/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i`) or viewport width $\le 768\text{px}$.
+- **Exempt from Desktop Chrome Guards**: Mobile devices are exempted from desktop-only Chrome enforcement guards in `App.jsx`, allowing iOS Safari and standard mobile browsers to log in seamlessly without being signed out.
+- **Selective Lightweight Footprint**: Heavy desktop invigilation features (such as `getDisplayMedia` full desktop capture, MediaPipe FaceLandmarker WASM, local Whisper transcribers, or WebRTC peer streaming) are omitted to conserve mobile battery and adhere to mobile platform restrictions.
+
+### 2. The 3 Mobile-First Viewing Modes (Bottom Segmented Dock)
+Students can switch between 3 native viewing modes at any time using the thumb-accessible bottom dock:
+1. **🖥️+💬 Screen & CC (`'overlay'` - Default)**:
+   - Fullscreen 100% viewport teacher screen / slide presentation broadcast.
+   - **YouTube-Style Closed Captions (CC)**:
+     - Captions appear as native translucent cue pills (`background: rgba(8, 8, 8, 0.82)`) overlaid directly near the bottom center of the video frame, hugging only the active text.
+     - Dual-line bilingual cues: Original speech in dimmer crisp text (`#e2e8f0`) + Translated speech in YouTube caption yellow (`#ffe600` / `#ffffff`).
+     - Zero slide occlusion: When no speech is occurring or during silence, caption cues disappear completely—leaving 100% of the teacher's screen visible.
+   - **YouTube-Style Slim Player Control Bar**:
+     - A 36px translucent control bar at the bottom with iconic YouTube `[ CC ]` button (active red underline indicator).
+     - Quick dynamic language pills (`[ 简体中文 ] [ English ]`), earphone read-aloud toggle (`🎧 Listen`), caption mode (`[ 双语 / 译文 / 原文 ]`), and font scale (`A- / A / A+`).
+2. **🖥️ Screen Only (`'screen'`)**:
+   - Pure distraction-free, edge-to-edge teacher screen viewing.
+   - Zero caption overlap.
+   - Touch pinch-to-zoom (up to 3x), double-tap zoom toggle (1x / 2x), drag-to-pan when magnified, and fullscreen toggle (⛶).
+   - Live resolution badge (`SCREEN LIVE 1080P`).
+3. **💬 CC Only (`'cc'`)**:
+   - Dedicated full-page live subtitle and translation reader.
+   - Dynamic language chips derived directly from the teacher's active target languages and translations (defaulting to Simplified Chinese `[ 简体中文 ]` and English `[ English ]`).
+   - Large typography font scale controls (`A-`, `A`, `A+`).
+   - Earphone audio read-aloud (`SpeechSynthesisUtterance`).
+   - Active prominent live utterance box + full scrollable lecture transcript history.
+   - Quick jump alert banner if the teacher is sharing their screen (`"🖥️ Teacher is sharing screen live! View Screen →"`).
+
+### 3. Dynamic Language Alignment & Simplified Chinese Default
+- **Teacher-Driven Language List**: Available student subtitle languages are derived strictly from the teacher's active `targetLanguages` and emitted `translations`. Students only see language chips that the teacher is actually providing.
+- **Default Language Pair**: The default configuration across teacher subtitle broadcasting and student reception is **Simplified Chinese (`zh-Hans` / 简体中文)** and **English (`en` / English)**.
+- **Auto-Fallback**: If a student's previously persisted language preference is not being provided by the current teacher session, the student view automatically falls back to Simplified Chinese (`zh-Hans`) or English (`en`).
+
+### 4. Interactive Classroom Bingo (`<BingoModal>`)
+- Regardless of whether the student is in `Screen & CC`, `Screen Only`, or `CC Only` mode, when an active comprehension/presence check arrives from the teacher (`status: 'pending'` or `'active'`), it immediately slides up as a high-priority responsive bottom-sheet modal (`z-index: 9999`).
+- Reuses the canonical `BingoModal` component with audio chime (`playBingoChime`), device vibration pattern (`navigator.vibrate([100, 50, 100])`), 45s animated countdown progress bar, and 4 touch-friendly option buttons ($A, B, C, D$).
+- Submits answers through callable `submitBingoAnswer` Cloud Function.
 
 ---
 

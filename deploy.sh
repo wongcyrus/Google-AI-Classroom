@@ -23,7 +23,12 @@ for d in functions/*/ ; do
 done
 
 echo "Building web app..."
-(cd web-app && npm install && npm run build)
+CURRENT_ACTIVE_PROJECT=$(firebase use 2>/dev/null | tr -d '\n\r ')
+if [ "$CURRENT_ACTIVE_PROJECT" = "it114115-2627" ]; then
+    (cd web-app && npm install && npm run build:prod)
+else
+    (cd web-app && npm install && npm run build:dev)
+fi
 
 # Check if deployment is only for hosting
 ONLY_HOSTING=false
@@ -34,8 +39,39 @@ for arg in "$@"; do
 done
 
 if [ "$ONLY_HOSTING" = false ]; then
+    # Detect target project ID safely
+    TARGET_PROJECT=$(firebase use 2>/dev/null | tr -d '\n\r ')
+    PREV_ARG=""
+    for arg in "$@"; do
+        if [ "$PREV_ARG" = "--project" ]; then
+            TARGET_PROJECT="$arg"
+        fi
+        PREV_ARG="$arg"
+    done
+
+    if [ -n "$TARGET_PROJECT" ]; then
+        echo "Ensuring required AI & Firebase APIs (including Firebase AI Logic) are enabled on $TARGET_PROJECT..."
+        gcloud services enable \
+            firebasevertexai.googleapis.com \
+            generativelanguage.googleapis.com \
+            aiplatform.googleapis.com \
+            firebaseappcheck.googleapis.com \
+            firebaseml.googleapis.com \
+            recaptchaenterprise.googleapis.com \
+            --project="$TARGET_PROJECT" --quiet 2>/dev/null || true
+
+        # Ensure App Check service policy permits Firebase AI Logic requests (unenforced until SDK #10018 WebSocket token transport is supported)
+        echo "Configuring App Check policy for Firebase AI Logic on $TARGET_PROJECT..."
+        firebase experiments:enable appcheckadmin || true
+        firebase appcheck:services:set ailogic unenforced --project="$TARGET_PROJECT" --force || true
+    fi
+
     echo "Deploying Storage and Firestore rules..."
     FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --only storage,firestore --force || true
+    if [ -n "$TARGET_PROJECT" ]; then
+        echo "Ensuring Storage bucket CORS rules are active on $TARGET_PROJECT..."
+        gcloud storage buckets update "gs://${TARGET_PROJECT}.firebasestorage.app" --cors-file=cors.json --quiet 2>/dev/null || true
+    fi
 
     # Initialize function upload bucket safely to prevent Day 0 parallel race conditions
     echo "Ensuring function upload environment is ready..."

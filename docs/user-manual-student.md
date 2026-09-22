@@ -239,6 +239,7 @@ To confirm that students are actively attending lectures and not running automat
                          ▼
   ╔════════════════════════════════════════════════╗
   ║  🎯 Presence Verification Challenge            ║
+  ║  🏷️ [DevOps & CI/CD] (Issuing Class Badge)    ║
   ║  ⏱️ 45 Seconds Remaining [██████████░░]        ║
   ║                                                ║
   ║  Question: What port is standard for HTTPS?    ║
@@ -252,16 +253,22 @@ To confirm that students are actively attending lectures and not running automat
 ```
 
 ### How to Respond
-1. When a challenge is triggered, an **audio chime sounds** and a desktop notification appears.
-2. A popup window opens showing a multiple-choice question and an animated **60-second countdown timer**.
-3. Read the question, select your answer (A, B, C, or D), and click **`✓ Submit Answer`**.
-4. The dialog closes and your attendance presence is verified.
+1. When a challenge is triggered, an **audio chime sounds** and a desktop or mobile notification appears.
+2. **Desktop View vs Mobile View:**
+   - **On Desktop:** Appears as a high-contrast centered modal dialog.
+   - **On Mobile Devices / Student Companion View (`StudentMobileView`):**
+     - **Portrait Orientation:** Appears as a centered modal dialog with thumb-friendly answer cards and safe perimeter margins (`max-width: min(92vw, 420px)`).
+     - **Horizontal / Landscape Orientation:** Automatically expands across the screen (`width: min(98vw, 960px)`) into a side-by-side 2-column layout. The left column gives full unclipped visibility and touch-scrolling to the question text at high contrast (`1rem`, `font-weight: 600`), while the right column displays 4 full-height option buttons (`min-height: 42px`).
+     - **Maximized / Fullscreen Broadcast Screen:** If you are watching the teacher's screen in maximized fullscreen mode, the Bingo challenge automatically surfaces into the Top Layer (and exits fullscreen mode if active) so the challenge is never hidden underneath your screen.
+3. **Multi-Class Support:** If you are enrolled in multiple classes and an instructor from an off-schedule class triggers a check, a class badge pill (e.g. `DevOps & CI/CD`) is displayed in the modal header so you know which course issued it.
+4. Read the question, tap or click your chosen answer card (A, B, C, or D), and the answer is submitted immediately.
+5. The dialog confirms your presence and closes automatically.
 
 ### How Deductions Work (Two-Strike Grace Policy)
 - **What if I get the question wrong?**
   - Answering incorrectly verifies that you are physically sitting at your computer and trying. **Your attendance is NOT docked for wrong answers.**
 - **What if I miss the countdown (AFK)?**
-  - **Strike 1 (Warning):** If you fail to respond before the 60-second timer expires, the system schedules a **grace retry in 1–5 minutes**.
+  - **Strike 1 (Warning):** If you fail to respond before the 45-second timer expires, the system schedules a **grace retry in 1–5 minutes**.
   - **Strike 2 (Deduction):** If you also miss the grace retry, the system logs consecutive non-presence and voids elapsed unverified attendance minutes between the checks (recorded as code `2` / orange stripes in your attendance matrix).
 
 ### 🎯 Bingo Challenge Response & Attendance State Machine

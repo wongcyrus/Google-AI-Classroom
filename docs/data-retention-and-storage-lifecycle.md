@@ -176,5 +176,26 @@ gcloud firestore fields ttls update expireAt --collection-group=zipJobs --enable
 
 ---
 
+## 🎥 6. Teacher Lecture Recording & Telemetry Deletion Lifecycle
+
+Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) and telemetry follow rigorous deletion lifecycle policies:
+- **Clean Video, Pure Audio & Multi-CC Artifacts**: Stored at `recordings/{classId}/{sessionId}/` containing:
+  - `lecture.webm` (composite screen + mic recording).
+  - `lecture_audio.webm` (pure Opus audio track used for low-bandwidth Gemini speech transcription).
+  - `subtitles_*.vtt` and `subtitles_*.srt` (multilingual subtitle tracks).
+- **Teacher Sovereign Discard & On-Demand Deletion**:
+  - Teachers can delete any lecture recording directly from the **Lecture Recordings View** via the **"🗑️ Delete Recording"** button.
+  - Deleting the `classes/{classId}/lectureRecordings/{sessionId}` Firestore document fires the `onLectureRecordingDeleted` Cloud Storage trigger, which automatically purges all files under `recordings/{classId}/{sessionId}/` from Google Cloud Storage (`force: true`).
+  - Quota is decremented immediately in `classes/{classId}/metadata/storage` via `updateStorageUsageOnDelete`.
+- **Date Range Purge (Images & Voices)**:
+  - From the **Data Management View**, teachers can trigger **"Delete Session Data (Images & Audio) in Range"**.
+  - Calls `deleteScreenshotsByDateRange`, which queries both `screenshots` and `audio` collections across the given time window, deletes the underlying Cloud Storage blobs, and purges the Firestore documents in batches.
+- **Cascading Removal on Class Deletion**:
+  - When an entire class is deleted via `onClassDocDeleted`, Cloud Storage prefixes (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`) are automatically wiped.
+  - Subcollections including `lectureRecordings`, `screenBroadcast`, and `liveSubtitles` are completely purged from Firestore.
+
+---
+
 [← Back to Documentation Index](../README.md#documentation-index)
+
 

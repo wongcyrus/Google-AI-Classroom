@@ -417,7 +417,14 @@ flowchart TD
   - Interval Dropdown (`Full Session`, `5m`, `10m`, `15m`, `30m`).
   - Session Audio Summary Prompt picker.
 
-### Section 8: Security & Danger Zone
+### Section 8: Live Subtitles, Translation & Subject Domain
+- **Course Subject / Discipline Domain Selector:** Selects course discipline (`Computer Science & Software Development`, `Business, Finance & Accounting`, `Design, Media & Visual Arts`, `Healthcare, Nursing & Medical Sciences`, `Engineering & Construction`, `Hospitality, Culinary & Tourism`, `Languages, Humanities & Social Sciences`, `General Studies & Interdisciplinary`, or `Custom Subject Domain...`).
+- **Custom Discipline Input:** Freeform text input shown when `Custom Subject Domain...` is selected.
+- **`Select Subtitle Translation Prompt` Button:** Opens the Audio Prompt Selector filtered to `Live Subtitles & Translation` prompts.
+- **Prompt Preview Box:** Shows prompt title, custom badge, and snippet preview.
+- **`Remove / Reset Prompt` Button:** Clears custom translation prompt and returns to default discipline rules.
+
+### Section 9: Security & Danger Zone
 - **Authorized IP Subnets Textarea:** Restricts student session access to campus lab IP ranges (CIDR notation).
 - **`💾 Save Class Settings` Button:** Persists configuration to Firestore.
 - **`🗑️ Delete This Class` Button (Danger Zone):** Permanently deletes class configuration and rosters with confirmation dialog.
@@ -428,11 +435,14 @@ flowchart TD
 **Primary Sources:** [`BingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoModal.jsx), [`BingoQuestionBankModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoQuestionBankModal.jsx)
 
 ### Student Active Challenge Modal (`BingoModal.jsx`)
-- **60-Second Circular Countdown Timer:** Visual urgency indicator.
-- **Randomized Multiple Choice Question Box:** Renders active question from bank.
-- **Answer Selection Radio Buttons (A, B, C, D):** Option selectors.
-- **Submit Answer Button (`✓ Submit Answer`):** Validates response, captures an unannounced screen snapshot (`student_screen`), and submits record.
-- **Auto-Forfeit Handler:** Deducts attendance minutes if countdown expires without acknowledgment.
+- **Responsive Mobile Bottom Sheet (`.is-mobile` & `width <= 768px`):** On mobile devices and in `StudentMobileView`, transforms into an ergonomic bottom sheet anchoring to the screen's bottom with rounded top corners (`border-radius: 1.25rem 1.25rem 0 0;`), a centered drag indicator handle (`.bingo-drag-handle`), and safe-area inset spacing. Capped at `82vh` with momentum scrolling and compact vertical sizing (~360px vs desktop ~580px) to prevent obscuring the live broadcast.
+- **45-Second Animated Countdown Timer Bar:** Visual urgency indicator spanning 45 seconds (or configured limit); transitions to an urgent pulsing red state (`#E74C3C`) when fewer than 10 seconds remain. Slim 4px height on mobile.
+- **Issuing Class Badge Pill (`.bingo-class-pill`):** A high-visibility pill rendered in the modal header indicating the issuing class name (e.g. `DevOps & CI/CD` or `Data Centre Technologies`), ensuring students enrolled in multiple classes immediately know which instructor issued the check.
+- **Adaptive High-Contrast Question Box (`#0f172a` on `#f8fafc`):** High-contrast dark typography guaranteed through scoped `#0f172a !important` CSS and adaptive inline style sizing (`0.95rem` / 10px padding on mobile, `1.15rem` / 20px padding on desktop), eliminating white-on-white text issues and oversized layout bloat.
+- **Randomized Multiple Choice Question Box:** Renders active question from bank with 4 high-contrast touch/click option cards ($A, B, C, D$) with `scale(0.985)` touch active feedback.
+- **Answer Selection Buttons (A, B, C, D):** Immediate response handlers that calculate `responseTimeSec` and assess `document.hasFocus()` to log OS-level focus.
+- **Universal Multi-Class Submission:** Resolves and submits answers targeting the originating `classId` rather than defaulting to the currently scheduled active class.
+- **Two-Strike Absenteeism Protocol:** Differentiates between physical presence with an incorrect choice (`failed_incorrect`, no deduction) and unacknowledged timeout (`missed_timeout`, schedules Cloud Task retry and triggers minute-by-minute attendance deductions if consecutive).
 
 ### Teacher Bingo Question Bank Studio (`BingoQuestionBankModal.jsx`)
 - **Tab 1: Question List:**
@@ -451,6 +461,38 @@ flowchart TD
 - **Tab 4: Bulk Text / JSON Import:**
   - Textarea supporting Aiken format (`ANSWER: X`) or raw JSON arrays.
   - Syntax parser and import validation button.
+
+### Teacher Classroom Bingo Presence Report (`BingoResultsView.jsx`)
+- **First-Class Dedicated Report Placement:**
+  - **AI Analytics Report:** Dedicated `🎲 Bingo Presence Report` sub-tab under `AI Analytics & Insights` (`?tab=analytics&sub=bingo`) in [`ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx).
+  - **De-cluttered Controls Panel:** The floating monitor controls panel focuses purely on dispatching checks (`🎯 Call Bingo (All Students)`, instant abort `⏹️ Cancel`, and Strike 2 Delay), leaving analytics reporting to dedicated views to prevent button clutter.
+  - **Fail-Safe Session Lifecycle & Auto-Stop:** Auto-Bingo is strictly gated on active class capture and live teacher screen broadcasting (`isBroadcasting === true`). When capture ceases or screen share stops, automated jobs immediately skip. Toggling Auto-Bingo off or stopping capture immediately invokes `cancelActiveBingo`, dismissing modals across student screens and aborting pending Strike 2 retries.
+  - **Attendance Matrix Cross-Link:** In [`AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx), the legend links directly to `🎲 View Bingo Presence Report →`.
+- **Lesson Schedule Filter Integration:**
+  - Dynamic time-window scoping based on the selected lesson (with 15-minute grace padding before start and after end).
+  - **Lesson Scope Banner:** Prominently details active lesson period, number of responses in scope, and total historical challenges.
+  - **Interactive Quick-Switch Dropdown:** Allows instantly toggling between schedule lessons or reverting to "All Lessons (All History)".
+  - **Empty-Lesson Card:** Shows a dedicated empty state when a selected lesson has no challenges, with a 1-click button to reset the filter.
+- **Real-Time Live Sync Indicator:** Displays a pulsing green dot (`LIVE SYNC`) indicating active Firestore collection subscription on `classes/{classId}/bingoRecords`.
+- **Top Aggregate KPI Cards:**
+  - `Total Challenged`: Total verification requests issued within the active lesson scope.
+  - `Verified Present`: Percentage of students responding within the 45-second countdown.
+  - `Incorrect Choice`: Percentage of students answering incorrectly (presence confirmed; no strike).
+  - `Timed Out / AFK`: Percentage who failed to answer (triggering strike progression).
+  - `Avg Latency`: Mean reaction time from dispatch to student response submission.
+  - `OS Window Focus`: Proportion of students with the exam/classroom tab in foreground focus when submitting.
+- **Challenge Round Selector Bar:** Groups records by timestamp and question; allows filtering to a specific question round or viewing all rounds within the lesson scope.
+- **Question & Correct Answer Inspection Showcase:**
+  - Displays original question text and source badge (`Question Bank`, `Instructor Screen`, or `Student Screen`).
+  - Highlights all 4 options with the designated correct answer emphasized in emerald green with a bold `✓ Correct Answer` badge.
+  - Vision screenshot thumbnail preview with one-click full-resolution lightbox modal and AI reasoning text.
+- **Detailed Student Response Table:**
+  - Student identity columns (`Email` and `UID`).
+  - Chosen answer badge showing option letter ($A, B, C, D$) and selected option text, or `⏱️ No answer (Countdown expired)` in red italic.
+  - Status badges (`✅ Verified Present`, `❌ Incorrect Choice`, `⚠️ Timed Out`, `⏳ Pending`).
+  - Student latency, OS window focus state, and strike badges (`Strike 1`, `🚨 Strike 2 (Deduction)`).
+- **Interactive Search & Filter Toolbar:** Real-time search query matching email/UID and status filter tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
+- **CSV Data Exporter:** One-click export to CSV spreadsheet formatted according to RFC 4180 standards for offline auditing and reporting.
 
 ---
 
@@ -502,11 +544,22 @@ flowchart TD
 **Primary Source:** [`VideoAnalysisJobs.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoAnalysisJobs.jsx)
 
 ### Jobs Management
-- **Jobs Table:** Displays Job ID, Requester, Creation Time, Target Videos count, and Status (`pending`, `processing`, `completed`, `failed`).
-- **Level 2 Detail Navigation (View Transitions API):** Clicking a job smoothly animates into a granular analysis matrix.
-- **`🔄 Retry Failed Video Analyses` Button:** Calls Cloud Function to re-queue timed-out jobs.
+- **Jobs Table:** Displays Job ID, Requester, Creation Time, Target Videos count, and Status (`pending`, `processing`, `completed`, `partial_failure`, `failed`).
+- **Live Progress Indicator:** Displays real-time `Progress: {processedCount} / {totalVideos}` during the `processing` state as Google Cloud Tasks push-workers complete each student video.
+- **Level 2 Detail Navigation (View Transitions API):** Clicking a job smoothly animates into a granular analysis matrix listing every analyzed student subjob.
+- **`🔄 Retry Failed Jobs (N)` Button:** Calls the `retryVideoAnalysisJob` callable Cloud Function to immediately enqueue failed videos back into the `analyzeSingleVideoTask` Cloud Tasks queue, with zero client HTTP timeouts.
 - **`📥 Export Analysis Results` Buttons:** Export full rubric evaluations as `CSV` or `JSON`.
 - **`👁️ View Prompt` Modal:** Displays exact system prompt applied during evaluation.
+
+### Job Result Modal (`JobResultModal.jsx`)
+- **Dynamic Content Header:** Automatically switches between `Analysis Output:` for plain text / markdown evaluation narratives and `Analysis Output (JSON):` for structured JSON findings.
+- **Default Word Wrap (`↩ Wrap: ON` / `➡ Wrap: OFF`):** Enabled by default with `whiteSpace: pre-wrap`, `wordBreak: break-word`, and `overflowWrap: anywhere`, ensuring single-line AI outputs flow cleanly within the viewport without horizontal scrolling. Includes a toolbar toggle to disable wrapping when inspecting strict tabular monospace formatting.
+- **Multi-Format Export Toolbar:**
+  - `📥 CSV`: Exports structured evaluation findings with student email, model, and cost metadata.
+  - `📥 JSON`: Downloads raw JSON output file.
+  - `📝 Markdown`: Downloads findings formatted as a clean Markdown report.
+  - `📄 Text Report`: Plaintext report export.
+  - `📋 Copy`: One-click clipboard copy with temporary `✓ Copied!` confirmation.
 
 ### Task Prompt Synthesis Studio
 - **`✨ Synthesize Task Prompt` Button:** Launches multi-stage prompt generation wizard.
