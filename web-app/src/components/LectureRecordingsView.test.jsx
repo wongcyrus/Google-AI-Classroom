@@ -592,7 +592,7 @@ describe('LectureRecordingsView Component', () => {
       );
     });
 
-    it('toggles Google OAuth Client ID configuration input', async () => {
+    it('disables Google Drive direct cloud upload feature in UI when no client ID key is configured', async () => {
       render(<LectureRecordingsView classId="test_class" />);
 
       const mockDocs = [
@@ -611,15 +611,20 @@ describe('LectureRecordingsView Component', () => {
         snapshotCallback({ docs: mockDocs });
       });
 
-      const configBtn = screen.getByRole('button', { name: /Configure Client ID/i });
-      expect(configBtn).toBeInTheDocument();
+      // Connect button is disabled
+      const connectBtn = screen.getByRole('button', { name: /Connect Google Drive \(Disabled\)/i });
+      expect(connectBtn).toBeInTheDocument();
+      expect(connectBtn).toBeDisabled();
 
-      // Click to open configuration box
-      await act(async () => {
-        fireEvent.click(configBtn);
-      });
+      // Cloud upload button is disabled
+      const uploadBtn = screen.getByRole('button', { name: /Cloud Upload Disabled/i });
+      expect(uploadBtn).toBeInTheDocument();
+      expect(uploadBtn).toBeDisabled();
 
-      expect(screen.getByPlaceholderText(/123456789-abcdef\.apps\.googleusercontent\.com/i)).toBeInTheDocument();
+      // Ensure no developer client ID input or configure button is present in the UI
+      expect(screen.queryByRole('button', { name: /Configure Client ID/i })).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/123456789-abcdef\.apps\.googleusercontent\.com/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Google Drive direct cloud upload is disabled \(not configured for this system\)/i)).toBeInTheDocument();
     });
   });
 });

@@ -43,13 +43,15 @@ describe('useGoogleDrive Hook', () => {
     expect(result.current.accessToken).toBeNull();
   });
 
-  it('updates custom client ID in state and localStorage', () => {
+  it('identifies unconfigured state when no client ID key is present', async () => {
     const { result } = renderHook(() => useGoogleDrive());
-    act(() => {
-      result.current.setCustomClientId('my-client-id.apps.googleusercontent.com');
+    expect(result.current.isConfigured).toBe(false);
+    let success;
+    await act(async () => {
+      success = await result.current.connect();
     });
-    expect(result.current.clientId).toBe('my-client-id.apps.googleusercontent.com');
-    expect(localStorage.getItem('classroom_google_client_id')).toBe('my-client-id.apps.googleusercontent.com');
+    expect(success).toBe(false);
+    expect(result.current.error).toBe('Google Drive cloud integration is not configured.');
   });
 
   it('connects to Google Drive successfully and stores user profile', async () => {

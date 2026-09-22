@@ -55,7 +55,7 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   // Google Drive integration hook & state
   const {
     clientId: gdriveClientId,
-    setCustomClientId: setGdriveClientId,
+    isConfigured: isGdriveConfigured,
     isConnected: isGdriveConnected,
     connectedUser: gdriveUser,
     isConnecting: isGdriveConnecting,
@@ -72,8 +72,6 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   } = useGoogleDrive();
 
   const [manualDriveUrlInput, setManualDriveUrlInput] = useState('');
-  const [isConfiguringClientId, setIsConfiguringClientId] = useState(false);
-  const [customClientIdInput, setCustomClientIdInput] = useState(gdriveClientId || '');
 
   const videoRef = useRef(null);
 
@@ -978,9 +976,13 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                       <span className="badge-pill-drive" style={{ fontSize: '0.82rem', padding: '4px 10px' }}>
                         ✅ Linked to Drive: {selectedRecording.driveFileId}
                       </span>
-                    ) : (
+                    ) : isGdriveConfigured ? (
                       <span className="badge-pill-clip" style={{ fontSize: '0.82rem', padding: '4px 10px' }}>
                         ⏳ Ready for Drive Upload
+                      </span>
+                    ) : (
+                      <span className="badge-pill-clip" style={{ fontSize: '0.82rem', padding: '4px 10px', opacity: 0.65 }}>
+                        🔒 Cloud Upload Disabled
                       </span>
                     )}
                   </div>
@@ -994,57 +996,35 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                           Disconnect
                         </button>
                       </div>
+                    ) : !isGdriveConfigured ? (
+                      <div className="gdrive-connect-prompt">
+                        <span style={{ fontSize: '0.88rem', color: '#718096' }}>
+                          🔒 Google Drive direct cloud upload is disabled (not configured for this system).
+                        </span>
+                        <button
+                          className="btn-connect-drive"
+                          disabled
+                          title="Google Drive integration is not configured"
+                          style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                        >
+                          📁 Connect Google Drive (Disabled)
+                        </button>
+                      </div>
                     ) : (
                       <div className="gdrive-connect-prompt">
                         <span style={{ fontSize: '0.88rem', color: '#4a5568' }}>
                           Connect your personal (@gmail.com) or school Workspace account for direct cloud archiving.
                         </span>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button
-                            className="btn-connect-drive"
-                            onClick={() => connectGdrive()}
-                            disabled={isGdriveConnecting}
-                          >
-                            {isGdriveConnecting ? '⏳ Connecting...' : '📁 Connect Google Drive'}
-                          </button>
-                          <button
-                            className="btn-settings-drive"
-                            onClick={() => setIsConfiguringClientId(!isConfiguringClientId)}
-                            title="Configure Google OAuth 2.0 Web Client ID"
-                          >
-                            ⚙️ {gdriveClientId ? 'OAuth Configured' : 'Configure Client ID'}
-                          </button>
-                        </div>
+                        <button
+                          className="btn-connect-drive"
+                          onClick={() => connectGdrive()}
+                          disabled={isGdriveConnecting}
+                        >
+                          {isGdriveConnecting ? '⏳ Connecting...' : '📁 Connect Google Drive'}
+                        </button>
                       </div>
                     )}
                   </div>
-
-                  {/* Client ID Configuration Accordion */}
-                  {isConfiguringClientId && (
-                    <div className="gdrive-config-box">
-                      <p style={{ margin: '0 0 8px 0', fontSize: '0.82rem', color: '#4a5568' }}>
-                        Google OAuth 2.0 Web Client ID (from Google Cloud Console):
-                      </p>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="text"
-                          className="gdrive-client-id-input"
-                          placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
-                          value={customClientIdInput}
-                          onChange={(e) => setCustomClientIdInput(e.target.value)}
-                        />
-                        <button
-                          className="btn-save-client-id"
-                          onClick={() => {
-                            setGdriveClientId(customClientIdInput);
-                            setIsConfiguringClientId(false);
-                          }}
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Feedback alerts */}
                   {gdriveError && (
@@ -1089,9 +1069,15 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                           <button
                             className="btn-upload-drive"
                             onClick={() => uploadToGdrive({ recording: selectedRecording, classId })}
-                            disabled={!isGdriveConnected || isGdriveUploading}
+                            disabled={!isGdriveConfigured || !isGdriveConnected || isGdriveUploading}
+                            style={!isGdriveConfigured ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            title={!isGdriveConfigured ? 'Google Drive integration is not configured' : undefined}
                           >
-                            {isGdriveConnected ? '☁️ Upload Video to Google Drive' : '🔒 Connect Google Drive to Upload'}
+                            {!isGdriveConfigured
+                              ? '🔒 Cloud Upload Disabled'
+                              : isGdriveConnected
+                              ? '☁️ Upload Video to Google Drive'
+                              : '🔒 Connect Google Drive to Upload'}
                           </button>
 
                           {selectedRecording.driveWebViewLink && (

@@ -11,15 +11,13 @@ import {
 
 const STORAGE_KEY_TOKEN = 'classroom_gdrive_access_token';
 const STORAGE_KEY_USER = 'classroom_gdrive_user';
-const STORAGE_KEY_CLIENT_ID = 'classroom_google_client_id';
 
 export function useGoogleDrive() {
-  const [clientId, setClientIdState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEY_CLIENT_ID) || import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-    }
-    return import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [clientId] = useState(() => {
+    return import.meta.env?.VITE_GOOGLE_CLIENT_ID || '';
   });
+
+  const isConfigured = Boolean(clientId && clientId.trim());
 
   const [accessToken, setAccessToken] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -50,22 +48,13 @@ export function useGoogleDrive() {
 
   const isConnected = Boolean(accessToken && connectedUser);
 
-  const setCustomClientId = useCallback((newId) => {
-    const trimmed = (newId || '').trim();
-    setClientIdState(trimmed);
-    if (typeof window !== 'undefined') {
-      if (trimmed) {
-        localStorage.setItem(STORAGE_KEY_CLIENT_ID, trimmed);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_CLIENT_ID);
-      }
-    }
-  }, []);
+  // Deprecated no-op retained for backwards compatibility with tests
+  const setCustomClientId = useCallback(() => {}, []);
 
   const connect = useCallback(async (customId) => {
     const targetClientId = (customId || clientId || '').trim();
     if (!targetClientId) {
-      setError('Please provide a Google OAuth 2.0 Web Client ID to connect Google Drive.');
+      setError('Google Drive cloud integration is not configured.');
       return false;
     }
 
@@ -234,6 +223,7 @@ export function useGoogleDrive() {
 
   return {
     clientId,
+    isConfigured,
     setCustomClientId,
     isConnected,
     connectedUser,
