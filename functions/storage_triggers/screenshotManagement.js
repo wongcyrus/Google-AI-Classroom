@@ -9,6 +9,10 @@ import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
 const db = getFirestore();
 const storage = getStorage();
 
+/**
+ * Deletes screenshots and audio recordings for a class within a specified date range.
+ * Purges both physical Cloud Storage blobs and Firestore documents.
+ */
 export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION, cors: CORS_ORIGINS, memory: '512MiB' }, async (request) => {
   if (!request.auth) {
     throw new HttpsError(
@@ -32,69 +36,98 @@ export const deleteScreenshotsByDateRange = onCall({ region: FUNCTION_REGION, co
   const start = fromZonedTime(startDate, tz);
   const end = fromZonedTime(endDate, tz);
 
-  console.log(`Querying for screenshots in class ${classId} between ${start.toISOString()} and ${end.toISOString()}`);
+  console.log(`Querying for telemetry assets (screenshots & audio) in class ${classId} between ${start.toISOString()} and ${end.toISOString()}`);
 
-  const screenshotsQuery = db
-    .collection('screenshots')
-    .where('classId', '==', classId)
-    .where('timestamp', '>=', start)
-    .where('timestamp', '<=', end)
-    .where('deleted', '==', false);
+  const bucket = storage.bucket();
+  const BATCH_SIZE = 450;
+  let totalScreenshots = 0;
+  let totalAudio = 0;
 
   try {
-    const stream = screenshotsQuery.stream();
-    const promises = [];
-    let batch = db.batch();
-    let count = 0;
-    let totalCount = 0;
+    // 1. Process Screenshots
+    const screenshotsSnap = await db
+      .collection('screenshots')
+      .where('classId', '==', classId)
+      .where('timestamp', '>=', start)
+      .where('timestamp', '<=', end)
+      .get();
 
-    return new Promise((resolve, reject) => {
-        stream.on('data', (doc) => {
-            totalCount++;
-            const screenshotData = doc.data();
-            if (screenshotData.imagePath) {
-                const imageRef = storage.bucket().file(screenshotData.imagePath);
-                promises.push(imageRef.delete().catch(err => console.error(`Failed to delete ${screenshotData.imagePath}:`, err)));
-            }
-            batch.update(doc.ref, { imagePath: null, deleted: true });
-            count++;
+    if (!screenshotsSnap.empty) {
+      let batch = db.batch();
+      let count = 0;
+      for (const docSnap of screenshotsSnap.docs) {
+        totalScreenshots++;
+        const data = docSnap.data();
+        const imagePath = data.imagePath || data.storagePath;
+        if (imagePath) {
+          bucket.file(imagePath).delete({ ignoreNotFound: true }).catch((err) => {
+            console.warn(`Could not delete storage file ${imagePath}:`, err);
+          });
+        }
+        batch.delete(docSnap.ref);
+        count++;
 
-            if (count === 499) {
-                promises.push(batch.commit());
-                batch = db.batch();
-                count = 0;
-            }
-        });
+        if (count >= BATCH_SIZE) {
+          await batch.commit();
+          batch = db.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) {
+        await batch.commit();
+      }
+    }
 
-        stream.on('end', async () => {
-            if (count > 0) {
-                promises.push(batch.commit());
-            }
+    // 2. Process Audio Recordings
+    const audioSnap = await db
+      .collection('audio')
+      .where('classId', '==', classId)
+      .where('timestamp', '>=', start)
+      .where('timestamp', '<=', end)
+      .get();
 
-            try {
-                await Promise.all(promises);
-                if (totalCount === 0) {
-                    resolve({ status: 'success', message: 'No screenshots found in the specified range.' });
-                } else {
-                    resolve({ status: 'success', message: `Successfully deleted ${totalCount} screenshots.` });
-                }
-            } catch (error) {
-                console.error('Error in stream end:', error);
-                reject(new HttpsError('internal', 'An error occurred during the final batch commit.'));
-            }
-        });
+    if (!audioSnap.empty) {
+      let batch = db.batch();
+      let count = 0;
+      for (const docSnap of audioSnap.docs) {
+        totalAudio++;
+        const data = docSnap.data();
+        const audioPath = data.audioPath || data.storagePath;
+        if (audioPath) {
+          bucket.file(audioPath).delete({ ignoreNotFound: true }).catch((err) => {
+            console.warn(`Could not delete storage file ${audioPath}:`, err);
+          });
+        }
+        batch.delete(docSnap.ref);
+        count++;
 
-        stream.on('error', (err) => {
-            console.error('Error reading screenshots stream:', err);
-            reject(new HttpsError('internal', 'An error occurred while reading screenshots.'));
-        });
-    });
+        if (count >= BATCH_SIZE) {
+          await batch.commit();
+          batch = db.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) {
+        await batch.commit();
+      }
+    }
 
+    const totalPurged = totalScreenshots + totalAudio;
+    if (totalPurged === 0) {
+      return { status: 'success', message: 'No screenshots or audio recordings found in the specified date range.' };
+    }
+
+    return {
+      status: 'success',
+      message: `Successfully deleted ${totalScreenshots} screenshots and ${totalAudio} audio recordings.`,
+      screenshotsCount: totalScreenshots,
+      audioCount: totalAudio,
+    };
   } catch (error) {
-    console.error('Error deleting screenshots:', error);
+    console.error('Error deleting telemetry by date range:', error);
     throw new HttpsError(
       'internal',
-      'An error occurred while deleting screenshots.'
+      `An error occurred while deleting telemetry: ${error.message}`
     );
   }
 });

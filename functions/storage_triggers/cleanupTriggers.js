@@ -107,11 +107,34 @@ export const onAudioDocDeleted = onDocumentDeleted({
 });
 
 /**
+ * Triggered whenever a teacher lecture recording document is deleted in Firestore.
+ * Automatically deletes all physical video, audio, and subtitle files (.vtt, .srt)
+ * under recordings/{classId}/{sessionId}/ in Cloud Storage.
+ */
+export const onLectureRecordingDeleted = onDocumentDeleted({
+  document: 'classes/{classId}/lectureRecordings/{sessionId}',
+  region: FUNCTION_REGION,
+}, async (event) => {
+  const { classId, sessionId } = event.params;
+  if (!classId || !sessionId) return;
+
+  const prefix = `recordings/${classId}/${sessionId}/`;
+  try {
+    logger.info(`Deleting physical Storage assets for lecture recording under: ${prefix}`);
+    const bucket = storage.bucket();
+    await bucket.deleteFiles({ prefix, force: true });
+    logger.info(`Successfully purged Storage assets for lecture recording prefix: ${prefix}`);
+  } catch (error) {
+    logger.error(`Error deleting storage files for lecture recording prefix ${prefix}:`, error);
+  }
+});
+
+/**
  * Triggered whenever an entire class document is deleted in Firestore.
  * Performs a comprehensive cascade delete:
- * 1. Purges all physical Cloud Storage files under screenshots/, videos/, zips/, and audio/.
+ * 1. Purges all physical Cloud Storage files under screenshots/, videos/, zips/, audio/, and recordings/.
  * 2. Purges all Firestore documents matching classId (screenshots, audio, videoJobs, zipJobs, irregularities, progress, etc.).
- * 3. Deletes subcollections (metadata/storage).
+ * 3. Deletes subcollections (metadata/storage, lectureRecordings, screenBroadcast, liveSubtitles).
  * 4. Unlinks the class from teacherProfiles and studentProfiles.
  */
 export const onClassDocDeleted = onDocumentDeleted({
@@ -129,7 +152,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     `screenshots/${classId}/`,
     `videos/${classId}/`,
     `zips/${classId}/`,
-    `audio/${classId}/`
+    `audio/${classId}/`,
+    `recordings/${classId}/`
   ];
 
   for (const prefix of prefixes) {
@@ -167,6 +191,31 @@ export const onClassDocDeleted = onDocumentDeleted({
     await db.doc(`classes/${classId}/metadata/storage`).delete();
   } catch (err) {
     logger.warn(`Could not delete storage metadata for class ${classId}:`, err);
+  }
+
+  try {
+    const lectureSnap = await db.collection(`classes/${classId}/lectureRecordings`).get();
+    if (!lectureSnap.empty) {
+      const batch = db.batch();
+      lectureSnap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      logger.info(`Purged ${lectureSnap.size} lecture recording docs for class ${classId}.`);
+    }
+  } catch (err) {
+    logger.warn(`Could not delete lectureRecordings subcollection for class ${classId}:`, err);
+  }
+
+  try {
+    const ephemeralPaths = [
+      `classes/${classId}/screenBroadcast/session`,
+      `classes/${classId}/screenBroadcast/liveFrame`,
+      `classes/${classId}/liveSubtitles/current`,
+    ];
+    const ephemBatch = db.batch();
+    ephemeralPaths.forEach((p) => ephemBatch.delete(db.doc(p)));
+    await ephemBatch.commit();
+  } catch (err) {
+    logger.warn(`Could not delete ephemeral docs for class ${classId}:`, err);
   }
 
   // 4. Unlink class from teacher & student profiles

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockDoc, mockCollection, mockDb } = vi.hoisted(() => {
+const { mockDoc, mockCollection, mockDb, mockGetUser } = vi.hoisted(() => {
   const mockDoc = {
     get: vi.fn(),
     set: vi.fn().mockResolvedValue(true),
@@ -19,9 +19,12 @@ const { mockDoc, mockCollection, mockDb } = vi.hoisted(() => {
 
   const mockDb = {
     collection: vi.fn(() => mockCollection),
+    doc: vi.fn(() => mockDoc),
   };
 
-  return { mockDoc, mockCollection, mockDb };
+  const mockGetUser = vi.fn().mockResolvedValue({ email: 'student1@stu.vtc.edu.hk' });
+
+  return { mockDoc, mockCollection, mockDb, mockGetUser };
 });
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -32,7 +35,9 @@ vi.mock('firebase-admin/firestore', () => ({
 }));
 
 vi.mock('firebase-admin/auth', () => ({
-  getAuth: vi.fn(() => ({})),
+  getAuth: vi.fn(() => ({
+    getUser: mockGetUser,
+  })),
 }));
 
 vi.mock('firebase-functions/v2/scheduler', () => ({
@@ -52,12 +57,17 @@ import {
   handleAutomaticVideoCombination,
   handleAutomaticBingo,
   isClassSessionActive,
+  syncGeminiPricing,
 } from './scheduledTasks.js';
 
 describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_tasks/scheduledTasks.js)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCollection.where.mockReturnValue(mockCollection);
+    mockDoc.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ isBroadcasting: true }),
+    });
   });
 
   describe('handleAutomaticCapture trigger execution', () => {
@@ -111,6 +121,117 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       await handleAutomaticVideoCombination();
       expect(mockCollection.add).not.toHaveBeenCalled();
+    });
+
+    it('creates videoJobs for students and notifies teachers when lesson slot ended within 30 minutes', async () => {
+      const fixedTime = new Date('2026-09-14T10:15:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      const classDoc = {
+        id: 'class_auto_video',
+        data: () => ({
+          automaticCombine: true,
+          students: { 'student-uid-1': 'student1@stu.vtc.edu.hk' },
+          teachers: { 'teacher-uid-1': 'teacher1@vtc.edu.hk' },
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [
+              { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
+            ],
+          },
+        }),
+      };
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [classDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: true,
+          docs: [],
+        });
+
+      await handleAutomaticVideoCombination();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'class_auto_video',
+          studentUid: 'student-uid-1',
+          studentEmail: 'student1@stu.vtc.edu.hk',
+          status: 'pending',
+          isExam: false,
+        })
+      );
+      expect(mockCollection.add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'teacher-uid-1',
+          type: 'info',
+        })
+      );
+
+      vi.useRealTimers();
+    });
+
+    it('skips class if schedule or student list is incomplete', async () => {
+      const classDocIncomplete = {
+        id: 'class_incomplete',
+        data: () => ({
+          automaticCombine: true,
+          students: {},
+          schedule: null,
+        }),
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        size: 1,
+        docs: [classDocIncomplete],
+      });
+
+      await handleAutomaticVideoCombination();
+      expect(mockDoc.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncGeminiPricing Scheduled Function', () => {
+    it('syncs baseline pricing to system_config/pricing when no API key is provided', async () => {
+      delete process.env.GOOGLE_CLOUD_API_KEY;
+      delete process.env.GEMINI_API_KEY;
+
+      await syncGeminiPricing();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'gemini-3.5-flash-lite': expect.any(Object),
+          'gemini-3.7-flash': expect.any(Object),
+          source: 'catalog_sync_or_baseline',
+        }),
+        { merge: true }
+      );
+    });
+
+    it('queries billing catalog API if API key is present and updates pricingData', async () => {
+      process.env.GOOGLE_CLOUD_API_KEY = 'test-api-key';
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ skus: [{ name: 'sku1' }, { name: 'sku2' }] }),
+      });
+
+      await syncGeminiPricing();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'cloud_billing_catalog_api',
+        }),
+        { merge: true }
+      );
+
+      global.fetch = originalFetch;
+      delete process.env.GOOGLE_CLOUD_API_KEY;
     });
   });
 
@@ -232,7 +353,6 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           isCapturing: true,
           autoBingoIntervalMinutes: 20,
           autoBingoMode: 'question_bank',
-          autoBingoJitterMinutes: 3,
           lastAutoBingoAt: { toMillis: () => pastMillis },
         })),
         ref: { update: vi.fn().mockResolvedValue(true) },
@@ -250,7 +370,6 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
         expect.objectContaining({
           classId: 'class_it101',
           mode: 'question_bank',
-          jitterMinutes: 3,
           status: 'pending',
         })
       );
@@ -285,6 +404,35 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       expect(mockClassDoc.ref.update).not.toHaveBeenCalled();
     });
 
+    it('creates a bingoJob and updates lastAutoBingoAt when minimum 5-minute interval has elapsed', async () => {
+      const pastMillis = Date.now() - (305 * 1000); // 305 seconds ago (> 5 mins)
+      const mockClassDoc = {
+        id: 'class_fast_test',
+        data: vi.fn(() => ({
+          autoBingoEnabled: true,
+          isCapturing: true,
+          autoBingoIntervalMinutes: 5,
+          autoBingoMode: 'question_bank',
+          lastAutoBingoAt: { toMillis: () => pastMillis },
+        })),
+        ref: { update: vi.fn().mockResolvedValue(true) },
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        docs: [mockClassDoc],
+      });
+
+      await handleAutomaticBingo();
+
+      expect(mockDb.collection).toHaveBeenCalledWith('bingoJobs');
+      expect(mockClassDoc.ref.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lastAutoBingoAt: 'SERVER_TIMESTAMP',
+        })
+      );
+    });
+
     it('skips class when session has ended (evaluated across 3 cases)', async () => {
       // Past slot has ended
       const mockClassDoc = {
@@ -308,18 +456,18 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       expect(mockClassDoc.ref.update).not.toHaveBeenCalled();
     });
 
-    it('dispatches for Case 3 (scheduled session without capture, question_bank mode)', async () => {
+    it('dispatches auto-bingo for scheduled lecture class when screen is broadcasting even without student webcam capture', async () => {
       const fixedTime = new Date('2026-09-14T09:30:00Z'); // Monday 09:30 UTC
       vi.useFakeTimers();
       vi.setSystemTime(fixedTime);
 
       const pastMillis = fixedTime.getTime() - (25 * 60 * 1000);
       const mockClassDoc = {
-        id: 'class_case3',
+        id: 'class_lecture',
         data: vi.fn(() => ({
           autoBingoEnabled: true,
-          isCapturing: false, // Not capturing, but schedule is active
-          autoBingoMode: 'question_bank',
+          isCapturing: false, // Lecture class: teacher does not monitor student webcams
+          autoBingoMode: 'teacher_screen',
           autoBingoIntervalMinutes: 20,
           schedule: {
             timeZone: 'UTC',
@@ -329,6 +477,126 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
               { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
             ],
           },
+          lastAutoBingoAt: { toMillis: () => pastMillis },
+        })),
+        ref: { update: vi.fn().mockResolvedValue(true) },
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        docs: [mockClassDoc],
+      });
+
+      // Teacher is broadcasting screen
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ isBroadcasting: true }),
+      });
+
+      await handleAutomaticBingo();
+
+      expect(mockDb.collection).toHaveBeenCalledWith('bingoJobs');
+      expect(mockClassDoc.ref.update).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('skips auto-bingo when scheduled class has ended (outside time slot)', async () => {
+      const fixedTime = new Date('2026-09-14T10:15:00Z'); // Monday 10:15 UTC (past 10:00 end)
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      const pastMillis = fixedTime.getTime() - (25 * 60 * 1000);
+      const mockClassDoc = {
+        id: 'class_ended',
+        data: vi.fn(() => ({
+          autoBingoEnabled: true,
+          isCapturing: false,
+          autoBingoMode: 'teacher_screen',
+          autoBingoIntervalMinutes: 20,
+          schedule: {
+            timeZone: 'UTC',
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeSlots: [
+              { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
+            ],
+          },
+          lastAutoBingoAt: { toMillis: () => pastMillis },
+        })),
+        ref: { update: vi.fn().mockResolvedValue(true) },
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        docs: [mockClassDoc],
+      });
+
+      await handleAutomaticBingo();
+
+      expect(mockDb.collection).not.toHaveBeenCalledWith('bingoJobs');
+      expect(mockClassDoc.ref.update).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('skips auto-bingo when screen is not broadcasting', async () => {
+      const fixedTime = new Date('2026-09-14T09:30:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      // Screen broadcast is inactive / not sharing
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ isBroadcasting: false }),
+      });
+
+      const pastMillis = fixedTime.getTime() - (25 * 60 * 1000);
+      const mockClassDoc = {
+        id: 'class_screen_idle',
+        data: vi.fn(() => ({
+          autoBingoEnabled: true,
+          isCapturing: true,
+          captureStartedAt: { toMillis: () => pastMillis },
+          autoBingoMode: 'teacher_screen',
+          autoBingoIntervalMinutes: 20,
+          lastAutoBingoAt: { toMillis: () => pastMillis },
+        })),
+        ref: { update: vi.fn().mockResolvedValue(true) },
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        docs: [mockClassDoc],
+      });
+
+      await handleAutomaticBingo();
+
+      expect(mockDb.collection).not.toHaveBeenCalledWith('bingoJobs');
+      expect(mockClassDoc.ref.update).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('dispatches when isCapturing is true and screen is actively broadcasting', async () => {
+      const fixedTime = new Date('2026-09-14T09:30:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ isBroadcasting: true }),
+      });
+
+      const pastMillis = fixedTime.getTime() - (25 * 60 * 1000);
+      const mockClassDoc = {
+        id: 'class_active',
+        data: vi.fn(() => ({
+          autoBingoEnabled: true,
+          isCapturing: true,
+          captureStartedAt: { toMillis: () => pastMillis },
+          autoBingoMode: 'teacher_screen',
+          autoBingoIntervalMinutes: 20,
           lastAutoBingoAt: { toMillis: () => pastMillis },
         })),
         ref: { update: vi.fn().mockResolvedValue(true) },
@@ -352,7 +620,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     });
   });
 
-  describe('isClassSessionActive helper (3 session lifecycle cases)', () => {
+  describe('isClassSessionActive helper (capturing and schedule enforcement)', () => {
     const fixedMonday = new Date('2026-09-14T09:30:00Z'); // Monday 09:30 UTC
 
     it('Case 1: Scheduled class with active capture is active during slot, inactive after slot ends', () => {
@@ -401,8 +669,8 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       expect(isClassSessionActive(classDataStale, fixedMonday)).toBe(false);
     });
 
-    it('Case 3: Scheduled class without capture is active during slot if question_bank mode, inactive after slot', () => {
-      const classDataNoCaptureQB = {
+    it('Scheduled class is active during scheduled slot even if isCapturing is not set or false', () => {
+      const classDataNoCapture = {
         isCapturing: false,
         autoBingoMode: 'question_bank',
         schedule: {
@@ -415,19 +683,12 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
         },
       };
 
-      // During slot -> active
-      expect(isClassSessionActive(classDataNoCaptureQB, fixedMonday)).toBe(true);
+      // During scheduled slot, active regardless of isCapturing
+      expect(isClassSessionActive(classDataNoCapture, fixedMonday)).toBe(true);
 
-      // After slot ends (10:05 UTC) -> stops
-      const afterSlot = new Date('2026-09-14T10:05:00Z');
-      expect(isClassSessionActive(classDataNoCaptureQB, afterSlot)).toBe(false);
-
-      // If mode requires screen capture (teacher_screen), must be false when isCapturing is false
-      const classDataNoCaptureScreen = {
-        ...classDataNoCaptureQB,
-        autoBingoMode: 'teacher_screen',
-      };
-      expect(isClassSessionActive(classDataNoCaptureScreen, fixedMonday)).toBe(false);
+      // Outside scheduled slot, inactive
+      const afterSlot = new Date('2026-09-14T10:15:00Z');
+      expect(isClassSessionActive(classDataNoCapture, afterSlot)).toBe(false);
     });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage } = vi.hoisted(() => {
+const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage, mockBatch } = vi.hoisted(() => {
   const mockDoc = {
     get: vi.fn(),
     set: vi.fn(),
@@ -9,20 +9,24 @@ const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage } = vi.hoisted(
     ref: {},
   };
 
+  const mockBatch = {
+    delete: vi.fn(),
+    update: vi.fn(),
+    commit: vi.fn().mockResolvedValue(true),
+  };
+
   const mockCollection = {
     doc: vi.fn(() => mockDoc),
     where: vi.fn(),
     limit: vi.fn(),
+    startAfter: vi.fn(),
     get: vi.fn(),
   };
 
   const mockDb = {
     collection: vi.fn(() => mockCollection),
-    batch: vi.fn(() => ({
-      delete: vi.fn(),
-      update: vi.fn(),
-      commit: vi.fn().mockResolvedValue(true),
-    })),
+    doc: vi.fn(() => mockDoc),
+    batch: vi.fn(() => mockBatch),
   };
 
   const mockBucket = {
@@ -36,7 +40,7 @@ const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage } = vi.hoisted(
     bucket: vi.fn(() => mockBucket),
   };
 
-  return { mockDoc, mockCollection, mockDb, mockBucket, mockStorage };
+  return { mockDoc, mockCollection, mockDb, mockBucket, mockStorage, mockBatch };
 });
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -67,8 +71,11 @@ vi.mock('firebase-functions', () => ({
 import {
   onScreenshotDocDeleted,
   onAudioDocDeleted,
+  onLectureRecordingDeleted,
   onClassDocDeleted,
   onClassRetentionUpdated,
+  onVideoJobDocDeleted,
+  onZipJobDocDeleted,
 } from './cleanupTriggers.js';
 
 describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/cleanupTriggers.js)', () => {
@@ -119,6 +126,49 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
 
       expect(mockBucket.file).toHaveBeenCalledWith('audio/CLASS_1/s1/chunk.webm');
     });
+
+    it('deletes physical video file when videoJob doc is deleted', async () => {
+      const event = {
+        data: {
+          data: () => ({
+            videoPath: 'videos/CLASS_1/s1/video.mp4',
+          }),
+        },
+        params: { jobId: 'job_vid_1' },
+      };
+
+      await onVideoJobDocDeleted(event);
+
+      expect(mockBucket.file).toHaveBeenCalledWith('videos/CLASS_1/s1/video.mp4');
+    });
+
+    it('deletes physical zip file when zipJob doc is deleted', async () => {
+      const event = {
+        data: {
+          data: () => ({
+            zipPath: 'zips/CLASS_1/bundle.zip',
+          }),
+        },
+        params: { jobId: 'job_zip_1' },
+      };
+
+      await onZipJobDocDeleted(event);
+
+      expect(mockBucket.file).toHaveBeenCalledWith('zips/CLASS_1/bundle.zip');
+    });
+
+    it('purges all storage assets under recordings prefix when lecture recording doc is deleted', async () => {
+      const event = {
+        params: { classId: 'CLASS_1', sessionId: 'REC_SESSION_99' },
+      };
+
+      await onLectureRecordingDeleted(event);
+
+      expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
+        prefix: 'recordings/CLASS_1/REC_SESSION_99/',
+        force: true,
+      });
+    });
   });
 
   describe('Class deletion cascading purge', () => {
@@ -143,6 +193,10 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
       });
       expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
         prefix: 'audio/CLASS_EXP_1/',
+        force: true,
+      });
+      expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
+        prefix: 'recordings/CLASS_EXP_1/',
         force: true,
       });
     });
@@ -189,6 +243,86 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
 
       await onClassRetentionUpdated(event);
       expect(mockDb.collection).not.toHaveBeenCalled();
+    });
+
+    it('retroactively updates expireAt for active screenshots and deletes expired ones when retentionDays changes', async () => {
+      const now = Date.now();
+      const recentTimestamp = { toDate: () => new Date(now - 2 * 24 * 60 * 60 * 1000) }; // 2 days old
+      const expiredTimestamp = { toDate: () => new Date(now - 20 * 24 * 60 * 60 * 1000) }; // 20 days old
+
+      const docRecent = {
+        ref: { id: 'shot_recent' },
+        data: () => ({ timestamp: recentTimestamp }),
+      };
+      const docExpired = {
+        ref: { id: 'shot_expired' },
+        data: () => ({ timestamp: expiredTimestamp }),
+      };
+
+      // Query returns 2 docs
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        size: 2,
+        docs: [docRecent, docExpired],
+      });
+
+      const event = {
+        data: {
+          before: { data: () => ({ retentionDays: 30 }) },
+          after: { data: () => ({ retentionDays: 7 }) }, // Reduced to 7 days
+        },
+        params: { classId: 'CLASS_RET' },
+      };
+
+      await onClassRetentionUpdated(event);
+
+      // docRecent updated with new expireAt
+      expect(mockBatch.update).toHaveBeenCalledWith(
+        docRecent.ref,
+        expect.objectContaining({ expireAt: expect.any(Date) })
+      );
+
+      // docExpired deleted because 20 days > 7 days retention
+      expect(mockBatch.delete).toHaveBeenCalledWith(docExpired.ref);
+      expect(mockBatch.commit).toHaveBeenCalled();
+    });
+
+    it('retroactively updates expireAt for videoJobs and deletes expired ones when videoRetentionDays changes', async () => {
+      const now = Date.now();
+      const recentDate = { toDate: () => new Date(now - 10 * 24 * 60 * 60 * 1000) }; // 10 days old
+      const expiredDate = { toDate: () => new Date(now - 100 * 24 * 60 * 60 * 1000) }; // 100 days old
+
+      const videoRecent = {
+        ref: { id: 'vid_recent' },
+        data: () => ({ createdAt: recentDate }),
+      };
+      const videoExpired = {
+        ref: { id: 'vid_expired' },
+        data: () => ({ createdAt: expiredDate }),
+      };
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        size: 2,
+        docs: [videoRecent, videoExpired],
+      });
+
+      const event = {
+        data: {
+          before: { data: () => ({ videoRetentionDays: 90 }) },
+          after: { data: () => ({ videoRetentionDays: 30 }) },
+        },
+        params: { classId: 'CLASS_RET_VID' },
+      };
+
+      await onClassRetentionUpdated(event);
+
+      expect(mockBatch.update).toHaveBeenCalledWith(
+        videoRecent.ref,
+        expect.objectContaining({ expireAt: expect.any(Date) })
+      );
+      expect(mockBatch.delete).toHaveBeenCalledWith(videoExpired.ref);
+      expect(mockBatch.commit).toHaveBeenCalled();
     });
   });
 });

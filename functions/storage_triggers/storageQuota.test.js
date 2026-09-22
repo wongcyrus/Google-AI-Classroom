@@ -68,6 +68,7 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
       if (filePath.startsWith('videos/')) return 'storageUsageVideos';
       if (filePath.startsWith('zips/')) return 'storageUsageZips';
       if (filePath.startsWith('audio/')) return 'storageUsageAudio';
+      if (filePath.startsWith('recordings/')) return 'storageUsageRecordings';
       return null;
     };
 
@@ -75,6 +76,7 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
     expect(getUsageField('videos/CLASS_1/s1/rec.mp4')).toBe('storageUsageVideos');
     expect(getUsageField('zips/CLASS_1/archive.zip')).toBe('storageUsageZips');
     expect(getUsageField('audio/CLASS_1/s1/audio.webm')).toBe('storageUsageAudio');
+    expect(getUsageField('recordings/CLASS_1/sess1/lecture.webm')).toBe('storageUsageRecordings');
     expect(getUsageField('untracked/file.txt')).toBeNull();
   });
 
@@ -157,4 +159,81 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
       })
     );
   });
+
+  it('handles uploads for zips and audio folders, and creates doc if metadata does not exist', async () => {
+    // 1. Doc does not exist on upload -> update fails with code 5, class doc exists
+    mockDoc.update.mockRejectedValueOnce({ code: 5 });
+    mockDoc.get.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ storageQuota: 5000000 }),
+    });
+
+    await updateStorageUsageOnUpload({
+      data: { name: 'zips/CLASS_ZIP/archive.zip', size: '204800' },
+    });
+
+    expect(mockDoc.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storageUsage: 204800,
+        storageUsageZips: 204800,
+      })
+    );
+
+    // 2. Audio upload
+    mockDoc.get
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ storageQuota: 1000000000 }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ storageUsage: 409600 }),
+      });
+
+    await updateStorageUsageOnUpload({
+      data: { name: 'audio/CLASS_AUD/lecture.webm', size: '409600' },
+    });
+
+    expect(mockDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storageUsageAudio: 409600,
+      })
+    );
+  });
+
+  it('handles delete for zips and audio, ignoring invalid size and handling errors', async () => {
+    // Delete zips
+    await updateStorageUsageOnDelete({
+      data: { name: 'zips/CLASS_ZIP/archive.zip', size: '204800' },
+    });
+    expect(mockDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storageUsageZips: -204800,
+      })
+    );
+
+    // Delete audio
+    await updateStorageUsageOnDelete({
+      data: { name: 'audio/CLASS_AUD/track.webm', size: '102400' },
+    });
+    expect(mockDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storageUsageAudio: -102400,
+      })
+    );
+
+    // Invalid size ignored
+    await updateStorageUsageOnDelete({
+      data: { name: 'audio/CLASS_AUD/track.webm', size: '0' },
+    });
+
+    // Ignored paths
+    await updateStorageUsageOnDelete({
+      data: { name: 'random/file.txt', size: '100' },
+    });
+    await updateStorageUsageOnDelete({
+      data: { name: 'audio/incomplete_path.webm', size: '100' },
+    });
+  });
 });
+

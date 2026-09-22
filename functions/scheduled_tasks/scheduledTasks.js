@@ -39,44 +39,43 @@ export function getLocalTimeInfo(date, timeZone) {
 }
 
 /**
- * Evaluates whether a class session is currently active across 3 operational cases:
- *  - Case 1: Scheduled class with active capture (isCapturing === true AND within schedule). Stops when slot ends.
- *  - Case 2: Manual capture class without schedule (isCapturing === true and < 3 hours). Stops when isCapturing === false.
- *  - Case 3: Scheduled class without capture (isCapturing === false, mode === 'question_bank', within schedule slot). Stops when slot ends.
+ * Evaluates whether a class session is currently active:
+ *  - Scheduled class: Active when current time is within schedule date range and an active time slot.
+ *    If outside schedule, only active if teacher explicitly enabled manual capture (overtime).
+ *  - Unscheduled / manual class: Active when isCapturing is true and started < 3 hours ago.
  */
 export function isClassSessionActive(classData, now = new Date()) {
   if (!classData) return false;
 
-  const { isCapturing, schedule, autoBingoMode, captureStartedAt } = classData;
+  const { schedule, captureStartedAt, isCapturing } = classData;
 
-  // Case 1 & 2: Capturing is explicitly true
-  if (isCapturing) {
-    // Case 1: Scheduled class with capture
-    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
-      try {
-        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
+  // Case 1: Scheduled class (session active within scheduled start and end time)
+  if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
+    try {
+      const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
 
-        if (schedule.startDate && schedule.endDate) {
-          if (localDate < schedule.startDate || localDate > schedule.endDate) {
-            return false;
-          }
+      if (schedule.startDate && schedule.endDate) {
+        if (localDate < schedule.startDate || localDate > schedule.endDate) {
+          return false;
         }
-
-        const activeSlot = schedule.timeSlots.find(slot => {
-          if (!slot.days || !slot.days.includes(localDay)) return false;
-          if (slot.startTime > slot.endTime) {
-            return localTime >= slot.startTime || localTime <= slot.endTime;
-          }
-          return localTime >= slot.startTime && localTime <= slot.endTime;
-        });
-
-        return Boolean(activeSlot);
-      } catch {
-        return false;
       }
-    }
 
-    // Case 2: Manual capture without a schedule
+      const activeSlot = schedule.timeSlots.find(slot => {
+        if (!slot.days || !slot.days.includes(localDay)) return false;
+        if (slot.startTime > slot.endTime) {
+          return localTime >= slot.startTime || localTime <= slot.endTime;
+        }
+        return localTime >= slot.startTime && localTime <= slot.endTime;
+      });
+
+      return Boolean(activeSlot);
+    } catch {
+      return false;
+    }
+  }
+
+  // Case 2: Manual / unscheduled class
+  if (isCapturing) {
     if (captureStartedAt) {
       const startedMillis = captureStartedAt.toMillis ? captureStartedAt.toMillis() : new Date(captureStartedAt).getTime();
       if ((now.getTime() - startedMillis) > 3 * 60 * 60 * 1000) {
@@ -84,33 +83,6 @@ export function isClassSessionActive(classData, now = new Date()) {
       }
     }
     return true;
-  }
-
-  // Case 3: Capturing is false, but class is schedule-driven with question_bank mode
-  if (!isCapturing && (autoBingoMode === 'question_bank' || !autoBingoMode)) {
-    if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
-      try {
-        const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
-
-        if (schedule.startDate && schedule.endDate) {
-          if (localDate < schedule.startDate || localDate > schedule.endDate) {
-            return false;
-          }
-        }
-
-        const activeSlot = schedule.timeSlots.find(slot => {
-          if (!slot.days || !slot.days.includes(localDay)) return false;
-          if (slot.startTime > slot.endTime) {
-            return localTime >= slot.startTime || localTime < slot.endTime;
-          }
-          return localTime >= slot.startTime && localTime < slot.endTime;
-        });
-
-        return Boolean(activeSlot);
-      } catch {
-        return false;
-      }
-    }
   }
 
   return false;
@@ -367,7 +339,7 @@ export const syncGeminiPricing = onSchedule({
 });
 
 const bingoScheduleOptions = {
-  schedule: '*/5 * * * *',
+  schedule: '* * * * *',
   memory: '512MB',
   region: FUNCTION_REGION,
 };
@@ -392,15 +364,29 @@ export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () =>
     const classId = doc.id;
     const classData = doc.data() || {};
 
-    // Stop bingo if class has ended or is not active (evaluated across 3 cases)
+    // Stop bingo if class has ended or is not active (capturing stopped or outside schedule)
     if (!isClassSessionActive(classData, now)) {
-      logger.info(`Class '${classId}' is not in an active session (evaluated across 3 cases). Skipping auto-bingo.`);
+      logger.info(`Class '${classId}' is not in an active session (capturing stopped or outside schedule). Skipping auto-bingo.`);
       continue;
     }
-    const intervalMinutes = Number(classData.autoBingoIntervalMinutes) || 20;
+
+    // Auto-Bingo requires teacher's screen to be actively broadcasting!
+    // If screen is not sharing, auto-bingo must stop immediately.
+    try {
+      const screenSessionDoc = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+      const isScreenSharing = screenSessionDoc.exists && screenSessionDoc.data()?.isBroadcasting === true;
+      if (!isScreenSharing) {
+        logger.info(`Class '${classId}' is not broadcasting screen. Skipping auto-bingo.`);
+        continue;
+      }
+    } catch (err) {
+      logger.warn(`Failed to check screen broadcast session for class '${classId}':`, err);
+      continue;
+    }
+
+    const intervalMinutes = Math.max(5, Math.min(30, Number(classData.autoBingoIntervalMinutes) || 5));
     const intervalMs = intervalMinutes * 60 * 1000;
-    const mode = classData.autoBingoMode || 'question_bank';
-    const jitterMinutes = classData.autoBingoJitterMinutes !== undefined ? Number(classData.autoBingoJitterMinutes) : 3;
+    const mode = classData.autoBingoMode || 'teacher_screen';
 
     let isDue = false;
     if (classData.lastAutoBingoAt) {
@@ -410,7 +396,7 @@ export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () =>
       }
     } else if (classData.captureStartedAt) {
       const startedAtMillis = classData.captureStartedAt.toMillis ? classData.captureStartedAt.toMillis() : new Date(classData.captureStartedAt).getTime();
-      if ((now.getTime() - startedAtMillis) >= 5 * 60 * 1000) {
+      if ((now.getTime() - startedAtMillis) >= intervalMs) {
         isDue = true;
       }
     } else {
@@ -426,7 +412,6 @@ export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () =>
           jobId: jobRef.id,
           classId,
           mode,
-          jitterMinutes,
           status: 'pending',
           createdAt: FieldValue.serverTimestamp(),
         });
