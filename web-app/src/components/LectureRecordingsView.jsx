@@ -1001,14 +1001,6 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                         <span style={{ fontSize: '0.88rem', color: '#718096' }}>
                           🔒 Google Drive direct cloud upload is disabled (not configured for this system).
                         </span>
-                        <button
-                          className="btn-connect-drive"
-                          disabled
-                          title="Google Drive integration is not configured"
-                          style={{ opacity: 0.5, cursor: 'not-allowed' }}
-                        >
-                          📁 Connect Google Drive (Disabled)
-                        </button>
                       </div>
                     ) : (
                       <div className="gdrive-connect-prompt">
@@ -1064,20 +1056,18 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                             />
                           </div>
                         </div>
+                      ) : !isGdriveConfigured ? (
+                        <div style={{ fontSize: '0.85rem', color: '#718096', padding: '6px 0' }}>
+                          🔒 Direct cloud upload is disabled (no Google OAuth client configured). You can link an existing video in Step B below.
+                        </div>
                       ) : (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                           <button
                             className="btn-upload-drive"
                             onClick={() => uploadToGdrive({ recording: selectedRecording, classId })}
-                            disabled={!isGdriveConfigured || !isGdriveConnected || isGdriveUploading}
-                            style={!isGdriveConfigured ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                            title={!isGdriveConfigured ? 'Google Drive integration is not configured' : undefined}
+                            disabled={!isGdriveConnected || isGdriveUploading}
                           >
-                            {!isGdriveConfigured
-                              ? '🔒 Cloud Upload Disabled'
-                              : isGdriveConnected
-                              ? '☁️ Upload Video to Google Drive'
-                              : '🔒 Connect Google Drive to Upload'}
+                            {isGdriveConnected ? '☁️ Upload Video to Google Drive' : '🔒 Connect Google Drive to Upload'}
                           </button>
 
                           {selectedRecording.driveWebViewLink && (

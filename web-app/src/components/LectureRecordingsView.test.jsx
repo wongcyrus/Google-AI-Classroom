@@ -611,20 +611,17 @@ describe('LectureRecordingsView Component', () => {
         snapshotCallback({ docs: mockDocs });
       });
 
-      // Connect button is disabled
-      const connectBtn = screen.getByRole('button', { name: /Connect Google Drive \(Disabled\)/i });
-      expect(connectBtn).toBeInTheDocument();
-      expect(connectBtn).toBeDisabled();
+      // Connect button is not rendered when unconfigured
+      expect(screen.queryByRole('button', { name: /Connect Google Drive/i })).not.toBeInTheDocument();
 
-      // Cloud upload button is disabled
-      const uploadBtn = screen.getByRole('button', { name: /Cloud Upload Disabled/i });
-      expect(uploadBtn).toBeInTheDocument();
-      expect(uploadBtn).toBeDisabled();
+      // Cloud upload button is not rendered when unconfigured
+      expect(screen.queryByRole('button', { name: /Upload Video to Google Drive|Connect Google Drive to Upload/i })).not.toBeInTheDocument();
 
       // Ensure no developer client ID input or configure button is present in the UI
       expect(screen.queryByRole('button', { name: /Configure Client ID/i })).not.toBeInTheDocument();
       expect(screen.queryByPlaceholderText(/123456789-abcdef\.apps\.googleusercontent\.com/i)).not.toBeInTheDocument();
       expect(screen.getByText(/Google Drive direct cloud upload is disabled \(not configured for this system\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Direct cloud upload is disabled \(no Google OAuth client configured\)/i)).toBeInTheDocument();
     });
   });
 });
