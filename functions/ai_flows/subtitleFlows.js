@@ -41,6 +41,8 @@ export async function translateTeacherSpeech({
   sourceLang = 'zh-HK',
   targetLangs = ['zh-Hant'],
   context = '',
+  customPrompt = '',
+  historyText = null,
 }) {
   const trimmedText = (text || '').trim();
   if (!trimmedText) {
@@ -62,19 +64,37 @@ export async function translateTeacherSpeech({
     .map(code => `${code} (${SUPPORTED_SUBTITLE_LANGUAGES[code] || code})`)
     .join(', ');
 
-  const prompt = `You are a real-time lecture subtitle translator for a higher-education computing and STEM classroom.
-Context / Subject Matter: ${context || 'Computer Science & Software Development'}
-Spoken Source Language: ${sourceLang} (May include Cantonese colloquial speech and English code-switching)
-Target Language(s) to produce: ${targetDesc}
+  const domainContext = context?.trim() || 'General Classroom Instruction';
+  const customInstructions = customPrompt?.trim()
+    ? `\n6. Special Instructions for this Class:\n${customPrompt.trim()}`
+    : '';
 
-Speech to translate:
+  let historyBlock = '';
+  if (Array.isArray(historyText) && historyText.length > 0) {
+    const lines = historyText
+      .map(line => (typeof line === 'string' ? line.trim() : ''))
+      .filter(Boolean);
+    if (lines.length > 0) {
+      historyBlock = `\nPreceding Speech History (for conversational context, pronoun resolution, and terminology continuity only; DO NOT translate this section):\n${lines.map(l => `- "${l}"`).join('\n')}\n`;
+    }
+  } else if (typeof historyText === 'string' && historyText.trim()) {
+    historyBlock = `\nPreceding Speech History (for conversational context, pronoun resolution, and terminology continuity only; DO NOT translate this section):\n"${historyText.trim()}"\n`;
+  }
+
+  const prompt = `You are a real-time lecture subtitle translator for higher education.
+Context / Subject Matter: ${domainContext}
+Spoken Source Language: ${sourceLang} (May include colloquial speech and code-switching)
+Target Language(s) to produce: ${targetDesc}
+${historyBlock}
+Current Speech to Translate:
 "${trimmedText}"
 
 Guidelines:
 1. Translate accurately, naturally, and concisely for live classroom subtitles.
-2. CRITICAL: Preserve programming keywords, syntax, function names, variable names, terminal commands, and standard technical abbreviations in English without literal translations (e.g., keep "useState", "useEffect", "async/await", "Docker", "SQL", "API", "DOM", "props", "Boolean", "git status", "npm install" in their natural technical English form).
+2. CRITICAL: Preserve discipline-specific terminology, proper nouns, formulas, domain keywords, and standard technical abbreviations in their original language/form without unnatural literal translations appropriate for ${domainContext}.
 3. If source speech is spoken Cantonese (e.g. "今日我哋用..."), translate into clean formal written Traditional Chinese (e.g. "今天我們使用...") or the requested target language.
-4. Provide the translated text for every requested target language code in the structured output.`;
+4. Translate ONLY the "Current Speech to Translate", using the Preceding Speech History solely to infer context, resolve pronouns (e.g. "it", "they", "this"), and maintain technical consistency.
+5. Provide the translated text for every requested target language code in the structured output.${customInstructions}`;
 
   // Estimate cost & check quota
   const estimatedCost = estimateCost(prompt, [], AI_MODEL) + 0.00005;

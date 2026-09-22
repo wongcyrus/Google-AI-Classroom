@@ -1,11 +1,9 @@
+import './firebase.js';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { analyzeSingleVideoFlow } from './analysisFlows.js';
+import { getFunctions } from 'firebase-admin/functions';
 import { FUNCTION_REGION } from './config.js';
-import { estimateCost } from './cost.js';
-import { checkQuota } from './quotaManagement.js';
-import { logJob } from './jobLogger.js';
 import { formatInTimeZone } from 'date-fns-tz';
 
 const db = getFirestore();
@@ -121,14 +119,16 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     }
 
     if (videosToAnalyze.length === 0) {
-      await db.collection('videoAnalysisJobs').doc(masterJobId).update({ status: 'completed' });
+      await db.collection('videoAnalysisJobs').doc(masterJobId).update({
+        status: 'completed',
+        totalVideos: 0,
+        processedCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        finishedAt: FieldValue.serverTimestamp(),
+      });
       return;
     }
-
-    const BATCH_SIZE = 4; // Process 4 videos concurrently to avoid Gemini API 429 rate limit spikes
-    
-    let totalSuccesses = 0;
-    let totalFailures = 0;
 
     const classRef = db.collection('classes').doc(jobData.classId);
     const classDoc = await classRef.get();
@@ -137,149 +137,53 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     const timezone = classData.schedule?.timeZone || 'UTC';
     const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
     const endDate = jobData.endTime ? formatInTimeZone(jobData.endTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';
+    const startTimeIso = getISOString(jobData.startTime);
+    const endTimeIso = getISOString(jobData.endTime);
 
-    const promptTemplate = (video) => `The following video is from a student.\nEmail: ${video.studentEmail}\nStudent UID: ${video.studentUid}\nClass ID: ${jobData.classId}\nThe video was recorded between ${startDate} and ${endDate}.\nPlease analyze the video based on the user's prompt: "${jobData.prompt}"\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
+    // Initial state: Set totalVideos and mark job as processing
+    await db.collection('videoAnalysisJobs').doc(masterJobId).update({
+      status: 'processing',
+      modelUsed: modelToUse,
+      totalVideos: videosToAnalyze.length,
+      processedCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      failedVideos: [],
+      dispatchedAt: FieldValue.serverTimestamp(),
+      ...(jobNotes ? { notes: jobNotes } : {})
+    });
 
-    for (let i = 0; i < videosToAnalyze.length; i += BATCH_SIZE) {
-      const batch = videosToAnalyze.slice(i, i + BATCH_SIZE);
-      
-      let batchEstimatedCost = 0;
-      for (const video of batch) {
-          const promptText = promptTemplate(video);
-          const media = [{ media: { url: `gs://${bucketName}/${video.videoPath}`, contentType: 'video/mp4' } }];
-          batchEstimatedCost += estimateCost(promptText, media, modelToUse);
-      }
+    // Enqueue all videos to Cloud Tasks queue for distributed, rate-limited processing
+    const queue = getFunctions().taskQueue(`locations/${FUNCTION_REGION}/functions/analyzeSingleVideoTask`);
 
-      const hasQuota = await checkQuota(jobData.classId, batchEstimatedCost);
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < videosToAnalyze.length; i += CHUNK_SIZE) {
+      const chunk = videosToAnalyze.slice(i, i + CHUNK_SIZE);
+      await Promise.all(chunk.map((video, idx) => {
+        const sanitizedTaskId = `video-${masterJobId}-${i + idx}-${Date.now().toString(36)}`
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .slice(0, 100);
 
-      if (!hasQuota) {
-          console.warn(`Insufficient quota for batch starting at index ${i}. Estimated cost: ${batchEstimatedCost}`);
-          const blockedJobPromises = batch.map(video => {
-              const promptText = promptTemplate(video);
-              return logJob({
-                  classId: jobData.classId,
-                  studentUid: video.studentUid,
-                  studentEmail: video.studentEmail,
-                  jobType: 'analyzeSingleVideo',
-                  status: 'blocked-by-quota',
-                  promptText: promptText,
-                  mediaPaths: [`gs://${bucketName}/${video.videoPath}`],
-                  cost: 0,
-                  masterJobId,
-              });
-          });
-          const blockedJobIds = await Promise.all(blockedJobPromises);
-
-          await db.collection('videoAnalysisJobs').doc(masterJobId).update({
-              aiJobIds: FieldValue.arrayUnion(...blockedJobIds),
-              failedVideos: FieldValue.arrayUnion(...batch)
-          });
-          totalFailures += batch.length;
-          continue;
-      }
-
-      const analysisPromises = batch.map(video => {
-        return (async () => {
-          try {
-            const gsUri = `gs://${bucketName}/${video.videoPath}`;
-            const promptText = promptTemplate(video);
-
-            const crypto = await import('crypto');
-            const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
-
-            // Idempotency Check: Look for an existing job to prevent duplicates.
-            const existingJobsQuery = db.collection('aiJobs')
-                .where('mediaPaths', 'array-contains', gsUri)
-                .where('promptHash', '==', promptHash)
-                .orderBy('timestamp', 'desc')
-                .limit(1);
-
-            const existingJobsSnapshot = await existingJobsQuery.get();
-
-            if (!existingJobsSnapshot.empty) {
-                const existingJobDoc = existingJobsSnapshot.docs[0];
-                const existingJobData = existingJobDoc.data();
-
-                if (existingJobData.status === 'completed' && existingJobData.result) {
-                    console.log(`Reusing completed job '${existingJobDoc.id}' for video '${video.videoPath}'.`);
-                    return { status: 'success', jobId: existingJobDoc.id };
-                }
-
-                if (existingJobData.status === 'processing') {
-                    console.log(`Skipping job creation for video '${video.videoPath}' as job '${existingJobDoc.id}' is already processing.`);
-                    return { status: 'success', jobId: existingJobDoc.id }; // Return existing job to monitor
-                }
-
-                // If the previous job failed or was blocked, proceed with a fresh analysis attempt
-                console.log(`Previous job '${existingJobDoc.id}' has status '${existingJobData.status}'. Proceeding with fresh analysis for video '${video.videoPath}'.`);
-            }
-
-            // If no valid existing job, proceed with analysis.
-            const result = await analyzeSingleVideoFlow({
-              videoUrl: gsUri,
-              prompt: jobData.prompt,
-              classId: jobData.classId,
-              studentUid: video.studentUid,
-              studentEmail: video.studentEmail,
-              masterJobId,
-              startTime: getISOString(jobData.startTime),
-              endTime: getISOString(jobData.endTime),
-              model: modelToUse,
-            });
-
-            if (result && result.jobId) {
-              if (result.result?.startsWith('Error:')) {
-                return { status: 'failure', video: video, error: result.result };
-              }
-              return { status: 'success', jobId: result.jobId };
-            } else {
-              console.warn(`analyzeSingleVideoFlow did not return a jobId for ${video.studentEmail}. Result:`, result);
-              return { status: 'failure', video: video, error: 'Analysis flow did not return a job ID.' };
-            }
-          } catch (e) {
-            console.error(`Failed to analyze video for ${video.studentEmail}`, e);
-            return { status: 'failure', video: video, error: e.message };
+        return queue.enqueue(
+          {
+            masterJobId,
+            video,
+            classId: jobData.classId,
+            modelToUse,
+            prompt: jobData.prompt || '',
+            startDate,
+            endDate,
+            startTimeIso,
+            endTimeIso,
+          },
+          {
+            id: sanitizedTaskId,
           }
-        })();
-      });
-
-      const batchResults = await Promise.all(analysisPromises);
-      
-      const successfulJobs = batchResults.filter(r => r.status === 'success');
-      const failedJobs = batchResults.filter(r => r.status === 'failure');
-
-      totalSuccesses += successfulJobs.length;
-      totalFailures += failedJobs.length;
-
-      const isLastBatch = (i + batch.length) >= videosToAnalyze.length;
-      const updatePayload = {
-        modelUsed: modelToUse,
-      };
-
-      if (successfulJobs.length > 0) {
-        updatePayload.aiJobIds = FieldValue.arrayUnion(...successfulJobs.map(j => j.jobId));
-      }
-      if (failedJobs.length > 0) {
-        updatePayload.failedVideos = FieldValue.arrayUnion(...failedJobs.map(j => j.video));
-      }
-
-      if (isLastBatch) {
-        let finalStatus = 'failed';
-        if (totalFailures === 0 && totalSuccesses > 0) {
-            finalStatus = 'completed';
-        } else if (totalFailures > 0 && totalSuccesses > 0) {
-            finalStatus = 'partial_failure';
-        }
-        updatePayload.status = finalStatus;
-        if (jobNotes) {
-            updatePayload.notes = jobNotes;
-        }
-      }
-
-      if (Object.keys(updatePayload).length > 0) {
-        await db.collection('videoAnalysisJobs').doc(masterJobId).update(updatePayload);
-      }
+        );
+      }));
     }
+
+    console.log(`[processVideoAnalysisJob] Successfully enqueued ${videosToAnalyze.length} video tasks for job ${masterJobId}.`);
 
   } catch (error) {
     console.error('Failed to process video analysis job:', error);

@@ -89,6 +89,7 @@ describe('generateLabTaskPrompt Cloud Function', () => {
   });
 
   it('synthesizes prompt from completed child job summaries successfully', async () => {
+    const mockAddJob = vi.fn().mockResolvedValue({ id: 'new_prompt_job_id' });
     mockCollection.mockImplementation((name) => {
       if (name === 'videoAnalysisJobs') {
         return {
@@ -116,6 +117,7 @@ describe('generateLabTaskPrompt Cloud Function', () => {
               },
             }),
           }),
+          add: mockAddJob,
         };
       }
     });
@@ -130,5 +132,13 @@ describe('generateLabTaskPrompt Cloud Function', () => {
     expect(result.summaryCount).toBe(1);
     expect(result.classId).toBe('CLASS_1');
     expect(result.modelUsed).toBe('gemini-3.8-flash');
+    expect(mockAddJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'CLASS_1',
+        jobType: 'generateLabTaskPrompt',
+        status: 'completed',
+        masterJobId: 'JOB_1',
+      })
+    );
   });
 });

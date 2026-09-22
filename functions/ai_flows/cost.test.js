@@ -111,3 +111,16 @@ describe('estimateCost', () => {
     expect(cost).toBeGreaterThan(0);
   });
 });
+
+describe('dynamic pricing cache and getModelPricing', () => {
+  it('updates pricing cache and retrieves custom pricing', async () => {
+    const { setDynamicPricingCache, getModelPricing } = await import('./cost.js');
+    setDynamicPricingCache({
+      'custom-model': { input: 1.0, output: 5.0 },
+    });
+    expect(getModelPricing('custom-model')).toEqual({ input: 1.0, output: 5.0 });
+    // Falls back to default when model not found in cache or baseline
+    expect(getModelPricing('non-existent')).toEqual(MODEL_PRICING['gemini-3.5-flash-lite']);
+  });
+});
+

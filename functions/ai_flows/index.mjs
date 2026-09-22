@@ -7,8 +7,27 @@ import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
-import { generateBingoChallenge, submitBingoResponse, generateBingoQuestionBank, handleDispatchBingoRetry, enqueueBingoRetryTask } from './bingoFlows.js';
-export { generateBingoChallenge, submitBingoResponse, generateBingoQuestionBank, handleDispatchBingoRetry, enqueueBingoRetryTask };
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import {
+  generateBingoChallenge,
+  submitBingoResponse,
+  generateBingoQuestionBank,
+  handleDispatchBingoRetry,
+  enqueueBingoRetryTask,
+  handleProcessBingoJob,
+  handleDispatchScheduledBingo,
+  cancelActiveBingo as cancelActiveBingoFlow,
+} from './bingoFlows.js';
+export {
+  generateBingoChallenge,
+  submitBingoResponse,
+  generateBingoQuestionBank,
+  handleDispatchBingoRetry,
+  enqueueBingoRetryTask,
+  handleProcessBingoJob,
+  handleDispatchScheduledBingo,
+  cancelActiveBingoFlow,
+};
 
 const callOptions = {
   region: FUNCTION_REGION,
@@ -50,6 +69,7 @@ export { onAiJobCreated };
 export * from './processVideoAnalysisJob.js';
 import { retryVideoAnalysisJob } from './retryVideoAnalysisJob.js';
 export { retryVideoAnalysisJob };
+export { analyzeSingleVideoTask } from './analyzeSingleVideoTask.js';
 export * from './quotaTriggers.js';
 export * from './triggerAutomaticAnalysis.js';
 export * from './performanceMetrics.js';
@@ -60,6 +80,14 @@ export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';
      throw new HttpsError('permission-denied', 'Only teachers can trigger Bingo checks.');
    }
    return await generateBingoChallenge(request.data);
+ });
+
+ export const cancelActiveBingo = onCall(callOptions, async (request) => {
+   if (request.auth?.token?.role !== 'teacher') {
+     throw new HttpsError('permission-denied', 'Only teachers can cancel active Bingo checks.');
+   }
+   const { classId } = request.data || {};
+   return await cancelActiveBingoFlow({ classId });
  });
  
  export const submitBingoAnswer = onCall(callOptions, async (request) => {
@@ -76,14 +104,13 @@ export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';
      windowFocused,
    });
  });
- 
- export const generateQuestionBankAi = onCall(callOptions, async (request) => {
-   if (request.auth?.token?.role !== 'teacher') {
-     throw new HttpsError('permission-denied', 'Only teachers can generate question banks.');
-   }
-   const { topic, count } = request.data || {};
-   return await generateBingoQuestionBank({ topic, count });
- });
+export const generateQuestionBankAi = onCall(callOptions, async (request) => {
+  if (request.auth?.token?.role !== 'teacher') {
+    throw new HttpsError('permission-denied', 'Only teachers can generate question banks.');
+  }
+  const { topic, count, classId } = request.data || {};
+  return await generateBingoQuestionBank({ topic, count, classId });
+});
 
 export const translateTeacherSpeech = onCall(callOptions, async (request) => {
   if (!request.auth?.uid) {
@@ -108,7 +135,7 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
   if (!isTeacher) {
     throw new HttpsError('permission-denied', 'Only teachers can request live subtitle translation.');
   }
-  const { text, sourceLang, targetLangs, context } = request.data || {};
+  const { text, sourceLang, targetLangs, context, customPrompt, historyText } = request.data || {};
   return await translateTeacherSpeechInternal({
     classId,
     teacherUid: request.auth.uid,
@@ -117,24 +144,66 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
     sourceLang,
     targetLangs,
     context,
+    customPrompt,
+    historyText,
   });
 });
 
- export const dispatchBingoRetryTask = onTaskDispatched(
-   {
-     region: FUNCTION_REGION,
-     retryConfig: {
-       maxAttempts: 2,
-     },
-     rateLimits: {
-       maxConcurrentDispatches: 20,
-       maxDispatchesPerSecond: 10,
-     },
-     memory: '512MiB',
-     timeoutSeconds: 60,
-   },
-   async (request) => {
-     const { classId, studentUid, priorBingoId } = request.data || {};
-     return await handleDispatchBingoRetry({ classId, studentUid, priorBingoId });
-   }
- );
+export const dispatchBingoRetryTask = onTaskDispatched(
+  {
+    region: FUNCTION_REGION,
+    retryConfig: {
+      maxAttempts: 2,
+    },
+    rateLimits: {
+      maxConcurrentDispatches: 20,
+      maxDispatchesPerSecond: 10,
+    },
+    memory: '512MiB',
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    const { classId, studentUid, priorBingoId } = request.data || {};
+    return await handleDispatchBingoRetry({ classId, studentUid, priorBingoId });
+  }
+);
+
+export const processBingoJob = onDocumentCreated(
+  {
+    document: 'bingoJobs/{jobId}',
+    region: FUNCTION_REGION,
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
+  async (event) => {
+    const data = event.data?.data() || {};
+    const jobId = event.params.jobId;
+    return await handleProcessBingoJob({
+      jobId,
+      classId: data.classId,
+      mode: data.mode,
+      jitterMinutes: data.jitterMinutes,
+    });
+  }
+);
+
+export const dispatchScheduledBingoTask = onTaskDispatched(
+  {
+    region: FUNCTION_REGION,
+    retryConfig: {
+      maxAttempts: 2,
+    },
+    rateLimits: {
+      maxConcurrentDispatches: 20,
+      maxDispatchesPerSecond: 10,
+    },
+    memory: '512MiB',
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    const { classId, studentUid, questionSource } = request.data || {};
+    return await handleDispatchScheduledBingo({ classId, studentUid, questionSource });
+  }
+);
+
+export { processLectureSubtitles } from './processLectureSubtitles.js';

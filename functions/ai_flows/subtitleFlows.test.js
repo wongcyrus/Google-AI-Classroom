@@ -131,4 +131,64 @@ describe('subtitleFlows: translateTeacherSpeech', () => {
       status: 'blocked-by-quota',
     }));
   });
+
+  it('incorporates custom domain context and special instructions into prompt', async () => {
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        output: {
+          translations: { en: 'Today we discuss culinary preparation methods' },
+        },
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+
+    await translateTeacherSpeech({
+      classId: 'CLASS_CULINARY_1',
+      teacherUid: 'chef_1',
+      text: '今日講下法式烹調手法',
+      sourceLang: 'zh-HK',
+      targetLangs: ['en'],
+      context: 'Hospitality, Culinary & Tourism',
+      customPrompt: 'Preserve French culinary terms such as sous-vide and mise en place.',
+    });
+
+    expect(mockGenerateWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringMatching(/Context \/ Subject Matter: Hospitality, Culinary & Tourism[\s\S]*Preserve French culinary terms such as sous-vide and mise en place/),
+      }),
+      'gemini-3.5-flash-lite'
+    );
+  });
+
+  it('incorporates preceding speech history into prompt when historyText is provided as an array', async () => {
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        output: {
+          translations: { en: 'And then we execute the container.' },
+        },
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+
+    await translateTeacherSpeech({
+      classId: 'CLASS_DEV_101',
+      teacherUid: 'teacher_1',
+      text: '跟住我哋就 run 佢啦',
+      sourceLang: 'zh-HK',
+      targetLangs: ['en'],
+      context: 'Cloud Computing & Docker',
+      historyText: [
+        'Today we are building our Docker image using Dockerfile.',
+        'Notice the ENTRYPOINT and CMD directives on lines 10 and 11.',
+      ],
+    });
+
+    expect(mockGenerateWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringMatching(/Preceding Speech History[\s\S]*- "Today we are building our Docker image using Dockerfile\."[\s\S]*- "Notice the ENTRYPOINT and CMD directives on lines 10 and 11\."[\s\S]*Current Speech to Translate:[\s\S]*"跟住我哋就 run 佢啦"/),
+      }),
+      'gemini-3.5-flash-lite'
+    );
+  });
 });
+

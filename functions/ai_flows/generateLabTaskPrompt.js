@@ -2,6 +2,8 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldPath } from 'firebase-admin/firestore';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
+import { logJob } from './jobLogger.js';
+import { calculateCost } from './cost.js';
 
 const db = getFirestore();
 
@@ -134,6 +136,30 @@ Return ONLY the clean Markdown prompt text. Do not wrap in markdown code fence b
       generatedPrompt = generatedPrompt.replace(/^```markdown\s*/i, '').replace(/```\s*$/i, '');
     } else if (generatedPrompt.startsWith('```')) {
       generatedPrompt = generatedPrompt.replace(/^```\s*/, '').replace(/```\s*$/i, '');
+    }
+
+    const usage = response?.usage || response?.usageMetadata || {};
+    const cost = calculateCost(usage, modelUsed || preferredModel);
+    if (classId && classId !== 'unknown_class') {
+      try {
+        await logJob({
+          classId,
+          jobType: 'generateLabTaskPrompt',
+          status: 'completed',
+          promptText: metaPrompt,
+          mediaPaths: [],
+          usage: {
+            inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? 0,
+            outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? 0,
+          },
+          cost,
+          modelUsed: modelUsed || preferredModel,
+          result: generatedPrompt.trim().substring(0, 300),
+          masterJobId: jobId,
+        });
+      } catch (logErr) {
+        console.warn('[generateLabTaskPrompt] Failed to log AI job:', logErr);
+      }
     }
 
     return {

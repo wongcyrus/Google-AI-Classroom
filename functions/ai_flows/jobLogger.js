@@ -8,9 +8,7 @@ const db = getFirestore();
  * @returns {Promise<string>} The ID of the newly created job document.
  */
 export async function logJob(jobData) {
-  const cleanData = Object.fromEntries(
-    Object.entries(jobData).filter(([_, v]) => v !== undefined)
-  );
+  const cleanData = JSON.parse(JSON.stringify(jobData));
   const jobWithTimestamp = {
     ...cleanData,
     timestamp: FieldValue.serverTimestamp(),

@@ -5,3 +5,4 @@ export * from './processZipJob.js';
 export * from './processReportJob.js';
 export * from './cleanupStuckJobs.js';
 export * from './getStudentVideoPlaybackUrl.js';
+export * from './mergeLectureRecordings.js';

@@ -139,7 +139,7 @@ describe('generateWithResilience and Flow Tools', () => {
         .mockRejectedValueOnce(new Error('RESOURCE_EXHAUSTED'))
         .mockResolvedValueOnce(mockFallbackResponse);
 
-      const result = await generateWithResilience({ prompt: 'test' }, 'gemini-2.5-flash');
+      const result = await generateWithResilience({ prompt: 'test' }, 'gemini-3.8-flash');
       expect(result.response).toEqual(mockFallbackResponse);
       expect(result.modelUsed).toBe('gemini-3.5-flash-lite');
       expect(generateSpy).toHaveBeenCalledTimes(4);
