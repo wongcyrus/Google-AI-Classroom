@@ -723,5 +723,69 @@ flowchart TD
   - **Web App Hosting**: Built and deployed to `https://it114115-dev-2026.web.app` and `https://it114115-2627.web.app`.
 - **Model Invariant**: Verified zero occurrences of legacy 2.5 models across all code, tests, and documentation.
 
+---
+
+## 23. System-Wide Migration to Microsoft Excel (.xlsx) & Universal Student Profile Enrichment
+
+### 23.1 Motivation & User Directives
+During real-world classroom monitoring and post-lesson analysis, instructors identified that multiple critical user interface surfaces and data exports presented naked email addresses (e.g., in the "Students Not Sharing Screen" modal in `MonitorView.jsx` and attendance export files). Furthermore, CSV exports encountered Unicode encoding challenges when handling Chinese names and nicknames on desktop operating systems (e.g., Windows Excel opening CSV without UTF-8 BOM or requiring Big5/GBK).
+
+Instructors issued the following design directives:
+1. *"Students Not Sharing Screen just show email and export attendance also just email. Review all exports and don't just email."*
+2. *"ok use excel and not more csv in the systme"*
+3. *"no need backward as no one using it b4"*
+4. *"the export csv is not in unicode so I cannot save the Chinese character and no big5 or gbk as that is CSV and you need to provide the template for import. but logically teacher just need to input email as before if they don't want to have other information or juts reuse other class information"*
+
+### 23.2 Complete Migration from CSV to Microsoft Excel (.xlsx)
+1. **Core OpenXML Spreadsheet Engine (`web-app/src/utils/exportUtils.js`)**:
+   - Integrated `write-excel-file/universal` and `read-excel-file/universal` to generate and parse genuine Microsoft Excel OpenXML (`.xlsx`) files.
+   - **Full Unicode Character Preservation**: Chinese characters, accented names, and UTF-8 symbols (e.g., `大文`, `阿欣`, `陳大文`, `李小玲`) load and save natively across Windows Excel, macOS Excel, and web office suites without encoding errors or character garbling.
+   - **Automated Column Styling**: Exports feature bold header rows, proper cell type mapping (strings, integers, decimals, booleans), and automatic column width calculations.
+2. **Strict Excel Everywhere (Zero CSV Ingestion or Invariant Bypass)**:
+   - All drag-and-drop zones and file inputs strictly require `.xlsx` or `.xls` files. Legacy `.csv` uploads are blocked with clear, informative guidance: `Please upload an Excel file (.xlsx or .xls). CSV files are not supported.`
+   - Standardized Excel templates with headers and sample rows are downloadable directly from the UI:
+     - Class Roster Template: `student_roster_template.xlsx` (`StudentEmail`, `StudentName`, `Nickname`, `Programme`, `Class`).
+     - Custom Student Properties Template: `{classId}-student-properties.xlsx` (`StudentEmail`, plus active custom property keys).
+3. **Resilient Profile Re-use on Import**:
+   - If an instructor imports or pastes an Excel sheet containing only email addresses (`StudentEmail`), the system automatically queries `/studentDirectory` to preserve and populate existing student profiles (`studentName`, `nickname`, `programme`, `studentClass`) from previously configured classes.
+
+### 23.3 Universal Student Profile Enrichment (Never Just Email)
+Every user interface modal, monitoring alert, and data export across the platform was reviewed and systematically upgraded to resolve and display the complete student identity:
+- **Student Display Name**: `大文 (Chan Tai Man)` (or preferred Nickname / Name).
+- **Student Email**: Rendered as a distinct secondary column or subordinate caption.
+- **Class / Cohort**: e.g., `IT114115/1A` badge or column.
+- **Programme**: e.g., `Higher Diploma in Software Engineering` badge or column.
+
+#### System Surfaces and Exports Upgraded:
+| View / Component | UI Enhancements | Export Enhancements (.xlsx) |
+| :--- | :--- | :--- |
+| **`MonitorView.jsx`** | "Students Not Sharing Screen" modal displays bold student names, email beneath, and cohort badges. | `handleDownloadAttendance` outputs 11 rich columns: `Student Display Name`, `Student Email`, `Class / Cohort`, `Programme`, minute bitmasks, and AI working time. |
+| **`studentCompliance.js`** | Filter dropdowns and compliance cards render resolved student names. | `exportComplianceResultsToExcel` exports `Student Name`, `Student Email`, `Class / Cohort`, `Programme`, `Status`, `Screen Sharing Active`, `Active Tab Title`, `Irregularities`, and `Last Ping`. |
+| **`AttendanceView.jsx`** | Displays student name, email, and cohort badges. | Replaced `react-csv` with `exportToExcel`, outputting `Student Display Name`, `Student Email`, `Class / Cohort`, `Programme`, and attendance metrics. |
+| **`VideoAnalysisJobs.jsx`** | Real-time search filter memo matches against student display names, Chinese nicknames, cohorts, and emails. | `handleExportAiJobs` exports batch job logs with `Student Name`, `Class / Cohort`, and `Programme`. |
+| **`AiJobsTable.jsx`** | Table rows render student `displayName`, email, and cohort/programme tags. | Row-level and multi-job exports include full student identity columns. |
+| **`JobResultModal.jsx`** | Header metadata displays `Student: {displayName} ({email})` with cohort tag. | Excel export includes `Student Name`, `Class / Cohort`, and `Programme`. |
+| **`AudioTranscriptModal.jsx`** | Dialogue viewer resolves speaker identity to full student display names. | Multi-speaker transcript Excel export outputs `Student Name` and `Student Email`. |
+| **`aiCostAggregator.js` & `aiCostCsvExporter.js`** | FinOps audit logs aggregate per-student costs with profile attributes. | `exportAiCostToExcel` includes `Student Name`, `Class / Cohort`, and `Programme` across Section 3 (`BY STUDENT`) and Section 4 (`AUDIT LOG`). |
+| **`BingoResultsView.jsx`** | Results grid displays student display names and cohort badges. | `handleExportExcel` adds `Student Name`, `Class / Cohort`, and `Programme` columns. |
+| **`ProgressView.jsx`** | Summary table and student selector render enriched student identities. | Milestone timeline and progress summary Excel exports include full profile columns. |
+| **`SessionReviewView.jsx`** | Student timeline selector resolves names from class profiles. | `handleExportVideoJobsExcel` exports video jobs with student name, cohort, and programme. |
+| **`VideoLibrary.jsx`** | Video manifest cards render student display names. | `handleExportManifest` exports video recordings with student name, cohort, and programme. |
+| **`ClassManagement.jsx`** | Enrolled roster displays `✨ Directory` badges and allows editing profile details. | `handleExportRoster` exports `Class_{id}_Roster.xlsx` containing all student attributes. |
+| **`CustomPropertiesManager.jsx`** | Property manager presents student emails linked with enrolled names. | Exports `{classId}-student-properties.xlsx` with custom metadata per student. |
+
+### 23.4 Automated Verification & Deployment
+- **Automated Frontend Test Suite (`web-app`)**:
+  - **113 test files passed (1,485 tests passed, 0 failures)**.
+  - All mock uploads migrated to real OpenXML `.xlsx` blobs using `exportStudentRosterExcel` and `exportToExcel`.
+  - All export assertions updated to verify asynchronous Excel file generation.
+- **Production Build**:
+  - Vite production build compiled successfully: `✓ 1988 modules transformed` in 1.08s with zero errors.
+- **Hosting Deployment**:
+  - Web application deployed to live Firebase Hosting (`https://it114115-2627.web.app`).
+- **Git Repository**:
+  - Changes pushed to remote `main` branch.
+
+
 
 

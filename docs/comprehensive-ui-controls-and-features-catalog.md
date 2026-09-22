@@ -359,17 +359,17 @@ flowchart TD
   - `+ Add Schedule` and `✕ Remove` buttons.
 
 ### Section 3: Student Roster & Custom Properties
-- **Student Email Textarea:** Comma/newline separated roster input.
-- **`📥 Import (CSV/TXT)` Button:** Bulk uploads emails from file.
-- **`📤 Export CSV` Button:** Downloads active roster.
+- **Student Email Textarea:** Comma/newline separated roster input with instant cross-class profile auto-fill.
+- **`📥 Batch Import Students` Modal:** Structured dialog with downloadable Excel template (`student_roster_template.xlsx`) and support for `.xlsx`/`.xls` uploads with full Chinese character preservation.
+- **`📤 Export Excel` Button:** Downloads active roster as OpenXML spreadsheet (`Class_{id}_Roster.xlsx`) containing merged names, nicknames, programmes, and cohorts.
 - **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
-- **Student-Specific Custom Properties CSV Tool:**
-  - `📥 Download Student Template`: Generates CSV with `StudentEmail` and existing custom headers.
-  - `📤 Upload Properties CSV`: Dispatches background job (`propertyUploadJobs`) mapping student metadata (e.g., accommodation needs, seat numbers).
+- **Student-Specific Custom Properties Excel Tool:**
+  - `📥 Export / Download Existing Excel`: Generates `.xlsx` spreadsheet with `StudentEmail` and existing custom property columns.
+  - `📤 Choose Excel (.xlsx) to Upload`: Dispatches background job (`propertyUploadJobs`) mapping student metadata (e.g., accommodation needs, seat numbers).
 
 ### Section 4: Teaching Team
 - **Co-Teacher Email Textarea:** Shared access permissions for teaching assistants and co-instructors.
-- **Import / Export Buttons:** CSV/TXT roster management.
+- **Import / Export Actions:** Team management with email parsing and verification.
 
 ### Section 5: AI & Automation Parameters
 - **Capture Mode Selector:** `Dual (Screen + Webcam)`, `Screen Only`, or `Webcam Only`.
@@ -487,12 +487,12 @@ flowchart TD
   - Highlights all 4 options with the designated correct answer emphasized in emerald green with a bold `✓ Correct Answer` badge.
   - Vision screenshot thumbnail preview with one-click full-resolution lightbox modal and AI reasoning text.
 - **Detailed Student Response Table:**
-  - Student identity columns (`Email` and `UID`).
+  - Student identity columns (`Student Display Name`, `Email`, `Class/Cohort`, and `UID`).
   - Chosen answer badge showing option letter ($A, B, C, D$) and selected option text, or `⏱️ No answer (Countdown expired)` in red italic.
   - Status badges (`✅ Verified Present`, `❌ Incorrect Choice`, `⚠️ Timed Out`, `⏳ Pending`).
   - Student latency, OS window focus state, and strike badges (`Strike 1`, `🚨 Strike 2 (Deduction)`).
-- **Interactive Search & Filter Toolbar:** Real-time search query matching email/UID and status filter tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
-- **CSV Data Exporter:** One-click export to CSV spreadsheet formatted according to RFC 4180 standards for offline auditing and reporting.
+- **Interactive Search & Filter Toolbar:** Real-time search query matching student name/email/UID and status filter tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
+- **Excel Data Exporter (`🎲 Export Excel`):** One-click export to OpenXML (`.xlsx`) spreadsheet with resolved student display names, emails, cohorts, programmes, timestamps, questions, options, choices, and strike outcomes.
 
 ---
 
@@ -506,7 +506,7 @@ flowchart TD
   - Checkbox: `High-Resolution Screenshots (Screen & Webcam)`
   - Checkbox: `Audio Incident Recordings & Transcripts`
   - Checkbox: `Biometric Gaze & Head Pose Deviation Logs`
-- **Student Filter:** Radio for `All Students in Class` vs `Select Specific Students` (checklist).
+- **Student Filter:** Radio for `All Students in Class` vs `Select Specific Students` (checklist with resolved student names).
 - **Asynchronous Processing Options:**
   - `Send completion notification to email` toggle + email input.
   - `🚀 Generate Incident Dossier` button (submits job to `reportJobs`).
@@ -522,16 +522,17 @@ flowchart TD
 - **`📦 Request Selected as ZIP` Button:** Submits background archive job for selected recordings.
 - **`📦 Request All as ZIP` Button:** Submits background archive job for all class videos in range.
 - **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`), and trigger analysis for selected videos or the whole class.
-- **`📥 Export Video Manifest (CSV)` Button:** Exports video metadata (IDs, student emails, timestamps, storage paths).
+- **`📥 Export Video Manifest (Excel)` Button:** Exports video metadata (IDs, student display names, emails, cohorts, timestamps, storage paths) to `.xlsx`.
 - **Video Table Actions:**
   - `▶ Play`: Launches `VideoPlayerModal` with custom controls and speed toggles (0.5x, 1x, 1.5x, 2x).
   - `⬇ Download`: Direct browser download of MP4 file.
 - **Pagination Buttons:** `Previous` and `Next` page navigation.
 
 ### Synchronized Dual Playback (`SessionReviewView.jsx` & `PlaybackView.jsx`)
-- **Student Filter Search Input & Dropdown:** Filter by student email.
+- **Student Filter Search Input & Dropdown:** Filter by student name, nickname, or email.
 - **Synchronized Video Player:** Plays compiled student screen and webcam streams side-by-side with locked time scrubbing.
 - **Scrubber Timeline:** Jump to any minute of the lesson.
+- **`📥 Export Video Jobs (Excel)` Button:** Exports all compilation job records enriched with student names and cohorts into `.xlsx`.
 - **Video Compilation Jobs Management Table:**
   - Status filter pills (`pending`, `processing`, `completed`, `failed`).
   - Bulk select checkboxes & `Delete Selected Jobs` button (deletes Firestore record and Cloud Storage video).
@@ -546,16 +547,16 @@ flowchart TD
 ### Jobs Management
 - **Jobs Table:** Displays Job ID, Requester, Creation Time, Target Videos count, and Status (`pending`, `processing`, `completed`, `partial_failure`, `failed`).
 - **Live Progress Indicator:** Displays real-time `Progress: {processedCount} / {totalVideos}` during the `processing` state as Google Cloud Tasks push-workers complete each student video.
-- **Level 2 Detail Navigation (View Transitions API):** Clicking a job smoothly animates into a granular analysis matrix listing every analyzed student subjob.
+- **Level 2 Detail Navigation (View Transitions API):** Clicking a job smoothly animates into a granular analysis matrix listing every analyzed student subjob with resolved student display names and cohort badges.
 - **`🔄 Retry Failed Jobs (N)` Button:** Calls the `retryVideoAnalysisJob` callable Cloud Function to immediately enqueue failed videos back into the `analyzeSingleVideoTask` Cloud Tasks queue, with zero client HTTP timeouts.
-- **`📥 Export Analysis Results` Buttons:** Export full rubric evaluations as `CSV` or `JSON`.
+- **`📥 Export Analysis Results` Buttons:** Export full rubric evaluations as **Excel (`.xlsx`)** or **JSON**.
 - **`👁️ View Prompt` Modal:** Displays exact system prompt applied during evaluation.
 
 ### Job Result Modal (`JobResultModal.jsx`)
-- **Dynamic Content Header:** Automatically switches between `Analysis Output:` for plain text / markdown evaluation narratives and `Analysis Output (JSON):` for structured JSON findings.
+- **Dynamic Content Header:** Automatically switches between `Analysis Output:` for plain text / markdown evaluation narratives and `Analysis Output (JSON):` for structured JSON findings, displaying `Student: {displayName} ({email})` with cohort tag.
 - **Default Word Wrap (`↩ Wrap: ON` / `➡ Wrap: OFF`):** Enabled by default with `whiteSpace: pre-wrap`, `wordBreak: break-word`, and `overflowWrap: anywhere`, ensuring single-line AI outputs flow cleanly within the viewport without horizontal scrolling. Includes a toolbar toggle to disable wrapping when inspecting strict tabular monospace formatting.
 - **Multi-Format Export Toolbar:**
-  - `📥 CSV`: Exports structured evaluation findings with student email, model, and cost metadata.
+  - `📥 Excel`: Exports structured evaluation findings with student name, email, class/cohort, programme, model, and cost metadata.
   - `📥 JSON`: Downloads raw JSON output file.
   - `📝 Markdown`: Downloads findings formatted as a clean Markdown report.
   - `📄 Text Report`: Plaintext report export.
@@ -576,8 +577,11 @@ flowchart TD
 
 ### Calculation & Export
 - **`Calculate Live Attendance` Button:** Triggers `getAttendanceData` Cloud Function to compute attendance bitmasks across screen-sharing and Bingo verification records.
-- **`Export to CSV` Button:** Downloads comprehensive CSV containing:
+- **`Export to Excel` Button:** Downloads comprehensive OpenXML (`.xlsx`) spreadsheet containing:
+  - Student Display Name (e.g. `大文 (Chan Tai Man)`)
   - Student Email
+  - Class / Cohort
+  - Programme
   - Screen Share Total Minutes & Percentage
   - AI Estimated Working Minutes & Percentage
   - Lesson General Summary & General Feedback
@@ -604,7 +608,7 @@ flowchart TD
 - **Period Filter Buttons:** `All Sessions`, `Today`, `Past 24h`, `Past 7 Days`, and `Custom Range...` (with `datetime-local` pickers and `Apply Filter` button).
 - **`🔄 Refresh` Button:** Reloads Firestore collection snapshot.
 - **`📄 Export Formal Dossier (.docx / .csv)` Button:** Opens formal export modal.
-- **`Quick CSV Page` Button:** Exports current paginated view to CSV.
+- **`Quick Excel Page` Button:** Exports current paginated view with resolved student display names to OpenXML `.xlsx`.
 
 ### Irregularities Table & Evidence Modals
 - **Type Badges:**
@@ -623,8 +627,10 @@ flowchart TD
   - `🎙️ Diarization Timeline & Seek` button.
 - **Audio Diarization Transcript Modal (`AudioTranscriptModal.jsx`):**
   - Interactive multi-speaker diarization timeline with clickable segment seek buttons.
+  - Resolved speaker display names (`大文 (Chan Tai Man)`).
   - Risk Level Badge (`Low`, `Medium`, `High`).
   - Classification Tag & AI Rationale box.
+  - Excel transcript export button (`.xlsx`).
 
 ---
 
@@ -641,15 +647,15 @@ flowchart TD
 - Responsive visual bar chart comparing average student duration across canonical milestone tasks (e.g., Task 1: MFA Setup, Task 2: CloudShell, Task 3: DevOps Pipeline).
 
 ### Student Performance Roster Table
-- **Student Search Filter Input:** Fast email search.
+- **Student Search Filter Input:** Fast search by student display name, nickname, or email.
 - **Status Filter Dropdown:** `All Students`, `Completed All`, `In Progress`, or `Needs Help`.
-- **Sortable Columns:** Student Email, Completed Tasks, Total Time Spent, Status.
+- **Sortable Columns:** Student Display Name, Student Email, Class / Cohort, Programme, Completed Tasks, Total Time Spent, Status.
 - **Bottleneck Highlights:** Red warning badges highlight individual tasks where a student struggled significantly above class average.
-- **`📥 Export Performance (CSV)` Button:** Downloads full milestone metric matrix.
+- **`📥 Export Performance (Excel)` Button:** Downloads full milestone metric matrix in `.xlsx` with complete student profile fields.
 
 ### Student Progress View (`ProgressView.jsx`)
-- Paginated table showing latest task checkpoint for each student.
-- `Export Summary CSV` button.
+- Paginated table showing latest task checkpoint for each student with display names and cohort badges.
+- `Export Summary Excel` button generating `.xlsx` with full student profiles.
 - Clickable student rows to expand complete chronological task history.
 
 ---
@@ -664,12 +670,12 @@ flowchart TD
 - **Unit Economics:** Average cost per analyzed job.
 
 ### Filter Toolbar
-- **Student Dropdown:** Filter by individual student or `All Students`.
+- **Student Dropdown:** Filter by individual student (rendered with resolved display name and cohort) or `All Students`.
 - **Job Type Dropdown:** Single Screenshot Analysis, Multi-Student Grid Analysis, Video Screencast Inspection, Cloud Gaze Fallback, Audio STT & Diarization.
 - **Model Dropdown:** Filter by specific Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`).
 - **Date Range Pickers:** `From Date` and `To Date`.
 - **`Reset Filters` Button:** Clears all active filters.
-- **`📥 Export CSV Report` Button:** Downloads comprehensive FinOps audit spreadsheet.
+- **`📥 Export Excel Report` Button:** Downloads comprehensive FinOps audit spreadsheet in OpenXML `.xlsx` format with full student profile enrichment across all sheets.
 
 ### Visual Cost Distribution Breakdowns
 - **Spend by Gemini Model:** Percentage progress bars with distinct color themes for each Gemini model variant.

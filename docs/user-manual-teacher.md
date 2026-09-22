@@ -67,7 +67,7 @@ flowchart TD
         P2 --> P3["Calculate Live Attendance Bitmasks"]
         P3 --> P4["Review Biometric Alerts & Audio Diarization"]
         P4 --> P5["Monitor AI Token Cost & Quota"]
-        P5 --> P6["Export Formal Incident Dossier (.docx/.csv)"]
+        P5 --> P6["Export Formal Incident Dossier (.docx/.xlsx)"]
     end
 
     PreLesson --> ActiveLesson
@@ -115,7 +115,7 @@ Each enrolled student profile contains:
 
 ### Cross-Class Student Profile Propagation ("One Class Provided It, All Classes Work")
 Students often take multiple modular classes across semesters and teaching teams. The platform features an **Institutional Student Directory**:
-1. **One-Time Upload**: Once a student's profile metadata is entered, imported via CSV, or uploaded in **any single class**, it is stored in the central institutional directory.
+1. **One-Time Upload**: Once a student's profile metadata is entered, imported via Excel, or uploaded in **any single class**, it is stored in the central institutional directory.
 2. **Instant Auto-Enrichment**: Whenever you create a new class or add student emails to an existing class (by typing, pasting, or importing emails), known profiles from other classes are **immediately auto-filled**.
 3. **Visual Transparency**:
    - The roster summary displays: `✨ X auto-filled from other classes`.
@@ -127,18 +127,20 @@ Students often take multiple modular classes across semesters and teaching teams
 2. **Manual Input:** Enter student institutional emails separated by commas or new lines into the textarea. As you type, matching directory profiles appear below in real time.
 3. **Batch Import Modal (`📥 Batch Import Students`):**
    - Click to open the structured import dialog.
-   - Paste or upload CSV data with headers: `Email,Student Name,Nickname,Programme,Class`.
+   - Download the official template: `📄 Download Excel Template` (`student_roster_template.xlsx`).
+   - Drag & drop or upload an Excel spreadsheet (`.xlsx` or `.xls`) with standard headers: `StudentEmail,StudentName,Nickname,Programme,Class`.
+   - Full Unicode preservation guarantees that Chinese names and nicknames (e.g., `大文`, `陳大文`, `阿欣`) load perfectly without encoding issues.
    - Preview changes and apply them directly to the roster.
-4. **Export Roster (`📤 Export CSV`):**
-   - Click **`📤 Export CSV`** to download current roster records. The downloaded CSV automatically includes all auto-enriched names, nicknames, programmes, and cohort classes merged from institutional memory.
+4. **Export Roster (`📤 Export Excel`):**
+   - Click **`📤 Export Excel`** to download current roster records as an OpenXML spreadsheet (`Class_{id}_Roster.xlsx`). The exported Excel file includes all auto-enriched names, nicknames, programmes, and cohort classes merged from institutional memory.
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:
 - **Class-wide Properties:** Define key-value pairs (e.g., `ProjectRepo: github.com/school/lab1`, `OperatingSystem: Ubuntu 24.04`). These keys are automatically available in all video and vision evaluation prompts.
 - **Student-Specific Properties:**
-  1. Click **`📥 Download Student Template`** in the Custom Properties Manager.
+  1. Click **`📥 Export / Download Existing Excel`** in the Custom Properties Manager.
   2. Populate columns for each student (e.g., `AssignedSeat: Lab-302-A`, `AccommodationTier: ExtendedTime`).
-  3. Click **`📤 Upload Properties CSV`**. Cloud Functions asynchronously parse and link these attributes to individual student UIDs.
+  3. Click **`📤 Choose Excel (.xlsx) to Upload`**. Cloud Functions asynchronously parse and link these attributes to individual student UIDs.
 
 ---
 
@@ -494,7 +496,7 @@ The Bingo Presence Report is deeply integrated with the class schedule:
    - **Window Focus:** `🖥️ Focused` (green) or `❌ Unfocused` (rose red).
    - **Strike Indicator:** `Strike 1` or `🚨 Strike 2 (Deduction)` badges.
 6. **Student Search & Status Filtering:** Search by email prefix or student UID, and filter by status tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
-7. **RFC 4180 CSV Export:** Click **`⬇️ Export CSV`** to download a spreadsheet with timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `bingo-report-CLASS101-2026_09_17.csv`).
+7. **Excel Export (`📥 Export Excel`):** Click **`📥 Export Excel`** to download an OpenXML `.xlsx` spreadsheet with student names, nicknames, cohorts, programmes, timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `Bingo_Results_CLASS101_2026_09_17.xlsx`).
 
 ---
 
@@ -504,9 +506,10 @@ Navigate to the **`🎥 Videos`** tab to inspect completed screencasts.
 
 ### Synchronized Dual Playback (`SessionReviewView.jsx`)
 1. Select the **Session Review** subtab.
-2. Filter by student email using the search dropdown.
+2. Filter by student name or email using the search dropdown.
 3. The player loads both the student's desktop recording and webcam recording.
 4. Dragging the timeline scrubber advances both video streams in synchronized lock-step, allowing you to cross-examine what was on the student's screen with their physical head posture.
+5. Click **`📥 Export Video Jobs (Excel)`** to download all lesson video compilation jobs (`Class_{classId}_Video_Jobs_{timestamp}.xlsx`) enriched with student display names and cohort section badges.
 
 ### Teacher Lecture Recordings & Multilingual YouTube CC (`LectureRecordingsView.jsx`)
 
@@ -533,7 +536,7 @@ Teachers can review their own screen/microphone lecture recordings, play them wi
 2. Review the table of compiled MP4 recordings with date, duration, and file size.
 3. Select checkboxes for specific recordings or select all.
 4. Click **`📦 Request Selected as ZIP`** (or **`📦 Request All as ZIP`**). Cloud Functions will assemble a single ZIP package in the background. A download notification will appear in your **Mailbox** upon completion.
-5. Click **`📥 Export Video Manifest (CSV)`** to export recording URLs and timestamps for grading spreadsheets.
+5. Click **`📥 Export Video Manifest (Excel)`** to export recording URLs, durations, and timestamps mapped to student display names and emails (`Class_{classId}_Video_Manifest_{timestamp}.xlsx`).
 
 ---
 
@@ -557,15 +560,15 @@ Rather than writing grading rubrics by hand, let Gemini synthesize rubrics from 
 
 ### Reviewing and Exporting Results
 - **Live Progress Monitoring**: As jobs run, track real-time progress via the live counter: **`Progress: {processedCount} / {totalVideos}`**. Because evaluation is orchestrated via Google Cloud Tasks push queues, jobs of arbitrary cohort size (e.g. 40, 80, 100+ students) execute to completion without timeout constraints.
-- Click any job to open the **Level 2 Detail Matrix** (powered by View Transitions API) showing individual student subjobs.
+- Click any job to open the **Level 2 Detail Matrix** (powered by View Transitions API) showing individual student subjobs with student display names and cohort tags.
 - **Inspecting Single-Student Findings (`JobResultModal`)**:
   - Click any student subjob row to inspect their AI evaluation report.
   - **Dynamic Labeling**: The modal accurately indicates **`Analysis Output:`** for text and Markdown narratives, or **`Analysis Output (JSON):`** for structured objects.
   - **Automatic Word Wrap**: Long continuous evaluation text wraps cleanly within the window (`whiteSpace: pre-wrap`), completely eliminating horizontal scrolling across long single-line outputs.
   - **Wrap Toggle (`↩ Wrap: ON` / `➡ Wrap: OFF`)**: Toggle between word-wrapped reading mode and raw unformatted monospace layout.
-  - **Single-Student Export Toolbar**: Download findings instantly via **`📥 CSV`**, **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, or copy to clipboard with **`📋 Copy`**.
+  - **Single-Student Export Toolbar**: Download findings instantly via **`📥 Excel`**, **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, or copy to clipboard with **`📋 Copy`**.
 - Click **`👁️ View Prompt`** to inspect the exact system prompt applied during evaluation.
-- Click **`📥 Export Results (CSV)`** or **`📥 Export Results (JSON)`** to download comprehensive grades and feedback across the entire class.
+- Click **`📥 Export Results (Excel)`** or **`📥 Export Results (JSON)`** to download comprehensive grades and feedback across the entire class, fully populated with Student Name, Email, Class/Cohort, and Programme.
 - **One-Click In-Place Retry**: If any video encountered errors (e.g. quota limits or video encoding anomalies), the master job status will display **`PARTIAL_FAILURE (N failed)`**. Click **`🔄 Retry Failed Jobs (N)`** to instantly re-queue only the failed videos into the Cloud Tasks queue. The operation returns immediately to the browser without HTTP timeouts while workers process in the background.
 
 ### 🔬 Two-Stage AI Video Analysis & Rubric Synthesis Architecture
@@ -593,7 +596,7 @@ flowchart TD
     subgraph BatchEval ["Stage 2B: Targeted Cohort Re-Evaluation"]
         EDIT -->|Launch Job| BATCH["Map-Reduce Batch Job Evaluation"]
         BATCH --> SCORES["Granular Student Grades & Timestamps"]
-        SCORES --> EXP["Universal Export: RFC 4180 CSV / JSON Matrix"]
+        SCORES --> EXP["Universal Export: Microsoft Excel (.xlsx) / JSON Matrix"]
         SCORES --> PERF["Performance Analytics & Bottleneck Chart"]
     end
 ```
@@ -623,7 +626,7 @@ Click any student's row in the attendance table to open the **Student AI Summary
 - **Class-wide Summary:** General observations across all students.
 - **Student-Specific Summary:** Individual assessment of the student's progress and focus.
 - **Actionable Recommendations:** Specific technical guidance tailored to that student's work.
-- Click **`Export to CSV`** to download the complete bitmask matrix and written feedback.
+- Click **`Export to Excel`** to download `attendance-{classId}-{start}-{end}.xlsx` containing the complete bitmask matrix, AI summaries, and teacher feedback. All records feature full student identity columns: **`Student Display Name`**, **`Student Email`**, **`Class / Cohort`**, and **`Programme`**.
 
 ---
 
@@ -634,13 +637,14 @@ Navigate to **`📊 Analytics` $\to$ `Irregularities`** ([`IrregularitiesView.js
 ### Filtering Incidents
 - Choose a scope button: `Today`, `Past 24h`, `Past 7 Days`, or `Custom Range...` (with start and end datetime pickers).
 - Click **`Apply Filter`**.
+- Click **`Quick Excel Page`** to export the current paginated view with resolved student display names into `.xlsx`.
 
 ### Inspecting Evidence
 Click on any incident thumbnail to launch the **Dual Evidence Player**:
 - **Dual Screen & Webcam Snapshots:** Side-by-side high-resolution captures taken at the exact second the alert was triggered.
 - **Acoustic Incident Bar:** Plays the corresponding audio recording.
 - **Transcript Quote:** Displays the captured speech quote highlighted in red.
-- **`🎙️ Diarization Timeline & Seek`:** Launches the Audio Diarization Modal. Click any speaker turn to seek audio playback directly to that phrase.
+- **`🎙️ Diarization Timeline & Seek`:** Launches the Audio Diarization Modal. Click any speaker turn to seek audio playback directly to that phrase, or export dialogue turns to Excel (`.xlsx`).
 
 ---
 
@@ -658,10 +662,10 @@ Navigate to **`📊 Analytics` $\to$ `Performance`** ([`PerformanceAnalyticsView
 Review the interactive `recharts` bar chart to compare average completion times across tasks and identify where students encountered technical hurdles.
 
 ### Student Performance Table
-- Search by student email.
+- Search by student name, nickname, or email.
 - Filter by status: `All Students`, `Completed All`, `In Progress`, or `Needs Help`.
 - Students exceeding 1.5× the average duration on a task are highlighted with red warning badges.
-- Click **`📥 Export Performance (CSV)`** to download the milestone performance dataset.
+- Click **`📥 Export Performance (Excel)`** or **`📥 Export Matrix Excel`** to download `Performance_Analytics_Matrix_{timestamp}.xlsx` containing milestone metrics, duration distributions, and complete student profiles (`Student Name`, `Student Email`, `Class / Cohort`, `Programme`).
 
 ---
 
@@ -680,8 +684,8 @@ Navigate to **`📊 Analytics` $\to$ `AI Cost`** ([`AiCostReportView.jsx`](file:
 - **By Job Category:** Spend breakdown across single screenshots, multi-student grids, video screencasts, and audio transcription.
 
 ### Student AI Consumption Table
-- Lists token usage and dollar spend per student.
-- Click **`📥 Export CSV Report`** to download a detailed FinOps accounting spreadsheet.
+- Lists token usage and dollar spend per student with resolved student names and cohorts.
+- Click **`📥 Export Excel Report`** to download `AiCostReport_{timestamp}.xlsx` with detailed FinOps accounting sheets (Executive Summary, By Model, By Category, By Student, and Full Audit Trail).
 
 ---
 

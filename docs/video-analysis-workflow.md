@@ -271,7 +271,7 @@ When teachers inspect individual student video analysis results via `JobResultMo
    - Completely eliminates horizontal scrolling across single-line strings.
 3. **Toolbar Controls**:
    - **`↩ Wrap: ON` / `➡ Wrap: OFF`**: Allows toggling between wrapped reading mode and raw monospace preformatted mode.
-   - Multi-format exports: **`📥 CSV`**, **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, and **`📋 Copy`** with live feedback.
+   - Multi-format exports: **`📥 Excel`** (`.xlsx`), **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, and **`📋 Copy`** with live feedback.
 4. **Live Job Progress Bar**:
    - `VideoAnalysisJobs.jsx` displays real-time progress counters (`Progress: {processedCount} / {totalVideos}`) as Cloud Tasks workers complete.
 
@@ -393,7 +393,7 @@ flowchart TD
 
         Matrix[Student Milestone Matrix<br/>- Sortable Time-to-Completion Heatmap<br/>- Task Duration Badges]
         Bottlenecks[Class Bottleneck Analysis<br/>- Average Task Durations<br/>- Drop-off / Delay Identification]
-        Reports[Individual Student Performance Reports<br/>- Qualitative Rubric Feedback<br/>- CSV / JSON / Markdown Exports]
+        Reports[Individual Student Performance Reports<br/>- Qualitative Rubric Feedback<br/>- Excel (.xlsx) / JSON / Markdown Exports]
 
         PM --> Matrix
         PM --> Bottlenecks
@@ -459,7 +459,7 @@ sequenceDiagram
     end
     Runner->>FS: Updates `videoAnalysisJobs/job2` to 'completed'
     FS-->>UI: Real-time update in PerformanceAnalyticsView
-    Note over Teacher, UI: Teacher views sortable Milestone Matrix, duration heatmaps & exports CSV
+    Note over Teacher, UI: Teacher views sortable Milestone Matrix, duration heatmaps & exports Excel (.xlsx)
 ```
 
 ### 4.4 Phase Characteristics & Operational Matrix
