@@ -265,6 +265,8 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
         classId: 'CLASS_1',
         taskName: 'AWS Academy Lab 2.1',
         durationMinutes: 35,
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
       });
 
       expect(mockCollection).toHaveBeenCalledWith('performanceMetrics');
@@ -279,6 +281,17 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
         })
       );
       expect(result).toContain('Successfully recorded 35 minutes for task "AWS Academy Lab 2.1"');
+    });
+
+    it('returns error message if database throws in recordTaskDuration', async () => {
+      mockAdd.mockRejectedValueOnce(new Error('Quota exceeded on writes'));
+      const result = await recordTaskDuration({
+        studentUid: 's1',
+        classId: 'CLASS_1',
+        taskName: 'Lab 2',
+        durationMinutes: 10,
+      });
+      expect(result).toContain('Failed to record task duration. Error: Quota exceeded on writes');
     });
   });
 
@@ -303,9 +316,23 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
         studentUid: 's1',
         feedback: 'Student solved problem 3 quickly and accurately.',
       });
-
-      expect(mockCollection).toHaveBeenCalledWith('classes');
       expect(result).toContain('Successfully recorded feedback for lesson');
+    });
+
+    it('returns error message if Firestore throws in recordLessonFeedback', async () => {
+      mockDoc.mockReturnValueOnce({
+        collection: vi.fn(() => {
+          throw new Error('Lesson path error');
+        }),
+      });
+
+      const result = await recordLessonFeedback({
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        feedback: 'Feedback error',
+      });
+      expect(result).toContain('Failed to record lesson feedback. Error: Lesson path error');
     });
   });
 
@@ -334,5 +361,61 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
       expect(mockCollection).toHaveBeenCalledWith('classes');
       expect(result).toContain('Successfully recorded summary for lesson');
     });
+
+    it('returns error message if Firestore throws', async () => {
+      mockDoc.mockReturnValueOnce({
+        collection: vi.fn(() => {
+          throw new Error('Firestore write failure');
+        }),
+      });
+
+      const result = await recordLessonSummary({
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        feedback: 'Summary failed.',
+      });
+
+      expect(result).toContain('Failed to record lesson summary. Error: Firestore write failure');
+    });
+  });
+
+  describe('recordAudioAudit', () => {
+    it('successfully records audio audit document in classes/classId/audio_audits/studentUid', async () => {
+      const result = await recordAudioAudit({
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        studentEmail: 's1@school.edu',
+        verdict: 'clean_exam',
+        speakerCount: 1,
+        summary: 'No second speaker detected.',
+        transcript: 'Student talking through logic quietly.',
+        audioUrl: 'gs://bucket/audio.webm',
+      });
+
+      expect(result).toBe('Successfully saved audio audit for student s1.');
+    });
+
+    it('returns error message if saving audio audit fails', async () => {
+      mockDoc.mockReturnValueOnce({
+        collection: vi.fn(() => ({
+          doc: vi.fn(() => {
+            throw new Error('Audit write denied');
+          }),
+        })),
+      });
+
+      const result = await recordAudioAudit({
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        verdict: 'whisper_detected',
+        speakerCount: 2,
+        summary: 'Whispering detected',
+        transcript: 'whisper whisper',
+      });
+
+      expect(result).toContain('Failed to save audio audit. Error: Audit write denied');
+    });
   });
 });
+

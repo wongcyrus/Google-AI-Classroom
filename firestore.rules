@@ -81,22 +81,27 @@ service cloud.firestore {
       }
 
       match /screenBroadcast/{docId} {
-        allow read: if isTeacher() || isStudentInClass(classId);
-        allow write: if isTeacher();
+        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacher() || isTeacherInClass(classId);
       }
 
       match /screenBroadcastViewers/{studentUid} {
-        allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow read, write: if isTeacher() || isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentUid);
       }
 
       match /liveSubtitles/{docId} {
-        allow read: if isTeacher() || isStudentInClass(classId);
-        allow write: if isTeacher();
+        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacher() || isTeacherInClass(classId);
       }
 
       match /lessons/{lessonId} {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacherInClass(classId);
+      }
+
+      match /lectureRecordings/{sessionId} {
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
       }
 
       match /audio/{audioId} {

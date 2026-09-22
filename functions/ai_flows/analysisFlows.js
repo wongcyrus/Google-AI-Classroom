@@ -395,7 +395,14 @@ export const analyzeFaceFallbackFlow = ai.defineFlow(
 
     const activeModel = model || classData.aiModel || AI_MODEL;
     const media = [{ media: { url: webcamUrl } }];
-    const promptText = `Analyze this classroom invigilation webcam photo of student ${studentEmail} (UID: ${studentUid}, class: ${classId}).
+    let promptText = classData.liveImagePrompt?.promptText;
+    if (promptText) {
+      promptText = promptText
+        .replace(/\{\{studentEmail\}\}/g, studentEmail || '')
+        .replace(/\{\{studentUid\}\}/g, studentUid || '')
+        .replace(/\{\{classId\}\}/g, classId || '');
+    } else {
+      promptText = `Analyze this classroom invigilation webcam photo of student ${studentEmail} (UID: ${studentUid}, class: ${classId}).
 Determine the student's face presence and gaze orientation.
 Rules:
 1. Is there a human face present? If no face is visible, status is 'no_face'.
@@ -409,6 +416,7 @@ Respond ONLY with valid JSON in this exact structure:
   "confidence": 0.95,
   "reason": "Brief explanation"
 }`;
+    }
 
     const fullPrompt = [
       { text: promptText },
