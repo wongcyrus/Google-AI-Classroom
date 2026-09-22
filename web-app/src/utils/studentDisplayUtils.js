@@ -3,7 +3,7 @@
  * 
  * Supports:
  * - Parsing batch roster CSV/TSV/pasted text with case-insensitive, alias-friendly headers:
- *   (StudentEmail, FirstName, LastName, Nickname, Programme, Class [Cohort]).
+ *   (StudentEmail, StudentName, Nickname, Programme, Class [Cohort]).
  * - Multi-tier graceful fallback for students without complete profile metadata.
  * - Single-point-of-truth display name formatting across teacher and student views.
  */
@@ -22,9 +22,9 @@ export const normalizeStudentEmail = (email) => {
  * Retrieves the normalized student profile from a profileMap or student object.
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap - Map of normalized email -> profile object
- * @returns {object} { email, studentName, firstName, lastName, nickname, programme, studentClass }
+ * @returns {object} { email, studentName, nickname, programme, studentClass }
  */
-export const getStudentProfile = (studentOrEmail, profileMap = {}, options = {}) => {
+export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
   let email = '';
   let directProfile = null;
 
@@ -41,12 +41,10 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}, options = {})
       directProfile = studentOrEmail.profile;
     } else {
       // Check if student object itself carries profile fields
-      const { studentName, name, firstName, lastName, nickname, programme, studentClass } = studentOrEmail;
-      if (studentName || name || firstName || lastName || nickname || programme || studentClass) {
+      const { studentName, name, nickname, programme, studentClass } = studentOrEmail;
+      if (studentName || name || nickname || programme || studentClass) {
         directProfile = {
           studentName: studentName || name,
-          firstName,
-          lastName,
           nickname,
           programme,
           studentClass,
@@ -59,25 +57,11 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}, options = {})
     ? (profileMap[email] || null)
     : null;
 
-  let studentName = (directProfile?.studentName || directProfile?.name || mapProfile?.studentName || mapProfile?.name || '').trim();
-  const firstName = (directProfile?.firstName || mapProfile?.firstName || '').trim();
-  const lastName = (directProfile?.lastName || mapProfile?.lastName || '').trim();
-
-  // Gracefully derive studentName from legacy lastName + firstName if not explicitly provided
-  if (!studentName) {
-    const nameOrder = options.nameOrder || 'surname_first';
-    if (lastName && firstName) {
-      studentName = nameOrder === 'surname_first' ? `${lastName} ${firstName}` : `${firstName} ${lastName}`;
-    } else if (lastName || firstName) {
-      studentName = lastName || firstName;
-    }
-  }
+  const studentName = (directProfile?.studentName || directProfile?.name || mapProfile?.studentName || mapProfile?.name || '').trim();
 
   const merged = {
     email,
     studentName,
-    firstName,
-    lastName,
     nickname: (directProfile?.nickname || mapProfile?.nickname || '').trim(),
     programme: (directProfile?.programme || mapProfile?.programme || '').trim(),
     studentClass: (directProfile?.studentClass || directProfile?.class || mapProfile?.studentClass || mapProfile?.class || '').trim(),
@@ -98,33 +82,20 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}, options = {})
  * 
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap 
- * @param {object} options - { nameOrder: 'surname_first' | 'given_first' }
  * @returns {string}
  */
-export const getStudentDisplayName = (studentOrEmail, profileMap = {}, options = {}) => {
-  const profile = getStudentProfile(studentOrEmail, profileMap, options);
-  const { studentName, firstName, lastName, nickname, email } = profile;
-
-  let resolvedName = studentName;
-  if (!resolvedName) {
-    const nameOrder = options.nameOrder || 'surname_first';
-    if (lastName && firstName) {
-      resolvedName = nameOrder === 'surname_first' ? `${lastName} ${firstName}` : `${firstName} ${lastName}`;
-    } else if (lastName) {
-      resolvedName = lastName;
-    } else if (firstName) {
-      resolvedName = firstName;
-    }
-  }
+export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
+  const profile = getStudentProfile(studentOrEmail, profileMap);
+  const { studentName, nickname, email } = profile;
 
   // Tier 1: Nickname + Student Name
-  if (nickname && resolvedName) {
-    return `${nickname} (${resolvedName})`;
+  if (nickname && studentName) {
+    return `${nickname} (${studentName})`;
   }
 
   // Tier 2: Student Name Only
-  if (resolvedName) {
-    return resolvedName;
+  if (studentName) {
+    return studentName;
   }
 
   // Tier 3: Nickname Only
@@ -154,26 +125,17 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}, options =
  * @param {object} profileMap 
  * @returns {object}
  */
-export const formatStudentIdentity = (studentOrEmail, profileMap = {}, options = {}) => {
-  const profile = getStudentProfile(studentOrEmail, profileMap, options);
-  const displayName = getStudentDisplayName(studentOrEmail, profileMap, options);
+export const formatStudentIdentity = (studentOrEmail, profileMap = {}) => {
+  const profile = getStudentProfile(studentOrEmail, profileMap);
+  const displayName = getStudentDisplayName(studentOrEmail, profileMap);
   const hasCustomProfile = Boolean(
-    profile.studentName || profile.firstName || profile.lastName || profile.nickname || profile.programme || profile.studentClass
+    profile.studentName || profile.nickname || profile.programme || profile.studentClass
   );
-
-  let fullName = profile.studentName;
-  if (!fullName) {
-    if (profile.lastName && profile.firstName) {
-      fullName = `${profile.lastName} ${profile.firstName}`;
-    } else {
-      fullName = profile.lastName || profile.firstName || '';
-    }
-  }
 
   return {
     ...profile,
     displayName,
-    fullName,
+    fullName: profile.studentName,
     hasCustomProfile,
   };
 };
@@ -183,9 +145,7 @@ export const formatStudentIdentity = (studentOrEmail, profileMap = {}, options =
  * 
  * Supports case-insensitive header aliases:
  * - Email: 'studentemail', 'email', 'studentmail', 'mail', 'emailaddress'
- * - Student Name: 'studentname', 'name', 'fullname', 'student_name', 'student', 'chinesename', 'englishname'
- * - First Name (legacy alias): 'firstname', 'first_name', 'givenname', 'given_name'
- * - Last Name (legacy alias): 'lastname', 'last_name', 'surname', 'familyname', 'family_name'
+ * - Student Name: 'studentname', 'name', 'fullname', 'student_name', 'student', 'chinesename'
  * - Nickname: 'nickname', 'nick_name', 'preferredname', 'preferred_name'
  * - Programme: 'programme', 'program', 'major', 'department'
  * - Class (Cohort): 'class', 'studentclass', 'student_class', 'classgroup', 'cohort', 'group', 'tutorialgroup'
@@ -263,8 +223,6 @@ export const parseStudentRosterCsv = (rawText) => {
   const ALIASES = {
     email: ['studentemail', 'email', 'studentmail', 'mail', 'emailaddress'],
     studentName: ['studentname', 'name', 'fullname', 'student_name', 'student', 'chinesename'],
-    firstName: ['firstname', 'givenname', 'fname', 'first'],
-    lastName: ['lastname', 'surname', 'familyname', 'lname', 'last'],
     nickname: ['nickname', 'nick', 'preferredname', 'displayname', 'preferred_name'],
     programme: ['programme', 'program', 'major', 'course', 'department', 'curriculum'],
     studentClass: ['class', 'studentclass', 'cohort', 'classgroup', 'group', 'tutorialgroup', 'section', 'stream'],
@@ -277,8 +235,6 @@ export const parseStudentRosterCsv = (rawText) => {
 
   const emailCol = getColIndex('email');
   const studentNameCol = getColIndex('studentName');
-  const firstNameCol = getColIndex('firstName');
-  const lastNameCol = getColIndex('lastName');
   const nicknameCol = getColIndex('nickname');
   const programmeCol = getColIndex('programme');
   const studentClassCol = getColIndex('studentClass');
@@ -298,8 +254,6 @@ export const parseStudentRosterCsv = (rawText) => {
 
     let email = '';
     let studentName = '';
-    let firstName = '';
-    let lastName = '';
     let nickname = '';
     let programme = '';
     let studentClass = '';
@@ -309,28 +263,16 @@ export const parseStudentRosterCsv = (rawText) => {
       if (studentNameCol !== -1) {
         studentName = cells[studentNameCol] || '';
       }
-      firstName = firstNameCol !== -1 ? (cells[firstNameCol] || '') : '';
-      lastName = lastNameCol !== -1 ? (cells[lastNameCol] || '') : '';
       nickname = nicknameCol !== -1 ? (cells[nicknameCol] || '') : '';
       programme = programmeCol !== -1 ? (cells[programmeCol] || '') : '';
       studentClass = studentClassCol !== -1 ? (cells[studentClassCol] || '') : '';
     } else {
-      // Positional fallback
+      // Positional fallback: Email, StudentName, Nickname, Programme, Class
       email = cells[0] || '';
-      if (cells.length >= 6) {
-        // 6 columns positional: Email, FirstName, LastName, Nickname, Programme, Class
-        firstName = cells[1] || '';
-        lastName = cells[2] || '';
-        nickname = cells[3] || '';
-        programme = cells[4] || '';
-        studentClass = cells[5] || '';
-      } else {
-        // 5 columns positional: Email, StudentName, Nickname, Programme, Class
-        studentName = cells[1] || '';
-        nickname = cells[2] || '';
-        programme = cells[3] || '';
-        studentClass = cells[4] || '';
-      }
+      studentName = cells[1] || '';
+      nickname = cells[2] || '';
+      programme = cells[3] || '';
+      studentClass = cells[4] || '';
     }
 
     const cleanEmail = normalizeStudentEmail(email);
@@ -344,30 +286,16 @@ export const parseStudentRosterCsv = (rawText) => {
       continue;
     }
 
-    let cleanName = studentName.trim();
-    const cleanFirst = firstName.trim();
-    const cleanLast = lastName.trim();
-
-    // Gracefully combine legacy first/last names if explicit studentName is absent
-    if (!cleanName) {
-      if (cleanLast && cleanFirst) {
-        cleanName = `${cleanLast} ${cleanFirst}`;
-      } else if (cleanLast || cleanFirst) {
-        cleanName = cleanLast || cleanFirst;
-      }
-    }
-
+    const cleanName = studentName.trim();
     const cleanNick = nickname.trim();
     const cleanProg = programme.trim();
     const cleanClass = studentClass.trim();
 
-    const hasProfile = Boolean(cleanName || cleanFirst || cleanLast || cleanNick || cleanProg || cleanClass);
+    const hasProfile = Boolean(cleanName || cleanNick || cleanProg || cleanClass);
 
     const studentRecord = {
       email: cleanEmail,
       studentName: cleanName,
-      firstName: cleanFirst,
-      lastName: cleanLast,
       nickname: cleanNick,
       programme: cleanProg,
       studentClass: cleanClass,
@@ -382,8 +310,6 @@ export const parseStudentRosterCsv = (rawText) => {
     if (hasProfile) {
       profilesMap[cleanEmail] = {
         studentName: cleanName,
-        firstName: cleanFirst,
-        lastName: cleanLast,
         nickname: cleanNick,
         programme: cleanProg,
         studentClass: cleanClass,
@@ -434,7 +360,7 @@ export const generateStudentRosterTemplateCsv = () => {
 
 /**
  * Serializes the current class roster (emails + profiles) to an RFC-4180 CSV string.
- * Uses unified 'StudentName' column while preserving backwards compatibility.
+ * Uses unified 'StudentName' column.
  * @param {string[]} studentEmails 
  * @param {object} studentProfiles 
  * @param {string} classId 
@@ -459,10 +385,9 @@ export const exportStudentRosterCsv = (studentEmails = [], studentProfiles = {},
     if (!cleanEmail) return;
 
     const prof = studentProfiles[cleanEmail] || {};
-    const studentName = prof.studentName || (prof.lastName && prof.firstName ? `${prof.lastName} ${prof.firstName}` : (prof.lastName || prof.firstName || ''));
     const row = [
       escapeCell(cleanEmail),
-      escapeCell(studentName || ''),
+      escapeCell(prof.studentName || ''),
       escapeCell(prof.nickname || ''),
       escapeCell(prof.programme || ''),
       escapeCell(prof.studentClass || ''),

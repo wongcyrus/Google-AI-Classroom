@@ -33,8 +33,7 @@ describe('studentDisplayUtils Utility', () => {
         studentClass: 'IT114115/1A',
       },
       'wong.ky@vtc.edu.hk': {
-        firstName: 'Ka Yan',
-        lastName: 'Wong',
+        studentName: 'Wong Ka Yan',
         nickname: 'Kelly',
         programme: '',
         studentClass: 'IT114115/1B',
@@ -47,13 +46,6 @@ describe('studentDisplayUtils Utility', () => {
       expect(profile.nickname).toBe('David');
       expect(profile.programme).toBe('Higher Diploma in Software Engineering');
       expect(profile.studentClass).toBe('IT114115/1A');
-    });
-
-    it('gracefully derives studentName from legacy firstName and lastName', () => {
-      const profile = getStudentProfile('wong.ky@vtc.edu.hk', profileMap);
-      expect(profile.studentName).toBe('Wong Ka Yan');
-      expect(profile.nickname).toBe('Kelly');
-      expect(profile.studentClass).toBe('IT114115/1B');
     });
 
     it('resolves profile directly embedded in student object', () => {
@@ -107,19 +99,7 @@ describe('studentDisplayUtils Utility', () => {
         studentName: '',
         nickname: 'Sammy',
       },
-      // 4. Legacy First Name Only
-      'ken@school.edu': {
-        firstName: 'Ken',
-        lastName: '',
-        nickname: '',
-      },
-      // 5. Legacy Last Name Only
-      'mrsmith@school.edu': {
-        firstName: '',
-        lastName: 'Smith',
-        nickname: '',
-      },
-      // 6. Partial with whitespace
+      // 4. Partial with whitespace
       'spacey@school.edu': {
         studentName: '   ',
         nickname: '  Spike  ',
@@ -130,30 +110,12 @@ describe('studentDisplayUtils Utility', () => {
       expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('David (Chan Tai Man)');
     });
 
-    it('Tier 1: Supports legacy Western name ordering if requested with first/last names', () => {
-      const legacyProfile = {
-        'david.legacy@school.edu': {
-          firstName: 'Tai Man',
-          lastName: 'Chan',
-          nickname: 'David',
-        },
-      };
-      expect(
-        getStudentDisplayName('david.legacy@school.edu', legacyProfile, { nameOrder: 'given_first' })
-      ).toBe('David (Tai Man Chan)');
-    });
-
     it('Tier 2: Formats Student Name when no nickname is present', () => {
       expect(getStudentDisplayName('kelly@school.edu', sampleProfiles)).toBe('Wong Ka Yan');
     });
 
     it('Tier 3: Formats Nickname only when no student name is present', () => {
       expect(getStudentDisplayName('sam@school.edu', sampleProfiles)).toBe('Sammy');
-    });
-
-    it('Tier 2.1: Handles legacy single first or last name gracefully', () => {
-      expect(getStudentDisplayName('ken@school.edu', sampleProfiles)).toBe('Ken');
-      expect(getStudentDisplayName('mrsmith@school.edu', sampleProfiles)).toBe('Smith');
     });
 
     it('Tier 3.1: Trims whitespace around nickname properly', () => {
@@ -205,17 +167,6 @@ describe('studentDisplayUtils Utility', () => {
       expect(result.profilesMap['230123456@stu.vtc.edu.hk']).toBeDefined();
       expect(result.profilesMap['230123456@stu.vtc.edu.hk'].studentName).toBe('Chan Tai Man');
       expect(result.profilesMap['230123456@stu.vtc.edu.hk'].nickname).toBe('David');
-    });
-
-    it('supports backward compatibility with legacy FirstName and LastName headers', () => {
-      const legacyCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-legacy@school.edu,Tai Man,Chan,David,HDSE,IT114115/1A`;
-
-      const result = parseStudentRosterCsv(legacyCsv);
-      expect(result.totalParsed).toBe(1);
-      const s = result.students[0];
-      expect(s.studentName).toBe('Chan Tai Man');
-      expect(s.displayName).toBe('David (Chan Tai Man)');
     });
 
     it('handles partial profiles where students lack some or all non-email fields', () => {

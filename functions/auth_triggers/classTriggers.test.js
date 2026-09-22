@@ -265,8 +265,6 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
             studentProfiles: {
               'chan.tm@stu.vtc.edu.hk': {
                 studentName: 'Chan Tai Man',
-                firstName: 'Tai Man',
-                lastName: 'Chan',
                 nickname: 'David',
                 studentClass: 'IT114115/1A',
                 programme: 'Higher Diploma in Software Engineering',
@@ -285,8 +283,6 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
         allowScreenShare: true,
         captureInterval: 10,
         studentName: 'Chan Tai Man',
-        firstName: 'Tai Man',
-        lastName: 'Chan',
         nickname: 'David',
         studentClass: 'IT114115/1A',
         programme: 'Higher Diploma in Software Engineering',

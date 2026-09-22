@@ -60,8 +60,7 @@ describe('Video & AI Analysis Sub-components', () => {
     it('renders friendly student name and cohort badge when studentProfiles is supplied', () => {
       const mockProfiles = {
         'student1@school.edu': {
-          firstName: 'Alice',
-          lastName: 'Wong',
+          studentName: 'Alice Wong',
           nickname: 'Ally',
           studentClass: 'IT114115/1A',
           programme: 'HD in SE'
@@ -80,7 +79,7 @@ describe('Video & AI Analysis Sub-components', () => {
         />
       );
 
-      expect(screen.getByText('Ally (Wong Alice)')).toBeInTheDocument();
+      expect(screen.getByText('Ally (Alice Wong)')).toBeInTheDocument();
       expect(screen.getByText('IT114115/1A')).toBeInTheDocument();
     });
   });

@@ -1069,7 +1069,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             onChange={(e) => setStudentEmails(e.target.value)}
             rows="5"
           />
-          <p className="input-hint">Students with these emails will gain access to this class. Use "Batch Upload Roster" to include first names, last names, nicknames, programmes, and class cohorts.</p>
+          <p className="input-hint">Students with these emails will gain access to this class. Use "Batch Upload Roster" to include student names, nicknames, programmes, and class cohorts.</p>
 
           {/* Roster Profiles Overview */}
           {(() => {
@@ -1112,7 +1112,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                       <tbody>
                         {emailList.map((email, idx) => {
                           const prof = studentProfiles[email] || {};
-                          const resolvedStudentName = prof.studentName || (prof.lastName && prof.firstName ? `${prof.lastName} ${prof.firstName}` : (prof.lastName || prof.firstName || ''));
+                          const resolvedStudentName = prof.studentName || '';
                           return (
                             <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
                               <td style={{ padding: '0.35rem 0.6rem' }}>

@@ -17,8 +17,7 @@ vi.mock('firebase/firestore', () => ({
     data: () => ({
       studentProfiles: {
         'student1@school.edu': {
-          firstName: 'Alice',
-          lastName: 'Wong',
+          studentName: 'Alice Wong',
           nickname: 'Ally',
           studentClass: 'IT114115/1A',
           programme: 'HD in SE'

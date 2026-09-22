@@ -127,8 +127,8 @@ const BatchStudentUploadModal = ({
 
   const counts = parsedData ? {
     total: parsedData.students.length,
-    full: parsedData.students.filter(s => (s.studentName || (s.firstName && s.lastName)) && s.studentClass).length,
-    partial: parsedData.students.filter(s => s.hasProfile && !((s.studentName || (s.firstName && s.lastName)) && s.studentClass)).length,
+    full: parsedData.students.filter(s => s.studentName && s.studentClass).length,
+    partial: parsedData.students.filter(s => s.hasProfile && !(s.studentName && s.studentClass)).length,
     emailOnly: parsedData.students.filter(s => !s.hasProfile).length,
     invalid: parsedData.invalidRows.length,
   } : null;
