@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
-export const useAudioPrompts = (user, applyToFilter = null) => {
-  const [audioPrompts, setAudioPrompts] = useState([]);
+export const useTranslationPrompts = (user) => {
+  const [translationPrompts, setTranslationPrompts] = useState([]);
 
   useEffect(() => {
     if (!user) {
+      setTranslationPrompts([]);
       return;
     }
     const { uid } = user;
@@ -17,17 +18,9 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
     const combineAndSetPrompts = () => {
       const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
       const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
-      let filtered;
-      if (applyToFilter === 'Live Subtitles & Translation') {
-        filtered = unique.filter(p => p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation'));
-      } else {
-        filtered = unique.filter(p => p.category === 'audios');
-        if (applyToFilter) {
-          filtered = filtered.filter(p => !p.applyTo || p.applyTo.includes(applyToFilter));
-        }
-      }
+      const filtered = unique.filter(p => p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation'));
       filtered.sort((a, b) => a.name.localeCompare(b.name));
-      setAudioPrompts(filtered);
+      setTranslationPrompts(filtered);
     };
 
     const promptsCollectionRef = collection(db, 'prompts');
@@ -51,7 +44,7 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
     }));
 
     return () => unsubscribers.forEach(unsub => unsub());
-  }, [user, applyToFilter]);
+  }, [user]);
 
-  return audioPrompts;
+  return translationPrompts;
 };

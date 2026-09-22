@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { acquireInputDeviceStream } from '../../utils/mediaDeviceCapture';
+import { useAudioPrompts } from '../../hooks/useAudioPrompts';
+import { auth } from '../../firebase-config';
 import './TeacherSubtitleControlModal.css';
 
 const AVAILABLE_LANGUAGES = [
-  { code: 'zh-Hant', label: '繁體中文 (Traditional Chinese)' },
+  { code: 'zh-Hant', label: 'Traditional Chinese (繁體中文)' },
   { code: 'en', label: 'English' },
-  { code: 'zh-Hans', label: '简体中文 (Simplified Chinese)' },
-  { code: 'ja', label: '日本語 (Japanese)' },
-  { code: 'ko', label: '한국어 (Korean)' },
+  { code: 'zh-Hans', label: 'Simplified Chinese (简体中文)' },
+  { code: 'ja', label: 'Japanese (日本語)' },
+  { code: 'ko', label: 'Korean (한국어)' },
 ];
 
 export default function TeacherSubtitleControlModal({
@@ -21,12 +24,157 @@ export default function TeacherSubtitleControlModal({
   targetLanguages,
   onToggleTargetLanguage,
   isNanoAvailable,
+  isGemmaAvailable,
+  gemmaProgress = 0,
   latestTranscript,
   latestTranslations = {},
   status,
   error,
   liveUsageStats,
+  languagePairStatuses = {},
+  selectedMicDeviceId = '',
+  onSelectMicDeviceId,
+  courseContext = '',
+  subtitlePrompt = null,
+  user = null,
+  onSelectSubtitlePrompt = null,
+  onSelectCourseContext = null,
+  availablePrompts = null,
 }) {
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [micVolume, setMicVolume] = useState(0);
+  const [micTestError, setMicTestError] = useState(null);
+
+  const fetchedPrompts = useAudioPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
+  const promptsList = availablePrompts || fetchedPrompts;
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [customPromptDraft, setCustomPromptDraft] = useState(subtitlePrompt?.promptText || '');
+
+  useEffect(() => {
+    setCustomPromptDraft(subtitlePrompt?.promptText || '');
+  }, [subtitlePrompt]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+
+    const loadDevices = async () => {
+      try {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices
+          .filter((d) => d.kind === 'audioinput')
+          .map((d, i) => ({
+            deviceId: d.deviceId,
+            label: d.label || (i === 0 ? 'Default Microphone' : `Microphone ${i + 1}`),
+          }));
+        if (isMounted) {
+          setAudioDevices(mics);
+          if (mics.length > 0 && !selectedMicDeviceId && onSelectMicDeviceId) {
+            onSelectMicDeviceId(mics[0].deviceId);
+          }
+        }
+      } catch (err) {
+        console.warn('[TeacherSubtitleControlModal] Error loading audio devices:', err);
+      }
+    };
+
+    loadDevices();
+
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', loadDevices);
+      return () => {
+        isMounted = false;
+        navigator.mediaDevices.removeEventListener('devicechange', loadDevices);
+      };
+    }
+  }, [isOpen, selectedMicDeviceId, onSelectMicDeviceId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    let stream = null;
+    let audioCtx = null;
+    let animId = null;
+
+    const startMicMeter = async () => {
+      try {
+        setMicTestError(null);
+        stream = await acquireInputDeviceStream('audio', selectedMicDeviceId, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+
+        if (!isMounted) {
+          stream?.getTracks?.().forEach((t) => t.stop());
+          return;
+        }
+
+        const tracks = stream?.getAudioTracks?.() || [];
+        if (tracks.length === 0) {
+          setMicTestError('Selected microphone has no audio track.');
+          return;
+        }
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        audioCtx = new AudioCtx();
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume().catch(() => {});
+        }
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const tick = () => {
+          if (!isMounted) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          const pct = Math.min(100, Math.round((avg / 128) * 100));
+          setMicVolume(pct);
+          animId = requestAnimationFrame(tick);
+        };
+
+        animId = requestAnimationFrame(tick);
+      } catch (err) {
+        if (isMounted) {
+          console.warn('[TeacherSubtitleControlModal] Mic test notice:', err);
+          setMicTestError(err.message || 'Unable to access microphone.');
+        }
+      }
+    };
+
+    startMicMeter();
+
+    return () => {
+      isMounted = false;
+      if (animId) cancelAnimationFrame(animId);
+      if (stream) stream.getTracks?.().forEach((t) => t.stop());
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close().catch(() => {});
+      }
+      setMicVolume(0);
+    };
+  }, [isOpen, selectedMicDeviceId]);
+
+  const getMeterColor = (val) => {
+    if (val < 5) return '#94a3b8'; // gray
+    if (val < 65) return '#22c55e'; // green
+    if (val < 85) return '#eab308'; // yellow
+    return '#ef4444'; // red
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -38,10 +186,10 @@ export default function TeacherSubtitleControlModal({
         aria-modal="true"
         aria-labelledby="subtitle-modal-title"
       >
-        <div className="modal-header">
+        <div className="teacher-subtitle-modal-header">
           <div className="title-group">
             <span className="modal-icon">🎙️</span>
-            <h3 id="subtitle-modal-title">即時課堂字幕與多語言翻譯設定 (Live Subtitles)</h3>
+            <h3 id="subtitle-modal-title">Live Classroom Subtitles & Multilingual Translation</h3>
           </div>
           <button
             type="button"
@@ -53,13 +201,13 @@ export default function TeacherSubtitleControlModal({
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="teacher-subtitle-modal-body">
           {/* Main Broadcast Switch */}
-          <div className="control-section broadcast-toggle-section">
+          <div className="teacher-subtitle-section broadcast-toggle-section">
             <div className="section-label-group">
-              <span className="section-title">課堂字幕廣播狀態</span>
+              <span className="section-title">Subtitle Broadcast Status</span>
               <span className="section-desc">
-                開啟後，將向所有觀看課堂的學生即時廣播雙語課堂字幕。
+                When enabled, real-time bilingual subtitles are broadcast to all attending students.
               </span>
             </div>
             <button
@@ -67,15 +215,69 @@ export default function TeacherSubtitleControlModal({
               className={`toggle-broadcast-btn ${enabled ? 'active' : ''}`}
               onClick={onToggleEnabled}
             >
-              {enabled ? '🔴 停止廣播字幕' : '🟢 開始廣播字幕'}
+              {enabled ? '🔴 Stop Subtitle Broadcast' : '🟢 Start Subtitle Broadcast'}
             </button>
           </div>
 
-          {/* Model Selection (Client vs Server) */}
-          <div className="control-section">
-            <span className="section-title">🤖 翻譯模型選擇 (Model Architecture)</span>
+          {/* Microphone Device Selection & Live Audio Test */}
+          <div className="teacher-subtitle-section">
+            <div className="section-label-group">
+              <label className="section-title" htmlFor="teacher-mic-select">
+                🎙️ Audio Input (Microphone)
+              </label>
+              <span className="section-desc">
+                Select your microphone to capture speech for live subtitles.
+              </span>
+            </div>
+
+            <div className="mic-select-container">
+              <select
+                id="teacher-mic-select"
+                aria-label="Select Microphone"
+                className="teacher-mic-select"
+                value={selectedMicDeviceId}
+                onChange={(e) => onSelectMicDeviceId?.(e.target.value)}
+              >
+                {audioDevices.length > 0 ? (
+                  audioDevices.map((d, index) => (
+                    <option key={d.deviceId || index} value={d.deviceId}>
+                      {d.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Default Microphone</option>
+                )}
+              </select>
+            </div>
+
+            {/* Live Volume Meter */}
+            <div className="mic-meter-card">
+              <div className="mic-meter-header">
+                <span className="mic-meter-label">Live Input Level</span>
+                <span className="mic-meter-badge" style={{ color: getMeterColor(micVolume) }}>
+                  {micVolume > 0 ? `Active: ${micVolume}%` : 'Quiet / Speak to test'}
+                </span>
+              </div>
+              <div className="mic-meter-track" role="progressbar" aria-valuenow={micVolume} aria-valuemin="0" aria-valuemax="100">
+                <div
+                  className="mic-meter-fill"
+                  style={{
+                    width: `${micVolume}%`,
+                    backgroundColor: getMeterColor(micVolume),
+                  }}
+                />
+              </div>
+              {micTestError && (
+                <div className="mic-test-error">⚠️ {micTestError}</div>
+              )}
+            </div>
+          </div>
+
+          {/* Model Selection (Client vs Server vs Gemini Live) */}
+          <div className="teacher-subtitle-section">
+            <span className="section-title">🤖 Translation Model Architecture</span>
             <span className="section-desc">
-              語音識別 (STT) 統一使用本機 LiteRT Whisper，精準識別廣東話口語及英文程式碼術語。
+              Speech-to-Text (STT) uses local on-device LiteRT Whisper to recognize spoken Cantonese and English technical terms.
             </span>
 
             <div className="engine-card-group">
@@ -90,13 +292,19 @@ export default function TeacherSubtitleControlModal({
                     checked={engineMode === 'client'}
                     onChange={() => onSelectEngineMode('client')}
                   />
-                  <span className="engine-badge client-badge">🟢 Client Model (本機端)</span>
+                  <span className="engine-badge client-badge">⚪ Client Model (On-Device · Experimental)</span>
                 </div>
                 <div className="engine-card-body">
-                  <strong>Chrome Built-in AI (Gemini Nano)</strong>
-                  <p>100% 本機端翻譯，零延遲（~50ms）、$0 雲端成本、不消耗課堂 AI 額度。</p>
+                  <strong>LiteRT Gemma & Chrome Built-in AI</strong>
+                  <p>100% on-device STT (LiteRT Whisper) + on-device translation (LiteRT Gemma 4 E2B / Chrome Nano). Ultra-low latency, $0 cloud cost, full privacy.</p>
                   <span className="nano-status">
-                    {isNanoAvailable ? '✅ 本機 Gemini Nano 已就緒' : 'ℹ️ 建議 Chrome 138+ / Edge 148+'}
+                    {isGemmaAvailable
+                      ? '✅ On-Device Gemma Ready'
+                      : isNanoAvailable
+                      ? '✅ Local Gemini Nano Ready'
+                      : gemmaProgress > 0 && gemmaProgress < 100
+                      ? `⏳ Downloading Gemma Model (${gemmaProgress}%)...`
+                      : '⚡ On-Device AI Active (automatic cloud fallback)'}
                   </span>
                 </div>
               </label>
@@ -112,12 +320,12 @@ export default function TeacherSubtitleControlModal({
                     checked={engineMode === 'server'}
                     onChange={() => onSelectEngineMode('server')}
                   />
-                  <span className="engine-badge server-badge">🟣 Server Model (雲端端)</span>
+                  <span className="engine-badge server-badge">🟣 Server Model (Recommended · 100% Reliable)</span>
                 </div>
                 <div className="engine-card-body">
-                  <strong>Cloud Functions (Gemini 2.5 Flash)</strong>
-                  <p>高精確度多語言同步輸出，完整保留程式語言語法與專業技術名詞。</p>
-                  <span className="server-status">⚡ 支援所有瀏覽器</span>
+                  <strong>Cloud Functions (Gemini 3.5 Flash-Lite / 3.8 Flash)</strong>
+                  <p>High-accuracy multilingual output, preserving code syntax and technical terminology.</p>
+                  <span className="server-status">⚡ 100% cross-browser support · ~$0.01 per lecture</span>
                 </div>
               </label>
 
@@ -132,33 +340,46 @@ export default function TeacherSubtitleControlModal({
                     checked={engineMode === 'firebase_live'}
                     onChange={() => onSelectEngineMode('firebase_live')}
                   />
-                  <span className="engine-badge live-badge">🔴 Gemini Live (雙向串流)</span>
+                  <span className="engine-badge live-badge">🔴 Gemini Live (Recommended · Bidirectional Streaming)</span>
                 </div>
                 <div className="engine-card-body">
                   <strong>Firebase AI Logic (Gemini Live)</strong>
-                  <p>雙向音訊 WebSocket 串流，超低延遲逐字出現，雲端即時辨識與翻譯。</p>
-                  <span className="live-status">⚡ WebSocket · 免本地 GPU</span>
+                  <p>Bidirectional audio WebSocket streaming, ultra-low latency real-time transcription and translation.</p>
+                  <span className="live-status">⚡ WebSocket · No local GPU required · Free Tier eligible</span>
                 </div>
               </label>
             </div>
+
+            {engineMode === 'client' && !isNanoAvailable && (
+              <div className="engine-warning-banner" data-testid="nano-warning-banner">
+                <span>⚠️ Chrome Built-in AI (Gemini Nano) is unavailable or disabled in your browser. Automatic cloud fallback is active, or switch directly to <strong>🟣 Server Model</strong> (100% reliable, ~$0.01/lecture) or <strong>🔴 Gemini Live</strong>.</span>
+                <button
+                  type="button"
+                  className="switch-recommended-btn"
+                  onClick={() => onSelectEngineMode('server')}
+                >
+                  Switch to Recommended Server Model
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Gemini Live Telemetry & AI Costing Strip */}
           {engineMode === 'firebase_live' && (
-            <div className="control-section live-telemetry-section" data-testid="live-telemetry-section">
-              <span className="section-title">📊 即時串流用量與成本監控 (Live Stream Costing Telemetry)</span>
+            <div className="teacher-subtitle-section live-telemetry-section" data-testid="live-telemetry-section">
+              <span className="section-title">📊 Live Stream Costing & Usage Telemetry</span>
               <div className="live-telemetry-card">
                 <div className="telemetry-grid">
                   <div className="telemetry-item">
-                    <span className="telemetry-label">⏱️ 串流時長</span>
+                    <span className="telemetry-label">⏱️ Duration</span>
                     <span className="telemetry-value">
                       {liveUsageStats?.durationSeconds
-                        ? `${Math.floor(liveUsageStats.durationSeconds / 60)}分 ${liveUsageStats.durationSeconds % 60}秒`
-                        : enabled ? '0分 0秒 (連線中)' : '0分 0秒'}
+                        ? `${Math.floor(liveUsageStats.durationSeconds / 60)}m ${liveUsageStats.durationSeconds % 60}s`
+                        : enabled ? '0m 0s (Connecting)' : '0m 0s'}
                     </span>
                   </div>
                   <div className="telemetry-item">
-                    <span className="telemetry-label">🎙️ 音訊輸入 Tokens</span>
+                    <span className="telemetry-label">🎙️ Audio In Tokens</span>
                     <span className="telemetry-value">
                       {liveUsageStats?.audioTokens
                         ? `${liveUsageStats.audioTokens.toLocaleString()} tokens`
@@ -166,7 +387,7 @@ export default function TeacherSubtitleControlModal({
                     </span>
                   </div>
                   <div className="telemetry-item">
-                    <span className="telemetry-label">📝 字幕輸出 Tokens</span>
+                    <span className="telemetry-label">📝 Subtitle Out Tokens</span>
                     <span className="telemetry-value">
                       {liveUsageStats?.outputTokens
                         ? `${liveUsageStats.outputTokens.toLocaleString()} tokens`
@@ -174,26 +395,26 @@ export default function TeacherSubtitleControlModal({
                     </span>
                   </div>
                   <div className="telemetry-item highlight-cost">
-                    <span className="telemetry-label">💰 預估成本 (USD)</span>
+                    <span className="telemetry-label">💰 Est. Cost (USD)</span>
                     <span className="telemetry-value">
                       {liveUsageStats?.estimatedCostUsd
                         ? `$${liveUsageStats.estimatedCostUsd.toFixed(4)}`
                         : '$0.0000'}
                     </span>
-                    <span className="telemetry-badge">Free Tier 合資格</span>
+                    <span className="telemetry-badge">Free Tier Eligible</span>
                   </div>
                 </div>
                 <div className="telemetry-note">
-                  💡 計費標準：音訊輸入 ~$0.60/1M tokens (約 28 tokens/秒)，文字輸出 ~$2.50/1M tokens。停用音訊回傳合成 ($18/1M)。單次 60 分鐘課堂預估成本約 $0.06 - $0.10 USD。
+                  💡 Pricing rates: Audio in ~$0.60/1M tokens (~28 tokens/sec), text out ~$2.50/1M tokens. Audio synthesis disabled. Est. 60-min lecture cost ~$0.06 - $0.10 USD.
                 </div>
               </div>
             </div>
           )}
 
           {/* Spoken Language */}
-          <div className="control-section">
+          <div className="teacher-subtitle-section">
             <label className="section-title" htmlFor="speech-lang-select">
-              🗣️ 老師發音語言 (Spoken Speech Language)
+              🗣️ Spoken Speech Language
             </label>
             <select
               id="speech-lang-select"
@@ -201,19 +422,22 @@ export default function TeacherSubtitleControlModal({
               value={speechLanguage}
               onChange={(e) => onSelectSpeechLanguage(e.target.value)}
             >
-              <option value="zh-HK">粵語 / 廣東話 (Cantonese zh-HK) + 英文術語混合</option>
+              <option value="zh-HK">Cantonese (zh-HK) + English Technical Terms</option>
               <option value="en-US">English (US)</option>
-              <option value="zh-CN">普通話 (Mandarin zh-CN)</option>
-              <option value="ja">日本語 (Japanese)</option>
+              <option value="zh-CN">Mandarin (zh-CN)</option>
+              <option value="ja">Japanese (日本語 ja)</option>
             </select>
           </div>
 
           {/* Target Languages */}
-          <div className="control-section">
-            <span className="section-title">🌐 目標翻譯語言 (Target Broadcast Languages)</span>
+          <div className="teacher-subtitle-section">
+            <span className="section-title">🌐 Target Broadcast Languages</span>
             <div className="target-lang-grid">
               {AVAILABLE_LANGUAGES.map(({ code, label }) => {
                 const checked = targetLanguages.includes(code);
+                const pairInfo = languagePairStatuses?.[code];
+                const pairStatus = pairInfo?.status;
+
                 return (
                   <label key={code} className="target-lang-item">
                     <input
@@ -221,31 +445,196 @@ export default function TeacherSubtitleControlModal({
                       checked={checked}
                       onChange={() => onToggleTargetLanguage(code)}
                     />
-                    <span>{label}</span>
+                    <div className="lang-label-group">
+                      <span>{label}</span>
+                      {engineMode === 'client' && pairStatus && (
+                        <span className={`pair-pill pair-pill-${pairStatus}`} data-testid={`pair-pill-${code}`}>
+                          {pairStatus === 'readily' && '✅ Ready'}
+                          {pairStatus === 'after-download' && '⬇️ Download Required'}
+                          {(pairStatus === 'no' || pairStatus === 'unsupported' || pairStatus === 'same-language') && '⚠️ Cloud Fallback'}
+                        </span>
+                      )}
+                    </div>
                   </label>
                 );
               })}
+            </div>
+            {engineMode === 'client' && (
+              <div className="engine-client-note">
+                💡 Client mode: Supported languages are translated on-device. Unsupported or pending languages automatically fallback to cloud translation to prevent interruptions.
+              </div>
+            )}
+          </div>
+
+          {/* Subject Discipline & Translation AI Prompt Context */}
+          <div className="teacher-subtitle-section domain-prompt-section" data-testid="domain-prompt-section">
+            <span className="section-title">📚 Course Subject Domain & Translation AI Prompt</span>
+            <span className="section-desc">
+              Contextual terminology rules and AI prompt steering live speech-to-text and translation. Configure directly for this session and class.
+            </span>
+            <div className="domain-prompt-card">
+              <div className="domain-info-row">
+                <span className="domain-badge">
+                  🎓 Subject: <strong>{courseContext || 'Computer Science & Software Development'}</strong>
+                </span>
+                {subtitlePrompt && (
+                  <span className="prompt-badge">
+                    ✨ Prompt: <strong>{subtitlePrompt.name || 'Custom Prompt'}</strong>
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Configuration Controls */}
+              <div className="domain-prompt-controls">
+                <div className="domain-config-field">
+                  <label htmlFor="modal-course-context-select" className="domain-field-label">Discipline Domain</label>
+                  <select
+                    id="modal-course-context-select"
+                    aria-label="Course Subject Domain"
+                    value={courseContext || 'Computer Science & Software Development'}
+                    onChange={(e) => onSelectCourseContext?.(e.target.value)}
+                    className="domain-select"
+                  >
+                    <option value="Computer Science & Software Development">💻 Computer Science & Software Development</option>
+                    <option value="Business, Finance & Accounting">💼 Business, Finance & Accounting</option>
+                    <option value="Design, Media & Visual Arts">🎨 Design, Media & Visual Arts</option>
+                    <option value="Healthcare, Nursing & Medical Sciences">🏥 Healthcare, Nursing & Medical Sciences</option>
+                    <option value="Engineering & Construction">⚙️ Engineering & Construction</option>
+                    <option value="Hospitality, Culinary & Tourism">🍳 Hospitality, Culinary & Tourism</option>
+                    <option value="Languages, Humanities & Social Sciences">📚 Languages, Humanities & Social Sciences</option>
+                    <option value="General Studies & Interdisciplinary">🎓 General Studies & Interdisciplinary</option>
+                    {courseContext && ![
+                      'Computer Science & Software Development',
+                      'Business, Finance & Accounting',
+                      'Design, Media & Visual Arts',
+                      'Healthcare, Nursing & Medical Sciences',
+                      'Engineering & Construction',
+                      'Hospitality, Culinary & Tourism',
+                      'Languages, Humanities & Social Sciences',
+                      'General Studies & Interdisciplinary',
+                    ].includes(courseContext) && (
+                      <option value={courseContext}>✏️ {courseContext}</option>
+                    )}
+                  </select>
+                </div>
+
+                <div className="domain-config-field">
+                  <label htmlFor="modal-subtitle-prompt-select" className="domain-field-label">Translation AI Prompt (Library)</label>
+                  <select
+                    id="modal-subtitle-prompt-select"
+                    aria-label="Translation AI Prompt"
+                    value={subtitlePrompt?.id || (subtitlePrompt ? 'custom' : '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        onSelectSubtitlePrompt?.(null);
+                        setIsEditingPrompt(false);
+                      } else {
+                        const found = promptsList.find((p) => p.id === val);
+                        if (found) {
+                          onSelectSubtitlePrompt?.(found);
+                          setCustomPromptDraft(found.promptText || '');
+                        }
+                      }
+                    }}
+                    className="domain-select"
+                  >
+                    <option value="">-- Default Discipline Prompt --</option>
+                    {promptsList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                    {subtitlePrompt && !promptsList.some((p) => p.id === subtitlePrompt.id) && (
+                      <option value="custom">{subtitlePrompt.name || 'Custom Prompt'}</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {subtitlePrompt?.promptText ? (
+                <div className="prompt-preview-container">
+                  <div className="prompt-details-header">
+                    <span className="prompt-name-tag">Prompt Instructions Preview:</span>
+                    <div className="prompt-actions-inline">
+                      <button
+                        type="button"
+                        className="prompt-toggle-btn"
+                        onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                      >
+                        {isEditingPrompt ? 'Close Editor' : '✏️ Edit Prompt'}
+                      </button>
+                      <button
+                        type="button"
+                        className="prompt-toggle-btn reset"
+                        onClick={() => onSelectSubtitlePrompt?.(null)}
+                      >
+                        Reset to Default
+                      </button>
+                    </div>
+                  </div>
+
+                  {isEditingPrompt ? (
+                    <div className="prompt-editor-box">
+                      <textarea
+                        className="modal-prompt-textarea"
+                        aria-label="Edit Translation Prompt Instructions"
+                        value={customPromptDraft}
+                        onChange={(e) => setCustomPromptDraft(e.target.value)}
+                        rows={5}
+                        placeholder="Enter custom prompt instructions or domain terms..."
+                      />
+                      <button
+                        type="button"
+                        className="prompt-apply-btn"
+                        onClick={() => {
+                          onSelectSubtitlePrompt?.({
+                            ...subtitlePrompt,
+                            name: subtitlePrompt.name?.includes('(Customized)')
+                              ? subtitlePrompt.name
+                              : `${subtitlePrompt.name || 'Translation Prompt'} (Customized)`,
+                            promptText: customPromptDraft,
+                          });
+                          setIsEditingPrompt(false);
+                        }}
+                      >
+                        Apply Custom Instructions
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="prompt-preview-snippet">
+                      "{subtitlePrompt.promptText.length > 140
+                        ? `${subtitlePrompt.promptText.substring(0, 140)}...`
+                        : subtitlePrompt.promptText}"
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="domain-hint-text">
+                  Using default discipline context. You can select a pre-configured translation prompt from the prompt library above or customize instructions in <strong>Class Management ➔ 8. Live Subtitles, Translation &amp; Subject Domain</strong>.
+                </div>
+              )}
             </div>
           </div>
 
           {/* Live Preview Ticker */}
           {enabled && (
-            <div className="control-section live-preview-section">
-              <span className="section-title">👀 老師即時預覽 (Live Ticker)</span>
+            <div className="teacher-subtitle-section live-preview-section">
+              <span className="section-title">👀 Live Preview (Ticker)</span>
               <div className="live-preview-box">
                 <div className="preview-row">
-                  <span className="preview-tag">原音識別:</span>
+                  <span className="preview-tag">Recognized Speech:</span>
                   <span className="preview-text">
-                    {latestTranscript || '（正在聆聽說話...）'}
+                    {latestTranscript || '(Listening for speech...)'}
                   </span>
                 </div>
                 <div className="preview-row">
-                  <span className="preview-tag target">翻譯預覽:</span>
+                  <span className="preview-tag target">Translation Preview:</span>
                   <span className="preview-text translated">
                     {latestTranslations?.['zh-Hant'] ||
                      latestTranslations?.['en'] ||
                      Object.values(latestTranslations || {})[0] ||
-                     (latestTranscript ? '（翻譯處理中...）' : '（等待說話...）')}
+                     (latestTranscript ? '(Translating...)' : '(Waiting for speech...)')}
                   </span>
                 </div>
               </div>
@@ -255,9 +644,9 @@ export default function TeacherSubtitleControlModal({
           {error && <div className="error-alert">⚠️ {error}</div>}
         </div>
 
-        <div className="modal-footer">
+        <div className="teacher-subtitle-modal-footer">
           <button type="button" className="footer-btn primary" onClick={onClose}>
-            完成設定
+            Save & Close
           </button>
         </div>
       </div>

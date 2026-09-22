@@ -214,6 +214,15 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
         }
       };
 
+      let audioInstance;
+      globalThis.Audio = class {
+        constructor(src) {
+          this.src = src;
+          this.play = mockAudioPlay;
+          audioInstance = this;
+        }
+      };
+
       const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
 
       await act(async () => {
@@ -233,6 +242,88 @@ describe('useAudioSetup & Transcript Helper Utilities', () => {
 
       expect(result.current.isRecordingPlayback).toBe(false);
       expect(result.current.playbackAudioUrl).toBe('blob:http://localhost/test-audio');
+
+      // Trigger audio onended
+      act(() => {
+        audioInstance?.onended?.();
+        audioInstance?.onerror?.();
+      });
+      expect(result.current.isPlayingBack).toBe(false);
+    });
+
+    it('handles audio playback play rejection and auto-stop timeout', async () => {
+      vi.useFakeTimers();
+      let recorderInstance;
+      class MockMediaRecorder {
+        constructor() {
+          recorderInstance = this;
+          this.state = 'inactive';
+          this.ondataavailable = null;
+          this.onstop = null;
+        }
+        start() {
+          this.state = 'recording';
+        }
+        stop() {
+          this.state = 'inactive';
+          if (this.ondataavailable) {
+            this.ondataavailable({ data: new Blob(['pcm']) });
+          }
+          if (this.onstop) {
+            this.onstop();
+          }
+        }
+      }
+      globalThis.MediaRecorder = MockMediaRecorder;
+
+      const mockAudioPlay = vi.fn().mockRejectedValue(new Error('Playback permission denied'));
+      globalThis.Audio = class {
+        constructor(src) {
+          this.src = src;
+          this.play = mockAudioPlay;
+        }
+      };
+
+      const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      await act(async () => {
+        await result.current.startStream('mic-1');
+      });
+
+      await act(async () => {
+        await result.current.startPlaybackTest();
+      });
+
+      expect(result.current.isRecordingPlayback).toBe(true);
+
+      // Advance 3100ms to trigger auto-stop
+      act(() => {
+        vi.advanceTimersByTime(3100);
+      });
+
+      expect(result.current.isRecordingPlayback).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('handles MediaRecorder failure gracefully in playback test', async () => {
+      globalThis.MediaRecorder = class {
+        constructor() {
+          throw new Error('MediaRecorder not supported');
+        }
+      };
+
+      const { result } = renderHook(() => useAudioSetup({ studentUid: 'test_student' }));
+
+      await act(async () => {
+        await result.current.startStream('mic-1');
+      });
+
+      await act(async () => {
+        await result.current.startPlaybackTest();
+      });
+
+      expect(result.current.error).toContain('Playback test failed: MediaRecorder not supported');
+      expect(result.current.isRecordingPlayback).toBe(false);
     });
   });
 });

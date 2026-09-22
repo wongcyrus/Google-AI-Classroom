@@ -11,6 +11,8 @@ import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/fires
 import { db } from '../firebase-config';
 import { isWhisperModelCached, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader';
 import { downsamplePcmTo16k } from '../utils/audioDecoder';
+import { transcribeAudioWithFirebaseAI } from '../utils/aiLogic';
+import { attachAudioProcessor } from '../utils/audioWorkletHelper';
 
 export function useClientLiteRTWhisper({
   classId,
@@ -204,9 +206,27 @@ export function useClientLiteRTWhisper({
       pendingRequestsRef.current.set(id, {
         reject,
         resolve: async (result) => {
-        const text = (result?.transcript || simulatedText || '').trim();
-        const language = result?.language || 'mixed';
+        let text = (result?.transcript || simulatedText || '').trim();
+        let language = result?.language || 'mixed';
         const timestamp = Date.now();
+
+        // If on-device Whisper returned empty because dynamic output is unsupported, attempt Firebase AI Logic multimodal STT
+        if (!text && audioPcm && audioPcm.length >= 8000) {
+          try {
+            const aiTranscript = await transcribeAudioWithFirebaseAI(audioPcm, 16000, speechLanguage);
+            if (aiTranscript && aiTranscript.trim()) {
+              text = aiTranscript.trim();
+              language = speechLanguage || 'zh-HK';
+              console.log(
+                '%c[Firebase AI Logic STT] 🎙️ Speech Transcribed via Firebase AI:',
+                'background: #1e3a8a; color: #60a5fa; font-weight: bold; padding: 2px 6px; border-radius: 4px;',
+                { text, language }
+              );
+            }
+          } catch (aiErr) {
+            console.debug('[useClientLiteRTWhisper] Firebase AI Logic transcription fallback notice:', aiErr);
+          }
+        }
 
         if (text) {
           setLatestTranscript(text);
@@ -510,63 +530,50 @@ export function useClientLiteRTWhisper({
         });
 
         source = audioCtx.createMediaStreamSource(targetStream);
-        if (typeof audioCtx.createScriptProcessor === 'function') {
-          processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processor = attachAudioProcessor(audioCtx, source, (pcm16k) => {
+          if (!isMounted) return;
 
-          processor.onaudioprocess = (e) => {
-            if (!isMounted) return;
-            const inputData = e.inputBuffer.getChannelData(0);
-            const pcm16k = downsamplePcmTo16k(inputData, audioCtx.sampleRate, 16000);
+          // Calculate RMS volume on 16kHz chunk
+          let sumSq = 0;
+          for (let i = 0; i < pcm16k.length; i++) {
+            sumSq += pcm16k[i] * pcm16k[i];
+          }
+          const rms = Math.sqrt(sumSq / pcm16k.length);
 
-            // Calculate RMS volume on 16kHz chunk
-            let sumSq = 0;
-            for (let i = 0; i < pcm16k.length; i++) {
-              sumSq += pcm16k[i] * pcm16k[i];
+          const vadThreshold = 0.002 * (Math.max(5, Math.min(35, vadSensitivity)) / 15);
+          if (rms >= vadThreshold) {
+            if (!isSpeechActive) {
+              isSpeechActive = true;
+              console.log('%c[useClientLiteRTWhisper:VAD] 🗣️ Speech detected on mic:', 'background:#059669;color:white;padding:2px 6px;border-radius:4px;', {
+                rms: rms.toFixed(4),
+                deviceId: deviceIdRef.current || '(default)',
+              });
             }
-            const rms = Math.sqrt(sumSq / pcm16k.length);
+            if (silenceTimer) {
+              clearTimeout(silenceTimer);
+              silenceTimer = null;
+            }
+            speechPcmChunks.push(pcm16k);
 
-            const vadThreshold = 0.002 * (Math.max(5, Math.min(35, vadSensitivity)) / 15);
-            if (rms >= vadThreshold) {
-              if (!isSpeechActive) {
-                isSpeechActive = true;
-                console.log('%c[useClientLiteRTWhisper:VAD] 🗣️ Speech detected on mic:', 'background:#059669;color:white;padding:2px 6px;border-radius:4px;', {
-                  rms: rms.toFixed(4),
-                  deviceId: deviceIdRef.current || '(default)',
-                });
-              }
-              if (silenceTimer) {
-                clearTimeout(silenceTimer);
+            // If accumulated speech exceeds 5 seconds, flush to transcribe segment
+            const accumulatedSamples = speechPcmChunks.reduce((acc, c) => acc + c.length, 0);
+            if (accumulatedSamples >= 16000 * 5) {
+              flushSpeechBuffer();
+            }
+          } else if (isSpeechActive) {
+            speechPcmChunks.push(pcm16k);
+
+            if (!silenceTimer) {
+              silenceTimer = setTimeout(() => {
+                if (isMounted) {
+                  flushSpeechBuffer();
+                }
                 silenceTimer = null;
-              }
-              speechPcmChunks.push(pcm16k);
-
-              // If accumulated speech exceeds 5 seconds, flush to transcribe segment
-              const accumulatedSamples = speechPcmChunks.reduce((acc, c) => acc + c.length, 0);
-              if (accumulatedSamples >= 16000 * 5) {
-                flushSpeechBuffer();
-              }
-            } else if (isSpeechActive) {
-              speechPcmChunks.push(pcm16k);
-
-              if (!silenceTimer) {
-                silenceTimer = setTimeout(() => {
-                  if (isMounted) {
-                    flushSpeechBuffer();
-                  }
-                  silenceTimer = null;
-                }, 800);
-              }
+              }, 800);
             }
-          };
-
-          source.connect(processor);
-          muteGain = audioCtx.createGain();
-          muteGain.gain.value = 0;
-          processor.connect(muteGain);
-          muteGain.connect(audioCtx.destination);
-
-          console.log('[useClientLiteRTWhisper] 🎙️ Live audio processor attached to selected microphone stream (SampleRate:', audioCtx.sampleRate, ')');
-        }
+          }
+        });
+        console.log('[useClientLiteRTWhisper] 🎙️ Live audio processor attached to selected microphone stream (SampleRate:', audioCtx.sampleRate, ')');
       } catch (err) {
         console.warn('[useClientLiteRTWhisper] Web Audio stream processor setup failed:', err);
       }

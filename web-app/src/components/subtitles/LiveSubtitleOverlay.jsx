@@ -36,11 +36,11 @@ export default function LiveSubtitleOverlay({
         <button
           className="subtitle-reopen-pill"
           onClick={() => onToggleVisible?.(true)}
-          title="顯示即時字幕 (Show Subtitles)"
+          title="Show Subtitles"
           aria-label="Show Subtitles"
         >
           <span className="subtitle-indicator-dot" />
-          💬 即時字幕
+          💬 Live Subtitles
         </button>
       );
     }

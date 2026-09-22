@@ -3,13 +3,13 @@
 .live-subtitle-container {
   display: flex;
   flex-direction: column;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
   color: #f8fafc;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
   z-index: 1000;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
@@ -51,8 +51,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.35);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   gap: 8px;
 }
 
@@ -85,7 +85,7 @@
 }
 
 .engine-tag {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   padding: 1px 6px;
   border-radius: 4px;
   color: #cbd5e1;
@@ -100,36 +100,50 @@
 }
 
 .subtitle-lang-select {
-  background: rgba(30, 41, 59, 0.8);
-  color: #f1f5f9;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #0f172a !important;
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   font-size: 11px;
   cursor: pointer;
 }
 
+.subtitle-lang-select option {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+  padding: 4px 8px;
+}
+
 .subtitle-lang-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: #3b82f6 !important;
 }
 
 .subtitle-mode-group,
 .subtitle-font-group {
   display: flex;
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(30, 41, 59, 0.8);
   border-radius: 6px;
   padding: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.live-subtitle-container button {
+  background-color: transparent;
+  color: #94a3b8;
+  box-shadow: none;
+  transform: none;
 }
 
 .mode-btn,
 .font-btn {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  font-size: 10px;
-  padding: 2px 6px;
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
@@ -137,28 +151,28 @@
 
 .mode-btn.active,
 .font-btn.active {
-  background: #3b82f6;
-  color: #ffffff;
-  font-weight: 600;
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
 }
 
 .subtitle-icon-btn {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  font-size: 11px;
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 11px !important;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 4px !important;
   border-radius: 4px;
 }
 
 .subtitle-icon-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.15) !important;
 }
 
 .subtitle-icon-btn.close-btn:hover {
-  color: #ef4444;
+  color: #ef4444 !important;
 }
 
 /* Subtitle Content Body */

@@ -31,7 +31,11 @@ describe('useStudentLiveSubtitles Hook', () => {
     );
 
     expect(result.current.active).toBe(false);
-    expect(result.current.selectedLanguage).toBe('zh-Hant');
+    expect(result.current.selectedLanguage).toBe('zh-Hans');
+    expect(result.current.availableLanguages).toEqual([
+      { code: 'zh-Hans', label: '简体中文' },
+      { code: 'en', label: 'English' },
+    ]);
     expect(result.current.displayMode).toBe('bilingual');
     expect(result.current.fontSize).toBe('medium');
     expect(result.current.isVisible).toBe(true);
@@ -53,7 +57,7 @@ describe('useStudentLiveSubtitles Hook', () => {
           originalText: '今日講 Docker container',
           sourceLang: 'zh-HK',
           translations: {
-            'zh-Hant': '今天講解 Docker 容器',
+            'zh-Hans': '今天讲解 Docker 容器',
             'en': 'Today we cover Docker containers',
           },
           recentHistory: [
@@ -66,7 +70,7 @@ describe('useStudentLiveSubtitles Hook', () => {
     expect(result.current.active).toBe(true);
     expect(result.current.seq).toBe(42);
     expect(result.current.originalText).toBe('今日講 Docker container');
-    expect(result.current.currentTranslation).toBe('今天講解 Docker 容器');
+    expect(result.current.currentTranslation).toBe('今天讲解 Docker 容器');
   });
 
   it('updates translation when student changes selected language', () => {

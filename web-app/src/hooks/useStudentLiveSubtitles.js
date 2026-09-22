@@ -5,20 +5,49 @@
  * Listens to classes/{classId}/liveSubtitles/current via Firestore onSnapshot.
  * Provides student-level controls for display language, display mode (bilingual,
  * translation only, or original Cantonese only), font size, and visibility.
+ * 
+ * Dynamically computes available translated languages from the teacher's published
+ * translations and targetLanguages, defaulting to Simplified Chinese (zh-Hans) and English (en).
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
+export const LANGUAGE_LABELS = {
+  'zh-Hans': '简体中文',
+  'zh-CN': '简体中文',
+  'en': 'English',
+  'zh-Hant': '繁體中文',
+  'zh-HK': '繁體中文',
+  'zh-TW': '繁體中文',
+  'ja': '日本語',
+  'ko': '한국어',
+  'es': 'Español',
+  'fr': 'Français',
+  'de': 'Deutsch',
+  'vi': 'Tiếng Việt',
+  'id': 'Bahasa Indonesia',
+  'th': 'ไทย',
+  'pt': 'Português',
+  'ar': 'العربية',
+  'hi': 'हिन्दी',
+};
+
+export function getLanguageLabel(code) {
+  if (!code) return '';
+  return LANGUAGE_LABELS[code] || code;
+}
+
 export function useStudentLiveSubtitles({
   classId,
-  defaultLanguage = 'zh-Hant',
+  defaultLanguage = 'zh-Hans',
 }) {
   const [active, setActive] = useState(false);
   const [originalText, setOriginalText] = useState('');
   const [sourceLang, setSourceLang] = useState('zh-HK');
   const [translations, setTranslations] = useState({});
+  const [targetLanguages, setTargetLanguages] = useState(['zh-Hans', 'en']);
   const [seq, setSeq] = useState(0);
   const [recentHistory, setRecentHistory] = useState([]);
   const [engine, setEngine] = useState('server');
@@ -101,6 +130,9 @@ export function useStudentLiveSubtitles({
         if (data.originalText !== undefined) setOriginalText(data.originalText || '');
         if (data.sourceLang) setSourceLang(data.sourceLang);
         if (data.translations) setTranslations(data.translations);
+        if (Array.isArray(data.targetLanguages) && data.targetLanguages.length > 0) {
+          setTargetLanguages(data.targetLanguages);
+        }
         if (data.seq !== undefined) setSeq(data.seq);
         if (data.engine) setEngine(data.engine);
         if (Array.isArray(data.recentHistory)) setRecentHistory(data.recentHistory);
@@ -115,8 +147,63 @@ export function useStudentLiveSubtitles({
     };
   }, [classId]);
 
+  // Compute available translated languages from teacher's active translations & targetLanguages
+  const availableLanguages = useMemo(() => {
+    const codes = new Set();
+
+    // 1. Languages with actual translation output from teacher
+    if (translations && typeof translations === 'object') {
+      Object.keys(translations).forEach((k) => {
+        if (translations[k]) codes.add(k);
+      });
+    }
+
+    // 2. Languages configured as targets by teacher
+    if (Array.isArray(targetLanguages)) {
+      targetLanguages.forEach((k) => codes.add(k));
+    }
+
+    // 3. Fallback defaults: Simplified Chinese and English
+    if (codes.size === 0) {
+      codes.add('zh-Hans');
+      codes.add('en');
+    }
+
+    // Order: zh-Hans first, en second, then remaining
+    const orderedCodes = [];
+    if (codes.has('zh-Hans')) {
+      orderedCodes.push('zh-Hans');
+      codes.delete('zh-Hans');
+    }
+    if (codes.has('en')) {
+      orderedCodes.push('en');
+      codes.delete('en');
+    }
+    codes.forEach((c) => orderedCodes.push(c));
+
+    return orderedCodes.map((code) => ({
+      code,
+      label: getLanguageLabel(code),
+    }));
+  }, [translations, targetLanguages]);
+
+  // If current selectedLanguage is not in teacher's availableLanguages, auto-switch to first available (zh-Hans or en)
+  useEffect(() => {
+    if (availableLanguages.length > 0) {
+      const exists = availableLanguages.some((l) => l.code === selectedLanguage);
+      if (!exists) {
+        const fallback = availableLanguages.find((l) => l.code === 'zh-Hans')?.code ||
+          availableLanguages.find((l) => l.code === 'en')?.code ||
+          availableLanguages[0].code;
+        setSelectedLanguageState(fallback);
+      }
+    }
+  }, [availableLanguages, selectedLanguage]);
+
   // Determine current active translated text based on student preference
   const currentTranslation = translations[selectedLanguage] ||
+    translations['zh-Hans'] ||
+    translations['en'] ||
     translations['zh-Hant'] ||
     translations['zh'] ||
     Object.values(translations)[0] ||
@@ -127,6 +214,7 @@ export function useStudentLiveSubtitles({
     originalText,
     sourceLang,
     translations,
+    availableLanguages,
     currentTranslation,
     seq,
     recentHistory,

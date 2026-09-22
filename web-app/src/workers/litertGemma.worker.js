@@ -64,7 +64,84 @@ export function buildGemmaEvaluationPrompt({
     prompt = `${prompt}\n\nStudent transcript: "${transcript}"`;
   }
 
+  if (prompt.includes('Use exactly one category:')) {
+    return prompt;
+  }
+
   return `${prompt}\n\n${GEMMA_OUTPUT_INSTRUCTIONS}`;
+}
+
+export function buildGemmaTranslationPrompt({
+  transcript,
+  sourceLang = 'zh-HK',
+  targetLangs = ['en'],
+  courseContext = '',
+  customPrompt = '',
+}) {
+  const langNames = {
+    'zh-HK': 'Cantonese (Hong Kong colloquial with English code-switching)',
+    'zh-Hant': 'Traditional Chinese (繁體中文)',
+    'zh-CN': 'Simplified Chinese (简体中文)',
+    'en': 'English',
+    'en-US': 'English',
+    'ja': 'Japanese (日本語)',
+    'ko': 'Korean (한국어)',
+    'es': 'Spanish (Español)',
+    'fr': 'French (Français)',
+  };
+
+  const sourceName = langNames[sourceLang] || sourceLang;
+  const targetList = targetLangs.map((code) => `- "${code}": ${langNames[code] || code}`).join('\n');
+  const domainContext = courseContext?.trim() || 'higher education and classroom instruction';
+
+  if (typeof customPrompt === 'string' && customPrompt.includes('{{transcript}}')) {
+    let expanded = customPrompt
+      .replace(/\{\{transcript\}\}/g, transcript)
+      .replace(/\{\{sourceLang\}\}/g, sourceName)
+      .replace(/\{\{targetLangs\}\}/g, targetList)
+      .replace(/\{\{courseContext\}\}/g, domainContext);
+    return `<start_of_turn>user\n${expanded}\n<end_of_turn>\n<start_of_turn>model\n`;
+  }
+
+  const customInstructions = customPrompt?.trim()
+    ? `\n4. Domain/Course Specific Instructions:\n${customPrompt.trim()}`
+    : '';
+
+  return `<start_of_turn>user
+You are an expert real-time lecture translation assistant for ${domainContext}.
+Translate the following spoken classroom transcript from ${sourceName} into the requested target languages:
+${targetList}
+
+CRITICAL RULES:
+1. Preserve discipline-specific terminology, proper nouns, formula/variable names, and standard technical abbreviations in their original language/form as appropriate for ${domainContext}.
+2. Return strictly a single valid JSON object mapping each target language code to its translated text.
+3. No explanation, markdown code blocks, or extra text.${customInstructions}
+
+Format example:
+{"en":"Today we explore these concepts","ja":"本日はこれらの概念を探求します"}
+
+Spoken transcript:
+"${transcript}"
+<end_of_turn>
+<start_of_turn>model
+`;
+}
+
+export function parseGemmaTranslationOutput(rawText, targetLangs = []) {
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[LiteRTGemmaWorker] Failed to parse translation JSON:', err);
+  }
+  const fallback = {};
+  targetLangs.forEach(lang => { fallback[lang] = (rawText || '').trim(); });
+  return fallback;
 }
 
 export function resolveLiteRtLmWasmUrl(fileName) {
@@ -359,6 +436,52 @@ self.onmessage = async (event) => {
             studentUid,
             classId,
             timestamp,
+          },
+        });
+        break;
+      }
+
+      case 'TRANSLATE_TRANSCRIPT': {
+        const {
+          transcript = '',
+          sourceLang = 'zh-HK',
+          targetLangs = ['en'],
+          courseContext = '',
+          customPrompt = '',
+        } = payload || {};
+        self.postMessage({ type: 'STATUS', payload: { status: 'translating' } });
+
+        if (!gemmaEngine) {
+          throw new Error('Gemma 4 E2B is not loaded');
+        }
+
+        let conversation = null;
+        let translations = {};
+        const promptToUse = buildGemmaTranslationPrompt({
+          transcript,
+          sourceLang,
+          targetLangs,
+          courseContext,
+          customPrompt,
+        });
+
+        try {
+          conversation = await gemmaEngine.createConversation();
+          const response = await conversation.sendMessage(promptToUse);
+          const rawOutput = getResponseText(response);
+          translations = parseGemmaTranslationOutput(rawOutput, targetLangs);
+        } finally {
+          await conversation?.delete?.();
+        }
+
+        self.postMessage({
+          type: 'TRANSLATE_COMPLETE',
+          id,
+          payload: {
+            translations,
+            sourceLang,
+            targetLangs,
+            transcript,
           },
         });
         break;

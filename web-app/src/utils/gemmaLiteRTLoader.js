@@ -136,3 +136,55 @@ export async function checkGemmaHardwareAcceleration() {
   }
   return { hasWebGPU: false, delegate: 'wasm' };
 }
+
+/**
+ * Pre-flight capability and storage check before attempting to download or initialize Gemma (~1.91 GB).
+ * Fails fast to protect student network bandwidth, battery, and prevent QuotaExceededError.
+ * @param {number} requiredStorageBytes Default 2.5 GB buffer
+ * @returns {Promise<{ viable: boolean, hasWebGPU: boolean, freeStorageBytes?: number, reason?: string }>}
+ */
+export async function precheckGemmaViability(requiredStorageBytes = 2.5 * 1024 * 1024 * 1024) {
+  if (typeof window === 'undefined' && typeof navigator === 'undefined') {
+    return { viable: false, hasWebGPU: false, reason: 'Non-browser execution environment' };
+  }
+
+  // 1. WebGPU Support Check
+  const hasWebGPU = Boolean(typeof navigator !== 'undefined' && navigator.gpu);
+  if (!hasWebGPU) {
+    return {
+      viable: false,
+      hasWebGPU: false,
+      reason: 'WebGPU is not supported or hardware acceleration is disabled in this browser.',
+    };
+  }
+
+  // 2. Storage Quota Check
+  if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const quota = estimate.quota || 0;
+      const usage = estimate.usage || 0;
+      const freeStorageBytes = Math.max(0, quota - usage);
+
+      if (quota > 0 && freeStorageBytes < requiredStorageBytes) {
+        const freeGB = (freeStorageBytes / (1024 ** 3)).toFixed(1);
+        const reqGB = (requiredStorageBytes / (1024 ** 3)).toFixed(1);
+        return {
+          viable: false,
+          hasWebGPU: true,
+          freeStorageBytes,
+          reason: `Insufficient storage quota (${freeGB} GB free, need ${reqGB} GB for model cache).`,
+        };
+      }
+      return {
+        viable: true,
+        hasWebGPU: true,
+        freeStorageBytes,
+      };
+    } catch (err) {
+      console.warn('[GemmaLiteRTLoader] Storage estimate check failed:', err);
+    }
+  }
+
+  return { viable: true, hasWebGPU: true };
+}

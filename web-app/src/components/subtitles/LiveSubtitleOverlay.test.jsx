@@ -70,7 +70,21 @@ describe('LiveSubtitleOverlay Component', () => {
     fireEvent.click(transOnlyBtn);
     expect(onSelectDisplayMode).toHaveBeenCalledWith('translation');
 
-    // Switch font
+    // Switch to original speech only
+    const origOnlyBtn = screen.getByRole('button', { name: '原音' });
+    fireEvent.click(origOnlyBtn);
+    expect(onSelectDisplayMode).toHaveBeenCalledWith('original');
+
+    // Switch font to small and medium
+    const smallFontBtn = screen.getByRole('button', { name: 'A-' });
+    fireEvent.click(smallFontBtn);
+    expect(onSelectFontSize).toHaveBeenCalledWith('small');
+
+    const medFontBtn = screen.getByRole('button', { name: 'A' });
+    fireEvent.click(medFontBtn);
+    expect(onSelectFontSize).toHaveBeenCalledWith('medium');
+
+    // Switch font to large
     const largeFontBtn = screen.getByRole('button', { name: 'A+' });
     fireEvent.click(largeFontBtn);
     expect(onSelectFontSize).toHaveBeenCalledWith('large');
@@ -79,6 +93,28 @@ describe('LiveSubtitleOverlay Component', () => {
     const langSelect = screen.getByRole('combobox', { name: /Select Subtitle Language/i });
     fireEvent.change(langSelect, { target: { value: 'en' } });
     expect(onSelectLanguage).toHaveBeenCalledWith('en');
+  });
+
+  it('supports minimizing subtitles and closing overlay', () => {
+    const onToggleVisible = vi.fn();
+    render(
+      <LiveSubtitleOverlay
+        active={true}
+        isVisible={true}
+        onToggleVisible={onToggleVisible}
+      />
+    );
+
+    const minBtn = screen.getByLabelText('Minimize Subtitles');
+    fireEvent.click(minBtn);
+    expect(screen.getByLabelText('Expand Subtitles')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Expand Subtitles'));
+    expect(screen.getByLabelText('Minimize Subtitles')).toBeInTheDocument();
+
+    const closeBtn = screen.getByTitle('隱藏字幕');
+    fireEvent.click(closeBtn);
+    expect(onToggleVisible).toHaveBeenCalledWith(false);
   });
 
   it('hides original line in translation-only mode', () => {

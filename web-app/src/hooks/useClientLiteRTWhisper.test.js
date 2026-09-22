@@ -454,6 +454,7 @@ describe("useClientLiteRTWhisper Hook", () => {
 
     // Trigger audio process with silence (RMS below vadThreshold)
     const silenceData = new Float32Array(4096).fill(0.0001);
+    vi.useFakeTimers();
     act(() => {
       capturedAudioProcess({
         inputBuffer: {
@@ -461,6 +462,44 @@ describe("useClientLiteRTWhisper Hook", () => {
         },
       });
     });
+
+    // Advance 850ms to fire silenceTimer and flush buffer
+    act(() => {
+      vi.advanceTimersByTime(850);
+    });
+
+    unmount();
+    vi.useRealTimers();
+    window.AudioContext = originalAudioContext;
+  });
+
+  it("handles Web Audio stream processor setup failure gracefully", () => {
+    const originalAudioContext = window.AudioContext;
+    window.AudioContext = class {
+      constructor() {
+        this.sampleRate = 48000;
+        this.state = 'running';
+      }
+      createMediaStreamSource() {
+        throw new Error('Failed to attach MediaStreamSource');
+      }
+      close() {
+        return Promise.resolve();
+      }
+    };
+
+    const mockStream = {
+      getAudioTracks: () => [{ label: 'Faulty Mic', deviceId: 'faulty', readyState: 'live', enabled: true }],
+    };
+
+    const { unmount } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        enabled: true,
+        audioStream: mockStream,
+      })
+    );
 
     unmount();
     window.AudioContext = originalAudioContext;

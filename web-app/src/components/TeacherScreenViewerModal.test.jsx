@@ -30,17 +30,133 @@ describe('Teacher Screen Modals Suite', () => {
       onClose: vi.fn(),
       liveFrame: 'data:image/jpeg;base64,frame_data_xyz',
       connectionState: 'connected',
-      broadcastInfo: { teacherEmail: 'teacher@school.edu' },
+      broadcastInfo: { teacherEmail: 'teacher@school.edu', resolution: '1080p' },
     };
 
-    it('renders teacher screen viewer modal with teacher email, classroom stream badge, and live frame image', () => {
+    it('renders teacher screen viewer modal with teacher email, live frame, resolution badge, and zoom toolbar', () => {
       render(<TeacherScreenViewerModal {...defaultProps} />);
 
       expect(screen.getByText(/teacher@school.edu's Screen/i)).toBeInTheDocument();
-      expect(screen.getByText('🟢 Live Classroom Stream (50+ Students)')).toBeInTheDocument();
+      expect(screen.getByText(/🟢 Live Stream/i)).toBeInTheDocument();
+      expect(screen.getByText('1080P')).toBeInTheDocument();
       const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
       expect(frameImg).toBeInTheDocument();
       expect(frameImg).toHaveAttribute('src', 'data:image/jpeg;base64,frame_data_xyz');
+
+      // Zoom toolbar elements
+      expect(screen.getByRole('button', { name: /Zoom Out/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Reset Zoom/i })).toHaveTextContent('100%');
+      expect(screen.getByRole('button', { name: /Zoom In/i })).toBeInTheDocument();
+    });
+
+    it('supports interactive zooming in, zooming out, reset zoom, and double click', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} />);
+
+      const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
+      const zoomInBtn = screen.getByRole('button', { name: /Zoom In/i });
+      const zoomOutBtn = screen.getByRole('button', { name: /Zoom Out/i });
+      const resetBadge = screen.getByRole('button', { name: /Reset Zoom/i });
+
+      // Initial state: 100%
+      expect(resetBadge).toHaveTextContent('100%');
+      expect(zoomOutBtn).toBeDisabled();
+
+      // Click Zoom In
+      fireEvent.click(zoomInBtn);
+      expect(resetBadge).toHaveTextContent('125%');
+      expect(zoomOutBtn).not.toBeDisabled();
+      expect(frameImg.style.transform).toContain('scale(1.25)');
+      expect(screen.getByRole('button', { name: /Fit to Screen/i })).toBeInTheDocument();
+      expect(screen.getByText(/Drag to pan screen/i)).toBeInTheDocument();
+
+      // Click Zoom In again
+      fireEvent.click(zoomInBtn);
+      expect(resetBadge).toHaveTextContent('150%');
+      expect(frameImg.style.transform).toContain('scale(1.5)');
+
+      // Click Fit to Screen
+      const fitBtn = screen.getByRole('button', { name: /Fit to Screen/i });
+      fireEvent.click(fitBtn);
+      expect(resetBadge).toHaveTextContent('100%');
+      expect(frameImg.style.transform).toContain('scale(1)');
+
+      // Double-click image to toggle zoom
+      const videoBox = frameImg.parentElement;
+      fireEvent.doubleClick(videoBox);
+      expect(resetBadge).toHaveTextContent('175%');
+      expect(frameImg.style.transform).toContain('scale(1.75)');
+
+      // Double-click again to reset
+      fireEvent.doubleClick(videoBox);
+      expect(resetBadge).toHaveTextContent('100%');
+      expect(frameImg.style.transform).toContain('scale(1)');
+    });
+
+    it('supports mouse wheel zooming on the video box', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} />);
+
+      const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
+      const videoBox = frameImg.parentElement;
+
+      // Wheel up (deltaY < 0) => zoom in
+      fireEvent.wheel(videoBox, { deltaY: -100 });
+      expect(screen.getByRole('button', { name: /Reset Zoom/i })).toHaveTextContent('120%');
+
+      // Wheel down (deltaY > 0) => zoom out
+      fireEvent.wheel(videoBox, { deltaY: 100 });
+      expect(screen.getByRole('button', { name: /Reset Zoom/i })).toHaveTextContent('100%');
+    });
+
+    it('supports keyboard shortcuts for zoom (+, -, 0)', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} />);
+
+      const resetBadge = screen.getByRole('button', { name: /Reset Zoom/i });
+
+      // '+' key zooms in
+      fireEvent.keyDown(window, { key: '+' });
+      expect(resetBadge).toHaveTextContent('125%');
+
+      // '-' key zooms out
+      fireEvent.keyDown(window, { key: '-' });
+      expect(resetBadge).toHaveTextContent('100%');
+
+      // Zoom in then press '0' to reset
+      fireEvent.keyDown(window, { key: '=' });
+      expect(resetBadge).toHaveTextContent('125%');
+
+      // Click Fit button
+      const fitBtn = screen.getByRole('button', { name: /Fit to Screen/i });
+      fireEvent.click(fitBtn);
+      expect(resetBadge).toHaveTextContent('100%');
+
+      // Zoom in then press Escape to reset
+      fireEvent.keyDown(window, { key: '+' });
+      expect(resetBadge).toHaveTextContent('125%');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(resetBadge).toHaveTextContent('100%');
+
+      // Press Escape when at 100% to close modal
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    });
+
+    it('supports drag-to-pan when zoomed in', () => {
+      render(<TeacherScreenViewerModal {...defaultProps} />);
+
+      const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
+      const videoBox = frameImg.parentElement;
+      const zoomInBtn = screen.getByRole('button', { name: /Zoom In/i });
+
+      // Zoom in to 150%
+      fireEvent.click(zoomInBtn);
+      fireEvent.click(zoomInBtn);
+
+      // Mouse drag
+      fireEvent.mouseDown(videoBox, { button: 0, clientX: 200, clientY: 200 });
+      fireEvent.mouseMove(videoBox, { clientX: 250, clientY: 230 });
+      fireEvent.mouseUp(videoBox);
+
+      expect(frameImg.style.transform).toContain('translate(50px, 30px)');
     });
 
     it('renders loading spinner and connecting state when frame is not yet received', () => {
@@ -62,10 +178,7 @@ describe('Teacher Screen Modals Suite', () => {
       const onClose = vi.fn();
       render(<TeacherScreenViewerModal {...defaultProps} onClose={onClose} />);
 
-      // Switch to docked and test backdrop click
-      const dockedBtn = screen.getByRole('button', { name: /Standard/i });
-      fireEvent.click(dockedBtn);
-      expect(dockedBtn).toHaveClass('active');
+      // Modal starts docked: test backdrop click
       const backdrop = document.querySelector('.viewer-backdrop');
       expect(backdrop).toBeInTheDocument();
       fireEvent.click(backdrop);

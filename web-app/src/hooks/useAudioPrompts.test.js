@@ -35,6 +35,16 @@ vi.mock('firebase/firestore', () => ({
               promptText: 'Summarize classroom discussion'
             })
           },
+          {
+            id: 'prompt_3',
+            data: () => ({
+              name: 'Bilingual Subtitle Translator',
+              category: 'translations',
+              accessLevel: 'public',
+              applyTo: ['Live Subtitles & Translation'],
+              promptText: 'Translate live speech'
+            })
+          },
         ],
       });
     }, 0);
@@ -61,6 +71,15 @@ describe('useAudioPrompts Hook', () => {
     await waitFor(() => {
       expect(result.current.length).toBe(2);
       expect(result.current.map(p => p.id)).toEqual(['prompt_1', 'prompt_2']);
+    });
+  });
+
+  it('fetches translation prompts when applyToFilter is Live Subtitles & Translation', async () => {
+    const { result } = renderHook(() => useAudioPrompts({ uid: 'teacher_1' }, 'Live Subtitles & Translation'));
+    await waitFor(() => {
+      expect(result.current.length).toBe(1);
+      expect(result.current[0].name).toBe('Bilingual Subtitle Translator');
+      expect(result.current[0].category).toBe('translations');
     });
   });
 });

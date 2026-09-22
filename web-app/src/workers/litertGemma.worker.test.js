@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildGemmaEvaluationPrompt,
   buildGemmaProctorPrompt,
+  buildGemmaTranslationPrompt,
+  parseGemmaTranslationOutput,
   getGemmaModelResponse,
   parseGemmaOutput,
   resolveLiteRtLmWasmUrl,
@@ -10,10 +12,12 @@ import {
 describe('litertGemma.worker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    self.postMessage = vi.fn();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
+    await self.onmessage?.({ data: { type: 'DISPOSE', id: 'teardown' } });
   });
 
   it('builds a structured Gemma proctor prompt formatted with chat tokens', () => {
@@ -211,8 +215,140 @@ describe('litertGemma.worker', () => {
       expect.stringContaining('"isViolation":boolean')
     );
 
-    // 3. DISPOSE
+    // 3. TRANSLATE_TRANSCRIPT
+    mockConversation.sendMessage.mockResolvedValueOnce({
+      content: '{"en":"Today we demonstrate React useState"}',
+    });
+    await self.onmessage({
+      data: {
+        type: 'TRANSLATE_TRANSCRIPT',
+        id: 'trans_1',
+        payload: {
+          transcript: '今日我哋示範 React useState',
+          sourceLang: 'zh-HK',
+          targetLangs: ['en'],
+        },
+      },
+    });
+    const transComplete = messages.find((m) => m.type === 'TRANSLATE_COMPLETE' && m.id === 'trans_1');
+    expect(transComplete).toBeDefined();
+    expect(transComplete.payload.translations.en).toBe('Today we demonstrate React useState');
+
+    // 4. DISPOSE
     await self.onmessage({ data: { type: 'DISPOSE', id: 'disp_1' } });
     expect(mockEngine.delete).toHaveBeenCalled();
   });
+
+  it('posts INIT_COMPLETE with ready: false when engine initialization fails', async () => {
+    const messages = [];
+    self.postMessage = vi.fn((msg) => messages.push(msg));
+
+    const EngineMock = await import('@litert-lm/core');
+    EngineMock.Engine.create = vi.fn().mockRejectedValue(new Error('WebGPU unavailable on this machine'));
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-length': '100' }),
+      body: {
+        getReader: () => ({
+          read: vi.fn().mockResolvedValue({ done: true }),
+          cancel: vi.fn(),
+        }),
+      },
+    });
+
+    await self.onmessage({
+      data: {
+        type: 'INIT',
+        id: 'init_err',
+        payload: { modelUrl: 'https://example.com/gemma-model.bin' },
+      },
+    });
+
+    const initFail = messages.find((m) => m.type === 'INIT_COMPLETE' && m.id === 'init_err');
+    expect(initFail).toBeDefined();
+    expect(initFail.payload.ready).toBe(false);
+    expect(initFail.payload.unavailableReason).toContain('WebGPU unavailable');
+  });
+
+  it('builds a multilingual lecture translation prompt preserving technical terms', () => {
+    const prompt = buildGemmaTranslationPrompt({
+      transcript: '今日我哋示範 React useState 同埋 Docker deploy',
+      sourceLang: 'zh-HK',
+      targetLangs: ['en', 'zh-Hant', 'ja'],
+    });
+
+    expect(prompt).toContain('Cantonese (Hong Kong');
+    expect(prompt).toContain('- "en": English');
+    expect(prompt).toContain('- "zh-Hant": Traditional Chinese');
+    expect(prompt).toContain('- "ja": Japanese');
+    expect(prompt).toContain('Preserve discipline-specific terminology, proper nouns');
+    expect(prompt).toContain('今日我哋示範 React useState 同埋 Docker deploy');
+  });
+
+  it('builds translation prompt with custom courseContext and special instructions', () => {
+    const prompt = buildGemmaTranslationPrompt({
+      transcript: '今日講下護理評估程序',
+      sourceLang: 'zh-HK',
+      targetLangs: ['en'],
+      courseContext: 'Healthcare, Nursing & Medical Sciences',
+      customPrompt: 'Keep medical terms like CPR and ECG in English.',
+    });
+
+    expect(prompt).toContain('Healthcare, Nursing & Medical Sciences');
+    expect(prompt).toContain('Keep medical terms like CPR and ECG in English.');
+    expect(prompt).toContain('今日講下護理評估程序');
+  });
+
+  it('parses structured JSON translation output from Gemma', () => {
+    const mockOutput = '{"en":"Today we demonstrate React useState and Docker deploy","ja":"本日はReact useStateとDocker deployを実演します"}';
+    const parsed = parseGemmaTranslationOutput(mockOutput, ['en', 'ja']);
+    expect(parsed.en).toBe('Today we demonstrate React useState and Docker deploy');
+    expect(parsed.ja).toBe('本日はReact useStateとDocker deployを実演します');
+  });
+
+  it('interpolates template placeholders when custom translation prompt contains {{transcript}}', () => {
+    const libraryPromptTemplate = `Translate {{sourceLang}} into:
+{{targetLangs}}
+Context: {{courseContext}}
+Spoken: "{{transcript}}"`;
+
+    const prompt = buildGemmaTranslationPrompt({
+      transcript: '講下微積分同矩陣運算',
+      sourceLang: 'zh-HK',
+      targetLangs: ['en'],
+      courseContext: 'Mathematics & Linear Algebra',
+      customPrompt: libraryPromptTemplate,
+    });
+
+    expect(prompt).toContain('Translate Cantonese (Hong Kong');
+    expect(prompt).toContain('Context: Mathematics & Linear Algebra');
+    expect(prompt).toContain('Spoken: "講下微積分同矩陣運算"');
+    expect(prompt).toContain('<start_of_turn>user');
+    expect(prompt).toContain('<start_of_turn>model');
+  });
+
+  it('prevents duplicating category instructions in buildGemmaEvaluationPrompt when already present', () => {
+    const fullProctorPrompt = `# Custom Proctor
+You are an AI exam proctor.
+Use exactly one category:
+- COLLUSION_EXAM
+- BENIGN
+Respond with only one JSON object:
+{"isViolation":boolean}`;
+
+    const prompt = buildGemmaEvaluationPrompt({
+      transcript: 'Can you give me question 3 answer?',
+      systemPrompt: fullProctorPrompt,
+      classId: 'class_1',
+      studentUid: 'student_1',
+      studentEmail: 'student1@stu.vtc.edu.hk',
+    });
+
+    // Should only occur once, not duplicated
+    const matches = prompt.match(/Use exactly one category:/g);
+    expect(matches).toHaveLength(1);
+    expect(prompt).toContain('Can you give me question 3 answer?');
+  });
 });
+

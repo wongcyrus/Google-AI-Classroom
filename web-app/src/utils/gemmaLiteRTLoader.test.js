@@ -3,6 +3,7 @@ import {
   isGemmaModelCached,
   fetchGemmaWithProgress,
   checkGemmaHardwareAcceleration,
+  precheckGemmaViability,
   GEMMA_CACHE_NAME,
   DEFAULT_GEMMA_CONFIG,
 } from './gemmaLiteRTLoader';
@@ -102,5 +103,69 @@ describe('gemmaLiteRTLoader', () => {
     const hw = await checkGemmaHardwareAcceleration();
     expect(hw).toBeDefined();
     expect(['webgpu', 'wasm']).toContain(hw.delegate);
+  });
+
+  describe('precheckGemmaViability', () => {
+    it('returns viable false when WebGPU is not supported', async () => {
+      const origGpu = navigator.gpu;
+      try {
+        Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
+        const result = await precheckGemmaViability();
+        expect(result.viable).toBe(false);
+        expect(result.hasWebGPU).toBe(false);
+        expect(result.reason).toContain('WebGPU is not supported');
+      } finally {
+        Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+      }
+    });
+
+    it('returns viable false when storage quota is insufficient', async () => {
+      const origGpu = navigator.gpu;
+      const origStorage = navigator.storage;
+      try {
+        Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+        Object.defineProperty(navigator, 'storage', {
+          value: {
+            estimate: vi.fn().mockResolvedValue({
+              quota: 10 * 1024 * 1024 * 1024,
+              usage: 9 * 1024 * 1024 * 1024, // only 1GB free, needs 2.5GB
+            }),
+          },
+          configurable: true,
+        });
+
+        const result = await precheckGemmaViability();
+        expect(result.viable).toBe(false);
+        expect(result.hasWebGPU).toBe(true);
+        expect(result.reason).toContain('Insufficient storage quota');
+      } finally {
+        Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+        Object.defineProperty(navigator, 'storage', { value: origStorage, configurable: true });
+      }
+    });
+
+    it('returns viable true when WebGPU and sufficient storage exist', async () => {
+      const origGpu = navigator.gpu;
+      const origStorage = navigator.storage;
+      try {
+        Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+        Object.defineProperty(navigator, 'storage', {
+          value: {
+            estimate: vi.fn().mockResolvedValue({
+              quota: 50 * 1024 * 1024 * 1024,
+              usage: 5 * 1024 * 1024 * 1024, // 45GB free
+            }),
+          },
+          configurable: true,
+        });
+
+        const result = await precheckGemmaViability();
+        expect(result.viable).toBe(true);
+        expect(result.hasWebGPU).toBe(true);
+      } finally {
+        Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+        Object.defineProperty(navigator, 'storage', { value: origStorage, configurable: true });
+      }
+    });
   });
 });

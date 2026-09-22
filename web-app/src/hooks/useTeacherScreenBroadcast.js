@@ -265,17 +265,21 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       broadcastIntervalRef.current = activeInterval;
       setBroadcastIntervalState(activeInterval);
 
-      // Request display media at pristine native screen resolution
-      // Avoid setting strict max constraints so Chromium desktop compositor does not downsample
-      const displayMediaOptions = {
-        video: {
-          displaySurface: 'monitor',
-          frameRate: { ideal: 10, max: 15 },
-        },
-        audio: false,
-      };
+      // Check if caller supplied a pre-acquired synchronized screen stream
+      let stream = options.existingStream;
+      if (!stream || !stream.active || stream.getVideoTracks().length === 0) {
+        // Request display media at pristine native screen resolution
+        // Avoid setting strict max constraints so Chromium desktop compositor does not downsample
+        const displayMediaOptions = {
+          video: {
+            displaySurface: 'monitor',
+            frameRate: { ideal: 10, max: 15 },
+          },
+          audio: false,
+        };
 
-      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      }
 
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {

@@ -1,9 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
 
 describe('TeacherScreenBroadcastModal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('does not render when isOpen is false', () => {
     const { container } = render(
       <TeacherScreenBroadcastModal
@@ -15,7 +19,7 @@ describe('TeacherScreenBroadcastModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders pre-broadcast setup modal with resolution and framerate options when isBroadcasting is false', () => {
+  it('renders Step 1 (Voice & Subtitles Setup) by default when isBroadcasting is false', () => {
     render(
       <TeacherScreenBroadcastModal
         isOpen={true}
@@ -27,8 +31,38 @@ describe('TeacherScreenBroadcastModal', () => {
     );
 
     // Header & subtitle
-    expect(screen.getByText('Share Screen to Class')).toBeInTheDocument();
-    expect(screen.getByText(/Configure image size and frame rate/i)).toBeInTheDocument();
+    expect(screen.getByText('Broadcast Screen & Voice')).toBeInTheDocument();
+    expect(screen.getByText(/Configure microphone, live translations, and screen share/i)).toBeInTheDocument();
+
+    // Wizard tabs
+    expect(screen.getByText(/1\. 🎙️ Voice & Subtitles/i)).toBeInTheDocument();
+    expect(screen.getByText(/2\. 🖥️ Screen & Recording/i)).toBeInTheDocument();
+
+    // Step 1 controls
+    expect(screen.getByText(/Audio Input \(Microphone\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.getByText(/Translation Model Architecture/i)).toBeInTheDocument();
+    expect(screen.getByText(/Spoken Speech Language/i)).toBeInTheDocument();
+    expect(screen.getByText(/Target Broadcast Languages/i)).toBeInTheDocument();
+
+    // Navigation button to Step 2
+    expect(screen.getByText(/Next: Screen & Recording Setup/i)).toBeInTheDocument();
+  });
+
+  it('navigates to Step 2 (Screen & Recording Setup) and displays resolution and framerate options', () => {
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        broadcastResolution="1080p"
+        broadcastInterval={1500}
+      />
+    );
+
+    // Click "Next: Screen & Recording Setup"
+    const nextBtn = screen.getByText(/Next: Screen & Recording Setup/i).closest('button');
+    fireEvent.click(nextBtn);
 
     // Resolution cards
     expect(screen.getByText('1080p (Full HD - Sharp)')).toBeInTheDocument();
@@ -42,11 +76,14 @@ describe('TeacherScreenBroadcastModal', () => {
     expect(screen.getByText('2.0s / 0.5 FPS')).toBeInTheDocument();
     expect(screen.getByText('3.0s / 0.3 FPS')).toBeInTheDocument();
 
+    // Back to Voice Setup button
+    expect(screen.getByText(/Back to Voice Setup/i)).toBeInTheDocument();
+
     // Start action button
-    expect(screen.getByRole('button', { name: /Start Sharing Screen/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start Live Stream/i })).toBeInTheDocument();
   });
 
-  it('allows teacher to select resolution, interval, and triggers onStartBroadcast', async () => {
+  it('allows teacher to select resolution, interval, and triggers synchronized onStartBroadcast from Step 2', async () => {
     const onStartBroadcast = vi.fn().mockResolvedValue();
     const setBroadcastResolution = vi.fn();
     const setBroadcastInterval = vi.fn();
@@ -64,6 +101,9 @@ describe('TeacherScreenBroadcastModal', () => {
       />
     );
 
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
     // Click Native (Original / 2K)
     const nativeCard = screen.getByText('Native (Original / 2K)').closest('.resolution-card');
     fireEvent.click(nativeCard);
@@ -74,19 +114,228 @@ describe('TeacherScreenBroadcastModal', () => {
     fireEvent.click(fpsBtn);
     expect(setBroadcastInterval).toHaveBeenCalledWith(1000);
 
-    // Click Start Sharing Screen
-    const startBtn = screen.getByRole('button', { name: /Start Sharing Screen/i });
+    // Click Start Sharing Screen / Start Live Stream
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream/i });
     fireEvent.click(startBtn);
 
     await waitFor(() => {
-      expect(onStartBroadcast).toHaveBeenCalledWith({
-        resolution: 'native',
-        interval: 1000,
-      });
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resolution: 'native',
+          interval: 1000,
+        })
+      );
     });
   });
 
-  it('renders live broadcast view when isBroadcasting is true', () => {
+  it('allows navigating back from Step 2 to Step 1 via Back to Voice Setup button', () => {
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+      />
+    );
+
+    // Go to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+    expect(screen.getByText('1080p (Full HD - Sharp)')).toBeInTheDocument();
+
+    // Click Back to Voice Setup
+    fireEvent.click(screen.getByText(/Back to Voice Setup/i).closest('button'));
+    expect(screen.getByText(/Audio Input \(Microphone\)/i)).toBeInTheDocument();
+  });
+
+  it('allows switching steps directly using the wizard step tabs', () => {
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+      />
+    );
+
+    // Click Step 2 Tab
+    const step2Tab = screen.getByText(/2\. 🖥️ Screen & Recording/i);
+    fireEvent.click(step2Tab);
+    expect(screen.getByText('1080p (Full HD - Sharp)')).toBeInTheDocument();
+
+    // Click Step 1 Tab
+    const step1Tab = screen.getByText(/1\. 🎙️ Voice & Subtitles/i);
+    fireEvent.click(step1Tab);
+    expect(screen.getByText(/Audio Input \(Microphone\)/i)).toBeInTheDocument();
+  });
+
+  it('renders subtitle setup button in pre-broadcast modal and triggers onOpenSubtitles', () => {
+    const onOpenSubtitles = vi.fn();
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        onOpenSubtitles={onOpenSubtitles}
+        isSubtitlesEnabled={false}
+      />
+    );
+
+    const subBtn = screen.getByRole('button', { name: /Subtitle Setup/i });
+    expect(subBtn).toBeInTheDocument();
+    fireEvent.click(subBtn);
+    expect(onOpenSubtitles).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders subtitle controls in active broadcast sidebar and triggers onOpenSubtitles when clicked', () => {
+    const onOpenSubtitles = vi.fn();
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        viewers={[]}
+        onOpenSubtitles={onOpenSubtitles}
+        isSubtitlesEnabled={true}
+      />
+    );
+
+    const activeSubBtn = screen.getByRole('button', { name: /Live CC Active/i });
+    expect(activeSubBtn).toBeInTheDocument();
+    fireEvent.click(activeSubBtn);
+    expect(onOpenSubtitles).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders broadcast mode selector in Step 2, defaulting to Stream & Record, and starts recording', async () => {
+    const mockLectureRecorder = {
+      isRecording: false,
+      startRecording: vi.fn().mockResolvedValue(),
+    };
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={mockLectureRecorder}
+        defaultRecordOnStart={true}
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    expect(screen.getByText(/Broadcast Mode & Recording Policy/i)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Stream & Record/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Live Stream Only/i })).toBeInTheDocument();
+
+    // Start button reflects record mode
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+    expect(startBtn).toBeInTheDocument();
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledTimes(1);
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recordOnStart: true,
+        })
+      );
+    });
+  });
+
+  it('allows teacher to toggle to Live Stream Only mode with no recording files saved', async () => {
+    const mockLectureRecorder = {
+      isRecording: false,
+      startRecording: vi.fn().mockResolvedValue(),
+    };
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={mockLectureRecorder}
+        defaultRecordOnStart={true}
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    // Click "Live Stream Only" card
+    const liveOnlyCard = screen.getByRole('radio', { name: /Live Stream Only/i });
+    fireEvent.click(liveOnlyCard);
+
+    // Button should now be Live Stream Only
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream Only/i });
+    expect(startBtn).toBeInTheDocument();
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledTimes(1);
+      expect(mockLectureRecorder.startRecording).not.toHaveBeenCalled();
+    });
+  });
+
+  it('honors defaultRecordOnStart={false} from class policy', () => {
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={{ isRecording: false, startRecording: vi.fn() }}
+        defaultRecordOnStart={false}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+    expect(screen.getByRole('button', { name: /Start Live Stream Only/i })).toBeInTheDocument();
+  });
+
+  it('renders lecture recorder HUD with pause, resume, stop, and past recordings link in active modal', () => {
+    const mockLectureRecorder = {
+      isRecording: true,
+      isPaused: false,
+      isUploading: false,
+      recordingState: 'recording',
+      durationFormatted: '05:32',
+      pauseRecording: vi.fn(),
+      resumeRecording: vi.fn(),
+      stopRecording: vi.fn(),
+      discardRecording: vi.fn(),
+    };
+    const onOpenRecordings = vi.fn();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        lectureRecorder={mockLectureRecorder}
+        onOpenRecordings={onOpenRecordings}
+      />
+    );
+
+    expect(screen.getByText(/● REC 05:32/)).toBeInTheDocument();
+    const pauseBtn = screen.getByRole('button', { name: /Pause/i });
+    expect(pauseBtn).toBeInTheDocument();
+    fireEvent.click(pauseBtn);
+    expect(mockLectureRecorder.pauseRecording).toHaveBeenCalledTimes(1);
+
+    const stopBtn = screen.getByRole('button', { name: /Stop & Save/i });
+    expect(stopBtn).toBeInTheDocument();
+    fireEvent.click(stopBtn);
+    expect(mockLectureRecorder.stopRecording).toHaveBeenCalledTimes(1);
+
+    const pastBtn = screen.getByRole('button', { name: /View Past Recordings & YouTube CC/i });
+    expect(pastBtn).toBeInTheDocument();
+    fireEvent.click(pastBtn);
+    expect(onOpenRecordings).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders live broadcast view when isBroadcasting is true', async () => {
     const onStopBroadcast = vi.fn();
     const onClose = vi.fn();
     const mockViewers = [
@@ -115,7 +364,9 @@ describe('TeacherScreenBroadcastModal', () => {
     const stopBtn = screen.getByRole('button', { name: /Stop Screen Broadcast/i });
     fireEvent.click(stopBtn);
     expect(onStopBroadcast).toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 
   it('renders video element and attaches screenStream to video.srcObject', () => {
@@ -155,10 +406,9 @@ describe('TeacherScreenBroadcastModal', () => {
         viewers={[]}
       />
     );
+    expect(container.firstChild).toBeNull();
 
-    expect(container.querySelector('video')).toBeNull();
-
-    // Teacher opens the modal to check preview
+    // Modal is opened
     rerender(
       <TeacherScreenBroadcastModal
         isOpen={true}
@@ -176,58 +426,21 @@ describe('TeacherScreenBroadcastModal', () => {
   });
 
   it('renders image fallback when screenStream is null and lastFrameData is provided', () => {
-    const mockFrameData = 'data:image/jpeg;base64,sampleframe';
+    const base64Data = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD...';
 
-    const { container } = render(
+    render(
       <TeacherScreenBroadcastModal
         isOpen={true}
         onClose={vi.fn()}
         isBroadcasting={true}
         screenStream={null}
-        lastFrameData={mockFrameData}
+        lastFrameData={base64Data}
         viewers={[]}
       />
     );
 
-    const imgEl = container.querySelector('img.broadcast-preview-video');
-    expect(imgEl).toBeInTheDocument();
-    expect(imgEl.getAttribute('src')).toBe(mockFrameData);
-  });
-
-  it('renders subtitle setup button in pre-broadcast modal and triggers onOpenSubtitles', () => {
-    const onOpenSubtitles = vi.fn();
-    render(
-      <TeacherScreenBroadcastModal
-        isOpen={true}
-        onClose={vi.fn()}
-        isBroadcasting={false}
-        onOpenSubtitles={onOpenSubtitles}
-        isSubtitlesEnabled={false}
-      />
-    );
-
-    const subBtn = screen.getByRole('button', { name: /Subtitle Setup/i });
-    expect(subBtn).toBeInTheDocument();
-    fireEvent.click(subBtn);
-    expect(onOpenSubtitles).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders subtitle controls in active broadcast sidebar and indicates active state', () => {
-    const onOpenSubtitles = vi.fn();
-    render(
-      <TeacherScreenBroadcastModal
-        isOpen={true}
-        onClose={vi.fn()}
-        isBroadcasting={true}
-        viewers={[]}
-        onOpenSubtitles={onOpenSubtitles}
-        isSubtitlesEnabled={true}
-      />
-    );
-
-    const activeSubBtn = screen.getByRole('button', { name: /Live CC Active/i });
-    expect(activeSubBtn).toBeInTheDocument();
-    fireEvent.click(activeSubBtn);
-    expect(onOpenSubtitles).toHaveBeenCalledTimes(1);
+    const img = screen.getByAltText('Teacher broadcast live frame preview');
+    expect(img).toBeInTheDocument();
+    expect(img.getAttribute('src')).toBe(base64Data);
   });
 });

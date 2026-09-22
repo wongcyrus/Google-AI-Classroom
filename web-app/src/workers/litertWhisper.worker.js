@@ -460,11 +460,12 @@ async function handleMessage(event) {
           payload: {
             transcript: transcriptText,
             language: detectedLanguage,
-            confidence,
+            confidence: transcriptText ? confidence : 0,
             words,
             timestamp,
             studentUid,
             classId,
+            dynamicOutputSupported: Boolean(transcriptText),
           },
         });
         break;
