@@ -127,8 +127,8 @@ const BatchStudentUploadModal = ({
 
   const counts = parsedData ? {
     total: parsedData.students.length,
-    full: parsedData.students.filter(s => s.firstName && s.lastName && s.studentClass).length,
-    partial: parsedData.students.filter(s => s.hasProfile && !(s.firstName && s.lastName && s.studentClass)).length,
+    full: parsedData.students.filter(s => (s.studentName || (s.firstName && s.lastName)) && s.studentClass).length,
+    partial: parsedData.students.filter(s => s.hasProfile && !((s.studentName || (s.firstName && s.lastName)) && s.studentClass)).length,
     emailOnly: parsedData.students.filter(s => !s.hasProfile).length,
     invalid: parsedData.invalidRows.length,
   } : null;
@@ -141,7 +141,7 @@ const BatchStudentUploadModal = ({
           <div>
             <h3>👥 Batch Upload Student Roster</h3>
             <p className="batch-roster-subtitle">
-              Import first name, last name, nickname, programme, and student class (cohort).
+              Import student name, nickname, programme, and student class (cohort).
             </p>
           </div>
           <button type="button" className="batch-roster-close-btn" onClick={onClose} aria-label="Close">
@@ -209,8 +209,8 @@ const BatchStudentUploadModal = ({
           <textarea
             className="batch-roster-textarea"
             rows="5"
-            placeholder="StudentEmail,FirstName,LastName,Nickname,Programme,Class
-230123456@stu.vtc.edu.hk,Tai Man,Chan,David,Higher Diploma in Software Engineering,IT114115/1A
+            placeholder="StudentEmail,StudentName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Chan Tai Man,David,Higher Diploma in Software Engineering,IT114115/1A
 ..."
             value={inputText}
             onChange={handleTextChange}
@@ -249,8 +249,7 @@ const BatchStudentUploadModal = ({
                   <tr>
                     <th>Display Name Preview</th>
                     <th>Email</th>
-                    <th>First Name</th>
-                    <th>Last Name</th>
+                    <th>Student Name</th>
                     <th>Nickname</th>
                     <th>Cohort / Class</th>
                     <th>Programme</th>
@@ -263,8 +262,7 @@ const BatchStudentUploadModal = ({
                         <StudentBadge student={student} showCohort={true} size="sm" />
                       </td>
                       <td><code>{student.email}</code></td>
-                      <td>{student.firstName || <span className="muted-dash">—</span>}</td>
-                      <td>{student.lastName || <span className="muted-dash">—</span>}</td>
+                      <td>{student.studentName || student.fullName || <span className="muted-dash">—</span>}</td>
                       <td>{student.nickname || <span className="muted-dash">—</span>}</td>
                       <td>
                         {student.studentClass ? (

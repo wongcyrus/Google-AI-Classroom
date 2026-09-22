@@ -1104,6 +1104,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                         <tr>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Student Display Name</th>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Email</th>
+                          <th style={{ padding: '0.35rem 0.6rem' }}>Student Name</th>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Class / Cohort</th>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Programme</th>
                         </tr>
@@ -1111,12 +1112,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                       <tbody>
                         {emailList.map((email, idx) => {
                           const prof = studentProfiles[email] || {};
+                          const resolvedStudentName = prof.studentName || (prof.lastName && prof.firstName ? `${prof.lastName} ${prof.firstName}` : (prof.lastName || prof.firstName || ''));
                           return (
                             <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
                               <td style={{ padding: '0.35rem 0.6rem' }}>
                                 <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
                               </td>
                               <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
+                              <td style={{ padding: '0.35rem 0.6rem' }}>
+                                {resolvedStudentName || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                              </td>
                               <td style={{ padding: '0.35rem 0.6rem' }}>
                                 {prof.studentClass ? (
                                   <span style={{ display: 'inline-block', padding: '0.1rem 0.4rem', fontSize: '0.72rem', fontWeight: 700, borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>

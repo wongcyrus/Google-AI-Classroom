@@ -17,7 +17,7 @@ describe('BatchStudentUploadModal', () => {
     );
     expect(screen.getByText(/Batch Upload Student Roster/i)).toBeDefined();
     expect(screen.getByText(/Download CSV Template/i)).toBeDefined();
-    expect(screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i)).toBeDefined();
+    expect(screen.getByPlaceholderText(/StudentEmail,StudentName/i)).toBeDefined();
   });
 
   it('parses pasted CSV, displays summary count, and previews student rows', () => {
@@ -26,10 +26,10 @@ describe('BatchStudentUploadModal', () => {
       <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={onApply} />
     );
 
-    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
-    const sampleCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-230123456@stu.vtc.edu.hk,Tai Man,Chan,David,HDSE,IT114115/1A
-bob@school.edu,,,,,,`;
+    const textarea = screen.getByPlaceholderText(/StudentEmail,StudentName/i);
+    const sampleCsv = `StudentEmail,StudentName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Chan Tai Man,David,HDSE,IT114115/1A
+bob@school.edu,,,,`;
 
     fireEvent.change(textarea, { target: { value: sampleCsv } });
 
@@ -48,6 +48,7 @@ bob@school.edu,,,,,,`;
     const appliedPayload = onApply.mock.calls[0][0];
     expect(appliedPayload.studentEmails).toContain('230123456@stu.vtc.edu.hk');
     expect(appliedPayload.studentEmails).toContain('bob@school.edu');
+    expect(appliedPayload.studentProfiles['230123456@stu.vtc.edu.hk'].studentName).toBe('Chan Tai Man');
     expect(appliedPayload.studentProfiles['230123456@stu.vtc.edu.hk'].nickname).toBe('David');
     expect(appliedPayload.studentProfiles['230123456@stu.vtc.edu.hk'].studentClass).toBe('IT114115/1A');
   });
@@ -57,8 +58,7 @@ bob@school.edu,,,,,,`;
     const existingEmails = ['existing@school.edu'];
     const existingProfiles = {
       'existing@school.edu': {
-        firstName: 'Existing',
-        lastName: 'Student',
+        studentName: 'Existing Student',
         nickname: 'Ex',
         studentClass: 'IT101',
       },
@@ -74,10 +74,10 @@ bob@school.edu,,,,,,`;
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    const textarea = screen.getByPlaceholderText(/StudentEmail,StudentName/i);
     fireEvent.change(textarea, {
       target: {
-        value: `StudentEmail,FirstName,LastName,Nickname,Class\nnew@school.edu,New,Guy,Nick,IT102`,
+        value: `StudentEmail,StudentName,Nickname,Class\nnew@school.edu,New Guy,Nick,IT102`,
       },
     });
 
@@ -88,8 +88,8 @@ bob@school.edu,,,,,,`;
     const payload = onApply.mock.calls[0][0];
     expect(payload.studentEmails).toContain('existing@school.edu');
     expect(payload.studentEmails).toContain('new@school.edu');
-    expect(payload.studentProfiles['existing@school.edu'].firstName).toBe('Existing');
-    expect(payload.studentProfiles['new@school.edu'].firstName).toBe('New');
+    expect(payload.studentProfiles['existing@school.edu'].studentName).toBe('Existing Student');
+    expect(payload.studentProfiles['new@school.edu'].studentName).toBe('New Guy');
   });
 
   it('replaces entire roster when replace mode is selected', () => {
@@ -108,10 +108,10 @@ bob@school.edu,,,,,,`;
     const replaceRadio = screen.getByLabelText(/Replace entire roster/i);
     fireEvent.click(replaceRadio);
 
-    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    const textarea = screen.getByPlaceholderText(/StudentEmail,StudentName/i);
     fireEvent.change(textarea, {
       target: {
-        value: `StudentEmail,FirstName,LastName\nonly_new@school.edu,Only,New`,
+        value: `StudentEmail,StudentName\nonly_new@school.edu,Only New`,
       },
     });
 

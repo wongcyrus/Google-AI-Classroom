@@ -27,8 +27,7 @@ describe('studentDisplayUtils Utility', () => {
   describe('getStudentProfile and formatStudentIdentity', () => {
     const profileMap = {
       'chan.tm@vtc.edu.hk': {
-        firstName: 'Tai Man',
-        lastName: 'Chan',
+        studentName: 'Chan Tai Man',
         nickname: 'David',
         programme: 'Higher Diploma in Software Engineering',
         studentClass: 'IT114115/1A',
@@ -42,26 +41,30 @@ describe('studentDisplayUtils Utility', () => {
       },
     };
 
-    it('resolves full profile from email and profileMap', () => {
+    it('resolves full profile with studentName from email and profileMap', () => {
       const profile = getStudentProfile('Chan.TM@VTC.EDU.HK', profileMap);
-      expect(profile.firstName).toBe('Tai Man');
-      expect(profile.lastName).toBe('Chan');
+      expect(profile.studentName).toBe('Chan Tai Man');
       expect(profile.nickname).toBe('David');
       expect(profile.programme).toBe('Higher Diploma in Software Engineering');
       expect(profile.studentClass).toBe('IT114115/1A');
     });
 
+    it('gracefully derives studentName from legacy firstName and lastName', () => {
+      const profile = getStudentProfile('wong.ky@vtc.edu.hk', profileMap);
+      expect(profile.studentName).toBe('Wong Ka Yan');
+      expect(profile.nickname).toBe('Kelly');
+      expect(profile.studentClass).toBe('IT114115/1B');
+    });
+
     it('resolves profile directly embedded in student object', () => {
       const studentObj = {
         email: 'direct@school.edu',
-        firstName: 'Alex',
-        lastName: 'Smith',
+        studentName: 'Alex Smith',
         nickname: 'Al',
         studentClass: 'SE101-A',
       };
       const profile = getStudentProfile(studentObj, {});
-      expect(profile.firstName).toBe('Alex');
-      expect(profile.lastName).toBe('Smith');
+      expect(profile.studentName).toBe('Alex Smith');
       expect(profile.nickname).toBe('Al');
       expect(profile.studentClass).toBe('SE101-A');
     });
@@ -69,8 +72,7 @@ describe('studentDisplayUtils Utility', () => {
     it('returns empty string fallbacks when student is not found in profileMap', () => {
       const profile = getStudentProfile('unknown@school.edu', profileMap);
       expect(profile.email).toBe('unknown@school.edu');
-      expect(profile.firstName).toBe('');
-      expect(profile.lastName).toBe('');
+      expect(profile.studentName).toBe('');
       expect(profile.nickname).toBe('');
       expect(profile.programme).toBe('');
       expect(profile.studentClass).toBe('');
@@ -90,31 +92,28 @@ describe('studentDisplayUtils Utility', () => {
 
   describe('getStudentDisplayName - Multi-Tier Fallback Hierarchy', () => {
     const sampleProfiles = {
-      // 1. Nickname + Full Name
+      // 1. Nickname + Student Name
       'david@school.edu': {
-        firstName: 'Tai Man',
-        lastName: 'Chan',
+        studentName: 'Chan Tai Man',
         nickname: 'David',
       },
-      // 2. Full Name Only (No Nickname)
+      // 2. Student Name Only (No Nickname)
       'kelly@school.edu': {
-        firstName: 'Ka Yan',
-        lastName: 'Wong',
+        studentName: 'Wong Ka Yan',
         nickname: '',
       },
-      // 3. Nickname Only (No First/Last)
+      // 3. Nickname Only (No Student Name)
       'sam@school.edu': {
-        firstName: '',
-        lastName: '',
+        studentName: '',
         nickname: 'Sammy',
       },
-      // 4. First Name Only
+      // 4. Legacy First Name Only
       'ken@school.edu': {
         firstName: 'Ken',
         lastName: '',
         nickname: '',
       },
-      // 5. Last Name Only
+      // 5. Legacy Last Name Only
       'mrsmith@school.edu': {
         firstName: '',
         lastName: 'Smith',
@@ -122,31 +121,37 @@ describe('studentDisplayUtils Utility', () => {
       },
       // 6. Partial with whitespace
       'spacey@school.edu': {
-        firstName: '   ',
-        lastName: '   ',
+        studentName: '   ',
         nickname: '  Spike  ',
       },
     };
 
-    it('Tier 1: Formats Nickname + Surname-First Full Name when both exist', () => {
+    it('Tier 1: Formats Nickname + Student Name when both exist', () => {
       expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('David (Chan Tai Man)');
     });
 
-    it('Tier 1: Supports Western name ordering if requested', () => {
+    it('Tier 1: Supports legacy Western name ordering if requested with first/last names', () => {
+      const legacyProfile = {
+        'david.legacy@school.edu': {
+          firstName: 'Tai Man',
+          lastName: 'Chan',
+          nickname: 'David',
+        },
+      };
       expect(
-        getStudentDisplayName('david@school.edu', sampleProfiles, { nameOrder: 'given_first' })
+        getStudentDisplayName('david.legacy@school.edu', legacyProfile, { nameOrder: 'given_first' })
       ).toBe('David (Tai Man Chan)');
     });
 
-    it('Tier 2: Formats Full Name when no nickname is present', () => {
+    it('Tier 2: Formats Student Name when no nickname is present', () => {
       expect(getStudentDisplayName('kelly@school.edu', sampleProfiles)).toBe('Wong Ka Yan');
     });
 
-    it('Tier 3: Formats Nickname only when no first or last name is present', () => {
+    it('Tier 3: Formats Nickname only when no student name is present', () => {
       expect(getStudentDisplayName('sam@school.edu', sampleProfiles)).toBe('Sammy');
     });
 
-    it('Tier 2.1: Handles single first or last name gracefully without extraneous spaces', () => {
+    it('Tier 2.1: Handles legacy single first or last name gracefully', () => {
       expect(getStudentDisplayName('ken@school.edu', sampleProfiles)).toBe('Ken');
       expect(getStudentDisplayName('mrsmith@school.edu', sampleProfiles)).toBe('Smith');
     });
@@ -175,10 +180,10 @@ describe('studentDisplayUtils Utility', () => {
   });
 
   describe('parseStudentRosterCsv', () => {
-    it('parses standard CSV with full profile headers and maps data correctly', () => {
-      const csv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-230123456@stu.vtc.edu.hk,Tai Man,Chan,David,HD in Software Engineering,IT114115/1A
-230987654@stu.vtc.edu.hk,Ka Yan,Wong,Kelly,HD in Software Engineering,IT114115/1B`;
+    it('parses standard CSV with StudentName header and maps data correctly', () => {
+      const csv = `StudentEmail,StudentName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Chan Tai Man,David,HD in Software Engineering,IT114115/1A
+230987654@stu.vtc.edu.hk,Wong Ka Yan,Kelly,HD in Software Engineering,IT114115/1B`;
 
       const result = parseStudentRosterCsv(csv);
       expect(result.totalParsed).toBe(2);
@@ -190,8 +195,7 @@ describe('studentDisplayUtils Utility', () => {
 
       const s1 = result.students[0];
       expect(s1.email).toBe('230123456@stu.vtc.edu.hk');
-      expect(s1.firstName).toBe('Tai Man');
-      expect(s1.lastName).toBe('Chan');
+      expect(s1.studentName).toBe('Chan Tai Man');
       expect(s1.nickname).toBe('David');
       expect(s1.programme).toBe('HD in Software Engineering');
       expect(s1.studentClass).toBe('IT114115/1A');
@@ -199,15 +203,27 @@ describe('studentDisplayUtils Utility', () => {
       expect(s1.hasProfile).toBe(true);
 
       expect(result.profilesMap['230123456@stu.vtc.edu.hk']).toBeDefined();
+      expect(result.profilesMap['230123456@stu.vtc.edu.hk'].studentName).toBe('Chan Tai Man');
       expect(result.profilesMap['230123456@stu.vtc.edu.hk'].nickname).toBe('David');
     });
 
+    it('supports backward compatibility with legacy FirstName and LastName headers', () => {
+      const legacyCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
+legacy@school.edu,Tai Man,Chan,David,HDSE,IT114115/1A`;
+
+      const result = parseStudentRosterCsv(legacyCsv);
+      expect(result.totalParsed).toBe(1);
+      const s = result.students[0];
+      expect(s.studentName).toBe('Chan Tai Man');
+      expect(s.displayName).toBe('David (Chan Tai Man)');
+    });
+
     it('handles partial profiles where students lack some or all non-email fields', () => {
-      const csv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-full@school.edu,Tai Man,Chan,David,HDSE,IT114115/1A
-name_only@school.edu,Ka Yan,Wong,,,IT114115/1B
-nick_only@school.edu,,,Kelly,,
-email_only@school.edu,,,,,`;
+      const csv = `StudentEmail,StudentName,Nickname,Programme,Class
+full@school.edu,Chan Tai Man,David,HDSE,IT114115/1A
+name_only@school.edu,Wong Ka Yan,,,IT114115/1B
+nick_only@school.edu,,Kelly,,
+email_only@school.edu,,,,`;
 
       const result = parseStudentRosterCsv(csv);
       expect(result.totalParsed).toBe(4);
@@ -226,58 +242,57 @@ email_only@school.edu,,,,,`;
     });
 
     it('supports flexible header aliases and case insensitivity', () => {
-      const csv = `email,first_name,surname,preferred_name,major,cohort
-student1@school.edu,Alice,Chow,Ali,BSc Computer Science,CS-2026-A`;
+      const csv = `email,name,preferred_name,major,cohort
+student1@school.edu,Alice Chow,Ali,BSc Computer Science,CS-2026-A`;
 
       const result = parseStudentRosterCsv(csv);
       expect(result.totalParsed).toBe(1);
       const s = result.students[0];
       expect(s.email).toBe('student1@school.edu');
-      expect(s.firstName).toBe('Alice');
-      expect(s.lastName).toBe('Chow');
+      expect(s.studentName).toBe('Alice Chow');
       expect(s.nickname).toBe('Ali');
       expect(s.programme).toBe('BSc Computer Science');
       expect(s.studentClass).toBe('CS-2026-A');
-      expect(s.displayName).toBe('Ali (Chow Alice)');
+      expect(s.displayName).toBe('Ali (Alice Chow)');
     });
 
     it('supports tab-separated values (TSV) pasted directly from Excel or Sheets', () => {
-      const tsv = `StudentEmail\tFirstName\tLastName\tNickname\tProgramme\tClass
-student_tsv@school.edu\tBob\tJones\tBobby\tMultimedia\tMM-101`;
+      const tsv = `StudentEmail\tStudentName\tNickname\tProgramme\tClass
+student_tsv@school.edu\tBob Jones\tBobby\tMultimedia\tMM-101`;
 
       const result = parseStudentRosterCsv(tsv);
       expect(result.totalParsed).toBe(1);
       expect(result.students[0].email).toBe('student_tsv@school.edu');
+      expect(result.students[0].studentName).toBe('Bob Jones');
       expect(result.students[0].nickname).toBe('Bobby');
       expect(result.students[0].studentClass).toBe('MM-101');
     });
 
     it('handles quoted cells with commas and quotes properly', () => {
-      const csv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-complex@school.edu,"John, Jr.","O'Connor",Johnny,"Engineering, Software & Cloud","IT-101, Group B"`;
+      const csv = `StudentEmail,StudentName,Nickname,Programme,Class
+complex@school.edu,"O'Connor, John Jr.",Johnny,"Engineering, Software & Cloud","IT-101, Group B"`;
 
       const result = parseStudentRosterCsv(csv);
       expect(result.totalParsed).toBe(1);
       const s = result.students[0];
-      expect(s.firstName).toBe('John, Jr.');
-      expect(s.lastName).toBe("O'Connor");
+      expect(s.studentName).toBe("O'Connor, John Jr.");
       expect(s.programme).toBe('Engineering, Software & Cloud');
       expect(s.studentClass).toBe('IT-101, Group B');
     });
 
     it('strips UTF-8 BOM automatically from Windows Excel exported CSVs', () => {
-      const bomCsv = '\uFEFFStudentEmail,FirstName,LastName\r\nalice@school.edu,Alice,Chan';
+      const bomCsv = '\uFEFFStudentEmail,StudentName\r\nalice@school.edu,Alice Chan';
       const result = parseStudentRosterCsv(bomCsv);
       expect(result.totalParsed).toBe(1);
       expect(result.students[0].email).toBe('alice@school.edu');
-      expect(result.students[0].firstName).toBe('Alice');
+      expect(result.students[0].studentName).toBe('Alice Chan');
     });
 
     it('identifies and records invalid rows without crashing', () => {
-      const csv = `StudentEmail,FirstName,LastName
-valid@school.edu,Valid,User
-not-an-email,Invalid,User
-,EmptyEmail,User`;
+      const csv = `StudentEmail,StudentName
+valid@school.edu,Valid User
+not-an-email,Invalid User
+,EmptyEmailUser`;
 
       const result = parseStudentRosterCsv(csv);
       expect(result.totalParsed).toBe(1);
@@ -307,24 +322,22 @@ not-an-email,Invalid,User
   describe('generateStudentRosterTemplateCsv and exportStudentRosterCsv', () => {
     it('generates downloadable template containing proper headers and example data', () => {
       const template = generateStudentRosterTemplateCsv();
-      expect(template).toContain('StudentEmail,FirstName,LastName,Nickname,Programme,Class');
+      expect(template).toContain('StudentEmail,StudentName,Nickname,Programme,Class');
       expect(template).toContain('230123456@stu.vtc.edu.hk');
       expect(template).toContain('IT114115/1A');
     });
 
-    it('exports current roster with all profile columns properly escaped', () => {
+    it('exports current roster with StudentName column properly escaped', () => {
       const emails = ['alice@school.edu', 'bob@school.edu'];
       const profiles = {
         'alice@school.edu': {
-          firstName: 'Alice',
-          lastName: 'Chan',
+          studentName: 'Alice Chan',
           nickname: 'Ali',
           programme: 'HD in Software Engineering, VTC',
           studentClass: 'IT114115/1A',
         },
         'bob@school.edu': {
-          firstName: '',
-          lastName: '',
+          studentName: '',
           nickname: '',
           programme: '',
           studentClass: '',
@@ -332,9 +345,9 @@ not-an-email,Invalid,User
       };
 
       const exported = exportStudentRosterCsv(emails, profiles, 'IT114115-DEV');
-      expect(exported).toContain('StudentEmail,FirstName,LastName,Nickname,Programme,Class,CourseID');
-      expect(exported).toContain('alice@school.edu,Alice,Chan,Ali,"HD in Software Engineering, VTC",IT114115/1A,IT114115-DEV');
-      expect(exported).toContain('bob@school.edu,,,,,,IT114115-DEV');
+      expect(exported).toContain('StudentEmail,StudentName,Nickname,Programme,Class,CourseID');
+      expect(exported).toContain('alice@school.edu,Alice Chan,Ali,"HD in Software Engineering, VTC",IT114115/1A,IT114115-DEV');
+      expect(exported).toContain('bob@school.edu,,,,,IT114115-DEV');
     });
   });
 });

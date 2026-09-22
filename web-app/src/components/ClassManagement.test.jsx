@@ -734,11 +734,11 @@ describe('ClassManagement Full Component Test Suite', () => {
     // Modal should be visible
     expect(screen.getByText(/Batch Upload Student Roster/i)).toBeInTheDocument();
 
-    const sampleCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
-chan.tm@stu.vtc.edu.hk,Tai Man,Chan,David,HD in Software Engineering,IT114115/1A
-lee.sm@stu.vtc.edu.hk,Siu Ming,Lee,,HD in Software Engineering,IT114115/1B`;
+    const sampleCsv = `StudentEmail,StudentName,Nickname,Programme,Class
+chan.tm@stu.vtc.edu.hk,Chan Tai Man,David,HD in Software Engineering,IT114115/1A
+lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
 
-    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    const textarea = screen.getByPlaceholderText(/StudentEmail,StudentName/i);
     fireEvent.change(textarea, { target: { value: sampleCsv } });
 
     // Click Apply
@@ -750,7 +750,7 @@ lee.sm@stu.vtc.edu.hk,Siu Ming,Lee,,HD in Software Engineering,IT114115/1B`;
       expect(screen.queryByText(/Batch Upload Student Roster/i)).not.toBeInTheDocument();
       expect(screen.getByText(/Enrolled Roster Details/i)).toBeInTheDocument();
       expect(screen.getByText(/David \(Chan Tai Man\)/i)).toBeInTheDocument();
-      expect(screen.getByText(/Lee Siu Ming/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Lee Siu Ming/i).length).toBeGreaterThanOrEqual(1);
     });
 
     // Save settings
@@ -762,9 +762,10 @@ lee.sm@stu.vtc.edu.hk,Siu Ming,Lee,,HD in Software Engineering,IT114115/1B`;
     await waitFor(() => {
       expect(capturedUpdateData).toBeDefined();
       expect(capturedUpdateData.studentProfiles).toBeDefined();
+      expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].studentName).toBe('Chan Tai Man');
       expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].nickname).toBe('David');
       expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].studentClass).toBe('IT114115/1A');
-      expect(capturedUpdateData.studentProfiles['lee.sm@stu.vtc.edu.hk'].firstName).toBe('Siu Ming');
+      expect(capturedUpdateData.studentProfiles['lee.sm@stu.vtc.edu.hk'].studentName).toBe('Lee Siu Ming');
     });
   });
 });

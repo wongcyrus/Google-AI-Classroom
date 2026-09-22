@@ -264,6 +264,7 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
             teacherEmails: [],
             studentProfiles: {
               'chan.tm@stu.vtc.edu.hk': {
+                studentName: 'Chan Tai Man',
                 firstName: 'Tai Man',
                 lastName: 'Chan',
                 nickname: 'David',
@@ -283,6 +284,7 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
       expect.objectContaining({
         allowScreenShare: true,
         captureInterval: 10,
+        studentName: 'Chan Tai Man',
         firstName: 'Tai Man',
         lastName: 'Chan',
         nickname: 'David',
