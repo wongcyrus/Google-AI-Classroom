@@ -25,6 +25,10 @@ service cloud.firestore {
       allow read, write: if request.auth.uid == userId;
     }
 
+    match /studentDirectory/{studentEmail} {
+      allow read, write: if isTeacher();
+    }
+
     match /teacherProfiles/{userId} {
       allow read: if request.auth.uid == userId;
       allow write: if false; // Managed by a backend function

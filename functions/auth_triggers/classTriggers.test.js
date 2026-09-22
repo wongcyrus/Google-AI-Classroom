@@ -289,5 +289,84 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
       }),
       { merge: true }
     );
+
+    // Also assert that studentDirectory was synced
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        email: 'chan.tm@stu.vtc.edu.hk',
+        studentName: 'Chan Tai Man',
+        nickname: 'David',
+        studentClass: 'IT114115/1A',
+        programme: 'Higher Diploma in Software Engineering',
+        lastUpdatedByClass: 'CLASS_A',
+      }),
+      { merge: true }
+    );
+  });
+
+  it('cross-class profile propagation: backfills student profile from central studentDirectory when class has no profile', async () => {
+    // 1. classPropsSnap (config) -> not exists
+    mockDocGet.mockResolvedValueOnce({ exists: false });
+
+    // 2. studentDirectory doc for 'bob@stu.vtc.edu.hk' -> exists
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        email: 'bob@stu.vtc.edu.hk',
+        studentName: 'Bob Builder',
+        nickname: 'Bobby',
+        studentClass: 'IT114115/1A',
+        programme: 'Higher Diploma in Software Engineering',
+      }),
+    });
+
+    mockGetUserByEmail.mockResolvedValueOnce({
+      uid: 'bob-uid',
+      email: 'bob@stu.vtc.edu.hk',
+      customClaims: { role: 'student' },
+    });
+
+    const event = {
+      params: { classId: 'CLASS_B' },
+      data: {
+        before: { data: () => ({ studentEmails: [] }) },
+        after: {
+          data: () => ({
+            studentEmails: ['bob@stu.vtc.edu.hk'],
+            teacherEmails: [],
+            // No studentProfiles provided for Class B!
+            studentProfiles: {},
+          }),
+        },
+      },
+    };
+
+    await onClassUpdate(event);
+
+    // Should backfill profile onto studentProperties
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        studentName: 'Bob Builder',
+        nickname: 'Bobby',
+        studentClass: 'IT114115/1A',
+        programme: 'Higher Diploma in Software Engineering',
+      }),
+      { merge: true }
+    );
+
+    // Should also patch the class document with the backfilled profile
+    expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        'studentProfiles.bob@stu.vtc.edu.hk': expect.objectContaining({
+          studentName: 'Bob Builder',
+          nickname: 'Bobby',
+          studentClass: 'IT114115/1A',
+          programme: 'Higher Diploma in Software Engineering',
+        }),
+      })
+    );
   });
 });

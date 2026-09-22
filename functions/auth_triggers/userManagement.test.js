@@ -251,12 +251,33 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
       const mockDb = {
         collection: (colName) => ({
           get: async () => {
+            if (colName === 'studentDirectory') {
+              return [
+                {
+                  id: 'bob@stu.vtc.edu.hk',
+                  data: () => ({
+                    studentName: 'Bob Builder',
+                    nickname: 'Bobby',
+                    studentClass: 'IT114115/1A',
+                    programme: 'HD in SE',
+                  }),
+                },
+              ];
+            }
             if (colName === 'classes') {
               return [
                 {
                   data: () => ({
                     studentEmails: ['charlie@stu.vtc.edu.hk', 'ALICE@STU.VTC.EDU.HK'],
                     students: { s_dave: 'dave@stu.vtc.edu.hk' },
+                    studentProfiles: {
+                      'alice@stu.vtc.edu.hk': {
+                        studentName: 'Alice Wong',
+                        nickname: 'Ally',
+                        studentClass: 'IT114115/1B',
+                        programme: 'HD in Cloud',
+                      },
+                    },
                   }),
                 },
               ];
@@ -289,6 +310,9 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
         'dave@stu.vtc.edu.hk',
         'eve@stu.vtc.edu.hk',
       ]);
+      expect(result.studentProfiles).toBeDefined();
+      expect(result.studentProfiles['bob@stu.vtc.edu.hk'].studentName).toBe('Bob Builder');
+      expect(result.studentProfiles['alice@stu.vtc.edu.hk'].studentName).toBe('Alice Wong');
     });
   });
 });

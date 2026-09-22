@@ -28,6 +28,12 @@ vi.mock('firebase/functions', () => ({
 const mockSetDoc = vi.fn().mockResolvedValue({});
 const mockUpdateDoc = vi.fn().mockResolvedValue({});
 const mockDeleteDoc = vi.fn().mockResolvedValue({});
+const mockBatchSet = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue();
+const mockWriteBatch = vi.fn(() => ({
+  set: mockBatchSet,
+  commit: mockBatchCommit,
+}));
 const mockClassData = {
   name: 'Distributed Systems',
   storageQuota: 5368709120,
@@ -59,9 +65,12 @@ const mockGetDoc = vi.fn(() =>
   })
 );
 
-const mockGetDocs = vi.fn(() =>
+const mockGetDocs = vi.fn((colRef) =>
   Promise.resolve({
     forEach: (cb) => {
+      if (colRef?.id === 'studentDirectory' || colRef?.path === 'studentDirectory') {
+        return;
+      }
       cb({
         data: () => ({
           studentEmails: ['fallback.student@school.edu'],
@@ -73,7 +82,7 @@ const mockGetDocs = vi.fn(() =>
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
-  collection: vi.fn(),
+  collection: vi.fn((db, col) => ({ path: col, id: col })),
   onSnapshot: vi.fn((refOrQuery, callback) => {
     callback({
       exists: () => true,
@@ -93,6 +102,7 @@ vi.mock('firebase/firestore', () => ({
   setDoc: (...args) => mockSetDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
+  writeBatch: (...args) => mockWriteBatch(...args),
   serverTimestamp: vi.fn(),
 }));
 
@@ -767,6 +777,90 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].studentClass).toBe('IT114115/1A');
       expect(capturedUpdateData.studentProfiles['lee.sm@stu.vtc.edu.hk'].studentName).toBe('Lee Siu Ming');
     });
+  });
+
+  it('cross-class profile propagation: automatically enriches student profile from institutional directory and displays Directory badge', async () => {
+    // Configure mockGetDocs to return studentDirectory entry for 'bob.ross@stu.vtc.edu.hk'
+    mockGetDocs.mockImplementation((colRef) => {
+      if (colRef?.id === 'studentDirectory' || colRef?.path === 'studentDirectory') {
+        return Promise.resolve({
+          forEach: (cb) => {
+            cb({
+              id: 'bob.ross@stu.vtc.edu.hk',
+              data: () => ({
+                email: 'bob.ross@stu.vtc.edu.hk',
+                studentName: 'Bob Ross',
+                nickname: 'Painter',
+                studentClass: 'IT114115/2B',
+                programme: 'HD in Multimedia',
+              }),
+            });
+          },
+        });
+      }
+      return Promise.resolve({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentEmails: ['fallback.student@school.edu'],
+            }),
+          });
+        },
+      });
+    });
+
+    let savedData;
+    mockUpdateDoc.mockImplementation((ref, data) => {
+      savedData = data;
+      return Promise.resolve({});
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      const nameInput = screen.getByPlaceholderText(/e.g. Cloud Architecture Lab/i);
+      expect(nameInput.value).toBe('Distributed Systems');
+    });
+
+    const textarea = screen.getByPlaceholderText(/Enter student emails/i);
+    await waitFor(() => {
+      expect(textarea.value).toContain('alice@school.edu');
+    });
+
+    // Enter Bob Ross's email into the textarea (with no manual profile uploaded in this class)
+    fireEvent.change(textarea, { target: { value: 'bob.ross@stu.vtc.edu.hk' } });
+
+    // Roster Details should auto-fill Bob Ross's name and display the Directory badge
+    await waitFor(() => {
+      expect(screen.getAllByText(/Bob Ross/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/✨ Directory/i)).toBeInTheDocument();
+      expect(screen.getByText(/auto-filled from other classes/i)).toBeInTheDocument();
+    });
+
+    // Save class settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(savedData).toBeDefined();
+      expect(savedData.studentProfiles['bob.ross@stu.vtc.edu.hk']).toBeDefined();
+      expect(savedData.studentProfiles['bob.ross@stu.vtc.edu.hk'].studentName).toBe('Bob Ross');
+      expect(savedData.studentProfiles['bob.ross@stu.vtc.edu.hk'].nickname).toBe('Painter');
+      expect(savedData.studentProfiles['bob.ross@stu.vtc.edu.hk'].studentClass).toBe('IT114115/2B');
+    });
+
+    // Also verify mockBatchSet was called for studentDirectory persistence
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        email: 'bob.ross@stu.vtc.edu.hk',
+        studentName: 'Bob Ross',
+        nickname: 'Painter',
+      }),
+      { merge: true }
+    );
   });
 });
 

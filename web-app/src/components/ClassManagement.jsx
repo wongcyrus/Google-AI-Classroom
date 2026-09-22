@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
 import ImagePromptSelector from './ImagePromptSelector';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../firebase-config';
 import './ClassManagement.css';
@@ -18,6 +18,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
   const [studentProfiles, setStudentProfiles] = useState({});
+  const [studentDirectory, setStudentDirectory] = useState({});
   const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
   const [showRosterPreview, setShowRosterPreview] = useState(true);
   const [teacherEmails, setTeacherEmails] = useState('');
@@ -114,6 +115,61 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       setClassId(embeddedClassId);
     }
   }, [embeddedClassId]);
+
+  // Load institutional student directory for seamless cross-class profile propagation
+  useEffect(() => {
+    let isMounted = true;
+    const fetchDirectory = async () => {
+      try {
+        const dirMap = {};
+        // 1. Query central studentDirectory collection
+        const dirSnap = await getDocs(collection(db, 'studentDirectory'));
+        dirSnap.forEach((d) => {
+          const data = d.data() || {};
+          const email = (data.email || d.id || '').trim().toLowerCase();
+          if (email && email.includes('@')) {
+            dirMap[email] = {
+              studentName: data.studentName || '',
+              nickname: data.nickname || '',
+              programme: data.programme || '',
+              studentClass: data.studentClass || '',
+            };
+          }
+        });
+
+        // 2. Client-side fallback / lazy migration across accessible classes
+        if (Object.keys(dirMap).length === 0) {
+          const classesSnap = await getDocs(collection(db, 'classes'));
+          classesSnap.forEach((d) => {
+            const cData = d.data() || {};
+            if (cData.studentProfiles && typeof cData.studentProfiles === 'object') {
+              for (const [rawE, prof] of Object.entries(cData.studentProfiles)) {
+                const normE = rawE.trim().toLowerCase();
+                if (normE && prof && typeof prof === 'object') {
+                  if (!dirMap[normE] || !dirMap[normE].studentName) {
+                    dirMap[normE] = {
+                      studentName: prof.studentName || '',
+                      nickname: prof.nickname || '',
+                      programme: prof.programme || '',
+                      studentClass: prof.studentClass || '',
+                    };
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        if (isMounted) {
+          setStudentDirectory(dirMap);
+        }
+      } catch (err) {
+        console.warn('Could not load studentDirectory (teacher may have limited direct read):', err);
+      }
+    };
+    fetchDirectory();
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!user || embeddedClassId) return;
@@ -385,7 +441,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     const activeExportId = (embeddedClassId || selectedClass || classId || 'class').trim();
     if (type === 'students') {
-      const csvContent = exportStudentRosterCsv(emails, studentProfiles, activeExportId);
+      const exportProfiles = { ...studentDirectory, ...studentProfiles };
+      const csvContent = exportStudentRosterCsv(emails, exportProfiles, activeExportId);
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -412,6 +469,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setError(null);
     try {
       let fetchedEmails = [];
+      let fetchedProfiles = {};
 
       // 1. Try callable Cloud Function first (has access to adminAuth listUsers and Firestore)
       try {
@@ -420,12 +478,32 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         if (result?.data?.studentEmails && Array.isArray(result.data.studentEmails)) {
           fetchedEmails = result.data.studentEmails;
         }
+        if (result?.data?.studentProfiles && typeof result.data.studentProfiles === 'object') {
+          fetchedProfiles = result.data.studentProfiles;
+        }
       } catch (fnErr) {
         console.warn('getAllSystemStudentEmails callable failed, falling back to direct Firestore query:', fnErr);
-        // 2. Client-side fallback: query classes collection for all accessible studentEmails
+        // 2. Client-side fallback: query studentDirectory and classes collections
+        const emailSet = new Set();
+        try {
+          const dirSnap = await getDocs(collection(db, 'studentDirectory'));
+          dirSnap.forEach((d) => {
+            const dData = d.data() || {};
+            const em = (dData.email || d.id || '').trim().toLowerCase();
+            if (em && em.includes('@')) {
+              emailSet.add(em);
+              fetchedProfiles[em] = {
+                studentName: dData.studentName || '',
+                nickname: dData.nickname || '',
+                programme: dData.programme || '',
+                studentClass: dData.studentClass || '',
+              };
+            }
+          });
+        } catch {}
+
         const classesRef = collection(db, 'classes');
         const classesSnap = await getDocs(classesRef);
-        const emailSet = new Set();
         classesSnap.forEach((d) => {
           const data = d.data();
           if (Array.isArray(data.studentEmails)) {
@@ -442,6 +520,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               }
             });
           }
+          if (data.studentProfiles && typeof data.studentProfiles === 'object') {
+            for (const [rawE, prof] of Object.entries(data.studentProfiles)) {
+              const normE = rawE.trim().toLowerCase();
+              if (normE && prof && typeof prof === 'object') {
+                emailSet.add(normE);
+                if (!fetchedProfiles[normE] || !fetchedProfiles[normE].studentName) {
+                  fetchedProfiles[normE] = prof;
+                }
+              }
+            }
+          }
         });
         fetchedEmails = Array.from(emailSet);
       }
@@ -457,6 +546,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       const existing = studentEmails.split(/[\n,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
       const merged = [...new Set([...existing, ...cleanFetched])];
       setStudentEmails(merged.join('\n'));
+
+      // Populate known profiles from directory
+      if (Object.keys(fetchedProfiles).length > 0) {
+        setStudentDirectory(prev => ({ ...prev, ...fetchedProfiles }));
+        setStudentProfiles(prev => ({ ...fetchedProfiles, ...prev }));
+      }
 
       const newlyAddedCount = merged.length - existing.length;
       if (newlyAddedCount > 0) {
@@ -520,6 +615,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     const videoRetentionDaysNum = parseInt(videoRetentionDays, 10) > 0 ? parseInt(videoRetentionDays, 10) : 90;
     const ipList = ipRestrictions.split('\n').map(ip => ip.trim()).filter(Boolean);
 
+    // Cross-class student profile propagation: merge with directory profiles for all enrolled students
+    const resolvedStudentProfiles = { ...studentProfiles };
+    studentEmailList.forEach((email) => {
+      if ((!resolvedStudentProfiles[email] || !resolvedStudentProfiles[email].studentName) && studentDirectory[email]?.studentName) {
+        resolvedStudentProfiles[email] = {
+          ...studentDirectory[email],
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    });
+
     try {
       if (classSnap.exists()) {
         const updatedTeachers = [auth.currentUser.email, ...teacherEmailList];
@@ -537,7 +643,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             timeSlots: classSchedules,
           },
           studentEmails: studentEmailList,
-          studentProfiles: studentProfiles || {},
+          studentProfiles: resolvedStudentProfiles,
           teacherEmails: uniqueTeachers,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
@@ -594,7 +700,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           name: className.trim() || targetClassId,
           teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
-          studentProfiles: studentProfiles || {},
+          studentProfiles: resolvedStudentProfiles,
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
           videoRetentionDays: videoRetentionDaysNum,
@@ -658,6 +764,34 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setSelectedClass(targetClassId);
         }
       }
+
+      // Sync all profiles to institutional studentDirectory
+      try {
+        const dirBatch = writeBatch(db);
+        let dirCount = 0;
+        for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
+          if (!normEmail || !prof || typeof prof !== 'object') continue;
+          if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
+          const dirRef = doc(db, 'studentDirectory', normEmail);
+          dirBatch.set(dirRef, {
+            email: normEmail,
+            studentName: prof.studentName || '',
+            nickname: prof.nickname || '',
+            programme: prof.programme || '',
+            studentClass: prof.studentClass || '',
+            lastUpdatedByClass: targetClassId,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+          dirCount++;
+        }
+        if (dirCount > 0) {
+          await dirBatch.commit();
+          setStudentDirectory(prev => ({ ...prev, ...resolvedStudentProfiles }));
+        }
+      } catch (dirErr) {
+        console.warn('Direct studentDirectory batch sync skipped (backend trigger handles sync):', dirErr);
+      }
+      setStudentProfiles(resolvedStudentProfiles);
     } catch (err) {
       console.error('Error updating or creating class:', err);
       setError(err.message || 'Failed to save class.');
@@ -1074,18 +1208,42 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           {/* Roster Profiles Overview */}
           {(() => {
             const emailList = [...new Set(studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean))];
-            const profileCount = Object.keys(studentProfiles || {}).filter(e => emailList.includes(e)).length;
-
             if (emailList.length === 0) return null;
+
+            const resolvedProfilesMap = {};
+            let dirEnrichedCount = 0;
+            let fullProfileCount = 0;
+
+            emailList.forEach(email => {
+              const explicitProf = studentProfiles[email];
+              const dirProf = studentDirectory[email];
+              const isEnrichedFromDir = (!explicitProf || !explicitProf.studentName) && dirProf?.studentName;
+              const effectiveProf = explicitProf?.studentName ? explicitProf : (dirProf || explicitProf || {});
+              resolvedProfilesMap[email] = {
+                ...effectiveProf,
+                _fromDirectory: Boolean(isEnrichedFromDir),
+              };
+              if (effectiveProf.studentName) {
+                fullProfileCount++;
+              }
+              if (isEnrichedFromDir) {
+                dirEnrichedCount++;
+              }
+            });
 
             return (
               <div style={{ marginTop: '0.9rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <span>📋 Enrolled Roster Details ({emailList.length} students):</span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.1rem 0.45rem', borderRadius: '9999px', backgroundColor: profileCount > 0 ? '#dcfce7' : '#f1f5f9', color: profileCount > 0 ? '#166534' : '#64748b' }}>
-                      {profileCount}/{emailList.length} with profile metadata
+                    <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.1rem 0.45rem', borderRadius: '9999px', backgroundColor: fullProfileCount > 0 ? '#dcfce7' : '#f1f5f9', color: fullProfileCount > 0 ? '#166534' : '#64748b' }}>
+                      {fullProfileCount}/{emailList.length} with profile metadata
                     </span>
+                    {dirEnrichedCount > 0 && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.1rem 0.5rem', borderRadius: '9999px', backgroundColor: '#e0e7ff', color: '#3730a3' }}>
+                        ✨ {dirEnrichedCount} auto-filled from other classes
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1111,7 +1269,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                       </thead>
                       <tbody>
                         {emailList.map((email, idx) => {
-                          const prof = studentProfiles[email] || {};
+                          const prof = resolvedProfilesMap[email] || {};
                           const resolvedStudentName = prof.studentName || '';
                           return (
                             <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
@@ -1120,7 +1278,19 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                               </td>
                               <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
                               <td style={{ padding: '0.35rem 0.6rem' }}>
-                                {resolvedStudentName || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                                {resolvedStudentName ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>{resolvedStudentName}</span>
+                                    {prof._fromDirectory && (
+                                      <span
+                                        title="Auto-filled from institutional student directory (provided by another class)"
+                                        style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.05rem 0.35rem', borderRadius: '4px', backgroundColor: '#e0e7ff', color: '#4338ca' }}
+                                      >
+                                        ✨ Directory
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
                               </td>
                               <td style={{ padding: '0.35rem 0.6rem' }}>
                                 {prof.studentClass ? (
@@ -2049,10 +2219,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         onApply={({ studentEmails: newEmails, studentProfiles: newProfiles, addedCount }) => {
           setStudentEmails(newEmails.join('\n'));
           setStudentProfiles(newProfiles);
+          setStudentDirectory(prev => ({ ...prev, ...newProfiles }));
           setSuccessMessage(`Successfully applied ${addedCount} student(s) to roster! Click Save Class Settings to save changes.`);
         }}
         existingEmails={studentEmails}
-        existingProfiles={studentProfiles}
+        existingProfiles={{ ...studentDirectory, ...studentProfiles }}
         classId={selectedClass || classId}
       />
     </div>

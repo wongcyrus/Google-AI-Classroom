@@ -104,6 +104,36 @@ const updateUserAssociations = async (classId, emails, userType, action, student
     return;
   }
 
+  // Cross-class auto-enrichment: check central studentDirectory for any student missing a profile
+  const directoryBackfills = {};
+  if (action === 'add' && userType === 'student') {
+    const missingProfileEmails = userRecords
+      .map(u => (u.email ? u.email.trim().toLowerCase() : ''))
+      .filter(e => e && (!studentProfiles[e] || !studentProfiles[e].studentName));
+
+    if (missingProfileEmails.length > 0) {
+      for (const normEmail of missingProfileEmails) {
+        try {
+          const dirSnap = await db.collection('studentDirectory').doc(normEmail).get();
+          if (dirSnap.exists) {
+            const dirData = dirSnap.data() || {};
+            if (dirData.studentName) {
+              directoryBackfills[normEmail] = {
+                studentName: dirData.studentName || '',
+                nickname: dirData.nickname || '',
+                programme: dirData.programme || '',
+                studentClass: dirData.studentClass || '',
+              };
+              logger.info(`Auto-backfilled profile for ${normEmail} from central studentDirectory.`);
+            }
+          }
+        } catch (dirErr) {
+          logger.warn(`Could not check studentDirectory for ${normEmail}:`, dirErr);
+        }
+      }
+    }
+  }
+
   const batch = db.batch();
   const classDocRef = db.collection('classes').doc(classId);
   const classUpdatePayload = {};
@@ -126,13 +156,23 @@ const updateUserAssociations = async (classId, emails, userType, action, student
         
         const studentPropsRef = classDocRef.collection('studentProperties').doc(userRecord.uid);
         const normEmail = userRecord.email ? userRecord.email.trim().toLowerCase() : '';
-        const profileData = studentProfiles[normEmail] || {};
+        const profileData = studentProfiles[normEmail] || directoryBackfills[normEmail] || {};
         batch.set(studentPropsRef, { ...classProps, ...profileData }, { merge: true });
       } else {
         classUpdatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
       }
     }
     logger.info(`${action === 'add' ? 'Linked' : 'Unlinked'} class '${classId}' for ${userType} ${userRecord.uid} (${userRecord.email})`);
+  }
+
+  // If profiles were backfilled from central studentDirectory, patch class document's studentProfiles
+  if (Object.keys(directoryBackfills).length > 0) {
+    for (const [normEmail, bProfile] of Object.entries(directoryBackfills)) {
+      classUpdatePayload[`studentProfiles.${normEmail}`] = {
+        ...bProfile,
+        updatedAt: new Date().toISOString(),
+      };
+    }
   }
   
   if (Object.keys(classUpdatePayload).length > 0) {
@@ -169,6 +209,32 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     updateUserAssociations(classId, addedTeachers, 'teacher', 'add'),
     updateUserAssociations(classId, removedTeachers, 'teacher', 'remove'),
   ];
+
+  // Sync any student profiles present in this class to the central institutional studentDirectory
+  if (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {
+    const dirBatch = db.batch();
+    let dirCount = 0;
+    for (const [rawEmail, prof] of Object.entries(afterData.studentProfiles)) {
+      const normEmail = rawEmail.trim().toLowerCase();
+      if (!normEmail || !prof || typeof prof !== 'object') continue;
+      if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
+
+      const dirRef = db.collection('studentDirectory').doc(normEmail);
+      dirBatch.set(dirRef, {
+        email: normEmail,
+        studentName: prof.studentName || '',
+        nickname: prof.nickname || '',
+        programme: prof.programme || '',
+        studentClass: prof.studentClass || '',
+        lastUpdatedByClass: classId,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      dirCount++;
+    }
+    if (dirCount > 0) {
+      promises.push(dirBatch.commit());
+    }
+  }
 
   // If the student emails were cleaned, update the document to store the clean version.
   if (JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails)) {
@@ -269,8 +335,29 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
   }
 
   const studentEmailsSet = new Set();
+  const studentProfilesMap = {};
 
-  // 1. Fetch from Firebase Auth users in batches
+  // 1. Fetch from central studentDirectory collection first
+  try {
+    const studentDirSnap = await currentDb.collection('studentDirectory').get();
+    studentDirSnap.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const email = (data.email || docSnap.id).trim().toLowerCase();
+      if (email && email.includes('@')) {
+        studentEmailsSet.add(email);
+        studentProfilesMap[email] = {
+          studentName: data.studentName || '',
+          nickname: data.nickname || '',
+          programme: data.programme || '',
+          studentClass: data.studentClass || '',
+        };
+      }
+    });
+  } catch (dirErr) {
+    logger.warn('Error querying studentDirectory:', dirErr);
+  }
+
+  // 2. Fetch from Firebase Auth users in batches
   try {
     let nextPageToken;
     do {
@@ -288,7 +375,7 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
     logger.warn('Error listing users from auth:', authErr);
   }
 
-  // 2. Fetch from classes collection (studentEmails array and students map)
+  // 3. Fetch from classes collection (studentEmails array, students map, and studentProfiles)
   try {
     const classesSnap = await currentDb.collection('classes').get();
     classesSnap.forEach((docSnap) => {
@@ -307,18 +394,43 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
           }
         });
       }
+      if (classData.studentProfiles && typeof classData.studentProfiles === 'object') {
+        for (const [rawE, prof] of Object.entries(classData.studentProfiles)) {
+          const normE = rawE.trim().toLowerCase();
+          if (normE && prof && typeof prof === 'object') {
+            studentEmailsSet.add(normE);
+            if (!studentProfilesMap[normE] || !studentProfilesMap[normE].studentName) {
+              studentProfilesMap[normE] = {
+                studentName: prof.studentName || '',
+                nickname: prof.nickname || '',
+                programme: prof.programme || '',
+                studentClass: prof.studentClass || '',
+              };
+            }
+          }
+        }
+      }
     });
   } catch (fsErr) {
     logger.warn('Error querying classes for student emails:', fsErr);
   }
 
-  // 3. Fetch from studentProfiles collection
+  // 4. Fetch from studentProfiles collection
   try {
     const studentProfilesSnap = await currentDb.collection('studentProfiles').get();
     studentProfilesSnap.forEach((docSnap) => {
       const data = docSnap.data();
       if (data.email && typeof data.email === 'string' && data.email.includes('@')) {
-        studentEmailsSet.add(data.email.trim().toLowerCase());
+        const normE = data.email.trim().toLowerCase();
+        studentEmailsSet.add(normE);
+        if (!studentProfilesMap[normE] || !studentProfilesMap[normE].studentName) {
+          studentProfilesMap[normE] = {
+            studentName: data.studentName || '',
+            nickname: data.nickname || '',
+            programme: data.programme || '',
+            studentClass: data.studentClass || '',
+          };
+        }
       }
     });
   } catch (spErr) {
@@ -328,6 +440,7 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
   const sortedStudentEmails = Array.from(studentEmailsSet).sort();
   return {
     studentEmails: sortedStudentEmails,
+    studentProfiles: studentProfilesMap,
     total: sortedStudentEmails.length,
   };
 }

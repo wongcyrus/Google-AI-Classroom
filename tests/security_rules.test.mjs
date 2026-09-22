@@ -174,6 +174,13 @@ async function runSecurityRulesSuite() {
       timestamp: new Date()
     });
 
+    // Setup Student Directory entry
+    await adminDb.collection('studentDirectory').doc(student1Email).set({
+      email: student1Email,
+      studentName: 'Student One',
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
     // -------------------------------------------------------------
     // SUITE 1: Unauthenticated / Anonymous Access Protection
     // -------------------------------------------------------------
@@ -192,6 +199,10 @@ async function runSecurityRulesSuite() {
       getDoc(doc(clientDb, 'studentProfiles', student1Uid)),
       'Unauthenticated user cannot read student profiles'
     );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'studentDirectory', student1Email)),
+      'Unauthenticated user cannot read studentDirectory'
+    );
 
     // -------------------------------------------------------------
     // SUITE 2: Student Access & Isolation Rules
@@ -207,6 +218,14 @@ async function runSecurityRulesSuite() {
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'studentProfiles', student2Uid)),
       'Student 1 CANNOT read Student 2 profile'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'studentDirectory', student1Email)),
+      'Student 1 CANNOT read studentDirectory'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'studentDirectory', student1Email), { studentName: 'Hacker Name' }),
+      'Student 1 CANNOT write studentDirectory'
     );
 
     // Class enrollment isolation
@@ -517,11 +536,20 @@ async function runSecurityRulesSuite() {
       getDoc(doc(clientDb, 'users', student1Uid)),
       'Teacher can read student user document'
     );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'studentDirectory', student1Email)),
+      'Teacher can read studentDirectory'
+    );
+    await expectAllowed(
+      setDoc(doc(clientDb, 'studentDirectory', student1Email), { email: student1Email, studentName: 'Teacher Updated Name' }),
+      'Teacher can write studentDirectory'
+    );
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users
     // -------------------------------------------------------------
     console.log(`\n🧹 Cleaning up test fixtures...`);
+    await adminDb.collection('studentDirectory').doc(student1Email).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).delete();
     await adminDb.collection('classes').doc(classB).delete();
     await adminDb.collection('studentProfiles').doc(student1Uid).delete();
