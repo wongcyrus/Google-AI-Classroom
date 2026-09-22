@@ -165,6 +165,58 @@ describe('useStudentClassSchedule Hook', () => {
     expect(result.current.currentActiveClassId).toBeNull();
   });
 
+  it('identifies multiple concurrent overlapping classes in activeClassIds', async () => {
+    // Wednesday 2026-09-02 10:30:00 UTC
+    const mockNow = new Date('2026-09-02T10:30:00Z');
+    vi.setSystemTime(mockNow);
+
+    let profileCb;
+    onSnapshot.mockImplementation((ref, cb) => {
+      profileCb = cb;
+      return unsubMock;
+    });
+
+    getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          schedule: {
+            timeZone: 'UTC',
+            startDate: '2026-09-01',
+            endDate: '2026-09-30',
+            timeSlots: [{ days: ['Wed'], startTime: '09:00', endTime: '11:00' }],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          schedule: {
+            timeZone: 'UTC',
+            startDate: '2026-09-01',
+            endDate: '2026-09-30',
+            timeSlots: [{ days: ['Wed'], startTime: '10:00', endTime: '12:00' }],
+          },
+        }),
+      });
+
+    const { result } = renderHook(() => useStudentClassSchedule({ uid: 'student_overlap' }));
+
+    await act(async () => {
+      profileCb({
+        exists: () => true,
+        data: () => ({ classes: ['CLASS_1', 'CLASS_2'] }),
+      });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(result.current.activeClassIds).toEqual(['CLASS_1', 'CLASS_2']);
+    expect(result.current.currentActiveClassId).toBe('CLASS_1');
+  });
+
   it('unsubscribes and clears interval on unmount', () => {
     onSnapshot.mockReturnValue(unsubMock);
     const { unmount } = renderHook(() => useStudentClassSchedule({ uid: 'student_4' }));
@@ -172,3 +224,4 @@ describe('useStudentClassSchedule Hook', () => {
     expect(unsubMock).toHaveBeenCalled();
   });
 });
+

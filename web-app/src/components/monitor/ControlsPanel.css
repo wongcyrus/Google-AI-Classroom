@@ -31,7 +31,8 @@
   color: var(--color-text-main, #0f172a);
 }
 
-.control-section {
+.monitor-controls-sidebar .control-section,
+.controls-panel .control-section {
   background-color: var(--color-surface, #ffffff);
   padding: 1.15rem;
   border-radius: var(--radius-md, 10px);

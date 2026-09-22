@@ -139,7 +139,7 @@ const Layout = ({ children, banner, title, logoutButton, user }) => {
         borderTop: '1px solid #dee2e6',
         textAlign: 'center'
       }}>
-        <p>Developed by <a href="https://hkiit.edu.hk/en/programmes/it114115-higher-diploma-in-cloud-and-data-centre-administration/index.html" target="_blank" rel="noopener noreferrer">Higher Diploma in Cloud and Data Centre Administration</a></p>
+        <p>Made with ❤️ by <a href="https://www.vtc.edu.hk/admission/en/programme/it114115-higher-diploma-in-cloud-and-data-centre-administration/" target="_blank" rel="noopener noreferrer">Higher Diploma in Cloud and Data Centre Administration</a></p>
       </footer>
     </div>
   );

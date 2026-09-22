@@ -20,10 +20,11 @@ import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
 import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
-import BingoModal from './BingoModal';
+import BingoModal, { playBingoChime } from './BingoModal';
+import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
-import { isGoogleChrome } from '../utils/browserDetection';
+import { isGoogleChrome, isMobileDevice } from '../utils/browserDetection';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
@@ -32,11 +33,12 @@ import {
   shouldRunCloudVoiceFallback,
 } from '../utils/voiceAiPolicy';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
+import StudentMobileView from './student/StudentMobileView';
 
 import Sidebar from './student/Sidebar';
 
-const StudentView = ({ user }) => {
-  // Browser validation guard for students
+const StudentDesktopView = ({ user, onSwitchToMobile }) => {
+  // Browser validation guard for desktop proctored students
   const isChrome = isGoogleChrome();
   if (!isChrome) {
     return (
@@ -55,8 +57,56 @@ const StudentView = ({ user }) => {
   const [webcamError, setWebcamError] = useState('');
   const isSharing = isScreenSharing || isWebcamSharing;
 
+  // Desktop YouTube-Style Screen Mode: 'standard' | 'max' | 'smallest'
+  const [desktopScreenMode, setDesktopScreenMode] = useState(() => {
+    try {
+      return localStorage.getItem('student_desktop_screen_mode') || 'standard';
+    } catch {
+      return 'standard';
+    }
+  });
+
+  const handleSetDesktopScreenMode = useCallback((mode) => {
+    setDesktopScreenMode(mode);
+    try {
+      localStorage.setItem('student_desktop_screen_mode', mode);
+    } catch {}
+  }, []);
+
+  const [isCcEnabled, setIsCcEnabled] = useState(true);
+  const [showYtSettings, setShowYtSettings] = useState(false);
+  const [teacherZoomScale, setTeacherZoomScale] = useState(1);
+  const playerContainerRef = useRef(null);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+
+  const togglePlayerFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      playerContainerRef.current?.requestFullscreen?.().catch(() => {});
+      setIsPlayerFullscreen(true);
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+      setIsPlayerFullscreen(false);
+    }
+  }, []);
+
+  // Sync fullscreenchange events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsPlayerFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   // Schedule-driven class state with enrolled classes fallback
-  const { userClasses, currentActiveClassId } = useStudentClassSchedule(user);
+  const { userClasses, currentActiveClassId, activeClassIds } = useStudentClassSchedule(user);
+  const [isManualScheduleOverride, setIsManualScheduleOverride] = useState(() => {
+    try {
+      return localStorage.getItem('isManualScheduleOverride') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [selectedClassId, setSelectedClassId] = useState(() => {
     try {
       return localStorage.getItem('selectedStudentClassId') || '';
@@ -66,15 +116,53 @@ const StudentView = ({ user }) => {
   });
 
   const activeClass = useMemo(() => {
-    if (currentActiveClassId) return currentActiveClassId;
-    if (selectedClassId && userClasses?.some(c => c.id === selectedClassId)) {
+    // If student explicitly chose a manual class override, honor it as highest priority
+    if (isManualScheduleOverride && selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
     }
+    // Otherwise follow schedule if active class is detected
+    if (currentActiveClassId) return currentActiveClassId;
+    // Fallback to selectedClassId if valid
+    if (selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
+      return selectedClassId;
+    }
+    // Fallback to first enrolled class
     if (userClasses && userClasses.length > 0) {
-      return userClasses[0].id;
+      const first = userClasses[0];
+      return typeof first === 'string' ? first : (first?.id || null);
     }
     return null;
-  }, [currentActiveClassId, selectedClassId, userClasses]);
+  }, [isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
+
+  // Target classes for multi-class background telemetry & screenshot ingestion during overlaps
+  const targetClasses = useMemo(() => {
+    const list = [];
+    if (activeClass) list.push(activeClass);
+    if (Array.isArray(activeClassIds)) {
+      for (const id of activeClassIds) {
+        if (id && !list.includes(id) && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === id)) {
+          list.push(id);
+        }
+      }
+    }
+    return list;
+  }, [activeClass, activeClassIds, userClasses]);
+
+  const handleSelectClass = useCallback((val) => {
+    setSelectedClassId(val);
+    setIsManualScheduleOverride(true);
+    try {
+      localStorage.setItem('selectedStudentClassId', val);
+      localStorage.setItem('isManualScheduleOverride', 'true');
+    } catch {}
+  }, []);
+
+  const handleFollowSchedule = useCallback(() => {
+    setIsManualScheduleOverride(false);
+    try {
+      localStorage.setItem('isManualScheduleOverride', 'false');
+    } catch {}
+  }, []);
   const [frameRate, setFrameRate] = useState(15);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
@@ -183,36 +271,75 @@ const StudentView = ({ user }) => {
   // Custom Properties State
   const [classProperties, setClassProperties] = useState(null);
   const [myProperties, setMyProperties] = useState(null);
+  const [enrolledBingoChallenges, setEnrolledBingoChallenges] = useState({});
 
   const isClassSessionOngoing = Boolean(isCapturing || activeClass);
 
+  // Active Bingo Challenge resolver across all enrolled classes
+  const currentBingoChallenge = useMemo(() => {
+    // 1. Check activeClass in enrolledBingoChallenges or myProperties first
+    const activeFromMap = activeClass ? enrolledBingoChallenges[activeClass] : null;
+    if (activeFromMap && (activeFromMap.status === 'pending' || activeFromMap.status === 'active') && (!activeFromMap.result || activeFromMap.result === 'pending')) {
+      const expiresAt = activeFromMap.expiresAtMillis || (activeFromMap.issuedAtMillis ? activeFromMap.issuedAtMillis + (activeFromMap.timeLimitSeconds || 30) * 1000 : null);
+      if (!expiresAt || expiresAt > Date.now()) {
+        return activeFromMap;
+      }
+    }
+
+    const ab = myProperties?.activeBingo;
+    if (ab && (ab.status === 'pending' || ab.status === 'active') && (!ab.result || ab.result === 'pending')) {
+      const expiresAt = ab.expiresAtMillis || (ab.issuedAtMillis ? ab.issuedAtMillis + (ab.timeLimitSeconds || 30) * 1000 : null);
+      if (!expiresAt || expiresAt > Date.now()) {
+        return { ...ab, classId: ab.classId || activeClass };
+      }
+    }
+
+    // 2. Check any other enrolled class's challenge in enrolledBingoChallenges
+    for (const [cId, b] of Object.entries(enrolledBingoChallenges)) {
+      if (b && (b.status === 'pending' || b.status === 'active') && (!b.result || b.result === 'pending')) {
+        const expiresAt = b.expiresAtMillis || (b.issuedAtMillis ? b.issuedAtMillis + (b.timeLimitSeconds || 30) * 1000 : null);
+        if (!expiresAt || expiresAt > Date.now()) {
+          return { ...b, classId: b.classId || cId };
+        }
+      }
+    }
+    return null;
+  }, [enrolledBingoChallenges, activeClass, myProperties?.activeBingo]);
+
   // Compute whether an active Bingo challenge is genuinely active, valid, and unexpired
   const isBingoActiveAndValid = useMemo(() => {
-    if (!isClassSessionOngoing) return false;
-    const ab = myProperties?.activeBingo;
-    if (!ab) return false;
+    if (!currentBingoChallenge) return false;
+    if (!isClassSessionOngoing && (!userClasses || userClasses.length === 0)) return false;
 
-    // Must be strictly 'pending'
-    if (ab.status !== 'pending') return false;
+    // Must be strictly 'pending' or 'active'
+    if (currentBingoChallenge.status !== 'pending' && currentBingoChallenge.status !== 'active') return false;
 
     // Must not already have a finalized result
-    if (ab.result) return false;
-
-    // Check legacy flat field
-    if (myProperties['activeBingo.status'] && myProperties['activeBingo.status'] !== 'pending') return false;
+    if (currentBingoChallenge.result && currentBingoChallenge.result !== 'pending') return false;
 
     // Crucial: Must NOT be expired! If expiresAtMillis is in the past, do not popup!
-    const expiresAt = ab.expiresAtMillis || (ab.issuedAtMillis ? ab.issuedAtMillis + (ab.timeLimitSeconds || 45) * 1000 : null);
+    const expiresAt = currentBingoChallenge.expiresAtMillis || (currentBingoChallenge.issuedAtMillis ? currentBingoChallenge.issuedAtMillis + (currentBingoChallenge.timeLimitSeconds || 30) * 1000 : null);
     if (expiresAt && expiresAt <= Date.now()) {
       return false;
     }
 
     return true;
-  }, [isClassSessionOngoing, myProperties]);
+  }, [currentBingoChallenge, isClassSessionOngoing, userClasses]);
 
-  // Auto-dismiss pending Bingo modal if class session ends
+  // Proactively exit browser fullscreen when active Bingo challenge is issued to ensure unhindered visibility
   useEffect(() => {
-    if (!isClassSessionOngoing && myProperties?.activeBingo?.status === 'pending') {
+    if (isBingoActiveAndValid && currentBingoChallenge) {
+      if (typeof document !== 'undefined' && document.fullscreenElement) {
+        document.exitFullscreen?.().catch(() => {});
+      }
+      setIsPlayerFullscreen(false);
+    }
+  }, [isBingoActiveAndValid, currentBingoChallenge]);
+
+  // Auto-dismiss pending Bingo modal if class session ends and no enrolled classes
+  useEffect(() => {
+    if (!isClassSessionOngoing && (!userClasses || userClasses.length === 0) && currentBingoChallenge?.status === 'pending') {
+      setEnrolledBingoChallenges({});
       setMyProperties((prev) =>
         prev
           ? {
@@ -222,19 +349,25 @@ const StudentView = ({ user }) => {
           : null
       );
     }
-  }, [isClassSessionOngoing, myProperties?.activeBingo?.status]);
+  }, [isClassSessionOngoing, userClasses, currentBingoChallenge?.status]);
 
   // Silently mark expired Bingo challenges as closed in Firestore without popping up to student
   useEffect(() => {
-    if (!activeClass || !user?.uid) return;
-    const ab = myProperties?.activeBingo;
-    if (!ab || ab.status !== 'pending') return;
+    if (!user?.uid || !currentBingoChallenge) return;
+    const targetClassId = currentBingoChallenge.classId || activeClass;
+    if (!targetClassId) return;
 
-    const expiresAt = ab.expiresAtMillis || (ab.issuedAtMillis ? ab.issuedAtMillis + (ab.timeLimitSeconds || 45) * 1000 : null);
+    const expiresAt = currentBingoChallenge.expiresAtMillis || (currentBingoChallenge.issuedAtMillis ? currentBingoChallenge.issuedAtMillis + (currentBingoChallenge.timeLimitSeconds || 30) * 1000 : null);
     const isExpired = Boolean(expiresAt && expiresAt <= Date.now());
 
-    if (isExpired) {
-      console.log('[StudentView] Bingo challenge expired before student viewed. Silently closing.');
+    if (isExpired && currentBingoChallenge.status === 'pending') {
+      console.log(`[StudentView] Bingo challenge expired in ${targetClassId} before student viewed. Silently closing.`);
+      setEnrolledBingoChallenges((prev) => {
+        if (!prev[targetClassId]) return prev;
+        const next = { ...prev };
+        delete next[targetClassId];
+        return next;
+      });
       setMyProperties((prev) =>
         prev
           ? {
@@ -244,14 +377,14 @@ const StudentView = ({ user }) => {
           : null
       );
 
-      const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+      const studentPropsRef = doc(db, 'classes', targetClassId, 'studentProperties', user.uid);
       setDoc(
         studentPropsRef,
         {
           activeBingo: {
-            ...ab,
+            ...currentBingoChallenge,
             status: 'closed',
-            result: ab.result || 'missed_timeout',
+            result: currentBingoChallenge.result || 'missed_timeout',
           },
         },
         { merge: true }
@@ -260,16 +393,16 @@ const StudentView = ({ user }) => {
       });
 
       // Submit background timeout if not already submitted
-      if (ab.bingoId && !ab.result) {
+      if (currentBingoChallenge.bingoId && !currentBingoChallenge.result) {
         handleBingoSubmit({
-          bingoId: ab.bingoId,
+          bingoId: currentBingoChallenge.bingoId,
           selectedIndex: null,
-          responseTimeSec: ab.timeLimitSeconds || 45,
+          responseTimeSec: currentBingoChallenge.timeLimitSeconds || 30,
           windowFocused: false,
         }).catch(() => {});
       }
     }
-  }, [activeClass, user?.uid, myProperties?.activeBingo?.status, myProperties?.activeBingo?.expiresAtMillis]);
+  }, [activeClass, user?.uid, currentBingoChallenge]);
 
   const recentMessages = useMemo(() => {
     const alertTitles = new Set(recentIrregularities.map(ir => ir.title));
@@ -641,29 +774,32 @@ const StudentView = ({ user }) => {
     // 4. If transcript acquired, sync UI state, Firestore status, and evaluate with Gemma LLM
     if (transcriptText) {
       if (setWhisperTranscript) setWhisperTranscript(transcriptText);
-      try {
-        const statusDocRef = doc(db, 'classes', activeClass, 'status', user?.uid);
-        await setDoc(
-          statusDocRef,
-          {
-            liveTranscript: transcriptText,
-            liveTranscriptTimestamp: Date.now(),
-            speechLanguage: classSpeechLanguage,
-            isAudioSharing: true,
-            audioStatus: 'speaking',
-            selectedMicDeviceId: selectedMicDeviceId || '',
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        console.warn('[StudentView] Failed to update live transcript status:', err);
+      const classesToSync = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
+      for (const cls of classesToSync) {
+        try {
+          const statusDocRef = doc(db, 'classes', cls, 'status', user?.uid);
+          await setDoc(
+            statusDocRef,
+            {
+              liveTranscript: transcriptText,
+              liveTranscriptTimestamp: Date.now(),
+              speechLanguage: classSpeechLanguage,
+              isAudioSharing: true,
+              audioStatus: 'speaking',
+              selectedMicDeviceId: selectedMicDeviceId || '',
+            },
+            { merge: true }
+          );
+        } catch (err) {
+          console.warn(`[StudentView] Failed to update live transcript status for ${cls}:`, err);
+        }
       }
 
       if (shouldEvaluateVoiceWithGemma && evaluateSpeechWithGemma) {
         await evaluateSpeechWithGemma(transcriptText);
       }
     }
-  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, user, selectedMicDeviceId, classSpeechLanguage]);
+  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, targetClasses, user, selectedMicDeviceId, classSpeechLanguage]);
 
   handleAudioUploadedRef.current = handleAudioUploaded;
 
@@ -798,9 +934,10 @@ const StudentView = ({ user }) => {
 
   // Sync real-time face, gaze, and audio telemetry to student status doc (Throttled to max once per 1.5s)
   useEffect(() => {
-    if (!activeClass || !user || !user.uid) return;
+    if (!user || !user.uid) return;
+    const classesToSync = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
+    if (classesToSync.length === 0) return;
 
-    const statusRef = doc(db, "classes", activeClass, "status", user.uid);
     const updateData = {};
     if (isWebcamSharing) {
       updateData.faceStatus = faceStatus;
@@ -831,7 +968,10 @@ const StudentView = ({ user }) => {
 
     const performSync = () => {
       lastTelemetrySyncRef.current = Date.now();
-      setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug("Error updating telemetry status:", err));
+      for (const cls of classesToSync) {
+        const statusRef = doc(db, "classes", cls, "status", user.uid);
+        setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug(`Error updating telemetry status for ${cls}:`, err));
+      }
     };
 
     if (timeSinceLast >= THROTTLE_MS) {
@@ -845,7 +985,7 @@ const StudentView = ({ user }) => {
     return () => {
       if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
     };
-  }, [activeClass, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, targetClasses, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -868,23 +1008,27 @@ const StudentView = ({ user }) => {
     }
   }, []);
 
-  const updateCaptureStatus = useCallback(async (activeStreams, classId) => {
-    const targetClass = classId || activeClass;
-    if (!targetClass || !user || !user.uid) return;
-    const statusRef = doc(db, "classes", targetClass, "status", user.uid);
-    try {
-      await setDoc(statusRef, {
-        isSharing: activeStreams.length > 0,
-        activeStreams: activeStreams,
-        displaySurface: activeStreams.includes('screen') ? (displaySurfaceRef.current || 'monitor') : null,
-        email: user.email,
-        name: user.displayName || user.email,
-        timestamp: serverTimestamp()
-      }, { merge: true });
-    } catch (error) {
-      console.error("Firestore: Error updating capture status: ", error);
+  const updateCaptureStatus = useCallback(async (activeStreams, classIdOrClasses) => {
+    const rawClasses = classIdOrClasses || targetClasses;
+    const classes = Array.isArray(rawClasses) ? rawClasses.filter(Boolean) : [rawClasses].filter(Boolean);
+    if (classes.length === 0 || !user || !user.uid) return;
+
+    for (const cls of classes) {
+      const statusRef = doc(db, "classes", cls, "status", user.uid);
+      try {
+        await setDoc(statusRef, {
+          isSharing: activeStreams.length > 0,
+          activeStreams: activeStreams,
+          displaySurface: activeStreams.includes('screen') ? (displaySurfaceRef.current || 'monitor') : null,
+          email: user.email,
+          name: user.displayName || user.email,
+          timestamp: serverTimestamp()
+        }, { merge: true });
+      } catch (error) {
+        console.error(`Firestore: Error updating capture status for ${cls}: `, error);
+      }
     }
-  }, [activeClass, user]);
+  }, [targetClasses, user]);
 
   const stopScreen = useCallback(async () => {
     displaySurfaceRef.current = null;
@@ -1195,10 +1339,15 @@ const StudentView = ({ user }) => {
   const isUploadingScreenRef = useRef(false);
   const isUploadingWebcamRef = useRef(false);
 
-  const captureVideoElement = useCallback(async (videoElement, channelName, targetClass) => {
+  const captureVideoElement = useCallback(async (videoElement, channelName, targetClassesInput) => {
     if (!user || !user.uid) {
       return;
     }
+
+    const rawClasses = targetClassesInput || targetClasses;
+    const classes = Array.isArray(rawClasses) ? rawClasses.filter(Boolean) : [rawClasses].filter(Boolean);
+    if (classes.length === 0) return;
+    const primaryClass = classes[0];
 
     const activeStream = (videoElement && videoElement.srcObject)
       || (channelName === 'screen' ? screenStreamRef.current : webcamStreamRef.current);
@@ -1304,55 +1453,64 @@ const StudentView = ({ user }) => {
 
       if (blob) {
         const timestamp = Date.now();
-        const screenshotPath = `screenshots/${targetClass}/${user.uid}/${channelName}_${timestamp}.jpg`;
+        const screenshotPath = `screenshots/${primaryClass}/${user.uid}/${channelName}_${timestamp}.jpg`;
         const screenshotRef = ref(storage, screenshotPath);
         
         try {
           await uploadBytes(screenshotRef, blob);
           const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
-          await addDoc(collection(db, 'screenshots'), {
-            classId: targetClass,
-            studentUid: user.uid,
-            email: user.email.toLowerCase(),
-            channel: channelName,
-            imagePath: screenshotRef.fullPath,
-            size: blob.size,
-            timestamp: serverTimestamp(),
-            expireAt: expireAtDate,
-            deleted: false,
-            ipAddress: ipAddress,
-          });
 
-          const statusRef = doc(db, "classes", targetClass, "status", user.uid);
-          const statusUpdate = {
-            isSharing: true,
-            email: user.email.toLowerCase(),
-            name: user.displayName || user.email,
-            timestamp: serverTimestamp()
-          };
-          if (channelName === 'screen') {
-            statusUpdate.latestScreenPath = screenshotRef.fullPath;
-            statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
-          } else {
-            statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+          for (const cls of classes) {
+            try {
+              await addDoc(collection(db, 'screenshots'), {
+                classId: cls,
+                studentUid: user.uid,
+                email: user.email.toLowerCase(),
+                channel: channelName,
+                imagePath: screenshotRef.fullPath,
+                size: blob.size,
+                timestamp: serverTimestamp(),
+                expireAt: expireAtDate,
+                deleted: false,
+                ipAddress: ipAddress,
+              });
+
+              const statusRef = doc(db, "classes", cls, "status", user.uid);
+              const statusUpdate = {
+                isSharing: true,
+                email: user.email.toLowerCase(),
+                name: user.displayName || user.email,
+                timestamp: serverTimestamp()
+              };
+              if (channelName === 'screen') {
+                statusUpdate.latestScreenPath = screenshotRef.fullPath;
+                statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
+              } else {
+                statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+              }
+              await setDoc(statusRef, statusUpdate, { merge: true });
+            } catch (err) {
+              console.warn(`[StudentView] Error recording screenshot doc for overlapping class ${cls}:`, err);
+            }
           }
-          await setDoc(statusRef, statusUpdate, { merge: true });
-          console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${screenshotRef.fullPath}`);
+          console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${screenshotRef.fullPath} for classes:`, classes);
         } catch (uploadErr) {
           console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
-          await saveToOfflineQueue({
-            type: 'screenshot',
-            classId: targetClass,
-            studentUid: user.uid,
-            studentEmail: user.email.toLowerCase(),
-            blob,
-            timestamp,
-            metadata: {
-              channel: channelName,
-              retentionDays: retentionDays || 30,
-              ipAddress: ipAddress || null,
-            },
-          });
+          for (const cls of classes) {
+            await saveToOfflineQueue({
+              type: 'screenshot',
+              classId: cls,
+              studentUid: user.uid,
+              studentEmail: user.email.toLowerCase(),
+              blob,
+              timestamp,
+              metadata: {
+                channel: channelName,
+                retentionDays: retentionDays || 30,
+                ipAddress: ipAddress || null,
+              },
+            });
+          }
           setOfflinePendingCount(c => c + 1);
         }
       }
@@ -1365,17 +1523,18 @@ const StudentView = ({ user }) => {
         isUploadingWebcamRef.current = false;
       }
     }
-  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress]);
+  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses]);
 
-  const captureAndUploadAllChannels = useCallback((targetClass) => {
-    if (!targetClass) return;
+  const captureAndUploadAllChannels = useCallback((targetClassesInput) => {
+    const classes = targetClassesInput || targetClasses;
+    if (!classes || (Array.isArray(classes) && classes.length === 0)) return;
     if (isScreenSharing && screenVideoRef.current) {
-      captureVideoElement(screenVideoRef.current, 'screen', targetClass);
+      captureVideoElement(screenVideoRef.current, 'screen', classes);
     }
     if (isWebcamSharing && webcamVideoRef.current) {
-      captureVideoElement(webcamVideoRef.current, 'webcam', targetClass);
+      captureVideoElement(webcamVideoRef.current, 'webcam', classes);
     }
-  }, [isScreenSharing, isWebcamSharing, captureVideoElement]);
+  }, [isScreenSharing, isWebcamSharing, captureVideoElement, targetClasses]);
 
   // Effects
   useEffect(() => {
@@ -1529,13 +1688,12 @@ const StudentView = ({ user }) => {
         console.log("Firestore: Received student properties snapshot.");
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // Normalize legacy activeBingo fields if activeBingo.status was stored as a flat key
-          if (data['activeBingo.status'] && data.activeBingo && data.activeBingo.status === 'pending') {
+          // Fallback to legacy activeBingo fields ONLY if structured activeBingo map does not exist
+          if (!data.activeBingo && data['activeBingo.status']) {
             data.activeBingo = {
-              ...data.activeBingo,
               status: data['activeBingo.status'],
               result: data['activeBingo.result'] || data['activeBingo.status'],
-              responseTimeSec: data['activeBingo.responseTimeSec'] || data.activeBingo.responseTimeSec,
+              responseTimeSec: data['activeBingo.responseTimeSec'] || null,
             };
           }
           setMyProperties(data);
@@ -1552,12 +1710,87 @@ const StudentView = ({ user }) => {
     };
   }, [activeClass, user]);
 
+  // Listen for studentProperties across all enrolled classes to support multi-class Bingo presence
+  useEffect(() => {
+    if (!user?.uid || !userClasses || userClasses.length === 0) {
+      setEnrolledBingoChallenges({});
+      return;
+    }
+
+    const unsubs = [];
+    const enrolledClassIds = userClasses.map(c => typeof c === 'string' ? c : c.id).filter(Boolean);
+
+    enrolledClassIds.forEach(cId => {
+      const classObj = userClasses.find(c => (typeof c === 'string' ? c : c.id) === cId);
+      const cName = typeof classObj === 'string' ? classObj : (classObj?.name || cId);
+
+      const studentPropsRef = doc(db, 'classes', cId, 'studentProperties', user.uid);
+      const unsub = onSnapshot(studentPropsRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          let bingo = data.activeBingo;
+          if (!bingo && data['activeBingo.status']) {
+            bingo = {
+              status: data['activeBingo.status'],
+              result: data['activeBingo.result'],
+            };
+          }
+
+          if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
+            const totalSeconds = bingo.timeLimitSeconds || 30;
+            const expiresAt = bingo.expiresAtMillis || (bingo.issuedAtMillis ? bingo.issuedAtMillis + totalSeconds * 1000 : null);
+            if (expiresAt && expiresAt <= Date.now()) {
+              setEnrolledBingoChallenges(prev => {
+                if (!prev[cId]) return prev;
+                const next = { ...prev };
+                delete next[cId];
+                return next;
+              });
+              return;
+            }
+
+            setEnrolledBingoChallenges(prev => ({
+              ...prev,
+              [cId]: {
+                ...bingo,
+                classId: bingo.classId || cId,
+                className: cName,
+              }
+            }));
+          } else {
+            setEnrolledBingoChallenges(prev => {
+              if (!prev[cId]) return prev;
+              const next = { ...prev };
+              delete next[cId];
+              return next;
+            });
+          }
+        } else {
+          setEnrolledBingoChallenges(prev => {
+            if (!prev[cId]) return prev;
+            const next = { ...prev };
+            delete next[cId];
+            return next;
+          });
+        }
+      }, (err) => {
+        console.warn(`[StudentView] Error subscribing to studentProperties for ${cId}:`, err);
+      });
+      unsubs.push(unsub);
+    });
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }, [user?.uid, userClasses]);
+
   const handleBingoSubmit = async ({ bingoId, selectedIndex, responseTimeSec, windowFocused }) => {
-    if (!activeClass || !bingoId) return;
+    const targetClassId = currentBingoChallenge?.classId || activeClass;
+    if (!targetClassId || !bingoId) return;
     try {
       const submitBingoFn = httpsCallable(functions, 'submitBingoAnswer');
       const res = await submitBingoFn({
-        classId: activeClass,
+        classId: targetClassId,
         bingoId,
         selectedIndex,
         responseTimeSec,
@@ -1713,12 +1946,12 @@ const StudentView = ({ user }) => {
         // Perform capture if enough time has passed since last capture or on first run
         if (now - lastCaptureTimeRef.current >= intervalMs) {
           lastCaptureTimeRef.current = now;
-          captureAndUploadAllChannelsRef.current(activeClass);
+          captureAndUploadAllChannelsRef.current(targetClasses);
         }
 
         const handleTick = () => {
           lastCaptureTimeRef.current = Date.now();
-          captureAndUploadAllChannelsRef.current(activeClass);
+          captureAndUploadAllChannelsRef.current(targetClasses);
         };
 
         // Initialize inline Web Worker for throttling-free execution in background / minimized tabs
@@ -1755,18 +1988,18 @@ const StudentView = ({ user }) => {
           fallbackInterval = setInterval(handleTick, intervalMs);
         }
       } else if (isCapturing && user?.uid) {
-        const statusRef = doc(db, "classes", activeClass, "status", user.uid);
-        console.log(`Firestore: Capture time expired, updating status for ${user.uid}`);
-        setDoc(statusRef, { 
-            isCapturing: false,
-            reason: "Capture time limit reached."
-        }, { merge: true })
-          .then(() => {
-            console.log("Firestore: Successfully updated student status to isCapturing: false.");
-          })
-          .catch(err => {
-            console.error("Firestore: Failed to update student status after capture time expired.", err);
-          });
+        const classesToExpire = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
+        for (const cls of classesToExpire) {
+          const statusRef = doc(db, "classes", cls, "status", user.uid);
+          console.log(`Firestore: Capture time expired, updating status for ${user.uid} in ${cls}`);
+          setDoc(statusRef, { 
+              isCapturing: false,
+              reason: "Capture time limit reached."
+          }, { merge: true })
+            .catch(err => {
+              console.error(`Firestore: Failed to update student status for ${cls} after capture time expired:`, err);
+            });
+        }
       }
     }
 
@@ -1781,7 +2014,17 @@ const StudentView = ({ user }) => {
         fallbackInterval = null;
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
+
+  if (!activeClass && (!userClasses || userClasses.length === 0)) {
+    return (
+      <UnenrolledStudentView
+        user={user}
+        onRefresh={() => window.location.reload()}
+        onSignOut={() => signOut(auth)}
+      />
+    );
+  }
 
   return (
     <div className="student-view-container">
@@ -1893,7 +2136,7 @@ const StudentView = ({ user }) => {
       )}
 
       {/* Teacher Live Screen Broadcast Alert Banner */}
-      {isTeacherBroadcastActive && (
+      {isTeacherBroadcastActive && !isViewingTeacherScreen && (
         <div className="teacher-broadcast-alert-banner">
           <div className="broadcast-banner-info">
             <span className="live-pulse-dot" />
@@ -1917,10 +2160,60 @@ const StudentView = ({ user }) => {
         </div>
       )}
 
-      <div className="student-view-content">
+      {/* Active Classroom Bingo Presence Challenge Banner (Guaranteed Presence Alert) */}
+      {isBingoActiveAndValid && currentBingoChallenge && (
+        <div className="bingo-top-alert-banner" role="alert">
+          <div className="bingo-alert-info">
+            <span className="bingo-pulse-icon">🎲</span>
+            <div className="bingo-alert-text">
+              <strong>Classroom Bingo Presence Challenge Active!</strong>
+              <span>Confirm your attendance by answering the verification question.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="bingo-banner-open-btn"
+            onClick={() => {
+              try {
+                playBingoChime();
+              } catch {}
+            }}
+          >
+            Answer Challenge ➔
+          </button>
+        </div>
+      )}
+
+      <div className={`student-view-content mode-${desktopScreenMode}`}>
         <div className="student-view-main">
-            {!isSharing ? (
-              <div className="student-setup-hero-card">
+          {/* Smallest / Mini-Player Mode Workspace Callout */}
+          {desktopScreenMode === 'smallest' && (
+            <div className="mini-player-active-callout">
+              <div className="callout-text">
+                📺 <strong>Mini-Player Active:</strong> Video player is compact in the corner. You have full room for notes, IDE, and course materials.
+              </div>
+              <div className="callout-actions">
+                <button
+                  type="button"
+                  className="callout-btn"
+                  onClick={() => handleSetDesktopScreenMode('standard')}
+                  title="Switch to Standard Side-by-Side Mode"
+                >
+                  🔲 Standard Mode
+                </button>
+                <button
+                  type="button"
+                  className="callout-btn"
+                  onClick={() => handleSetDesktopScreenMode('max')}
+                  title="Switch to Max Theater Mode"
+                >
+                  🗖 Max Mode
+                </button>
+              </div>
+            </div>
+          )}
+          {!isSharing ? (
+            <div className="student-setup-hero-card">
                 <div className="setup-hero-header">
                   <div className="setup-class-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                     <span>{activeClass ? `Class: ${activeClass}` : 'No active class'}</span>
@@ -1928,13 +2221,7 @@ const StudentView = ({ user }) => {
                       <select
                         aria-label="Select Enrolled Class"
                         value={activeClass || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedClassId(val);
-                          try {
-                            localStorage.setItem('selectedStudentClassId', val);
-                          } catch {}
-                        }}
+                        onChange={(e) => handleSelectClass(e.target.value)}
                         style={{
                           background: 'rgba(255, 255, 255, 0.9)',
                           border: '1px solid #cbd5e1',
@@ -1945,10 +2232,37 @@ const StudentView = ({ user }) => {
                           cursor: 'pointer'
                         }}
                       >
-                        {userClasses.map(c => (
-                          <option key={c.id} value={c.id}>{c.name || c.id}</option>
-                        ))}
+                        {userClasses.map(c => {
+                          const cId = typeof c === 'string' ? c : c.id;
+                          const cName = typeof c === 'string' ? c : (c.name || c.id);
+                          const isScheduled = activeClassIds?.includes(cId);
+                          return (
+                            <option key={cId} value={cId}>
+                              {cName}{isScheduled ? ' 🕒 (Scheduled)' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
+                    )}
+                    {isManualScheduleOverride && currentActiveClassId && currentActiveClassId !== activeClass && (
+                      <button
+                        type="button"
+                        onClick={handleFollowSchedule}
+                        className="btn-follow-schedule"
+                        title={`Reset manual override and follow scheduled class: ${currentActiveClassId}`}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '0.75rem',
+                          borderRadius: '4px',
+                          border: '1px solid #3b82f6',
+                          backgroundColor: '#eff6ff',
+                          color: '#1d4ed8',
+                          cursor: 'pointer',
+                          fontWeight: '600'
+                        }}
+                      >
+                        ↩ Follow Schedule ({currentActiveClassId})
+                      </button>
                     )}
                   </div>
                   <h2 className="setup-hero-title">Welcome to Your Classroom Session</h2>
@@ -1975,12 +2289,24 @@ const StudentView = ({ user }) => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { window.location.href = '/student/records'; }}
-                    className="btn-quick-start-screen"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#f8fafc', color: '#1e293b', border: '1px solid #cbd5e1' }}
-                    title="View your past session recordings, attendance, and proctoring logs"
+                    onClick={onSwitchToMobile}
+                    className="btn-switch-mobile-mode"
+                    title="Switch to Mobile Companion View (Teacher Screen, Subtitles, Bingo)"
+                    style={{
+                      background: '#10b981',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 14px',
+                      fontSize: '0.86rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
                   >
-                    📋 My Records
+                    📱 Mobile View (Screen, CC, Bingo)
                   </button>
                 </div>
 
@@ -2084,7 +2410,59 @@ const StudentView = ({ user }) => {
                         : '🟡 Streaming Active (Screen Only)'}
                     </span>
                   </div>
-                  <span className="active-class-pill">Class: {activeClass}</span>
+                  {userClasses && userClasses.length > 1 ? (
+                    <div className="active-class-switcher-wrap" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <select
+                        aria-label="Switch Active Class Session"
+                        value={activeClass || ''}
+                        onChange={(e) => handleSelectClass(e.target.value)}
+                        className="active-class-select"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#f8fafc',
+                          color: '#1e293b',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {userClasses.map((cls) => {
+                          const id = typeof cls === 'string' ? cls : cls.id;
+                          const name = typeof cls === 'string' ? cls : (cls.name || cls.id);
+                          const isScheduled = activeClassIds?.includes(id);
+                          return (
+                            <option key={id} value={id}>
+                              {name}{isScheduled ? ' 🕒 (Scheduled)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {isManualScheduleOverride && currentActiveClassId && currentActiveClassId !== activeClass && (
+                        <button
+                          type="button"
+                          onClick={handleFollowSchedule}
+                          className="btn-follow-schedule-active"
+                          title={`Reset and follow scheduled class: ${currentActiveClassId}`}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: '11px',
+                            borderRadius: '4px',
+                            border: '1px solid #3b82f6',
+                            backgroundColor: '#eff6ff',
+                            color: '#1d4ed8',
+                            cursor: 'pointer',
+                            fontWeight: '500'
+                          }}
+                        >
+                          ↩ Follow Schedule ({currentActiveClassId})
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="active-class-pill">Class: {activeClass}</span>
+                  )}
                   {(isCapturing || isExamActive) && (
                     <span className="active-telemetry-pill">📸 {frameRate}s capture</span>
                   )}
@@ -2151,7 +2529,41 @@ const StudentView = ({ user }) => {
               </p>
             )}
             
-            <div className="preview-stage">
+            <div
+              className={`preview-stage desktop-yt-player-box mode-${desktopScreenMode} ${isPlayerFullscreen ? 'fullscreen-mode' : ''}`}
+              ref={playerContainerRef}
+            >
+              {/* Teacher Live Stream Frame Overlay (if teacher broadcast active) */}
+              {isTeacherBroadcastActive && teacherLiveFrame && (
+                <div className="teacher-live-stream-container">
+                  <div className="teacher-live-top-bar">
+                    <div className="live-badges-group">
+                      <span className="live-pill"><span className="live-dot" /> LIVE</span>
+                      <span className="res-tag">1080P</span>
+                      <span className="teacher-name-tag">{teacherBroadcastInfo?.teacherEmail || 'Teacher Stream'}</span>
+                    </div>
+                    <div className="stream-zoom-controls">
+                      <button
+                        type="button"
+                        onClick={() => setTeacherZoomScale(prev => (prev > 1 ? 1 : 1.75))}
+                        className="yt-zoom-btn"
+                        title="Toggle Zoom (1x / 1.75x)"
+                      >
+                        {teacherZoomScale > 1 ? '🔍 1x' : '🔍 Zoom'}
+                      </button>
+                    </div>
+                  </div>
+                  <img
+                    src={teacherLiveFrame}
+                    alt="Teacher Live Screen Broadcast"
+                    className="teacher-live-screen-img"
+                    style={{
+                      transform: `scale(${teacherZoomScale})`,
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Screen Stream Element */}
               <div
                 className={`stream-feed-wrapper ${
@@ -2160,7 +2572,7 @@ const StudentView = ({ user }) => {
                     : isWebcamSharing && primaryStream === 'webcam'
                     ? 'pip-stream'
                     : 'hero-stream'
-                }`}
+                } ${isTeacherBroadcastActive && teacherLiveFrame ? 'docked-proctor-pip' : ''}`}
                 onClick={
                   isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
                     ? handleSwapFeeds
@@ -2189,7 +2601,7 @@ const StudentView = ({ user }) => {
                     : isScreenSharing && primaryStream === 'screen'
                     ? 'pip-stream'
                     : 'hero-stream'
-                }`}
+                } ${isTeacherBroadcastActive && teacherLiveFrame ? 'docked-proctor-pip' : ''}`}
                 onClick={
                   isScreenSharing && isWebcamSharing && primaryStream === 'screen'
                     ? handleSwapFeeds
@@ -2248,7 +2660,7 @@ const StudentView = ({ user }) => {
               )}
 
               {/* Inactive Placeholder */}
-              {!isSharing && (
+              {!isSharing && !isTeacherBroadcastActive && (
                 <div className="inactive-streams-placeholder">
                   <div className="placeholder-icon">📡</div>
                   <p className="placeholder-title">Streams Inactive</p>
@@ -2257,11 +2669,166 @@ const StudentView = ({ user }) => {
                   </p>
                 </div>
               )}
+
+              {/* YouTube-Style Live Closed Captions Cue Overlay */}
+              {isCcEnabled && studentSubtitles.active && (studentSubtitles.originalText || studentSubtitles.currentTranslation) && (
+                <div
+                  className={`youtube-cc-cue-container font-${studentSubtitles.fontSize}`}
+                  aria-live="polite"
+                  aria-label="Closed Captions Overlay"
+                >
+                  {(studentSubtitles.displayMode === 'bilingual' || studentSubtitles.displayMode === 'original') && studentSubtitles.originalText && (
+                    <div className="youtube-cc-cue original">
+                      <span className="youtube-cc-text">{studentSubtitles.originalText}</span>
+                    </div>
+                  )}
+                  {(studentSubtitles.displayMode === 'bilingual' || studentSubtitles.displayMode === 'translation') && studentSubtitles.currentTranslation && (
+                    <div className="youtube-cc-cue translated">
+                      <span className="youtube-cc-text highlight">
+                        {studentSubtitles.currentTranslation}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* YouTube-Style Player Bottom Control Bar */}
+              <div className="yt-player-bottom-bar" role="toolbar" aria-label="Player Controls">
+                <div className="yt-bar-left">
+                  {/* YouTube CC Toggle Button */}
+                  <button
+                    type="button"
+                    className={`yt-control-btn yt-cc-btn ${isCcEnabled ? 'active' : ''}`}
+                    onClick={() => setIsCcEnabled(prev => !prev)}
+                    title={isCcEnabled ? 'Subtitles / Closed Captions ON' : 'Subtitles / Closed Captions OFF'}
+                    aria-pressed={isCcEnabled}
+                  >
+                    <span className="yt-cc-badge">CC</span>
+                  </button>
+
+                  {/* Language Selector */}
+                  {studentSubtitles.availableLanguages && studentSubtitles.availableLanguages.length > 0 && (
+                    <select
+                      className="yt-lang-select"
+                      value={studentSubtitles.selectedLanguage}
+                      onChange={(e) => studentSubtitles.setSelectedLanguage(e.target.value)}
+                      title="Select Subtitle Translation Language"
+                      aria-label="Caption Language"
+                    >
+                      {studentSubtitles.availableLanguages.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.label || l.code}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Live Status Pill */}
+                  <div className="yt-live-indicator">
+                    <span className="yt-live-dot" />
+                    <span className="yt-live-label">{isTeacherBroadcastActive ? 'LIVE' : isSharing ? 'PROCTORED' : 'STANDBY'}</span>
+                  </div>
+                </div>
+
+                <div className="yt-bar-right">
+                  {/* Screen Mode Switches: Max vs Smallest vs Standard */}
+                  <div className="yt-screen-mode-group" role="group" aria-label="Screen Mode">
+                    <button
+                      type="button"
+                      className={`yt-mode-btn ${desktopScreenMode === 'max' ? 'active' : ''}`}
+                      onClick={() => handleSetDesktopScreenMode('max')}
+                      title="Max / Theater Mode (Full Width)"
+                    >
+                      🗖 Max
+                    </button>
+                    <button
+                      type="button"
+                      className={`yt-mode-btn ${desktopScreenMode === 'smallest' ? 'active' : ''}`}
+                      onClick={() => handleSetDesktopScreenMode('smallest')}
+                      title="Smallest / Mini-Player Mode (Compact Corner)"
+                    >
+                      🗗 Smallest
+                    </button>
+                    <button
+                      type="button"
+                      className={`yt-mode-btn ${desktopScreenMode === 'standard' ? 'active' : ''}`}
+                      onClick={() => handleSetDesktopScreenMode('standard')}
+                      title="Standard Mode (Side-by-Side)"
+                    >
+                      🔲 Standard
+                    </button>
+                  </div>
+
+                  {/* Settings Gear & Popover */}
+                  <div className="yt-settings-wrapper">
+                    <button
+                      type="button"
+                      className={`yt-control-btn yt-settings-btn ${showYtSettings ? 'active' : ''}`}
+                      onClick={() => setShowYtSettings(prev => !prev)}
+                      title="Subtitle and Player Settings"
+                    >
+                      ⚙️
+                    </button>
+
+                    {showYtSettings && (
+                      <div className="yt-settings-popover">
+                        <div className="yt-popover-row">
+                          <span className="yt-popover-label">CC Font Size</span>
+                          <div className="yt-popover-options">
+                            {['small', 'medium', 'large'].map((sz) => (
+                              <button
+                                key={sz}
+                                type="button"
+                                className={`yt-opt-btn ${studentSubtitles.fontSize === sz ? 'active' : ''}`}
+                                onClick={() => studentSubtitles.setFontSize(sz)}
+                              >
+                                {sz.charAt(0).toUpperCase() + sz.slice(1)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="yt-popover-row">
+                          <span className="yt-popover-label">Display Mode</span>
+                          <div className="yt-popover-options">
+                            {[
+                              { id: 'bilingual', label: 'Bilingual' },
+                              { id: 'translation', label: 'Translation' },
+                              { id: 'original', label: 'Original' },
+                            ].map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                className={`yt-opt-btn ${studentSubtitles.displayMode === m.id ? 'active' : ''}`}
+                                onClick={() => studentSubtitles.setDisplayMode(m.id)}
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fullscreen Button */}
+                  <button
+                    type="button"
+                    className="yt-control-btn yt-fullscreen-btn"
+                    onClick={togglePlayerFullscreen}
+                    title={isPlayerFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                  >
+                    {isPlayerFullscreen ? '⤦' : '⛶'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Live Speech AI & Voice Proctoring HUD (Shown only when teacher enables audio recording) */}
             {enableAudioCapture && (
-              <div style={{
+              <div
+                className="student-voice-proctoring-hud"
+                style={{
                 marginTop: '16px',
                 padding: '16px',
                 backgroundColor: 'var(--color-surface, #ffffff)',
@@ -2506,6 +3073,10 @@ const StudentView = ({ user }) => {
           recentIrregularities={recentIrregularities} 
           ipAddress={ipAddress} 
           recentMessages={recentMessages} 
+          liveTranscriptHistory={studentSubtitles.recentHistory}
+          currentOriginalText={studentSubtitles.originalText}
+          currentTranslationText={studentSubtitles.currentTranslation}
+          selectedLanguage={studentSubtitles.selectedLanguage}
         />
       </div>
 
@@ -2580,6 +3151,7 @@ const StudentView = ({ user }) => {
         connectionState={teacherConnectionState}
         broadcastInfo={teacherBroadcastInfo}
         classId={activeClass}
+        subtitleState={studentSubtitles}
       />
 
       {/* Floating Subtitle Overlay when not viewing screen broadcast */}
@@ -2604,32 +3176,91 @@ const StudentView = ({ user }) => {
       )}
 
       {/* Active Bingo Verification Modal (dismissed when class ends or expired) */}
-      {isBingoActiveAndValid && (
+      {isBingoActiveAndValid && currentBingoChallenge && (
         <BingoModal
-          activeBingo={myProperties.activeBingo}
+          key={currentBingoChallenge.bingoId || 'bingo-modal'}
+          activeBingo={currentBingoChallenge}
           onSubmit={handleBingoSubmit}
           onClose={() => {
-            setMyProperties(prev => prev ? {
-              ...prev,
-              activeBingo: { ...prev.activeBingo, status: 'closed' }
-            } : null);
-            if (activeClass && user?.uid && myProperties?.activeBingo) {
-              const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
+            const targetClassId = currentBingoChallenge.classId || activeClass;
+            if (targetClassId && user?.uid && currentBingoChallenge) {
+              const studentPropsRef = doc(db, 'classes', targetClassId, 'studentProperties', user.uid);
               setDoc(
                 studentPropsRef,
                 {
                   activeBingo: {
-                    ...myProperties.activeBingo,
+                    ...currentBingoChallenge,
                     status: 'closed',
                   },
                 },
                 { merge: true }
               ).catch(() => {});
             }
+            setEnrolledBingoChallenges(prev => {
+              if (!prev[targetClassId]) return prev;
+              const next = { ...prev };
+              delete next[targetClassId];
+              return next;
+            });
+            setMyProperties(prev => prev ? {
+              ...prev,
+              activeBingo: { ...prev.activeBingo, status: 'closed' }
+            } : null);
           }}
         />
       )}
     </div>
+  );
+};
+
+const StudentView = ({ user, onViewModeChange }) => {
+  const [preferredViewMode, setPreferredViewMode] = useState(() => {
+    try {
+      const stored = localStorage.getItem('student_view_mode');
+      if (stored === 'mobile' || stored === 'desktop') return stored;
+    } catch {}
+    return isMobileDevice() ? 'mobile' : 'desktop';
+  });
+
+  const updateViewMode = useCallback((mode) => {
+    setPreferredViewMode(mode);
+    try {
+      localStorage.setItem('student_view_mode', mode);
+    } catch {}
+    onViewModeChange?.(mode);
+  }, [onViewModeChange]);
+
+  // Synchronize body class for instant CSS layout adaptation
+  useEffect(() => {
+    if (preferredViewMode === 'mobile') {
+      document.body.classList.add('in-student-mobile-view');
+    } else {
+      document.body.classList.remove('in-student-mobile-view');
+    }
+    return () => {
+      document.body.classList.remove('in-student-mobile-view');
+    };
+  }, [preferredViewMode]);
+
+  // Notify parent on initial mount
+  useEffect(() => {
+    onViewModeChange?.(preferredViewMode);
+  }, [preferredViewMode, onViewModeChange]);
+
+  if (preferredViewMode === 'mobile') {
+    return (
+      <StudentMobileView
+        user={user}
+        onSwitchToDesktop={() => updateViewMode('desktop')}
+      />
+    );
+  }
+
+  return (
+    <StudentDesktopView
+      user={user}
+      onSwitchToMobile={() => updateViewMode('mobile')}
+    />
   );
 };
 

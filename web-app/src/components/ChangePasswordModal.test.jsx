@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChangePasswordModal from './ChangePasswordModal';
 import { updatePassword, reauthenticateWithCredential } from 'firebase/auth';
+import { auth } from '../firebase-config';
 
 vi.mock('../firebase-config', () => ({
   auth: {
@@ -134,5 +135,61 @@ describe('ChangePasswordModal Component', () => {
     fireEvent.click(submitBtn);
 
     expect(await screen.findByText(/Current password is incorrect/i)).toBeInTheDocument();
+  });
+
+  it('throws error when no authenticated user session exists', async () => {
+    const originalUser = auth.currentUser;
+    auth.currentUser = null;
+    render(<ChangePasswordModal show={true} onClose={vi.fn()} />);
+
+    const currentPwdInput = screen.getByLabelText(/Current Password/i);
+    const newPwdInput = screen.getByLabelText(/^New Password/i);
+    const confirmPwdInput = screen.getByLabelText(/Confirm New Password/i);
+
+    fireEvent.change(currentPwdInput, { target: { value: 'oldpassword123' } });
+    fireEvent.change(newPwdInput, { target: { value: 'newsecurepass456' } });
+    fireEvent.change(confirmPwdInput, { target: { value: 'newsecurepass456' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Update Password/i });
+    fireEvent.click(submitBtn);
+
+    expect(await screen.findByText(/No authenticated user session found\./i)).toBeInTheDocument();
+    auth.currentUser = originalUser;
+  });
+
+  it('handles weak-password error and calls onClose after success timeout', async () => {
+    const weakError = new Error('Password too weak');
+    weakError.code = 'auth/weak-password';
+    reauthenticateWithCredential.mockResolvedValueOnce();
+    updatePassword.mockRejectedValueOnce(weakError);
+
+    const onClose = vi.fn();
+    render(<ChangePasswordModal show={true} onClose={onClose} />);
+
+    const currentPwdInput = screen.getByLabelText(/Current Password/i);
+    const newPwdInput = screen.getByLabelText(/^New Password/i);
+    const confirmPwdInput = screen.getByLabelText(/Confirm New Password/i);
+
+    fireEvent.change(currentPwdInput, { target: { value: 'oldpassword123' } });
+    fireEvent.change(newPwdInput, { target: { value: 'simple' } });
+    fireEvent.change(confirmPwdInput, { target: { value: 'simple' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Update Password/i });
+    fireEvent.click(submitBtn);
+
+    expect(await screen.findByText(/New password is too weak\. Please use a stronger password\./i)).toBeInTheDocument();
+
+    // Now test success timeout
+    reauthenticateWithCredential.mockResolvedValueOnce();
+    updatePassword.mockResolvedValueOnce();
+
+    fireEvent.change(newPwdInput, { target: { value: 'StrongerPass123!' } });
+    fireEvent.change(confirmPwdInput, { target: { value: 'StrongerPass123!' } });
+    fireEvent.click(submitBtn);
+
+    expect(await screen.findByText(/Password updated successfully!/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    }, { timeout: 2000 });
   });
 });

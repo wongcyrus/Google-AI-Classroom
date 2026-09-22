@@ -1193,4 +1193,836 @@
   }
 }
 
+/* ==========================================================================
+   YouTube-Style Desktop Student View & Screen Modes
+   ========================================================================== */
+
+/* Top Active Bingo Banner Alert (Guarantees student never misses Bingo) */
+.bingo-top-alert-banner {
+  background: linear-gradient(135deg, #7c2d12, #991b1b);
+  border: 2px solid #ef4444;
+  color: #ffffff;
+  padding: 0.85rem 1.25rem;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.45);
+  animation: bingo-banner-pulse 1.5s infinite alternate;
+  z-index: 1000;
+}
+
+@keyframes bingo-banner-pulse {
+  0% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+    border-color: #ef4444;
+  }
+  100% {
+    box-shadow: 0 0 24px rgba(239, 68, 68, 0.7);
+    border-color: #fca5a5;
+  }
+}
+
+.bingo-top-alert-banner .bingo-alert-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bingo-top-alert-banner .bingo-pulse-icon {
+  font-size: 1.6rem;
+  animation: bingo-icon-bounce 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes bingo-icon-bounce {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.2) rotate(8deg); }
+}
+
+.bingo-top-alert-banner .bingo-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bingo-top-alert-banner .bingo-alert-text strong {
+  font-size: 1rem;
+  color: #fff;
+}
+
+.bingo-top-alert-banner .bingo-alert-text span {
+  font-size: 0.82rem;
+  color: #fecaca;
+}
+
+.bingo-banner-open-btn {
+  background: #f59e0b;
+  color: #0f172a;
+  border: none;
+  font-weight: 800;
+  font-size: 0.88rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transition: all 0.15s ease;
+}
+
+.bingo-banner-open-btn:hover {
+  background: #fbbf24;
+  transform: scale(1.04);
+}
+
+/* Screen Mode Containers */
+.student-view-content.mode-max {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1.5rem;
+}
+
+.student-view-content.mode-max .student-view-main {
+  display: contents;
+}
+
+.student-view-content.mode-max .desktop-yt-player-box {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.student-view-content.mode-max .student-setup-hero-card {
+  grid-column: 1 / -1;
+}
+
+.student-view-content.mode-max .student-active-top-bar {
+  grid-column: 1 / -1;
+}
+
+.student-view-content.mode-max .recording-indicator {
+  grid-column: 1 / -1;
+}
+
+.student-view-content.mode-max .student-voice-proctoring-hud {
+  grid-column: 1;
+}
+
+.student-view-content.mode-max .student-view-sidebar {
+  grid-column: 2;
+  align-self: start;
+}
+
+@media (max-width: 1024px) {
+  .student-view-content.mode-max {
+    grid-template-columns: 1fr;
+  }
+  .student-view-content.mode-max .student-voice-proctoring-hud {
+    grid-column: 1 / -1;
+  }
+  .student-view-content.mode-max .student-view-sidebar {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Smallest / Mini-Player Mode */
+.student-view-content.mode-smallest {
+  position: relative;
+}
+
+.student-view-content.mode-smallest .desktop-yt-player-box {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  height: 220px;
+  z-index: 100;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 2px #4f46e5;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.student-view-content.mode-smallest .desktop-yt-player-box:hover {
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7), 0 0 0 3px #6366f1;
+}
+
+.mini-player-active-callout {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mini-player-active-callout .callout-text {
+  font-size: 0.88rem;
+  color: #166534;
+  font-weight: 500;
+}
+
+.mini-player-active-callout .callout-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mini-player-active-callout .callout-btn {
+  background: #ffffff;
+  color: #15803d;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mini-player-active-callout .callout-btn:hover {
+  background: #dcfce7;
+}
+
+/* ==========================================================================
+   YouTube Video Player Box Stage
+   ========================================================================== */
+
+.desktop-yt-player-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 70vh;
+  min-height: 280px;
+  background-color: #05070f;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  border: 1px solid #1e293b;
+}
+
+.desktop-yt-player-box.fullscreen-mode {
+  border-radius: 0;
+  max-height: none;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Teacher Live Stream Inside Player */
+.teacher-live-stream-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  overflow: hidden;
+  user-select: none;
+}
+
+.teacher-live-screen-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform 0.15s ease-out;
+  will-change: transform;
+}
+
+.teacher-live-top-bar {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.teacher-live-top-bar .live-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teacher-live-top-bar .live-pill {
+  background: rgba(220, 38, 38, 0.9);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.teacher-live-top-bar .live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 0 6px #ffffff;
+}
+
+.teacher-live-top-bar .res-tag {
+  background: rgba(0, 0, 0, 0.7);
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.teacher-live-top-bar .teacher-name-tag {
+  background: rgba(0, 0, 0, 0.6);
+  color: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.stream-zoom-controls {
+  pointer-events: auto;
+}
+
+.yt-zoom-btn {
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.yt-zoom-btn:hover {
+  background: rgba(30, 41, 59, 0.9);
+}
+
+/* Docked Proctor PiP when teacher screen is main */
+.stream-feed-wrapper.docked-proctor-pip {
+  position: absolute;
+  top: 48px;
+  right: 12px;
+  width: 140px;
+  height: 90px;
+  z-index: 20;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  background: #0f172a;
+}
+
+/* ==========================================================================
+   YouTube-Style Closed Captions Overlay
+   ========================================================================== */
+
+.youtube-cc-cue-container {
+  position: absolute;
+  bottom: 54px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 0 20px;
+  pointer-events: none;
+  z-index: 35;
+  text-align: center;
+  transition: bottom 0.2s ease;
+}
+
+.mode-smallest .youtube-cc-cue-container {
+  bottom: 40px;
+  padding: 0 8px;
+  gap: 2px;
+}
+
+.youtube-cc-cue {
+  display: inline-block;
+  max-width: 92%;
+  text-align: center;
+}
+
+.youtube-cc-text {
+  display: inline;
+  background-color: rgba(8, 8, 8, 0.84);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  font-family: inherit;
+}
+
+.youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.92rem;
+  color: #e2e8f0;
+  opacity: 0.95;
+  background-color: rgba(15, 23, 42, 0.88);
+}
+
+.youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffe600;
+  background-color: rgba(8, 8, 8, 0.9);
+}
+
+/* Font Scales */
+.youtube-cc-cue-container.font-small .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 0.92rem;
+}
+.youtube-cc-cue-container.font-small .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.78rem;
+}
+
+.youtube-cc-cue-container.font-large .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.4rem;
+}
+.youtube-cc-cue-container.font-large .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 1.08rem;
+}
+
+/* Smallest screen mode scaled CC */
+.mode-smallest .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 0.82rem !important;
+  padding: 2px 6px;
+}
+.mode-smallest .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.70rem !important;
+  padding: 1px 4px;
+}
+
+/* ==========================================================================
+   YouTube-Style Player Bottom Control Bar
+   ========================================================================== */
+
+.yt-player-bottom-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  right: 10px;
+  min-height: 40px;
+  background: rgba(10, 15, 29, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 10px;
+  z-index: 40;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mode-smallest .yt-player-bottom-bar {
+  padding: 2px 6px;
+  min-height: 34px;
+}
+
+.yt-bar-left,
+.yt-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-smallest .yt-bar-left,
+.mode-smallest .yt-bar-right {
+  gap: 4px;
+}
+
+.yt-control-btn {
+  background: transparent;
+  color: #f1f5f9;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.yt-control-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* Classic YouTube CC Button */
+.yt-cc-btn {
+  padding: 2px 6px;
+}
+
+.yt-cc-badge {
+  display: inline-block;
+  border: 2px solid #94a3b8;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-family: monospace;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+}
+
+.yt-cc-btn.active .yt-cc-badge {
+  border-color: #ef4444;
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+/* Language Selector */
+.yt-lang-select {
+  background: rgba(30, 41, 59, 0.9);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.yt-lang-select:focus {
+  border-color: #4f46e5;
+}
+
+.yt-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.yt-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.yt-live-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  letter-spacing: 0.5px;
+}
+
+/* Screen Mode Group Buttons */
+.yt-screen-mode-group {
+  display: flex;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.yt-mode-btn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.yt-mode-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.yt-mode-btn.active {
+  background: #4f46e5;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* Settings Popover */
+.yt-settings-wrapper {
+  position: relative;
+}
+
+.yt-settings-popover {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.yt-popover-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yt-popover-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yt-popover-options {
+  display: flex;
+  gap: 4px;
+}
+
+.yt-opt-btn {
+  flex: 1;
+  background: #1e293b;
+  color: #cbd5e1;
+  border: 1px solid #334155;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.yt-opt-btn:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+.yt-opt-btn.active {
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #6366f1;
+}
+
+/* ==========================================================================
+   Sidebar Tabs & Live Transcript Stream
+   ========================================================================== */
+
+.sidebar-tabs-nav {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.sidebar-tab-btn {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sidebar-tab-btn:hover {
+  color: #0f172a;
+}
+
+.sidebar-tab-btn.active {
+  background: #ffffff;
+  color: #4f46e5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+}
+
+.sidebar-tab-panel {
+  width: 100%;
+}
+
+.transcript-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.transcript-panel-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+}
+
+.transcript-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+
+.transcript-count-badge {
+  font-size: 0.72rem;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.transcript-scroll-area {
+  max-height: 440px;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.transcript-empty-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  text-align: center;
+  color: #64748b;
+  gap: 6px;
+}
+
+.transcript-empty-placeholder .placeholder-icon {
+  font-size: 2rem;
+  opacity: 0.7;
+}
+
+.transcript-empty-placeholder .placeholder-text {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: #334155;
+  margin: 0;
+}
+
+.transcript-empty-placeholder .placeholder-subtext {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.transcript-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+}
+
+.transcript-entry.current-inflight {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  animation: transcript-pulse 2s infinite alternate;
+}
+
+@keyframes transcript-pulse {
+  0% { border-color: #bbf7d0; }
+  100% { border-color: #4ade80; }
+}
+
+.transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.transcript-original-bubble {
+  color: #334155;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.transcript-translation-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.transcript-badge-lang {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  background: #e0e7ff;
+  color: #4338ca;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.transcript-translation-text.highlight {
+  color: #b45309;
+}
+
+
 

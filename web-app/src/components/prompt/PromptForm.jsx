@@ -108,6 +108,50 @@ const PromptForm = ({
                     />
                     On-Device Gemma Voice Intent
                     </label>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Live Subtitles & Translation" 
+                        checked={applyTo.includes('Live Subtitles & Translation')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Live Subtitles & Translation
+                    </label>
+                </>
+            )}
+            {activeTab === 'translations' && (
+                <>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Live Subtitles & Translation" 
+                        checked={applyTo.includes('Live Subtitles & Translation')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Live Subtitles & Translation (Real-Time Spoken Lecture)
+                    </label>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Code-Switching Lectures" 
+                        checked={applyTo.includes('Code-Switching Lectures')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Cantonese-English Code-Switching
+                    </label>
+                    <label>
+                    <input 
+                        type="checkbox" 
+                        value="Technical Discipline Glossary" 
+                        checked={applyTo.includes('Technical Discipline Glossary')} 
+                        onChange={handleApplyToChange} 
+                        disabled={isPublic}
+                    />
+                    Technical Discipline Glossary Preservation
+                    </label>
                 </>
             )}
         </div>

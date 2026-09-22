@@ -144,6 +144,15 @@ describe('TeacherView Component', () => {
     await waitFor(() => {
       expect(screen.queryByPlaceholderText(/e.g. it114115/i)).not.toBeInTheDocument();
     });
+
+    const { setDoc } = await import('firebase/firestore');
+    expect(setDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        automaticCapture: true,
+        automaticCombine: true,
+      })
+    );
   });
 
   it('allows clearing search when no classes match', async () => {

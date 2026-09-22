@@ -1,0 +1,1043 @@
+/* ==========================================================================
+   StudentMobileView.css
+   Modern, responsive Mobile Student Companion View.
+   Features 3 dedicated mobile viewing modes:
+     1. 'overlay': Fullscreen slide with floating overlapping CC
+     2. 'slide':   Pure fullscreen slide (distraction-free)
+     3. 'cc':      Dedicated full-page subtitle & translation reader
+   Includes floating bottom dock and high-priority Bingo bottom sheet.
+   ========================================================================== */
+
+:root {
+  --mob-bg-primary: #0a0f1d;
+  --mob-bg-surface: #131c31;
+  --mob-bg-surface-elevated: #1e293b;
+  --mob-border: #2e3d5b;
+  --mob-text-primary: #f8fafc;
+  --mob-text-muted: #94a3b8;
+  --mob-accent-primary: #3b82f6;
+  --mob-accent-teal: #10b981;
+  --mob-accent-purple: #8b5cf6;
+  --mob-accent-amber: #f59e0b;
+  --mob-accent-red: #ef4444;
+  --mob-radius-sm: 8px;
+  --mob-radius-md: 12px;
+  --mob-radius-lg: 16px;
+  --mob-radius-full: 9999px;
+  --mob-safe-top: env(safe-area-inset-top, 0px);
+  --mob-safe-bottom: env(safe-area-inset-bottom, 12px);
+}
+
+/* ==========================================================================
+   1. Root Layout (Fixed 100dvh Viewport)
+   ========================================================================== */
+
+.student-mobile-layout {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  background-color: var(--mob-bg-primary);
+  color: var(--mob-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Landscape Fullscreen Mode & Native Fullscreen */
+.student-mobile-layout.landscape-fullscreen .mobile-header,
+.student-mobile-layout.landscape-fullscreen .mobile-dock,
+.student-mobile-layout:fullscreen .mobile-header,
+.student-mobile-layout:fullscreen .mobile-dock {
+  display: none !important;
+}
+
+/* ==========================================================================
+   2. Compact Mobile Header
+   ========================================================================== */
+
+.mobile-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 12px;
+  padding-top: calc(var(--mob-safe-top) + 6px);
+  padding-bottom: 6px;
+  background: rgba(19, 28, 49, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--mob-border);
+  z-index: 50;
+  height: 48px;
+  box-sizing: content-box;
+}
+
+.mobile-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-brand-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.mobile-title-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mobile-class-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.mobile-class-select {
+  background: var(--mob-bg-surface-elevated);
+  color: #fff;
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-sm);
+  padding: 3px 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  max-width: 170px;
+  outline: none;
+}
+
+.mobile-user-email {
+  font-size: 0.70rem;
+  color: var(--mob-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.mobile-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-switch-desktop-btn {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: var(--mob-radius-sm);
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mobile-records-nav-btn {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: var(--mob-radius-sm);
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.mobile-records-nav-btn:hover {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+
+.mobile-logout-btn {
+  background: var(--mob-bg-surface-elevated);
+  color: var(--mob-text-muted);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* ==========================================================================
+   3. Main Viewport Container
+   ========================================================================== */
+
+.mobile-main-viewport {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ==========================================================================
+   4. Mode 1 & Mode 2: Fullscreen Slide Viewer
+   ========================================================================== */
+
+.mobile-screen-section {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  overflow: hidden;
+}
+
+.mobile-screen-box {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-live-screen-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform 0.1s ease-out;
+  will-change: transform;
+}
+
+.mobile-screen-box.is-zoomed {
+  cursor: grab;
+}
+
+.mobile-screen-box.is-zoomed:active {
+  cursor: grabbing;
+}
+
+/* Empty Stream Placeholder */
+.mobile-screen-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--mob-text-muted);
+}
+
+.empty-screen-icon {
+  font-size: 3rem;
+  opacity: 0.6;
+}
+
+.empty-screen-text {
+  font-size: 0.92rem;
+  max-width: 260px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.mobile-stream-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-full);
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.pill-dot.dot-active {
+  background-color: var(--mob-accent-teal);
+  box-shadow: 0 0 8px var(--mob-accent-teal);
+}
+
+.pill-dot.dot-idle {
+  background-color: #64748b;
+}
+
+/* Slide Overlay Controls (Top Floating Pill) */
+.mobile-screen-overlay-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.stream-badge-info {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--mob-radius-full);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--mob-accent-red);
+  box-shadow: 0 0 6px var(--mob-accent-red);
+}
+
+.res-tag {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+}
+
+.zoom-actions {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-overlay-btn {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--mob-radius-sm);
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   5. Floating Overlapping CC Card (Mode: 'overlay')
+   ========================================================================== */
+
+/* ==========================================================================
+   5. YouTube-Style Live Closed Captions Cue Overlay & Slim Player Control Bar
+   ========================================================================== */
+
+/* YouTube-Style Floating Closed Captions (Directly over screen) */
+.youtube-cc-cue-container {
+  position: absolute;
+  bottom: 50px; /* Sits right above the slim player bottom bar */
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 16px;
+  pointer-events: none;
+  z-index: 30;
+  text-align: center;
+  transition: bottom 0.2s ease;
+}
+
+.youtube-cc-cue {
+  display: inline-block;
+  max-width: 95%;
+  text-align: center;
+}
+
+.youtube-cc-text {
+  display: inline;
+  background-color: rgba(8, 8, 8, 0.82);
+  color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 3px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  font-family: inherit;
+}
+
+.youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.84rem;
+  color: #e2e8f0;
+  opacity: 0.92;
+  background-color: rgba(15, 23, 42, 0.85);
+}
+
+.youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ffe600; /* YouTube bright caption yellow */
+  background-color: rgba(8, 8, 8, 0.88);
+}
+
+/* Font scale classes */
+.youtube-cc-cue-container.font-small .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 0.90rem;
+}
+.youtube-cc-cue-container.font-small .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.76rem;
+}
+
+.youtube-cc-cue-container.font-large .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.25rem;
+}
+.youtube-cc-cue-container.font-large .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.95rem;
+}
+
+/* YouTube-Style Player Bottom Control Bar */
+.yt-player-bottom-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  min-height: 36px;
+  background: rgba(10, 15, 29, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px;
+  z-index: 28;
+  pointer-events: auto;
+  gap: 8px;
+}
+
+.yt-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.yt-bar-left::-webkit-scrollbar {
+  display: none;
+}
+
+.yt-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* YouTube Player Control Buttons */
+.yt-control-btn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.yt-control-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* YouTube Iconic CC Button */
+.yt-cc-btn {
+  padding: 3px 6px;
+}
+
+.yt-cc-badge {
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  padding: 2px 4px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.yt-cc-btn.active {
+  color: #ffffff;
+}
+
+.yt-cc-btn.active .yt-cc-badge {
+  background: #ffffff;
+  color: #0b0f19;
+  border-color: #ffffff;
+}
+
+.yt-cc-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 1px;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: #ef4444; /* YouTube red CC active indicator */
+  border-radius: 1px;
+}
+
+/* Dynamic Language Pills */
+.yt-lang-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.yt-lang-chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.yt-lang-chip.active {
+  background: var(--mob-accent-blue);
+  color: #fff;
+  border-color: var(--mob-accent-blue);
+  font-weight: 700;
+}
+
+/* TTS & Mode Buttons */
+.yt-tts-btn.active {
+  color: var(--mob-accent-teal);
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.yt-mode-btn,
+.yt-font-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 7px;
+  font-size: 0.70rem;
+}
+
+/* ==========================================================================
+   6. Mode 3: Dedicated CC Reader Mode
+   ========================================================================== */
+
+.mobile-subtitles-section.dedicated-reader {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--mob-bg-primary);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+/* Alert Banner in CC Reader if Teacher Screen is Active */
+.cc-reader-slide-alert {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(16, 185, 129, 0.25));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: var(--mob-radius-md);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.cc-reader-slide-alert .alert-icon {
+  font-size: 1.2rem;
+}
+
+.cc-reader-slide-alert .alert-text {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+  margin-inline: 8px;
+}
+
+.cc-reader-slide-alert .alert-action {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #60a5fa;
+}
+
+/* Subtitles Toolbar */
+.subtitles-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subtitles-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--mob-bg-surface-elevated);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-full);
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.cc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cc-dot.cc-active {
+  background-color: var(--mob-accent-teal);
+  box-shadow: 0 0 8px var(--mob-accent-teal);
+}
+
+.cc-dot.cc-inactive {
+  background-color: #64748b;
+}
+
+.subtitles-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tts-toggle-btn {
+  background: var(--mob-bg-surface-elevated);
+  color: var(--mob-text-primary);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-sm);
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tts-toggle-btn.active {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: var(--mob-accent-teal);
+  color: #34d399;
+}
+
+/* Font Size Buttons */
+.font-size-group {
+  display: inline-flex;
+  background: var(--mob-bg-surface-elevated);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-sm);
+  overflow: hidden;
+}
+
+.font-btn {
+  background: transparent;
+  color: var(--mob-text-muted);
+  border: none;
+  padding: 5px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 30px;
+}
+
+.font-btn.active {
+  background: var(--mob-accent-primary);
+  color: #ffffff;
+}
+
+/* Language Chips Scroll */
+.lang-chip-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.lang-chip-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.lang-chip {
+  flex-shrink: 0;
+  background: var(--mob-bg-surface-elevated);
+  color: var(--mob-text-muted);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-full);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lang-chip.chip-active {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: var(--mob-accent-primary);
+  color: #93c5fd;
+}
+
+/* Dedicated Subtitles Display Card */
+.subtitles-display-card {
+  background: var(--mob-bg-surface);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subtitles-original-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lang-tag {
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: var(--mob-text-muted);
+  text-transform: uppercase;
+}
+
+.lang-tag.highlight {
+  color: var(--mob-accent-primary);
+}
+
+.original-text {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.subtitles-translation-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.translated-text {
+  margin: 0;
+  font-weight: 700;
+  color: #38bdf8;
+  line-height: 1.4;
+}
+
+/* Font Size Scales */
+.font-small .original-text { font-size: 0.85rem; }
+.font-small .translated-text { font-size: 1.00rem; }
+.font-medium .original-text { font-size: 0.95rem; }
+.font-medium .translated-text { font-size: 1.15rem; }
+.font-large .original-text { font-size: 1.05rem; }
+.font-large .translated-text { font-size: 1.35rem; }
+
+.subtitles-idle-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--mob-text-muted);
+}
+
+.idle-cc-icon {
+  font-size: 2rem;
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+
+/* CC History Section in Reader Mode */
+.cc-history-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.history-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mob-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.history-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-card {
+  background: var(--mob-bg-surface-elevated);
+  border: 1px solid var(--mob-border);
+  border-radius: var(--mob-radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-orig {
+  margin: 0;
+  font-size: 0.80rem;
+  color: #94a3b8;
+}
+
+.history-trans {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+/* ==========================================================================
+   7. Mobile Floating Bottom Dock (Segmented 3-Mode Controller)
+   ========================================================================== */
+
+.mobile-dock {
+  flex-shrink: 0;
+  height: 56px;
+  padding-bottom: var(--mob-safe-bottom);
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--mob-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-inline: 8px;
+  z-index: 50;
+  box-sizing: content-box;
+}
+
+.mobile-dock-btn {
+  flex: 1;
+  max-width: 120px;
+  height: 44px;
+  background: transparent;
+  color: var(--mob-text-muted);
+  border: none;
+  border-radius: var(--mob-radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.mobile-dock-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.dock-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.dock-label {
+  font-size: 0.70rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   8. Feature 3: Interactive Bingo Bottom Sheet Modal
+   Styles consolidated and encapsulated in BingoModal.css (.is-mobile)
+   ========================================================================== */
+
+/* ==========================================================================
+   Animations
+   ========================================================================== */
+
+@keyframes fadeInBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUpSheet {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes pulseTarget {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pulseUrgent {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* ==========================================================================
+   9. Landscape Mode & Rotation Adaptations
+   Optimizes screen space on phones rotated to landscape (height <= 550px)
+   ========================================================================== */
+@media (orientation: landscape) and (max-height: 550px),
+       (max-height: 500px) {
+  .student-mobile-layout {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .mobile-header {
+    height: 38px;
+    padding-top: max(var(--mob-safe-top), 2px);
+    padding-bottom: 2px;
+    padding-inline: 10px;
+  }
+
+  .mobile-brand-icon {
+    font-size: 1.05rem;
+  }
+
+  .mobile-class-title {
+    font-size: 0.82rem;
+    max-width: 140px;
+  }
+
+  .mobile-class-select {
+    padding: 2px 4px;
+    font-size: 0.76rem;
+    max-width: 140px;
+  }
+
+  .mobile-user-email {
+    display: none !important; /* Hide user email in landscape to free horizontal header space */
+  }
+
+  .mobile-switch-desktop-btn,
+  .mobile-records-nav-btn {
+    min-height: 28px;
+    padding: 2px 6px;
+    font-size: 0.70rem;
+    gap: 3px;
+  }
+
+  .mobile-logout-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.82rem;
+  }
+
+  .mobile-dock {
+    height: 42px;
+    padding-top: 2px;
+    padding-bottom: max(var(--mob-safe-bottom), 2px);
+  }
+
+  .mobile-dock-btn {
+    padding: 2px 4px;
+    gap: 2px;
+  }
+
+  .mobile-dock-btn .dock-icon {
+    font-size: 1.05rem;
+  }
+
+  .mobile-dock-btn .dock-label {
+    font-size: 0.65rem;
+  }
+
+  .mobile-screen-box {
+    height: 100%;
+  }
+
+  .mobile-live-screen-img {
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  .youtube-cc-cue-container {
+    bottom: 8px;
+  }
+
+  .youtube-cc-cue {
+    padding: 2px 8px;
+    font-size: 0.85rem;
+    max-width: 90%;
+  }
+
+  .mobile-subtitles-viewer {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+}
+

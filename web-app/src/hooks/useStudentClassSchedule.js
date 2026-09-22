@@ -5,6 +5,7 @@ import { db } from '../firebase-config';
 export const useStudentClassSchedule = (user) => {
   const [userClasses, setUserClasses] = useState([]);
   const [schedules, setSchedules] = useState({});
+  const [activeClassIds, setActiveClassIds] = useState([]);
   const [currentActiveClassId, setCurrentActiveClassId] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,11 +75,11 @@ export const useStudentClassSchedule = (user) => {
     fetchSchedules();
   }, [userClasses]);
 
-  // Step 3: Periodically check the schedules to determine the currently active class
+  // Step 3: Periodically check the schedules to determine the currently active class(es)
   useEffect(() => {
     const determineActiveClass = () => {
       const now = new Date();
-      let activeClass = null;
+      const matchedClasses = [];
 
       for (const classId in schedules) {
         const schedule = schedules[classId];
@@ -121,27 +122,29 @@ export const useStudentClassSchedule = (user) => {
             for (const slot of timeSlots) {
                 if (slot.days.includes(currentDay)) {
                     const { startTime, endTime } = slot;
+                    let matchesSlot = false;
                     // Overnight slot
                     if (startTime > endTime) {
                         if (currentTime >= startTime || currentTime < endTime) {
-                            activeClass = classId;
-                            break;
+                            matchesSlot = true;
                         }
                     } else { // Same day slot
                         if (currentTime >= startTime && currentTime < endTime) {
-                            activeClass = classId;
-                            break;
+                            matchesSlot = true;
                         }
+                    }
+                    if (matchesSlot) {
+                        matchedClasses.push(classId);
+                        break;
                     }
                 }
             }
         } catch (e) {
             console.error(`Invalid timezone identifier: '${timeZone}' for class ${classId}`, e);
         }
-        if (activeClass) break;
       }
-      // console.log('useStudentClassSchedule: Determined active class:', activeClass);
-      setCurrentActiveClassId(activeClass);
+      setActiveClassIds(matchedClasses);
+      setCurrentActiveClassId(matchedClasses.length > 0 ? matchedClasses[0] : null);
     };
 
     // Run check immediately and then every 30 seconds
@@ -151,5 +154,5 @@ export const useStudentClassSchedule = (user) => {
     return () => clearInterval(interval);
   }, [schedules]);
 
-  return { userClasses, currentActiveClassId, loading };
+  return { userClasses, currentActiveClassId, activeClassIds, schedules, loading };
 };

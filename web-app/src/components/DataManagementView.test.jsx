@@ -144,7 +144,7 @@ describe('DataManagementView Component', () => {
       />
     );
 
-    const deleteBtn = screen.getByRole('button', { name: /Delete Screenshots in Range/i });
+    const deleteBtn = screen.getByRole('button', { name: /Delete (Session Data|Screenshots)/i });
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
@@ -206,7 +206,7 @@ describe('DataManagementView Component', () => {
       />
     );
 
-    const deleteBtn = screen.getByRole('button', { name: /Delete Screenshots in Range/i });
+    const deleteBtn = screen.getByRole('button', { name: /Delete (Session Data|Screenshots)/i });
     fireEvent.click(deleteBtn);
     expect(window.alert).toHaveBeenCalledWith('Please select a start and end date.');
 
@@ -223,5 +223,35 @@ describe('DataManagementView Component', () => {
     );
     fireEvent.click(deleteBtn);
     expect(mockDeleteScreenshotsByDateRange).not.toHaveBeenCalled();
+  });
+
+  it('handles error in date range deletion callable and download zip URL failure', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockDeleteScreenshotsByDateRange.mockRejectedValueOnce(new Error('Cloud function execution timeout'));
+    mockGetDownloadURL.mockRejectedValueOnce(new Error('Access denied to storage object'));
+
+    render(
+      <DataManagementView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete (Session Data|Screenshots)/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('An error occurred: Cloud function execution timeout'));
+    });
+
+    const downloadBtn = screen.getByRole('button', { name: /^Download$/i });
+    fireEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to get download link: Access denied to storage object'));
+    });
   });
 });

@@ -14,7 +14,12 @@ const PromptList = ({
 }) => {
 
   const filteredPrompts = prompts
-    .filter(p => p.category === activeTab)
+    .filter(p => {
+      if (activeTab === 'translations') {
+        return p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation');
+      }
+      return p.category === activeTab;
+    })
     .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -24,6 +29,7 @@ const PromptList = ({
             <button onClick={() => setActiveTab('images')} className={activeTab === 'images' ? 'active' : ''}>Image Prompts</button>
             <button onClick={() => setActiveTab('videos')} className={activeTab === 'videos' ? 'active' : ''}>Video Prompts</button>
             <button onClick={() => setActiveTab('audios')} className={activeTab === 'audios' ? 'active' : ''}>Voice / Audio Prompts</button>
+            <button onClick={() => setActiveTab('translations')} className={activeTab === 'translations' ? 'active' : ''}>Translation Prompts</button>
         </div>
         <input 
             type="text" 

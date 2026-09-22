@@ -5,6 +5,7 @@ import { exportToJson, exportToText, exportToCsv } from '../utils/exportUtils';
 
 const JobResultModal = ({ show, onClose, job }) => {
   const [copied, setCopied] = useState(false);
+  const [wordWrap, setWordWrap] = useState(true);
 
   if (!job) return null;
 
@@ -118,9 +119,25 @@ const JobResultModal = ({ show, onClose, job }) => {
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)' }}>
-                  Analysis Output (JSON):
+                  {isObject ? 'Analysis Output (JSON):' : 'Analysis Output:'}
                 </span>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setWordWrap(!wordWrap)}
+                    title={wordWrap ? "Disable word wrap" : "Enable word wrap"}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '0.8rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border, #cbd5e1)',
+                      background: wordWrap ? '#e0f2fe' : '#ffffff',
+                      color: wordWrap ? '#0369a1' : '#0f172a',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {wordWrap ? '↩ Wrap: ON' : '➡ Wrap: OFF'}
+                  </button>
                   <button
                     onClick={handleDownloadCsv}
                     title="Download structured findings CSV"
@@ -211,7 +228,11 @@ const JobResultModal = ({ show, onClose, job }) => {
                 color: '#f8fafc',
                 fontSize: '0.82rem',
                 fontFamily: 'monospace',
-                overflow: 'auto',
+                overflowX: wordWrap ? 'hidden' : 'auto',
+                overflowY: 'auto',
+                whiteSpace: wordWrap ? 'pre-wrap' : 'pre',
+                wordBreak: wordWrap ? 'break-word' : 'normal',
+                overflowWrap: wordWrap ? 'anywhere' : 'normal',
                 lineHeight: 1.5,
               }}>
                 {jsonString}

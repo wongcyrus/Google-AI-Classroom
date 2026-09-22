@@ -1,13 +1,72 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import ControlsPanel from './ControlsPanel';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
 
 vi.mock('../AiCostReportView', () => ({
   default: () => <div>Mocked AI Cost Breakdown & Audit</div>,
 }));
 
+const mockUpdateDoc = vi.fn().mockResolvedValue({});
+const mockSetDoc = vi.fn().mockResolvedValue({});
+const mockTriggerBingo = vi.fn().mockResolvedValue({ data: { createdCount: 5 } });
+const mockCancelActiveBingo = vi.fn().mockResolvedValue({});
+
+vi.mock('../../firebase-config', () => ({
+  auth: { currentUser: { uid: 'teacher_1', email: 'teacher@school.edu' } },
+  db: {},
+  functions: {},
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn((db, col, id, ...rest) => ({ path: `${col}/${id}${rest.length ? '/' + rest.join('/') : ''}` })),
+  getDoc: vi.fn().mockResolvedValue({
+    exists: () => true,
+    data: () => ({
+      bingoRetryDelayMinutes: 3,
+      bingoTimeLimitSeconds: 30,
+      autoBingoEnabled: true,
+      autoBingoIntervalMinutes: 5,
+      autoBingoMode: 'teacher_screen',
+      bingoQuestionBank: [{ question: 'Sample Q', options: ['A', 'B'], correctIndex: 0 }],
+    }),
+  }),
+  updateDoc: (...args) => mockUpdateDoc(...args),
+  setDoc: (...args) => mockSetDoc(...args),
+  serverTimestamp: vi.fn(),
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn((functions, name) => {
+    if (name === 'triggerBingoCheck') return mockTriggerBingo;
+    if (name === 'cancelActiveBingo') return mockCancelActiveBingo;
+    return vi.fn().mockResolvedValue({});
+  }),
+}));
+
+vi.mock('../BingoQuestionBankModal', () => ({
+  default: ({ isOpen, onClose, onSaveBank }) => (
+    isOpen ? (
+      <div data-testid="mock-bingo-question-bank-modal">
+        <h3>🎯 Bingo Predefined Question Bank</h3>
+        <button aria-label="Close" onClick={onClose}>Close</button>
+        <button onClick={() => onSaveBank && onSaveBank([{ question: 'Updated Q', options: ['1', '2'], correctIndex: 0 }])}>
+          Save Question Bank
+        </button>
+      </div>
+    ) : null
+  ),
+}));
+
 describe('ControlsPanel Full Component Suite', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   const defaultProps = {
     message: '',
     setMessage: vi.fn(),
@@ -528,4 +587,310 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.change(delaySelect, { target: { value: '5' } });
     expect(delaySelect.value).toBe('5');
   });
+
+  it('renders Auto-Bingo slider with 1 to 30 min range and allows sliding to 1 min fast test', () => {
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="CLASS_TEST_101"
+      />
+    );
+
+    // Toggle Auto-Bingo enabled
+    const toggleCheckbox = screen.getByRole('checkbox', { name: /Auto-Dispatch Bingo/i });
+    fireEvent.click(toggleCheckbox);
+
+    // Verify range slider appears with min 5 and max 30
+    const slider = screen.getByLabelText(/Auto-Bingo Dispatch Interval in Minutes/i);
+    expect(slider).toBeInTheDocument();
+    expect(slider.min).toBe('5');
+    expect(slider.max).toBe('30');
+
+    // Change slider to 5 minutes
+    fireEvent.change(slider, { target: { value: '5' } });
+    expect(slider.value).toBe('5');
+    expect(screen.getByText(/5 mins \(Min\)/i)).toBeInTheDocument();
+
+    // Verify student answer time limit select is rendered with default 30s
+    const timeLimitSelect = screen.getByLabelText(/Student Bingo Answer Time Limit/i);
+    expect(timeLimitSelect).toBeInTheDocument();
+    expect(timeLimitSelect.value).toBe('30');
+  });
+
+  it('does not render View Bingo Report button in ControlsPanel to avoid button clutter', () => {
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="CLASS_TEST_101"
+      />
+    );
+
+    const viewReportBtn = screen.queryByRole('button', { name: /View Bingo Report/i });
+    expect(viewReportBtn).not.toBeInTheDocument();
+  });
+
+  it('opens and closes Bingo Question Bank modal', () => {
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="CLASS_TEST_101"
+      />
+    );
+
+    const qbBtn = screen.getByRole('button', { name: /Question Bank/i });
+    fireEvent.click(qbBtn);
+
+    expect(screen.getByText(/Bingo Predefined Question Bank/i)).toBeInTheDocument();
+
+    const closeBtn = screen.getByLabelText('Close');
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByText(/Bingo Predefined Question Bank/i)).not.toBeInTheDocument();
+  });
+
+  it('handles vision prompt filtering, template selection, single run all-images check, and cancel modal', () => {
+    const handleRunAllImagesAnalysis = vi.fn();
+    const setEditablePromptText = vi.fn();
+    const setPromptFilter = vi.fn();
+    const setSelectedPrompt = vi.fn();
+    const mockPrompts = [
+      { id: 'p_vis_1', name: 'Check Cellphones', promptText: 'Find smartphone usage on desks', accessLevel: 'public' },
+    ];
+
+    const handleRunAnalysis = vi.fn();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        prompts={mockPrompts}
+        filteredPrompts={mockPrompts}
+        handleRunAnalysis={handleRunAnalysis}
+        handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
+        setEditablePromptText={setEditablePromptText}
+        setPromptFilter={setPromptFilter}
+        setSelectedPrompt={setSelectedPrompt}
+      />
+    );
+
+    // Open AI Suite Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // Switch to Screen & Vision tab
+    const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
+    fireEvent.click(screenTabBtn);
+
+    // Filter radio
+    const publicRadio = screen.getByLabelText(/public/i);
+    fireEvent.click(publicRadio);
+    expect(setPromptFilter).toHaveBeenCalledWith('public');
+
+    // Select vision prompt template
+    const promptSelect = screen.getByDisplayValue(/Select a prompt template.../i);
+    fireEvent.change(promptSelect, { target: { value: 'p_vis_1' } });
+    expect(setSelectedPrompt).toHaveBeenCalledWith(mockPrompts[0]);
+
+    // Click Run Single All-Images Check
+    const runSingleBtn = screen.getByRole('button', { name: /Run Single All-Images Check/i });
+    fireEvent.click(runSingleBtn);
+    expect(handleRunAllImagesAnalysis).toHaveBeenCalled();
+    expect(setEditablePromptText).toHaveBeenCalled();
+
+    // Reopen and run single per-image check
+    fireEvent.click(configBtn);
+    fireEvent.click(screenTabBtn);
+    const runPerImageBtn = screen.getByRole('button', { name: /Run Single Per-Image Check/i });
+    fireEvent.click(runPerImageBtn);
+    expect(handleRunAnalysis).toHaveBeenCalled();
+
+    // Reopen and cancel
+    fireEvent.click(configBtn);
+    const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
+    fireEvent.click(cancelBtn);
+    expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
+  });
+
+  it('manages Bingo Presence Check settings, triggers manual call, and updates question bank', async () => {
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+      />
+    );
+
+    // Initial render should show Bingo Presence Check
+    expect(await screen.findByText(/Bingo Presence Check/i)).toBeInTheDocument();
+
+    // Wait for Firestore initial data to be loaded into state
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Auto-Dispatch Bingo/i)).toBeChecked();
+    });
+    mockUpdateDoc.mockClear();
+
+    // 1. Switch question source mode to student screens
+    const studentScreensRadio = screen.getByDisplayValue('student_screen');
+    fireEvent.click(studentScreensRadio);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { autoBingoMode: 'student_screen' }
+    );
+
+    // Switch mode to question bank
+    const qBankRadio = screen.getByDisplayValue('question_bank');
+    fireEvent.click(qBankRadio);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { autoBingoMode: 'question_bank' }
+    );
+
+    // 2. Trigger manual Bingo dispatch
+    const callBingoBtn = screen.getByRole('button', { name: /Call Bingo \(All Students\)/i });
+    fireEvent.click(callBingoBtn);
+    expect(mockTriggerBingo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'class-test-101',
+        targetStudentUid: 'all',
+        triggerType: 'teacher_manual_all',
+      })
+    );
+
+    // 3. Update Strike 2 Grace Delay select
+    const graceDelaySelect = screen.getByLabelText(/Strike 2 Grace Delay/i);
+    fireEvent.change(graceDelaySelect, { target: { value: '5' } });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { bingoRetryDelayMinutes: 5 }
+    );
+
+    // 4. Toggle Auto-Dispatch Bingo
+    const autoBingoCheckbox = screen.getByLabelText(/Auto-Dispatch Bingo/i);
+    // Uncheck to turn off (should invoke cancelActiveBingo)
+    fireEvent.click(autoBingoCheckbox);
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/class-test-101' }),
+        { autoBingoEnabled: false }
+      );
+      expect(mockCancelActiveBingo).toHaveBeenCalledWith({ classId: 'class-test-101' });
+    });
+
+    // Turn back on
+    fireEvent.click(autoBingoCheckbox);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { autoBingoEnabled: true }
+    );
+
+    // 5. Adjust interval slider and time limit select
+    const intervalSlider = screen.getByLabelText(/Auto-Dispatch Interval/i);
+    fireEvent.change(intervalSlider, { target: { value: '10' } });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { autoBingoIntervalMinutes: 10 }
+    );
+
+    const timeLimitSelect = screen.getByLabelText(/Student Bingo Answer Time Limit/i);
+    fireEvent.change(timeLimitSelect, { target: { value: '60' } });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101' }),
+      { bingoTimeLimitSeconds: 60 }
+    );
+
+    // 6. Open Question Bank modal and save bank
+    const qBankBtn = screen.getByRole('button', { name: /Question Bank/i });
+    fireEvent.click(qBankBtn);
+    expect(screen.getByTestId('mock-bingo-question-bank-modal')).toBeInTheDocument();
+
+    const saveBankBtn = screen.getByText('Save Question Bank');
+    fireEvent.click(saveBankBtn);
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class-test-101/classProperties/config' }),
+      expect.objectContaining({ bingoQuestionBank: expect.any(Array) }),
+      { merge: true }
+    );
+
+    const closeBankBtn = screen.getByRole('button', { name: 'Close' });
+    fireEvent.click(closeBankBtn);
+    expect(screen.queryByTestId('mock-bingo-question-bank-modal')).not.toBeInTheDocument();
+  });
+
+  it('configures Voice & Speech AI parameters inside AI Suite modal and applies settings', async () => {
+    const handleSaveAiSettings = vi.fn();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        handleSaveAiSettings={handleSaveAiSettings}
+        audioPrompts={[
+          { id: 'ap_1', name: 'Engagement Tag', promptText: 'Evaluate classroom engagement', accessLevel: 'public' },
+          { id: 'ap_2', name: 'Private Prompt', promptText: 'Private instructions', accessLevel: 'private' },
+          { id: 'ap_3', name: 'Shared Prompt', promptText: 'Shared instructions', accessLevel: 'shared' },
+        ]}
+      />
+    );
+
+    // Open AI Suite Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // Switch to Voice & Speech tab
+    const voiceTabBtn = screen.getByRole('button', { name: /Voice & Speech/i });
+    fireEvent.click(voiceTabBtn);
+
+    // Verify Voice tab controls are visible
+    expect(screen.getByText(/Voice AI Monitoring Mode:/i)).toBeInTheDocument();
+
+    // Change speech language
+    const langSelect = screen.getByDisplayValue(/粵語/i);
+    fireEvent.change(langSelect, { target: { value: 'en-US' } });
+
+    // Change moving window stride select
+    const strideSelect = screen.getByDisplayValue(/15s \(Default Balanced\)/i);
+    fireEvent.change(strideSelect, { target: { value: '10' } });
+
+    // Toggle silence suppression
+    const suppressionCheckbox = screen.getByLabelText(/Silence Suppression \(VAD Gating\)/i);
+    fireEvent.click(suppressionCheckbox);
+
+    // Test filter radio buttons
+    const publicRadio = document.querySelector('input[name="modalVoicePromptFilter"][value="public"]');
+    fireEvent.click(publicRadio);
+    const privateRadio = document.querySelector('input[name="modalVoicePromptFilter"][value="private"]');
+    fireEvent.click(privateRadio);
+    const sharedRadio = document.querySelector('input[name="modalVoicePromptFilter"][value="shared"]');
+    fireEvent.click(sharedRadio);
+    const allRadio = document.querySelector('input[name="modalVoicePromptFilter"][value="all"]');
+    fireEvent.click(allRadio);
+
+    // Select voice prompt template and click a placeholder chip
+    const voicePromptSelect = screen.getByDisplayValue(/-- Select a voice\/audio prompt template --/i);
+    fireEvent.change(voicePromptSelect, { target: { value: 'ap_1' } });
+    const chipBtn = screen.getByRole('button', { name: '+ {{transcript}}' });
+    fireEvent.click(chipBtn);
+
+    const classIdChip = screen.getByRole('button', { name: '+ {{classId}}' });
+    fireEvent.click(classIdChip);
+
+    // Edit textarea
+    const voiceTextarea = screen.getByPlaceholderText(/Select a voice prompt template or write custom instructions/i);
+    fireEvent.change(voiceTextarea, { target: { value: 'Custom instructions text' } });
+
+    // Switch to Screen & Vision tab
+    const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
+    fireEvent.click(screenTabBtn);
+
+    // Change Gemini Vision Model
+    const visionModelSelect = screen.getByDisplayValue(/Gemini 3.5 Flash-Lite/i);
+    fireEvent.change(visionModelSelect, { target: { value: 'gemini-3.7-flash' } });
+
+    // Select preset sampling rate button (e.g. 5r)
+    const preset5Btn = screen.getByRole('button', { name: /5r/i });
+    fireEvent.click(preset5Btn);
+
+    // Save & Apply
+    const saveApplyBtn = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    fireEvent.click(saveApplyBtn);
+
+    expect(handleSaveAiSettings).toHaveBeenCalled();
+  });
 });
+

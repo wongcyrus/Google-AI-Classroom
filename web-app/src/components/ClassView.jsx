@@ -20,6 +20,8 @@ import AttendanceView from './AttendanceView';
 import PerformanceAnalyticsView from './PerformanceAnalyticsView';
 import AiCostReportView from './AiCostReportView';
 import ClassManagement from './ClassManagement';
+import BingoResultsView from './BingoResultsView';
+import LectureRecordingsView from './LectureRecordingsView';
 
 import './ClassView.css';
 
@@ -105,7 +107,7 @@ const ClassView = ({ user }) => {
     const profileRef = doc(db, 'teacherProfiles', user.uid);
     getDoc(profileRef).then(async (snap) => {
       if (snap.exists()) {
-        const classIds = snap.data().classes || [];
+        const classIds = [...new Set(snap.data().classes || [])];
         const snaps = await Promise.all(classIds.map(id => getDoc(doc(db, 'classes', id))));
         const list = snaps.map(s => ({ id: s.id, name: s.data()?.name || s.id }));
         list.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
@@ -141,6 +143,7 @@ const ClassView = ({ user }) => {
     switch (mainTab) {
       case 'video':
         switch (subTab) {
+          case 'recordings': return <LectureRecordingsView classId={classId} user={user} />;
           case 'library': return <VideoLibrary {...props} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
@@ -160,6 +163,12 @@ const ClassView = ({ user }) => {
               students={Object.entries(classInfo?.students || {}).map(([uid, email]) => ({ uid, email }))}
             />
           );
+          case 'bingo': return (
+            <BingoResultsView
+              {...props}
+              className={classInfo?.name || classId}
+            />
+          );
           default: return <IrregularitiesView {...props} />;
         }
       case 'messages':
@@ -173,7 +182,7 @@ const ClassView = ({ user }) => {
     }
   };
 
-  const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab);
+  const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab) && subTab !== 'recordings';
 
   return (
     <div className="class-view">
@@ -201,8 +210,8 @@ const ClassView = ({ user }) => {
               onChange={handleClassSwitch}
               className="class-switcher-select"
             >
-              {teacherClasses.map(c => (
-                <option key={c.id} value={c.id}>
+              {teacherClasses.map((c, idx) => (
+                <option key={`${c.id}-${idx}`} value={c.id}>
                   {c.name ? `${c.name} (${c.id})` : c.id}
                 </option>
               ))}
@@ -260,7 +269,13 @@ const ClassView = ({ user }) => {
       {mainTab === 'video' && (
         <nav className="sub-tab-nav" aria-label="Video Sub-sections">
           <button
-            className={`tab-button ${subTab === 'library' ? 'active' : ''}`}
+            className={`tab-button ${subTab === 'recordings' ? 'active' : ''}`}
+            onClick={() => setSub('recordings')}
+          >
+            <span>🎥</span> Teacher Lecture Recordings
+          </button>
+          <button
+            className={`tab-button ${subTab === 'library' || (!subTab || subTab === 'default') ? 'active' : ''}`}
             onClick={() => setSub('library')}
           >
             <span>📁</span> Video Library
@@ -306,6 +321,12 @@ const ClassView = ({ user }) => {
             onClick={() => setSub('performance')}
           >
             <span>🎯</span> Performance Metrics
+          </button>
+          <button
+            className={`tab-button ${subTab === 'bingo' ? 'active' : ''}`}
+            onClick={() => setSub('bingo')}
+          >
+            <span>🎲</span> Bingo Presence Report
           </button>
           <button
             className={`tab-button ${subTab === 'ai-cost' ? 'active' : ''}`}

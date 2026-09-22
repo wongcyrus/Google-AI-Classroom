@@ -24,6 +24,12 @@ function getIdentityStorageKey(kind) {
   return `preferred_${kind}_input_identity`;
 }
 
+const warnedMissingDevices = new Set();
+
+export function resetWarnedMissingDevices() {
+  warnedMissingDevices.clear();
+}
+
 function readStoredDeviceIdentity(kind, deviceId) {
   try {
     const stored = JSON.parse(localStorage.getItem(getIdentityStorageKey(kind)) || 'null');
@@ -108,9 +114,19 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
     devicesAfterPermission.length > 0 &&
     !devicesAfterPermission.some(device => device.deviceId === resolvedDeviceId)
   ) {
-    console.warn(
-      `[mediaDeviceCapture] Selected ${kind} device is no longer available; using the current default device.`
-    );
+    const fallbackDevice =
+      devicesAfterPermission.find(device => device.deviceId === actualDeviceId) ||
+      devicesAfterPermission[0];
+    if (fallbackDevice) {
+      storeDeviceIdentity(kind, fallbackDevice);
+    }
+    const warnKey = `${kind}:${resolvedDeviceId}`;
+    if (!warnedMissingDevices.has(warnKey)) {
+      warnedMissingDevices.add(warnKey);
+      console.warn(
+        `[mediaDeviceCapture] Selected ${kind} device is no longer available; using the current default device.`
+      );
+    }
     return permissionStream;
   }
 

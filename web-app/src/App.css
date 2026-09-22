@@ -287,3 +287,70 @@ body, html, #root {
   color: var(--color-text-main);
   font-weight: 600;
 }
+
+/* App Footer */
+.app-footer {
+  margin-top: auto;
+  padding: 1.25rem 1.75rem;
+  background-color: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  z-index: 10;
+}
+
+.app-footer p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.app-footer a.footer-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.app-footer a.footer-link:hover {
+  text-decoration: underline;
+  color: var(--color-primary-hover, #4338ca);
+}
+
+/* ==========================================================================
+   Student Mobile Companion Layout Suppression:
+   When StudentMobileView is active, completely suppress the desktop header
+   and footer, and set the root container to 100dvh without page scrollbars.
+   ========================================================================== */
+.app-container:has(.student-mobile-layout) .main-header,
+.app-container:has(.student-mobile-layout) .app-footer,
+body:has(.student-mobile-layout) .main-header,
+body:has(.student-mobile-layout) .app-footer,
+body.in-student-mobile-view .main-header,
+body.in-student-mobile-view .app-footer {
+  display: none !important;
+}
+
+.app-container:has(.student-mobile-layout),
+body:has(.student-mobile-layout) .app-container,
+body.in-student-mobile-view .app-container {
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+.app-container:has(.student-mobile-layout) .main-content,
+body:has(.student-mobile-layout) .main-content,
+body.in-student-mobile-view .main-content {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  flex: 1 1 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}

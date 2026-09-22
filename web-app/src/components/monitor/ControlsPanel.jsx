@@ -4,7 +4,7 @@ import AiCostReportView from '../AiCostReportView';
 import BingoQuestionBankModal from '../BingoQuestionBankModal';
 import { auth, functions, db } from '../../firebase-config';
 import { httpsCallable } from 'firebase/functions';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { formatBytes, formatAiCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
@@ -63,15 +63,15 @@ const ControlsPanel = ({
     const [modalConfigTab, setModalConfigTab] = useState('webcam'); // 'webcam' | 'voice' | 'screen'
 
     // Bingo States
-    const [bingoMode, setBingoMode] = useState('question_bank'); // 'question_bank' | 'teacher_screen' | 'student_screen'
+    const [bingoMode, setBingoMode] = useState('teacher_screen'); // 'question_bank' | 'teacher_screen' | 'student_screen'
     const [showBankModal, setShowBankModal] = useState(false);
     const [isCallingBingo, setIsCallingBingo] = useState(false);
     const [bingoFeedback, setBingoFeedback] = useState(null);
     const [questionBank, setQuestionBank] = useState([]);
     const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
+    const [bingoTimeLimitSeconds, setBingoTimeLimitSeconds] = useState(30);
     const [autoBingoEnabled, setAutoBingoEnabled] = useState(false);
-    const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(20);
-    const [autoBingoJitterMinutes, setAutoBingoJitterMinutes] = useState(3);
+    const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(5);
 
     // Load question bank and class bingo settings from Firestore
     useEffect(() => {
@@ -85,17 +85,19 @@ const ControlsPanel = ({
             if (data.bingoRetryDelayMinutes !== undefined) {
               setBingoRetryDelayMinutes(Number(data.bingoRetryDelayMinutes) || 3);
             }
+            if (data.bingoTimeLimitSeconds !== undefined) {
+              setBingoTimeLimitSeconds(Number(data.bingoTimeLimitSeconds) || 30);
+            }
             if (data.autoBingoEnabled !== undefined) {
               setAutoBingoEnabled(Boolean(data.autoBingoEnabled));
             }
             if (data.autoBingoIntervalMinutes !== undefined) {
-              setAutoBingoIntervalMinutes(Number(data.autoBingoIntervalMinutes) || 20);
-            }
-            if (data.autoBingoJitterMinutes !== undefined) {
-              setAutoBingoJitterMinutes(Number(data.autoBingoJitterMinutes) || 3);
+              setAutoBingoIntervalMinutes(Number(data.autoBingoIntervalMinutes) || 5);
             }
             if (data.autoBingoMode) {
               setBingoMode(data.autoBingoMode);
+            } else {
+              setBingoMode('teacher_screen');
             }
           }
 
@@ -119,13 +121,24 @@ const ControlsPanel = ({
       try {
         const classRef = doc(db, 'classes', classId);
         await updateDoc(classRef, { autoBingoEnabled: enabled });
+        if (!enabled) {
+          // If turning off auto bingo, immediately cancel any active bingo or pending retries on student devices
+          try {
+            const cancelFn = httpsCallable(functions, 'cancelActiveBingo');
+            await cancelFn({ classId });
+            setBingoFeedback('⏹️ Auto-Bingo disabled and active challenges cancelled.');
+            setTimeout(() => setBingoFeedback(null), 4000);
+          } catch (cancelErr) {
+            console.warn('[ControlsPanel] Note: could not auto-cancel active bingo on disable:', cancelErr);
+          }
+        }
       } catch (err) {
         console.error('[ControlsPanel] Error toggling autoBingoEnabled:', err);
       }
     };
 
     const handleUpdateAutoBingoInterval = async (minutes) => {
-      const safeMins = Math.max(5, Number(minutes) || 20);
+      const safeMins = Math.max(5, Math.min(30, Number(minutes) || 5));
       setAutoBingoIntervalMinutes(safeMins);
       if (!classId) return;
       try {
@@ -136,17 +149,18 @@ const ControlsPanel = ({
       }
     };
 
-    const handleUpdateAutoBingoJitter = async (jitterMins) => {
-      const safeJitter = Math.max(0, Number(jitterMins) || 0);
-      setAutoBingoJitterMinutes(safeJitter);
+    const handleUpdateTimeLimitSeconds = async (seconds) => {
+      const safeSec = Number(seconds) || 30;
+      setBingoTimeLimitSeconds(safeSec);
       if (!classId) return;
       try {
         const classRef = doc(db, 'classes', classId);
-        await updateDoc(classRef, { autoBingoJitterMinutes: safeJitter });
+        await updateDoc(classRef, { bingoTimeLimitSeconds: safeSec });
       } catch (err) {
-        console.error('[ControlsPanel] Error updating autoBingoJitterMinutes:', err);
+        console.error('[ControlsPanel] Error updating bingoTimeLimitSeconds:', err);
       }
     };
+
 
     const handleModeChange = async (newMode) => {
       setBingoMode(newMode);
@@ -793,28 +807,30 @@ const ControlsPanel = ({
                 </label>
               </div>
 
-              <button
-                type="button"
-                className="action-btn"
-                style={{
-                  background: '#2563eb',
-                  color: '#ffffff',
-                  fontWeight: 600,
-                  padding: '8px 12px',
-                  borderRadius: '0.5rem',
-                  cursor: isCallingBingo ? 'not-allowed' : 'pointer',
-                  opacity: isCallingBingo ? 0.7 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.4rem',
-                  marginTop: '0.25rem',
-                }}
-                disabled={isCallingBingo}
-                onClick={handleTriggerClassBingo}
-              >
-                {isCallingBingo ? '⏳ Dispatching...' : '🎯 Call Bingo (All Students)'}
-              </button>
+              <div style={{ marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  className="action-btn"
+                  style={{
+                    width: '100%',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    padding: '8px 12px',
+                    borderRadius: '0.5rem',
+                    cursor: isCallingBingo ? 'not-allowed' : 'pointer',
+                    opacity: isCallingBingo ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                  }}
+                  disabled={isCallingBingo}
+                  onClick={handleTriggerClassBingo}
+                >
+                  {isCallingBingo ? '⏳ Dispatching...' : '🎯 Call Bingo (All Students)'}
+                </button>
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem', paddingTop: '0.35rem', borderTop: '1px solid #f1f5f9' }}>
                 <label htmlFor="bingo-retry-delay-select" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
@@ -862,46 +878,62 @@ const ControlsPanel = ({
                 </div>
 
                 {autoBingoEnabled && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.35rem', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label htmlFor="auto-bingo-interval-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 500 }}>
-                        Interval:
-                      </label>
-                      <select
-                        id="auto-bingo-interval-select"
-                        aria-label="Auto-Bingo Interval"
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.35rem', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label htmlFor="auto-bingo-interval-slider" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+                          ⏱️ Auto-Dispatch Interval:
+                        </label>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          color: '#2563eb',
+                          background: '#eff6ff',
+                          padding: '1px 7px',
+                          borderRadius: '999px',
+                          border: '1px solid #bfdbfe'
+                        }}>
+                          {autoBingoIntervalMinutes} {autoBingoIntervalMinutes === 5 ? 'mins (Min)' : 'mins'}
+                        </span>
+                      </div>
+                      <input
+                        id="auto-bingo-interval-slider"
+                        type="range"
+                        min={5}
+                        max={30}
+                        step={1}
                         value={autoBingoIntervalMinutes}
                         onChange={(e) => handleUpdateAutoBingoInterval(parseInt(e.target.value, 10))}
-                        style={{ fontSize: '0.72rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                      >
-                        <option value={15}>⏱️ Every 15m</option>
-                        <option value={20}>🎯 Every 20m (Default)</option>
-                        <option value={30}>⏱️ Every 30m</option>
-                        <option value={45}>⏱️ Every 45m</option>
-                        <option value={60}>⏱️ Every 60m</option>
-                      </select>
+                        style={{ width: '100%', cursor: 'pointer', accentColor: '#2563eb' }}
+                        aria-label="Auto-Bingo Dispatch Interval in Minutes"
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94a3b8', padding: '0 2px' }}>
+                        <span>5m (Min)</span>
+                        <span>10m</span>
+                        <span>20m</span>
+                        <span>30m</span>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label htmlFor="auto-bingo-jitter-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 500 }}>
-                        Stagger Jitter:
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.3rem', borderTop: '1px dashed #e2e8f0' }}>
+                      <label htmlFor="bingo-time-limit-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+                        ⏳ Answer Time Limit:
                       </label>
                       <select
-                        id="auto-bingo-jitter-select"
-                        aria-label="Anti-Collusion Stagger Jitter"
-                        value={autoBingoJitterMinutes}
-                        onChange={(e) => handleUpdateAutoBingoJitter(parseInt(e.target.value, 10))}
-                        style={{ fontSize: '0.72rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                        id="bingo-time-limit-select"
+                        value={bingoTimeLimitSeconds}
+                        onChange={(e) => handleUpdateTimeLimitSeconds(parseInt(e.target.value, 10))}
+                        style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', fontWeight: 600, cursor: 'pointer' }}
+                        aria-label="Student Bingo Answer Time Limit"
                       >
-                        <option value={0}>🚫 No Jitter (Same time)</option>
-                        <option value={2}>🎲 ±2m Jitter</option>
-                        <option value={3}>🎲 ±3m Jitter (Default)</option>
-                        <option value={5}>🎲 ±5m Jitter</option>
+                        <option value={15}>15s (Rapid)</option>
+                        <option value={30}>30s (Default)</option>
+                        <option value={45}>45s (Extended)</option>
+                        <option value={60}>60s (1 min)</option>
+                        <option value={90}>90s (1.5 min)</option>
+                        <option value={120}>120s (2 min)</option>
                       </select>
                     </div>
-                    <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748b', lineHeight: 1.2 }}>
-                      Staggers student delivery to prevent classroom/Discord collusion.
-                    </p>
                   </div>
                 )}
               </div>
@@ -1738,6 +1770,7 @@ const ControlsPanel = ({
           onClose={() => setShowBankModal(false)}
           questionBank={questionBank}
           onSaveBank={handleSaveQuestionBank}
+          classId={classId}
         />
     </div>
     );

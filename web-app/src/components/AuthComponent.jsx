@@ -4,6 +4,7 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  signOut,
 } from 'firebase/auth';
 import { auth } from '../firebase-config';
 import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
@@ -17,6 +18,7 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [message, setMessage] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [localUnverifiedUser, setLocalUnverifiedUser] = useState(null);
 
   const isChrome = isGoogleChrome();
   const detectedBrowser = getBrowserName();
@@ -54,8 +56,11 @@ const AuthComponent = ({ unverifiedUser }) => {
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      setLocalUnverifiedUser(userCredential.user);
       await sendEmailVerification(userCredential.user);
-      setMessage('Registration successful. A verification email has been sent. Please verify your email before logging in.');
+      // Immediately sign out unverified account so that subsequent sign-in is clean and triggers auth observers
+      await signOut(auth);
+      setMessage('Registration successful. A verification email has been sent. Please check your email inbox, verify your account, and then sign in.');
     } catch (err) {
       if (err.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a moment before trying again.');
@@ -91,10 +96,27 @@ const AuthComponent = ({ unverifiedUser }) => {
     setMessage('');
 
     try {
-      await signInWithEmailAndPassword(auth, cleanEmail, password);
-      // Successful login will be observed by onAuthStateChanged in App.jsx
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const loggedInUser = userCredential?.user;
+
+      // Ensure freshest emailVerified status from Firebase backend
+      if (loggedInUser && typeof loggedInUser.reload === 'function') {
+        await loggedInUser.reload();
+      }
+
+      if (loggedInUser && !loggedInUser.emailVerified) {
+        setLocalUnverifiedUser(loggedInUser);
+        setError('Please verify your email address before logging in. Check your inbox for the verification email.');
+        await signOut(auth);
+        return;
+      }
+
+      // Force-refresh ID token so role custom claims and emailVerified are refreshed
+      if (loggedInUser && typeof loggedInUser.getIdTokenResult === 'function') {
+        await loggedInUser.getIdTokenResult(true);
+      }
+      // Successful verified login will be observed by onAuthStateChanged / onIdTokenChanged in App.jsx
     } catch (err) {
-      setIsLoading(false);
       if (err.code === 'auth/invalid-credential') {
         setError('Login failed. Please check your email and password.');
         setMessage('If you were recently added to a class, you might need to set your password first. Use the "Forgot Password" link.');
@@ -103,6 +125,8 @@ const AuthComponent = ({ unverifiedUser }) => {
       } else {
         setError(err.message || 'Login failed. Please check your credentials and try again.');
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -110,11 +134,12 @@ const AuthComponent = ({ unverifiedUser }) => {
     if (e && e.preventDefault) e.preventDefault();
     if (isLoading || cooldown > 0) return;
 
-    if (unverifiedUser) {
+    const targetUser = unverifiedUser || localUnverifiedUser;
+    if (targetUser) {
       setIsLoading(true);
       setError('');
       try {
-        await sendEmailVerification(unverifiedUser);
+        await sendEmailVerification(targetUser);
         setMessage('A new verification email has been sent. Please check your inbox.');
         setCooldown(60);
       } catch (err) {
@@ -262,7 +287,7 @@ const AuthComponent = ({ unverifiedUser }) => {
               Forgot Password?
             </button>
 
-            {unverifiedUser && (
+            {(unverifiedUser || localUnverifiedUser) && (
               <button 
                 type="button" 
                 onClick={handleResendVerificationEmail} 

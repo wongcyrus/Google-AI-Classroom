@@ -3,7 +3,7 @@ import "@uiw/react-md-editor/markdown-editor.css";
 import './SharedViews.css';
 import './PromptManagement.css';
 import { db, auth, app } from '../firebase-config';
-import { getAI, getGenerativeModel, VertexAIBackend } from "firebase/ai";
+import { getAI, getGenerativeModel, AgentPlatformBackend, VertexAIBackend } from "firebase/ai";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where, getDocs, documentId, limit } from 'firebase/firestore';
 
 
@@ -95,11 +95,11 @@ const PromptManagement = () => {
     }
   };
 
-  const clearForm = () => {
+  const clearForm = (tab = activeTab) => {
     setSelectedPrompt(null);
     setName('');
     setPromptText('');
-    setApplyTo([]);
+    setApplyTo(tab === 'translations' ? ['Live Subtitles & Translation'] : []);
     setAccessLevel('private');
     setSharedWithUids([]);
     setSharedWithUsers([]);
@@ -126,6 +126,17 @@ const PromptManagement = () => {
           promptText, 
           applyTo: ['Per Video'], 
           category: activeTab,
+        };
+    } else if (activeTab === 'translations') {
+        if (!name || !promptText) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        promptData = {
+          name,
+          promptText,
+          applyTo: applyTo.length > 0 ? applyTo : ['Live Subtitles & Translation'],
+          category: 'translations',
         };
     } else {
         if (!name || !promptText || applyTo.length === 0) {
@@ -218,8 +229,12 @@ const PromptManagement = () => {
     setIsOptimizing(true);
 
     try {
-      const ai = getAI(app, { backend: new VertexAIBackend() });
-      const candidateModels = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
+      const location = import.meta.env?.VITE_VERTEX_AI_LOCATION || 'global';
+      const backend = typeof AgentPlatformBackend !== 'undefined'
+        ? new AgentPlatformBackend(location)
+        : new VertexAIBackend(location);
+      const ai = getAI(app, { backend });
+      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
 
       const imageOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **image analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
 
@@ -317,7 +332,29 @@ const PromptManagement = () => {
 
 **Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
 
-      const optimizerPrompt = activeTab === 'videos' ? videoOptimizerPrompt : activeTab === 'audios' ? audioOptimizerPrompt : imageOptimizerPrompt;
+      const translationOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **real-time classroom lecture translation and dual-line subtitle generation**. Your task is to rewrite and expand the user's input into a high-quality, precise translation prompt following Google's best practices.
+
+**Rewrite the following user-provided prompt based on these strict guidelines:**
+
+**User's prompt:** "${promptText}"
+
+---
+
+**REWRITING GUIDELINES (incorporating Google's best practices):**
+
+1.  **Role Definition (Persona):** State clearly: "You are an expert real-time classroom lecture translator and subtitle specialist."
+2.  **Context Integration:** Specify input placeholders for Spoken Language ({{spokenLanguage}}), Target Subtitle Language ({{targetLanguage}}), and Course Discipline Domain ({{courseContext}}).
+3.  **Terminology & Technical Nomenclature Rules:** Explicitly mandate preserving technical terms, variable names, formulas, clinical nomenclature, or accounting standards in their standard English/Latin representation without destructive translation.
+4.  **Code-Switching Support:** If handling bilingual lecture speech (e.g., Cantonese mixed with English), provide rules to convert colloquial conversational grammar into formal written text while keeping technical loanwords intact.
+5.  **Output Pacing & Format:** State that output must be concise, readable dual-line subtitle phrases. Mandate returning ONLY direct translated text with zero explanations, zero phonetic guides, and zero markdown formatting.
+
+**Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
+
+      const optimizerPrompt = 
+        activeTab === 'videos' ? videoOptimizerPrompt : 
+        activeTab === 'audios' ? audioOptimizerPrompt : 
+        activeTab === 'translations' ? translationOptimizerPrompt : 
+        imageOptimizerPrompt;
 
       let result = null;
       let lastErr = null;

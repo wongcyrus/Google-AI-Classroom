@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { auth, db } from './firebase-config';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, db, appCheck } from './firebase-config';
+import { onAuthStateChanged, onIdTokenChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
-import { isGoogleChrome, getBrowserName } from './utils/browserDetection';
+import { isGoogleChrome, getBrowserName, isMobileDevice } from './utils/browserDetection';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -48,20 +48,29 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [unsupportedStudentBrowser, setUnsupportedStudentBrowser] = useState(false);
   const [detectedBrowser, setDetectedBrowser] = useState('');
+  const [unverifiedUser, setUnverifiedUser] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    if (appCheck) {
+      console.info('[App] App Check state: Active');
+    }
+  }, []);
+
+  useEffect(() => {
+    const authObserver = onIdTokenChanged || onAuthStateChanged;
+    const unsubscribe = authObserver(auth, async (currentUser) => {
       if (currentUser && currentUser.emailVerified) {
+        setUnverifiedUser(null);
         let idTokenResult = await currentUser.getIdTokenResult();
         if (!idTokenResult.claims.role) {
           idTokenResult = await currentUser.getIdTokenResult(true);
         }
         const resolvedRole = idTokenResult.claims.role || 'student';
 
-        // Enforce Google Chrome strictly for students
-        if (resolvedRole === 'student' && !isGoogleChrome()) {
+        // Enforce Google Chrome strictly for desktop students; allow standard mobile browsers for mobile student companion
+        if (resolvedRole === 'student' && !isGoogleChrome() && !isMobileDevice()) {
           const browserName = getBrowserName();
-          console.warn(`[BrowserEnforcement] Student account ${currentUser.email} attempted login on non-Chrome browser (${browserName}). Forcing logout.`);
+          console.warn(`[BrowserEnforcement] Desktop student account ${currentUser.email} attempted login on non-Chrome browser (${browserName}). Forcing logout.`);
           setDetectedBrowser(browserName);
           setUnsupportedStudentBrowser(true);
           try {
@@ -78,6 +87,11 @@ const App = () => {
         setUser(currentUser);
         setRole(resolvedRole);
       } else {
+        if (currentUser && !currentUser.emailVerified) {
+          setUnverifiedUser(currentUser);
+        } else {
+          setUnverifiedUser(null);
+        }
         setUser(null);
         setRole(null);
       }
@@ -109,59 +123,115 @@ const App = () => {
 
   return (
     <Router>
-      <div className="app-container">
-        {user && <MainHeader onLogout={handleLogout} user={user} role={role} />}
-        <main className="main-content">
-          <Suspense fallback={
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '0.75rem', color: '#64748b' }}>
-              <div style={{ width: '32px', height: '32px', border: '3px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              <span style={{ fontSize: '0.9rem' }}>Loading view...</span>
-            </div>
-          }>
-            <Routes>
-              <Route path="/login" element={!user ? <AuthComponent /> : <Navigate to={`/${role}`} />} />
-              <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
-              <Route
-                path="/student"
-                element={
-                  user && role === 'student' ? (
-                    isGoogleChrome() ? (
-                      <StudentView user={user} />
-                    ) : (
-                      <UnsupportedBrowserNotice
-                        onBackToLogin={() => {
-                          signOut(auth);
-                          setUser(null);
-                          setRole(null);
-                        }}
-                      />
-                    )
-                  ) : (
-                    <Navigate to="/login" />
-                  )
-                }
-              />
-              <Route
-                path="/student/records"
-                element={
-                  user && role === 'student' ? (
-                    <StudentRecordsView user={user} />
-                  ) : (
-                    <Navigate to="/login" />
-                  )
-                }
-              />
-              <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
-              <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
-              <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
-              <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
-              <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
-              <Route path="*" element={<Navigate to="/login" />} />
-            </Routes>
-          </Suspense>
-        </main>
-      </div>
+      <AppShell
+        user={user}
+        role={role}
+        handleLogout={handleLogout}
+        unverifiedUser={unverifiedUser}
+        setUnsupportedStudentBrowser={setUnsupportedStudentBrowser}
+        setUser={setUser}
+        setRole={setRole}
+      />
     </Router>
+  );
+};
+
+const AppShell = ({
+  user,
+  role,
+  handleLogout,
+  unverifiedUser,
+  setUnsupportedStudentBrowser,
+  setUser,
+  setRole
+}) => {
+  const location = useLocation();
+  const [studentViewMode, setStudentViewMode] = useState(() => {
+    try {
+      const stored = localStorage.getItem('student_view_mode');
+      if (stored === 'mobile' || stored === 'desktop') return stored;
+    } catch {}
+    return isMobileDevice() ? 'mobile' : 'desktop';
+  });
+
+  const isStudentMobileActive = Boolean(
+    user &&
+    role === 'student' &&
+    location.pathname === '/student' &&
+    studentViewMode === 'mobile'
+  );
+
+  return (
+    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''}`}>
+      {user && !isStudentMobileActive && <MainHeader onLogout={handleLogout} user={user} role={role} />}
+      <main className="main-content">
+        <Suspense fallback={
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '0.75rem', color: '#64748b' }}>
+            <div style={{ width: '32px', height: '32px', border: '3px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            <span style={{ fontSize: '0.9rem' }}>Loading view...</span>
+          </div>
+        }>
+          <Routes>
+            <Route path="/login" element={!user ? <AuthComponent unverifiedUser={unverifiedUser} /> : <Navigate to={`/${role || 'student'}`} replace />} />
+            <Route path="/teacher" element={user && role === 'teacher' ? <TeacherView user={user} /> : <Navigate to="/login" />} />
+            <Route
+              path="/student"
+              element={
+                user && role === 'student' ? (
+                  (isGoogleChrome() || isMobileDevice()) ? (
+                    <StudentView
+                      user={user}
+                      onViewModeChange={setStudentViewMode}
+                    />
+                  ) : (
+                    <UnsupportedBrowserNotice
+                      onBackToLogin={() => {
+                        signOut(auth);
+                        setUser(null);
+                        setRole(null);
+                      }}
+                    />
+                  )
+                ) : (
+                  <Navigate to="/login" />
+                )
+              }
+            />
+            <Route
+              path="/student/records"
+              element={
+                user && role === 'student' ? (
+                  <StudentRecordsView user={user} />
+                ) : (
+                  <Navigate to="/login" />
+                )
+              }
+            />
+            <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
+            <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
+            <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
+            <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
+            <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
+            <Route path="*" element={<Navigate to="/login" />} />
+          </Routes>
+        </Suspense>
+      </main>
+      {!isStudentMobileActive && (
+        <footer className="app-footer">
+          <p>
+            Made with ❤️ by{' '}
+            <a
+              href="https://www.vtc.edu.hk/admission/en/programme/it114115-higher-diploma-in-cloud-and-data-centre-administration/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="footer-link"
+            >
+              Higher Diploma in Cloud and Data Centre Administration
+            </a>
+          </p>
+        </footer>
+      )}
+    </div>
   );
 };
 
@@ -226,7 +296,7 @@ const MainHeader = ({ onLogout, user, role }) => {
           <Link to={role === 'teacher' ? '/teacher' : '/student'} className="brand-link">
             <img src={hkiitLogo} alt="HKIIT Logo" className="header-logo-img" />
             <div className="header-title-wrapper">
-              <span className="header-title">Gemini AI Classroom</span>
+              <span className="header-title">Gemini Multimodal Classroom Agent</span>
               <span className="header-subtitle">Intelligent Teaching Assistant</span>
             </div>
           </Link>

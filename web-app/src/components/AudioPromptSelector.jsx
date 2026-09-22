@@ -23,6 +23,8 @@ const AudioPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
     return newFilteredPrompts;
   }, [prompts, promptFilter, user]);
 
+  const isSubtitle = applyToFilter === 'Live Subtitles & Translation';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
@@ -39,7 +41,7 @@ const AudioPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
         }}
         style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
       >
-        <option value="">-- Select a voice/audio prompt --</option>
+        <option value="">{isSubtitle ? '-- Select a translation AI prompt --' : '-- Select a voice/audio prompt --'}</option>
         {filteredPrompts.map(p => (
           <option key={p.id} value={p.id}>{p.name}</option>
         ))}
@@ -48,7 +50,7 @@ const AudioPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
       <textarea
           value={promptText}
           onChange={(e) => onTextChange(e.target.value)}
-          placeholder="Select an audio prompt or enter custom instructions here..."
+          placeholder={isSubtitle ? "Select a translation prompt or enter custom instructions here..." : "Select an audio prompt or enter custom instructions here..."}
           rows={10}
           style={{ width: '100%', flexGrow: 1, boxSizing: 'border-box', marginTop: '10px', fontFamily: 'monospace', fontSize: '0.85rem' }}
       />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isGoogleChrome, getBrowserName } from './browserDetection';
+import { isGoogleChrome, getBrowserName, isMobileDevice } from './browserDetection';
 
 describe('browserDetection Utility', () => {
   it('identifies genuine Google Chrome desktop and Android as Chrome', () => {
@@ -72,5 +72,36 @@ describe('browserDetection Utility', () => {
 
     expect(isGoogleChrome(vivaldiUA, vendor)).toBe(false);
     expect(getBrowserName(vivaldiUA, vendor)).toBe('Vivaldi');
+  });
+
+  describe('isMobileDevice', () => {
+    it('detects iPhone and Android user agents as mobile', () => {
+      const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+      const androidUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36';
+
+      expect(isMobileDevice(iPhoneUA, 1024)).toBe(true);
+      expect(isMobileDevice(androidUA, 1024)).toBe(true);
+    });
+
+    it('detects narrow viewports (<= 768px) as mobile even on generic user agent', () => {
+      const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+      expect(isMobileDevice(desktopUA, 414)).toBe(true);
+      expect(isMobileDevice(desktopUA, 768)).toBe(true);
+      expect(isMobileDevice(desktopUA, 1024)).toBe(false);
+    });
+
+    it('detects rotated landscape phones (e.g. 844x390, 852x393) as mobile', () => {
+      const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+      // iPhone in landscape (width > 768px, but height <= 550px)
+      expect(isMobileDevice(desktopUA, 844, 390)).toBe(true);
+      expect(isMobileDevice(desktopUA, 852, 393)).toBe(true);
+      expect(isMobileDevice(desktopUA, 932, 430)).toBe(true);
+
+      // Desktop 1080p should not be mobile
+      expect(isMobileDevice(desktopUA, 1920, 1080)).toBe(false);
+      expect(isMobileDevice(desktopUA, 1280, 800)).toBe(false);
+    });
   });
 });

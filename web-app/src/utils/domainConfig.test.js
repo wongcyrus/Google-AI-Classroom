@@ -120,5 +120,19 @@ describe('domainConfig Utility', () => {
     expect(deriveRoleFromEmail('  student@stu.vtc.edu.hk  ')).toBe('student');
     expect(deriveRoleFromEmail('\tteacher@vtc.edu.hk\n')).toBe('teacher');
   });
+
+  it('correctly classifies @gmail.com as student when configured in development mode', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_STUDENT_DOMAINS', 'gmail.com');
+    vi.stubEnv('VITE_TEACHER_DOMAINS', 'vtc.edu.hk');
+
+    const devDomainConfig = await import('./domainConfig');
+    expect(devDomainConfig.isStudentEmail('developer.student@gmail.com')).toBe(true);
+    expect(devDomainConfig.deriveRoleFromEmail('developer.student@gmail.com')).toBe('student');
+    expect(devDomainConfig.deriveRoleFromEmail('instructor@vtc.edu.hk')).toBe('teacher');
+    expect(devDomainConfig.getAllowedDomainsDescription()).toBe('@gmail.com or @vtc.edu.hk');
+
+    vi.unstubAllEnvs();
+  });
 });
 

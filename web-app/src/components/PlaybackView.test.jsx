@@ -101,6 +101,16 @@ describe('PlaybackView Component', () => {
     fireEvent.click(playBtn);
     expect(screen.getByText('Pause')).toBeInTheDocument();
 
+    // TimelineSlider onChange
+    const slider = screen.getByRole('slider');
+    fireEvent.change(slider, { target: { value: '1' } });
+    expect(screen.getByText(/Frame: 2 \/ 2/i)).toBeInTheDocument();
+
+    // Speed select onChange
+    const speedSelect = screen.getByDisplayValue('1x');
+    fireEvent.change(speedSelect, { target: { value: '2' } });
+    expect(screen.getByDisplayValue('2x')).toBeInTheDocument();
+
     // Channel filter switch
     const channelSelect = screen.getByDisplayValue('All Channels');
     fireEvent.change(channelSelect, { target: { value: 'screen' } });
@@ -215,6 +225,260 @@ describe('PlaybackView Component', () => {
     await waitFor(() => {
       expect(screen.getByText(/A similar video job already exists/i)).toBeInTheDocument();
     });
+  });
+
+  it('correctly calculates disjoint buffered ranges when intermediate screenshots fail download', async () => {
+    const { getDownloadURL } = await import('firebase/storage');
+    getDownloadURL
+      .mockResolvedValueOnce('https://storage.local/s1.jpg')
+      .mockRejectedValueOnce(new Error('Missing image s2'))
+      .mockResolvedValueOnce('https://storage.local/s3.jpg');
+
+    const mockScreenshots = [
+      { id: 's1', channel: 'screen', imagePath: 'screenshots/s1.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:10Z') } },
+      { id: 's2', channel: 'screen', imagePath: 'screenshots/s2.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:20Z') } },
+      { id: 's3', channel: 'screen', imagePath: 'screenshots/s3.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:30Z') } },
+    ];
+
+    mockGetDocs.mockResolvedValueOnce({
+      docs: mockScreenshots.map((s) => ({ id: s.id, data: () => s })),
+    });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Frame: 1 \/ 3/i)).toBeInTheDocument();
+    });
+  });
+
+  it('creates video job when none exists and polls for completed status', async () => {
+    vi.useFakeTimers();
+
+    const mockScreenshots = [
+      { id: 's1', channel: 'screen', imagePath: 'screenshots/s1.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:10Z') } },
+    ];
+
+    mockGetDocs
+      .mockResolvedValueOnce({
+        docs: mockScreenshots.map((s) => ({ id: s.id, data: () => s })),
+      })
+      .mockResolvedValueOnce({
+        empty: true,
+        docs: [],
+      });
+
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ status: 'completed', videoUrl: 'https://example.com/video.mp4' }),
+    });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    // Flush initial fetch
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const combineBtn = screen.getByText(/Combine to Video/i);
+    await act(async () => {
+      fireEvent.click(combineBtn);
+      await Promise.resolve();
+    });
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        jobId: 'mock-job-id',
+        classId: 'CLASS_1',
+        status: 'pending',
+      })
+    );
+
+    // Advance timer to trigger polling
+    await act(async () => {
+      vi.advanceTimersByTime(10500);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Video created successfully!/i)).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('handles failed status and missing job doc during polling', async () => {
+    vi.useFakeTimers();
+
+    const mockScreenshots = [
+      { id: 's1', channel: 'screen', imagePath: 'screenshots/s1.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:10Z') } },
+    ];
+
+    mockGetDocs
+      .mockResolvedValueOnce({
+        docs: mockScreenshots.map((s) => ({ id: s.id, data: () => s })),
+      })
+      .mockResolvedValueOnce({
+        empty: true,
+        docs: [],
+      });
+
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ status: 'failed', error: 'Encoding failed' }),
+    });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const combineBtn = screen.getByText(/Combine to Video/i);
+    await act(async () => {
+      fireEvent.click(combineBtn);
+      await Promise.resolve();
+    });
+
+    // Advance timer for polling
+    await act(async () => {
+      vi.advanceTimersByTime(10500);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Video creation failed: Encoding failed/i)).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('handles unexpected error when creating video job', async () => {
+    const mockScreenshots = [
+      { id: 's1', channel: 'screen', imagePath: 'screenshots/s1.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:10Z') } },
+    ];
+
+    mockGetDocs
+      .mockResolvedValueOnce({
+        docs: mockScreenshots.map((s) => ({ id: s.id, data: () => s })),
+      })
+      .mockRejectedValueOnce(new Error('Network error during query'));
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Frame: 1 \/ 1/i)).toBeInTheDocument();
+    });
+
+    const combineBtn = screen.getByText(/Combine to Video/i);
+    await act(async () => {
+      fireEvent.click(combineBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error: Network error during query/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles processing, pending, and error states during video job status polling', async () => {
+    vi.useFakeTimers();
+    const mockScreenshots = [
+      { id: 's1', channel: 'screen', imagePath: 'screenshots/s1.jpg', timestamp: { toDate: () => new Date('2026-08-30T00:00:10Z') } },
+    ];
+
+    mockGetDocs
+      .mockResolvedValueOnce({
+        docs: mockScreenshots.map((s) => ({ id: s.id, data: () => s })),
+      })
+      .mockResolvedValueOnce({
+        empty: true,
+        docs: [],
+      });
+
+    // 1. First poll: processing
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ status: 'processing' }),
+      })
+      // 2. Second poll: pending
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ status: 'pending' }),
+      })
+      // 3. Third poll: not found
+      .mockResolvedValueOnce({
+        exists: () => false,
+      });
+
+    render(
+      <PlaybackView
+        sessionData={mockSessionData}
+        classId="CLASS_1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T01:00:00Z"
+        onBack={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const combineBtn = screen.getByText(/Combine to Video/i);
+    await act(async () => {
+      fireEvent.click(combineBtn);
+      await Promise.resolve();
+    });
+
+    // Advance for processing
+    await act(async () => {
+      vi.advanceTimersByTime(10500);
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Video is processing\.\.\./i)).toBeInTheDocument();
+
+    // Advance for pending
+    await act(async () => {
+      vi.advanceTimersByTime(10500);
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Video job is pending\.\.\./i)).toBeInTheDocument();
+
+    // Advance for not found
+    await act(async () => {
+      vi.advanceTimersByTime(10500);
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Video job details not found\./i)).toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });
 

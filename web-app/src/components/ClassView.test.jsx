@@ -25,6 +25,7 @@ vi.mock('firebase/firestore', () => ({
         aiQuota: 15,
       }),
       docChanges: () => [],
+      forEach: () => {},
     });
     return () => {};
   }),
@@ -64,6 +65,8 @@ vi.mock('./VideoAnalysisJobs', () => ({ default: () => <div data-testid="video-j
 vi.mock('./DataManagementView', () => ({ default: () => <div data-testid="data-view">Data Management Content</div> }));
 vi.mock('./ClassManagement', () => ({ default: () => <div data-testid="management-view">Class Management Content</div> }));
 vi.mock('./MessagesView', () => ({ default: () => <div data-testid="messages-view">Messages Content</div> }));
+vi.mock('./BingoResultsView', () => ({ default: () => <div data-testid="bingo-results-view">Bingo Results Content</div> }));
+vi.mock('./LectureRecordingsView', () => ({ default: () => <div data-testid="lecture-recordings-view">Lecture Recordings Content</div> }));
 
 describe('ClassView Component Full Suite', () => {
   const mockUser = { uid: 'teacher_001', email: 'teacher@school.edu' };
@@ -168,6 +171,16 @@ describe('ClassView Component Full Suite', () => {
     );
     expect(screen.getByTestId('ai-cost-view')).toBeInTheDocument();
     u5();
+
+    const { unmount: u6 } = render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=analytics&sub=bingo']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId('bingo-results-view')).toBeInTheDocument();
+    u6();
   });
 
   it('renders messages, data, and settings views', () => {
@@ -277,6 +290,14 @@ describe('ClassView Component Full Suite', () => {
     const costSubTab = screen.getByRole('button', { name: /AI Cost Report/i });
     fireEvent.click(costSubTab);
 
+    // Click Bingo presence sub-tab
+    const bingoSubTab = screen.getByRole('button', { name: /Bingo Presence Report/i });
+    fireEvent.click(bingoSubTab);
+
+    // Click Live Alerts & Messages tab
+    const messagesTab = screen.getByRole('button', { name: /Live Alerts & Messages/i });
+    fireEvent.click(messagesTab);
+
     // Click Data tab
     const dataTab = screen.getByRole('button', { name: /Data & Archives/i });
     fireEvent.click(dataTab);
@@ -284,6 +305,30 @@ describe('ClassView Component Full Suite', () => {
     // Click Settings tab
     const settingsTab = screen.getByRole('button', { name: /Class Settings & Roster/i });
     fireEvent.click(settingsTab);
+  });
+
+  it('renders BingoResultsView when tab=analytics and sub=bingo', () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=analytics&sub=bingo']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('bingo-results-view')).toBeInTheDocument();
+  });
+
+  it('renders MessagesView when tab=messages', () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=messages']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('messages-view')).toBeInTheDocument();
   });
 
   it('handles lesson change and filterField dropdown in shared date filter', () => {
@@ -320,5 +365,51 @@ describe('ClassView Component Full Suite', () => {
     const switcher = await screen.findByLabelText(/Switch Class/i);
     expect(switcher).toBeInTheDocument();
     fireEvent.change(switcher, { target: { value: 'CLASS-202' } });
+  });
+
+  it('renders Data Management view on tab=data and Class Settings on tab=settings', () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=data']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('data-view')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=settings']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('management-view')).toBeInTheDocument();
+
+    // Click Data & Archives tab button
+    const dataTabBtn = screen.getByRole('button', { name: /Data & Archives/i });
+    fireEvent.click(dataTabBtn);
+
+    // Click Class Settings tab button
+    const settingsTabBtn = screen.getByRole('button', { name: /Class Settings & Roster/i });
+    fireEvent.click(settingsTabBtn);
+  });
+
+  it('renders LectureRecordingsView when tab=video and sub=recordings', () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=video&sub=recordings']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('lecture-recordings-view')).toBeInTheDocument();
+
+    const recordingsSubTabBtn = screen.getByRole('button', { name: /Teacher Lecture Recordings/i });
+    expect(recordingsSubTabBtn).toBeInTheDocument();
   });
 });

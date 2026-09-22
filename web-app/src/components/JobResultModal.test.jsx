@@ -103,17 +103,20 @@ describe("JobResultModal", () => {
     expect(screen.getByText(/FFmpeg frame extraction timeout/i)).toBeInTheDocument();
   });
 
-  it("handles string result and triggers close button", () => {
+  it("handles string result, displays Analysis Output label without JSON, and triggers close button", () => {
     const onClose = vi.fn();
     const stringJob = {
       id: "job_str",
       status: "running",
-      result: "Plain text evaluation string",
+      result: "Plain text evaluation string with very long narrative content",
     };
 
     const { rerender } = render(<JobResultModal show={true} onClose={onClose} job={stringJob} />);
 
-    expect(screen.getByText(/Plain text evaluation string/i)).toBeInTheDocument();
+    expect(screen.getByText(/Plain text evaluation string with very long narrative content/i)).toBeInTheDocument();
+    // For string results, it should NOT say Analysis Output (JSON):
+    expect(screen.getByText("Analysis Output:")).toBeInTheDocument();
+    expect(screen.queryByText("Analysis Output (JSON):")).not.toBeInTheDocument();
 
     const closeBtns = screen.getAllByRole("button", { name: "Close" });
     fireEvent.click(closeBtns[0]);
@@ -122,5 +125,23 @@ describe("JobResultModal", () => {
     // Renders null when job is null
     rerender(<JobResultModal show={true} onClose={onClose} job={null} />);
     expect(screen.queryByText(/Plain text evaluation string/i)).not.toBeInTheDocument();
+  });
+
+  it("defaults to Word Wrap ON and toggles wrap state when button is clicked", () => {
+    render(<JobResultModal show={true} onClose={vi.fn()} job={mockJob} />);
+
+    // Shows Analysis Output (JSON): for object result
+    expect(screen.getByText("Analysis Output (JSON):")).toBeInTheDocument();
+
+    const wrapBtn = screen.getByRole("button", { name: /Wrap: ON/i });
+    expect(wrapBtn).toBeInTheDocument();
+
+    // Toggle wrap off
+    fireEvent.click(wrapBtn);
+    expect(screen.getByRole("button", { name: /Wrap: OFF/i })).toBeInTheDocument();
+
+    // Toggle wrap back on
+    fireEvent.click(screen.getByRole("button", { name: /Wrap: OFF/i }));
+    expect(screen.getByRole("button", { name: /Wrap: ON/i })).toBeInTheDocument();
   });
 });

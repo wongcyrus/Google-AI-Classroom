@@ -7,10 +7,14 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { getDoc, onSnapshot } from 'firebase/firestore';
 import * as browserDetection from './utils/browserDetection';
 
-vi.mock('firebase/auth', () => ({
-  onAuthStateChanged: vi.fn(),
-  signOut: vi.fn(() => Promise.resolve()),
-}));
+vi.mock('firebase/auth', () => {
+  const onAuthStateChanged = vi.fn();
+  return {
+    onAuthStateChanged,
+    onIdTokenChanged: onAuthStateChanged,
+    signOut: vi.fn(() => Promise.resolve()),
+  };
+});
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
@@ -24,11 +28,13 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('./firebase-config', () => ({
   auth: {},
   db: {},
+  appCheck: null,
 }));
 
 vi.mock('./utils/browserDetection', () => ({
   isGoogleChrome: vi.fn(() => true),
   getBrowserName: vi.fn(() => 'Chrome'),
+  isMobileDevice: vi.fn(() => false),
 }));
 
 vi.mock('./components/AuthComponent', () => ({
@@ -78,8 +84,10 @@ vi.mock('./assets/HKIIT_logo_RGB_horizontal.jpg', () => ({
 describe('App & MainHeader Components', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.pushState({}, '', '/');
     browserDetection.isGoogleChrome.mockReturnValue(true);
     browserDetection.getBrowserName.mockReturnValue('Chrome');
+    browserDetection.isMobileDevice.mockReturnValue(false);
     onSnapshot.mockReturnValue(vi.fn());
     getDoc.mockResolvedValue({ exists: () => false });
   });
@@ -98,6 +106,7 @@ describe('App & MainHeader Components', () => {
     authCallback(null);
 
     expect(await screen.findByTestId('auth-page')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Higher Diploma in Cloud and Data Centre Administration/i })).toBeInTheDocument();
   });
 
   it('renders teacher dashboard, navigation bar, and handles logout', async () => {
@@ -121,11 +130,18 @@ describe('App & MainHeader Components', () => {
     render(<App />);
 
     expect(await screen.findByTestId('teacher-view')).toBeInTheDocument();
-    expect(screen.getByText('Gemini AI Classroom')).toBeInTheDocument();
+    expect(screen.getByText('Gemini Multimodal Classroom Agent')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
     expect(screen.getByText('⚙️ Class Manager')).toBeInTheDocument();
     expect(screen.getByText('📬 Mailbox')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument(); // Unread badge
+
+    // Footer promotion check
+    const footerLink = screen.getByRole('link', { name: /Higher Diploma in Cloud and Data Centre Administration/i });
+    expect(footerLink).toBeInTheDocument();
+    expect(footerLink).toHaveAttribute('href', 'https://www.vtc.edu.hk/admission/en/programme/it114115-higher-diploma-in-cloud-and-data-centre-administration/');
+    expect(footerLink).toHaveAttribute('target', '_blank');
+    expect(footerLink).toHaveAttribute('rel', 'noopener noreferrer');
 
     // Open User profile dropdown
     const userTrigger = screen.getByTitle('Account Menu');
@@ -167,6 +183,21 @@ describe('App & MainHeader Components', () => {
     expect(screen.getByText('student')).toBeInTheDocument();
     expect(screen.getByText(/Live Session/i)).toBeInTheDocument();
     expect(screen.getByText(/My Records/i)).toBeInTheDocument();
+
+    // Toggle profile menu
+    const userTrigger = screen.getByTitle('Account Menu');
+    fireEvent.click(userTrigger);
+    expect(screen.getByText('🧑‍🎓 Student')).toBeInTheDocument();
+
+    // Click outside to close
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText('🧑‍🎓 Student')).not.toBeInTheDocument();
+
+    // Reopen and click My Records inside menu
+    fireEvent.click(userTrigger);
+    const menuRecordsItems = screen.getAllByText('My Records');
+    fireEvent.click(menuRecordsItems[menuRecordsItems.length - 1]);
+    expect(screen.queryByText('🧑‍🎓 Student')).not.toBeInTheDocument();
   });
 
   it('blocks student and forces sign out when logging in on non-Chrome browser', async () => {
@@ -189,5 +220,141 @@ describe('App & MainHeader Components', () => {
 
     expect(await screen.findByText(/Google Chrome Required/i)).toBeInTheDocument();
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it('allows student login and views companion on mobile devices even without Google Chrome', async () => {
+    browserDetection.isGoogleChrome.mockReturnValue(false);
+    browserDetection.isMobileDevice.mockReturnValue(true);
+
+    const mockMobileStudent = {
+      uid: 'student_mobile',
+      email: 'student_mobile@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'student' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockMobileStudent);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('student-view')).toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('omits desktop MainHeader and app-footer when student is in mobile view', async () => {
+    browserDetection.isMobileDevice.mockReturnValue(true);
+
+    const mockMobileStudent = {
+      uid: 'student_mobile',
+      email: 'student_mobile@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'student' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockMobileStudent);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('student-view')).toBeInTheDocument();
+    // Desktop MainHeader elements and footer should NOT be rendered
+    expect(screen.queryByTitle('Account Menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Higher Diploma in Cloud and Data Centre Administration/i })).not.toBeInTheDocument();
+  });
+
+  it('renders breadcrumb bar when teacher navigates to subpages', async () => {
+    window.history.pushState({}, 'Class Mgmt', '/class-management');
+
+    const mockTeacher = {
+      uid: 'teacher_1',
+      email: 'teacher@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'teacher' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockTeacher);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('class-mgmt-view')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Class Management')).toBeInTheDocument();
+
+    // Navigate to manage-prompts
+    const promptNavLink = screen.getByText('💡 AI Prompts');
+    fireEvent.click(promptNavLink);
+    expect(await screen.findByTestId('prompt-mgmt-view')).toBeInTheDocument();
+    expect(screen.getByText('Prompt Management')).toBeInTheDocument();
+
+    // Reset URL
+    window.history.pushState({}, 'Dashboard', '/teacher');
+  });
+
+  it('resolves class name via getDoc and displays unread mail count in teacher navigation', async () => {
+    window.history.pushState({}, 'Class Details', '/class/CLASS_DEV_999');
+
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ name: 'Cloud Native Computing' }),
+    });
+
+    onSnapshot.mockImplementationOnce((q, onNext, onError) => {
+      onNext({ size: 4 });
+      if (onError) onError(new Error('Sample listener notice'));
+      return vi.fn();
+    });
+
+    const mockTeacher = {
+      uid: 'teacher_1',
+      email: 'teacher@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'teacher' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockTeacher);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('class-view')).toBeInTheDocument();
+    expect(await screen.findByText(/Cloud Native Computing/i)).toBeInTheDocument();
+    // Unread mail badge
+    expect(screen.getByText('4')).toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/teacher');
+  });
+
+  it('falls back to classId in breadcrumb when getDoc rejects', async () => {
+    window.history.pushState({}, 'Class Details', '/class/FALLBACK_CLASS_01');
+    getDoc.mockRejectedValueOnce(new Error('Network offline'));
+
+    const mockTeacher = {
+      uid: 'teacher_1',
+      email: 'teacher@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'teacher' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockTeacher);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('class-view')).toBeInTheDocument();
+    expect(await screen.findByText(/FALLBACK_CLASS_01/i)).toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/teacher');
   });
 });

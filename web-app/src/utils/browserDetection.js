@@ -88,3 +88,47 @@ export const getBrowserName = (customUserAgent, customVendor, isBraveFlag) => {
   
   return 'Non-Chrome Browser';
 };
+
+/**
+ * Detects whether the current client is a mobile device (phone or tablet)
+ * by examining the User Agent, touch capability, or viewport dimensions (including landscape).
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {number} [customWidth] - Optional viewport width for testing
+ * @param {number} [customHeight] - Optional viewport height for testing
+ * @returns {boolean} True if mobile device, false otherwise.
+ */
+export const isMobileDevice = (customUserAgent, customWidth, customHeight) => {
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+
+  // In standard jsdom test environment without custom UA, return false (desktop)
+  if (customUserAgent === undefined && /jsdom/i.test(userAgent)) {
+    return false;
+  }
+
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
+  if (isMobileUA) return true;
+
+  const width = customWidth !== undefined
+    ? customWidth
+    : (typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+  const height = customHeight !== undefined
+    ? customHeight
+    : (typeof window !== 'undefined' ? window.innerHeight : 800);
+
+  // Portrait phone/tablet or small screen
+  if (width <= 768) return true;
+
+  // Landscape phone (e.g. iPhone in landscape: 844x390, 852x393, 932x430)
+  if (height <= 550 && width <= 1024) return true;
+
+  // Touch device with smaller dimension <= 768
+  if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1) {
+    if (Math.min(width, height) <= 768) return true;
+  }
+
+  return false;
+};

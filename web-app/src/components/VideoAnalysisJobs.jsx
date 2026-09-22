@@ -858,7 +858,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                   <span><strong>Model:</strong> {selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite'}</span>
                   <span><strong>Class:</strong> {selectedAnalysisJob.classId}</span>
                   <span><strong>Created:</strong> {selectedAnalysisJob.createdAt?.toDate().toLocaleString() || 'N/A'}</span>
-                  <span><strong>Videos:</strong> {selectedAnalysisJob.videos?.length || selectedAnalysisJob.aiJobIds?.length || aiJobs.length || 0} total</span>
+                  <span><strong>Videos:</strong> {selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || selectedAnalysisJob.aiJobIds?.length || aiJobs.length || 0} total</span>
+                  {selectedAnalysisJob.status === 'processing' && typeof selectedAnalysisJob.totalVideos === 'number' && selectedAnalysisJob.totalVideos > 0 && (
+                    <span><strong>Progress:</strong> {selectedAnalysisJob.processedCount || 0} / {selectedAnalysisJob.totalVideos}</span>
+                  )}
                   {failedVideosCount > 0 && (
                     <span style={{ color: '#dc2626', fontWeight: 600 }}>({failedVideosCount} failed)</span>
                   )}

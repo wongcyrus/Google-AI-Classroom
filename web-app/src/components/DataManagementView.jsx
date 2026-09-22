@@ -94,7 +94,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
     }
 
     const confirmation = window.confirm(
-      'Are you sure you want to delete data in this date range? This will trigger a backend process and cannot be undone.'
+      'Are you sure you want to delete student session telemetry (both screenshots and audio recordings) in this date range?\n\nThis permanently purges image and audio files from Cloud Storage and cannot be undone.'
     );
     if (!confirmation) return;
 
@@ -135,7 +135,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
       
       <div className="actions-container">
 
-        <button onClick={handleDeleteData}>Delete Screenshots in Range</button>
+        <button onClick={handleDeleteData}>Delete Session Data (Images & Audio) in Range</button>
       </div>
 
       <hr style={{ margin: '20px 0' }} />

@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { pcmFloat32ToBase64, createLiveSubtitleSession, getFirebaseAI } from './aiLogic';
+import {
+  pcmFloat32ToBase64,
+  pcmFloat32ToWavBase64,
+  transcribeAudioWithFirebaseAI,
+  createLiveSubtitleSession,
+  getFirebaseAI,
+  resetTranscribeCooldown,
+  resetFirebaseAIInstance,
+  resetUnsupportedModels,
+  DEFAULT_TRANSCRIBE_MODELS,
+  DEFAULT_LIVE_MODEL,
+  CANDIDATE_LIVE_MODELS,
+} from './aiLogic';
 
 const mockLiveSession = {
   isClosed: false,
@@ -12,10 +24,21 @@ const mockGetLiveGenerativeModel = vi.fn().mockReturnValue({
   connect: vi.fn().mockResolvedValue(mockLiveSession)
 });
 
+const mockGenerateContent = vi.fn().mockResolvedValue({
+  response: { text: () => 'Hello students' }
+});
+
+const mockGetGenerativeModel = vi.fn().mockReturnValue({
+  generateContent: mockGenerateContent
+});
+
 vi.mock('firebase/ai', () => ({
-  getAI: vi.fn(() => ({ backend: 'google_ai' })),
-  GoogleAIBackend: vi.fn(),
+  getAI: vi.fn((app, options) => ({ backend: options?.backend })),
+  GoogleAIBackend: vi.fn(function() { this.backendType = 'GOOGLE_AI'; }),
+  AgentPlatformBackend: vi.fn(function(loc) { this.backendType = 'AGENT_PLATFORM'; this.location = loc; }),
+  VertexAIBackend: vi.fn(function(loc) { this.backendType = 'VERTEX_AI'; this.location = loc; }),
   getLiveGenerativeModel: (...args) => mockGetLiveGenerativeModel(...args),
+  getGenerativeModel: (...args) => mockGetGenerativeModel(...args),
   Modality: {
     TEXT: 'TEXT',
     AUDIO: 'AUDIO'
@@ -34,6 +57,9 @@ vi.mock('../firebase-config', () => ({
 describe('Firebase AI Logic - aiLogic.js', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetTranscribeCooldown();
+    resetFirebaseAIInstance();
+    resetUnsupportedModels();
     mockLiveSession.isClosed = false;
     mockGetLiveGenerativeModel.mockImplementation(() => ({
       connect: vi.fn().mockResolvedValue(mockLiveSession)
@@ -63,7 +89,7 @@ describe('Firebase AI Logic - aiLogic.js', () => {
     it('initializes and returns the singleton Firebase AI instance', () => {
       const ai = getFirebaseAI();
       expect(ai).toBeDefined();
-      expect(ai.backend).toBe('google_ai');
+      expect(ai.backend.backendType).toBe('AGENT_PLATFORM');
     });
   });
 
@@ -101,7 +127,7 @@ describe('Firebase AI Logic - aiLogic.js', () => {
       expect(session.isConnected()).toBe(true);
     });
 
-    it('falls back to gemini-2.5-flash-native-audio-preview-12-2025 when primary model connection fails', async () => {
+    it('falls back to secondary models when primary live model connection fails', async () => {
       async function* emptyGenerator() {}
       mockLiveSession.receive.mockReturnValue(emptyGenerator());
 
@@ -128,7 +154,7 @@ describe('Firebase AI Logic - aiLogic.js', () => {
       );
       expect(mockGetLiveGenerativeModel).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ model: 'gemini-2.5-flash-native-audio-preview-12-2025' })
+        expect.objectContaining({ model: 'gemini-3.5-transcribe-live-preview' })
       );
       expect(session.isConnected()).toBe(true);
     });
@@ -230,6 +256,20 @@ describe('Firebase AI Logic - aiLogic.js', () => {
       expect(session.isConnected()).toBe(true);
     });
 
+    it('aborts candidate retry loop immediately on App Check token invalid failure', async () => {
+      mockGetLiveGenerativeModel.mockReturnValue({
+        connect: vi.fn().mockRejectedValue(new Error("Reason: 'Firebase App Check token is invalid.'"))
+      });
+
+      const session = createLiveSubtitleSession({
+        targetLanguage: 'en',
+        currentUser: { email: 'teacher@staff.vtc.edu.hk' }
+      });
+
+      await expect(session.connect()).rejects.toThrow(/Firebase App Check token is invalid/);
+      expect(mockGetLiveGenerativeModel).toHaveBeenCalledTimes(1);
+    });
+
     it('tracks token usage and calculates estimated USD cost from streaming', async () => {
       async function* emptyGenerator() {}
       mockLiveSession.receive.mockReturnValue(emptyGenerator());
@@ -290,6 +330,132 @@ describe('Firebase AI Logic - aiLogic.js', () => {
       );
     });
   });
+
+  describe('pcmFloat32ToWavBase64 and transcribeAudioWithFirebaseAI', () => {
+    it('converts Float32Array PCM to valid WAV base64 string', () => {
+      const pcm = new Float32Array([0, 0.5, -0.5, 1, -1]);
+      const base64 = pcmFloat32ToWavBase64(pcm, 16000);
+      expect(base64).toBeTruthy();
+      expect(typeof base64).toBe('string');
+      // Empty input returns empty string
+      expect(pcmFloat32ToWavBase64(null)).toBe('');
+      expect(pcmFloat32ToWavBase64(new Float32Array([]))).toBe('');
+    });
+
+    it('transcribes audio via Firebase AI Logic using gemini-3.8-flash', async () => {
+      const pcm = new Float32Array(16000);
+      const transcript = await transcribeAudioWithFirebaseAI(pcm, 16000, 'zh-HK');
+      expect(mockGetGenerativeModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          model: 'gemini-3.8-flash'
+        })
+      );
+      expect(transcript).toBe('Hello students');
+    });
+
+    it('handles empty audio gracefully without calling generative model', async () => {
+      const transcript = await transcribeAudioWithFirebaseAI(null);
+      expect(transcript).toBe('');
+    });
+
+    it('prunes 404 / unsupported models so they are skipped on subsequent calls', async () => {
+      // First model throws 404 Publisher model not found
+      mockGenerateContent
+        .mockRejectedValueOnce(new Error('[404] Publisher model projects/.../gemini-3.8-flash was not found'))
+        .mockResolvedValueOnce({
+          response: { text: () => 'Fallback success' }
+        });
+
+      const pcm = new Float32Array(16000);
+      const transcript1 = await transcribeAudioWithFirebaseAI(pcm, 16000, 'zh-HK');
+      expect(transcript1).toBe('Fallback success');
+      expect(mockGetGenerativeModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ model: 'gemini-3.8-flash' })
+      );
+      expect(mockGetGenerativeModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ model: 'gemini-3.5-flash-lite' })
+      );
+
+      // Subsequent call should skip gemini-3.8-flash completely and call gemini-3.5-flash-lite directly
+      mockGetGenerativeModel.mockClear();
+      mockGenerateContent.mockResolvedValueOnce({
+        response: { text: () => 'Second call success' }
+      });
+
+      const transcript2 = await transcribeAudioWithFirebaseAI(pcm, 16000, 'zh-HK');
+      expect(transcript2).toBe('Second call success');
+      expect(mockGetGenerativeModel).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ model: 'gemini-3.8-flash' })
+      );
+      expect(mockGetGenerativeModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ model: 'gemini-3.5-flash-lite' })
+      );
+    });
+
+    it('trips circuit breaker on 429 / depleted credits and pauses subsequent calls', async () => {
+      mockGenerateContent.mockRejectedValueOnce(
+        new Error('[429] Your prepayment credits are depleted. Please manage billing.')
+      );
+
+      const pcm = new Float32Array(16000);
+      const transcript1 = await transcribeAudioWithFirebaseAI(pcm, 16000, 'zh-HK');
+      expect(transcript1).toBe('');
+
+      // Should not call subsequent models because project billing is depleted
+      expect(mockGetGenerativeModel).toHaveBeenCalledTimes(1);
+
+      // Second call during cooldown should immediately return empty without calling getGenerativeModel
+      mockGetGenerativeModel.mockClear();
+      const transcript2 = await transcribeAudioWithFirebaseAI(pcm, 16000, 'zh-HK');
+      expect(transcript2).toBe('');
+      expect(mockGetGenerativeModel).not.toHaveBeenCalled();
+    });
+
+    it('contains only active supported models in DEFAULT_TRANSCRIBE_MODELS', () => {
+      expect(DEFAULT_TRANSCRIBE_MODELS).toEqual([
+        'gemini-3.8-flash',
+        'gemini-3.5-flash-lite'
+      ]);
+      expect(DEFAULT_TRANSCRIBE_MODELS.some((m) => m.includes('2.5'))).toBe(false);
+    });
+
+    it('uses only Gemini 3 generation models for live streaming with no 2.5 models', () => {
+      expect(DEFAULT_LIVE_MODEL).toBe('gemini-3.1-flash-live-preview');
+      expect(CANDIDATE_LIVE_MODELS).toContain('gemini-3.1-flash-live-preview');
+      expect(CANDIDATE_LIVE_MODELS.some((m) => m.includes('2.5'))).toBe(false);
+    });
+  });
+
+  describe('getFirebaseAI backend initialization', () => {
+    it('defaults to AgentPlatformBackend with global location for GCP Cloud Billing', () => {
+      const ai = getFirebaseAI();
+      expect(ai).toBeTruthy();
+      expect(ai.backend.backendType).toBe('AGENT_PLATFORM');
+      expect(ai.backend.location).toBe('global');
+    });
+
+    it('initializes GoogleAIBackend when explicitly requested', () => {
+      const ai = getFirebaseAI('google_ai');
+      expect(ai).toBeTruthy();
+      expect(ai.backend.backendType).toBe('GOOGLE_AI');
+    });
+
+    it('allows resetting instance to switch backend cleanly', () => {
+      const aiVertex = getFirebaseAI('vertex');
+      expect(aiVertex.backend.backendType).toBe('AGENT_PLATFORM');
+
+      resetFirebaseAIInstance();
+
+      const aiGoogle = getFirebaseAI('google_ai');
+      expect(aiGoogle.backend.backendType).toBe('GOOGLE_AI');
+    });
+  });
 });
+
 
 

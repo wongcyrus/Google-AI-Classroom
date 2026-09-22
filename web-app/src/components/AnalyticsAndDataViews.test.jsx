@@ -118,6 +118,14 @@ describe('Analytics & Data Management Views Full Suite', () => {
       expect(screen.getByText(/Total Lab Time ▲/i)).toBeInTheDocument();
       fireEvent.click(totalTimeHeader);
       expect(screen.getByText(/Total Lab Time ▼/i)).toBeInTheDocument();
+
+      const statusHeader = screen.getByText(/Status ↕/i);
+      fireEvent.click(statusHeader);
+      expect(screen.getByText(/Status ▲/i)).toBeInTheDocument();
+
+      const taskHeader = screen.getByTitle(/Click to sort by Task 1: Account Setup & MFA duration/i);
+      fireEvent.click(taskHeader);
+      expect(taskHeader.textContent).toContain('▲');
     });
 
     it('filters metrics by selected lesson matching the top filter', async () => {
@@ -204,7 +212,7 @@ describe('Analytics & Data Management Views Full Suite', () => {
       );
 
       expect(screen.getByText(/Data Management/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Delete Screenshots in Range/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Delete (Session Data|Screenshots)/i })).toBeInTheDocument();
     });
   });
 });

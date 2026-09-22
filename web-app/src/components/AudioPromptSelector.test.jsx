@@ -105,4 +105,20 @@ describe('AudioPromptSelector Component', () => {
     fireEvent.change(textarea, { target: { value: 'Updated prompt instructions' } });
     expect(handleTextChange).toHaveBeenCalledWith('Updated prompt instructions');
   });
+
+  it('renders subtitle translation placeholder and label when applyToFilter is Live Subtitles & Translation', () => {
+    render(
+      <AudioPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText=""
+        onTextChange={vi.fn()}
+        applyToFilter="Live Subtitles & Translation"
+      />
+    );
+
+    expect(screen.getByText('-- Select a translation AI prompt --')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Select a translation prompt or enter custom instructions here...')).toBeInTheDocument();
+  });
 });

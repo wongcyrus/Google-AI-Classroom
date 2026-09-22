@@ -30,6 +30,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('firebase/ai', () => ({
   getAI: vi.fn(),
   getGenerativeModel: vi.fn(),
+  AgentPlatformBackend: vi.fn(),
   VertexAIBackend: vi.fn(),
 }));
 
@@ -58,6 +59,7 @@ describe('PromptManagement Component', () => {
     expect(screen.getByText('Image Prompts')).toBeInTheDocument();
     expect(screen.getByText('Video Prompts')).toBeInTheDocument();
     expect(screen.getByText('Voice / Audio Prompts')).toBeInTheDocument();
+    expect(screen.getByText('Translation Prompts')).toBeInTheDocument();
 
     // Click Video Prompts tab
     fireEvent.click(screen.getByText('Video Prompts'));
@@ -66,6 +68,39 @@ describe('PromptManagement Component', () => {
     // Click Voice / Audio Prompts tab
     fireEvent.click(screen.getByText('Voice / Audio Prompts'));
     expect(screen.getByText('Voice / Audio Prompts')).toHaveClass('active');
+
+    // Click Translation Prompts tab
+    fireEvent.click(screen.getByText('Translation Prompts'));
+    expect(screen.getByText('Translation Prompts')).toHaveClass('active');
+  });
+
+  it('handles creating and saving a translation prompt', async () => {
+    render(<PromptManagement />);
+
+    // Switch to Translation Prompts
+    fireEvent.click(screen.getByText('Translation Prompts'));
+    expect(screen.getByText('Translation Prompts')).toHaveClass('active');
+
+    // Fill in name and prompt text
+    fireEvent.change(screen.getByPlaceholderText('Prompt Name'), { target: { value: 'Bilingual CS Translation' } });
+    const textarea = document.querySelector('.w-md-editor-text-input');
+    fireEvent.change(textarea, { target: { value: 'Translate computer science lecture preserving variable names.' } });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Prompt/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(addDoc).toHaveBeenCalledWith(
+        undefined,
+        expect.objectContaining({
+          name: 'Bilingual CS Translation',
+          category: 'translations',
+          applyTo: expect.arrayContaining(['Live Subtitles & Translation']),
+          owner: 'teacher_1'
+        })
+      );
+    });
+    expect(window.alert).toHaveBeenCalledWith('Prompt saved successfully!');
   });
 
   it('handles creating a new prompt with validation for missing fields', async () => {

@@ -13,6 +13,11 @@ const JOB_TYPE_LABELS = {
   cloudFallbackFaceAnalysis: '👁️ Cloud Gaze Fallback',
   analyzeAudio: '🎙️ Audio STT & Diarization',
   liveSubtitleStream: '🌐 Gemini Live Subtitle Stream',
+  generateBingoQuestion: '🎯 Live Dynamic Bingo Question',
+  generateBingoQuestionBank: '📚 Bingo Question Bank Generation',
+  generateLabTaskPrompt: '📝 AI Lab Task Prompt Generation',
+  processLectureSubtitles: '🎬 Full Lecture Subtitles & Chapters',
+  translateTeacherSpeech: '🗣️ Live Teacher Speech Translation',
   other: '⚙️ General AI Processing',
 };
 
@@ -24,7 +29,6 @@ const MODEL_COLORS = {
   'gemini-3.5-transcribe': '#10b981',
   'gemini-3.5-transcribe-live': '#f59e0b',
   'gemini-3.1-flash-live-preview': '#ef4444',
-  'gemini-2.5-flash-native-audio-preview-12-2025': '#f97316',
 };
 
 const AiCostReportView = ({

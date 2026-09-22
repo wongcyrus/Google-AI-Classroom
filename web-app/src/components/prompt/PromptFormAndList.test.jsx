@@ -52,6 +52,36 @@ describe('PromptList Component', () => {
     fireEvent.click(screen.getByText('Audio Live Proctor'));
     expect(onSelect).toHaveBeenCalledWith(mockPrompts[0]);
   });
+
+  it('renders translation tab and filters translation prompts', () => {
+    const setActiveTab = vi.fn();
+    const translationPrompts = [
+      { id: 't1', name: 'Bilingual Lecture Subtitle Translator', category: 'translations', accessLevel: 'public' },
+      { id: 't2', name: 'Legacy Subtitle Audio Prompt', category: 'audios', applyTo: ['Live Subtitles & Translation'], accessLevel: 'shared' },
+      { id: 'a1', name: 'General Audio Proctor', category: 'audios', applyTo: ['Live Audio Invigilation'], accessLevel: 'public' }
+    ];
+
+    render(
+      <PromptList
+        prompts={translationPrompts}
+        activeTab="translations"
+        setActiveTab={setActiveTab}
+        searchTerm=""
+        setSearchTerm={vi.fn()}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        onClearForm={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Translation Prompts')).toHaveClass('active');
+    expect(screen.getByText('Bilingual Lecture Subtitle Translator')).toBeInTheDocument();
+    expect(screen.getByText('Legacy Subtitle Audio Prompt')).toBeInTheDocument();
+    expect(screen.queryByText('General Audio Proctor')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Translation Prompts'));
+    expect(setActiveTab).toHaveBeenCalledWith('translations');
+  });
 });
 
 describe('PromptForm Component', () => {
@@ -91,8 +121,49 @@ describe('PromptForm Component', () => {
     expect(screen.getByLabelText(/Live Audio Invigilation/i)).toBeChecked();
     expect(screen.getByLabelText(/Session Audio Summary/i)).not.toBeChecked();
     expect(screen.getByLabelText(/On-Device Gemma Voice Intent/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/Live Subtitles & Translation/i)).not.toBeChecked();
 
     fireEvent.click(screen.getByLabelText(/Session Audio Summary/i));
+    expect(handleApplyToChange).toHaveBeenCalled();
+  });
+
+  it('renders translation applyTo checkboxes when activeTab is translations', () => {
+    const handleApplyToChange = vi.fn();
+    const setName = vi.fn();
+    const setPromptText = vi.fn();
+
+    render(
+      <PromptForm
+        selectedPrompt={null}
+        name="Medical Translation"
+        setName={setName}
+        promptText="Translate healthcare lectures"
+        setPromptText={setPromptText}
+        applyTo={['Live Subtitles & Translation']}
+        handleApplyToChange={handleApplyToChange}
+        accessLevel="private"
+        setAccessLevel={vi.fn()}
+        sharedWithUsers={[]}
+        emailInput=""
+        setEmailInput={vi.fn()}
+        handleAddEmail={vi.fn()}
+        handleRemoveUser={vi.fn()}
+        handleSave={vi.fn()}
+        handleDuplicate={vi.fn()}
+        handleDelete={vi.fn()}
+        activeTab="translations"
+        handleOptimize={vi.fn()}
+        handleUndo={vi.fn()}
+        isOptimizing={false}
+        originalPromptText=""
+      />
+    );
+
+    expect(screen.getByLabelText(/Live Subtitles & Translation/i)).toBeChecked();
+    expect(screen.getByLabelText(/Cantonese-English Code-Switching/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/Technical Discipline Glossary/i)).not.toBeChecked();
+
+    fireEvent.click(screen.getByLabelText(/Cantonese-English Code-Switching/i));
     expect(handleApplyToChange).toHaveBeenCalled();
   });
 

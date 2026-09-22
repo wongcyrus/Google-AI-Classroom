@@ -154,8 +154,8 @@ const TeacherView = ({ user }) => {
         storageUsage: 0,
         aiQuota: 10,
         aiUsedQuota: 0,
-        automaticCapture: false,
-        automaticCombine: false,
+        automaticCapture: true,
+        automaticCombine: true,
       });
 
       setShowCreateModal(false);

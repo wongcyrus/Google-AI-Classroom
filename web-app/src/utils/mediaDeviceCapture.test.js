@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { acquireInputDeviceStream } from './mediaDeviceCapture';
+import { acquireInputDeviceStream, resetWarnedMissingDevices } from './mediaDeviceCapture';
 
 function createStream(kind, deviceId) {
   const track = {
@@ -20,6 +20,7 @@ describe('acquireInputDeviceStream', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    resetWarnedMissingDevices();
   });
 
   it('requests generic camera permission before binding a selected camera exactly', async () => {
@@ -136,9 +137,10 @@ describe('acquireInputDeviceStream', () => {
     });
   });
 
-  it('uses the permission stream when a persisted microphone is no longer available', async () => {
+  it('uses the permission stream and updates stored identity when a persisted microphone is no longer available', async () => {
     const permission = createStream('audio', 'current-default');
     const getUserMedia = vi.fn().mockResolvedValue(permission.stream);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -154,6 +156,15 @@ describe('acquireInputDeviceStream', () => {
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(permission.track.stop).not.toHaveBeenCalled();
     expect(result).toBe(permission.stream);
+
+    // Verify stored identity is updated to current default device
+    const storedIdentity = JSON.parse(localStorage.getItem('preferred_audio_input_identity'));
+    expect(storedIdentity.deviceId).toBe('current-default');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    // Subsequent call with same missing device should deduplicate warning
+    await acquireInputDeviceStream('audio', 'disconnected-mic');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it('reconciles a rotated microphone ID from its persisted physical identity', async () => {

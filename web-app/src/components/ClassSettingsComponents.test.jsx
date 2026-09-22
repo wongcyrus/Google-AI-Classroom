@@ -14,6 +14,15 @@ vi.mock('../firebase-config', () => ({
     },
   },
   db: {},
+  functions: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({
+    data: {
+      studentEmails: ['student_a@school.edu', 'student_b@school.edu'],
+    },
+  })),
 }));
 
 const mockUpdatePassword = vi.fn().mockResolvedValue({});
@@ -34,6 +43,12 @@ const mockDeleteDoc = vi.fn().mockResolvedValue({});
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id, ...rest) => ({ path: `${col}/${id}${rest.length ? '/' + rest.join('/') : ''}` })),
   getDoc: vi.fn().mockImplementation((ref) => {
+    if (ref?.path?.includes('new-course-101')) {
+      return Promise.resolve({
+        exists: () => false,
+        data: () => null,
+      });
+    }
     return Promise.resolve({
       exists: () => true,
       data: () => ({
@@ -60,6 +75,8 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(() => ({ path: 'mockCollection' })),
   onSnapshot: vi.fn((q, callback) => {
     callback({
+      exists: () => true,
+      data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
       docs: [
         {
           id: 'CLASS-101',
@@ -276,6 +293,52 @@ describe('Class Settings & Management Full Suite', () => {
 
       await waitFor(() => {
         expect(mockDeleteDoc).toHaveBeenCalled();
+      });
+    });
+
+    it('handles creating a new class, populating all system students, and exporting roster CSV', async () => {
+      render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+
+      expect(screen.getByText(/Class Management & Configuration/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Create Class/i })).toBeInTheDocument();
+
+      // Enter Class ID & Display Name
+      const idInput = screen.getByPlaceholderText(/e\.g\. it114115-2026-s1/i);
+      fireEvent.change(idInput, { target: { value: 'new-course-101' } });
+
+      const nameInput = screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i);
+      fireEvent.change(nameInput, { target: { value: 'Introduction to Cloud Systems' } });
+
+      // Click Add All Students
+      const addAllStudentsBtn = screen.getByRole('button', { name: /Add All Students/i });
+      fireEvent.click(addAllStudentsBtn);
+
+      // Click Export CSV (student and teacher rosters)
+      const exportCsvBtns = screen.getAllByRole('button', { name: /Export CSV/i });
+      fireEvent.click(exportCsvBtns[0]);
+      if (exportCsvBtns[1]) fireEvent.click(exportCsvBtns[1]);
+
+      // Set schedule dates
+      const dateInputs = document.querySelectorAll('input[type="date"]');
+      if (dateInputs.length >= 2) {
+        fireEvent.change(dateInputs[0], { target: { value: '2026-09-01' } });
+        fireEvent.change(dateInputs[1], { target: { value: '2026-12-31' } });
+      }
+
+      // Add time slot
+      const startTimeSelect = screen.getByDisplayValue('Start Time');
+      fireEvent.change(startTimeSelect, { target: { value: '09:00' } });
+      const monCheckbox = screen.getByLabelText(/Mon/i);
+      fireEvent.click(monCheckbox);
+      const addScheduleBtn = screen.getByRole('button', { name: /Add Schedule/i });
+      fireEvent.click(addScheduleBtn);
+
+      // Submit Create Class
+      const createBtn = screen.getByRole('button', { name: /Create Class/i });
+      fireEvent.click(createBtn);
+
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalled();
       });
     });
   });

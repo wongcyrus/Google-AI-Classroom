@@ -8,6 +8,17 @@ vi.mock('firebase/auth', () => ({
   signOut: () => mockSignOut(),
 }));
 
+const mockCallableInstance = vi.fn().mockResolvedValue({ data: { success: true, result: 'passed' } });
+const mockHttpsCallable = vi.fn(() => mockCallableInstance);
+vi.mock('firebase/functions', () => ({
+  httpsCallable: (...args) => mockHttpsCallable(...args),
+}));
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 vi.mock('../firebase-config', () => ({
   auth: {
     signOut: () => mockSignOut(),
@@ -184,10 +195,39 @@ vi.mock('../hooks/useTeacherScreenBroadcastStudent', () => ({
   useTeacherScreenBroadcastStudent: () => mockTeacherBroadcastReturn,
 }));
 
+let mockScheduleReturn = { currentActiveClassId: 'class1', activeSchedule: null, error: null, userClasses: ['class1'] };
+
 vi.mock('../hooks/useStudentClassSchedule', () => ({
-  default: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
-  useStudentClassSchedule: () => ({ currentActiveClassId: 'class1', activeSchedule: null, error: null }),
+  default: () => mockScheduleReturn,
+  useStudentClassSchedule: () => mockScheduleReturn,
 }));
+
+let mockSubtitlesReturn = {
+  active: false,
+  originalText: '',
+  translations: {},
+  currentTranslation: '',
+  availableLanguages: [
+    { code: 'zh-Hans', label: '简体中文' },
+    { code: 'en', label: 'English' },
+  ],
+  selectedLanguage: 'zh-Hans',
+  setSelectedLanguage: vi.fn(),
+  displayMode: 'bilingual',
+  setDisplayMode: vi.fn(),
+  fontSize: 'medium',
+  setFontSize: vi.fn(),
+  isVisible: true,
+  setIsVisible: vi.fn(),
+  engine: 'cloud',
+  recentHistory: [],
+};
+
+vi.mock('../hooks/useStudentLiveSubtitles', () => ({
+  default: () => mockSubtitlesReturn,
+  useStudentLiveSubtitles: () => mockSubtitlesReturn,
+}));
+
 
 describe('StudentView Component Extended Test Suite', () => {
   const mockUser = {
@@ -198,6 +238,7 @@ describe('StudentView Component Extended Test Suite', () => {
   beforeEach(() => {
     testExamActive = false;
     testExamPeriods = [];
+    mockScheduleReturn = { currentActiveClassId: 'class1', activeSchedule: null, error: null, userClasses: ['class1'] };
     vi.clearAllMocks();
     window.alert = vi.fn();
     snapshotCallbacks = [];
@@ -281,6 +322,27 @@ describe('StudentView Component Extended Test Suite', () => {
 
     window.SpeechRecognition = MockSpeechRecognition;
     window.webkitSpeechRecognition = MockSpeechRecognition;
+
+    mockSubtitlesReturn = {
+      active: false,
+      originalText: '',
+      translations: {},
+      currentTranslation: '',
+      availableLanguages: [
+        { code: 'zh-Hans', label: '简体中文' },
+        { code: 'en', label: 'English' },
+      ],
+      selectedLanguage: 'zh-Hans',
+      setSelectedLanguage: vi.fn(),
+      displayMode: 'bilingual',
+      setDisplayMode: vi.fn(),
+      fontSize: 'medium',
+      setFontSize: vi.fn(),
+      isVisible: true,
+      setIsVisible: vi.fn(),
+      engine: 'cloud',
+      recentHistory: [],
+    };
   });
 
   it('renders student setup hero card and classroom summary', async () => {
@@ -289,6 +351,7 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(screen.getByText(/Welcome to Your Classroom Session/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /My Records/i })).not.toBeInTheDocument();
     expect(screen.getByText(/My Recent Alerts/i)).toBeInTheDocument();
   });
 
@@ -811,7 +874,487 @@ describe('StudentView Component Extended Test Suite', () => {
       expect(screen.getByText('What is React JSX?')).toBeInTheDocument();
     });
   });
+
+  it('receives and submits Bingo challenge for inactive-schedule class when enrolled in multiple classes', async () => {
+    mockScheduleReturn = {
+      currentActiveClassId: 'class1',
+      activeClassIds: ['class1'],
+      activeSchedule: null,
+      error: null,
+      userClasses: [
+        { id: 'class1', name: 'Cloud Computing' },
+        { id: 'class2', name: 'DevOps & CI/CD' },
+      ],
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    // Locate studentProperties subscription for class2
+    await waitFor(() => {
+      const class2PropsCb = snapshotCallbacks.slice().reverse().find(item =>
+        item.ref?.path === 'classes/class2/studentProperties/student123'
+      );
+      expect(class2PropsCb).toBeDefined();
+    });
+
+    const class2PropsCb = snapshotCallbacks.slice().reverse().find(item =>
+      item.ref?.path === 'classes/class2/studentProperties/student123'
+    );
+
+    // Teacher in class2 issues a Bingo challenge
+    await act(async () => {
+      class2PropsCb.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'devops_bingo_777',
+            classId: 'class2',
+            question: 'What file configures GitHub Actions workflows?',
+            options: ['.github/workflows/ci.yml', 'Jenkinsfile', 'Dockerfile', 'package.json'],
+            timeLimitSeconds: 45,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 45000,
+          },
+        }),
+      });
+    });
+
+    // Verify Bingo modal is displayed with the class2 identifier
+    await waitFor(() => {
+      expect(screen.getByText('What file configures GitHub Actions workflows?')).toBeInTheDocument();
+      expect(screen.getByTestId('bingo-class-pill')).toHaveTextContent('DevOps & CI/CD');
+      expect(screen.getByText('.github/workflows/ci.yml')).toBeInTheDocument();
+    });
+
+    // Select the correct option
+    const optionBtn = screen.getByTestId('bingo-option-0');
+    await act(async () => {
+      fireEvent.click(optionBtn);
+    });
+
+    // Verify submitBingoAnswer was called with classId: 'class2'
+    expect(mockCallableInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'class2',
+        bingoId: 'devops_bingo_777',
+        selectedIndex: 0,
+      })
+    );
+  });
+
+  it('ignores stale flat activeBingo.status keys and renders new pending activeBingo challenge', async () => {
+    mockScheduleReturn = {
+      currentActiveClassId: 'class1',
+      activeClassIds: ['class1'],
+      activeSchedule: null,
+      error: null,
+      userClasses: [
+        { id: 'class1', name: 'Cloud Computing 101' },
+      ],
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    // Simulate studentProperties snapshot having stale flat keys ('activeBingo.status': 'passed') alongside new pending challenge
+    const studentPropCb = snapshotCallbacks.find(item => item.ref?.path === 'classes/class1/studentProperties/student123');
+    expect(studentPropCb).toBeDefined();
+
+    act(() => {
+      studentPropCb.callback({
+        exists: () => true,
+        data: () => ({
+          'activeBingo.status': 'passed',
+          'activeBingo.result': 'passed',
+          'activeBingo.responseTimeSec': 12,
+          activeBingo: {
+            bingoId: 'fresh_challenge_999',
+            classId: 'class1',
+            question: 'What is the capital of Cloud Computing?',
+            options: ['Datacenter', 'Server', 'Silicon', 'Kubernetes'],
+            timeLimitSeconds: 45,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 45000,
+          },
+        }),
+      });
+    });
+
+    // Verify Bingo modal is displayed and not suppressed by 'passed' flat key
+    await waitFor(() => {
+      expect(screen.getByText('What is the capital of Cloud Computing?')).toBeInTheDocument();
+      expect(screen.getByText('Datacenter')).toBeInTheDocument();
+    });
+  });
+
+  it('sanitizes and deduplicates class metadata debug logs without leaking student emails', async () => {
+    const logSpy = vi.spyOn(console, 'log');
+
+    render(<StudentView user={mockUser} />);
+
+    // Trigger class snapshot with sensitive student and teacher lists
+    const classSnapshotCb = snapshotCallbacks.find(item => item.ref?.path === 'classes/class1');
+    expect(classSnapshotCb).toBeDefined();
+
+    await act(async () => {
+      classSnapshotCb.callback({
+        exists: () => true,
+        data: () => ({
+          name: 'Secure Network Architecture',
+          captureMode: 'dual',
+          frameRate: 15,
+          isCapturing: true,
+          isExamActive: false,
+          studentEmails: ['classmate_a@gmail.com', 'classmate_b@gmail.com'],
+          students: {
+            uid_a: 'classmate_a@gmail.com',
+            uid_b: 'classmate_b@gmail.com',
+          },
+          teacherEmails: ['head_instructor@vtc.edu.hk'],
+          teachers: { tuid: 'head_instructor@vtc.edu.hk' },
+        }),
+      });
+    });
+
+    // Verify no debug logs for class metadata or raw class data are emitted
+    const debugLogs = logSpy.mock.calls.filter(call =>
+      typeof call[0] === 'string' && (
+        call[0].includes('[StudentView] DEBUG:') ||
+        call[0].includes('Raw class data:')
+      )
+    );
+    expect(debugLogs.length).toBe(0);
+
+    // Verify sensitive student/teacher emails are never logged
+    const loggedText = logSpy.mock.calls.map(call => JSON.stringify(call)).join(' ');
+    expect(loggedText).not.toContain('classmate_a@gmail.com');
+    expect(loggedText).not.toContain('classmate_b@gmail.com');
+    expect(loggedText).not.toContain('head_instructor@vtc.edu.hk');
+
+    logSpy.mockRestore();
+  });
+
+  it('renders UnenrolledStudentView when student has no active class and no enrolled classes', () => {
+    mockScheduleReturn = { currentActiveClassId: null, activeSchedule: null, error: null, userClasses: [] };
+    render(<StudentView user={mockUser} />);
+    expect(screen.getByTestId('unenrolled-student-view')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting Instructor Enrollment')).toBeInTheDocument();
+    expect(screen.getByText('student@school.edu')).toBeInTheDocument();
+  });
+
+  it('allows student to switch from desktop view to mobile companion view', async () => {
+    render(<StudentView user={mockUser} />);
+    const mobileSwitchBtn = screen.getByRole('button', { name: /mobile view/i });
+    expect(mobileSwitchBtn).toBeInTheDocument();
+
+    fireEvent.click(mobileSwitchBtn);
+
+    // Now in mobile companion view
+    await waitFor(() => {
+      expect(screen.getByRole('banner')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /switch to desktop/i })).toBeInTheDocument();
+    });
+  });
+
+  it('allows student to manually switch class even when currentActiveClassId is present, persisting override and showing Follow Schedule button', async () => {
+    localStorage.clear();
+    mockScheduleReturn = {
+      currentActiveClassId: 'class1',
+      activeClassIds: ['class1'],
+      activeSchedule: null,
+      error: null,
+      userClasses: ['class1', 'class2'],
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    // Initially activeClass is class1
+    expect(screen.getByText('Class: class1')).toBeInTheDocument();
+
+    // Select class2 from dropdown
+    const select = screen.getByLabelText('Select Enrolled Class');
+    expect(select).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: 'class2' } });
+
+    // Should now be class2 and not snap back to class1
+    await waitFor(() => {
+      expect(screen.getByText('Class: class2')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Follow Schedule \(class1\)/i })).toBeInTheDocument();
+    });
+
+    // Clicking Follow Schedule should revert to class1
+    const followScheduleBtn = screen.getByRole('button', { name: /Follow Schedule \(class1\)/i });
+    fireEvent.click(followScheduleBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Class: class1')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Follow Schedule/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('allows switching active class during active session and shows scheduled indicator', async () => {
+    localStorage.clear();
+    mockScheduleReturn = {
+      currentActiveClassId: 'class1',
+      activeClassIds: ['class1', 'class2'],
+      activeSchedule: null,
+      error: null,
+      userClasses: ['class1', 'class2'],
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    // Start sharing
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    // Active session switcher should exist
+    const activeSwitcher = await screen.findByLabelText('Switch Active Class Session');
+    expect(activeSwitcher).toBeInTheDocument();
+
+    // Switch to class2
+    await act(async () => {
+      fireEvent.change(activeSwitcher, { target: { value: 'class2' } });
+    });
+
+    expect(activeSwitcher.value).toBe('class2');
+  });
+
+  it('allows switching between desktop mode and mobile companion view', async () => {
+    localStorage.clear();
+    const onViewModeChange = vi.fn();
+    render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
+
+    expect(onViewModeChange).toHaveBeenCalledWith('desktop');
+
+    // Switch to Mobile Companion Mode
+    const switchMobileBtn = screen.getByRole('button', { name: /Mobile View/i });
+    await act(async () => {
+      fireEvent.click(switchMobileBtn);
+    });
+
+    expect(document.body.classList.contains('in-student-mobile-view')).toBe(true);
+    expect(onViewModeChange).toHaveBeenCalledWith('mobile');
+
+    // Switch back to Desktop mode
+    const switchDesktopBtn = screen.getByRole('button', { name: /Switch to Desktop Invigilation/i });
+    await act(async () => {
+      fireEvent.click(switchDesktopBtn);
+    });
+
+    expect(document.body.classList.contains('in-student-mobile-view')).toBe(false);
+    expect(onViewModeChange).toHaveBeenCalledWith('desktop');
+  });
+
+  it('renders YouTube-style player bottom bar and supports toggling screen modes (max, smallest, standard)', async () => {
+    localStorage.clear();
+    mockTeacherBroadcastReturn.isBroadcastActive = true;
+    mockTeacherBroadcastReturn.liveFrame = 'data:image/jpeg;base64,frame123';
+
+    render(<StudentView user={mockUser} />);
+
+    // YouTube bottom bar should be rendered
+    const playerBar = screen.getByRole('toolbar', { name: /Player Controls/i });
+    expect(playerBar).toBeInTheDocument();
+
+    // Default mode is standard
+    const contentContainer = document.querySelector('.student-view-content');
+    expect(contentContainer.classList.contains('mode-standard')).toBe(true);
+
+    // Switch to Max (Theater) mode using title
+    const maxBtn = screen.getByTitle('Max / Theater Mode (Full Width)');
+    await act(async () => {
+      fireEvent.click(maxBtn);
+    });
+
+    expect(contentContainer.classList.contains('mode-max')).toBe(true);
+    expect(localStorage.getItem('student_desktop_screen_mode')).toBe('max');
+
+    // Switch to Smallest (Mini-Player) mode using title
+    const smallestBtn = screen.getByTitle('Smallest / Mini-Player Mode (Compact Corner)');
+    await act(async () => {
+      fireEvent.click(smallestBtn);
+    });
+
+    expect(contentContainer.classList.contains('mode-smallest')).toBe(true);
+    expect(localStorage.getItem('student_desktop_screen_mode')).toBe('smallest');
+    expect(screen.getByText(/Mini-Player Active:/i)).toBeInTheDocument();
+
+    // Switch back to Standard mode using title
+    const standardBtn = screen.getByTitle('Standard Mode (Side-by-Side)');
+    await act(async () => {
+      fireEvent.click(standardBtn);
+    });
+
+    expect(contentContainer.classList.contains('mode-standard')).toBe(true);
+    expect(localStorage.getItem('student_desktop_screen_mode')).toBe('standard');
+  });
+
+  it('renders YouTube-style closed captions overlay, supports toggling CC and changing language/settings', async () => {
+    mockTeacherBroadcastReturn.isBroadcastActive = true;
+    mockTeacherBroadcastReturn.liveFrame = 'data:image/jpeg;base64,frame123';
+    mockSubtitlesReturn.active = true;
+    mockSubtitlesReturn.originalText = 'Welcome to today lecture';
+    mockSubtitlesReturn.currentTranslation = '欢迎来到今天的讲座';
+
+    render(<StudentView user={mockUser} />);
+
+    // Check closed captions cues in player overlay specifically
+    const originalCue = document.querySelector('.youtube-cc-cue.original .youtube-cc-text');
+    const translatedCue = document.querySelector('.youtube-cc-cue.translated .youtube-cc-text');
+    expect(originalCue).toHaveTextContent('Welcome to today lecture');
+    expect(translatedCue).toHaveTextContent('欢迎来到今天的讲座');
+
+    // YouTube CC toggle button
+    const ccBtn = document.querySelector('.yt-cc-btn');
+    expect(ccBtn).toBeInTheDocument();
+    expect(ccBtn.classList.contains('active')).toBe(true);
+
+    // Toggle CC off
+    await act(async () => {
+      fireEvent.click(ccBtn);
+    });
+    expect(document.querySelector('.youtube-cc-cue-container')).toBeNull();
+    expect(ccBtn.classList.contains('active')).toBe(false);
+
+    // Toggle CC back on
+    await act(async () => {
+      fireEvent.click(ccBtn);
+    });
+    expect(document.querySelector('.youtube-cc-cue-container')).toBeInTheDocument();
+    expect(document.querySelector('.youtube-cc-cue.original .youtube-cc-text')).toHaveTextContent('Welcome to today lecture');
+
+    // Language dropdown
+    const langSelect = screen.getByRole('combobox', { name: /Caption Language/i });
+    expect(langSelect).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.change(langSelect, { target: { value: 'en' } });
+    });
+    expect(mockSubtitlesReturn.setSelectedLanguage).toHaveBeenCalledWith('en');
+
+    // Settings popover
+    const settingsBtn = screen.getByTitle('Subtitle and Player Settings');
+    await act(async () => {
+      fireEvent.click(settingsBtn);
+    });
+
+    expect(screen.getByText('CC Font Size')).toBeInTheDocument();
+    const largeFontBtn = screen.getByRole('button', { name: 'Large' });
+    await act(async () => {
+      fireEvent.click(largeFontBtn);
+    });
+    expect(mockSubtitlesReturn.setFontSize).toHaveBeenCalledWith('large');
+  });
+
+  it('guarantees Classroom Bingo presence alert banner and modal persist safely across screen modes', async () => {
+    mockTeacherBroadcastReturn.isBroadcastActive = true;
+    mockTeacherBroadcastReturn.liveFrame = 'data:image/jpeg;base64,frame123';
+
+    render(<StudentView user={mockUser} />);
+
+    // Simulate active, valid Bingo challenge arriving from Firestore
+    await waitFor(() => {
+      const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+      expect(studentPropsCallback).toBeDefined();
+    });
+
+    const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+    act(() => {
+      studentPropsCallback.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'safe_bingo_999',
+            question: 'Is attendance mandatory for this session?',
+            options: ['Yes, fully mandatory', 'No, optional', 'Only for audit', 'Not sure'],
+            timeLimitSeconds: 60,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 60000,
+          },
+        }),
+      });
+    });
+
+    // Top alert banner MUST be rendered
+    await waitFor(() => {
+      expect(screen.getByText('Classroom Bingo Presence Challenge Active!')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Answer Challenge ➔/i })).toBeInTheDocument();
+    });
+
+    // Bingo modal MUST also be rendered
+    expect(screen.getByText('🎯 Class Bingo Check')).toBeInTheDocument();
+    expect(screen.getByText('Is attendance mandatory for this session?')).toBeInTheDocument();
+
+    // Switch screen modes while Bingo is active: mode-max
+    const maxBtn = screen.getByRole('button', { name: /^🗖 Max$/i });
+    await act(async () => {
+      fireEvent.click(maxBtn);
+    });
+
+    // Verify Bingo challenge and banner are NOT dismissed or broken
+    expect(screen.getByText('Classroom Bingo Presence Challenge Active!')).toBeInTheDocument();
+    expect(screen.getByText('Is attendance mandatory for this session?')).toBeInTheDocument();
+
+    // Switch to mode-smallest
+    const smallestBtn = screen.getByRole('button', { name: /^🗗 Smallest$/i });
+    await act(async () => {
+      fireEvent.click(smallestBtn);
+    });
+
+    // Verify Bingo challenge is STILL present and intact
+    expect(screen.getByText('Classroom Bingo Presence Challenge Active!')).toBeInTheDocument();
+    expect(screen.getByText('Is attendance mandatory for this session?')).toBeInTheDocument();
+  });
+
+  it('proactively exits native browser fullscreen when an active Bingo challenge arrives', async () => {
+    const mockExitFullscreen = vi.fn().mockResolvedValue();
+    Object.defineProperty(document, 'fullscreenElement', {
+      value: document.createElement('div'),
+      configurable: true,
+      writable: true,
+    });
+    document.exitFullscreen = mockExitFullscreen;
+
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+      expect(studentPropsCallback).toBeDefined();
+    });
+
+    const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+    act(() => {
+      studentPropsCallback.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'fullscreen_bingo_123',
+            question: 'Confirm your screen presence now',
+            options: ['Confirmed', 'Absent'],
+            timeLimitSeconds: 30,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 30000,
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockExitFullscreen).toHaveBeenCalled();
+    });
+
+    // Reset document.fullscreenElement
+    Object.defineProperty(document, 'fullscreenElement', {
+      value: null,
+      configurable: true,
+      writable: true,
+    });
+  });
 });
+
+
 
 
 

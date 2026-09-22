@@ -13,6 +13,7 @@ vi.mock('firebase/auth', () => ({
   createUserWithEmailAndPassword: vi.fn(),
   sendEmailVerification: vi.fn().mockResolvedValue(),
   sendPasswordResetEmail: vi.fn().mockResolvedValue(),
+  signOut: vi.fn().mockResolvedValue(),
 }));
 
 describe('AuthComponent Component', () => {
@@ -274,6 +275,77 @@ describe('AuthComponent Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /Register/i }));
 
     expect(screen.queryByText(/Google Chrome is strictly required for students/i)).not.toBeInTheDocument();
+  });
+
+  it('immediately signs out user after registration so unverified session is not left active', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    const mockUser = { email: 'student1@stu.vtc.edu.hk' };
+    createUserWithEmailAndPassword.mockResolvedValueOnce({ user: mockUser });
+    const { signOut: mockSignOut } = await import('firebase/auth');
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Register/i }));
+
+    await waitFor(() => {
+      expect(createUserWithEmailAndPassword).toHaveBeenCalled();
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(screen.getByText(/Registration successful\. A verification email has been sent/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles sign-in for verified user by reloading user and refreshing ID token without hanging', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    const mockReload = vi.fn().mockResolvedValue();
+    const mockGetIdTokenResult = vi.fn().mockResolvedValue({ claims: { role: 'student' } });
+    const mockUser = {
+      uid: 'verified_student_1',
+      email: 'student1@stu.vtc.edu.hk',
+      emailVerified: true,
+      reload: mockReload,
+      getIdTokenResult: mockGetIdTokenResult,
+    };
+    signInWithEmailAndPassword.mockResolvedValueOnce({ user: mockUser });
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => {
+      expect(signInWithEmailAndPassword).toHaveBeenCalled();
+      expect(mockReload).toHaveBeenCalled();
+      expect(mockGetIdTokenResult).toHaveBeenCalledWith(true);
+      // Button must NOT remain disabled or hanging
+      expect(screen.getByRole('button', { name: /Sign In/i })).not.toBeDisabled();
+    });
+  });
+
+  it('blocks sign-in and signs out when user email is not yet verified', async () => {
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(true);
+    const mockReload = vi.fn().mockResolvedValue();
+    const mockUser = {
+      uid: 'unverified_student_1',
+      email: 'student1@stu.vtc.edu.hk',
+      emailVerified: false,
+      reload: mockReload,
+    };
+    signInWithEmailAndPassword.mockResolvedValueOnce({ user: mockUser });
+    const { signOut: mockSignOut } = await import('firebase/auth');
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Please verify your email address before logging in/i)).toBeInTheDocument();
+      expect(mockSignOut).toHaveBeenCalled();
+    });
   });
 });
 

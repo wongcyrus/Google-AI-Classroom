@@ -506,5 +506,48 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
       expect(screen.getByText(/AI-Generated Lab Task Prompt/i)).toBeInTheDocument();
     });
   });
+
+  it('handles expanding prompt, opening full prompt modal, filtering by status, and inspecting job results', async () => {
+    render(
+      <VideoAnalysisJobs
+        classId="CLASS_101"
+        collectionPath="analysisJobs"
+        filterField="createdAt"
+      />
+    );
+
+    const jobRow = screen.getByText('job_v1');
+    await act(async () => {
+      fireEvent.click(jobRow);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
+    });
+
+    // Expand full prompt
+    const expandPromptBtn = screen.getByRole('button', { name: /Expand full prompt/i });
+    fireEvent.click(expandPromptBtn);
+    expect(screen.getByRole('button', { name: /Collapse/i })).toBeInTheDocument();
+
+    // Open Full Modal
+    const fullModalBtn = screen.getByRole('button', { name: /Full Modal/i });
+    fireEvent.click(fullModalBtn);
+    expect(screen.getByText(/Video Analysis Prompt/i)).toBeInTheDocument();
+
+    // Close Prompt Modal
+    const closePromptBtn = screen.getAllByRole('button', { name: 'Close' })[0];
+    fireEvent.click(closePromptBtn);
+
+    // Status filter
+    const statusSelect = screen.getByDisplayValue(/All Statuses/i);
+    fireEvent.change(statusSelect, { target: { value: 'completed' } });
+    expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
+
+    // Inspect result (button label 'View')
+    const viewBtn = screen.getByRole('button', { name: 'View' });
+    fireEvent.click(viewBtn);
+    expect(screen.getByText(/Analysis Result:/i)).toBeInTheDocument();
+  });
 });
 
