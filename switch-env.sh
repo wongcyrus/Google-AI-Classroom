@@ -13,18 +13,21 @@ case "$ENV_TARGET" in
     ENV_FILE="web-app/.env.dev"
     ENV_NAME="Development"
     FIREBASE_ALIAS="dev"
+    DEFAULT_STUDENT_DOMAINS="stu.vtc.edu.hk,gmail.com"
     ;;
   prod|production)
     PROJECT_ID="it114115-2627"
     ENV_FILE="web-app/.env.prod"
     ENV_NAME="Production"
     FIREBASE_ALIAS="prod"
+    DEFAULT_STUDENT_DOMAINS="stu.vtc.edu.hk"
     ;;
   *)
     PROJECT_ID="$ENV_TARGET"
     ENV_FILE="web-app/.env.$PROJECT_ID"
     ENV_NAME="Custom ($PROJECT_ID)"
     FIREBASE_ALIAS="$PROJECT_ID"
+    DEFAULT_STUDENT_DOMAINS="${STUDENT_EMAIL_DOMAINS:-stu.vtc.edu.hk}"
     ;;
 esac
 
@@ -40,10 +43,13 @@ if [ -f "$ENV_FILE" ]; then
     cp "$ENV_FILE" web-app/.env
     if [ "$FIREBASE_ALIAS" = "prod" ]; then
         cp "$ENV_FILE" web-app/.env.production
+        echo "📄 Updated web-app/.env and web-app/.env.production"
     elif [ "$FIREBASE_ALIAS" = "dev" ]; then
         cp "$ENV_FILE" web-app/.env.development
+        echo "📄 Updated web-app/.env and web-app/.env.development"
+    else
+        echo "📄 Updated web-app/.env"
     fi
-    echo "📄 Updated web-app/.env"
 fi
 
 # 3. Generate functions/config.js
@@ -76,7 +82,14 @@ export const TEACHER_EMAIL_DOMAINS = (process.env.TEACHER_EMAIL_DOMAINS || 'vtc.
   .map(d => d.trim().toLowerCase().replace(/^@/, ''))
   .filter(Boolean);
 
-export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || 'stu.vtc.edu.hk')
+// Runtime project detection safeguard: Cloud Functions automatically inject GCLOUD_PROJECT or FIREBASE_CONFIG
+const _detectedProjectId = process.env.GCLOUD_PROJECT || (() => {
+  try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId; } catch { return ''; }
+})() || '';
+const _isDevRuntime = _detectedProjectId === 'it114115-dev-2026' || _detectedProjectId.includes('dev');
+const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : '${DEFAULT_STUDENT_DOMAINS:-stu.vtc.edu.hk}';
+
+export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || _fallbackStudentDomains)
   .split(',')
   .map(d => d.trim().toLowerCase().replace(/^@/, ''))
   .filter(Boolean);

@@ -23,4 +23,11 @@ resource "google_identity_platform_config" "auth" {
     google_project_service.apis,
     google_firebase_project.default
   ]
+
+  lifecycle {
+    ignore_changes = [
+      blocking_functions,
+      multi_tenant
+    ]
+  }
 }

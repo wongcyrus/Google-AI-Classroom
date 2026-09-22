@@ -49,6 +49,14 @@ resource "google_project_iam_member" "compute_token_creator" {
   member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
+# Cloud Tasks Enqueuer role for compute engine default service account
+# Required for Cloud Functions Gen 2 to enqueue tasks to Cloud Tasks queues
+resource "google_project_iam_member" "compute_cloudtasks_enqueuer" {
+  project = var.project_id
+  role    = "roles/cloudtasks.enqueuer"
+  member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 # PubSub publisher role for GCS service account
 resource "google_project_iam_member" "gcs_pubsub_publisher" {
   project = var.project_id

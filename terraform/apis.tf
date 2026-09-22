@@ -16,11 +16,16 @@ locals {
     "firebaseextensions.googleapis.com",
     "aiplatform.googleapis.com",
     "generativelanguage.googleapis.com",
+    "firebasevertexai.googleapis.com",
+    "firebaseappcheck.googleapis.com",
+    "firebaseml.googleapis.com",
+    "recaptchaenterprise.googleapis.com",
     "appengine.googleapis.com",
     "cloudbilling.googleapis.com",
     "bigquery.googleapis.com",
     "iam.googleapis.com",
-    "iamcredentials.googleapis.com"
+    "iamcredentials.googleapis.com",
+    "cloudtasks.googleapis.com"
   ]
 }
 

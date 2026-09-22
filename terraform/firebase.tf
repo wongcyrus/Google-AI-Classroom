@@ -16,9 +16,65 @@ data "google_firebase_web_app_config" "default" {
   web_app_id = google_firebase_web_app.default.app_id
 }
 
-# Automatically generate web-app/.env
+# Configure App Check enforcement for Firebase AI Logic (enforced to prevent service deactivation)
+resource "google_firebase_app_check_service_config" "ailogic" {
+  provider         = google-beta
+  project          = var.project_id
+  service_id       = "firebaseml.googleapis.com"
+  enforcement_mode = "ENFORCED"
+
+  depends_on = [
+    google_firebase_project.default,
+    google_project_service.apis
+  ]
+}
+
+# Create reCAPTCHA Enterprise Key for Firebase App Check
+resource "google_recaptcha_enterprise_key" "web_app_check" {
+  provider     = google-beta
+  project      = var.project_id
+  display_name = "${var.project_id}-web-appcheck"
+
+  web_settings {
+    integration_type  = "SCORE"
+    allow_all_domains = true
+  }
+
+  depends_on = [
+    google_project_service.apis
+  ]
+}
+
+# Bind reCAPTCHA Enterprise Key to Firebase App Check Web App
+resource "google_firebase_app_check_recaptcha_enterprise_config" "default" {
+  provider = google-beta
+  project  = var.project_id
+  app_id   = google_firebase_web_app.default.app_id
+  site_key = google_recaptcha_enterprise_key.web_app_check.name
+
+  depends_on = [
+    google_firebase_web_app.default,
+    google_recaptcha_enterprise_key.web_app_check
+  ]
+}
+
+locals {
+  is_dev_project       = var.project_id == "it114115-dev-2026" || can(regex("dev", var.project_id))
+  env_student_domains  = local.is_dev_project ? "stu.vtc.edu.hk,gmail.com" : "stu.vtc.edu.hk"
+  env_enable_app_check = "true"
+  target_env_files     = local.is_dev_project ? toset([
+    "${path.module}/../web-app/.env",
+    "${path.module}/../web-app/.env.development"
+  ]) : toset([
+    "${path.module}/../web-app/.env.prod",
+    "${path.module}/../web-app/.env.production"
+  ])
+}
+
+# Automatically generate environment files for web-app based on target environment
 resource "local_file" "web_app_env" {
-  filename = "${path.module}/../web-app/.env"
+  for_each = local.target_env_files
+  filename = each.value
   content  = <<-EOT
 VITE_API_KEY=${data.google_firebase_web_app_config.default.api_key}
 VITE_AUTH_DOMAIN=${var.project_id}.firebaseapp.com
@@ -27,7 +83,9 @@ VITE_STORAGE_BUCKET=${var.project_id}.firebasestorage.app
 VITE_MESSAGING_SENDER_ID=${data.google_project.current.number}
 VITE_APP_ID=${data.google_firebase_web_app_config.default.web_app_id}
 VITE_REGION=${var.region}
-VITE_RECAPTCHA_SITE_KEY=${var.recaptcha_site_key}
+VITE_RECAPTCHA_SITE_KEY=${google_recaptcha_enterprise_key.web_app_check.name}
+VITE_FIREBASE_RECAPTCHA_SITE_KEY=${google_recaptcha_enterprise_key.web_app_check.name}
+VITE_ENABLE_APP_CHECK=${local.env_enable_app_check}
 VITE_FIREBASE_API_KEY=${data.google_firebase_web_app_config.default.api_key}
 VITE_FIREBASE_AUTH_DOMAIN=${var.project_id}.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=${var.project_id}
@@ -36,6 +94,9 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=${data.google_project.current.number}
 VITE_FIREBASE_APP_ID=${data.google_firebase_web_app_config.default.web_app_id}
 VITE_FIREBASE_REGION=${var.region}
 VITE_USE_FIREBASE_EMULATOR=false
+VITE_STUDENT_DOMAINS=${local.env_student_domains}
+VITE_FIREBASE_AI_BACKEND=vertex
+VITE_VERTEX_AI_LOCATION=global
 EOT
 }
 
