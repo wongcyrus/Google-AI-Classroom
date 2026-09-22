@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db, functions } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
 import Modal from './Modal.jsx';
@@ -168,8 +168,9 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         studentData.workingMinutes ?? 'N/A',
         studentData.workingMinutes && lessonDurationInMinutes > 0 ? ((studentData.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : 'N/A',
         lessonData?.generalSummary || '',
+        studentData?.summary || '',
         (Array.isArray(lessonData?.generalFeedback) ? lessonData.generalFeedback : (lessonData?.generalFeedback ? [lessonData.generalFeedback] : [])).join(' | '),
-        (Array.isArray(studentData.feedback) ? studentData.feedback : (studentData.feedback ? [studentData.feedback] : [])).join(' | '),
+        (Array.isArray(studentData?.feedback) ? studentData.feedback : (studentData?.feedback ? [studentData.feedback] : [])).join(' | '),
       ];
       const attendanceRecord = studentData.attendance || Array(lessonDurationInMinutes).fill(0);
       attendanceRecord.forEach((present) => {

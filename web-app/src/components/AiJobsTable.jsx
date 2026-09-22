@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { formatAiCost } from '../utils/formatters';
-import { exportToCsv, exportToJson } from '../utils/exportUtils';
+import { exportToExcel, exportToJson } from '../utils/exportUtils';
 
 const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
   const handleExportSingleJob = (job, format) => {
@@ -10,11 +10,14 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
     const isObj = typeof rawResult === 'object' && rawResult !== null;
     const resultStr = isObj ? JSON.stringify(rawResult, null, 2) : String(rawResult || '');
 
-    if (format === 'csv' || format === 'excel') {
+    if (format === 'excel') {
       const headers = ['Property', 'Value'];
       const rows = [
         ['AI Job ID', job.id || ''],
+        ['Student Name', job.displayName || job.studentName || ''],
         ['Student Email', job.studentEmail || ''],
+        ['Class / Cohort', job.studentClass || ''],
+        ['Programme', job.programme || ''],
         ['Student UID', job.studentUid || ''],
         ['Model', job.modelUsed || 'gemini-3.5-flash-lite'],
         ['Status', job.status || ''],
@@ -24,7 +27,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
         ['Findings', resultStr],
         ['Error Details', job.errorDetails || '']
       ];
-      exportToCsv(headers, rows, `Job_${job.id || 'Result'}_${studentTag}.xlsx`);
+      exportToExcel(headers, rows, `Job_${job.id || 'Result'}_${studentTag}.xlsx`);
     } else if (format === 'json') {
       const payload = {
         id: job.id,
@@ -144,7 +147,19 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                                 ▶️
                             </button>
                         </td>
-                        <td style={{ fontWeight: 500 }}>{job.studentEmail}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{job.displayName || job.studentEmail}</div>
+                          {job.displayName && job.displayName !== job.studentEmail && (
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{job.studentEmail}</div>
+                          )}
+                          {(job.studentClass || job.programme) && (
+                            <div style={{ marginTop: '2px' }}>
+                              <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
+                                {[job.studentClass, job.programme].filter(Boolean).join(' • ')}
+                              </span>
+                            </div>
+                          )}
+                        </td>
                         <td><span style={{ fontSize: '0.82em', padding: '2px 6px', background: '#e0f2fe', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>{job.modelUsed || 'gemini-3.5-flash-lite'}</span></td>
                         <td><span style={{ fontWeight: 600, color: '#475569' }}>{formatAiCost(job.cost)}</span></td>
                         <td>{getStatusBadge(job.status)}</td>

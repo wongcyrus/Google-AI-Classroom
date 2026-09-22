@@ -22,6 +22,9 @@ vi.mock('../firebase-config', () => ({
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn().mockResolvedValue({ exists: () => false }),
+  getDocs: vi.fn().mockResolvedValue({ forEach: vi.fn() }),
   onSnapshot: vi.fn((ref, callback, errCallback) => {
     mockSnapshotCallback = callback;
     return () => {};
@@ -180,8 +183,8 @@ describe('BingoResultsView Component', () => {
     expect(screen.getByText('student3@stu.vtc.edu.hk')).toBeInTheDocument();
   });
 
-  it('exports filtered data to CSV when export button is clicked', () => {
-    const exportSpy = vi.spyOn(exportUtils, 'exportToCsv').mockImplementation(() => {});
+  it('exports filtered data to Excel when export button is clicked', () => {
+    const exportSpy = vi.spyOn(exportUtils, 'exportToExcel').mockImplementation(() => {});
 
     render(<BingoResultsView classId="IT114115-Demo" />);
 
@@ -199,6 +202,7 @@ describe('BingoResultsView Component', () => {
     expect(headers).toContain('Result Status');
     expect(rows.length).toBe(3);
     expect(filename).toContain('bingo-report-IT114115-Demo');
+    expect(filename).toMatch(/\.xlsx$/);
   });
 
   it('displays screenshot preview and opens lightbox when clicked', () => {

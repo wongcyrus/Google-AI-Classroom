@@ -129,10 +129,16 @@ export function aggregateAiCost(jobs = [], options = {}) {
     // By Student
     const sUid = job.studentUid || 'class_wide';
     const sEmail = job.studentEmail || (sUid === 'class_wide' ? 'Class-Wide Task' : 'Unknown Student');
+    const sName = job.displayName || job.studentName || sEmail;
+    const sClass = job.studentClass || '';
+    const sProg = job.programme || '';
     if (!byStudentMap[sUid]) {
       byStudentMap[sUid] = {
         studentUid: sUid,
         studentEmail: sEmail,
+        studentName: sName,
+        studentClass: sClass,
+        programme: sProg,
         jobCount: 0,
         cost: 0,
         inputTokens: 0,

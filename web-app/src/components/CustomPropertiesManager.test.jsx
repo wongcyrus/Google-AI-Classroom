@@ -35,6 +35,18 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(),
 }));
 
+vi.mock('../utils/exportUtils', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    exportToExcel: vi.fn().mockResolvedValue(),
+    readExcelFile: vi.fn().mockResolvedValue([
+      ['StudentEmail', 'ExtraTime'],
+      ['alice@school.edu', '15m'],
+    ]),
+  };
+});
+
 describe('CustomPropertiesManager Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,7 +121,7 @@ describe('CustomPropertiesManager Component', () => {
       />
     );
 
-    const downloadBtn = screen.getByRole('button', { name: /Export \/ Download Existing CSV/i });
+    const downloadBtn = screen.getByRole('button', { name: /Export \/ Download Existing (Excel|CSV)/i });
     await act(async () => {
       fireEvent.click(downloadBtn);
     });
@@ -119,7 +131,7 @@ describe('CustomPropertiesManager Component', () => {
     });
   });
 
-  it('handles uploading a CSV file and creates a property upload job', async () => {
+  it('handles uploading an Excel file and creates a property upload job', async () => {
     mockGetDoc.mockResolvedValue({ exists: () => false });
 
     render(
@@ -129,7 +141,7 @@ describe('CustomPropertiesManager Component', () => {
       />
     );
 
-    const file = new File(['StudentEmail,ExtraTime\nalice@school.edu,15m'], 'props.csv', { type: 'text/csv' });
+    const file = new File(['dummy'], 'props.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fileInput = document.querySelector('input[type="file"]');
     
     await act(async () => {

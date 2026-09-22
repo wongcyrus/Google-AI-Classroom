@@ -131,18 +131,20 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         const dirMap = {};
         // 1. Query central studentDirectory collection
         const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-        dirSnap.forEach((d) => {
-          const data = d.data() || {};
-          const email = (data.email || d.id || '').trim().toLowerCase();
-          if (email && email.includes('@')) {
-            dirMap[email] = {
-              studentName: data.studentName || '',
-              nickname: data.nickname || '',
-              programme: data.programme || '',
-              studentClass: data.studentClass || '',
-            };
-          }
-        });
+        if (dirSnap && typeof dirSnap.forEach === 'function') {
+          dirSnap.forEach((d) => {
+            const data = d.data() || {};
+            const email = (data.email || d.id || '').trim().toLowerCase();
+            if (email && email.includes('@')) {
+              dirMap[email] = {
+                studentName: data.studentName || '',
+                nickname: data.nickname || '',
+                programme: data.programme || '',
+                studentClass: data.studentClass || '',
+              };
+            }
+          });
+        }
 
         // 2. Cross-class aggregation: scan accessible classes to merge student profile information
         try {
@@ -423,19 +425,30 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       let importedProfiles = {};
 
       if (type === 'students') {
+        const lowerName = (file.name || '').toLowerCase();
+        if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls')) {
+          alert('Please upload an Excel spreadsheet (.xlsx or .xls). CSV files are not supported.');
+          return;
+        }
         const parsed = await parseStudentRosterFile(file);
         if (parsed.emailList && parsed.emailList.length > 0) {
           cleanUnique = parsed.emailList;
           importedProfiles = parsed.profilesMap || {};
         }
-      }
-
-      // Fallback for unstructured text files or teacher emails
-      if (cleanUnique.length === 0) {
-        const content = await readTextFileWithEncoding(file);
-        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-        const matchedEmails = content.match(emailRegex) || [];
-        cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
+      } else {
+        const lowerName = (file.name || '').toLowerCase();
+        if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+          const rows = await readExcelFile(file);
+          const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+          const allText = JSON.stringify(rows);
+          const matchedEmails = allText.match(emailRegex) || [];
+          cleanUnique = [...new Set(matchedEmails.map(e => e.trim().toLowerCase()))];
+        } else {
+          const content = await readTextFileWithEncoding(file);
+          const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+          const matchedEmails = content.match(emailRegex) || [];
+          cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
+        }
       }
 
       if (cleanUnique.length === 0) {
@@ -472,7 +485,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     event.target.value = '';
   };
 
-  const handleExportEmailsToCSV = async (type = 'students') => {
+  const handleExportEmailsToExcel = async (type = 'students') => {
     const emails = type === 'students'
       ? studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean)
       : teacherEmails.replace(/\n/g, ' ').split(/[, ]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -527,19 +540,21 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         const emailSet = new Set();
         try {
           const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-          dirSnap.forEach((d) => {
-            const dData = d.data() || {};
-            const em = (dData.email || d.id || '').trim().toLowerCase();
-            if (em && em.includes('@')) {
-              emailSet.add(em);
-              fetchedProfiles[em] = {
-                studentName: dData.studentName || '',
-                nickname: dData.nickname || '',
-                programme: dData.programme || '',
-                studentClass: dData.studentClass || '',
-              };
-            }
-          });
+          if (dirSnap && typeof dirSnap.forEach === 'function') {
+            dirSnap.forEach((d) => {
+              const dData = d.data() || {};
+              const em = (dData.email || d.id || '').trim().toLowerCase();
+              if (em && em.includes('@')) {
+                emailSet.add(em);
+                fetchedProfiles[em] = {
+                  studentName: dData.studentName || '',
+                  nickname: dData.nickname || '',
+                  programme: dData.programme || '',
+                  studentClass: dData.studentClass || '',
+                };
+              }
+            });
+          }
         } catch {}
 
         const classesRef = collection(db, 'classes');
@@ -1233,10 +1248,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 📄 Download Excel Template
               </button>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                📥 Import (Excel/CSV)
+                📥 Import (Excel)
                 <input
                   type="file"
-                  accept=".xlsx,.xls,.csv,.txt"
+                  accept=".xlsx,.xls"
                   style={{ display: 'none' }}
                   onChange={(e) => handleImportEmailsFromFile(e, 'students')}
                 />
@@ -1245,7 +1260,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 type="button"
                 className="btn-secondary"
                 style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-                onClick={() => handleExportEmailsToCSV('students')}
+                onClick={() => handleExportEmailsToExcel('students')}
               >
                 📤 Export Excel
               </button>
@@ -1383,10 +1398,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             <span style={{ fontSize: '1.2rem' }}>ℹ️</span>
             <div>
               <p style={{ margin: 0, fontWeight: 600, fontSize: '0.88rem', color: 'var(--color-text-main, #334155)' }}>
-                Custom Student Properties & CSV Upload
+                Custom Student Properties & Excel Upload
               </p>
               <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted, #64748b)' }}>
-                Custom class-wide properties and student CSV upload controls become available after creating and selecting this class.
+                Custom class-wide properties and student Excel upload controls become available after creating and selecting this class.
               </p>
             </div>
           </div>
@@ -1401,10 +1416,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             <label style={{ margin: 0 }}>Co-Teacher Email Addresses</label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                📥 Import (Excel/CSV)
+                📥 Import (Excel)
                 <input
                   type="file"
-                  accept=".xlsx,.xls,.csv,.txt"
+                  accept=".xlsx,.xls,.txt"
                   style={{ display: 'none' }}
                   onChange={(e) => handleImportEmailsFromFile(e, 'teachers')}
                 />
@@ -1413,7 +1428,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 type="button"
                 className="btn-secondary"
                 style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-                onClick={() => handleExportEmailsToCSV('teachers')}
+                onClick={() => handleExportEmailsToExcel('teachers')}
               >
                 📤 Export Excel
               </button>

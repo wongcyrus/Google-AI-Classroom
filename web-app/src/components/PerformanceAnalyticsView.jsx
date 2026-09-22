@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
-import { exportToCsv } from '../utils/exportUtils';
+import { exportToExcel } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 import './PerformanceAnalyticsView.css';
 
 /**
@@ -101,7 +102,20 @@ const PerformanceAnalyticsView = ({
         const classRef = doc(db, 'classes', classId);
         const classSnap = await getDoc(classRef);
         if (classSnap.exists && classSnap.exists()) {
-          setClassInfo(classSnap.data());
+          const cData = classSnap.data() || {};
+          let mergedProfiles = { ...(cData.studentProfiles || {}) };
+          try {
+            const dirSnap = await getDocs(collection(db, 'studentDirectory'));
+            if (dirSnap && typeof dirSnap.forEach === 'function') {
+              dirSnap.forEach(d => {
+                const emailKey = d.id.trim().toLowerCase();
+                mergedProfiles[emailKey] = { ...(d.data() || {}), ...(mergedProfiles[emailKey] || {}) };
+              });
+            }
+          } catch (dirErr) {
+            console.warn('Could not load studentDirectory:', dirErr);
+          }
+          setClassInfo({ ...cData, studentProfiles: mergedProfiles });
         }
       } catch (err) {
         console.warn('Could not load class info:', err);
@@ -183,11 +197,18 @@ const PerformanceAnalyticsView = ({
     });
 
     // Per-student task mapping
+    const studentProfiles = classInfo?.studentProfiles || {};
     const studentDataMap = {};
     studentUidsSet.forEach(uid => {
+      const email = studentMap[uid] || uid;
+      const displayName = getStudentDisplayName(email, studentProfiles);
+      const prof = getStudentProfile(email, studentProfiles);
       studentDataMap[uid] = {
         studentUid: uid,
-        email: studentMap[uid] || uid,
+        email: email,
+        displayName: displayName,
+        studentClass: prof.studentClass || '',
+        programme: prof.programme || '',
         tasks: {},
         totalMinutes: 0,
         completedCount: 0,
@@ -199,9 +220,15 @@ const PerformanceAnalyticsView = ({
       const uid = m.studentUid;
       if (!uid) return;
       if (!studentDataMap[uid]) {
+        const email = studentMap[uid] || uid;
+        const displayName = getStudentDisplayName(email, studentProfiles);
+        const prof = getStudentProfile(email, studentProfiles);
         studentDataMap[uid] = {
           studentUid: uid,
-          email: studentMap[uid] || uid,
+          email: email,
+          displayName: displayName,
+          studentClass: prof.studentClass || '',
+          programme: prof.programme || '',
           tasks: {},
           totalMinutes: 0,
           completedCount: 0,
@@ -373,22 +400,35 @@ const PerformanceAnalyticsView = ({
     return list;
   }, [filteredStudents, sortConfig]);
 
-  // Export CSV
-  const handleExportCsv = (customList = null) => {
+  // Export Excel
+  const handleExportExcel = (customList = null) => {
     const listToExport = customList || studentRoster;
     if (listToExport.length === 0) {
       alert('No student data to export.');
       return;
     }
 
-    const headers = ['Student Email', 'Student UID', ...activeMilestones, 'Total Minutes', 'Completed Milestones', 'Status'];
+    const headers = [
+      'Student Name',
+      'Student Email',
+      'Class / Cohort',
+      'Programme',
+      'Student UID',
+      ...activeMilestones,
+      'Total Minutes',
+      'Completed Milestones',
+      'Status'
+    ];
     const rows = listToExport.map(s => {
       const taskValues = activeMilestones.map(m => s.tasks[m] ? `${s.tasks[m]} min` : 'N/A');
       const isComplete = activeMilestones.length > 0 && s.completedCount >= activeMilestones.length;
       const statusText = isComplete ? 'Complete' : s.needsAttention ? 'Needs Attention' : s.completedCount > 0 ? 'In Progress' : 'Not Started';
 
       return [
+        s.displayName || s.email,
         s.email,
+        s.studentClass || '',
+        s.programme || '',
         s.studentUid,
         ...taskValues,
         s.totalMinutes,
@@ -404,9 +444,9 @@ const PerformanceAnalyticsView = ({
       : 'All';
     const isFiltered = listToExport.length !== studentRoster.length;
     const filename = isFiltered
-      ? `Class_${classId}_Milestone_Matrix_Filtered_${dateSuffix}.csv`
-      : `Class_${classId}_Milestone_Matrix_${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+      ? `Class_${classId}_Milestone_Matrix_Filtered_${dateSuffix}.xlsx`
+      : `Class_${classId}_Milestone_Matrix_${dateSuffix}.xlsx`;
+    exportToExcel(headers, rows, filename);
   };
 
   if (loading) {
@@ -444,7 +484,7 @@ const PerformanceAnalyticsView = ({
               <strong>All Recorded Sessions</strong>
             </div>
           )}
-          <button className="perf-action-btn" onClick={() => handleExportCsv()} style={{ background: '#ffffff', color: '#0f172a', fontWeight: 600 }}>
+          <button className="perf-action-btn" onClick={() => handleExportExcel()} style={{ background: '#ffffff', color: '#0f172a', fontWeight: 600 }}>
             📥 Export Excel
           </button>
           <button className="perf-action-btn" onClick={fetchData} style={{ background: '#ffffff', color: '#0f172a', fontWeight: 600 }}>
@@ -589,7 +629,7 @@ const PerformanceAnalyticsView = ({
                     background: '#ffffff',
                     color: '#0f172a'
                   }}
-                  onClick={() => handleExportCsv(sortedStudents)}
+                  onClick={() => handleExportExcel(sortedStudents)}
                   disabled={sortedStudents.length === 0}
                   title="Export the Student Milestone Matrix table as Excel"
                 >
@@ -648,10 +688,17 @@ const PerformanceAnalyticsView = ({
                       return (
                         <tr key={student.studentUid}>
                           <td>
-                            <div style={{ fontWeight: 600, color: '#0f172a' }}>{student.email}</div>
-                            <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontFamily: 'monospace' }}>
-                              {student.studentUid}
-                            </div>
+                            <div style={{ fontWeight: 600, color: '#0f172a' }}>{student.displayName || student.email}</div>
+                            {student.displayName && student.displayName !== student.email && (
+                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{student.email}</div>
+                            )}
+                            {(student.studentClass || student.programme) && (
+                              <div style={{ marginTop: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
+                                  {[student.studentClass, student.programme].filter(Boolean).join(' • ')}
+                                </span>
+                              </div>
+                            )}
                           </td>
                           {activeMilestones.map(m => {
                             const duration = student.tasks[m];

@@ -121,7 +121,7 @@ describe('IrregularitiesView Full Suite', () => {
     expect(screen.getByText(/Period:/i)).toBeInTheDocument();
   });
 
-  it('opens dossier export modal and quick CSV export', () => {
+  it('opens dossier export modal and quick Excel export', async () => {
     renderComponent();
 
     const dossierBtn = screen.getByRole('button', { name: /Export Formal Dossier/i });
@@ -133,9 +133,11 @@ describe('IrregularitiesView Full Suite', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByTestId('dossier-modal')).not.toBeInTheDocument();
 
-    const csvBtn = screen.getByRole('button', { name: /Quick CSV Page/i });
-    fireEvent.click(csvBtn);
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    const excelBtn = screen.getByRole('button', { name: /Quick Excel Page/i });
+    fireEvent.click(excelBtn);
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
   });
 
   it('opens dual media evidence viewer modal when thumbnail is clicked and interacts with audio modal', async () => {

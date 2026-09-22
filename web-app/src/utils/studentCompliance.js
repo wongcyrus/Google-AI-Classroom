@@ -168,71 +168,7 @@ export function getNudgeMessageForFilter(filterType) {
   }
 }
 
-/**
- * Generates and downloads a CSV of the current filtered student compliance audit results.
- *
- * @param {Array<Object>} filteredStudents - Currently filtered students
- * @param {string} filterType - Active filter key ('all', 'problems', 'no_cam', etc.)
- * @param {Object} classSettings - Class configuration
- * @param {Object} screenshots - Map of student ID to screenshot data
- * @param {string} classId - Class ID for the file naming
- * @returns {string} CSV content string
- */
-export function exportComplianceResultsToCsv(filteredStudents = [], filterType = 'all', classSettings = {}, screenshots = {}, classId = 'CLASS') {
-  const headers = [
-    'Student ID',
-    'Student Email',
-    'Filter Category',
-    'Compliance Status',
-    'Detected Issues',
-    'Screen Sharing',
-    'Webcam Sharing',
-    'Audio Sharing',
-    'Face / Gaze Status',
-    'Yaw Angle',
-    'Snapshot Time'
-  ];
 
-  const escape = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
-
-  const rows = filteredStudents.map((student) => {
-    const screenshotData = screenshots[student.id];
-    const { isCompliant, issues } = evaluateStudentCompliance(student, classSettings, screenshotData, true);
-    const issuesText = issues.map((i) => i.label).join('; ') || 'None';
-    
-    let timestampStr = '';
-    if (screenshotData?.timestamp?.toDate) {
-      timestampStr = screenshotData.timestamp.toDate().toISOString();
-    } else if (screenshotData?.timestamp) {
-      timestampStr = new Date(screenshotData.timestamp).toISOString();
-    } else {
-      timestampStr = new Date().toISOString();
-    }
-
-    return [
-      escape(student.id),
-      escape(student.email || student.id),
-      escape(filterType),
-      escape(isCompliant ? 'Compliant' : 'Non-Compliant'),
-      escape(issuesText),
-      escape(student.isSharing ? 'Active' : 'Inactive'),
-      escape(student.isWebcamSharing ? 'Active' : 'Inactive'),
-      escape(student.isAudioSharing ? 'Active' : 'Inactive'),
-      escape(student.faceStatus || 'normal'),
-      escape(student.yawAngle !== undefined ? student.yawAngle : '0'),
-      escape(timestampStr)
-    ].join(',');
-  });
-
-  const csvContent = [headers.join(','), ...rows].join('\n');
-
-  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    exportComplianceResultsToExcel(filteredStudents, filterType, classSettings, screenshots, classId);
-  }
-
-  return csvContent;
-}
 
 /**
  * Generates and downloads an Excel (.xlsx) spreadsheet of the current filtered student compliance audit results.
@@ -246,8 +182,11 @@ export function exportComplianceResultsToCsv(filteredStudents = [], filterType =
  */
 export async function exportComplianceResultsToExcel(filteredStudents = [], filterType = 'all', classSettings = {}, screenshots = {}, classId = 'CLASS') {
   const headers = [
-    'Student ID',
+    'Student Name',
     'Student Email',
+    'Class / Cohort',
+    'Programme',
+    'Student ID',
     'Filter Category',
     'Compliance Status',
     'Detected Issues',
@@ -273,9 +212,16 @@ export async function exportComplianceResultsToExcel(filteredStudents = [], filt
       timestampStr = new Date().toISOString();
     }
 
+    const displayName = student.displayName || student.name || student.email || student.id;
+    const studentClass = student.studentClass || student.profile?.studentClass || '';
+    const programme = student.programme || student.profile?.programme || '';
+
     return [
-      student.id,
+      displayName,
       student.email || student.id,
+      studentClass,
+      programme,
+      student.id,
       filterType,
       isCompliant ? 'Compliant' : 'Non-Compliant',
       issuesText,

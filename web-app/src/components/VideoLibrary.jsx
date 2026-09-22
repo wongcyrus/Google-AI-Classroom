@@ -10,7 +10,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 
 import VideoTable from './VideoTable';
 import VideoPlayerModal from './VideoPlayerModal';
-import { exportToCsv } from '../utils/exportUtils';
+import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 export const getSafeVideoFilename = (video, fallbackClassId) => {
@@ -378,7 +378,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
 
 
 
-  const handleExportManifestCsv = async () => {
+  const handleExportManifestExcel = async () => {
     if (!videos || videos.length === 0) {
       alert("No videos available to export.");
       return;
@@ -404,7 +404,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
     });
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const filename = `Class_${classId}_Video_Manifest_${dateSuffix}.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   return (
@@ -468,7 +468,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             {isZipping ? 'Submitting...' : 'Request All as ZIP'}
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
-          <button onClick={handleExportManifestCsv} disabled={loading || videos.length === 0}>
+          <button onClick={handleExportManifestExcel} disabled={loading || videos.length === 0}>
             📥 Export Video Manifest (Excel)
           </button>
         </div>

@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { timeStringToSeconds } from '../utils/transcriptMerger';
-import { exportToCsv, exportToText } from '../utils/exportUtils';
+import { exportToExcel, exportToText } from '../utils/exportUtils';
 import './AudioTranscriptModal.css';
 
 export default function AudioTranscriptModal({
@@ -8,6 +8,7 @@ export default function AudioTranscriptModal({
   onClose,
   studentUid = '',
   studentName = '',
+  studentEmail = '',
   audioUrl = '',
   snapshotUrl = '',
   transcriptSegments = [],
@@ -75,17 +76,19 @@ export default function AudioTranscriptModal({
     exportToText(content, `Transcript_${safeTag}.txt`);
   };
 
-  const handleExportCsv = async () => {
-    const headers = ['Timestamp', 'Speaker', 'Text', 'Classification', 'Risk Level'];
+  const handleExportExcel = async () => {
+    const headers = ['Student Name', 'Student Email', 'Timestamp', 'Speaker', 'Text', 'Classification', 'Risk Level'];
     const rows = effectiveSegments.map(seg => [
+      studentName || studentUid || 'Student',
+      studentEmail || '',
       seg.displayStart || seg.startTime || '00:00',
       seg.speaker || 'Speaker',
       seg.text || '',
       classification,
       riskLevel
     ]);
-    const safeTag = (studentName || studentUid || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
-    await exportToCsv(headers, rows, `Transcript_${safeTag}.xlsx`);
+    const safeTag = (studentName || studentEmail || studentUid || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
+    await exportToExcel(headers, rows, `Transcript_${safeTag}.xlsx`);
   };
 
   return (
@@ -106,7 +109,7 @@ export default function AudioTranscriptModal({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
-              onClick={handleExportCsv}
+              onClick={handleExportExcel}
               disabled={effectiveSegments.length === 0}
               title="Export transcript as Excel"
               style={{

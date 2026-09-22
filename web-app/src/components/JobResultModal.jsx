@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
 import { formatAiCost } from '../utils/formatters';
-import { exportToJson, exportToText, exportToCsv } from '../utils/exportUtils';
+import { exportToJson, exportToText, exportToExcel } from '../utils/exportUtils';
 
 const JobResultModal = ({ show, onClose, job }) => {
   const [copied, setCopied] = useState(false);
@@ -35,13 +35,17 @@ const JobResultModal = ({ show, onClose, job }) => {
     exportToText(jsonString, filename);
   };
 
-  const handleDownloadCsv = async () => {
-    const studentTag = job.studentEmail ? job.studentEmail.replace(/[^a-zA-Z0-9]/g, '_') : 'Student';
+  const handleDownloadExcel = async () => {
+    const displayName = job.displayName || job.studentName || job.studentEmail;
+    const studentTag = (displayName || job.studentEmail || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `Job_${job.id || 'Result'}_${studentTag}.xlsx`;
     const headers = ['Property', 'Value'];
     const rows = [
       ['AI Job ID', job.id || ''],
+      ['Student Name', displayName || ''],
       ['Student Email', job.studentEmail || ''],
+      ['Class / Cohort', job.studentClass || ''],
+      ['Programme', job.programme || ''],
       ['Student UID', job.studentUid || ''],
       ['Model Used', job.modelUsed || job.model || 'gemini-3.5-flash-lite'],
       ['Status', job.status || ''],
@@ -51,11 +55,12 @@ const JobResultModal = ({ show, onClose, job }) => {
       ['Findings', jsonString],
       ['Error Details', job.errorDetails || '']
     ];
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   const handleDownloadMarkdown = () => {
-    const studentTag = job.studentEmail ? job.studentEmail.replace(/[^a-zA-Z0-9]/g, '_') : 'Student';
+    const displayName = job.displayName || job.studentName || job.studentEmail;
+    const studentTag = (displayName || job.studentEmail || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `Job_${job.id || 'Result'}_${studentTag}_Analysis.md`;
     exportToText(typeof rawResult === 'string' ? rawResult : jsonString, filename);
   };
@@ -64,7 +69,7 @@ const JobResultModal = ({ show, onClose, job }) => {
     <Modal
       show={show}
       onClose={onClose}
-      title={`Analysis Result: ${job.studentEmail || 'Student'}`}
+      title={`Analysis Result: ${job.displayName || job.studentEmail || 'Student'}`}
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
         {/* Metadata Header */}
@@ -78,8 +83,15 @@ const JobResultModal = ({ show, onClose, job }) => {
           border: '1px solid var(--color-border, #e2e8f0)',
           fontSize: '0.88rem'
         }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <span><strong>Student:</strong> {job.studentEmail}</span>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>
+              <strong>Student:</strong> {job.displayName ? `${job.displayName} (${job.studentEmail})` : job.studentEmail}
+              {(job.studentClass || job.programme) && (
+                <span style={{ marginLeft: '6px', fontSize: '0.74rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
+                  {[job.studentClass, job.programme].filter(Boolean).join(' • ')}
+                </span>
+              )}
+            </span>
             <span><strong>Model:</strong> {job.modelUsed || 'gemini-3.5-flash-lite'}</span>
             <span><strong>Cost:</strong> {formatAiCost(job.cost)}</span>
           </div>
@@ -139,7 +151,7 @@ const JobResultModal = ({ show, onClose, job }) => {
                     {wordWrap ? '↩ Wrap: ON' : '➡ Wrap: OFF'}
                   </button>
                   <button
-                    onClick={handleDownloadCsv}
+                    onClick={handleDownloadExcel}
                     title="Download structured findings Excel"
                     style={{
                       padding: '4px 10px',

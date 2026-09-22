@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ClassManagement from './ClassManagement';
+import { exportStudentRosterExcel } from '../utils/studentDisplayUtils';
 
 vi.mock('../firebase-config', () => ({
   auth: {
@@ -245,7 +246,7 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(savePromptBtn);
   });
 
-  it('handles importing student emails from uploaded text/csv file', async () => {
+  it('handles importing student emails from uploaded text/excel file', async () => {
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
@@ -255,10 +256,13 @@ describe('ClassManagement Full Component Test Suite', () => {
     const fileInputs = document.querySelectorAll('input[type="file"]');
     expect(fileInputs.length).toBeGreaterThan(0);
 
-    const file = new File(['student1@test.com, student2@test.com'], 'students.csv', { type: 'text/csv' });
+    const blob = await exportStudentRosterExcel(['student1@test.com', 'student2@test.com'], {}, 'CLASS_101');
+    const file = new File([blob], 'students.xlsx', { type: blob.type });
     
     // Trigger file change
-    fireEvent.change(fileInputs[0], { target: { files: [file] } });
+    await act(async () => {
+      fireEvent.change(fileInputs[0], { target: { files: [file] } });
+    });
 
     await waitFor(() => {
       expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Successfully imported'));
@@ -907,7 +911,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     window.URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
-  it('supports importing structured roster CSV with Chinese nicknames and preserving them', async () => {
+  it('supports importing structured roster Excel with Chinese nicknames and preserving them', async () => {
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
@@ -917,8 +921,17 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     const fileInputs = document.querySelectorAll('input[type="file"]');
     expect(fileInputs.length).toBeGreaterThan(0);
 
-    const csvContent = '\uFEFFStudentEmail,StudentName,Nickname,Programme,Class\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文,Software Engineering,IT114115/1A';
-    const file = new File([csvContent], 'roster.csv', { type: 'text/csv;charset=utf-8' });
+    const emails = ['230123456@stu.vtc.edu.hk'];
+    const profiles = {
+      '230123456@stu.vtc.edu.hk': {
+        studentName: 'Chan Tai Man',
+        nickname: '大文',
+        programme: 'Software Engineering',
+        studentClass: 'IT114115/1A'
+      }
+    };
+    const blob = await exportStudentRosterExcel(emails, profiles, 'CLASS_101');
+    const file = new File([blob], 'roster.xlsx', { type: blob.type });
 
     await act(async () => {
       fireEvent.change(fileInputs[0], { target: { files: [file] } });

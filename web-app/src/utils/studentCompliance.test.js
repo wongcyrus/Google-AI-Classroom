@@ -4,7 +4,7 @@ import {
   getComplianceSummary,
   filterStudentsByCompliance,
   getNudgeMessageForFilter,
-  exportComplianceResultsToCsv,
+  exportComplianceResultsToExcel,
 } from './studentCompliance';
 
 describe('studentCompliance Utility', () => {
@@ -181,8 +181,8 @@ describe('studentCompliance Utility', () => {
     });
   });
 
-  describe('exportComplianceResultsToCsv', () => {
-    it('formats filtered students into CSV with headers and proper columns', () => {
+  describe('exportComplianceResultsToExcel', () => {
+    it('formats filtered students into Excel Blob with proper columns', async () => {
       const filtered = [
         {
           id: 's_101',
@@ -195,17 +195,15 @@ describe('studentCompliance Utility', () => {
         },
       ];
 
-      const csv = exportComplianceResultsToCsv(filtered, 'problems', dualSettings, {}, 'CLASS_101');
-      expect(csv).toContain('Student ID,Student Email,Filter Category,Compliance Status');
-      expect(csv).toContain('"s_101","alice@school.edu","problems","Non-Compliant"');
-      expect(csv).toContain('"looking_away","28"');
+      const blob = await exportComplianceResultsToExcel(filtered, 'problems', dualSettings, {}, 'CLASS_101');
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob.type).toContain('spreadsheetml.sheet');
     });
 
-    it('handles empty filtered students list gracefully', () => {
-      const csv = exportComplianceResultsToCsv([], 'all', dualSettings, {}, 'CLASS_101');
-      expect(csv).toContain('Student ID,Student Email,Filter Category');
-      const lines = csv.trim().split('\n');
-      expect(lines).toHaveLength(1); // Header only
+    it('handles empty filtered students list gracefully and returns Excel Blob', async () => {
+      const blob = await exportComplianceResultsToExcel([], 'all', dualSettings, {}, 'CLASS_101');
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob.type).toContain('spreadsheetml.sheet');
     });
   });
 });

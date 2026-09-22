@@ -12,12 +12,40 @@ import VideoPlayerModal from './VideoPlayerModal';
 import Modal from './Modal';
 import JobResultModal from './JobResultModal';
 import PromptViewModal from './PromptViewModal';
-import { exportToCsv, exportToJson } from '../utils/exportUtils';
+import { exportToExcel, exportToJson } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) => {
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
   const [viewingPromptJob, setViewingPromptJob] = useState(null);
   const [aiJobs, setAiJobs] = useState([]);
+  const [studentProfiles, setStudentProfiles] = useState({});
+
+  useEffect(() => {
+    if (!classId) return;
+    const fetchProfiles = async () => {
+      try {
+        const classRef = doc(db, 'classes', classId);
+        const classSnap = await getDoc(classRef);
+        const baseProfiles = classSnap.exists() ? (classSnap.data().studentProfiles || {}) : {};
+        try {
+          const dirSnap = await getDocs(collection(db, 'studentDirectory'));
+          const dirProfiles = {};
+          if (dirSnap && typeof dirSnap.forEach === 'function') {
+            dirSnap.forEach(d => {
+              dirProfiles[d.id.trim().toLowerCase()] = d.data();
+            });
+          }
+          setStudentProfiles({ ...dirProfiles, ...baseProfiles });
+        } catch {
+          setStudentProfiles(baseProfiles);
+        }
+      } catch (err) {
+        console.warn('Could not load studentProfiles for VideoAnalysisJobs:', err);
+      }
+    };
+    fetchProfiles();
+  }, [classId]);
   const [aiJobsLoading, setAiJobsLoading] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -217,7 +245,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     }
   };
 
-  const handleExportJobsDirectoryCsv = async () => {
+  const handleExportJobsDirectoryExcel = async () => {
     if (!videoAnalysisJobs || videoAnalysisJobs.length === 0) {
       alert("No analysis jobs to export.");
       return;
@@ -249,7 +277,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
 
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const filename = `Class_${classId}_Video_Analysis_Jobs_Page_${page}_${dateSuffix}.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   const handleExportAiJobs = async (customList = null) => {
@@ -262,7 +290,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     const headers = [
       'AI Job ID',
       'Batch Job ID',
+      'Student Name',
       'Student Email',
+      'Class / Cohort',
+      'Programme',
       'Student UID',
       'Model',
       'Status',
@@ -276,6 +307,8 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     const rows = listToExport.map(job => {
       const studentEmail = job.studentEmail || '';
       const studentUid = job.studentUid || '';
+      const prof = getStudentProfile(studentEmail, studentProfiles);
+      const studentName = job.displayName || getStudentDisplayName(studentEmail, studentProfiles);
       const model = job.modelUsed || selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite';
       const status = job.status || '';
       const costStr = job.cost != null ? Number(job.cost).toFixed(4) : '0.0000';
@@ -287,7 +320,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
       return [
         job.id,
         selectedAnalysisJob.id,
+        studentName,
         studentEmail,
+        prof.studentClass || '',
+        prof.programme || '',
         studentUid,
         model,
         status,
@@ -303,7 +339,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     const filename = isFiltered 
       ? `Class_${classId}_Job_${selectedAnalysisJob.id}_Filtered_Findings.xlsx`
       : `Class_${classId}_Job_${selectedAnalysisJob.id}_Findings.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   const handleExportAiJobsJson = () => {
@@ -558,13 +594,29 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
   }, [selectedAnalysisJob, aiJobs]);
 
   const filteredAiJobs = useMemo(() => {
-    return aiJobs.filter(job => {
-      const matchesStudent = !studentFilter || 
-        (job.studentEmail && job.studentEmail.toLowerCase().includes(studentFilter.toLowerCase()));
-      const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
-      return matchesStudent && matchesStatus;
-    });
-  }, [aiJobs, studentFilter, statusFilter]);
+    return aiJobs
+      .filter(job => {
+        const email = job.studentEmail || '';
+        const prof = getStudentProfile(email, studentProfiles);
+        const displayName = getStudentDisplayName(email, studentProfiles);
+        const matchesStudent = !studentFilter || 
+          email.toLowerCase().includes(studentFilter.toLowerCase()) ||
+          displayName.toLowerCase().includes(studentFilter.toLowerCase());
+        const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
+        return matchesStudent && matchesStatus;
+      })
+      .map(job => {
+        const email = job.studentEmail || '';
+        const prof = getStudentProfile(email, studentProfiles);
+        const displayName = getStudentDisplayName(email, studentProfiles);
+        return {
+          ...job,
+          displayName,
+          studentClass: prof.studentClass || '',
+          programme: prof.programme || ''
+        };
+      });
+  }, [aiJobs, studentFilter, statusFilter, studentProfiles]);
 
   return (
     <div className="view-container">
@@ -732,7 +784,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                onClick={handleExportJobsDirectoryCsv}
+                onClick={handleExportJobsDirectoryExcel}
                 disabled={analysisJobsLoading || videoAnalysisJobs.length === 0}
                 style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
               >
@@ -1209,7 +1261,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                   <button
                     onClick={() => handleExportAiJobs(filteredAiJobs)}
                     disabled={filteredAiJobs.length === 0}
-                    title="Export currently filtered AI jobs as CSV"
+                    title="Export currently filtered AI jobs as Excel"
                     style={{
                       padding: '5px 12px',
                       borderRadius: '6px',

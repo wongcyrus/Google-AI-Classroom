@@ -7,9 +7,7 @@ import {
   parseStudentRosterCsv,
   parseStudentRosterRows,
   parseStudentRosterFile,
-  generateStudentRosterTemplateCsv,
   generateStudentRosterTemplateExcel,
-  exportStudentRosterCsv,
   exportStudentRosterExcel,
   readTextFileWithEncoding,
 } from './studentDisplayUtils';
@@ -275,62 +273,7 @@ not-an-email,Invalid User
     });
   });
 
-  describe('generateStudentRosterTemplateCsv and exportStudentRosterCsv', () => {
-    it('generates downloadable template with English headers, Unicode BOM, and Chinese nickname examples', () => {
-      const template = generateStudentRosterTemplateCsv();
-      // Must start with UTF-8 BOM \uFEFF for Microsoft Excel Unicode support
-      expect(template.startsWith('\uFEFF')).toBe(true);
-      // Header MUST be strictly English
-      expect(template).toContain('StudentEmail,StudentName,Nickname,Programme,Class');
-      // Example row with Chinese nickname
-      expect(template).toContain('Chan Tai Man,大文');
-      expect(template).toContain('Wong Ka Yan,阿欣');
-      expect(template).toContain('230123456@stu.vtc.edu.hk');
-      expect(template).toContain('IT114115/1A');
-    });
 
-    it('exports current roster with English headers, Unicode BOM, and Chinese nicknames', () => {
-      const emails = ['alice@school.edu', 'chan@school.edu', 'bob@school.edu'];
-      const profiles = {
-        'alice@school.edu': {
-          studentName: 'Alice Chan',
-          nickname: 'Ali',
-          programme: 'HD in Software Engineering, VTC',
-          studentClass: 'IT114115/1A',
-        },
-        'chan@school.edu': {
-          studentName: 'Chan Tai Man',
-          nickname: '大文',
-          programme: '軟體工程高級文憑',
-          studentClass: 'IT114115/1A',
-        },
-        'bob@school.edu': {
-          studentName: '',
-          nickname: '',
-          programme: '',
-          studentClass: '',
-        },
-      };
-
-      const exported = exportStudentRosterCsv(emails, profiles, 'IT114115-DEV');
-      // Starts with BOM
-      expect(exported.startsWith('\uFEFF')).toBe(true);
-      // English-only headers
-      expect(exported).toContain('StudentEmail,StudentName,Nickname,Programme,Class,CourseID');
-      expect(exported).toContain('alice@school.edu,Alice Chan,Ali,"HD in Software Engineering, VTC",IT114115/1A,IT114115-DEV');
-      expect(exported).toContain('chan@school.edu,Chan Tai Man,大文,軟體工程高級文憑,IT114115/1A,IT114115-DEV');
-      expect(exported).toContain('bob@school.edu,,,,,IT114115-DEV');
-
-      // Roundtrip parsing preserves Chinese characters perfectly
-      const parsed = parseStudentRosterCsv(exported);
-      expect(parsed.students).toHaveLength(3);
-      const chanStudent = parsed.students.find(s => s.email === 'chan@school.edu');
-      expect(chanStudent.studentName).toBe('Chan Tai Man');
-      expect(chanStudent.nickname).toBe('大文');
-      expect(chanStudent.programme).toBe('軟體工程高級文憑');
-      expect(chanStudent.displayName).toBe('大文 (Chan Tai Man)');
-    });
-  });
 
   describe('readTextFileWithEncoding', () => {
     it('returns empty string for null/empty file', async () => {
@@ -383,6 +326,11 @@ not-an-email,Invalid User
   });
 
   describe('Excel (.xlsx) Roster Functionality', () => {
+    it('throws error when uploading non-Excel files to parseStudentRosterFile', async () => {
+      const file = new File(['email\ntest@school.edu'], 'roster.csv', { type: 'text/csv' });
+      await expect(parseStudentRosterFile(file)).rejects.toThrow('Only Microsoft Excel files (.xlsx, .xls) are supported.');
+    });
+
     it('generates a valid Excel template Blob with Chinese examples', async () => {
       const blob = await generateStudentRosterTemplateExcel();
       expect(blob).toBeInstanceOf(Blob);

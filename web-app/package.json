@@ -27,7 +27,6 @@
     "firebase": "^12.18.0",
     "jszip": "^3.10.2",
     "react": "^19.2.8",
-    "react-csv": "^2.2.2",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "read-excel-file": "^9.3.10",

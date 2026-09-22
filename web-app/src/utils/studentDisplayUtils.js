@@ -365,20 +365,15 @@ export const parseStudentRosterFile = async (file) => {
   const fileName = (file.name || '').toLowerCase();
   const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
 
-  if (isExcel) {
-    try {
-      const rows = await readExcelFile(file);
-      if (rows && rows.length > 0) {
-        return parseStudentRosterRows(rows);
-      }
-    } catch (err) {
-      console.warn('Failed to parse Excel file, attempting text decoder fallback:', err);
-    }
+  if (!isExcel) {
+    throw new Error('Only Microsoft Excel files (.xlsx, .xls) are supported.');
   }
 
-  // Fallback to text reading (supports CSV, TSV, or raw text)
-  const text = await readTextFileWithEncoding(file);
-  return parseStudentRosterCsv(text);
+  const rows = await readExcelFile(file);
+  if (!rows || rows.length === 0) {
+    return { students: [], profilesMap: {}, emailList: [], invalidRows: [], totalParsed: 0 };
+  }
+  return parseStudentRosterRows(rows);
 };
 
 /**
@@ -430,80 +425,6 @@ export const exportStudentRosterExcel = async (studentEmails = [], studentProfil
 
   const activeExportId = (classId || 'class').trim().toLowerCase();
   return exportToExcel(headers, rows, `${activeExportId}_student_roster.xlsx`);
-};
-
-/**
- * Generates a ready-to-download CSV template with header and illustrative example rows.
- * Kept for backward compatibility.
- * 
- * @returns {string} RFC-4180 CSV string starting with UTF-8 BOM
- */
-export const generateStudentRosterTemplateCsv = () => {
-  const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class'];
-  const examples = [
-    ['230123456@stu.vtc.edu.hk', 'Chan Tai Man', '大文', 'Higher Diploma in Software Engineering', 'IT114115/1A'],
-    ['230987654@stu.vtc.edu.hk', 'Wong Ka Yan', '阿欣', 'Higher Diploma in Software Engineering', 'IT114115/1B'],
-    ['230555666@stu.vtc.edu.hk', 'Lee Siu Ming', 'David', 'Higher Diploma in Cloud & Data Centre Admin', 'IT114115/1A'],
-    ['alex.smith@school.edu', 'Alex Smith', 'Alex', '', 'SE101-Cohort2'],
-    ['email.only@school.edu', '', '', '', ''],
-  ];
-
-  const escapeCell = (val) => {
-    const s = String(val ?? '');
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-
-  const rows = [
-    headers.join(','),
-    ...examples.map(ex => ex.map(escapeCell).join(',')),
-  ];
-
-  return '\uFEFF' + rows.join('\r\n');
-};
-
-/**
- * Serializes the current class roster to an RFC-4180 CSV string.
- * Kept for backward compatibility.
- * 
- * @param {string[]} studentEmails 
- * @param {object} studentProfiles 
- * @param {string} classId 
- * @returns {string} RFC-4180 CSV string starting with UTF-8 BOM
- */
-export const exportStudentRosterCsv = (studentEmails = [], studentProfiles = {}, classId = '') => {
-  const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class', 'CourseID'];
-
-  const escapeCell = (val) => {
-    const s = String(val ?? '');
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-
-  const rows = [headers.join(',')];
-
-  const emails = Array.isArray(studentEmails) ? studentEmails : [];
-  emails.forEach((email) => {
-    const cleanEmail = normalizeStudentEmail(email);
-    if (!cleanEmail) return;
-
-    const prof = studentProfiles[cleanEmail] || {};
-    const row = [
-      escapeCell(cleanEmail),
-      escapeCell(prof.studentName || ''),
-      escapeCell(prof.nickname || ''),
-      escapeCell(prof.programme || ''),
-      escapeCell(prof.studentClass || ''),
-      escapeCell(classId || ''),
-    ];
-    rows.push(row.join(','));
-  });
-
-  return '\uFEFF' + rows.join('\r\n');
 };
 
 /**

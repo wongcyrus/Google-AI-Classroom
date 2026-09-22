@@ -62,11 +62,14 @@ export function generateAiCostCsv(summary, metadata = {}) {
 
   // Section 3: Breakdown by Student
   lines.push(`"--- STUDENT USAGE BREAKDOWN ---"`);
-  lines.push(`"Student UID","Student Email","Job Count","Input Tokens","Output Tokens","Total Tokens","Total Cost (USD)","Share of Class Spend"`);
+  lines.push(`"Student Name","Student Email","Class / Cohort","Programme","Student UID","Job Count","Input Tokens","Output Tokens","Total Tokens","Total Cost (USD)","Share of Class Spend"`);
   (summary.byStudent || []).forEach(s => {
     lines.push([
-      escapeCsv(s.studentUid),
+      escapeCsv(s.studentName || s.studentEmail),
       escapeCsv(s.studentEmail),
+      escapeCsv(s.studentClass || ''),
+      escapeCsv(s.programme || ''),
+      escapeCsv(s.studentUid),
       s.jobCount,
       s.inputTokens,
       s.outputTokens,
@@ -79,7 +82,7 @@ export function generateAiCostCsv(summary, metadata = {}) {
 
   // Section 4: Itemized Audit Trail (Filtered Jobs)
   lines.push(`"--- ITEMIZED AI JOBS AUDIT LOG ---"`);
-  lines.push(`"Timestamp","Job ID","Student Email","Job Type","Model Used","Status","Input Tokens","Output Tokens","Cost (USD)"`);
+  lines.push(`"Timestamp","Job ID","Student Name","Student Email","Job Type","Model Used","Status","Input Tokens","Output Tokens","Cost (USD)"`);
   (summary.filteredJobs || []).forEach(job => {
     const jobTime = job.timestamp?.toDate
       ? job.timestamp.toDate().toISOString()
@@ -92,6 +95,7 @@ export function generateAiCostCsv(summary, metadata = {}) {
     lines.push([
       escapeCsv(jobTime),
       escapeCsv(job.id || 'N/A'),
+      escapeCsv(job.displayName || job.studentName || job.studentEmail || 'N/A'),
       escapeCsv(job.studentEmail || 'N/A'),
       escapeCsv(job.jobType || 'N/A'),
       escapeCsv(job.modelUsed || 'gemini-3.5-flash-lite'),
@@ -173,12 +177,15 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
   });
   rows.push(['', '', '', '', '', '', '', '', '']);
 
-  rows.push(['BY STUDENT', 'Student UID', 'Student Email', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Class Spend']);
+  rows.push(['BY STUDENT', 'Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Class Spend']);
   (summary.byStudent || []).forEach(s => {
     rows.push([
       'STUDENT_ROW',
-      s.studentUid,
+      s.studentName || s.studentEmail,
       s.studentEmail,
+      s.studentClass || '',
+      s.programme || '',
+      s.studentUid,
       s.jobCount,
       s.inputTokens,
       s.outputTokens,
@@ -189,7 +196,7 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
   });
   rows.push(['', '', '', '', '', '', '', '', '']);
 
-  rows.push(['AUDIT LOG', 'Timestamp', 'Job ID', 'Student Email', 'Job Type', 'Model Used', 'Status', 'Input Tokens', 'Output Tokens']);
+  rows.push(['AUDIT LOG', 'Timestamp', 'Job ID', 'Student Name', 'Student Email', 'Job Type', 'Model Used', 'Status', 'Input Tokens', 'Output Tokens']);
   (summary.filteredJobs || []).forEach(job => {
     const jobTime = job.timestamp?.toDate
       ? job.timestamp.toDate().toISOString()
@@ -202,6 +209,7 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
       'AUDIT_ROW',
       jobTime,
       job.id || 'N/A',
+      job.displayName || job.studentName || job.studentEmail || 'N/A',
       job.studentEmail || 'N/A',
       job.jobType || 'N/A',
       job.modelUsed || 'gemini-3.5-flash-lite',

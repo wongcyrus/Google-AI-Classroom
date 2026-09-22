@@ -31,7 +31,6 @@ import {
   filterStudentsByCompliance,
   getNudgeMessageForFilter,
   exportComplianceResultsToExcel,
-  exportComplianceResultsToCsv,
 } from '../utils/studentCompliance';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
@@ -567,8 +566,18 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
             });
         }
         
-        setUidToEmailMap(newMap);
-        setStudentProfiles(data.studentProfiles || {});
+        const baseProfiles = data.studentProfiles || {};
+        getDocs(collection(db, 'studentDirectory')).then(dirSnap => {
+          const dirProfiles = {};
+          if (dirSnap && typeof dirSnap.forEach === 'function') {
+            dirSnap.forEach(d => {
+              dirProfiles[d.id.trim().toLowerCase()] = d.data();
+            });
+          }
+          setStudentProfiles({ ...dirProfiles, ...baseProfiles });
+        }).catch(() => {
+          setStudentProfiles(baseProfiles);
+        });
 
         if (data.aiModel) {
           setSelectedAiModel(data.aiModel);
@@ -1144,22 +1153,59 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const handleDownloadAttendance = async () => {
     const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
-    const attendanceData = classList.map(uid => {
-      const email = uidToEmailMap.get(uid) || '';
-      const status = uidToStatusMap.get(uid);
-      const isSharing = status ? status.isSharing || false : false;
-      return { email, isSharing };
-    });
+    const headers = [
+      'Student Name',
+      'Student Email',
+      'Class / Cohort',
+      'Programme',
+      'Student UID',
+      'Sharing Screen',
+      'Webcam Sharing',
+      'Audio Sharing',
+      'Face / Gaze Status',
+      'Active Violation',
+      'Last Activity Time'
+    ];
 
-    const header = ['Email', 'Sharing Screen'];
-    const rows = attendanceData.map(s => [
-      s.email,
-      s.isSharing ? 'Yes' : 'No'
-    ]);
+    const rows = classList.map(uid => {
+      const email = uidToEmailMap.get(uid) || '';
+      const prof = getStudentProfile(email, studentProfiles);
+      const displayName = getStudentDisplayName(email, studentProfiles);
+      const status = uidToStatusMap.get(uid);
+
+      const isSharing = status ? Boolean(status.isSharing) : false;
+      const isWebcamSharing = status ? Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))) : false;
+      const isAudioSharing = status ? Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording) : false;
+      const faceStatus = status?.faceStatus || 'normal';
+      const activeViolation = status?.activeViolation || 'None';
+
+      let lastActivityTime = 'N/A';
+      if (status?.timestamp instanceof Date) {
+        lastActivityTime = status.timestamp.toISOString();
+      } else if (typeof status?.timestamp === 'number' && status.timestamp > 0) {
+        lastActivityTime = new Date(status.timestamp).toISOString();
+      } else if (status?.lastHeartbeat) {
+        lastActivityTime = new Date(status.lastHeartbeat).toISOString();
+      }
+
+      return [
+        displayName,
+        email,
+        prof.studentClass || '',
+        prof.programme || '',
+        uid,
+        isSharing ? 'Yes' : 'No',
+        isWebcamSharing ? 'Yes' : 'No',
+        isAudioSharing ? 'Yes' : 'No',
+        faceStatus,
+        activeViolation,
+        lastActivityTime
+      ];
+    });
 
     const now = new Date();
     const timeString = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
-    await exportToExcel(header, rows, `${classId}_${timeString}.xlsx`);
+    await exportToExcel(headers, rows, `${classId}_attendance_${timeString}.xlsx`);
   };
 
   const handleFrameRateChange = useCallback(async (e) => {
@@ -1753,8 +1799,42 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
       <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
         {notSharingStudents.length > 0 ? (
-          <ul style={{ listStyleType: 'none', padding: 0 }}>{notSharingStudents.map(s => <li key={s.id} style={{ padding: '5px 0' }}>{s.email}</li>)}</ul>
-        ) : <p>All students are sharing their screen.</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '60vh', overflowY: 'auto' }}>
+            {notSharingStudents.map(s => {
+              const hasDistinctName = s.displayName && s.displayName !== s.email;
+              return (
+                <div 
+                  key={s.id} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    padding: '0.65rem 0.9rem',
+                    backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--color-border, #e2e8f0)'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
+                      {s.displayName || s.email}
+                    </div>
+                    {hasDistinctName && (
+                      <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
+                        {s.email}
+                      </div>
+                    )}
+                  </div>
+                  {(s.studentClass || s.programme) && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#475569' }}>
+                      {[s.studentClass, s.programme].filter(Boolean).join(' • ')}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : <p style={{ margin: 0, padding: '0.5rem 0', color: 'var(--color-text-muted, #64748b)' }}>All students are sharing their screen.</p>}
       </Modal>
 
       {liveSelectedStudent && (

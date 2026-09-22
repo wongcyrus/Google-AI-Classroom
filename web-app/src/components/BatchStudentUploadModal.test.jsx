@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
+import { exportStudentRosterExcel } from '../utils/studentDisplayUtils';
 
 describe('BatchStudentUploadModal', () => {
   it('does not render when isOpen is false', () => {
@@ -156,8 +157,16 @@ bob@school.edu,,,,`;
       <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={onApply} />
     );
 
-    const fileContent = 'StudentEmail,StudentName,Nickname,Class\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文,IT114115/1A';
-    const file = new File([fileContent], 'roster.csv', { type: 'text/csv' });
+    const emails = ['230123456@stu.vtc.edu.hk'];
+    const profiles = {
+      '230123456@stu.vtc.edu.hk': {
+        studentName: 'Chan Tai Man',
+        nickname: '大文',
+        studentClass: 'IT114115/1A'
+      }
+    };
+    const blob = await exportStudentRosterExcel(emails, profiles, 'TEST-CLASS');
+    const file = new File([blob], 'roster.xlsx', { type: blob.type });
 
     const fileInput = container.querySelector('input[type="file"]');
     expect(fileInput).toBeDefined();

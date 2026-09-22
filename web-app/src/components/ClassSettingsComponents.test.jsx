@@ -113,14 +113,6 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
-vi.mock('react-csv', () => ({
-  CSVLink: ({ children, data, headers }) => (
-    <button data-testid="csv-link" data-rows={JSON.stringify(data)} data-headers={JSON.stringify(headers)}>
-      {children}
-    </button>
-  ),
-}));
-
 describe('Class Settings & Management Full Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -234,12 +226,12 @@ describe('Class Settings & Management Full Suite', () => {
       expect(saveBtn).toBeInTheDocument();
       fireEvent.click(saveBtn);
 
-      // Export CSV download button
-      const downloadBtn = screen.getByRole('button', { name: /Export \/ Download Existing CSV/i });
+      // Export Excel download button
+      const downloadBtn = screen.getByRole('button', { name: /Export \/ Download Existing (Excel|CSV)/i });
       fireEvent.click(downloadBtn);
     });
 
-    it('handles student properties CSV upload', async () => {
+    it('handles student properties Excel upload', async () => {
       render(
         <CustomPropertiesManager
           selectedClass="CLASS-101"
@@ -253,7 +245,7 @@ describe('Class Settings & Management Full Suite', () => {
 
       const fileInput = document.querySelector('input[type="file"]');
       if (fileInput) {
-        const file = new File(['StudentEmail,Seat\ns1@school.edu,A1'], 'students.csv', { type: 'text/csv' });
+        const file = new File(['dummy'], 'students.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         fireEvent.change(fileInput, { target: { files: [file] } });
       }
     });

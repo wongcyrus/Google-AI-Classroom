@@ -3,13 +3,15 @@ import { db } from '../firebase-config';
 import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
-import { exportToCsv } from '../utils/exportUtils';
+import { exportToExcel } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 const ProgressView = ({ classId, startTime, endTime }) => {
   const [selectedStudentUid, setSelectedStudentUid] = useState(null);
 
   // --- Logic for Summary View ---
   const [students, setStudents] = useState([]);
+  const [studentProfiles, setStudentProfiles] = useState({});
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [summaryPage, setSummaryPage] = useState(1);
   const itemsPerPage = 10;
@@ -31,7 +33,18 @@ const ProgressView = ({ classId, startTime, endTime }) => {
         if (classSnap.exists()) {
           const classData = classSnap.data();
           const studentMap = classData.students || {};
-          const studentList = Object.entries(studentMap).map(([uid, email]) => ({ uid, email }));
+          const profiles = classData.studentProfiles || {};
+          setStudentProfiles(profiles);
+          const studentList = Object.entries(studentMap).map(([uid, email]) => {
+            const prof = getStudentProfile(email, profiles);
+            return {
+              uid,
+              email,
+              displayName: getStudentDisplayName(email, profiles),
+              studentClass: prof.studentClass || '',
+              programme: prof.programme || ''
+            };
+          });
           setStudents(studentList);
         } else {
           setStudents([]);
@@ -78,14 +91,27 @@ const ProgressView = ({ classId, startTime, endTime }) => {
         const snapshots = await Promise.all(progressPromises);
         const progressData = snapshots.map((snapshot, index) => {
           const student = paginatedStudents[index];
-          if (!snapshot.empty) {
+          const prof = getStudentProfile(student.email, studentProfiles);
+          const displayName = getStudentDisplayName(student.email, studentProfiles);
+          if (snapshot && !snapshot.empty && snapshot.docs && snapshot.docs[0]) {
             const doc = snapshot.docs[0];
-            return { id: doc.id, ...doc.data() };
+            const data = doc.data ? (doc.data() || {}) : {};
+            return {
+              id: doc.id,
+              ...data,
+              studentEmail: data.studentEmail || student.email,
+              displayName,
+              studentClass: prof.studentClass || '',
+              programme: prof.programme || ''
+            };
           }
           return {
             id: student.uid, // fallback id
             studentUid: student.uid,
             studentEmail: student.email,
+            displayName,
+            studentClass: prof.studentClass || '',
+            programme: prof.programme || '',
             progress: 'No progress recorded',
             timestamp: null,
           };
@@ -99,7 +125,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
     };
 
     fetchLatestProgress();
-  }, [paginatedStudents, classId, startTime, endTime]);
+  }, [paginatedStudents, classId, startTime, endTime, studentProfiles]);
 
 
   // --- Logic for Detail View ---
@@ -132,38 +158,51 @@ const ProgressView = ({ classId, startTime, endTime }) => {
   }, [selectedStudentUid, refetchDetail]);
 
 
-  const handleExportSummaryCsv = async () => {
+  const handleExportSummaryExcel = async () => {
     if (!latestProgress || latestProgress.length === 0) {
       alert("No progress data to export.");
       return;
     }
-    const headers = ['Student Email', 'Student UID', 'Latest Progress', 'Last Updated'];
-    const rows = latestProgress.map(p => [
-      p.studentEmail || 'N/A',
-      p.studentUid || 'N/A',
-      p.progress || 'No progress recorded',
-      p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
-    ]);
+    const headers = ['Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Latest Progress', 'Last Updated'];
+    const rows = latestProgress.map(p => {
+      const email = p.studentEmail || (students.find(s => s.uid === p.studentUid))?.email || '';
+      const prof = getStudentProfile(email, studentProfiles);
+      const displayName = p.displayName || getStudentDisplayName(email, studentProfiles);
+      return [
+        displayName,
+        email || 'N/A',
+        prof.studentClass || '',
+        prof.programme || '',
+        p.studentUid || 'N/A',
+        p.progress || 'No progress recorded',
+        p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
+      ];
+    });
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const filename = `Class_${classId}_Progress_Summary_Page_${summaryPage}_${dateSuffix}.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
-  const handleExportDetailCsv = async (studentEmail) => {
+  const handleExportDetailExcel = async (studentEmail) => {
     if (!detailProgress || detailProgress.length === 0) {
       alert("No progress timeline entries to export.");
       return;
     }
-    const headers = ['Student Email', 'Student UID', 'Progress Description', 'Timestamp'];
+    const prof = getStudentProfile(studentEmail, studentProfiles);
+    const displayName = getStudentDisplayName(studentEmail, studentProfiles);
+    const headers = ['Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Progress Description', 'Timestamp'];
     const rows = detailProgress.map(p => [
+      displayName,
       studentEmail,
+      prof.studentClass || '',
+      prof.programme || '',
       selectedStudentUid,
       p.progress || '',
       p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
     ]);
-    const safeTag = (studentEmail || selectedStudentUid).replace(/[^a-zA-Z0-9]/g, '_');
+    const safeTag = (displayName || studentEmail || selectedStudentUid).replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `Class_${classId}_Progress_Timeline_${safeTag}.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   const renderDetailView = () => {
@@ -177,7 +216,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
             <h3 style={{ margin: 0 }}>Progress for {studentEmail}</h3>
           </div>
           <button
-            onClick={() => handleExportDetailCsv(studentEmail)}
+            onClick={() => handleExportDetailExcel(studentEmail)}
             disabled={detailLoading || detailProgress.length === 0}
             style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
           >
@@ -218,7 +257,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
         <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Student Progress Summary</h2>
           <button
-            onClick={handleExportSummaryCsv}
+            onClick={handleExportSummaryExcel}
             disabled={loading || latestProgress.length === 0}
             style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
           >
@@ -244,9 +283,21 @@ const ProgressView = ({ classId, startTime, endTime }) => {
                 <tbody>
                   {latestProgress.map((p) => (
                     <tr key={p.id} className="clickable" onClick={() => setSelectedStudentUid(p.studentUid)}>
-                      <td>{p.studentEmail}</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{p.displayName || p.studentEmail}</div>
+                        {p.displayName && p.displayName !== p.studentEmail && (
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{p.studentEmail}</div>
+                        )}
+                        {(p.studentClass || p.programme) && (
+                          <div style={{ marginTop: '2px' }}>
+                            <span style={{ fontSize: '0.72rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
+                              {[p.studentClass, p.programme].filter(Boolean).join(' • ')}
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td>{p.progress}</td>
-                      <td>{p.timestamp ? new Date(p.timestamp?.toDate()).toLocaleString() : 'N/A'}</td>
+                      <td>{p.timestamp ? new Date(p.timestamp?.toDate ? p.timestamp.toDate() : p.timestamp).toLocaleString() : 'N/A'}</td>
                     </tr>
                   ))}
                 </tbody>

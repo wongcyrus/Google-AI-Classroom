@@ -172,19 +172,17 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
     setSuccessMessage('');
 
     try {
-      let csvData = '';
       const fileName = (file.name || '').toLowerCase();
-      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-        const rows = await readExcelFile(file);
-        if (!rows || rows.length === 0) {
-          throw new Error('The selected Excel file appears to be empty.');
-        }
-        const headers = rows[0] || [];
-        const dataRows = rows.slice(1) || [];
-        csvData = generateCsvContent(headers, dataRows);
-      } else {
-        csvData = await readTextFileWithEncoding(file);
+      if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+        throw new Error('Please upload an Excel spreadsheet (.xlsx or .xls). CSV files are not supported.');
       }
+      const rows = await readExcelFile(file);
+      if (!rows || rows.length === 0) {
+        throw new Error('The selected Excel file appears to be empty.');
+      }
+      const headers = rows[0] || [];
+      const dataRows = rows.slice(1) || [];
+      const csvData = generateCsvContent(headers, dataRows);
 
       const jobsRef = collection(db, 'propertyUploadJobs');
       await addDoc(jobsRef, {
@@ -268,7 +266,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
           📊 Student-specific Properties (CSV Upload / Export)
         </h4>
         <p className="input-hint" style={{ marginBottom: '0.75rem' }}>
-          Upload a CSV with <code>StudentEmail</code> as the first column header to assign custom properties per student (e.g. <code>Group</code>, <code>DeskId</code>, <code>SpecialNeeds</code>).
+          Upload an Excel spreadsheet with <code>StudentEmail</code> as the first column header to assign custom properties per student (e.g. <code>Group</code>, <code>DeskId</code>, <code>SpecialNeeds</code>).
         </p>
         
         <div className="csv-buttons" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -278,7 +276,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.45rem 0.9rem' }}
             onClick={handleDownloadStudentTemplate}
           >
-            📥 Export / Download Existing CSV / Excel
+            📥 Export / Download Existing Excel
           </button>
 
           <label
@@ -297,11 +295,11 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
               borderColor: 'transparent'
             }}
           >
-            📤 Choose Excel / CSV to Upload
+            📤 Choose Excel (.xlsx) to Upload
             <input
               id="student-csv-upload-input"
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls"
               onChange={handleStudentPropertiesCSVUpload}
               style={{ display: 'none' }}
             />

@@ -49,24 +49,22 @@ const BatchStudentUploadModal = ({
 
     try {
       const lowerName = (file.name || '').toLowerCase();
-      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
-        const result = await parseStudentRosterFile(file);
-        if (result.students.length === 0 && result.invalidRows.length > 0) {
-          setParseError(`Could not find valid student emails. Example: ${result.invalidRows[0].reason}`);
-        }
-        setParsedData(result);
-        const previewLines = [
-          '# Imported from ' + file.name,
-          '# Total Students: ' + result.students.length,
-          'StudentEmail,StudentName,Nickname,Programme,Class',
-          ...result.students.map(s => `${s.email},${s.studentName || ''},${s.nickname || ''},${s.programme || ''},${s.studentClass || ''}`)
-        ];
-        setInputText(previewLines.join('\n'));
-      } else {
-        const content = await readTextFileWithEncoding(file);
-        setInputText(content);
-        processRosterText(content);
+      if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls')) {
+        setParseError('Please upload an Excel file (.xlsx or .xls). CSV files are not supported.');
+        return;
       }
+      const result = await parseStudentRosterFile(file);
+      if (result.students.length === 0 && result.invalidRows.length > 0) {
+        setParseError(`Could not find valid student emails. Example: ${result.invalidRows[0].reason}`);
+      }
+      setParsedData(result);
+      const previewLines = [
+        '# Imported from ' + file.name,
+        '# Total Students: ' + result.students.length,
+        'StudentEmail,StudentName,Nickname,Programme,Class',
+        ...result.students.map(s => `${s.email},${s.studentName || ''},${s.nickname || ''},${s.programme || ''},${s.studentClass || ''}`)
+      ];
+      setInputText(previewLines.join('\n'));
     } catch (err) {
       console.error('Error reading roster file:', err);
       setParseError('Failed to read selected file: ' + err.message);
@@ -177,12 +175,12 @@ const BatchStudentUploadModal = ({
               className="btn-secondary btn-sm"
               onClick={() => fileInputRef.current?.click()}
             >
-              📂 Choose File (.xlsx, .csv, .txt)
+              📂 Choose Excel (.xlsx)
             </button>
             <input
               type="file"
               ref={fileInputRef}
-              accept=".xlsx,.xls,.csv,.tsv,.txt"
+              accept=".xlsx,.xls"
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />
@@ -216,7 +214,7 @@ const BatchStudentUploadModal = ({
         {/* Input Textarea for Paste or Drag-Drop */}
         <div className="batch-roster-input-section">
           <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)' }}>
-            Paste CSV / TSV Rows or Spreadsheet Cells Below:
+            Paste Spreadsheet Cells or Student Emails Below:
           </label>
           <textarea
             className="batch-roster-textarea"
@@ -228,7 +226,7 @@ const BatchStudentUploadModal = ({
             onChange={handleTextChange}
           />
           <p className="batch-roster-hint">
-            💡 <em>Note:</em> Headers are <strong>English only</strong>. Unicode characters (including Chinese names and Chinese nicknames) are fully supported across CSV export and import. Students missing names or cohorts will gracefully fall back to email or nickname.
+            💡 <em>Note:</em> Headers are <strong>English only</strong>. Unicode characters (including Chinese names and Chinese nicknames) are fully supported in Excel imports and exports. Students missing names or cohorts will gracefully fall back to email or nickname.
           </p>
         </div>
 

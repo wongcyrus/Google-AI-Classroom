@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { exportToCsv } from '../utils/exportUtils';
+import { exportToExcel } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 import './BingoResultsView.css';
 
 /**
@@ -88,6 +89,34 @@ export default function BingoResultsView({
     }
     return null;
   }, [matchedLesson, endTime]);
+
+  const [studentProfiles, setStudentProfiles] = useState({});
+
+  useEffect(() => {
+    if (!classId) return;
+    const fetchProfiles = async () => {
+      try {
+        const classRef = doc(db, 'classes', classId);
+        const classSnap = await getDoc(classRef);
+        const baseProfiles = classSnap.exists() ? (classSnap.data().studentProfiles || {}) : {};
+        try {
+          const dirSnap = await getDocs(collection(db, 'studentDirectory'));
+          const dirProfiles = {};
+          if (dirSnap && typeof dirSnap.forEach === 'function') {
+            dirSnap.forEach(d => {
+              dirProfiles[d.id.trim().toLowerCase()] = d.data();
+            });
+          }
+          setStudentProfiles({ ...dirProfiles, ...baseProfiles });
+        } catch {
+          setStudentProfiles(baseProfiles);
+        }
+      } catch (err) {
+        console.warn('Could not load studentProfiles for Bingo:', err);
+      }
+    };
+    fetchProfiles();
+  }, [classId]);
 
   // Real-time Firestore subscription to classes/{classId}/bingoRecords
   useEffect(() => {
@@ -271,7 +300,10 @@ export default function BingoResultsView({
       'Date',
       'Time',
       'Lesson Period',
+      'Student Name',
       'Student Email',
+      'Class / Cohort',
+      'Programme',
       'Student UID',
       'Question',
       'Question Source',
@@ -293,6 +325,10 @@ export default function BingoResultsView({
       const dateStr = formatDate(millis, timezone);
       const timeStr = formatTime(millis, timezone);
 
+      const email = r.studentEmail || '';
+      const prof = getStudentProfile(email, studentProfiles);
+      const displayName = getStudentDisplayName(email, studentProfiles);
+
       const options = Array.isArray(r.options) ? r.options : [];
       const correctText = r.correctIndex !== null && r.correctIndex !== undefined && options[r.correctIndex]
         ? `${OPTION_LABELS[r.correctIndex] || r.correctIndex}: ${options[r.correctIndex]}`
@@ -307,7 +343,10 @@ export default function BingoResultsView({
         dateStr,
         timeStr,
         lessonLabel,
-        r.studentEmail || '',
+        displayName,
+        email,
+        prof.studentClass || '',
+        prof.programme || '',
         r.studentUid || '',
         r.question || '',
         r.questionSource || '',
@@ -322,8 +361,8 @@ export default function BingoResultsView({
     });
 
     const dateSuffix = effectiveStart ? formatDate(effectiveStart.getTime(), timezone).replace(/[^a-zA-Z0-9]/g, '_') : 'all';
-    const filename = `bingo-report-${classId}-${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `bingo-report-${classId}-${dateSuffix}.xlsx`;
+    exportToExcel(headers, rows, filename);
   };
 
   return (
@@ -667,10 +706,23 @@ export default function BingoResultsView({
                       <tr key={r.id}>
                         {/* Student */}
                         <td>
-                          <div className="bingo-student-cell">
-                            <span className="bingo-student-email">{r.studentEmail || 'Unknown Student'}</span>
-                            <span className="bingo-student-uid">{r.studentUid}</span>
-                          </div>
+                          {(() => {
+                            const email = r.studentEmail || '';
+                            const prof = getStudentProfile(email, studentProfiles);
+                            const displayName = getStudentDisplayName(email, studentProfiles);
+                            const hasDistinctName = displayName && displayName !== email;
+                            return (
+                              <div className="bingo-student-cell">
+                                <span className="bingo-student-email" style={{ fontWeight: 600 }}>{displayName || email || 'Unknown Student'}</span>
+                                {hasDistinctName && <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{email}</span>}
+                                {(prof.studentClass || prof.programme) && (
+                                  <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px', alignSelf: 'flex-start' }}>
+                                    {[prof.studentClass, prof.programme].filter(Boolean).join(' • ')}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Chosen Answer */}

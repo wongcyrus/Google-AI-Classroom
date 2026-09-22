@@ -9,6 +9,7 @@ import IncidentDossierExportModal from './IncidentDossierExportModal';
 import AudioTranscriptModal from './AudioTranscriptModal';
 import StudentBadge from './common/StudentBadge';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { exportToExcel } from '../utils/exportUtils';
 
 const DualMediaPlayer = ({ data, onClose, onOpenTranscriptModal }) => {
   if (!data) return null;
@@ -212,7 +213,7 @@ const IrregularitiesView = ({ startTime, endTime }) => {
     });
   };
 
-  const exportToCSV = async () => {
+  const exportToExcelPage = async () => {
     if (irregularities.length === 0) {
       alert("No data to export.");
       return;
@@ -233,21 +234,10 @@ const IrregularitiesView = ({ startTime, endTime }) => {
         item.screenUrl || item.imageUrl || '',
         item.webcamUrl || '',
         item.timestamp?.toDate ? item.timestamp.toDate().toLocaleString() : (item.startedAt?.toDate ? item.startedAt.toDate().toLocaleString() : String(item.timestamp || item.startedAt || '')),
-      ]
-        .map(value => `"${String(value ?? '').replace(/"/g, '""')}"`)
-        .join(',');
+      ];
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'irregularities_page_' + page + '.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await exportToExcel(headers, rows, `irregularities_page_${page}.xlsx`);
   };
 
   const [showExportModal, setShowExportModal] = useState(false);
@@ -264,9 +254,9 @@ const IrregularitiesView = ({ startTime, endTime }) => {
         <div className="actions-container" style={{ display: 'flex', gap: '8px', margin: 0, flexWrap: 'wrap' }}>
           <button onClick={() => refetch && refetch()} style={{ background: '#0284c7', color: '#fff' }}>🔄 Refresh</button>
           <button onClick={() => setShowExportModal(true)} style={{ background: '#2563eb', color: '#fff', fontWeight: 'bold' }}>
-            📄 Export Formal Dossier (.docx / .csv)
+            📄 Export Formal Dossier (.docx)
           </button>
-          <button onClick={exportToCSV}>Quick CSV Page</button>
+          <button onClick={exportToExcelPage}>Quick Excel Page</button>
         </div>
       </div>
 
@@ -403,7 +393,8 @@ const IrregularitiesView = ({ startTime, endTime }) => {
           isOpen={!!activeAudioModalData}
           onClose={() => setActiveAudioModalData(null)}
           studentUid={activeAudioModalData.studentUid}
-          studentName={activeAudioModalData.studentEmail}
+          studentName={getStudentDisplayName(activeAudioModalData.email || activeAudioModalData.studentEmail, studentProfiles)}
+          studentEmail={activeAudioModalData.email || activeAudioModalData.studentEmail}
           audioUrl={activeAudioModalData.audioUrl}
           snapshotUrl={activeAudioModalData.webcamUrl || activeAudioModalData.screenUrl || activeAudioModalData.singleUrl}
           transcriptSegments={activeAudioModalData.transcriptSegments}

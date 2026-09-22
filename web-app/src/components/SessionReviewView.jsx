@@ -5,7 +5,7 @@ import { ref, deleteObject } from 'firebase/storage';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import PlaybackView from './PlaybackView';
-import { exportToCsv } from '../utils/exportUtils';
+import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 const SessionReviewView = ({ classId, startTime, endTime }) => {
@@ -231,25 +231,47 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   };
 
 
-  const handleExportVideoJobsCsv = async () => {
+  const handleExportVideoJobsExcel = async () => {
     if (!filteredVideoJobs || filteredVideoJobs.length === 0) {
       alert("No video jobs to export.");
       return;
     }
-    const headers = ['Job ID', 'Student Email', 'Student UID', 'Start Time', 'End Time', 'Created At', 'Status', 'Error Details'];
-    const rows = filteredVideoJobs.map(job => [
-      job.id,
-      job.studentEmail || 'All Students',
-      job.studentUid || 'N/A',
-      job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
-      job.endTime?.toDate ? job.endTime.toDate().toISOString() : (job.endTime || 'N/A'),
-      job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),
-      job.status || 'unknown',
-      job.error || job.errorDetails || ''
-    ]);
+    const headers = [
+      'Job ID',
+      'Student Name',
+      'Student Email',
+      'Class / Cohort',
+      'Programme',
+      'Student UID',
+      'Start Time',
+      'End Time',
+      'Created At',
+      'Status',
+      'Error Details'
+    ];
+    const rows = filteredVideoJobs.map(job => {
+      const student = students.find(s => s.uid === job.studentUid || s.email === job.studentEmail);
+      const studentName = student?.displayName || job.studentName || (job.studentEmail ? job.studentEmail : 'All Students');
+      const studentClass = student?.studentClass || '';
+      const programme = student?.programme || '';
+
+      return [
+        job.id,
+        studentName,
+        job.studentEmail || 'All Students',
+        studentClass,
+        programme,
+        job.studentUid || 'N/A',
+        job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
+        job.endTime?.toDate ? job.endTime.toDate().toISOString() : (job.endTime || 'N/A'),
+        job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),
+        job.status || 'unknown',
+        job.error || job.errorDetails || ''
+      ];
+    });
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const filename = `Class_${classId}_Video_Jobs_${dateSuffix}.xlsx`;
-    await exportToCsv(headers, rows, filename);
+    await exportToExcel(headers, rows, filename);
   };
 
   const handleStartPlayback = () => {
@@ -388,7 +410,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3 style={{ margin: 0 }}>Video Jobs</h3>
             <button
-              onClick={handleExportVideoJobsCsv}
+              onClick={handleExportVideoJobsExcel}
               disabled={filteredVideoJobs.length === 0}
               style={{
                 padding: '6px 14px',

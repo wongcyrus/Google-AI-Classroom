@@ -134,17 +134,7 @@ export async function readExcelFile(fileOrBuffer) {
   return result;
 }
 
-/**
- * Exports data to an Excel (.xlsx) file, maintaining backward compatibility for legacy callers.
- * 
- * @param {Array<string>} headers - Column names
- * @param {Array<Array<*>>} rows - Row data
- * @param {string} filename - Output filename (converted to .xlsx)
- */
-export function exportToCsv(headers, rows, filename = "data_export.xlsx") {
-  const excelFilename = filename.replace(/\.csv$/i, '.xlsx');
-  return exportToExcel(headers, rows, excelFilename);
-}
+
 
 /**
  * Exports an object or array as formatted JSON.

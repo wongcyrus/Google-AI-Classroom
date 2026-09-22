@@ -72,13 +72,24 @@ export const getLessonId = async (start, end, timezone = 'UTC') => {
   return Math.abs(hash).toString(16);
 };
 
-export const mergeAttendanceData = (attendanceData = [], lessonStudents = [], durationMinutes = 0) => {
-  if (attendanceData.length === 0 && lessonStudents.length === 0) {
+export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [], durationMinutes = 0) => {
+  const lessonStudents = Array.isArray(rawLessonStudents)
+    ? rawLessonStudents
+    : (rawLessonStudents && typeof rawLessonStudents === 'object')
+      ? Object.entries(rawLessonStudents).map(([uid, val]) => ({
+          uid,
+          email: typeof val === 'string' ? val : (val?.email || '')
+        }))
+      : [];
+
+  const safeAttendance = Array.isArray(attendanceData) ? attendanceData : [];
+
+  if (safeAttendance.length === 0 && lessonStudents.length === 0) {
     return [];
   }
 
   const allStudentEmails = new Set([
-    ...attendanceData.map((s) => s.email).filter(Boolean),
+    ...safeAttendance.map((s) => s.email).filter(Boolean),
     ...lessonStudents.map((s) => s.email).filter(Boolean),
   ]);
 
