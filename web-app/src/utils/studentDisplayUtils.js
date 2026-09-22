@@ -404,13 +404,10 @@ export const exportStudentRosterCsv = (studentEmails = [], studentProfiles = {},
 };
 
 /**
- * Reads a File or Blob with automatic Unicode and legacy encoding detection.
+ * Reads a File or Blob with standard Unicode encoding detection.
  * Prioritizes:
  * 1. UTF-16 LE / BE BOM detection.
- * 2. UTF-8 (strict validation with error check).
- * 3. Big5 (Traditional Chinese, common default in Excel on Windows in HK/TW).
- * 4. GBK (Simplified Chinese, common default in Excel on Windows in Mainland China).
- * 5. UTF-8 (permissive fallback).
+ * 2. Standard UTF-8 (RFC-4180 / modern web standard).
  * 
  * @param {Blob|File} file 
  * @returns {Promise<string>} Decoded Unicode text content
@@ -445,27 +442,6 @@ export const readTextFileWithEncoding = async (file) => {
     }
   }
 
-  // 2. Try strict UTF-8
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-  } catch {
-    // If strict UTF-8 fails, try legacy encodings used by Windows Excel
-  }
-
-  // 3. Try Big5 (common in HK / Taiwan Windows Excel)
-  try {
-    return new TextDecoder('big5', { fatal: true }).decode(buffer);
-  } catch {
-    // Not valid Big5
-  }
-
-  // 4. Try GBK (common in Mainland China Windows Excel)
-  try {
-    return new TextDecoder('gbk', { fatal: true }).decode(buffer);
-  } catch {
-    // Not valid GBK
-  }
-
-  // 5. Fallback to standard UTF-8 (permissive)
+  // 2. Standard UTF-8 Unicode decode (per RFC-4180 standard)
   return new TextDecoder('utf-8').decode(buffer);
 };

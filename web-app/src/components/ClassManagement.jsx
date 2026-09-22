@@ -11,7 +11,13 @@ import CustomPropertiesManager from './CustomPropertiesManager';
 import ScheduleManager from './ScheduleManager';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
 import StudentBadge from './common/StudentBadge';
-import { exportStudentRosterCsv, normalizeStudentEmail, readTextFileWithEncoding } from '../utils/studentDisplayUtils';
+import {
+  exportStudentRosterCsv,
+  generateStudentRosterTemplateCsv,
+  normalizeStudentEmail,
+  parseStudentRosterCsv,
+  readTextFileWithEncoding,
+} from '../utils/studentDisplayUtils';
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const [classId, setClassId] = useState(embeddedClassId || '');
@@ -137,8 +143,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           }
         });
 
-        // 2. Client-side fallback / lazy migration across accessible classes
-        if (Object.keys(dirMap).length === 0) {
+        // 2. Cross-class aggregation: scan accessible classes to merge student profile information
+        try {
           const classesSnap = await getDocs(collection(db, 'classes'));
           classesSnap.forEach((d) => {
             const cData = d.data() || {};
@@ -146,18 +152,19 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               for (const [rawE, prof] of Object.entries(cData.studentProfiles)) {
                 const normE = rawE.trim().toLowerCase();
                 if (normE && prof && typeof prof === 'object') {
-                  if (!dirMap[normE] || !dirMap[normE].studentName) {
-                    dirMap[normE] = {
-                      studentName: prof.studentName || '',
-                      nickname: prof.nickname || '',
-                      programme: prof.programme || '',
-                      studentClass: prof.studentClass || '',
-                    };
-                  }
+                  const curr = dirMap[normE] || {};
+                  dirMap[normE] = {
+                    studentName: curr.studentName || prof.studentName || '',
+                    nickname: curr.nickname || prof.nickname || '',
+                    programme: curr.programme || prof.programme || '',
+                    studentClass: curr.studentClass || prof.studentClass || '',
+                  };
                 }
               }
             }
           });
+        } catch (classErr) {
+          console.warn('Could not scan classes for student profiles:', classErr);
         }
 
         if (isMounted) {
@@ -397,15 +404,43 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setExamPeriods(examPeriods.filter((p) => p.id !== periodId));
   };
 
+  const handleDownloadRosterTemplate = () => {
+    const templateContent = generateStudentRosterTemplateCsv();
+    const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'student_roster_template.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleImportEmailsFromFile = async (event, type = 'students') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const content = await readTextFileWithEncoding(file);
-      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-      const matchedEmails = content.match(emailRegex) || [];
-      const cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
+      let cleanUnique = [];
+      let importedProfiles = {};
+
+      if (type === 'students') {
+        // Try structured CSV parsing first (extracts StudentEmail, StudentName, Nickname, Programme, Class)
+        const parsed = parseStudentRosterCsv(content);
+        if (parsed.emailList && parsed.emailList.length > 0) {
+          cleanUnique = parsed.emailList;
+          importedProfiles = parsed.profilesMap || {};
+        }
+      }
+
+      // Fallback for unstructured text files or teacher emails
+      if (cleanUnique.length === 0) {
+        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+        const matchedEmails = content.match(emailRegex) || [];
+        cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
+      }
 
       if (cleanUnique.length === 0) {
         alert('No valid email addresses found in the uploaded file.');
@@ -416,7 +451,18 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         const existing = studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
         const merged = [...new Set([...existing, ...cleanUnique])];
         setStudentEmails(merged.join('\n'));
-        alert(`Successfully imported ${cleanUnique.length} student email(s)!`);
+
+        // If CSV contained profile metadata (names, Chinese nicknames, etc.), persist into state
+        const profileCount = Object.keys(importedProfiles).length;
+        if (profileCount > 0) {
+          setStudentProfiles(prev => ({ ...prev, ...importedProfiles }));
+          setStudentDirectory(prev => ({ ...prev, ...importedProfiles }));
+        }
+
+        const msg = profileCount > 0
+          ? `Successfully imported ${cleanUnique.length} student(s) (${profileCount} with names/nicknames)!`
+          : `Successfully imported ${cleanUnique.length} student email(s)!`;
+        alert(msg);
       } else {
         const existing = teacherEmails.replace(/\n/g, ' ').split(/[, ]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
         const merged = [...new Set([...existing, ...cleanUnique])];
@@ -442,14 +488,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     const activeExportId = (embeddedClassId || selectedClass || classId || 'class').trim();
     if (type === 'students') {
-      const exportProfiles = { ...studentDirectory, ...studentProfiles };
+      const exportProfiles = {};
+      emails.forEach(email => {
+        const p1 = studentDirectory[email] || {};
+        const p2 = studentProfiles[email] || {};
+        exportProfiles[email] = {
+          studentName: p2.studentName || p1.studentName || '',
+          nickname: p2.nickname || p1.nickname || '',
+          programme: p2.programme || p1.programme || '',
+          studentClass: p2.studentClass || p1.studentClass || '',
+        };
+      });
       const csvContent = exportStudentRosterCsv(emails, exportProfiles, activeExportId);
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = `${activeExportId.toLowerCase()}_student_roster.csv`;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(url);
       return;
     }
@@ -461,7 +519,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `${activeExportId.toLowerCase()}_${type}_roster.csv`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
@@ -619,10 +679,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     // Cross-class student profile propagation: merge with directory profiles for all enrolled students
     const resolvedStudentProfiles = { ...studentProfiles };
     studentEmailList.forEach((email) => {
-      if ((!resolvedStudentProfiles[email] || !resolvedStudentProfiles[email].studentName) && studentDirectory[email]?.studentName) {
+      const explicit = resolvedStudentProfiles[email] || {};
+      const fromDir = studentDirectory[email] || {};
+      if (fromDir.studentName || fromDir.nickname || fromDir.programme || fromDir.studentClass) {
         resolvedStudentProfiles[email] = {
-          ...studentDirectory[email],
-          updatedAt: new Date().toISOString(),
+          studentName: explicit.studentName || fromDir.studentName || '',
+          nickname: explicit.nickname || fromDir.nickname || '',
+          programme: explicit.programme || fromDir.programme || '',
+          studentClass: explicit.studentClass || fromDir.studentClass || '',
+          updatedAt: explicit.updatedAt || fromDir.updatedAt || new Date().toISOString(),
         };
       }
     });
@@ -1179,6 +1244,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               >
                 {loadingAllStudents ? '⏳ Loading Students...' : '🎓 Add All Students'}
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={handleDownloadRosterTemplate}
+                title="Download standard CSV roster template with English headers and example data"
+              >
+                📄 Download Template
+              </button>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                 📥 Import (CSV/TXT)
                 <input
@@ -1204,7 +1278,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             onChange={(e) => setStudentEmails(e.target.value)}
             rows="5"
           />
-          <p className="input-hint">Students with these emails will gain access to this class. Use "Batch Upload Roster" to include student names, nicknames, programmes, and class cohorts.</p>
+          <p className="input-hint">Students with these emails will gain access to this class. Entering emails automatically reuses names and Chinese nicknames from other classes and the institutional directory. Use "📄 Download Template" or "👥 Batch Upload Roster" to provide or update full profile metadata.</p>
 
           {/* Roster Profiles Overview */}
           {(() => {
@@ -1216,15 +1290,21 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             let fullProfileCount = 0;
 
             emailList.forEach(email => {
-              const explicitProf = studentProfiles[email];
-              const dirProf = studentDirectory[email];
-              const isEnrichedFromDir = (!explicitProf || !explicitProf.studentName) && dirProf?.studentName;
-              const effectiveProf = explicitProf?.studentName ? explicitProf : (dirProf || explicitProf || {});
+              const explicitProf = studentProfiles[email] || {};
+              const dirProf = studentDirectory[email] || {};
+              const hasDirInfo = Boolean(dirProf.studentName || dirProf.nickname || dirProf.programme || dirProf.studentClass);
+              const isEnrichedFromDir = hasDirInfo && (!explicitProf.studentName || !explicitProf.nickname || !explicitProf.programme || !explicitProf.studentClass);
+              const effectiveProf = {
+                studentName: explicitProf.studentName || dirProf.studentName || '',
+                nickname: explicitProf.nickname || dirProf.nickname || '',
+                programme: explicitProf.programme || dirProf.programme || '',
+                studentClass: explicitProf.studentClass || dirProf.studentClass || '',
+              };
               resolvedProfilesMap[email] = {
                 ...effectiveProf,
                 _fromDirectory: Boolean(isEnrichedFromDir),
               };
-              if (effectiveProf.studentName) {
+              if (effectiveProf.studentName || effectiveProf.nickname) {
                 fullProfileCount++;
               }
               if (isEnrichedFromDir) {

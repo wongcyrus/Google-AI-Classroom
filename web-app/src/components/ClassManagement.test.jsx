@@ -862,6 +862,58 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       { merge: true }
     );
   });
+
+  it('handles downloading student roster template via Download Template button', async () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    const originalRevokeObjectURL = window.URL.revokeObjectURL;
+    let downloadedBlob = null;
+
+    window.URL.createObjectURL = vi.fn((blob) => {
+      downloadedBlob = blob;
+      return 'blob:mock-template-url';
+    });
+    window.URL.revokeObjectURL = vi.fn();
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /📄 Download Template/i })).toBeInTheDocument();
+    });
+
+    const downloadBtn = screen.getByRole('button', { name: /📄 Download Template/i });
+    fireEvent.click(downloadBtn);
+
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-template-url');
+    expect(downloadedBlob).toBeDefined();
+
+    window.URL.createObjectURL = originalCreateObjectURL;
+    window.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('supports importing structured roster CSV with Chinese nicknames and preserving them', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Student Email Addresses/i)).toBeInTheDocument();
+    });
+
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    expect(fileInputs.length).toBeGreaterThan(0);
+
+    const csvContent = '\uFEFFStudentEmail,StudentName,Nickname,Programme,Class\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文,Software Engineering,IT114115/1A';
+    const file = new File([csvContent], 'roster.csv', { type: 'text/csv;charset=utf-8' });
+
+    await act(async () => {
+      fireEvent.change(fileInputs[0], { target: { files: [file] } });
+    });
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('names/nicknames'));
+      expect(screen.getByDisplayValue(/230123456@stu\.vtc\.edu\.hk/i)).toBeInTheDocument();
+      expect(screen.getByText(/大文/i)).toBeInTheDocument();
+    });
+  });
 });
 
 

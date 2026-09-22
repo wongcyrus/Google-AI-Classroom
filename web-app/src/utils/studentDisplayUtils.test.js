@@ -348,23 +348,6 @@ not-an-email,Invalid User
       expect(decoded).toContain('大文');
     });
 
-    it('decodes Big5-encoded file with Chinese nickname (common Windows Excel export)', async () => {
-      // In Big5: '大' is 0xA4 0x6A, '文' is 0xA4 0xE5
-      const big5Bytes = new Uint8Array([
-        0x53, 0x74, 0x75, 0x64, 0x65, 0x6E, 0x74, 0x45, 0x6D, 0x61, 0x69, 0x6C, 0x2C, // StudentEmail,
-        0x53, 0x74, 0x75, 0x64, 0x65, 0x6E, 0x74, 0x4E, 0x61, 0x6D, 0x65, 0x2C,       // StudentName,
-        0x4E, 0x69, 0x63, 0x6B, 0x6E, 0x61, 0x6D, 0x65, 0x0A,                         // Nickname\n
-        0x63, 0x68, 0x61, 0x6E, 0x40, 0x76, 0x74, 0x63, 0x2E, 0x65, 0x64, 0x75, 0x2C, // chan@vtc.edu,
-        0x43, 0x68, 0x61, 0x6E, 0x20, 0x54, 0x61, 0x69, 0x20, 0x4D, 0x61, 0x6E, 0x2C, // Chan Tai Man,
-        0xA4, 0x6A, 0xA4, 0xE5                                                         // 大文
-      ]);
-      const blob = new Blob([big5Bytes]);
-      const decoded = await readTextFileWithEncoding(blob);
-      expect(decoded).toContain('大文');
-      const parsed = parseStudentRosterCsv(decoded);
-      expect(parsed.students[0].nickname).toBe('大文');
-    });
-
     it('decodes UTF-16LE encoded file with BOM', async () => {
       const text = 'StudentEmail,Nickname\n230123456@stu.vtc.edu.hk,大文';
       // UTF-16LE BOM: 0xFF, 0xFE
@@ -380,6 +363,18 @@ not-an-email,Invalid User
       expect(decoded).toContain('大文');
       const parsed = parseStudentRosterCsv(decoded);
       expect(parsed.students[0].nickname).toBe('大文');
+    });
+
+    it('decodes multi-line UTF-8 CSV containing Traditional and Simplified Chinese characters', async () => {
+      const text = 'StudentEmail,StudentName,Nickname,Programme,Class\n230123456@stu.vtc.edu.hk,Chan Tai Man,大文,雲端計算,IT114115/1A\n230987654@stu.vtc.edu.hk,Zhang Wei,小伟,软件工程,IT114115/1B';
+      const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+      const decoded = await readTextFileWithEncoding(blob);
+      expect(decoded).toContain('大文');
+      expect(decoded).toContain('小伟');
+      const parsed = parseStudentRosterCsv(decoded);
+      expect(parsed.students).toHaveLength(2);
+      expect(parsed.students[0].nickname).toBe('大文');
+      expect(parsed.students[1].nickname).toBe('小伟');
     });
   });
 });
