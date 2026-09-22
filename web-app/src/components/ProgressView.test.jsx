@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ProgressView from './ProgressView';
 
 vi.mock('../firebase-config', () => ({
@@ -178,8 +178,12 @@ describe('ProgressView Component', () => {
 
     // Test Summary Export
     const exportSummaryBtn = screen.getByRole('button', { name: /Export Progress Summary/i });
-    fireEvent.click(exportSummaryBtn);
-    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(exportSummaryBtn);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalled();
+    });
 
     // Click row to enter detail
     fireEvent.click(screen.getByText('alice@example.com'));
@@ -190,8 +194,12 @@ describe('ProgressView Component', () => {
 
     // Test Detail Export
     const exportDetailBtn = screen.getByRole('button', { name: /Export Student Timeline/i });
-    fireEvent.click(exportDetailBtn);
-    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fireEvent.click(exportDetailBtn);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+    });
 
     window.URL.createObjectURL = originalCreateObjectURL;
   });

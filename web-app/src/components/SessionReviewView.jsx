@@ -231,7 +231,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   };
 
 
-  const handleExportVideoJobsCsv = () => {
+  const handleExportVideoJobsCsv = async () => {
     if (!filteredVideoJobs || filteredVideoJobs.length === 0) {
       alert("No video jobs to export.");
       return;
@@ -248,8 +248,8 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       job.error || job.errorDetails || ''
     ]);
     const dateSuffix = new Date().toISOString().slice(0, 10);
-    const filename = `Class_${classId}_Video_Jobs_${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `Class_${classId}_Video_Jobs_${dateSuffix}.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
   const handleStartPlayback = () => {
@@ -400,7 +400,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                 fontWeight: 600
               }}
             >
-              📥 Export Video Jobs (CSV)
+              📥 Export Video Jobs (Excel)
             </button>
           </div>
           <table>

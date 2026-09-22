@@ -264,7 +264,7 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(setIsPaused).toHaveBeenCalledWith(false);
 
     // Attendance download
-    const attendanceBtn = screen.getByRole('button', { name: /Download CSV/i });
+    const attendanceBtn = screen.getByRole('button', { name: /Download (Excel|CSV)/i });
     fireEvent.click(attendanceBtn);
     expect(handleDownloadAttendance).toHaveBeenCalled();
 

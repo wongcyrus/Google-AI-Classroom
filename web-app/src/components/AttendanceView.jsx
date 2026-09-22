@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, functions } from '../firebase-config';
-import { CSVLink } from 'react-csv';
+import { exportToExcel } from '../utils/exportUtils';
 import Modal from './Modal.jsx';
 import StudentBadge from './common/StudentBadge';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
@@ -20,8 +20,6 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   const [loadingLessonData, setLoadingLessonData] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentProfiles, setStudentProfiles] = useState({});
-  const [csvData, setCsvData] = useState(null);
-  const csvLink = useRef(null);
 
   const matchedLesson = useMemo(() => {
     if (selectedLesson && lessons?.length) {
@@ -42,7 +40,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     return mergeAttendanceData(attendanceData, lessonStudents, lessonDurationInMinutes);
   }, [attendanceData, lessonData, lessonDurationInMinutes]);
 
-  const filename = `attendance-${classId}-${formatFilenameDate(effectiveStart)}-${formatFilenameDate(effectiveEnd)}.csv`;
+  const filename = `attendance-${classId}-${formatFilenameDate(effectiveStart)}-${formatFilenameDate(effectiveEnd)}.xlsx`;
 
   const handleFetchAttendance = async () => {
     if (!classId || !effectiveStart || !effectiveEnd) return;
@@ -138,61 +136,50 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     fetchLessonData();
   }, [selectedLesson, classId, effectiveStart, effectiveEnd, lessonDurationInMinutes, timezone]);
 
-  const handleExportToCSV = () => {
+  const handleExportToExcel = async () => {
     if (combinedData.length === 0) return;
 
     const headers = [
-      { label: "Student Display Name", key: "displayName" },
-      { label: "Student Email", key: "email" },
-      { label: "Class / Cohort", key: "studentClass" },
-      { label: "Programme", key: "programme" },
-      { label: "Screen Share Minutes", key: "totalMinutes" },
-      { label: "Screen Share Percentage", key: "percentage" },
-      { label: "AI Estimated Working Minutes", key: "workingMinutes" },
-      { label: "AI Estimated Percentage", key: "aiPercentage" },
-      { label: "General Summary", key: "generalSummary" },
-      { label: "Student-Specific Summary", key: "studentSummary" },
-      { label: "General Feedback", key: "generalFeedback" },
-      { label: "Student-Specific Feedback", key: "studentFeedback" },
-      ...Array.from({ length: lessonDurationInMinutes }, (_, i) => ({ label: `Min ${i + 1}`, key: `min${i + 1}` }))
+      "Student Display Name",
+      "Student Email",
+      "Class / Cohort",
+      "Programme",
+      "Screen Share Minutes",
+      "Screen Share Percentage",
+      "AI Estimated Working Minutes",
+      "AI Estimated Percentage",
+      "General Summary",
+      "Student-Specific Summary",
+      "General Feedback",
+      "Student-Specific Feedback",
+      ...Array.from({ length: lessonDurationInMinutes }, (_, i) => `Min ${i + 1}`)
     ];
 
-    const data = combinedData.map(studentData => {
-      const sanitize = (str) => str ? str.replace(/,/g, ' ').replace(/\n/g, ' ') : '';
+    const rows = combinedData.map(studentData => {
       const prof = getStudentProfile(studentData.email, studentProfiles);
       const displayName = getStudentDisplayName(studentData.email, studentProfiles);
-      const row = {
-        displayName: displayName,
-        email: studentData.email,
-        studentClass: prof.studentClass || '',
-        programme: prof.programme || '',
-        totalMinutes: studentData.totalMinutes ?? 'N/A',
-        percentage: studentData.percentage ?? 'N/A',
-        workingMinutes: studentData.workingMinutes ?? 'N/A',
-        aiPercentage: studentData.workingMinutes && lessonDurationInMinutes > 0 ? ((studentData.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : 'N/A',
-        generalSummary: sanitize(lessonData?.generalSummary),
-        generalFeedback: (Array.isArray(lessonData?.generalFeedback) ? lessonData.generalFeedback : (lessonData?.generalFeedback ? [lessonData.generalFeedback] : [])).map(sanitize).join(' | '),
-        studentFeedback: (Array.isArray(studentData.feedback) ? studentData.feedback : (studentData.feedback ? [studentData.feedback] : [])).map(sanitize).join(' | '),
-      };
+      const row = [
+        displayName,
+        studentData.email,
+        prof.studentClass || '',
+        prof.programme || '',
+        studentData.totalMinutes ?? 'N/A',
+        studentData.percentage ?? 'N/A',
+        studentData.workingMinutes ?? 'N/A',
+        studentData.workingMinutes && lessonDurationInMinutes > 0 ? ((studentData.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : 'N/A',
+        lessonData?.generalSummary || '',
+        (Array.isArray(lessonData?.generalFeedback) ? lessonData.generalFeedback : (lessonData?.generalFeedback ? [lessonData.generalFeedback] : [])).join(' | '),
+        (Array.isArray(studentData.feedback) ? studentData.feedback : (studentData.feedback ? [studentData.feedback] : [])).join(' | '),
+      ];
       const attendanceRecord = studentData.attendance || Array(lessonDurationInMinutes).fill(0);
-      attendanceRecord.forEach((present, i) => {
-        row[`min${i + 1}`] = present;
+      attendanceRecord.forEach((present) => {
+        row.push(present);
       });
       return row;
     });
 
-    setCsvData({ headers, data });
+    await exportToExcel(headers, rows, filename);
   };
-
-  useEffect(() => {
-    if (csvData && csvLink.current) {
-      csvLink.current.link.click();
-      const timer = setTimeout(() => {
-        setCsvData(null);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [csvData]);
 
   const minuteKeys = lessonDurationInMinutes > 0 ? Array.from({ length: lessonDurationInMinutes }, (_, i) => i + 1) : [];
 
@@ -204,18 +191,8 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
           <button onClick={handleFetchAttendance} style={{ marginLeft: '20px' }} disabled={loadingAttendance}>
             {loadingAttendance ? 'Calculating...' : 'Calculate Live Attendance'}
           </button>
-          <button onClick={handleExportToCSV} style={{ marginLeft: '10px' }} disabled={combinedData.length === 0}>Export to CSV</button>
+          <button onClick={handleExportToExcel} style={{ marginLeft: '10px' }} disabled={combinedData.length === 0}>Export to Excel</button>
         </h2>
-        {csvData && (
-          <CSVLink
-            headers={csvData.headers}
-            data={csvData.data}
-            filename={filename}
-            style={{ display: "none" }}
-            ref={csvLink}
-            target="_blank"
-          />
-        )}
       </div>
       <div style={{ flexGrow: 1, overflowY: 'auto' }}>
         {(loadingAttendance || loadingLessonData) && <p>Loading data...</p>}

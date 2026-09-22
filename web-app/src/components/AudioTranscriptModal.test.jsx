@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import AudioTranscriptModal from './AudioTranscriptModal';
 
 describe('AudioTranscriptModal Component', () => {
@@ -123,7 +123,7 @@ describe('AudioTranscriptModal Component', () => {
     expect(screen.getByText(/No speech detected or transcript empty/i)).toBeInTheDocument();
   });
 
-  it('handles exporting transcript as CSV and TXT', () => {
+  it('handles exporting transcript as Excel and TXT', async () => {
     const originalCreateObjectURL = window.URL.createObjectURL;
     window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-transcript');
 
@@ -137,9 +137,13 @@ describe('AudioTranscriptModal Component', () => {
       />
     );
 
-    const csvBtn = screen.getByRole('button', { name: /CSV/i });
-    fireEvent.click(csvBtn);
-    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+    const csvBtn = screen.getByRole('button', { name: /Excel|CSV/i });
+    await act(async () => {
+      fireEvent.click(csvBtn);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+    });
 
     const txtBtn = screen.getByRole('button', { name: /TXT/i });
     fireEvent.click(txtBtn);

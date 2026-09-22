@@ -35,9 +35,9 @@ const JobResultModal = ({ show, onClose, job }) => {
     exportToText(jsonString, filename);
   };
 
-  const handleDownloadCsv = () => {
+  const handleDownloadCsv = async () => {
     const studentTag = job.studentEmail ? job.studentEmail.replace(/[^a-zA-Z0-9]/g, '_') : 'Student';
-    const filename = `Job_${job.id || 'Result'}_${studentTag}.csv`;
+    const filename = `Job_${job.id || 'Result'}_${studentTag}.xlsx`;
     const headers = ['Property', 'Value'];
     const rows = [
       ['AI Job ID', job.id || ''],
@@ -51,7 +51,7 @@ const JobResultModal = ({ show, onClose, job }) => {
       ['Findings', jsonString],
       ['Error Details', job.errorDetails || '']
     ];
-    exportToCsv(headers, rows, filename);
+    await exportToCsv(headers, rows, filename);
   };
 
   const handleDownloadMarkdown = () => {
@@ -140,7 +140,7 @@ const JobResultModal = ({ show, onClose, job }) => {
                   </button>
                   <button
                     onClick={handleDownloadCsv}
-                    title="Download structured findings CSV"
+                    title="Download structured findings Excel"
                     style={{
                       padding: '4px 10px',
                       fontSize: '0.8rem',
@@ -152,7 +152,7 @@ const JobResultModal = ({ show, onClose, job }) => {
                       cursor: 'pointer'
                     }}
                   >
-                    📥 CSV
+                    📥 Excel
                   </button>
                   <button
                     onClick={handleDownloadJson}

@@ -10,7 +10,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
     const isObj = typeof rawResult === 'object' && rawResult !== null;
     const resultStr = isObj ? JSON.stringify(rawResult, null, 2) : String(rawResult || '');
 
-    if (format === 'csv') {
+    if (format === 'csv' || format === 'excel') {
       const headers = ['Property', 'Value'];
       const rows = [
         ['AI Job ID', job.id || ''],
@@ -24,7 +24,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
         ['Findings', resultStr],
         ['Error Details', job.errorDetails || '']
       ];
-      exportToCsv(headers, rows, `Job_${job.id || 'Result'}_${studentTag}.csv`);
+      exportToCsv(headers, rows, `Job_${job.id || 'Result'}_${studentTag}.xlsx`);
     } else if (format === 'json') {
       const payload = {
         id: job.id,
@@ -171,8 +171,8 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                                 </button>
                             )}
                             <button
-                                onClick={() => handleExportSingleJob(job, 'csv')}
-                                title="Export student findings to CSV"
+                                onClick={() => handleExportSingleJob(job, 'excel')}
+                                title="Export student findings to Excel"
                                 style={{
                                     padding: '3px 8px',
                                     fontSize: '0.78rem',
@@ -185,7 +185,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                                     marginRight: '6px'
                                 }}
                             >
-                                CSV
+                                Excel
                             </button>
                             <button
                                 onClick={() => handleExportSingleJob(job, 'json')}

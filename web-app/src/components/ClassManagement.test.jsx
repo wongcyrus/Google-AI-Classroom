@@ -212,17 +212,21 @@ describe('ClassManagement Full Component Test Suite', () => {
     });
   });
 
-  it('handles exporting teacher and student emails to CSV', async () => {
+  it('handles exporting teacher and student emails to Excel', async () => {
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: /Export CSV/i }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole('button', { name: /Export (Excel|CSV)/i }).length).toBeGreaterThan(0);
     });
 
-    const exportBtns = screen.getAllByRole('button', { name: /Export CSV/i });
-    fireEvent.click(exportBtns[0]);
+    const exportBtns = screen.getAllByRole('button', { name: /Export (Excel|CSV)/i });
+    await act(async () => {
+      fireEvent.click(exportBtns[0]);
+    });
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
   });
 
   it('handles opening and setting video analysis prompts', async () => {
@@ -629,17 +633,25 @@ describe('ClassManagement Full Component Test Suite', () => {
       expect(screen.getByPlaceholderText(/Enter student emails/i)).toBeInTheDocument();
     });
 
-    const exportCsvBtns = screen.getAllByRole('button', { name: /📤 Export CSV/i });
+    const exportCsvBtns = screen.getAllByRole('button', { name: /📤 Export (Excel|CSV)/i });
     expect(exportCsvBtns.length).toBeGreaterThanOrEqual(2);
 
     // Export students CSV
-    fireEvent.click(exportCsvBtns[0]);
-    expect(window.URL.createObjectURL).toHaveBeenCalled();
-    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    await act(async () => {
+      fireEvent.click(exportCsvBtns[0]);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalled();
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    });
 
     // Export teachers CSV
-    fireEvent.click(exportCsvBtns[1]);
-    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fireEvent.click(exportCsvBtns[1]);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+    });
 
     window.URL.createObjectURL = originalCreateObjectURL;
     window.URL.revokeObjectURL = originalRevokeObjectURL;
@@ -877,15 +889,19 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /📄 Download Template/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /📄 Download (Excel )?Template/i })).toBeInTheDocument();
     });
 
-    const downloadBtn = screen.getByRole('button', { name: /📄 Download Template/i });
-    fireEvent.click(downloadBtn);
+    const downloadBtn = screen.getByRole('button', { name: /📄 Download (Excel )?Template/i });
+    await act(async () => {
+      fireEvent.click(downloadBtn);
+    });
 
-    expect(window.URL.createObjectURL).toHaveBeenCalled();
-    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-template-url');
-    expect(downloadedBlob).toBeDefined();
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalled();
+      expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-template-url');
+      expect(downloadedBlob).toBeDefined();
+    });
 
     window.URL.createObjectURL = originalCreateObjectURL;
     window.URL.revokeObjectURL = originalRevokeObjectURL;

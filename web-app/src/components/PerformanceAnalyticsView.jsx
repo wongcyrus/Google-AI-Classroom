@@ -445,7 +445,7 @@ const PerformanceAnalyticsView = ({
             </div>
           )}
           <button className="perf-action-btn" onClick={() => handleExportCsv()} style={{ background: '#ffffff', color: '#0f172a', fontWeight: 600 }}>
-            📥 Export CSV
+            📥 Export Excel
           </button>
           <button className="perf-action-btn" onClick={fetchData} style={{ background: '#ffffff', color: '#0f172a', fontWeight: 600 }}>
             🔄 Refresh
@@ -591,9 +591,9 @@ const PerformanceAnalyticsView = ({
                   }}
                   onClick={() => handleExportCsv(sortedStudents)}
                   disabled={sortedStudents.length === 0}
-                  title="Export the Student Milestone Matrix table as CSV"
+                  title="Export the Student Milestone Matrix table as Excel"
                 >
-                  📥 Export Matrix CSV ({sortedStudents.length})
+                  📥 Export Matrix Excel ({sortedStudents.length})
                 </button>
               </div>
             </div>

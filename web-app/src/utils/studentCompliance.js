@@ -1,3 +1,5 @@
+import { exportToExcel } from './exportUtils';
+
 /**
  * Utility functions for evaluating student invigilation compliance,
  * filtering problem students, and generating targeted teacher interventions.
@@ -225,18 +227,69 @@ export function exportComplianceResultsToCsv(filteredStudents = [], filterType =
   const csvContent = [headers.join(','), ...rows].join('\n');
 
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    link.setAttribute('download', `compliance-filter-${filterType}-${classId}-${timestamp}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    exportComplianceResultsToExcel(filteredStudents, filterType, classSettings, screenshots, classId);
   }
 
   return csvContent;
 }
+
+/**
+ * Generates and downloads an Excel (.xlsx) spreadsheet of the current filtered student compliance audit results.
+ *
+ * @param {Array<Object>} filteredStudents - Currently filtered students
+ * @param {string} filterType - Active filter key ('all', 'problems', 'no_cam', etc.)
+ * @param {Object} classSettings - Class configuration
+ * @param {Object} screenshots - Map of student ID to screenshot data
+ * @param {string} classId - Class ID for the file naming
+ * @returns {Promise<Blob>} Generated Excel Blob
+ */
+export async function exportComplianceResultsToExcel(filteredStudents = [], filterType = 'all', classSettings = {}, screenshots = {}, classId = 'CLASS') {
+  const headers = [
+    'Student ID',
+    'Student Email',
+    'Filter Category',
+    'Compliance Status',
+    'Detected Issues',
+    'Screen Sharing',
+    'Webcam Sharing',
+    'Audio Sharing',
+    'Face / Gaze Status',
+    'Yaw Angle',
+    'Snapshot Time'
+  ];
+
+  const rows = filteredStudents.map((student) => {
+    const screenshotData = screenshots[student.id];
+    const { isCompliant, issues } = evaluateStudentCompliance(student, classSettings, screenshotData, true);
+    const issuesText = issues.map((i) => i.label).join('; ') || 'None';
+    
+    let timestampStr = '';
+    if (screenshotData?.timestamp?.toDate) {
+      timestampStr = screenshotData.timestamp.toDate().toISOString();
+    } else if (screenshotData?.timestamp) {
+      timestampStr = new Date(screenshotData.timestamp).toISOString();
+    } else {
+      timestampStr = new Date().toISOString();
+    }
+
+    return [
+      student.id,
+      student.email || student.id,
+      filterType,
+      isCompliant ? 'Compliant' : 'Non-Compliant',
+      issuesText,
+      student.isSharing ? 'Active' : 'Inactive',
+      student.isWebcamSharing ? 'Active' : 'Inactive',
+      student.isAudioSharing ? 'Active' : 'Inactive',
+      student.faceStatus || 'normal',
+      student.yawAngle !== undefined ? student.yawAngle : 0,
+      timestampStr
+    ];
+  });
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return exportToExcel(headers, rows, `compliance-filter-${filterType}-${classId}-${timestamp}.xlsx`);
+}
+
 

@@ -1,8 +1,11 @@
 /**
  * Standardized Cross-Browser File Export Utility
- * Supports RFC 4180 CSV serialization, JSON formatting, and plain-text file downloads.
- * Includes UTF-8 BOM (\uFEFF) for CSV to guarantee correct rendering in Microsoft Excel.
+ * Supports Native Microsoft Excel (.xlsx) OpenXML generation,
+ * RFC 4180 CSV serialization, JSON formatting, and plain-text file downloads.
  */
+
+import writeXlsxFile from 'write-excel-file/universal';
+import readXlsxFile from 'read-excel-file/universal';
 
 /**
  * Escapes a single field value for RFC 4180 CSV compliance.
@@ -34,12 +37,12 @@ export function generateCsvContent(headers, rows) {
 /**
  * Triggers a browser download of text/blob data.
  * 
- * @param {string} content - File content
+ * @param {string|Blob} content - File content or Blob
  * @param {string} filename - Filename with extension
  * @param {string} mimeType - MIME type
  */
 export function downloadFile(content, filename, mimeType = "text/plain;charset=utf-8;") {
-  const blob = new Blob([content], { type: mimeType });
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
@@ -52,15 +55,95 @@ export function downloadFile(content, filename, mimeType = "text/plain;charset=u
 }
 
 /**
- * Exports data to a CSV file and prompts download.
+ * Downloads a Blob directly with safe link removal.
+ * 
+ * @param {Blob} blob 
+ * @param {string} filename 
+ */
+export function downloadBlob(blob, filename) {
+  downloadFile(blob, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+/**
+ * Standardized Cross-Browser Microsoft Excel (.xlsx) Export Utility.
+ * Generates genuine OpenXML workbooks with bold headers, preserving UTF-8 Unicode
+ * for Chinese characters, numbers, and booleans without code page errors.
  * 
  * @param {Array<string>} headers - Column names
  * @param {Array<Array<*>>} rows - Row data
- * @param {string} filename - Output filename (defaults to data_export.csv)
+ * @param {string} filename - Output filename (defaults to data_export.xlsx)
+ * @returns {Promise<Blob>} Generated Excel Blob
  */
-export function exportToCsv(headers, rows, filename = "data_export.csv") {
-  const csvContent = generateCsvContent(headers, rows);
-  downloadFile(csvContent, filename, "text/csv;charset=utf-8;");
+export async function exportToExcel(headers = [], rows = [], filename = "data_export.xlsx") {
+  const cleanFilename = filename.toLowerCase().endsWith('.xlsx')
+    ? filename
+    : `${filename.replace(/\.csv$/i, '')}.xlsx`;
+
+  // Format headers with bold styling
+  const headerCells = headers.map(h => ({
+    value: String(h ?? ''),
+    fontWeight: 'bold',
+  }));
+
+  // Format data cells with native type mapping
+  const dataCells = rows.map(row =>
+    (row || []).map(cell => {
+      if (cell === null || cell === undefined) {
+        return { type: String, value: '' };
+      }
+      if (typeof cell === 'number') {
+        return { type: Number, value: cell };
+      }
+      if (typeof cell === 'boolean') {
+        return { type: Boolean, value: cell };
+      }
+      return { type: String, value: String(cell) };
+    })
+  );
+
+  const fileData = [headerCells, ...dataCells];
+  const result = await writeXlsxFile(fileData, { buffer: true });
+  const blob = typeof result?.toBlob === 'function' ? await result.toBlob() : result;
+
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    downloadBlob(blob, cleanFilename);
+  }
+
+  return blob;
+}
+
+/**
+ * Reads an Excel (.xlsx / .xls) file or ArrayBuffer into a 2D array of rows.
+ * 
+ * @param {File|Blob|ArrayBuffer} fileOrBuffer 
+ * @returns {Promise<Array<Array<*>>>} 2D array of cell values
+ */
+export async function readExcelFile(fileOrBuffer) {
+  if (!fileOrBuffer) return [];
+  let buffer = fileOrBuffer;
+  if (typeof fileOrBuffer.arrayBuffer === 'function') {
+    buffer = await fileOrBuffer.arrayBuffer();
+  }
+  const result = await readXlsxFile(buffer);
+  if (!result || result.length === 0) return [];
+
+  // If result is an array of sheet objects [{ sheet: 'Sheet1', data: [...] }]
+  if (result[0] && Array.isArray(result[0].data)) {
+    return result[0].data;
+  }
+  return result;
+}
+
+/**
+ * Exports data to an Excel (.xlsx) file, maintaining backward compatibility for legacy callers.
+ * 
+ * @param {Array<string>} headers - Column names
+ * @param {Array<Array<*>>} rows - Row data
+ * @param {string} filename - Output filename (converted to .xlsx)
+ */
+export function exportToCsv(headers, rows, filename = "data_export.xlsx") {
+  const excelFilename = filename.replace(/\.csv$/i, '.xlsx');
+  return exportToExcel(headers, rows, excelFilename);
 }
 
 /**

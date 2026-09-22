@@ -130,8 +130,8 @@ describe('AiCostReportView Component', () => {
     expect(within(screen.getByRole('table')).getByText('student2@school.edu')).toBeInTheDocument();
   });
 
-  it('triggers CSV download on button click', () => {
-    const downloadSpy = vi.spyOn(csvExporter, 'downloadCsvFile').mockImplementation(() => {});
+  it('triggers Excel download on button click', () => {
+    const exportSpy = vi.spyOn(csvExporter, 'exportAiCostToExcel').mockImplementation(() => Promise.resolve());
 
     render(
       <AiCostReportView
@@ -143,10 +143,10 @@ describe('AiCostReportView Component', () => {
       />
     );
 
-    const exportBtn = screen.getByText(/Export CSV Report/i);
+    const exportBtn = screen.getByText(/Export Excel Report/i);
     fireEvent.click(exportBtn);
 
-    expect(downloadSpy).toHaveBeenCalled();
+    expect(exportSpy).toHaveBeenCalled();
   });
 
   it('subscribes to firestore when propAiJobs is not provided', () => {

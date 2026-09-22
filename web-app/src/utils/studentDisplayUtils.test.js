@@ -5,8 +5,12 @@ import {
   getStudentDisplayName,
   formatStudentIdentity,
   parseStudentRosterCsv,
+  parseStudentRosterRows,
+  parseStudentRosterFile,
   generateStudentRosterTemplateCsv,
+  generateStudentRosterTemplateExcel,
   exportStudentRosterCsv,
+  exportStudentRosterExcel,
   readTextFileWithEncoding,
 } from './studentDisplayUtils';
 
@@ -377,4 +381,60 @@ not-an-email,Invalid User
       expect(parsed.students[1].nickname).toBe('小伟');
     });
   });
+
+  describe('Excel (.xlsx) Roster Functionality', () => {
+    it('generates a valid Excel template Blob with Chinese examples', async () => {
+      const blob = await generateStudentRosterTemplateExcel();
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob.type).toContain('spreadsheetml.sheet');
+
+      const file = new File([blob], 'template.xlsx', { type: blob.type });
+      const result = await parseStudentRosterFile(file);
+      expect(result.totalParsed).toBeGreaterThanOrEqual(4);
+      expect(result.students.some(s => s.nickname === '大文')).toBe(true);
+      expect(result.students.some(s => s.nickname === '阿欣')).toBe(true);
+    });
+
+    it('exports class roster to Excel (.xlsx) and parses it back with 100% fidelity', async () => {
+      const emails = ['230111222@stu.vtc.edu.hk', '230333444@stu.vtc.edu.hk'];
+      const profiles = {
+        '230111222@stu.vtc.edu.hk': {
+          studentName: 'Chan Tai Man',
+          nickname: '大文',
+          programme: 'Software Engineering',
+          studentClass: 'SE-1A',
+        },
+        '230333444@stu.vtc.edu.hk': {
+          studentName: 'Wong Ka Yan',
+          nickname: '阿欣',
+          programme: 'Cloud & AI',
+          studentClass: 'AI-1B',
+        },
+      };
+
+      const blob = await exportStudentRosterExcel(emails, profiles, 'TEST-CLASS');
+      expect(blob).toBeInstanceOf(Blob);
+
+      const file = new File([blob], 'test_roster.xlsx', { type: blob.type });
+      const parsed = await parseStudentRosterFile(file);
+      expect(parsed.totalParsed).toBe(2);
+      expect(parsed.students[0].email).toBe('230111222@stu.vtc.edu.hk');
+      expect(parsed.students[0].studentName).toBe('Chan Tai Man');
+      expect(parsed.students[0].nickname).toBe('大文');
+      expect(parsed.students[1].email).toBe('230333444@stu.vtc.edu.hk');
+      expect(parsed.students[1].nickname).toBe('阿欣');
+    });
+
+    it('parses 2D array of rows directly using parseStudentRosterRows', () => {
+      const rows = [
+        ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class'],
+        ['student@vtc.edu.hk', 'Wong Tai Sin', '大仙', 'Computing', 'IT101'],
+      ];
+      const result = parseStudentRosterRows(rows);
+      expect(result.totalParsed).toBe(1);
+      expect(result.students[0].nickname).toBe('大仙');
+      expect(result.profilesMap['student@vtc.edu.hk'].studentName).toBe('Wong Tai Sin');
+    });
+  });
 });
+

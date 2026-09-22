@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import {
   parseStudentRosterCsv,
-  generateStudentRosterTemplateCsv,
+  parseStudentRosterFile,
+  generateStudentRosterTemplateExcel,
   readTextFileWithEncoding,
   normalizeStudentEmail,
 } from '../utils/studentDisplayUtils';
@@ -30,17 +31,13 @@ const BatchStudentUploadModal = ({
 
   if (!isOpen) return null;
 
-  const handleDownloadTemplate = () => {
-    const templateContent = generateStudentRosterTemplateCsv();
-    const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'student_roster_template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const handleDownloadTemplate = async () => {
+    try {
+      await generateStudentRosterTemplateExcel();
+    } catch (err) {
+      console.error('Failed to download Excel template:', err);
+      alert('Failed to generate Excel template: ' + err.message);
+    }
   };
 
   const handleFileChange = async (e) => {
@@ -51,12 +48,28 @@ const BatchStudentUploadModal = ({
     setParseError(null);
 
     try {
-      const content = await readTextFileWithEncoding(file);
-      setInputText(content);
-      processRosterText(content);
+      const lowerName = (file.name || '').toLowerCase();
+      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+        const result = await parseStudentRosterFile(file);
+        if (result.students.length === 0 && result.invalidRows.length > 0) {
+          setParseError(`Could not find valid student emails. Example: ${result.invalidRows[0].reason}`);
+        }
+        setParsedData(result);
+        const previewLines = [
+          '# Imported from ' + file.name,
+          '# Total Students: ' + result.students.length,
+          'StudentEmail,StudentName,Nickname,Programme,Class',
+          ...result.students.map(s => `${s.email},${s.studentName || ''},${s.nickname || ''},${s.programme || ''},${s.studentClass || ''}`)
+        ];
+        setInputText(previewLines.join('\n'));
+      } else {
+        const content = await readTextFileWithEncoding(file);
+        setInputText(content);
+        processRosterText(content);
+      }
     } catch (err) {
       console.error('Error reading roster file:', err);
-      setParseError('Failed to read selected file. Please ensure it is a valid CSV or text file.');
+      setParseError('Failed to read selected file: ' + err.message);
     }
     e.target.value = '';
   };
@@ -155,21 +168,21 @@ const BatchStudentUploadModal = ({
               type="button"
               className="btn-secondary btn-sm"
               onClick={handleDownloadTemplate}
-              title="Download standard CSV template with sample columns"
+              title="Download standard Excel (.xlsx) roster template with sample columns and Chinese character support"
             >
-              📥 Download CSV Template
+              📥 Download Excel Template
             </button>
             <button
               type="button"
               className="btn-secondary btn-sm"
               onClick={() => fileInputRef.current?.click()}
             >
-              📂 Choose File (.csv, .tsv, .txt)
+              📂 Choose File (.xlsx, .csv, .txt)
             </button>
             <input
               type="file"
               ref={fileInputRef}
-              accept=".csv,.tsv,.txt"
+              accept=".xlsx,.xls,.csv,.tsv,.txt"
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />

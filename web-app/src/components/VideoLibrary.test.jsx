@@ -290,7 +290,7 @@ describe('VideoLibrary Full Component Suite', () => {
     expect(screen.queryByPlaceholderText(/Select a prompt or enter text here/i)).not.toBeInTheDocument();
   });
 
-  it('handles exporting video manifest as CSV', () => {
+  it('handles exporting video manifest as Excel', async () => {
     const originalCreateObjectURL = window.URL.createObjectURL;
     window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-manifest');
 
@@ -305,9 +305,13 @@ describe('VideoLibrary Full Component Suite', () => {
     );
 
     const exportBtn = screen.getByRole('button', { name: /Export Video Manifest/i });
-    fireEvent.click(exportBtn);
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
 
-    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalled();
+    });
     window.URL.createObjectURL = originalCreateObjectURL;
   });
 

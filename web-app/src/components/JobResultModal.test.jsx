@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import JobResultModal from "./JobResultModal";
 
 describe("JobResultModal", () => {
@@ -8,7 +8,6 @@ describe("JobResultModal", () => {
   let originalRevokeObjectURL;
 
   beforeEach(() => {
-    vi.useFakeTimers();
     originalCreateObjectURL = window.URL.createObjectURL;
     originalRevokeObjectURL = window.URL.revokeObjectURL;
     window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
@@ -36,15 +35,19 @@ describe("JobResultModal", () => {
     result: { summary: "Great progress on task 1", score: 95 },
   };
 
-  it("renders job information and handles CSV, JSON, Markdown, and Text downloads", () => {
+  it("renders job information and handles CSV, JSON, Markdown, and Text downloads", async () => {
     render(<JobResultModal show={true} onClose={vi.fn()} job={mockJob} />);
 
     expect(screen.getAllByText(/student@school.edu/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/gemini-3.5-flash-lite/i)).toBeInTheDocument();
 
-    const csvBtn = screen.getByRole("button", { name: /CSV/i });
-    fireEvent.click(csvBtn);
-    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+    const csvBtn = screen.getByRole("button", { name: /Excel|CSV/i });
+    await act(async () => {
+      fireEvent.click(csvBtn);
+    });
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+    });
 
     const jsonBtn = screen.getByRole("button", { name: /JSON/i });
     fireEvent.click(jsonBtn);
@@ -60,19 +63,24 @@ describe("JobResultModal", () => {
   });
 
   it("handles copy to clipboard with feedback", async () => {
-    render(<JobResultModal show={true} onClose={vi.fn()} job={mockJob} />);
+    vi.useFakeTimers();
+    try {
+      render(<JobResultModal show={true} onClose={vi.fn()} job={mockJob} />);
 
-    const copyBtn = screen.getByRole("button", { name: /Copy/i });
-    await act(async () => {
-      fireEvent.click(copyBtn);
-    });
+      const copyBtn = screen.getByRole("button", { name: /Copy/i });
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalled();
-    expect(screen.getByText(/Copied!/i)).toBeInTheDocument();
+      expect(navigator.clipboard.writeText).toHaveBeenCalled();
+      expect(screen.getByText(/Copied!/i)).toBeInTheDocument();
 
-    await act(async () => {
-      vi.advanceTimersByTime(2100);
-    });
+      await act(async () => {
+        vi.advanceTimersByTime(2100);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("handles copy failure gracefully without throwing", async () => {

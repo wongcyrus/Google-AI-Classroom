@@ -214,16 +214,28 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     });
 
     const exportCsvBtn = screen.getByRole('button', { name: /Export Findings/i });
-    fireEvent.click(exportCsvBtn);
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(exportCsvBtn);
+    });
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
 
     const exportJsonBtn = screen.getByRole('button', { name: /Export Batch/i });
-    fireEvent.click(exportJsonBtn);
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(exportJsonBtn);
+    });
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
 
-    const exportFilteredCsvBtn = screen.getByRole('button', { name: /Export CSV \(/i });
-    fireEvent.click(exportFilteredCsvBtn);
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    const exportFilteredCsvBtn = screen.getByRole('button', { name: /Export (Excel|CSV) \(/i });
+    await act(async () => {
+      fireEvent.click(exportFilteredCsvBtn);
+    });
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
   });
 
   it('handles exporting batch jobs log from Level 1', async () => {
@@ -237,8 +249,12 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     );
 
     const exportLogBtn = screen.getByRole('button', { name: /Export Jobs Log/i });
-    fireEvent.click(exportLogBtn);
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(exportLogBtn);
+    });
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+    });
   });
 
   it('handles soft deletion of video analysis job from Level 2 dashboard', async () => {

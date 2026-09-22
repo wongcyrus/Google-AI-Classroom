@@ -75,7 +75,7 @@ export default function AudioTranscriptModal({
     exportToText(content, `Transcript_${safeTag}.txt`);
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     const headers = ['Timestamp', 'Speaker', 'Text', 'Classification', 'Risk Level'];
     const rows = effectiveSegments.map(seg => [
       seg.displayStart || seg.startTime || '00:00',
@@ -85,7 +85,7 @@ export default function AudioTranscriptModal({
       riskLevel
     ]);
     const safeTag = (studentName || studentUid || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
-    exportToCsv(headers, rows, `Transcript_${safeTag}.csv`);
+    await exportToCsv(headers, rows, `Transcript_${safeTag}.xlsx`);
   };
 
   return (
@@ -108,7 +108,7 @@ export default function AudioTranscriptModal({
             <button
               onClick={handleExportCsv}
               disabled={effectiveSegments.length === 0}
-              title="Export transcript as CSV"
+              title="Export transcript as Excel"
               style={{
                 padding: '4px 10px',
                 fontSize: '0.8rem',
@@ -120,7 +120,7 @@ export default function AudioTranscriptModal({
                 cursor: 'pointer'
               }}
             >
-              📥 CSV
+              📥 Excel
             </button>
             <button
               onClick={handleExportText}

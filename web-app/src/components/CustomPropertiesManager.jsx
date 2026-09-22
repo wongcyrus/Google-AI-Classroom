@@ -1,17 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, serverTimestamp, orderBy, limit, getDocs } from 'firebase/firestore';
-import { CSVLink } from 'react-csv';
 import { db, auth } from '../firebase-config';
 import { isInternalPropertyKey } from './student/PropertiesWidget';
 import { readTextFileWithEncoding } from '../utils/studentDisplayUtils';
+import { exportToExcel, readExcelFile, generateCsvContent } from '../utils/exportUtils';
 import './ClassManagement.css';
 
 const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   const [classProperties, setClassProperties] = useState([{ key: '', value: '' }]);
 
   const [propertyUploadJobs, setPropertyUploadJobs] = useState([]);
-  const [downloadProps, setDownloadProps] = useState(null);
-  const csvLink = useRef(null);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -71,26 +69,18 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         // If no students are enrolled, download a template with just the StudentEmail header.
         if (Object.keys(studentsMap).length === 0) {
             const studentEmailList = studentEmails.split(/[\n,]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
-            const data = studentEmailList.map(email => ({ StudentEmail: email }));
-            const headers = ['StudentEmail']; // Only StudentEmail header
-            setDownloadProps({ headers, data });
-            setTimeout(() => {
-                if (csvLink.current) {
-                    csvLink.current.link.click();
-                    setDownloadProps(null);
-                }
-            }, 100);
+            const headers = ['StudentEmail'];
+            const rows = studentEmailList.map(email => [email]);
+            await exportToExcel(headers, rows, `${selectedClass}-student-properties.xlsx`);
             return;
         }
 
         // If students are enrolled, download their existing, student-specific properties.
-        
         // 1. Fetch all student-specific properties
         const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
         const propertiesSnapshot = await getDocs(propertiesCollectionRef);
         const studentPropertiesData = {}; // uid -> {prop: value}
         propertiesSnapshot.forEach(doc => {
-            // Trim the doc ID to safeguard against whitespace issues.
             studentPropertiesData[doc.id.trim()] = doc.data();
         });
 
@@ -106,30 +96,17 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
 
         const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];
 
-        // 3. Build data for each student using only their specific properties.
-        const data = Object.entries(studentsMap).map(([uid, email]) => {
-            const row = { StudentEmail: email };
-            // Trim the UID from studentsMap to safeguard against whitespace issues.
+        // 3. Build rows for each student using only their specific properties.
+        const sortedEntries = Object.entries(studentsMap).sort((a, b) => (a[1] || '').localeCompare(b[1] || ''));
+        const rows = sortedEntries.map(([uid, email]) => {
             const studentProps = studentPropertiesData[uid.trim()] || {};
-            
-            headers.forEach(header => {
-                if (header !== 'StudentEmail') {
-                    row[header] = studentProps[header] ?? ''; // Use only student prop, or empty string.
-                }
+            return headers.map(header => {
+                if (header === 'StudentEmail') return email;
+                return studentProps[header] ?? '';
             });
-            return row;
         });
 
-        // Sort by email before generating the CSV
-        data.sort((a, b) => a.StudentEmail.localeCompare(b.StudentEmail));
-
-        setDownloadProps({ headers, data });
-        setTimeout(() => {
-            if (csvLink.current) {
-                csvLink.current.link.click();
-                setDownloadProps(null);
-            }
-        }, 100);
+        await exportToExcel(headers, rows, `${selectedClass}-student-properties.xlsx`);
 
     } catch (err) {
         console.error("Error preparing student properties for download:", err);
@@ -195,7 +172,20 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
     setSuccessMessage('');
 
     try {
-      const csvData = await readTextFileWithEncoding(file);
+      let csvData = '';
+      const fileName = (file.name || '').toLowerCase();
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const rows = await readExcelFile(file);
+        if (!rows || rows.length === 0) {
+          throw new Error('The selected Excel file appears to be empty.');
+        }
+        const headers = rows[0] || [];
+        const dataRows = rows.slice(1) || [];
+        csvData = generateCsvContent(headers, dataRows);
+      } else {
+        csvData = await readTextFileWithEncoding(file);
+      }
+
       const jobsRef = collection(db, 'propertyUploadJobs');
       await addDoc(jobsRef, {
         classId: selectedClass,
@@ -204,9 +194,9 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         status: 'pending',
         createdAt: serverTimestamp(),
       });
-      setSuccessMessage("CSV uploaded for processing. Properties will be updated in the background.");
+      setSuccessMessage("Properties file uploaded for processing. Properties will be updated in the background.");
     } catch (err) {
-      setError("Failed to upload CSV for processing. " + err.message);
+      setError("Failed to upload file for processing. " + err.message);
     }
   };
 
@@ -288,19 +278,8 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.45rem 0.9rem' }}
             onClick={handleDownloadStudentTemplate}
           >
-            📥 Export / Download Existing CSV
+            📥 Export / Download Existing CSV / Excel
           </button>
-          {downloadProps && (
-            <CSVLink
-              headers={downloadProps.headers}
-              data={downloadProps.data}
-              filename={`${selectedClass}-student-properties.csv`}
-              uFEFF={true}
-              style={{ display: "none" }}
-              ref={csvLink}
-              target="_blank"
-            />
-          )}
 
           <label
             htmlFor="student-csv-upload-input"
@@ -318,11 +297,11 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
               borderColor: 'transparent'
             }}
           >
-            📤 Choose CSV to Upload
+            📤 Choose Excel / CSV to Upload
             <input
               id="student-csv-upload-input"
               type="file"
-              accept=".csv"
+              accept=".xlsx,.xls,.csv"
               onChange={handleStudentPropertiesCSVUpload}
               style={{ display: 'none' }}
             />

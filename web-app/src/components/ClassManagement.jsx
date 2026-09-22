@@ -12,12 +12,13 @@ import ScheduleManager from './ScheduleManager';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
 import StudentBadge from './common/StudentBadge';
 import {
-  exportStudentRosterCsv,
-  generateStudentRosterTemplateCsv,
+  exportStudentRosterExcel,
+  generateStudentRosterTemplateExcel,
+  parseStudentRosterFile,
   normalizeStudentEmail,
-  parseStudentRosterCsv,
   readTextFileWithEncoding,
 } from '../utils/studentDisplayUtils';
+import { exportToExcel } from '../utils/exportUtils';
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const [classId, setClassId] = useState(embeddedClassId || '');
@@ -404,17 +405,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setExamPeriods(examPeriods.filter((p) => p.id !== periodId));
   };
 
-  const handleDownloadRosterTemplate = () => {
-    const templateContent = generateStudentRosterTemplateCsv();
-    const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'student_roster_template.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const handleDownloadRosterTemplate = async () => {
+    try {
+      await generateStudentRosterTemplateExcel();
+    } catch (err) {
+      console.error('Failed to download Excel template:', err);
+      alert('Failed to generate Excel template: ' + err.message);
+    }
   };
 
   const handleImportEmailsFromFile = async (event, type = 'students') => {
@@ -422,13 +419,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     if (!file) return;
 
     try {
-      const content = await readTextFileWithEncoding(file);
       let cleanUnique = [];
       let importedProfiles = {};
 
       if (type === 'students') {
-        // Try structured CSV parsing first (extracts StudentEmail, StudentName, Nickname, Programme, Class)
-        const parsed = parseStudentRosterCsv(content);
+        const parsed = await parseStudentRosterFile(file);
         if (parsed.emailList && parsed.emailList.length > 0) {
           cleanUnique = parsed.emailList;
           importedProfiles = parsed.profilesMap || {};
@@ -437,6 +432,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
       // Fallback for unstructured text files or teacher emails
       if (cleanUnique.length === 0) {
+        const content = await readTextFileWithEncoding(file);
         const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
         const matchedEmails = content.match(emailRegex) || [];
         cleanUnique = [...new Set(matchedEmails.map(email => email.trim().toLowerCase()))];
@@ -452,7 +448,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         const merged = [...new Set([...existing, ...cleanUnique])];
         setStudentEmails(merged.join('\n'));
 
-        // If CSV contained profile metadata (names, Chinese nicknames, etc.), persist into state
+        // If spreadsheet contained profile metadata (names, Chinese nicknames, etc.), persist into state
         const profileCount = Object.keys(importedProfiles).length;
         if (profileCount > 0) {
           setStudentProfiles(prev => ({ ...prev, ...importedProfiles }));
@@ -476,7 +472,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     event.target.value = '';
   };
 
-  const handleExportEmailsToCSV = (type = 'students') => {
+  const handleExportEmailsToCSV = async (type = 'students') => {
     const emails = type === 'students'
       ? studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean)
       : teacherEmails.replace(/\n/g, ' ').split(/[, ]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -499,30 +495,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           studentClass: p2.studentClass || p1.studentClass || '',
         };
       });
-      const csvContent = exportStudentRosterCsv(emails, exportProfiles, activeExportId);
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${activeExportId.toLowerCase()}_student_roster.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await exportStudentRosterExcel(emails, exportProfiles, activeExportId);
       return;
     }
 
-    const header = 'TeacherEmail,ClassID\r\n';
-    const rows = emails.map(email => `"${email}","${activeExportId}"`).join('\r\n');
-    const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${activeExportId.toLowerCase()}_${type}_roster.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const headers = ['TeacherEmail', 'ClassID'];
+    const rows = emails.map(email => [email, activeExportId]);
+    await exportToExcel(headers, rows, `${activeExportId.toLowerCase()}_${type}_roster.xlsx`);
   };
 
   const handleInputAllStudents = async () => {
@@ -1249,15 +1228,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 className="btn-secondary"
                 style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                 onClick={handleDownloadRosterTemplate}
-                title="Download standard CSV roster template with English headers and example data"
+                title="Download standard Excel (.xlsx) roster template with English headers and example data"
               >
-                📄 Download Template
+                📄 Download Excel Template
               </button>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                📥 Import (CSV/TXT)
+                📥 Import (Excel/CSV)
                 <input
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".xlsx,.xls,.csv,.txt"
                   style={{ display: 'none' }}
                   onChange={(e) => handleImportEmailsFromFile(e, 'students')}
                 />
@@ -1268,7 +1247,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                 onClick={() => handleExportEmailsToCSV('students')}
               >
-                📤 Export CSV
+                📤 Export Excel
               </button>
             </div>
           </div>
@@ -1422,10 +1401,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             <label style={{ margin: 0 }}>Co-Teacher Email Addresses</label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                📥 Import (CSV/TXT)
+                📥 Import (Excel/CSV)
                 <input
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".xlsx,.xls,.csv,.txt"
                   style={{ display: 'none' }}
                   onChange={(e) => handleImportEmailsFromFile(e, 'teachers')}
                 />
@@ -1436,7 +1415,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                 onClick={() => handleExportEmailsToCSV('teachers')}
               >
-                📤 Export CSV
+                📤 Export Excel
               </button>
             </div>
           </div>

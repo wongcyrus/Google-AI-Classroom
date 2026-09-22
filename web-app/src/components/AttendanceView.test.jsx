@@ -123,8 +123,10 @@ describe('AttendanceView Component Suite', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/AI Analysis for alice@school.edu/i)).not.toBeInTheDocument();
 
-    const exportBtn = screen.getByRole('button', { name: /Export to CSV/i });
-    fireEvent.click(exportBtn);
+    const exportBtn = screen.getByRole('button', { name: /Export to (Excel|CSV)/i });
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
   });
 
   it('handles manual Calculate Live Attendance button click', async () => {

@@ -16,7 +16,7 @@ describe('BatchStudentUploadModal', () => {
       <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={() => {}} />
     );
     expect(screen.getByText(/Batch Upload Student Roster/i)).toBeDefined();
-    expect(screen.getByText(/Download CSV Template/i)).toBeDefined();
+    expect(screen.getByText(/Download (Excel|CSV) Template/i)).toBeDefined();
     expect(screen.getByPlaceholderText(/StudentEmail,StudentName/i)).toBeDefined();
   });
 

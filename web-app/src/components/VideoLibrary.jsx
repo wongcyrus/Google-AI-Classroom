@@ -378,7 +378,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
 
 
 
-  const handleExportManifestCsv = () => {
+  const handleExportManifestCsv = async () => {
     if (!videos || videos.length === 0) {
       alert("No videos available to export.");
       return;
@@ -403,8 +403,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       ];
     });
     const dateSuffix = new Date().toISOString().slice(0, 10);
-    const filename = `Class_${classId}_Video_Manifest_${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `Class_${classId}_Video_Manifest_${dateSuffix}.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
   return (
@@ -469,7 +469,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           </button>
           <button onClick={() => setShowPromptModal(true)}>Select Video Prompt</button>
           <button onClick={handleExportManifestCsv} disabled={loading || videos.length === 0}>
-            📥 Export Video Manifest (CSV)
+            📥 Export Video Manifest (Excel)
           </button>
         </div>
 

@@ -217,7 +217,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     }
   };
 
-  const handleExportJobsDirectoryCsv = () => {
+  const handleExportJobsDirectoryCsv = async () => {
     if (!videoAnalysisJobs || videoAnalysisJobs.length === 0) {
       alert("No analysis jobs to export.");
       return;
@@ -248,11 +248,11 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     ]);
 
     const dateSuffix = new Date().toISOString().slice(0, 10);
-    const filename = `Class_${classId}_Video_Analysis_Jobs_Page_${page}_${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `Class_${classId}_Video_Analysis_Jobs_Page_${page}_${dateSuffix}.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
-  const handleExportAiJobs = (customList = null) => {
+  const handleExportAiJobs = async (customList = null) => {
     const listToExport = customList || aiJobs;
     if (listToExport.length === 0 || !selectedAnalysisJob) {
       alert("No AI jobs to export.");
@@ -301,9 +301,9 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
 
     const isFiltered = listToExport.length !== aiJobs.length;
     const filename = isFiltered 
-      ? `Class_${classId}_Job_${selectedAnalysisJob.id}_Filtered_Findings.csv`
-      : `Class_${classId}_Job_${selectedAnalysisJob.id}_Findings.csv`;
-    exportToCsv(headers, rows, filename);
+      ? `Class_${classId}_Job_${selectedAnalysisJob.id}_Filtered_Findings.xlsx`
+      : `Class_${classId}_Job_${selectedAnalysisJob.id}_Findings.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
   const handleExportAiJobsJson = () => {
@@ -736,7 +736,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                 disabled={analysisJobsLoading || videoAnalysisJobs.length === 0}
                 style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
               >
-                📥 Export Jobs Log (CSV)
+                📥 Export Jobs Log (Excel)
               </button>
               <button 
                 onClick={() => refetch()} 
@@ -922,7 +922,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                         fontWeight: 600
                       }}
                     >
-                      📥 Export Findings (CSV)
+                      📥 Export Findings (Excel)
                     </button>
                     <button
                       onClick={handleExportAiJobsJson}
@@ -1222,7 +1222,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    📥 Export CSV ({filteredAiJobs.length})
+                    📥 Export Excel ({filteredAiJobs.length})
                   </button>
                 </div>
               )}

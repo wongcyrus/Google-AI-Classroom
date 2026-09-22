@@ -74,7 +74,7 @@ describe('Analytics & Data Management Views Full Suite', () => {
 
       expect(screen.getByText(/Attendance & AI Analysis/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Calculate Live Attendance/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Export to CSV/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Export to (Excel|CSV)/i })).toBeInTheDocument();
     });
   });
 
@@ -101,8 +101,8 @@ describe('Analytics & Data Management Views Full Suite', () => {
 
       // Student matrix table and export buttons
       expect(screen.getByText('Student Milestone Matrix')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^📥 Export CSV$/i })).toBeInTheDocument();
-      const exportMatrixBtn = screen.getByRole('button', { name: /Export Matrix CSV/i });
+      expect(screen.getByRole('button', { name: /^📥 Export (Excel|CSV)$/i })).toBeInTheDocument();
+      const exportMatrixBtn = screen.getByRole('button', { name: /Export Matrix (Excel|CSV)/i });
       expect(exportMatrixBtn).toBeInTheDocument();
       fireEvent.click(exportMatrixBtn);
       expect(screen.getAllByText('stu_1').length).toBeGreaterThanOrEqual(1);

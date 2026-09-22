@@ -201,7 +201,7 @@ describe('SessionReviewView Full Suite', () => {
     expect(screen.queryByText(/Job Failure Details/i)).not.toBeInTheDocument();
   });
 
-  it('handles exporting video jobs as CSV', () => {
+  it('handles exporting video jobs as Excel', async () => {
     const originalCreateObjectURL = window.URL.createObjectURL;
     window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-vj-csv');
 
@@ -214,9 +214,13 @@ describe('SessionReviewView Full Suite', () => {
     );
 
     const exportBtn = screen.getByRole('button', { name: /Export Video Jobs/i });
-    fireEvent.click(exportBtn);
+    await act(async () => {
+      fireEvent.click(exportBtn);
+    });
 
-    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(window.URL.createObjectURL).toHaveBeenCalled();
+    });
     window.URL.createObjectURL = originalCreateObjectURL;
   });
 

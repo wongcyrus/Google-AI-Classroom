@@ -349,9 +349,9 @@ export default function BingoResultsView({
             className="bingo-btn-export"
             onClick={handleExportCsv}
             disabled={!filteredRecords.length}
-            title="Download CSV spreadsheet of current Bingo results"
+            title="Download Excel spreadsheet of current Bingo results"
           >
-            <span>⬇️</span> Export CSV
+            <span>⬇️</span> Export Excel
           </button>
           {isModal && onClose && (
             <button

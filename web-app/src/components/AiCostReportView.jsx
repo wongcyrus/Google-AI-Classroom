@@ -3,7 +3,7 @@ import { db } from '../firebase-config';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { formatAiCost } from '../utils/formatters';
 import { aggregateAiCost } from '../utils/aiCostAggregator';
-import { generateAiCostCsv, downloadCsvFile } from '../utils/aiCostCsvExporter';
+import { generateAiCostCsv, downloadCsvFile, exportAiCostToExcel } from '../utils/aiCostCsvExporter';
 import './AiCostReportView.css';
 
 const JOB_TYPE_LABELS = {
@@ -91,13 +91,11 @@ const AiCostReportView = ({
   }, [activeJobs, selectedStudent, selectedJobType, selectedModel, startDate, endDate, classQuota]);
 
   const handleExportCsv = () => {
-    const csvContent = generateAiCostCsv(summary, {
+    exportAiCostToExcel(summary, {
       className,
       classId,
       generatedAt: new Date().toISOString(),
     });
-    const filename = `ai_cost_report_${classId}_${new Date().toISOString().split('T')[0]}.csv`;
-    downloadCsvFile(csvContent, filename);
   };
 
   const resetFilters = () => {
@@ -122,7 +120,7 @@ const AiCostReportView = ({
             onClick={handleExportCsv}
             disabled={summary.totalJobs === 0}
           >
-            📥 Export CSV Report
+            📥 Export Excel Report
           </button>
           {onClose && (
             <button

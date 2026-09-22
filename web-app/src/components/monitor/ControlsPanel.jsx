@@ -975,7 +975,7 @@ const ControlsPanel = ({
                   className="outline-action-btn"
                   style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                 >
-                  📥 Download CSV
+                  📥 Download Excel
                 </button>
             </div>
         </div>

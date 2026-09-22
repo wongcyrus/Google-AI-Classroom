@@ -313,8 +313,8 @@ describe('Class Settings & Management Full Suite', () => {
       const addAllStudentsBtn = screen.getByRole('button', { name: /Add All Students/i });
       fireEvent.click(addAllStudentsBtn);
 
-      // Click Export CSV (student and teacher rosters)
-      const exportCsvBtns = screen.getAllByRole('button', { name: /Export CSV/i });
+      // Click Export Excel / CSV (student and teacher rosters)
+      const exportCsvBtns = screen.getAllByRole('button', { name: /Export (Excel|CSV)/i });
       fireEvent.click(exportCsvBtns[0]);
       if (exportCsvBtns[1]) fireEvent.click(exportCsvBtns[1]);
 

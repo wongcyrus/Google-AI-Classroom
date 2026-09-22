@@ -30,8 +30,10 @@ import {
   getComplianceSummary,
   filterStudentsByCompliance,
   getNudgeMessageForFilter,
+  exportComplianceResultsToExcel,
   exportComplianceResultsToCsv,
 } from '../utils/studentCompliance';
+import { exportToExcel } from '../utils/exportUtils';
 import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
 
 const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
@@ -1139,7 +1141,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     }
   }, [classId, isExamActive]);
 
-  const handleDownloadAttendance = () => {
+  const handleDownloadAttendance = async () => {
     const uidToStatusMap = new Map(studentStatuses.map(status => [status.id, status]));
 
     const attendanceData = classList.map(uid => {
@@ -1151,21 +1153,13 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
     const header = ['Email', 'Sharing Screen'];
     const rows = attendanceData.map(s => [
-      `"${s.email.replace(/"/g, '""')}"`, // Corrected escaping for double quotes within a double-quoted string
-      s.isSharing
-    ].join(','));
+      s.email,
+      s.isSharing ? 'Yes' : 'No'
+    ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [header.join(','), ...rows].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
     const now = new Date();
     const timeString = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
-    link.setAttribute("download", `${classId}_${timeString}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await exportToExcel(header, rows, `${classId}_${timeString}.xlsx`);
   };
 
   const handleFrameRateChange = useCallback(async (e) => {
@@ -1274,12 +1268,12 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     }
   };
 
-  const handleExportFilteredCsv = () => {
+  const handleExportFilteredCsv = async () => {
     if (filteredStudents.length === 0) {
       alert('No students in the current filter to export.');
       return;
     }
-    exportComplianceResultsToCsv(filteredStudents, problemFilter, classComplianceSettings, screenshots, classId);
+    await exportComplianceResultsToExcel(filteredStudents, problemFilter, classComplianceSettings, screenshots, classId);
   };
 
   const handleRunAnalysis = async () => {
@@ -1690,17 +1684,17 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                 </button>
               )}
 
-              {/* Quick Export Filter Results to CSV */}
+              {/* Quick Export Filter Results to Excel */}
               {filteredStudents.length > 0 && (
                 <button
                   type="button"
                   className="compact-nudge-btn"
                   style={{ background: 'var(--color-bg-subtle, #f8fafc)', color: 'var(--color-text-main, #0f172a)', border: '1px solid var(--color-border, #cbd5e1)' }}
                   onClick={handleExportFilteredCsv}
-                  title={`Export current ${filteredStudents.length} filtered results to CSV`}
-                  aria-label="Export filter results to CSV"
+                  title={`Export current ${filteredStudents.length} filtered results to Excel`}
+                  aria-label="Export filter results to Excel"
                 >
-                  📥 Export CSV
+                  📥 Export Excel
                 </button>
               )}
             </div>

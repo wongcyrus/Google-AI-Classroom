@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { escapeCsvField, generateCsvContent, exportToCsv, exportToJson, exportToText } from "./exportUtils";
+import { escapeCsvField, generateCsvContent, exportToExcel, exportToCsv, readExcelFile, exportToJson, exportToText } from "./exportUtils";
 
 describe("exportUtils Unit Tests", () => {
   let originalCreateObjectURL;
@@ -61,13 +61,28 @@ describe("exportUtils Unit Tests", () => {
     });
   });
 
-  describe("exportToCsv", () => {
-    it("creates download link and triggers click with correct filename", () => {
-      exportToCsv(["H1", "H2"], [["v1", "v2"]], "test_report.csv");
+  describe("exportToExcel and exportToCsv", () => {
+    it("creates Excel (.xlsx) download link and triggers click with correct filename", async () => {
+      const blob = await exportToExcel(["Name", "Score"], [["Alice", 95]], "test_report.xlsx");
+      expect(blob).toBeInstanceOf(Blob);
       expect(window.URL.createObjectURL).toHaveBeenCalled();
       expect(clickedLink).not.toBeNull();
-      expect(clickedLink.getAttribute("download")).toBe("test_report.csv");
+      expect(clickedLink.getAttribute("download")).toBe("test_report.xlsx");
       expect(clickedLink.click).toHaveBeenCalled();
+    });
+
+    it("automatically normalizes .csv filename to .xlsx when exporting via legacy exportToCsv", async () => {
+      await exportToCsv(["H1", "H2"], [["v1", "v2"]], "test_report.csv");
+      expect(clickedLink).not.toBeNull();
+      expect(clickedLink.getAttribute("download")).toBe("test_report.xlsx");
+    });
+
+    it("reads rows accurately from an exported Excel file", async () => {
+      const blob = await exportToExcel(["Email", "Name"], [["test@stu.vtc.edu.hk", "陳大文"]], "students.xlsx");
+      const rows = await readExcelFile(blob);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toEqual(["Email", "Name"]);
+      expect(rows[1]).toEqual(["test@stu.vtc.edu.hk", "陳大文"]);
     });
   });
 

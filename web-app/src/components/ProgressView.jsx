@@ -132,7 +132,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
   }, [selectedStudentUid, refetchDetail]);
 
 
-  const handleExportSummaryCsv = () => {
+  const handleExportSummaryCsv = async () => {
     if (!latestProgress || latestProgress.length === 0) {
       alert("No progress data to export.");
       return;
@@ -145,11 +145,11 @@ const ProgressView = ({ classId, startTime, endTime }) => {
       p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
     ]);
     const dateSuffix = new Date().toISOString().slice(0, 10);
-    const filename = `Class_${classId}_Progress_Summary_Page_${summaryPage}_${dateSuffix}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `Class_${classId}_Progress_Summary_Page_${summaryPage}_${dateSuffix}.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
-  const handleExportDetailCsv = (studentEmail) => {
+  const handleExportDetailCsv = async (studentEmail) => {
     if (!detailProgress || detailProgress.length === 0) {
       alert("No progress timeline entries to export.");
       return;
@@ -162,8 +162,8 @@ const ProgressView = ({ classId, startTime, endTime }) => {
       p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
     ]);
     const safeTag = (studentEmail || selectedStudentUid).replace(/[^a-zA-Z0-9]/g, '_');
-    const filename = `Class_${classId}_Progress_Timeline_${safeTag}.csv`;
-    exportToCsv(headers, rows, filename);
+    const filename = `Class_${classId}_Progress_Timeline_${safeTag}.xlsx`;
+    await exportToCsv(headers, rows, filename);
   };
 
   const renderDetailView = () => {
@@ -181,7 +181,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
             disabled={detailLoading || detailProgress.length === 0}
             style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
           >
-            📥 Export Student Timeline (CSV)
+            📥 Export Student Timeline (Excel)
           </button>
         </div>
         {detailLoading ? <p>Loading...</p> : (
@@ -222,7 +222,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
             disabled={loading || latestProgress.length === 0}
             style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', cursor: 'pointer', fontWeight: 600 }}
           >
-            📥 Export Progress Summary (CSV)
+            📥 Export Progress Summary (Excel)
           </button>
         </div>
 

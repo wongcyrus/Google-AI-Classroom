@@ -1,4 +1,5 @@
 import { formatAiCost } from './formatters';
+import { exportToExcel } from './exportUtils';
 
 /**
  * Converts aggregated AI cost summary and raw filtered jobs into an RFC 4180 compliant CSV string.
@@ -122,3 +123,95 @@ export function downloadCsvFile(csvContent, filename = 'ai_cost_report.csv') {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Exports AI Cost report directly to a Microsoft Excel (.xlsx) workbook.
+ *
+ * @param {object} summary 
+ * @param {object} metadata 
+ * @returns {Promise<Blob>}
+ */
+export async function exportAiCostToExcel(summary, metadata = {}) {
+  const { className = 'N/A', classId = 'N/A', generatedAt = new Date().toISOString() } = metadata;
+  const headers = ['Category', 'Field 1', 'Field 2', 'Field 3', 'Field 4', 'Field 5', 'Field 6', 'Field 7', 'Field 8'];
+
+  const rows = [];
+  rows.push(['REPORT', 'AI Cost Breakdown & Audit', '', '', '', '', '', '', '']);
+  rows.push(['METADATA', 'Class Name', className, 'Class ID', classId, 'Generated At', generatedAt, 'Total Jobs', summary.totalJobs || 0]);
+  rows.push(['METADATA', 'Total AI Spend', formatAiCost(summary.totalCost), 'Class Quota', '$' + (summary.classQuota || 10).toFixed(2), 'Quota Utilized', (summary.quotaPercentage || 0) + '%', '', '']);
+  rows.push(['', '', '', '', '', '', '', '', '']);
+
+  rows.push(['BY MODEL', 'Model', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '']);
+  (summary.byModel || []).forEach(m => {
+    rows.push([
+      'MODEL_ROW',
+      m.model,
+      m.count,
+      m.inputTokens,
+      m.outputTokens,
+      m.inputTokens + m.outputTokens,
+      formatAiCost(m.cost),
+      (m.percentage || 0).toFixed(1) + '%',
+      ''
+    ]);
+  });
+  rows.push(['', '', '', '', '', '', '', '', '']);
+
+  rows.push(['BY JOB TYPE', 'Job Type', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '']);
+  (summary.byJobType || []).forEach(j => {
+    rows.push([
+      'JOB_TYPE_ROW',
+      j.jobType,
+      j.count,
+      j.inputTokens,
+      j.outputTokens,
+      j.inputTokens + j.outputTokens,
+      formatAiCost(j.cost),
+      (j.percentage || 0).toFixed(1) + '%',
+      ''
+    ]);
+  });
+  rows.push(['', '', '', '', '', '', '', '', '']);
+
+  rows.push(['BY STUDENT', 'Student UID', 'Student Email', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Class Spend']);
+  (summary.byStudent || []).forEach(s => {
+    rows.push([
+      'STUDENT_ROW',
+      s.studentUid,
+      s.studentEmail,
+      s.jobCount,
+      s.inputTokens,
+      s.outputTokens,
+      s.totalTokens,
+      formatAiCost(s.cost),
+      (s.percentageOfClass || 0).toFixed(1) + '%'
+    ]);
+  });
+  rows.push(['', '', '', '', '', '', '', '', '']);
+
+  rows.push(['AUDIT LOG', 'Timestamp', 'Job ID', 'Student Email', 'Job Type', 'Model Used', 'Status', 'Input Tokens', 'Output Tokens']);
+  (summary.filteredJobs || []).forEach(job => {
+    const jobTime = job.timestamp?.toDate
+      ? job.timestamp.toDate().toISOString()
+      : (job.timestamp ? new Date(job.timestamp).toISOString() : 'N/A');
+    const usage = job.usage || {};
+    const inputTokens = usage.inputTokens ?? usage.promptTokenCount ?? 0;
+    const outputTokens = usage.outputTokens ?? usage.candidatesTokenCount ?? 0;
+
+    rows.push([
+      'AUDIT_ROW',
+      jobTime,
+      job.id || 'N/A',
+      job.studentEmail || 'N/A',
+      job.jobType || 'N/A',
+      job.modelUsed || 'gemini-3.5-flash-lite',
+      job.status || 'unknown',
+      inputTokens,
+      outputTokens
+    ]);
+  });
+
+  const filename = `ai_cost_report_${classId}_${new Date().toISOString().split('T')[0]}.xlsx`;
+  return exportToExcel(headers, rows, filename);
+}
+

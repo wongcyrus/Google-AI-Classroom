@@ -8,6 +8,8 @@
  * - Single-point-of-truth display name formatting across teacher and student views.
  */
 
+import { exportToExcel, readExcelFile } from './exportUtils';
+
 /**
  * Normalizes an email address by trimming whitespace and converting to lowercase.
  * @param {string} email 
@@ -216,7 +218,29 @@ export const parseStudentRosterCsv = (rawText) => {
     delimiter = ';';
   }
 
-  const rawHeaderCells = parseLine(firstLine, delimiter);
+  const rawRows = lines.map(line => parseLine(line, delimiter));
+  return parseStudentRosterRows(rawRows);
+};
+
+/**
+ * Parses a 2D array of spreadsheet rows (from Excel or CSV) into validated student profiles.
+ * Supports case-insensitive header aliases and positional fallbacks.
+ * 
+ * @param {Array<Array<*>>} rawRows 
+ * @returns {object} { students, profilesMap, emailList, invalidRows, totalParsed }
+ */
+export const parseStudentRosterRows = (rawRows = []) => {
+  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    return { students: [], profilesMap: {}, emailList: [], invalidRows: [], totalParsed: 0 };
+  }
+
+  // Filter out empty rows
+  const rows = rawRows.filter(row => Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''));
+  if (rows.length === 0) {
+    return { students: [], profilesMap: {}, emailList: [], invalidRows: [], totalParsed: 0 };
+  }
+
+  const rawHeaderCells = rows[0].map(h => String(h ?? '').trim());
   const normalizedHeaders = rawHeaderCells.map(h => h.toLowerCase().replace(/[\s_\-]/g, ''));
 
   // Header alias map
@@ -248,9 +272,8 @@ export const parseStudentRosterCsv = (rawText) => {
   const emailSet = new Set();
   const invalidRows = [];
 
-  for (let r = startRowIndex; r < lines.length; r++) {
-    const line = lines[r];
-    const cells = parseLine(line, delimiter);
+  for (let r = startRowIndex; r < rows.length; r++) {
+    const cells = rows[r].map(c => String(c ?? '').trim());
 
     let email = '';
     let studentName = '';
@@ -280,7 +303,7 @@ export const parseStudentRosterCsv = (rawText) => {
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
       invalidRows.push({
         line: r + 1,
-        raw: line,
+        raw: cells.join(', '),
         reason: cleanEmail ? `Invalid email address format: "${cleanEmail}"` : 'Missing email address',
       });
       continue;
@@ -328,9 +351,90 @@ export const parseStudentRosterCsv = (rawText) => {
 };
 
 /**
+ * Universal file parser for student rosters.
+ * Seamlessly parses Microsoft Excel (.xlsx / .xls) and legacy CSV/TSV files.
+ * 
+ * @param {File|Blob} file 
+ * @returns {Promise<object>} Parsed roster result
+ */
+export const parseStudentRosterFile = async (file) => {
+  if (!file) {
+    return { students: [], profilesMap: {}, emailList: [], invalidRows: [], totalParsed: 0 };
+  }
+
+  const fileName = (file.name || '').toLowerCase();
+  const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+  if (isExcel) {
+    try {
+      const rows = await readExcelFile(file);
+      if (rows && rows.length > 0) {
+        return parseStudentRosterRows(rows);
+      }
+    } catch (err) {
+      console.warn('Failed to parse Excel file, attempting text decoder fallback:', err);
+    }
+  }
+
+  // Fallback to text reading (supports CSV, TSV, or raw text)
+  const text = await readTextFileWithEncoding(file);
+  return parseStudentRosterCsv(text);
+};
+
+/**
+ * Generates and downloads a Microsoft Excel (.xlsx) template for student roster batch import.
+ * Features English headers, column auto-formatting, and realistic example rows with Chinese names.
+ * 
+ * @returns {Promise<Blob>}
+ */
+export const generateStudentRosterTemplateExcel = async () => {
+  const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class'];
+  const examples = [
+    ['230123456@stu.vtc.edu.hk', 'Chan Tai Man', '大文', 'Higher Diploma in Software Engineering', 'IT114115/1A'],
+    ['230987654@stu.vtc.edu.hk', 'Wong Ka Yan', '阿欣', 'Higher Diploma in Software Engineering', 'IT114115/1B'],
+    ['230555666@stu.vtc.edu.hk', 'Lee Siu Ming', 'David', 'Higher Diploma in Cloud & Data Centre Admin', 'IT114115/1A'],
+    ['alex.smith@school.edu', 'Alex Smith', 'Alex', '', 'SE101-Cohort2'],
+    ['email.only@school.edu', '', '', '', ''],
+  ];
+
+  return exportToExcel(headers, examples, 'student_roster_template.xlsx');
+};
+
+/**
+ * Serializes and exports the current class roster to a genuine Microsoft Excel (.xlsx) spreadsheet.
+ * 
+ * @param {string[]} studentEmails 
+ * @param {object} studentProfiles 
+ * @param {string} classId 
+ * @returns {Promise<Blob>}
+ */
+export const exportStudentRosterExcel = async (studentEmails = [], studentProfiles = {}, classId = '') => {
+  const headers = ['StudentEmail', 'StudentName', 'Nickname', 'Programme', 'Class', 'CourseID'];
+  const emails = Array.isArray(studentEmails) ? studentEmails : [];
+  const rows = [];
+
+  emails.forEach((email) => {
+    const cleanEmail = normalizeStudentEmail(email);
+    if (!cleanEmail) return;
+
+    const prof = studentProfiles[cleanEmail] || {};
+    rows.push([
+      cleanEmail,
+      prof.studentName || '',
+      prof.nickname || '',
+      prof.programme || '',
+      prof.studentClass || '',
+      classId || '',
+    ]);
+  });
+
+  const activeExportId = (classId || 'class').trim().toLowerCase();
+  return exportToExcel(headers, rows, `${activeExportId}_student_roster.xlsx`);
+};
+
+/**
  * Generates a ready-to-download CSV template with header and illustrative example rows.
- * Features English-only headers with UTF-8 Unicode BOM (\uFEFF) to guarantee correct rendering
- * of Chinese nicknames and names in Microsoft Excel.
+ * Kept for backward compatibility.
  * 
  * @returns {string} RFC-4180 CSV string starting with UTF-8 BOM
  */
@@ -361,9 +465,8 @@ export const generateStudentRosterTemplateCsv = () => {
 };
 
 /**
- * Serializes the current class roster (emails + profiles) to an RFC-4180 CSV string.
- * Features English-only headers with UTF-8 Unicode BOM (\uFEFF) to guarantee correct rendering
- * of Chinese nicknames and names in Microsoft Excel.
+ * Serializes the current class roster to an RFC-4180 CSV string.
+ * Kept for backward compatibility.
  * 
  * @param {string[]} studentEmails 
  * @param {object} studentProfiles 

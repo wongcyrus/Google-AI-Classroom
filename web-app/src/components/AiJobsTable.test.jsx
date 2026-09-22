@@ -140,7 +140,7 @@ describe('AiJobsTable Component', () => {
       />
     );
 
-    const csvButtons = screen.getAllByRole('button', { name: 'CSV' });
+    const csvButtons = screen.getAllByRole('button', { name: /Excel|CSV/i });
     const jsonButtons = screen.getAllByRole('button', { name: 'JSON' });
 
     expect(csvButtons.length).toBe(mockAiJobs.length);

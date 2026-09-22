@@ -176,12 +176,14 @@ describe('MonitorView Component Suite', () => {
     fireEvent.change(filterSelect, { target: { value: 'problems' } });
     expect(filterSelect.value).toBe('problems');
 
-    // Export CSV button should be rendered and clickable
-    const exportCsvBtn = screen.getByRole('button', { name: /Export filter results to CSV/i });
+    // Export Excel button should be rendered and clickable
+    const exportCsvBtn = screen.getByRole('button', { name: /Export filter results to (Excel|CSV)/i });
     expect(exportCsvBtn).toBeInTheDocument();
 
-    // Trigger CSV export
-    fireEvent.click(exportCsvBtn);
+    // Trigger Excel export
+    await act(async () => {
+      fireEvent.click(exportCsvBtn);
+    });
 
     // Nudge button should be visible when problems filter is active
     const nudgeBtn = screen.getByRole('button', { name: /Nudge/i });
@@ -409,11 +411,13 @@ describe('MonitorView Component Suite', () => {
     );
   });
 
-  it('handles downloading attendance CSV', () => {
+  it('handles downloading attendance Excel', async () => {
     render(<MonitorView {...defaultProps} />);
 
-    const downloadBtn = screen.getByRole('button', { name: /Download CSV/i });
-    fireEvent.click(downloadBtn);
+    const downloadBtn = screen.getByRole('button', { name: /Download (Excel|CSV)/i });
+    await act(async () => {
+      fireEvent.click(downloadBtn);
+    });
   });
 
   it('broadcasts preload AI to all students', async () => {

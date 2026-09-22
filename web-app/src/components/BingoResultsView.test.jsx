@@ -187,7 +187,7 @@ describe('BingoResultsView Component', () => {
 
     triggerSnapshot(sampleRecords);
 
-    const exportBtn = screen.getByRole('button', { name: /Export CSV/i });
+    const exportBtn = screen.getByRole('button', { name: /Export (Excel|CSV)/i });
     fireEvent.click(exportBtn);
 
     expect(exportSpy).toHaveBeenCalledTimes(1);
