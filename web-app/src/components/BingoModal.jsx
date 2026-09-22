@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { isMobileDevice } from '../utils/browserDetection';
 import './BingoModal.css';
 
 /**
@@ -39,12 +41,60 @@ export default function BingoModal({
   activeBingo,
   onSubmit,
   onClose,
+  isMobile: isMobileProp,
 }) {
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'passed' | 'wrong' | 'timeout', text: string }
+  const [isClosed, setIsClosed] = useState(false);
 
-  const totalSeconds = activeBingo?.timeLimitSeconds || 45;
+  // Adaptive mobile bottom sheet / dialog detection
+  const checkIsMobileViewport = () => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth <= 768 || window.innerHeight <= 600 || isMobileDevice();
+  };
+
+  const checkIsLandscapeViewport = () => {
+    if (typeof window === 'undefined') return false;
+    const isWiderThanTall = window.innerWidth > window.innerHeight;
+    const isMatchLandscape = window.matchMedia ? window.matchMedia('(orientation: landscape)').matches : false;
+    const isMobileOrShort = window.innerHeight <= 650 || isMatchLandscape;
+    return isWiderThanTall && isMobileOrShort;
+  };
+
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (isMobileProp !== undefined) return Boolean(isMobileProp);
+    return checkIsMobileViewport();
+  });
+
+  const [isLandscape, setIsLandscape] = useState(() => checkIsLandscapeViewport());
+
+  // Proactively exit fullscreen if browser is in native fullscreen mode so modal is not hidden under maximized screen
+  useEffect(() => {
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isMobileProp !== undefined) {
+      setIsMobileViewport(Boolean(isMobileProp));
+    }
+    const checkViewport = () => {
+      if (isMobileProp === undefined) {
+        setIsMobileViewport(checkIsMobileViewport());
+      }
+      setIsLandscape(checkIsLandscapeViewport());
+    };
+    window.addEventListener('resize', checkViewport);
+    window.addEventListener('orientationchange', checkViewport);
+    return () => {
+      window.removeEventListener('resize', checkViewport);
+      window.removeEventListener('orientationchange', checkViewport);
+    };
+  }, [isMobileProp]);
+
+  const totalSeconds = activeBingo?.timeLimitSeconds || 30;
   const expiresAt = activeBingo?.expiresAtMillis || (activeBingo?.issuedAtMillis ? activeBingo.issuedAtMillis + totalSeconds * 1000 : null);
   
   // Track if this challenge was already expired before mount
@@ -61,6 +111,22 @@ export default function BingoModal({
   const timerRef = useRef(null);
   const hasSubmittedRef = useRef(false);
 
+  // Reset all state and refs when activeBingo.bingoId changes (clean lifecycle for consecutive challenges)
+  useEffect(() => {
+    setSelectedIdx(null);
+    setIsSubmitting(false);
+    setFeedback(null);
+    setIsClosed(false);
+    hasSubmittedRef.current = false;
+    startTimeRef.current = Date.now();
+    isExpiredOnMountRef.current = Boolean(expiresAt && expiresAt <= Date.now());
+    if (expiresAt) {
+      setSecondsRemaining(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    } else {
+      setSecondsRemaining(totalSeconds);
+    }
+  }, [activeBingo?.bingoId, expiresAt, totalSeconds]);
+
   // If challenge is already expired before mount, trigger background submit/close and never render
   useEffect(() => {
     if (isExpiredOnMountRef.current) {
@@ -75,7 +141,7 @@ export default function BingoModal({
         });
       }
     }
-  }, []);
+  }, [activeBingo?.bingoId]);
 
   // Play audio chime and trigger OS notification on mount ONLY if challenge is fresh
   useEffect(() => {
@@ -85,7 +151,7 @@ export default function BingoModal({
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
         const notif = new Notification('🎯 Bingo Active Check!', {
-          body: 'Quick 45s presence check. Click to respond.',
+          body: `Quick ${totalSeconds}s presence check. Click to respond.`,
           icon: '/favicon.ico',
           tag: 'bingo-check',
         });
@@ -124,19 +190,19 @@ export default function BingoModal({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [expiresAt]);
+  }, [activeBingo?.bingoId, expiresAt, totalSeconds]);
 
   const handleTimeout = async () => {
     setIsSubmitting(true);
     setFeedback({
       type: 'timeout',
-      text: '⏰ Time Expired (45s) — No response recorded.',
+      text: `⏰ Time Expired (${totalSeconds}s) — No response recorded.`,
     });
     if (onSubmit) {
       await onSubmit({
         bingoId: activeBingo.bingoId,
         selectedIndex: null,
-        responseTimeSec: activeBingo.timeLimitSeconds || 45,
+        responseTimeSec: activeBingo.timeLimitSeconds || 30,
         windowFocused: document.hasFocus ? document.hasFocus() : true,
       });
     }
@@ -145,59 +211,66 @@ export default function BingoModal({
     }, 2500);
   };
 
-  const handleSelectOption = async (index) => {
-    if (isSubmitting || hasSubmittedRef.current) return;
+  const handleSelectOption = (index) => {
+    if (isSubmitting || hasSubmittedRef.current || isClosed) return;
     hasSubmittedRef.current = true;
     setSelectedIdx(index);
     setIsSubmitting(true);
+    setIsClosed(true);
 
     if (timerRef.current) clearInterval(timerRef.current);
 
     const latency = Math.max(0.1, Number(((Date.now() - startTimeRef.current) / 1000).toFixed(1)));
 
-    let submitResult = null;
+    // Submit answer asynchronously in the background
     if (onSubmit) {
-      submitResult = await onSubmit({
-        bingoId: activeBingo.bingoId,
-        selectedIndex: index,
-        responseTimeSec: latency,
-        windowFocused: document.hasFocus ? document.hasFocus() : true,
+      Promise.resolve(
+        onSubmit({
+          bingoId: activeBingo.bingoId,
+          selectedIndex: index,
+          responseTimeSec: latency,
+          windowFocused: document.hasFocus ? document.hasFocus() : true,
+        })
+      ).catch((err) => {
+        console.warn('[BingoModal] Error submitting bingo answer:', err);
       });
     }
 
-    if (submitResult?.result === 'passed' || submitResult?.isCorrect) {
-      setFeedback({
-        type: 'passed',
-        text: `✅ Verified! (${latency}s)`,
-      });
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 1500);
-    } else {
-      setFeedback({
-        type: 'wrong',
-        text: `Option recorded (${latency}s) — Remember to stay attentive!`,
-      });
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 2000);
+    // Immediately close modal on answer selection
+    if (onClose) {
+      onClose();
     }
   };
 
-  if (!activeBingo || isExpiredOnMountRef.current) return null;
+  if (!activeBingo || isExpiredOnMountRef.current || isClosed) return null;
 
-  const totalTime = activeBingo.timeLimitSeconds || 45;
+  const totalTime = activeBingo.timeLimitSeconds || 30;
   const progressPercent = Math.min(100, Math.max(0, (secondsRemaining / totalTime) * 100));
 
   const optionLabels = ['A', 'B', 'C', 'D'];
 
-  return (
-    <div className="bingo-modal-overlay" data-testid="bingo-modal-overlay">
-      <div className="bingo-modal-container" role="dialog" aria-modal="true" aria-labelledby="bingo-title">
+  const modalElement = (
+    <div
+      className={`bingo-modal-overlay ${isMobileViewport ? 'is-mobile' : ''} ${isLandscape ? 'is-landscape' : ''}`}
+      data-testid="bingo-modal-overlay"
+    >
+      <div
+        className={`bingo-modal-container ${isMobileViewport ? 'is-mobile' : ''} ${isLandscape ? 'is-landscape' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bingo-title"
+      >
         {/* Header & Progress */}
         <div className="bingo-header">
           <div className="bingo-title-row">
-            <h2 id="bingo-title" className="bingo-title">🎯 Class Bingo Check</h2>
+            <h2 id="bingo-title" className="bingo-title">
+              <span>🎯 Class Bingo Check</span>
+              {(activeBingo.className || activeBingo.classId) && (
+                <span className="bingo-class-pill" data-testid="bingo-class-pill">
+                  {activeBingo.className || activeBingo.classId}
+                </span>
+              )}
+            </h2>
             <span className={`bingo-timer-badge ${secondsRemaining <= 10 ? 'warning' : ''}`}>
               ⏱️ {secondsRemaining}s
             </span>
@@ -210,29 +283,43 @@ export default function BingoModal({
           </div>
         </div>
 
-        {/* Question Prompt */}
-        <div className="bingo-question-box">
-          <p className="bingo-question-text">{activeBingo.question}</p>
-        </div>
+        {/* Modal Body Container (split 2-column layout in landscape) */}
+        <div className="bingo-modal-body">
+          {/* Question Prompt */}
+          <div className="bingo-question-box">
+            <p
+              className="bingo-question-text"
+              style={{
+                color: '#0f172a',
+                fontWeight: 600,
+                margin: 0,
+                fontSize: isLandscape ? '1rem' : (isMobileViewport ? '0.95rem' : '1.15rem'),
+                lineHeight: isLandscape ? 1.45 : (isMobileViewport ? 1.4 : 1.5),
+              }}
+            >
+              {activeBingo.question}
+            </p>
+          </div>
 
-        {/* Options Grid */}
-        <div className="bingo-options-grid">
-          {(activeBingo.options || []).map((opt, idx) => {
-            const isSelected = selectedIdx === idx;
-            return (
-              <button
-                key={idx}
-                type="button"
-                className={`bingo-option-btn ${isSelected ? 'selected' : ''}`}
-                disabled={isSubmitting}
-                onClick={() => handleSelectOption(idx)}
-                data-testid={`bingo-option-${idx}`}
-              >
-                <span className="bingo-option-tag">{optionLabels[idx] || (idx + 1)}</span>
-                <span className="bingo-option-label">{opt}</span>
-              </button>
-            );
-          })}
+          {/* Options Grid */}
+          <div className="bingo-options-grid">
+            {(activeBingo.options || []).map((opt, idx) => {
+              const isSelected = selectedIdx === idx;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`bingo-option-btn ${isSelected ? 'selected' : ''}`}
+                  disabled={isSubmitting}
+                  onClick={() => handleSelectOption(idx)}
+                  data-testid={`bingo-option-${idx}`}
+                >
+                  <span className="bingo-option-tag">{optionLabels[idx] || (idx + 1)}</span>
+                  <span className="bingo-option-label" style={{ color: '#0f172a' }}>{opt}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Feedback Alert */}
@@ -248,4 +335,12 @@ export default function BingoModal({
       </div>
     </div>
   );
+
+  // If the browser is in native Fullscreen mode, portal into document.fullscreenElement
+  // so the modal is guaranteed to be in the browser's Top Layer above the maximized screen!
+  if (typeof document !== 'undefined' && document.fullscreenElement) {
+    return createPortal(modalElement, document.fullscreenElement);
+  }
+
+  return modalElement;
 }

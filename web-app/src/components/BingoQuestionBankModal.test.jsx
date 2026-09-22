@@ -259,6 +259,7 @@ ANSWER: a`;
           onClose={vi.fn()}
           questionBank={initialBank}
           onSaveBank={mockSave}
+          classId="class_react_101"
         />
       );
 
@@ -280,6 +281,7 @@ ANSWER: a`;
       expect(mockCallable).toHaveBeenCalledWith({
         topic: 'React Basics',
         count: 5,
+        classId: 'class_react_101',
       });
 
       expect(screen.getByText('Generated Questions (2)')).toBeInTheDocument();

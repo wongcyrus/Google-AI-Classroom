@@ -3,20 +3,23 @@
   inset: 0;
   background-color: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(8px);
-  z-index: 99999;
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2147483647 !important;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
+  box-sizing: border-box;
   animation: bingoFadeIn 0.2s ease-out;
 }
 
 @keyframes bingoFadeIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .bingo-modal-container {
+  box-sizing: border-box;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 1rem;
@@ -29,6 +32,12 @@
   gap: 1.25rem;
   font-family: inherit;
   color: #1e293b;
+  animation: bingoScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bingoScaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .bingo-header {
@@ -47,10 +56,22 @@
   margin: 0;
   font-size: 1.35rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #0f172a !important;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.bingo-class-pill {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe;
+  letter-spacing: 0.01em;
 }
 
 .bingo-timer-badge {
@@ -58,7 +79,7 @@
   font-weight: 700;
   padding: 0.35rem 0.75rem;
   background: #f1f5f9;
-  color: #334155;
+  color: #334155 !important;
   border-radius: 9999px;
   font-variant-numeric: tabular-nums;
   transition: all 0.3s ease;
@@ -66,7 +87,7 @@
 
 .bingo-timer-badge.warning {
   background: #fee2e2;
-  color: #b91c1c;
+  color: #b91c1c !important;
   animation: pulseTimer 1s infinite alternate;
 }
 
@@ -94,19 +115,27 @@
   background: #ef4444;
 }
 
-.bingo-question-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+.bingo-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.bingo-question-box,
+.bingo-modal-container .bingo-question-box {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
   border-radius: 0.75rem;
   padding: 1.25rem;
 }
 
-.bingo-question-text {
+.bingo-question-text,
+.bingo-modal-container .bingo-question-text {
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
   line-height: 1.5;
-  color: #1e293b;
+  color: #0f172a !important; /* High-contrast dark slate */
 }
 
 .bingo-options-grid {
@@ -121,19 +150,20 @@
   }
 }
 
-.bingo-option-btn {
+.bingo-option-btn,
+.bingo-modal-container .bingo-option-btn {
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  background: #ffffff;
-  border: 2px solid #e2e8f0;
+  background: #ffffff !important;
+  border: 2px solid #cbd5e1 !important;
   border-radius: 0.75rem;
   padding: 0.85rem 1rem;
   cursor: pointer;
   text-align: left;
   transition: all 0.15s ease-in-out;
   font-size: 0.975rem;
-  color: #334155;
+  color: #0f172a !important;
   outline: none;
 }
 
@@ -177,9 +207,11 @@
   color: #ffffff;
 }
 
-.bingo-option-label {
+.bingo-option-label,
+.bingo-modal-container .bingo-option-label {
   font-weight: 500;
   word-break: break-word;
+  color: #0f172a !important;
 }
 
 .bingo-feedback-banner {
@@ -218,4 +250,491 @@
   font-size: 0.8rem;
   color: #64748b;
   text-align: center;
+}
+
+/* ==========================================================================
+   Mobile-Optimized Centered Modal Adaptations (Portrait Viewports)
+   Maintains a centered, compact modal popup in portrait orientation.
+   ========================================================================== */
+
+.bingo-modal-overlay.is-mobile:not(.is-landscape) {
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) {
+  max-width: min(92vw, 420px);
+  width: 100%;
+  border-radius: 1rem;
+  padding: 1.15rem 1rem;
+  gap: 0.65rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  animation: bingoScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-header {
+  gap: 0.45rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-title-row {
+  gap: 0.5rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-title {
+  font-size: 1.05rem;
+  gap: 0.45rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-class-pill {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-timer-badge {
+  font-size: 0.88rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-progress-track {
+  height: 4px;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-question-box {
+  border-radius: 0.65rem !important;
+  padding: 0.75rem 0.95rem !important;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-question-text {
+  font-size: 0.95rem !important;
+  line-height: 1.4 !important;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-options-grid {
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-option-btn {
+  padding: 0.55rem 0.75rem !important;
+  min-height: 42px !important;
+  gap: 0.65rem !important;
+  border-radius: 0.65rem !important;
+  font-size: 0.88rem !important;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-option-btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-option-tag {
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.78rem;
+  border-radius: 0.4rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-option-label {
+  font-size: 0.88rem !important;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-feedback-banner {
+  padding: 0.55rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 0.5rem;
+}
+
+.bingo-modal-container.is-mobile:not(.is-landscape) .bingo-footer-note {
+  font-size: 0.7rem;
+  margin-top: 0;
+}
+
+@media (max-width: 768px) and (orientation: portrait),
+       (max-width: 540px) and (orientation: portrait) {
+  .bingo-modal-overlay:not(.is-landscape) {
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .bingo-modal-container:not(.is-landscape) {
+    max-width: min(92vw, 420px);
+    width: 100%;
+    border-radius: 1rem;
+    padding: 1.15rem 1rem;
+    gap: 0.65rem;
+    max-height: 85vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+    animation: bingoScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-header {
+    gap: 0.45rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-title-row {
+    gap: 0.5rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-title {
+    font-size: 1.05rem;
+    gap: 0.45rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-class-pill {
+    font-size: 0.72rem;
+    padding: 0.15rem 0.45rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-timer-badge {
+    font-size: 0.88rem;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-progress-track {
+    height: 4px;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-question-box {
+    border-radius: 0.65rem !important;
+    padding: 0.65rem 0.85rem !important;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-question-text {
+    font-size: 0.95rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-options-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-option-btn {
+    padding: 0.55rem 0.75rem !important;
+    min-height: 42px !important;
+    gap: 0.65rem !important;
+    border-radius: 0.65rem !important;
+    font-size: 0.88rem !important;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-option-btn:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-option-tag {
+    width: 1.6rem;
+    height: 1.6rem;
+    font-size: 0.78rem;
+    border-radius: 0.4rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-option-label {
+    font-size: 0.88rem !important;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-feedback-banner {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
+    border-radius: 0.5rem;
+  }
+
+  .bingo-modal-container:not(.is-landscape) .bingo-footer-note {
+    font-size: 0.7rem;
+    margin-top: 0;
+  }
+}
+
+/* ==========================================================================
+   Landscape / Horizontal Orientation Adaptations (Mobile & Tablet)
+   Uses full available horizontal space (width: min(98vw, 960px)), NEVER a square!
+   Side-by-side 2-column layout: Left = Question Box (unclipped), Right = 4 Options.
+   ========================================================================== */
+
+@media (orientation: landscape), (min-aspect-ratio: 1/1) {
+  .bingo-modal-overlay {
+    padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .bingo-modal-container {
+    max-width: min(98vw, 960px) !important;
+    width: min(98vw, 960px) !important;
+    max-height: calc(100dvh - 12px) !important;
+    height: calc(100dvh - 12px) !important;
+    padding: 0.5rem 0.85rem !important;
+    gap: 0.4rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 0.85rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .bingo-header {
+    gap: 0.25rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .bingo-title-row {
+    gap: 0.4rem !important;
+  }
+
+  .bingo-title {
+    font-size: 0.95rem !important;
+    gap: 0.4rem !important;
+  }
+
+  .bingo-class-pill {
+    font-size: 0.7rem !important;
+    padding: 0.12rem 0.4rem !important;
+  }
+
+  .bingo-timer-badge {
+    font-size: 0.85rem !important;
+    padding: 0.15rem 0.5rem !important;
+  }
+
+  .bingo-progress-track {
+    height: 3px !important;
+  }
+
+  /* Two-column side-by-side split in landscape: Left = Question Box, Right = Options Grid */
+  .bingo-modal-body {
+    display: grid !important;
+    grid-template-columns: 1.25fr 1fr !important;
+    gap: 0.75rem !important;
+    align-items: stretch !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  .bingo-question-box,
+  .bingo-modal-container .bingo-question-box {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    padding: 0.75rem 1rem !important;
+    max-height: none !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    box-sizing: border-box !important;
+    background: #f8fafc !important;
+    border: 2px solid #cbd5e1 !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .bingo-question-text,
+  .bingo-modal-container .bingo-question-text {
+    font-size: 1rem !important;
+    line-height: 1.45 !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    word-break: break-word !important;
+    margin: 0 !important;
+  }
+
+  .bingo-options-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-auto-rows: 1fr !important;
+    gap: 0.35rem !important;
+    height: 100% !important;
+    align-content: stretch !important;
+  }
+
+  .bingo-option-btn,
+  .bingo-modal-container .bingo-option-btn {
+    min-height: 42px !important;
+    padding: 0.35rem 0.75rem !important;
+    gap: 0.5rem !important;
+    border-radius: 0.65rem !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  .bingo-option-tag {
+    width: 1.6rem !important;
+    height: 1.6rem !important;
+    font-size: 0.8rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .bingo-option-label,
+  .bingo-modal-container .bingo-option-label {
+    font-size: 0.88rem !important;
+    line-height: 1.3 !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+  }
+
+  .bingo-feedback-banner {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.8rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .bingo-footer-note {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   Class-based Orientation Styles for Dynamic Viewport / In-App Browser Detection
+   Ensures landscape styling applies immediately regardless of device aspect ratio.
+   ========================================================================== */
+
+.bingo-modal-overlay.is-landscape {
+  padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.bingo-modal-container.is-landscape,
+.bingo-modal-container.is-mobile.is-landscape {
+  max-width: min(98vw, 960px) !important;
+  width: min(98vw, 960px) !important;
+  max-height: calc(100dvh - 12px) !important;
+  height: calc(100dvh - 12px) !important;
+  padding: 0.5rem 0.85rem !important;
+  gap: 0.4rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 0.85rem !important;
+  box-sizing: border-box !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-header,
+.bingo-modal-container.is-mobile.is-landscape .bingo-header {
+  gap: 0.25rem !important;
+  flex-shrink: 0 !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-title,
+.bingo-modal-container.is-mobile.is-landscape .bingo-title {
+  font-size: 0.95rem !important;
+  gap: 0.4rem !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-class-pill,
+.bingo-modal-container.is-mobile.is-landscape .bingo-class-pill {
+  font-size: 0.7rem !important;
+  padding: 0.12rem 0.4rem !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-timer-badge,
+.bingo-modal-container.is-mobile.is-landscape .bingo-timer-badge {
+  font-size: 0.85rem !important;
+  padding: 0.15rem 0.5rem !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-progress-track,
+.bingo-modal-container.is-mobile.is-landscape .bingo-progress-track {
+  height: 3px !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-modal-body,
+.bingo-modal-container.is-mobile.is-landscape .bingo-modal-body {
+  display: grid !important;
+  grid-template-columns: 1.25fr 1fr !important;
+  gap: 0.75rem !important;
+  align-items: stretch !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-question-box,
+.bingo-modal-container.is-mobile.is-landscape .bingo-question-box {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  padding: 0.75rem 1rem !important;
+  max-height: none !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  box-sizing: border-box !important;
+  background: #f8fafc !important;
+  border: 2px solid #cbd5e1 !important;
+  border-radius: 0.75rem !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-question-text,
+.bingo-modal-container.is-mobile.is-landscape .bingo-question-text {
+  font-size: 1rem !important;
+  line-height: 1.45 !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+  word-break: break-word !important;
+  margin: 0 !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-options-grid,
+.bingo-modal-container.is-mobile.is-landscape .bingo-options-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-auto-rows: 1fr !important;
+  gap: 0.35rem !important;
+  height: 100% !important;
+  align-content: stretch !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-option-btn,
+.bingo-modal-container.is-mobile.is-landscape .bingo-option-btn {
+  min-height: 42px !important;
+  padding: 0.35rem 0.75rem !important;
+  gap: 0.5rem !important;
+  border-radius: 0.65rem !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-option-tag,
+.bingo-modal-container.is-mobile.is-landscape .bingo-option-tag {
+  width: 1.6rem !important;
+  height: 1.6rem !important;
+  font-size: 0.8rem !important;
+  flex-shrink: 0 !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-option-label,
+.bingo-modal-container.is-mobile.is-landscape .bingo-option-label {
+  font-size: 0.88rem !important;
+  line-height: 1.3 !important;
+  font-weight: 600 !important;
+  color: #0f172a !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-feedback-banner,
+.bingo-modal-container.is-mobile.is-landscape .bingo-feedback-banner {
+  padding: 0.35rem 0.6rem !important;
+  font-size: 0.8rem !important;
+  flex-shrink: 0 !important;
+}
+
+.bingo-modal-container.is-landscape .bingo-footer-note,
+.bingo-modal-container.is-mobile.is-landscape .bingo-footer-note {
+  display: none !important;
 }

@@ -77,6 +77,7 @@ export default function BingoQuestionBankModal({
   onClose,
   questionBank = [],
   onSaveBank,
+  classId,
 }) {
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'ai' | 'import'
   const [bank, setBank] = useState(questionBank);
@@ -141,7 +142,7 @@ export default function BingoQuestionBankModal({
 
     try {
       const generateFn = httpsCallable(functions, 'generateQuestionBankAi');
-      const res = await generateFn({ topic: aiTopic.trim(), count: Number(aiCount) });
+      const res = await generateFn({ topic: aiTopic.trim(), count: Number(aiCount), classId });
       const questions = res.data?.questions || [];
 
       setAiGeneratedList(questions);
