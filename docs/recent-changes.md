@@ -617,4 +617,111 @@ During classroom live broadcasts, students experienced empty displays where neit
    - `handleStartSynchronizedBroadcast` generates and tracks `activeBroadcastSessionIdRef`.
    - When the teacher stops broadcasting (`handleStopSynchronizedBroadcast`), it automatically invokes `lectureRecorder.mergeSessionRecordings` for that broadcast group in the background.
 
+---
+
+## 22. Unified Student Identity & Cross-Class Student Profile Propagation (2026-09-22)
+
+### 22.1 Context & Core Architectural Directives
+1. **Unified Single "Student Name" Refactor**:
+   - *User Directive*: *"I want just use Student Name to replace First Name and Last Name."* and *"no need Backwards-compatible fallback as I never input any user with it!!"*
+   - In Hong Kong educational institutions (such as VTC/IVE/HKIIT), student names are officially formatted in unified Romanized full names (e.g. `Chan Tai Man`, `Wong Ka Yan`) or Western names without standard Western first/last name splits. Forcing separated `First Name` and `Last Name` columns caused formatting friction and confusion with Chinese name ordering.
+   - Replaced all occurrences of `firstName` and `lastName` with a clean, single **`studentName`** field across the CSV parser, batch upload modal, roster displays, and Firestore documents.
+2. **Cross-Class Profile Propagation ("One Class Provided It, All Classes Work")**:
+   - *User Invariant*: *"but logically the student can take many classes so one of the class provided it them all classes will work?"*
+   - *Problem Statement*: Previously, student profile metadata (`studentName`, `nickname`, `programme`, `studentClass` [cohort/tutorial group, e.g. `IT114115/1A`]) was saved only in the specific class document's `studentProfiles` map. When a teacher created a new class or another teacher enrolled the same student in another subject module, the student's name and metadata appeared empty unless manually re-uploaded for each course.
+   - *Architectural Requirement*: Provide an institutional-grade student directory where once any teacher uploads or inputs a student's profile in any single class, that profile metadata automatically propagates across all other classes where the student is enrolled or subsequently added, requiring zero manual migration.
+
+### 22.2 Central Institutional Directory (`studentDirectory`)
+- **Collection**: `/studentDirectory/{studentEmail}`
+  - **Document ID**: Canonical normalized student email (e.g., `chan.tm@stu.vtc.edu.hk`).
+  - **Schema**:
+    ```typescript
+    interface StudentDirectoryRecord {
+      email: string;
+      studentName: string;
+      nickname?: string;
+      programme?: string;
+      studentClass?: string; // Academic cohort (e.g. IT114115/1A)
+      lastUpdatedByClass?: string;
+      updatedAt: FirebaseFirestore.Timestamp;
+    }
+    ```
+- **Security & Privacy Rules (`firestore.rules`)**:
+  ```firestore
+  match /studentDirectory/{studentEmail} {
+    allow read, write: if isTeacher();
+  }
+  ```
+  - **Teacher Authorized**: Teachers have read and write permissions to enrich, inspect, and update student directory entries.
+  - **Student Peer Privacy Protected**: Unauthenticated users and students are strictly blocked with `PERMISSION_DENIED`, preventing students from harvesting institutional student rosters or peer profile information.
+
+### 22.3 Dual-Layer Real-Time Propagation Architecture
+
+```mermaid
+flowchart TD
+    subgraph TeacherA ["Teacher A (Class A)"]
+        UI_A["Import Roster CSV / Paste Emails"]
+        Save_A["Click 'Save Class Settings'"]
+    end
+
+    subgraph InstitutionalRepo ["Institutional Memory"]
+        Dir["Firestore /studentDirectory/{email}"]
+    end
+
+    subgraph CloudFunctions ["Backend Triggers"]
+        Trig["onClassUpdate (Cloud Functions Gen 2)"]
+    end
+
+    subgraph TeacherB ["Teacher B (Class B)"]
+        UI_B["Type or Paste Student Email"]
+        Preview_B["Instant Roster Auto-Fill: ✨ Directory Badge"]
+    end
+
+    UI_A --> Save_A
+    Save_A -->|1. Batch Set| Dir
+    Save_A -->|2. Update Doc| Trig
+    Trig -->|3. Background Sync & Backfill| Dir
+    Dir -->|4. Instant Local Memory| UI_B
+    UI_B --> Preview_B
+```
+
+1. **Frontend Instant Auto-Enrichment (`ClassManagement.jsx`)**:
+   - On component mount, queries `/studentDirectory` with an intelligent lazy client-side fallback that scans accessible classes if the central collection is freshly initialized.
+   - When entering, editing, or pasting student emails into the student textarea, the Enrolled Roster Details table instantly auto-populates known metadata (`studentName`, `nickname`, `programme`, `studentClass`).
+   - Displays clear visual indicators:
+     - Header summary badge: `✨ {count} auto-filled from other classes`.
+     - Row-level badge: `✨ Directory` placed next to the student's name, distinguishing institutional auto-inherited profiles from class-local entries.
+2. **Client-Side Batch Synchronization on Save**:
+   - In `handleUpdateClass`, resolves all enrolled student profiles by merging `studentDirectory` for any student lacking a class-local entry.
+   - Uses `writeBatch(db)` to simultaneously persist `studentProfiles` into the class document and batch-upsert all student records into `/studentDirectory`.
+3. **Serverless Background Sync & Backfill (`functions/auth_triggers/userManagement.js`)**:
+   - **`onClassUpdate` Trigger**:
+     - Whenever a class document is written with `studentProfiles`, automatically syncs all provided profile entries to `/studentDirectory/{studentEmail}`.
+     - When students are added without profile information (e.g., via administrative scripts, external APIs, or raw email lists), queries `studentDirectory` to backfill profile data into `classes/{classId}/studentProperties/{uid}` and the class document's `studentProfiles` map.
+   - **`getAllSystemStudentEmails` Callable**:
+     - Aggregates student profiles across `/studentDirectory`, Firebase Auth, and enrolled classes, returning `{ studentEmails, studentProfiles, total }`.
+4. **Enhanced CSV Roster Export**:
+   - Exporting the class roster to CSV automatically merges data from `studentDirectory` and `studentProfiles`, guaranteeing that exported CSVs contain complete student names, nicknames, programmes, and cohorts even if the current class was created with bare email addresses.
+
+### 22.4 Verification & Deployments
+- **Automated Frontend Test Suite (`web-app`)**:
+  - **113 test files passed (977 unit tests passed, 0 failures)**.
+  - Added dedicated integration test in `ClassManagement.test.jsx` asserting cross-class profile enrichment and `✨ Directory` badge rendering.
+- **Cloud Functions Test Suite (`functions/auth_triggers`)**:
+  - **3 test files passed (25 tests passed, 0 failures)**.
+  - Verified directory synchronization and automatic cross-class backfilling in `classTriggers.test.js` and `userManagement.test.js`.
+- **Firestore Security Rules Real-Token Verification (`tests/security_rules.test.mjs`)**:
+  - **47/47 security suites passed** against live Firestore:
+    - `Unauthenticated user cannot read studentDirectory` (Verified).
+    - `Student 1 CANNOT read studentDirectory` (Verified).
+    - `Student 1 CANNOT write studentDirectory` (Verified).
+    - `Teacher can read studentDirectory` (Verified).
+    - `Teacher can write studentDirectory` (Verified).
+- **Dual Cloud Deployments**:
+  - **Firestore Rules**: Deployed to `it114115-dev-2026` and `it114115-2627`.
+  - **Cloud Functions (`auth-triggers`)**: Deployed to `it114115-dev-2026` and `it114115-2627`.
+  - **Web App Hosting**: Built and deployed to `https://it114115-dev-2026.web.app` and `https://it114115-2627.web.app`.
+- **Model Invariant**: Verified zero occurrences of legacy 2.5 models across all code, tests, and documentation.
+
+
 

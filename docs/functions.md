@@ -243,18 +243,28 @@ This directory contains Cloud Functions that are triggered by authentication eve
     -   **Trigger**: `beforeUserCreated`.
     -   **Description**: This function automatically assigns a `role` (`student` or `teacher`) to a new user based on their email domain (`@stu.vtc.edu.hk` for students, `@vtc.edu.hk` for teachers). It also checks for any classes where the user's email was pre-enrolled and automatically links them by updating the relevant class and user profile documents.
 
+#### Callable Functions
+
+-   **`getAllSystemStudentEmails`**:
+    -   **Trigger**: `onCall` (`functions/auth_triggers/index.js`).
+    -   **Authentication & Authorization**: Requires an authenticated user with verified `teacher` or `admin` claims.
+    -   **Description**: Aggregates all registered and pre-enrolled students across the entire institution. Combines records from `/studentDirectory`, Firebase Auth user listings, and all enrolled `classes` documents. Returns `{ studentEmails: string[], studentProfiles: Record<string, StudentProfile>, total: number }`, powering the teacher's institutional autocompletion and roster import workflows.
+
 #### Firestore Triggers
 
 -   **`onClassUpdate`**:
     -   **Trigger**: `onDocumentWritten` in `classes/{classId}`.
-    -   **Description**: This function manages the relationship between users and classes. When a class document is updated (e.g., students or teachers are added or removed from the `studentEmails` or `teacherEmails` arrays), it performs the following actions:
+    -   **Description**: This function manages the relationship between users and classes and maintains cross-class profile synchronization:
         -   **User Creation**: If a user for an added email does not exist, it creates a new Firebase Auth user and assigns the appropriate role.
         -   **Association**: It links/unlinks the class to/from the user's profile (`studentProfiles` or `teacherProfiles`).
         -   **Denormalization**: It adds/removes the user's UID and email from the `students` or `teachers` map within the class document for efficient lookups.
+        -   **Central Institutional Directory Synchronization**: If the class document contains updated `studentProfiles`, syncs them directly into `/studentDirectory/{studentEmail}` with `{ email, studentName, nickname, programme, studentClass, lastUpdatedByClass, updatedAt }`.
+        -   **Cross-Class Student Profile Backfill**: When students are newly enrolled into the class without profile metadata, queries `/studentDirectory` for matching entries and automatically backfills their profile data into `classes/{classId}/studentProperties/{uid}` and the class document's own `studentProfiles` map.
 
 ### Data Models
 
--   **`classes`**: Stores class information, including schedules, IP restrictions, and lists of student/teacher emails and UIDs.
+-   **`classes`**: Stores class information, including schedules, IP restrictions, rosters, and the `studentProfiles` metadata map.
+-   **`studentDirectory`**: Institutional repository storing unified student identity records (`studentName`, `nickname`, `programme`, `studentClass`) indexed by student email.
 -   **`studentProfiles`**: A collection where each document represents a student, storing a list of classes they are enrolled in.
 -   **`teacherProfiles`**: A collection where each document represents a teacher, storing a list of classes they are assigned to.
 

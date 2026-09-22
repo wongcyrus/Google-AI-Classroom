@@ -23,6 +23,7 @@ This document outlines the Firestore database schema for the AI Invigilator appl
    - [`prompts`](#prompts)
    - [`propertyUploadJobs`](#propertyuploadjobs)
    - [`screenshots`](#screenshots)
+   - [`studentDirectory`](#studentdirectory)
    - [`studentProfiles`](#studentprofiles)
    - [`students`](#students)
    - [`teacherProfiles`](#teacherprofiles)
@@ -101,6 +102,7 @@ erDiagram
         timestamp lastAutoBingoAt "Timestamp of last automated Bingo execution"
         string subjectDomain "Academic discipline context"
         string customSubjectDomain "Custom academic discipline text"
+        map studentProfiles "{ [email]: { studentName, nickname, programme, studentClass } } - Unified student profile directory"
         object subtitlePrompt "{ id, name, promptText } - Class translation AI prompt"
         object liveImagePrompt "{ id, name, promptText } - Cloud fallback face/gaze/screen invigilation prompt"
         object bingoPrompt "{ id, name, promptText } - Active presence challenge prompt"
@@ -109,6 +111,17 @@ erDiagram
         object gemmaIntentPrompt "{ id, name, promptText } - On-device voice intent classifier prompt"
         object afterClassVideoPrompt "{ id, name, promptText } - Post-class video evaluation rubric prompt"
         boolean defaultLectureRecording "Defaults to true (record & stream by default)"
+    }
+
+    studentDirectory {
+        string studentEmail PK
+        string email "Student institutional email"
+        string studentName "Unified official student name"
+        string nickname "Preferred nickname"
+        string programme "Academic programme / major"
+        string studentClass "Student cohort/class (e.g. IT114115/1A)"
+        string lastUpdatedByClass "Class ID that updated profile"
+        timestamp updatedAt "Last update timestamp"
     }
 
     teacherProfiles {
@@ -343,6 +356,7 @@ erDiagram
     classes ||--o{ studentProfiles : "enrolled in"
     classes ||--o{ teacherProfiles : "managed by"
     classes }o--|| users : "created by teachers"
+    studentDirectory ||--o{ classes : "propagates profile metadata across"
     classes ||--o{ bingoRecords : "dispatches"
     classes ||--o{ attendanceAdjustments : "penalizes unacknowledged presence"
     bingoRecords }o--|| studentProfiles : "challenges"
@@ -423,6 +437,7 @@ Stores information about each class.
     *   `teacherEmails`: (array) An array of teacher emails used for enrollment.
     *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
     *   `teachers`: (map) A map of teacher UIDs to their email addresses (`{ <teacherUid>: <teacherEmail> }`).
+    *   `studentProfiles`: (map) A map of normalized student emails to individual student roster profile metadata: `{ [normalizedEmail]: { studentName: string, nickname?: string, programme?: string, studentClass?: string } }`. Stores unified official student names (replacing legacy `firstName`/`lastName`), preferred nicknames, academic programmes, and student cohorts/classes (e.g., `IT114115/1A`). Auto-synchronized with the central `studentDirectory` collection.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
     *   `retentionDays`: (number) The screenshot data retention period in days (e.g., 7, 14, 30, 90). Screenshots older than this duration are automatically purged.
     *   `videoRetentionDays`: (number) The video retention period in days (e.g., 30, 90, 180, 365). Compiled lesson videos older than this duration are automatically purged.
@@ -796,6 +811,21 @@ Stores metadata for each screenshot.
     *   `timestamp`: (timestamp) A timestamp of when the screenshot was taken.
     *   `expireAt`: (timestamp) The exact expiration date calculated from class `retentionDays`, used by Firestore TTL and delete triggers.
     *   `deleted`: (boolean) A boolean indicating if the screenshot has been deleted.
+
+### `studentDirectory`
+
+Central institutional repository for cross-class student profile metadata. Whenever student profile details are uploaded or modified in any class (via batch modal, CSV import, or manual edit), they are synced here and automatically propagated to any other class enrolling that student without manual re-entry.
+
+*   **Document ID**: `studentEmail` (string, lowercase normalized student institutional email, e.g. `chan.tm@stu.vtc.edu.hk`).
+*   **Security**: Read and write restricted exclusively to verified teachers (`isTeacher()`). Direct student access is strictly blocked to protect peer privacy.
+*   **Fields**:
+    *   `email`: (string) The student's institutional email address.
+    *   `studentName`: (string) The student's official full name (e.g. `Chan Tai Man`, `Bob Ross`). Replaces separated `firstName`/`lastName`.
+    *   `nickname`: (string, optional) Preferred informal or English name (e.g. `Timmy`).
+    *   `programme`: (string, optional) Academic programme of study (e.g. `Higher Diploma in Cloud and Data Centre Administration`).
+    *   `studentClass`: (string, optional) Academic cohort or tutorial group identifier (e.g. `IT114115/1A`). Note: Distinct from system course `classId`.
+    *   `lastUpdatedByClass`: (string, optional) The `classId` from which this profile was most recently updated.
+    *   `updatedAt`: (timestamp) Timestamp when this directory record was last written or synchronized.
 
 ### `studentProfiles`
 

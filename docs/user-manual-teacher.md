@@ -103,11 +103,34 @@ Open the **Settings** tab in your class workspace and locate the **Timetable & S
 
 ## 3. Managing Student Rosters & Custom Properties
 
-### Adding Students to the Roster
+### Unified Student Identity & Roster Structure
+The system utilizes a single, unified **`Student Name`** format (e.g., `Chan Tai Man`, `Bob Ross`, `Wong Ka Yan`), reflecting standard institutional formatting without arbitrary first/last name fragmentation.
+
+Each enrolled student profile contains:
+- **Email**: Institutional student email (e.g., `student@stu.vtc.edu.hk`).
+- **Student Name**: Full official Romanized name.
+- **Nickname (Optional)**: Preferred English or informal name (e.g., `Timmy`, `Painter`).
+- **Programme (Optional)**: Academic programme of study (e.g., `Higher Diploma in Cloud and Data Centre Administration`).
+- **Class / Cohort (Optional)**: Academic cohort or tutorial section (e.g., `IT114115/1A`).
+
+### Cross-Class Student Profile Propagation ("One Class Provided It, All Classes Work")
+Students often take multiple modular classes across semesters and teaching teams. The platform features an **Institutional Student Directory**:
+1. **One-Time Upload**: Once a student's profile metadata is entered, imported via CSV, or uploaded in **any single class**, it is stored in the central institutional directory.
+2. **Instant Auto-Enrichment**: Whenever you create a new class or add student emails to an existing class (by typing, pasting, or importing emails), known profiles from other classes are **immediately auto-filled**.
+3. **Visual Transparency**:
+   - The roster summary displays: `✨ X auto-filled from other classes`.
+   - Each auto-enriched student displays a `✨ Directory` badge next to their name in the Enrolled Roster Details table.
+4. **Zero Manual Migration**: Existing classes automatically inherit institutional directory records on load without requiring any database migration scripts.
+
+### Adding & Managing Students
 1. In the **Class Management (`⚙️ Settings`)** tab, scroll to **Student Roster**.
-2. **Manual Input:** Enter student institutional emails separated by commas or new lines into the textarea.
-3. **File Import:** Click **`📥 Import (CSV/TXT)`** to upload an institutional roster file.
-4. **Export Roster:** Click **`📤 Export CSV`** to download current roster records.
+2. **Manual Input:** Enter student institutional emails separated by commas or new lines into the textarea. As you type, matching directory profiles appear below in real time.
+3. **Batch Import Modal (`📥 Batch Import Students`):**
+   - Click to open the structured import dialog.
+   - Paste or upload CSV data with headers: `Email,Student Name,Nickname,Programme,Class`.
+   - Preview changes and apply them directly to the roster.
+4. **Export Roster (`📤 Export CSV`):**
+   - Click **`📤 Export CSV`** to download current roster records. The downloaded CSV automatically includes all auto-enriched names, nicknames, programmes, and cohort classes merged from institutional memory.
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:
