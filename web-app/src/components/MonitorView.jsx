@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-import { db, storage, auth } from '../firebase-config';
+import { db, storage, auth, functions } from '../firebase-config';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
 
 import Modal from './Modal';
 import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
 import TeacherSubtitleControlModal from './subtitles/TeacherSubtitleControlModal';
 import { useTeacherLiveSubtitles } from '../hooks/useTeacherLiveSubtitles';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 import ControlsPanel from './monitor/ControlsPanel';
 import StudentsGrid from './monitor/StudentsGrid';
@@ -18,6 +20,10 @@ import IndividualStudentView from './IndividualStudentView';
 import { usePrompts } from '../hooks/usePrompts';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
+import useLectureRecorder from '../hooks/useLectureRecorder';
+import LectureRecordingsView from './LectureRecordingsView';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+
 
 import { useAnalysis } from '../hooks/useAnalysis';
 import {
@@ -55,10 +61,18 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const [reviewTime, setReviewTime] = useState(null);
   const [timelineScrubTime, setTimelineScrubTime] = useState(null);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showRecordingsModal, setShowRecordingsModal] = useState(false);
   const timelineDebounceTimer = useRef(null);
 
   const teacherUid = user?.uid || auth?.currentUser?.uid || null;
   const teacherEmail = user?.email || auth?.currentUser?.email || null;
+
+  const lectureRecorder = useLectureRecorder({
+    classId,
+    teacherUid,
+    teacherEmail,
+  });
+
 
   const {
     isBroadcasting: isScreenBroadcasting,
@@ -75,16 +89,243 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
 
   const [showSubtitleModal, setShowSubtitleModal] = useState(false);
-  const [isSubtitleBroadcastEnabled, setIsSubtitleBroadcastEnabled] = useState(false);
+  const [isSubtitleBroadcastEnabled, setIsSubtitleBroadcastEnabled] = useState(true);
+  const [selectedMicDeviceId, setSelectedMicDeviceId] = useState(() => {
+    try {
+      return localStorage.getItem('preferred_teacher_mic_device_id') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [classSubjectDomain, setClassSubjectDomain] = useState('');
+  const [classSubtitlePrompt, setClassSubtitlePrompt] = useState(null);
+  const [classDefaultLectureRecording, setClassDefaultLectureRecording] = useState(true);
+
+  const handleSelectMicDeviceId = (newId) => {
+    setSelectedMicDeviceId(newId);
+    try {
+      localStorage.setItem('preferred_teacher_mic_device_id', newId);
+    } catch {}
+  };
+
+  const handleSelectSubtitlePrompt = async (prompt) => {
+    setClassSubtitlePrompt(prompt);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, 'classes', classId), {
+          subtitlePrompt: prompt || null,
+        });
+      } catch (err) {
+        console.error('Failed to update subtitle prompt:', err);
+      }
+    }
+  };
+
+  const handleSelectCourseContext = async (domain) => {
+    setClassSubjectDomain(domain);
+    if (classId) {
+      try {
+        await updateDoc(doc(db, 'classes', classId), {
+          subjectDomain: domain,
+        });
+      } catch (err) {
+        console.error('Failed to update subject domain:', err);
+      }
+    }
+  };
+
+  const [synchronizedAudioStream, setSynchronizedAudioStream] = useState(null);
+  const activeBroadcastStreamsRef = useRef(null);
+  const activeBroadcastSessionIdRef = useRef(null);
+  const isStartingBroadcastRef = useRef(false);
 
   const teacherSubtitles = useTeacherLiveSubtitles({
     classId,
     teacherUid,
     teacherEmail,
-    enabled: isSubtitleBroadcastEnabled,
-    audioStream: broadcastScreenStream,
-    courseContext: `Class ${classId}`,
+    enabled: isSubtitleBroadcastEnabled && (isScreenBroadcasting || showSubtitleModal),
+    audioStream: synchronizedAudioStream,
+    deviceId: selectedMicDeviceId,
+    courseContext: classSubjectDomain || `Class ${classId}`,
+    subtitlePrompt: classSubtitlePrompt,
   });
+
+  // Synchronized Screen & Voice Launch Handler to prevent out-of-sync A/V
+  const handleStartSynchronizedBroadcast = async (options = {}) => {
+    if (isStartingBroadcastRef.current || isScreenBroadcasting) {
+      console.warn('[MonitorView] Broadcast start already in progress or already active.');
+      return null;
+    }
+    isStartingBroadcastRef.current = true;
+    try {
+      const {
+        resolution = broadcastResolution || '1080p',
+        interval = broadcastInterval || 1500,
+        micDeviceId = selectedMicDeviceId || '',
+        enableSubtitles = isSubtitleBroadcastEnabled,
+        recordOnStart = false,
+        lectureTitle = '',
+        lectureTopic = '',
+      } = options;
+
+    if (setBroadcastResolution) setBroadcastResolution(resolution);
+    if (setBroadcastInterval) setBroadcastInterval(interval);
+
+    // 1. Acquire screen media stream (with system audio if shared by user)
+    let screenStream = null;
+    if (navigator?.mediaDevices?.getDisplayMedia) {
+      try {
+        const displayMediaOptions = {
+          video: {
+            displaySurface: 'monitor',
+            frameRate: { ideal: 10, max: 15 },
+          },
+          audio: true,
+        };
+        screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      } catch (dispErr) {
+        console.warn('[MonitorView] Display media acquisition warning:', dispErr);
+        throw dispErr;
+      }
+    }
+
+    // 2. Acquire microphone audio stream
+    let micStream = null;
+    try {
+      micStream = await acquireInputDeviceStream('audio', micDeviceId, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
+    } catch (micErr) {
+      console.warn('[MonitorView] Microphone acquisition fallback notice:', micErr);
+      if (navigator?.mediaDevices?.getUserMedia) {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
+        }).catch(() => null);
+      }
+    }
+
+    // 3. Hardware clock A/V synchronization & Web Audio mixing
+    const screenAudioTracks = screenStream ? screenStream.getAudioTracks() : [];
+    const micAudioTracks = micStream ? micStream.getAudioTracks() : [];
+    let synchronizedAudio = micStream;
+    let mixedAudioCtx = null;
+
+    if (
+      screenAudioTracks.length > 0 &&
+      micAudioTracks.length > 0 &&
+      typeof window !== 'undefined' &&
+      (window.AudioContext || window.webkitAudioContext)
+    ) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      mixedAudioCtx = new AudioCtx();
+      const dest = mixedAudioCtx.createMediaStreamDestination();
+      const screenSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(screenAudioTracks));
+      const micSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(micAudioTracks));
+      screenSource.connect(dest);
+      micSource.connect(dest);
+      synchronizedAudio = dest.stream;
+    }
+
+    setSynchronizedAudioStream(synchronizedAudio);
+
+    // 4. Atomic concurrent launch of Screen Broadcast, Subtitles, and Recording
+    await startScreenBroadcast(
+      screenStream
+        ? { resolution, interval, existingStream: screenStream }
+        : { resolution, interval }
+    );
+
+    if (enableSubtitles) {
+      setIsSubtitleBroadcastEnabled(true);
+    }
+
+    if (!activeBroadcastSessionIdRef.current) {
+      activeBroadcastSessionIdRef.current = `bcast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    }
+    const currentBroadcastSessionId = activeBroadcastSessionIdRef.current;
+
+    if (recordOnStart && lectureRecorder) {
+      await lectureRecorder.startRecording({
+        screenStream,
+        audioStream: synchronizedAudio,
+        title: lectureTitle,
+        topic: lectureTopic,
+        broadcastSessionId: currentBroadcastSessionId,
+      });
+    }
+
+    activeBroadcastStreamsRef.current = {
+      screenStream,
+      micStream,
+      mixedAudioCtx,
+    };
+
+    // Auto cleanup when user clicks "Stop sharing" on browser chrome bar
+    const videoTrack = screenStream?.getVideoTracks?.()?.[0];
+    if (videoTrack) {
+      const origEnded = videoTrack.onended;
+      videoTrack.onended = () => {
+        if (typeof origEnded === 'function') origEnded();
+        handleStopSynchronizedBroadcast();
+      };
+    }
+
+    return screenStream;
+    } finally {
+      isStartingBroadcastRef.current = false;
+    }
+  };
+
+  // Synchronized Stop Handler
+  const handleStopSynchronizedBroadcast = async () => {
+    const broadcastSessionIdToMerge = activeBroadcastSessionIdRef.current;
+    activeBroadcastSessionIdRef.current = null;
+
+    await stopScreenBroadcast();
+    setSynchronizedAudioStream(null);
+
+    if (lectureRecorder && (lectureRecorder.isRecording || lectureRecorder.isPaused)) {
+      lectureRecorder.stopRecording();
+    }
+
+    // Automatically check if multiple recordings exist for this broadcast session and merge them
+    if (broadcastSessionIdToMerge && lectureRecorder?.mergeSessionRecordings) {
+      setTimeout(() => {
+        lectureRecorder
+          .mergeSessionRecordings({ sessionGroupId: `bcast_${broadcastSessionIdToMerge}` })
+          .then((res) => {
+            if (res?.success) {
+              console.info('[MonitorView] Automatically merged lecture session:', res.combinedSessionId);
+            }
+          })
+          .catch((err) => {
+            console.debug('[MonitorView] Automatic merge check status:', err.message);
+          });
+      }, 2500);
+    }
+
+    if (activeBroadcastStreamsRef.current) {
+      const { screenStream, micStream, mixedAudioCtx } = activeBroadcastStreamsRef.current;
+      if (screenStream) {
+        screenStream.getTracks().forEach((t) => {
+          try { t.stop(); } catch {}
+        });
+      }
+      if (micStream) {
+        micStream.getTracks().forEach((t) => {
+          try { t.stop(); } catch {}
+        });
+      }
+      if (mixedAudioCtx && mixedAudioCtx.state !== 'closed') {
+        try { mixedAudioCtx.close(); } catch {}
+      }
+      activeBroadcastStreamsRef.current = null;
+    }
+  };
+
 
   const handleLessonChange = (e) => {
     originalHandleLessonChange(e);
@@ -147,6 +388,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const lastAllImagesRunTimeRef = useRef(0); // timestamp of last all-images analysis execution
   const studentUidMap = useRef(new Map());
   const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
+  const [studentProfiles, setStudentProfiles] = useState({});
 
 
   const handleAiModelChange = async (newModel) => {
@@ -313,8 +555,6 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        console.log('[MonitorView] DEBUG: Raw class data:', JSON.stringify(data, null, 2));
-
         const studentUids = data.students ? Object.keys(data.students) : [];
         setClassList(studentUids);
 
@@ -326,7 +566,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         }
         
         setUidToEmailMap(newMap);
-        console.log('[MonitorView] DEBUG: uidToEmailMap populated:', newMap);
+        setStudentProfiles(data.studentProfiles || {});
 
         if (data.aiModel) {
           setSelectedAiModel(data.aiModel);
@@ -373,6 +613,15 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         }
         if (data.isExamActive !== undefined) {
           setIsExamActive(Boolean(data.isExamActive));
+        }
+        if (data.subjectDomain !== undefined) {
+          setClassSubjectDomain(data.subjectDomain === 'Other (Custom)' && data.customSubjectDomain ? data.customSubjectDomain : data.subjectDomain);
+        }
+        if (data.subtitlePrompt !== undefined) {
+          setClassSubtitlePrompt(data.subtitlePrompt);
+        }
+        if (data.defaultLectureRecording !== undefined) {
+          setClassDefaultLectureRecording(Boolean(data.defaultLectureRecording));
         }
 
         const classCapture = data.captureMode || data.settings?.captureMode;
@@ -575,6 +824,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     return classList.map(uid => {
       const status = studentStatuses.find(s => s.id === uid);
       const email = uidToEmailMap.get(uid) || (status ? status.email : '');
+      const studentProfile = getStudentProfile(email, studentProfiles);
+      const friendlyName = getStudentDisplayName({ email, name: status?.name }, studentProfiles);
       const statusTs = getTs(status);
       const isStatusFresh = reviewTime
         ? true
@@ -585,7 +836,11 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       return {
         id: uid,
         email: email,
-        name: status ? status.name : email,
+        name: friendlyName,
+        displayName: friendlyName,
+        profile: studentProfile,
+        studentClass: studentProfile.studentClass,
+        programme: studentProfile.programme,
         isSharing: isActuallySharing,
         isWebcamSharing: isActuallySharing && Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))),
         isAudioSharing: isActuallySharing && Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording),
@@ -607,7 +862,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         lastHeartbeat: statusTs,
       };
     });
-  }, [classList, studentStatuses, uidToEmailMap, now, frameRate, reviewTime]);
+  }, [classList, studentStatuses, uidToEmailMap, studentProfiles, now, frameRate, reviewTime]);
 
   // Live screenshot URL resolution with bounded concurrency and in-flight deduplication
   useEffect(() => {
@@ -952,6 +1207,16 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         isCapturing: newIsCapturing,
         captureStartedAt: newIsCapturing ? serverTimestamp() : null
       });
+
+      if (!newIsCapturing) {
+        // Teacher stopped capture: immediately clean up active bingo and pending retries
+        try {
+          const cancelFn = httpsCallable(functions, 'cancelActiveBingo');
+          await cancelFn({ classId });
+        } catch (cancelErr) {
+          console.warn('[MonitorView] Note: could not auto-cancel active bingo on capture stop:', cancelErr);
+        }
+      }
     } catch (error) {
       console.error("Error toggling capture:", error);
       setIsCapturing(!newIsCapturing); // Revert on error
@@ -973,8 +1238,10 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     .filter(uid => !sharingStudentUids.has(uid))
     .map(uid => {
       const email = uidToEmailMap.get(uid) || '';
-      return { id: uid, email: email };
-    }), [classList, sharingStudentUids, uidToEmailMap]);
+      const displayName = getStudentDisplayName(email, studentProfiles);
+      const prof = getStudentProfile(email, studentProfiles);
+      return { id: uid, email, displayName, name: displayName, studentClass: prof.studentClass, programme: prof.programme };
+    }), [classList, sharingStudentUids, uidToEmailMap, studentProfiles]);
 
   const liveSelectedStudent = selectedStudent
     ? students.find(student => student.id === selectedStudent.id) || selectedStudent
@@ -1091,6 +1358,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     Object.entries(analysisResults || {}).map(([studentId, result]) => {
       const studentObj = students.find(s => s.id === studentId);
       const email = studentObj?.email || uidToEmailMap.get(studentId) || studentId;
+      const displayName = studentObj?.displayName || getStudentDisplayName(email, studentProfiles);
       
       let textContent = '';
       let isError = false;
@@ -1111,15 +1379,18 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
       return (
         <li key={studentId} style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #e0e0e0', listStyle: 'none' }}>
-          <strong style={{ display: 'block', marginBottom: '6px', color: '#1976d2', fontSize: '1.05em' }}>
-            {email}
+          <strong style={{ display: 'block', marginBottom: '4px', color: '#1976d2', fontSize: '1.05em' }}>
+            {displayName}
           </strong>
+          {displayName !== email && (
+            <div style={{ fontSize: '0.8em', color: '#666', marginBottom: '6px' }}>{email}</div>
+          )}
           <div style={{ color: isError ? '#d32f2f' : '#2c3e50', whiteSpace: 'pre-wrap', lineHeight: '1.6', background: isError ? '#ffebee' : '#f8f9fa', padding: '10px 14px', borderRadius: '6px' }}>
             {textContent}
           </div>
         </li>
       );
-    }), [analysisResults, uidToEmailMap, students]);
+    }), [analysisResults, uidToEmailMap, students, studentProfiles]);
 
   const handleAudioCaptureToggle = async (enabled) => {
     setEnableAudioCapture(enabled);
@@ -1244,7 +1515,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                 {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
               </span>
 
-              {/* Prominent Top Bar Teacher Screen Broadcast Button */}
+              {/* Unified Teacher Broadcast Studio (Screen & Voice) Action Button */}
               {!isScreenBroadcasting ? (
                 <button
                   type="button"
@@ -1253,19 +1524,21 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                     background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
                     color: '#ffffff',
                     border: 'none',
-                    padding: '6px 14px',
-                    borderRadius: '6px',
+                    padding: '7px 16px',
+                    borderRadius: '8px',
                     fontWeight: 700,
-                    fontSize: '0.85rem',
+                    fontSize: '0.86rem',
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.3)'
+                    gap: '7px',
+                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.35)',
+                    transition: 'all 0.15s ease',
                   }}
-                  title="Configure and broadcast your screen live to all students in this class"
+                  title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
                 >
-                  🖥️ Share Screen to Class
+                  <span>🎙️🖥️</span>
+                  <span>Broadcast Screen & Voice</span>
                 </button>
               ) : (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -1275,18 +1548,20 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       background: '#fee2e2',
                       color: '#b91c1c',
                       border: '1px solid #fca5a5',
-                      padding: '5px 10px',
+                      padding: '5px 12px',
                       borderRadius: '6px',
                       fontWeight: 700,
                       fontSize: '0.82rem',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '5px',
+                      gap: '6px',
                       cursor: 'pointer',
                     }}
-                    title="Click to view live broadcast preview and controls"
+                    title="Live Broadcast Active (Click to open studio controls)"
                   >
-                    🔴 Live Broadcast ({broadcastViewers.length} watching)
+                    <span className="live-pulse-dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626' }} />
+                    <span>Live ({broadcastViewers.length} watching)</span>
+                    {isSubtitleBroadcastEnabled && <span style={{ color: '#047857', fontWeight: 600 }}>• 🎙️ Subtitles</span>}
                   </span>
                   <button
                     type="button"
@@ -1306,11 +1581,11 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                     }}
                     title="View live broadcast screen preview and viewers"
                   >
-                    👁️ Preview & Viewers
+                    👁️ Studio Dashboard
                   </button>
                   <button
                     type="button"
-                    onClick={stopScreenBroadcast}
+                    onClick={handleStopSynchronizedBroadcast}
                     style={{
                       background: '#dc2626',
                       color: '#ffffff',
@@ -1319,39 +1594,58 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                       borderRadius: '6px',
                       fontWeight: 700,
                       fontSize: '0.8rem',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
                     }}
-                    title="Stop Screen Broadcast"
+                    title="Stop Screen and Voice Broadcast"
                   >
-                    ⏹ Stop Sharing
+                    ⏹ Stop Broadcast
                   </button>
                 </div>
               )}
 
-              {/* Prominent Live Subtitle Broadcast Button */}
-              <button
-                type="button"
-                onClick={() => setShowSubtitleModal(true)}
-                style={{
-                  background: isSubtitleBroadcastEnabled
-                    ? 'linear-gradient(135deg, #059669, #047857)'
-                    : '#f1f5f9',
-                  color: isSubtitleBroadcastEnabled ? '#ffffff' : '#334155',
-                  border: isSubtitleBroadcastEnabled ? 'none' : '1px solid #cbd5e1',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: isSubtitleBroadcastEnabled ? '0 2px 4px rgba(5, 150, 105, 0.3)' : 'none',
-                }}
-                title="即時課堂字幕與多語言翻譯設定 (Live Subtitles & Translation)"
-              >
-                {isSubtitleBroadcastEnabled ? '🔴 即時字幕 (廣播中)' : '🎙️ 即時字幕'}
-              </button>
+              {/* Teacher Sovereign Lecture Recording Status & YouTube CC Button */}
+              {lectureRecorder.isRecording && (
+                <span
+                  onClick={() => setShowBroadcastModal(true)}
+                  style={{
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    border: '1px solid #f87171',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'pointer',
+                  }}
+                  title="Lecture is actively recording. Click to manage."
+                >
+                  🔴 REC ({lectureRecorder.durationFormatted})
+                </span>
+              )}
+              {lectureRecorder.isPaused && (
+                <span
+                  onClick={() => setShowBroadcastModal(true)}
+                  style={{
+                    background: '#fef3c7',
+                    color: '#92400e',
+                    border: '1px solid #fcd34d',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'pointer',
+                  }}
+                  title="Lecture recording is paused. Click to resume."
+                >
+                  ⏸️ PAUSED ({lectureRecorder.durationFormatted})
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1505,7 +1799,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         )}
       </Modal>
 
-      {/* Teacher Screen Broadcast Live Preview & Control Modal */}
+      {/* Teacher Screen & Voice Broadcast Studio Modal */}
       <TeacherScreenBroadcastModal
         isOpen={showBroadcastModal}
         onClose={() => setShowBroadcastModal(false)}
@@ -1514,41 +1808,79 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         isBroadcasting={isScreenBroadcasting}
         frameStats={frameStats}
         viewers={broadcastViewers}
-        onStartBroadcast={startScreenBroadcast}
-        onStopBroadcast={stopScreenBroadcast}
+        onStartBroadcast={handleStartSynchronizedBroadcast}
+        onStopBroadcast={handleStopSynchronizedBroadcast}
         broadcastResolution={broadcastResolution}
         broadcastInterval={broadcastInterval}
         setBroadcastResolution={setBroadcastResolution}
         setBroadcastInterval={setBroadcastInterval}
-        onOpenSubtitles={() => setShowSubtitleModal(true)}
         isSubtitlesEnabled={isSubtitleBroadcastEnabled}
+        setIsSubtitlesEnabled={setIsSubtitleBroadcastEnabled}
+        selectedMicDeviceId={selectedMicDeviceId}
+        onSelectMicDeviceId={handleSelectMicDeviceId}
+        teacherSubtitles={teacherSubtitles}
+        courseContext={classSubjectDomain}
+        subtitlePrompt={classSubtitlePrompt}
+        user={user}
+        onSelectSubtitlePrompt={handleSelectSubtitlePrompt}
+        onSelectCourseContext={handleSelectCourseContext}
+        lectureRecorder={lectureRecorder}
+        defaultRecordOnStart={classDefaultLectureRecording}
+        onOpenRecordings={() => setShowRecordingsModal(true)}
       />
 
-      {/* Teacher Live Subtitle Control Modal */}
-      <TeacherSubtitleControlModal
-        isOpen={showSubtitleModal}
-        onClose={() => setShowSubtitleModal(false)}
-        enabled={isSubtitleBroadcastEnabled}
-        onToggleEnabled={() => setIsSubtitleBroadcastEnabled((prev) => !prev)}
-        engineMode={teacherSubtitles.engineMode}
-        onSelectEngineMode={teacherSubtitles.setEngineMode}
-        speechLanguage={teacherSubtitles.speechLanguage}
-        onSelectSpeechLanguage={teacherSubtitles.setSpeechLanguage}
-        targetLanguages={teacherSubtitles.targetLanguages}
-        onToggleTargetLanguage={(langCode) => {
-          teacherSubtitles.setTargetLanguages((prev) =>
-            prev.includes(langCode)
-              ? (prev.length > 1 ? prev.filter((l) => l !== langCode) : prev)
-              : [...prev, langCode]
-          );
-        }}
-        isNanoAvailable={teacherSubtitles.isNanoAvailable}
-        latestTranscript={teacherSubtitles.latestTranscript}
-        latestTranslations={teacherSubtitles.latestTranslations}
-        status={teacherSubtitles.status}
-        error={teacherSubtitles.error}
-        liveUsageStats={teacherSubtitles.liveUsageStats}
-      />
+      {/* Teacher Lecture Recordings & YouTube CC Modal */}
+      {showRecordingsModal && (
+        <Modal
+          isOpen={showRecordingsModal}
+          onClose={() => setShowRecordingsModal(false)}
+          title="🎥 Class Lecture Recordings & Multilingual YouTube CC"
+        >
+          <LectureRecordingsView
+            classId={classId}
+            user={user}
+            onBack={() => setShowRecordingsModal(false)}
+          />
+        </Modal>
+      )}
+
+      {/* Legacy Fallback Teacher Live Subtitle Control Modal */}
+      {showSubtitleModal && (
+        <TeacherSubtitleControlModal
+          isOpen={showSubtitleModal}
+          onClose={() => setShowSubtitleModal(false)}
+          enabled={isSubtitleBroadcastEnabled}
+          onToggleEnabled={() => setIsSubtitleBroadcastEnabled((prev) => !prev)}
+          engineMode={teacherSubtitles.engineMode}
+          onSelectEngineMode={teacherSubtitles.setEngineMode}
+          speechLanguage={teacherSubtitles.speechLanguage}
+          onSelectSpeechLanguage={teacherSubtitles.setSpeechLanguage}
+          targetLanguages={teacherSubtitles.targetLanguages}
+          onToggleTargetLanguage={(langCode) => {
+            teacherSubtitles.setTargetLanguages((prev) =>
+              prev.includes(langCode)
+                ? (prev.length > 1 ? prev.filter((l) => l !== langCode) : prev)
+                : [...prev, langCode]
+            );
+          }}
+          isNanoAvailable={teacherSubtitles.isNanoAvailable}
+          isGemmaAvailable={teacherSubtitles.isGemmaAvailable}
+          gemmaProgress={teacherSubtitles.gemmaProgress}
+          latestTranscript={teacherSubtitles.latestTranscript}
+          latestTranslations={teacherSubtitles.latestTranslations}
+          status={teacherSubtitles.status}
+          error={teacherSubtitles.error}
+          liveUsageStats={teacherSubtitles.liveUsageStats}
+          languagePairStatuses={teacherSubtitles.languagePairStatuses}
+          selectedMicDeviceId={selectedMicDeviceId}
+          onSelectMicDeviceId={handleSelectMicDeviceId}
+          courseContext={classSubjectDomain}
+          subtitlePrompt={classSubtitlePrompt}
+          user={user}
+          onSelectSubtitlePrompt={handleSelectSubtitlePrompt}
+          onSelectCourseContext={handleSelectCourseContext}
+        />
+      )}
     </div>
   );
 };

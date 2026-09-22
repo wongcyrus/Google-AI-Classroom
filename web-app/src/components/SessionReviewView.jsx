@@ -6,6 +6,7 @@ import { ref, deleteObject } from 'firebase/storage';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import PlaybackView from './PlaybackView';
 import { exportToCsv } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 const SessionReviewView = ({ classId, startTime, endTime }) => {
   console.log('SessionReviewView rendered for class:', classId);
@@ -61,17 +62,22 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       console.log('PlaybackView: Class snapshot received.');
       if (classSnap.exists()) {
         const classData = classSnap.data();
-        console.log('PlaybackView: Class document data:', classData);
+        const studentsMap = classData.students || {}; // This is the map {uid: email}
+        const profilesMap = classData.studentProfiles || {};
         
-        const studentsMap = classData.students || {}; // This is the new map {uid: email}
-        
-        const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
-          uid: uid,
-          email: email,
-        }));
+        const studentList = Object.entries(studentsMap).map(([uid, email]) => {
+          const prof = getStudentProfile(email, profilesMap);
+          const displayName = getStudentDisplayName(email, profilesMap);
+          return {
+            uid: uid,
+            email: email,
+            displayName: displayName,
+            studentClass: prof.studentClass,
+            programme: prof.programme,
+          };
+        });
 
-        console.log('PlaybackView: Correctly processed student list:', studentList);
-        studentList.sort((a, b) => a.email.localeCompare(b.email));
+        studentList.sort((a, b) => a.displayName.localeCompare(b.displayName));
         setStudents(studentList);
 
       } else {
@@ -282,9 +288,17 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
         <select id="student-select" value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}>
             <option value="" disabled>Select a student</option>
             {students
-              .filter(student => student.email.toLowerCase().includes(studentSearch.toLowerCase()))
+              .filter(student => (
+                student.email.toLowerCase().includes(studentSearch.toLowerCase()) ||
+                (student.displayName && student.displayName.toLowerCase().includes(studentSearch.toLowerCase())) ||
+                (student.studentClass && student.studentClass.toLowerCase().includes(studentSearch.toLowerCase()))
+              ))
               .map(student => (
-                <option key={student.uid} value={student.uid}>{student.email}</option>
+                <option key={student.uid} value={student.uid}>
+                  {student.displayName && student.displayName !== student.email
+                    ? `${student.displayName} (${student.email})${student.studentClass ? ` - [${student.studentClass}]` : ''}`
+                    : `${student.email}${student.studentClass ? ` - [${student.studentClass}]` : ''}`}
+                </option>
             ))}
         </select>
         <button onClick={handleStartPlayback} disabled={!selectedStudent}>Load Student</button>

@@ -5,8 +5,27 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import IrregularitiesView from './IrregularitiesView';
 
 vi.mock('../firebase-config', () => ({
+  db: {},
   storage: {},
   auth: { currentUser: { email: 'teacher@school.edu' } },
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  getDoc: vi.fn().mockResolvedValue({
+    exists: () => true,
+    data: () => ({
+      studentProfiles: {
+        'student1@school.edu': {
+          firstName: 'Alice',
+          lastName: 'Wong',
+          nickname: 'Ally',
+          studentClass: 'IT114115/1A',
+          programme: 'HD in SE'
+        }
+      }
+    })
+  })
 }));
 
 const mockGetDownloadURL = vi.fn().mockImplementation((ref) => Promise.resolve(`https://storage.local/${ref.path || 'image.jpg'}`));
@@ -88,20 +107,19 @@ describe('IrregularitiesView Full Suite', () => {
     expect(screen.getByText('No Face Detected')).toBeInTheDocument();
   });
 
-  it('allows switching period presets and applying custom range', () => {
-    renderComponent();
+  it('does not render duplicate period filter controls and displays parent period info', () => {
+    const { container } = renderComponent({
+      startTime: '2026-08-30T10:00:00Z',
+      endTime: '2026-08-30T11:00:00Z',
+    });
 
-    const todayBtn = screen.getByRole('button', { name: /Today/i });
-    fireEvent.click(todayBtn);
+    // Ensure duplicate filter controls are NOT rendered
+    expect(screen.queryByRole('button', { name: /Today/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Custom Range/i })).toBeNull();
+    expect(container.querySelector('input[type="datetime-local"]')).toBeNull();
 
-    const customBtn = screen.getByRole('button', { name: /Custom Range.../i });
-    fireEvent.click(customBtn);
-
-    expect(screen.getByText(/From:/i)).toBeInTheDocument();
-    expect(screen.getByText(/To:/i)).toBeInTheDocument();
-
-    const applyBtn = screen.getByRole('button', { name: /Apply Filter/i });
-    fireEvent.click(applyBtn);
+    // Verify parent period is displayed in header
+    expect(screen.getByText(/Period:/i)).toBeInTheDocument();
   });
 
   it('opens dossier export modal and quick CSV export', () => {
@@ -147,5 +165,10 @@ describe('IrregularitiesView Full Suite', () => {
     const closeSpan = document.querySelector('.media-player-modal .close');
     fireEvent.click(closeSpan);
     expect(screen.queryByText(/Irregularity Evidence:/i)).not.toBeInTheDocument();
+  });
+
+  it('displays All Recorded Sessions label when no parent filter is set', () => {
+    renderComponent({ startTime: null, endTime: null });
+    expect(screen.getByText(/All Recorded Sessions/i)).toBeInTheDocument();
   });
 });

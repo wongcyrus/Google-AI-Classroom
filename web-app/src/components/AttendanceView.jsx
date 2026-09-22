@@ -4,6 +4,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db, functions } from '../firebase-config';
 import { CSVLink } from 'react-csv';
 import Modal from './Modal.jsx';
+import StudentBadge from './common/StudentBadge';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 import {
   formatFilenameDate,
   computeLessonDuration,
@@ -17,6 +19,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   const [lessonData, setLessonData] = useState(null);
   const [loadingLessonData, setLoadingLessonData] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentProfiles, setStudentProfiles] = useState({});
   const [csvData, setCsvData] = useState(null);
   const csvLink = useRef(null);
 
@@ -77,12 +80,21 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
           if (classSnap.exists()) {
             const classData = classSnap.data();
             const studentsMap = classData.students || {};
+            const profilesMap = classData.studentProfiles || {};
+            setStudentProfiles(profilesMap);
             const lessonDocData = lessonSnap.data();
-            const studentsWithDetails = Object.entries(lessonDocData.students || {}).map(([uid, data]) => ({
-              uid,
-              email: studentsMap[uid] || 'Unknown',
-              ...data,
-            }));
+            const studentsWithDetails = Object.entries(lessonDocData.students || {}).map(([uid, data]) => {
+              const email = studentsMap[uid] || 'Unknown';
+              const prof = getStudentProfile(email, profilesMap);
+              return {
+                uid,
+                email,
+                displayName: getStudentDisplayName(email, profilesMap),
+                studentClass: prof.studentClass,
+                programme: prof.programme,
+                ...data,
+              };
+            });
             setLessonData({ ...lessonDocData, students: studentsWithDetails });
 
             const initialAttendance = studentsWithDetails.map(student => {
@@ -130,7 +142,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     if (combinedData.length === 0) return;
 
     const headers = [
+      { label: "Student Display Name", key: "displayName" },
       { label: "Student Email", key: "email" },
+      { label: "Class / Cohort", key: "studentClass" },
+      { label: "Programme", key: "programme" },
       { label: "Screen Share Minutes", key: "totalMinutes" },
       { label: "Screen Share Percentage", key: "percentage" },
       { label: "AI Estimated Working Minutes", key: "workingMinutes" },
@@ -144,8 +159,13 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
 
     const data = combinedData.map(studentData => {
       const sanitize = (str) => str ? str.replace(/,/g, ' ').replace(/\n/g, ' ') : '';
+      const prof = getStudentProfile(studentData.email, studentProfiles);
+      const displayName = getStudentDisplayName(studentData.email, studentProfiles);
       const row = {
+        displayName: displayName,
         email: studentData.email,
+        studentClass: prof.studentClass || '',
+        programme: prof.programme || '',
         totalMinutes: studentData.totalMinutes ?? 'N/A',
         percentage: studentData.percentage ?? 'N/A',
         workingMinutes: studentData.workingMinutes ?? 'N/A',
@@ -201,7 +221,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         {(loadingAttendance || loadingLessonData) && <p>Loading data...</p>}
         {combinedData.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600 }}>Legend:</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#2ECC71', borderRadius: '2px' }}></span>
@@ -215,6 +235,22 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                 <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#FADBD8', borderRadius: '2px' }}></span>
                 Absent (No Screen Share)
               </span>
+              <a
+                href={`/class/${classId}?tab=analytics&sub=bingo`}
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: '0.82rem',
+                  color: '#2563eb',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}
+                title="Review questions, student choices, and answer latency"
+              >
+                <span>🎲</span> View Bingo Presence Report &rarr;
+              </a>
             </div>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
@@ -232,7 +268,16 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
               <tbody>
                 {combinedData.map(student => (
                   <tr key={student.email} onClick={() => setSelectedStudent(student)} style={{ cursor: 'pointer' }}>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.email}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                      <StudentBadge
+                        student={{
+                          email: student.email,
+                          ...(studentProfiles[student.email?.toLowerCase()] || {})
+                        }}
+                        showEmail={true}
+                        size="sm"
+                      />
+                    </td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.totalMinutes ?? 'N/A'}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.percentage ?? 'N/A'}</td>
                     <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.workingMinutes ?? 'N/A'}</td>
@@ -271,7 +316,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         ) : !(loadingAttendance || loadingLessonData) && <p>Click the button to calculate live attendance. No data available.</p>}
       </div>
 
-      <Modal show={!!selectedStudent} onClose={() => setSelectedStudent(null)} title={`AI Analysis for ${selectedStudent?.email}`}>
+      <Modal show={!!selectedStudent} onClose={() => setSelectedStudent(null)} title={`AI Analysis for ${getStudentDisplayName(selectedStudent?.email, studentProfiles)}`}>
         {selectedStudent && (
           <div>
             <h4>General Summary</h4>

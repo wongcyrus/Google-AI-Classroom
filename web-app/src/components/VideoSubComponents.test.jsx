@@ -56,6 +56,33 @@ describe('Video & AI Analysis Sub-components', () => {
       fireEvent.click(downloadBtn);
       expect(onDownloadVideo).toHaveBeenCalledWith(mockVideos[0]);
     });
+
+    it('renders friendly student name and cohort badge when studentProfiles is supplied', () => {
+      const mockProfiles = {
+        'student1@school.edu': {
+          firstName: 'Alice',
+          lastName: 'Wong',
+          nickname: 'Ally',
+          studentClass: 'IT114115/1A',
+          programme: 'HD in SE'
+        }
+      };
+
+      render(
+        <VideoTable
+          videos={mockVideos}
+          selectedVideos={new Set()}
+          onSelectVideo={vi.fn()}
+          onPlayVideo={vi.fn()}
+          onDownloadVideo={vi.fn()}
+          onSelectAll={vi.fn()}
+          studentProfiles={mockProfiles}
+        />
+      );
+
+      expect(screen.getByText('Ally (Wong Alice)')).toBeInTheDocument();
+      expect(screen.getByText('IT114115/1A')).toBeInTheDocument();
+    });
   });
 
   describe('VideoPlayerModal Component', () => {

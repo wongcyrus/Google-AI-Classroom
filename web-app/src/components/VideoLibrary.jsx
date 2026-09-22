@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -11,11 +11,41 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoTable from './VideoTable';
 import VideoPlayerModal from './VideoPlayerModal';
 import { exportToCsv } from '../utils/exportUtils';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+
+export const getSafeVideoFilename = (video, fallbackClassId) => {
+  let timeStr = '';
+  if (video?.startTime?.toDate && typeof video.startTime.toDate === 'function') {
+    try {
+      timeStr = video.startTime.toDate().toISOString();
+    } catch {
+      timeStr = 'unknown_time';
+    }
+  } else if (video?.startTime instanceof Date) {
+    timeStr = video.startTime.toISOString();
+  } else if (video?.startTime) {
+    const d = new Date(video.startTime);
+    timeStr = isNaN(d.getTime()) ? 'unknown_time' : d.toISOString();
+  } else {
+    timeStr = 'unknown_time';
+  }
+
+  const formattedStartTime = timeStr
+    .replace(/:/g, '-')
+    .replace(/\..+/, '')
+    .replace('T', '_');
+  const rawEmail = video?.studentEmail || video?.studentUid || 'student';
+  const safeEmail = String(rawEmail).replace(/[@.]/g, '_');
+  const safeClassId = String(video?.classId || fallbackClassId || 'class');
+
+  return `${safeClassId}_${safeEmail}_${formattedStartTime}.mp4`;
+};
 
 const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [selectedVideos, setSelectedVideos] = useState(new Map());
   const [isZipping, setIsZipping] = useState(false);
   const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);
+  const [downloadingVideos, setDownloadingVideos] = useState(new Set());
 
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
@@ -24,6 +54,22 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [editablePromptText, setEditablePromptText] = useState('');
   const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
+  const [studentProfiles, setStudentProfiles] = useState({});
+
+  useEffect(() => {
+    if (!classId || !db) return;
+    const fetchClassProfiles = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'classes', classId));
+        if (snap && snap.exists && snap.exists()) {
+          setStudentProfiles(snap.data().studentProfiles || {});
+        }
+      } catch (err) {
+        console.debug('Could not load student profiles in VideoLibrary:', err);
+      }
+    };
+    fetchClassProfiles();
+  }, [classId]);
 
   const extraClauses = useMemo(() => [{ field: 'status', op: '==', value: 'completed' }], []);
 
@@ -242,43 +288,70 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   };
 
   const handleDownload = async (video) => {
-    console.log("Attempting to download:", video);
-    if (!video.videoPath) {
+    if (!video || !video.videoPath) {
       alert("This video does not have a storage path.");
       return;
     }
+
+    setDownloadingVideos(prev => new Set(prev).add(video.id));
+    const filename = getSafeVideoFilename(video, classId);
+
     try {
       const storage = getStorage();
       const videoRef = ref(storage, video.videoPath);
       const downloadUrl = await getDownloadURL(videoRef);
 
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Network response was not ok, status: ${response.status}.`);
+      // Attempt 1: Fetch as blob to force explicit filename save
+      let downloadedViaBlob = false;
+      try {
+        const response = await fetch(downloadUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          // Delay revoking URL so browser has adequate time to stream blob to disk
+          setTimeout(() => {
+            window.URL.revokeObjectURL(blobUrl);
+            if (a.parentNode) {
+              a.parentNode.removeChild(a);
+            }
+          }, 10000);
+          downloadedViaBlob = true;
+        }
+      } catch (blobErr) {
+        console.warn('Direct blob fetch failed, falling back to direct download link:', blobErr);
       }
-      const blob = await response.blob();
 
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-
-      const formattedStartTime = video.startTime.toDate().toISOString()
-        .replace(/:/g, '-')
-        .replace(/\..+/, '')
-        .replace('T', '_');
-      const safeEmail = video.studentEmail.replace(/[@.]/g, '_');
-      const filename = `${video.classId}_${safeEmail}_${formattedStartTime}.mp4`;
-
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      // Attempt 2: Direct browser download link fallback
+      if (!downloadedViaBlob) {
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = downloadUrl;
+        a.download = filename;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (a.parentNode) {
+            a.parentNode.removeChild(a);
+          }
+        }, 2000);
+      }
     } catch (error) {
       console.error('Error downloading video:', error);
       alert(`Failed to download video. ${error.message}`);
+    } finally {
+      setDownloadingVideos(prev => {
+        const next = new Set(prev);
+        next.delete(video.id);
+        return next;
+      });
     }
   };
 
@@ -310,17 +383,25 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       alert("No videos available to export.");
       return;
     }
-    const headers = ['Video ID', 'Student Email', 'Student UID', 'Class ID', 'Start Time', 'End Time', 'Status', 'Storage Path'];
-    const rows = videos.map(v => [
-      v.id,
-      v.studentEmail || 'N/A',
-      v.studentUid || 'N/A',
-      v.classId || classId,
-      v.startTime?.toDate ? v.startTime.toDate().toISOString() : (v.startTime || 'N/A'),
-      v.endTime?.toDate ? v.endTime.toDate().toISOString() : (v.endTime || 'N/A'),
-      v.status || 'completed',
-      v.videoPath || 'N/A'
-    ]);
+    const headers = ['Video ID', 'Student Name', 'Student Email', 'Cohort', 'Programme', 'Student UID', 'Class ID', 'Start Time', 'End Time', 'Status', 'Storage Path'];
+    const rows = videos.map(v => {
+      const email = v.studentEmail || '';
+      const prof = getStudentProfile(email, studentProfiles);
+      const displayName = getStudentDisplayName(email, studentProfiles);
+      return [
+        v.id,
+        displayName,
+        email || 'N/A',
+        prof.studentClass || '',
+        prof.programme || '',
+        v.studentUid || 'N/A',
+        v.classId || classId,
+        v.startTime?.toDate ? v.startTime.toDate().toISOString() : (v.startTime || 'N/A'),
+        v.endTime?.toDate ? v.endTime.toDate().toISOString() : (v.endTime || 'N/A'),
+        v.status || 'completed',
+        v.videoPath || 'N/A'
+      ];
+    });
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const filename = `Class_${classId}_Video_Manifest_${dateSuffix}.csv`;
     exportToCsv(headers, rows, filename);
@@ -403,6 +484,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             onSelectVideo={handleSelectVideo} 
             onPlayVideo={handlePlayVideo} 
             onDownloadVideo={handleDownload} 
+            downloadingVideos={downloadingVideos}
+            studentProfiles={studentProfiles}
             onSelectAll={(e) => {
               const newSelection = new Map();
               if (e.target.checked) {

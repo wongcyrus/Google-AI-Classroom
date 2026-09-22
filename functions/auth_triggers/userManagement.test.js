@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { deriveUserRole, getAllowedEmailDomainsDescription } from './config.js';
-import { handleBeforeUserCreatedLogic } from './userManagement.js';
+import { deriveUserRole, getAllowedEmailDomainsDescription, STUDENT_EMAIL_DOMAINS, TEACHER_EMAIL_DOMAINS } from './config.js';
+import { handleBeforeUserCreatedLogic, handleGetAllSystemStudentEmailsLogic } from './userManagement.js';
 
 function createMockFirestore({ preEnrolledTeacher = false, preEnrolledClasses = [] } = {}) {
   const batchUpdates = [];
@@ -46,10 +46,12 @@ const mockFieldValue = {
 
 describe('User Management Logic (functions/auth_triggers/userManagement.js)', () => {
   it('correctly maps email domains to student and teacher roles using deriveUserRole', () => {
-    const studentEmail = 'test.student@stu.vtc.edu.hk';
-    const teacherEmail = 'test.teacher@vtc.edu.hk';
-    const invalidEmail = 'test.user@gmail.com';
-    const iveEmail = 'test.teacher@ive.edu.hk';
+    const studentDomain = STUDENT_EMAIL_DOMAINS[0];
+    const teacherDomain = TEACHER_EMAIL_DOMAINS[0];
+    const studentEmail = `test.student@${studentDomain}`;
+    const teacherEmail = `test.teacher@${teacherDomain}`;
+    const invalidEmail = 'test.user@unauthorized-random-domain.xyz';
+    const iveEmail = 'test.teacher@unauthorized-edu.net';
 
     expect(deriveUserRole(studentEmail)).toBe('student');
     expect(deriveUserRole(teacherEmail)).toBe('teacher');
@@ -58,15 +60,17 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
   });
 
   it('handles case-insensitivity and whitespace in deriveUserRole', () => {
-    expect(deriveUserRole('  TEACHER@VTC.EDU.HK  ')).toBe('teacher');
-    expect(deriveUserRole(' STUDENT@STU.VTC.EDU.HK ')).toBe('student');
+    const studentDomain = STUDENT_EMAIL_DOMAINS[0];
+    const teacherDomain = TEACHER_EMAIL_DOMAINS[0];
+    expect(deriveUserRole(`  TEACHER@${teacherDomain.toUpperCase()}  `)).toBe('teacher');
+    expect(deriveUserRole(` STUDENT@${studentDomain.toUpperCase()} `)).toBe('student');
     expect(deriveUserRole('')).toBeNull();
     expect(deriveUserRole(null)).toBeNull();
   });
 
   it('safely handles malformed and edge-case email inputs in backend deriveUserRole', () => {
     expect(deriveUserRole('@')).toBeNull();
-    expect(deriveUserRole('@stu.vtc.edu.hk')).toBeNull();
+    expect(deriveUserRole(`@${STUDENT_EMAIL_DOMAINS[0]}`)).toBeNull();
     expect(deriveUserRole('user@')).toBeNull();
     expect(deriveUserRole('noatsign')).toBeNull();
     expect(deriveUserRole('   ')).toBeNull();
@@ -76,8 +80,8 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
 
   it('provides formatted allowed domain description', () => {
     const desc = getAllowedEmailDomainsDescription();
-    expect(desc).toContain('@stu.vtc.edu.hk');
-    expect(desc).toContain('@vtc.edu.hk');
+    expect(desc).toContain(`@${STUDENT_EMAIL_DOMAINS[0]}`);
+    expect(desc).toContain(`@${TEACHER_EMAIL_DOMAINS[0]}`);
   });
 
   it('correctly categorizes added and removed students on class update', () => {
@@ -208,6 +212,83 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
       );
 
       expect(result.customClaims).toEqual({ role: 'student' });
+    });
+  });
+
+  describe('handleGetAllSystemStudentEmailsLogic', () => {
+    it('throws unauthenticated if request.auth is missing', async () => {
+      await expect(handleGetAllSystemStudentEmailsLogic(null)).rejects.toThrow('User must be authenticated.');
+      await expect(handleGetAllSystemStudentEmailsLogic({})).rejects.toThrow('User must be authenticated.');
+    });
+
+    it('throws permission-denied if caller is a student', async () => {
+      const studentReq = {
+        auth: {
+          token: { email: 'student@stu.vtc.edu.hk', role: 'student' },
+        },
+      };
+      await expect(handleGetAllSystemStudentEmailsLogic(studentReq)).rejects.toThrow('Only teachers can access');
+    });
+
+    it('aggregates, deduplicates, and sorts student emails from Auth and Firestore when caller is teacher', async () => {
+      const teacherReq = {
+        auth: {
+          token: { email: 'teacher@vtc.edu.hk', role: 'teacher' },
+        },
+      };
+
+      const mockAdminAuth = {
+        listUsers: vi.fn().mockResolvedValue({
+          users: [
+            { email: 'bob@stu.vtc.edu.hk', customClaims: { role: 'student' } },
+            { email: 'alice@stu.vtc.edu.hk', customClaims: { role: 'student' } },
+            { email: 'other.teacher@vtc.edu.hk', customClaims: { role: 'teacher' } },
+          ],
+          pageToken: undefined,
+        }),
+      };
+
+      const mockDb = {
+        collection: (colName) => ({
+          get: async () => {
+            if (colName === 'classes') {
+              return [
+                {
+                  data: () => ({
+                    studentEmails: ['charlie@stu.vtc.edu.hk', 'ALICE@STU.VTC.EDU.HK'],
+                    students: { s_dave: 'dave@stu.vtc.edu.hk' },
+                  }),
+                },
+              ];
+            }
+            if (colName === 'studentProfiles') {
+              return [
+                {
+                  data: () => ({
+                    email: 'eve@stu.vtc.edu.hk',
+                  }),
+                },
+              ];
+            }
+            return [];
+          },
+        }),
+      };
+
+      const result = await handleGetAllSystemStudentEmailsLogic(teacherReq, {
+        adminAuth: mockAdminAuth,
+        db: mockDb,
+        deriveUserRole: (email) => (email.includes('stu.') ? 'student' : 'teacher'),
+      });
+
+      expect(result.total).toBe(5);
+      expect(result.studentEmails).toEqual([
+        'alice@stu.vtc.edu.hk',
+        'bob@stu.vtc.edu.hk',
+        'charlie@stu.vtc.edu.hk',
+        'dave@stu.vtc.edu.hk',
+        'eve@stu.vtc.edu.hk',
+      ]);
     });
   });
 });

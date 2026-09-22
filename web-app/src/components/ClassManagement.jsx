@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase-config';
+import ImagePromptSelector from './ImagePromptSelector';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from '../firebase-config';
 import './ClassManagement.css';
 import Modal from './Modal';
 import CustomPropertiesManager from './CustomPropertiesManager';
 import ScheduleManager from './ScheduleManager';
+import BatchStudentUploadModal from './BatchStudentUploadModal';
+import StudentBadge from './common/StudentBadge';
+import { exportStudentRosterCsv, normalizeStudentEmail } from '../utils/studentDisplayUtils';
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const [classId, setClassId] = useState(embeddedClassId || '');
   const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
+  const [studentProfiles, setStudentProfiles] = useState({});
+  const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
+  const [showRosterPreview, setShowRosterPreview] = useState(true);
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -28,8 +36,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [classSchedules, setClassSchedules] = useState([]);
 
   const [ipRestrictions, setIpRestrictions] = useState('');
-  const [automaticCapture, setAutomaticCapture] = useState(false);
-  const [automaticCombine, setAutomaticCombine] = useState(false);
+  const [automaticCapture, setAutomaticCapture] = useState(true);
+  const [automaticCombine, setAutomaticCombine] = useState(true);
   const [captureMode, setCaptureMode] = useState('dual');
   const [aiModel, setAiModel] = useState('gemini-3.5-flash-lite');
   const [requireFullScreenOnly, setRequireFullScreenOnly] = useState(true);
@@ -37,10 +45,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [voiceAiMode, setVoiceAiMode] = useState('hybrid');
   const [faceDebounceSeconds, setFaceDebounceSeconds] = useState(3);
   const [bingoRetryDelayMinutes, setBingoRetryDelayMinutes] = useState(3);
+  const [bingoTimeLimitSeconds, setBingoTimeLimitSeconds] = useState(30);
   const [autoBingoEnabled, setAutoBingoEnabled] = useState(false);
-  const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(20);
+  const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(5);
   const [autoBingoMode, setAutoBingoMode] = useState('question_bank');
-  const [autoBingoJitterMinutes, setAutoBingoJitterMinutes] = useState(3);
   const [enableClientAi, setEnableClientAi] = useState(true);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
   const [customYawAngle, setCustomYawAngle] = useState(25);
@@ -61,15 +69,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [afterClassVideoPrompt, setAfterClassVideoPrompt] = useState(null);
+
+  // Image & Bingo AI prompt states
+  const [liveImagePrompt, setLiveImagePrompt] = useState(null);
+  const [bingoPrompt, setBingoPrompt] = useState(null);
+  const [showImagePromptModal, setShowImagePromptModal] = useState(false);
+  const [imagePromptModalType, setImagePromptModalType] = useState('live_image'); // 'live_image' | 'bingo'
+  const [modalImagePrompt, setModalImagePrompt] = useState(null);
+  const [modalImagePromptText, setModalImagePromptText] = useState('');
   
   // Audio & Voice AI prompt states
   const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
   const [sessionAudioPrompt, setSessionAudioPrompt] = useState(null);
   const [gemmaIntentPrompt, setGemmaIntentPrompt] = useState(null);
+  const [subtitlePrompt, setSubtitlePrompt] = useState(null);
+  const [subjectDomain, setSubjectDomain] = useState('Computer Science & Software Development');
+  const [customSubjectDomain, setCustomSubjectDomain] = useState('');
   const [sessionAudioIntervalMinutes, setSessionAudioIntervalMinutes] = useState(0); // 0 = Full session
 
   const [showAudioPromptModal, setShowAudioPromptModal] = useState(false);
-  const [audioPromptModalType, setAudioPromptModalType] = useState('live_audio'); // 'live_audio' | 'session_audio' | 'gemma_intent'
+  const [audioPromptModalType, setAudioPromptModalType] = useState('live_audio'); // 'live_audio' | 'session_audio' | 'gemma_intent' | 'subtitle'
   const [modalAudioPrompt, setModalAudioPrompt] = useState(null);
   const [modalAudioPromptText, setModalAudioPromptText] = useState('');
 
@@ -77,6 +96,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [modalPrompt, setModalPrompt] = useState(null);
   const [modalPromptText, setModalPromptText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loadingAllStudents, setLoadingAllStudents] = useState(false);
 
   // Student Screen Recording Access & Exam Integrity Settings
   const [examPeriods, setExamPeriods] = useState([]);
@@ -86,6 +106,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [examPeriodError, setExamPeriodError] = useState('');
   const [studentRecordingsPolicy, setStudentRecordingsPolicy] = useState('always_enabled');
   const [studentRecordingsReleaseDate, setStudentRecordingsReleaseDate] = useState('');
+  const [defaultLectureRecording, setDefaultLectureRecording] = useState(true);
 
   useEffect(() => {
     if (embeddedClassId) {
@@ -150,6 +171,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           } else {
             setStudentEmails('');
           }
+          setStudentProfiles(classData.studentProfiles || {});
           if (classData.ipRestrictions) {
             setIpRestrictions(classData.ipRestrictions.join('\n'));
           } else {
@@ -162,10 +184,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setRequireFullScreenOnly(classData.requireFullScreenOnly !== false);
           setFaceDebounceSeconds(classData.faceDebounceSeconds || 3);
           setBingoRetryDelayMinutes(classData.bingoRetryDelayMinutes !== undefined ? classData.bingoRetryDelayMinutes : 3);
+          setBingoTimeLimitSeconds(classData.bingoTimeLimitSeconds !== undefined ? classData.bingoTimeLimitSeconds : 30);
           setAutoBingoEnabled(Boolean(classData.autoBingoEnabled));
-          setAutoBingoIntervalMinutes(classData.autoBingoIntervalMinutes !== undefined ? classData.autoBingoIntervalMinutes : 20);
+          setAutoBingoIntervalMinutes(classData.autoBingoIntervalMinutes !== undefined ? classData.autoBingoIntervalMinutes : 5);
           setAutoBingoMode(classData.autoBingoMode || 'question_bank');
-          setAutoBingoJitterMinutes(classData.autoBingoJitterMinutes !== undefined ? classData.autoBingoJitterMinutes : 3);
           
           let derivedMode = classData.aiMonitoringMode;
           if (!derivedMode) {
@@ -185,9 +207,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setCustomPitchUpAngle(classData.customPitchUpAngle !== undefined ? classData.customPitchUpAngle : 26);
           setCloudFallbackRate(classData.cloudFallbackRate || 3);
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
+          setLiveImagePrompt(classData.liveImagePrompt || null);
+          setBingoPrompt(classData.bingoPrompt || null);
           setLiveAudioPrompt(classData.liveAudioPrompt || null);
           setSessionAudioPrompt(classData.sessionAudioPrompt || null);
           setGemmaIntentPrompt(classData.gemmaIntentPrompt || null);
+          setSubtitlePrompt(classData.subtitlePrompt || null);
+          setSubjectDomain(classData.subjectDomain || 'Computer Science & Software Development');
+          setCustomSubjectDomain(classData.customSubjectDomain || '');
           setSessionAudioIntervalMinutes(classData.sessionAudioIntervalMinutes || 0);
           setEnableAudioCapture(classData.enableAudioCapture || false);
           setAudioCaptureMode(classData.audioCaptureMode || 'mandatory');
@@ -204,6 +231,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setExamPeriodError('');
           setStudentRecordingsPolicy(classData.studentRecordingsPolicy || 'always_enabled');
           setStudentRecordingsReleaseDate(classData.studentRecordingsReleaseDate || '');
+          setDefaultLectureRecording(classData.defaultLectureRecording !== undefined ? Boolean(classData.defaultLectureRecording) : true);
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);
@@ -223,9 +251,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setClassSchedules([]);
         setTeacherEmails('');
         setStudentEmails('');
+        setStudentProfiles({});
         setIpRestrictions('');
-        setAutomaticCapture(false);
-        setAutomaticCombine(false);
+        setAutomaticCapture(true);
+        setAutomaticCombine(true);
         setCaptureMode('dual');
         setRequireFullScreenOnly(true);
         setFaceDebounceSeconds(3);
@@ -236,9 +265,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAudioSilenceSuppression(true);
         setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
+        setLiveImagePrompt(null);
+        setBingoPrompt(null);
         setLiveAudioPrompt(null);
         setSessionAudioPrompt(null);
         setGemmaIntentPrompt(null);
+        setSubtitlePrompt(null);
+        setSubjectDomain('Computer Science & Software Development');
+        setCustomSubjectDomain('');
         setSessionAudioIntervalMinutes(0);
         setExamPeriods([]);
         setNewExamName('');
@@ -247,10 +281,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setExamPeriodError('');
         setStudentRecordingsPolicy('always_enabled');
         setStudentRecordingsReleaseDate('');
+        setDefaultLectureRecording(true);
+        setBingoTimeLimitSeconds(30);
         setAutoBingoEnabled(false);
-        setAutoBingoIntervalMinutes(20);
+        setAutoBingoIntervalMinutes(5);
         setAutoBingoMode('question_bank');
-        setAutoBingoJitterMinutes(3);
       }
     };
     fetchClassDetails();
@@ -348,19 +383,98 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       return;
     }
 
-    const header = type === 'students' ? 'StudentEmail,ClassID\n' : 'TeacherEmail,ClassID\n';
-    const rows = emails.map(email => `"${email}","${classId || 'class'}"`).join('\n');
+    const activeExportId = (embeddedClassId || selectedClass || classId || 'class').trim();
+    if (type === 'students') {
+      const csvContent = exportStudentRosterCsv(emails, studentProfiles, activeExportId);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${activeExportId.toLowerCase()}_student_roster.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const header = 'TeacherEmail,ClassID\n';
+    const rows = emails.map(email => `"${email}","${activeExportId}"`).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${(classId || 'class').toLowerCase()}_${type}_roster.csv`;
+    link.download = `${activeExportId.toLowerCase()}_${type}_roster.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
+  const handleInputAllStudents = async () => {
+    setLoadingAllStudents(true);
+    setError(null);
+    try {
+      let fetchedEmails = [];
+
+      // 1. Try callable Cloud Function first (has access to adminAuth listUsers and Firestore)
+      try {
+        const getAllStudentsFn = httpsCallable(functions, 'getAllSystemStudentEmails');
+        const result = await getAllStudentsFn();
+        if (result?.data?.studentEmails && Array.isArray(result.data.studentEmails)) {
+          fetchedEmails = result.data.studentEmails;
+        }
+      } catch (fnErr) {
+        console.warn('getAllSystemStudentEmails callable failed, falling back to direct Firestore query:', fnErr);
+        // 2. Client-side fallback: query classes collection for all accessible studentEmails
+        const classesRef = collection(db, 'classes');
+        const classesSnap = await getDocs(classesRef);
+        const emailSet = new Set();
+        classesSnap.forEach((d) => {
+          const data = d.data();
+          if (Array.isArray(data.studentEmails)) {
+            data.studentEmails.forEach((e) => {
+              if (typeof e === 'string' && e.includes('@')) {
+                emailSet.add(e.trim().toLowerCase());
+              }
+            });
+          }
+          if (data.students && typeof data.students === 'object') {
+            Object.values(data.students).forEach((e) => {
+              if (typeof e === 'string' && e.includes('@')) {
+                emailSet.add(e.trim().toLowerCase());
+              }
+            });
+          }
+        });
+        fetchedEmails = Array.from(emailSet);
+      }
+
+      const cleanFetched = [...new Set(fetchedEmails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+
+      if (cleanFetched.length === 0) {
+        alert('No students found in the system yet.');
+        return;
+      }
+
+      // Merge with existing emails in the textarea
+      const existing = studentEmails.split(/[\n,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+      const merged = [...new Set([...existing, ...cleanFetched])];
+      setStudentEmails(merged.join('\n'));
+
+      const newlyAddedCount = merged.length - existing.length;
+      if (newlyAddedCount > 0) {
+        alert(`Successfully populated ${newlyAddedCount} new student email(s) from the system (${merged.length} total enrolled)!`);
+      } else {
+        alert(`All ${cleanFetched.length} system student(s) are already included in the roster (${merged.length} total).`);
+      }
+    } catch (err) {
+      console.error('Error fetching all students:', err);
+      alert(`Failed to load system students: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoadingAllStudents(false);
+    }
+  };
+
   const handleUpdateClass = async () => {
-    const targetClassId = (classId || '').trim().toLowerCase();
+    const activeClassId = (embeddedClassId || selectedClass || '').trim();
+    const targetClassId = activeClassId || (classId || '').trim();
     const validationError = validateClassId(targetClassId);
     if (validationError) {
       setError(validationError);
@@ -388,10 +502,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     const classRef = doc(db, 'classes', targetClassId);
     const classSnap = await getDoc(classRef);
-    const studentEmailList = studentEmails
-      .split(/[\n,]+/)
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
+    const studentEmailList = [...new Set(
+      studentEmails
+        .split(/[\n,]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    )];
     
     const teacherEmailList = teacherEmails
       .replace(/\n/g, ' ')
@@ -421,6 +537,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             timeSlots: classSchedules,
           },
           studentEmails: studentEmailList,
+          studentProfiles: studentProfiles || {},
           teacherEmails: uniqueTeachers,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
@@ -430,10 +547,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
+          bingoTimeLimitSeconds: parseInt(bingoTimeLimitSeconds, 10) || 30,
           autoBingoEnabled: Boolean(autoBingoEnabled),
-          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 20,
+          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
           autoBingoMode: autoBingoMode || 'question_bank',
-          autoBingoJitterMinutes: parseInt(autoBingoJitterMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -444,9 +561,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
+          liveImagePrompt: liveImagePrompt || null,
+          bingoPrompt: bingoPrompt || null,
           liveAudioPrompt: liveAudioPrompt || null,
           sessionAudioPrompt: sessionAudioPrompt || null,
           gemmaIntentPrompt: gemmaIntentPrompt || null,
+          subtitlePrompt: subtitlePrompt || null,
+          subjectDomain: subjectDomain === 'custom' ? (customSubjectDomain.trim() || 'General Studies & Interdisciplinary') : (subjectDomain || 'Computer Science & Software Development'),
+          customSubjectDomain: customSubjectDomain || '',
           sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
           enableAudioCapture: enableAudioCapture || false,
           audioCaptureMode: audioCaptureMode || 'mandatory',
@@ -459,8 +581,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           examPeriods: examPeriods || [],
           studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
           studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
+          defaultLectureRecording: defaultLectureRecording !== false,
         };
         await updateDoc(classRef, updateData);
+        setStudentEmails(studentEmailList.join('\n'));
         setSuccessMessage('Class settings successfully updated!');
       } else {
         const initialTeachers = [auth.currentUser.email, ...teacherEmailList];
@@ -470,6 +594,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           name: className.trim() || targetClassId,
           teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
+          studentProfiles: studentProfiles || {},
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
           videoRetentionDays: videoRetentionDaysNum,
@@ -488,10 +613,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           requireFullScreenOnly: requireFullScreenOnly !== false,
           faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
           bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
+          bingoTimeLimitSeconds: parseInt(bingoTimeLimitSeconds, 10) || 30,
           autoBingoEnabled: Boolean(autoBingoEnabled),
-          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 20,
+          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
           autoBingoMode: autoBingoMode || 'question_bank',
-          autoBingoJitterMinutes: parseInt(autoBingoJitterMinutes, 10) || 3,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -502,9 +627,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
           cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
           afterClassVideoPrompt: afterClassVideoPrompt || null,
+          liveImagePrompt: liveImagePrompt || null,
+          bingoPrompt: bingoPrompt || null,
           liveAudioPrompt: liveAudioPrompt || null,
           sessionAudioPrompt: sessionAudioPrompt || null,
           gemmaIntentPrompt: gemmaIntentPrompt || null,
+          subtitlePrompt: subtitlePrompt || null,
+          subjectDomain: subjectDomain === 'custom' ? (customSubjectDomain.trim() || 'General Studies & Interdisciplinary') : (subjectDomain || 'Computer Science & Software Development'),
+          customSubjectDomain: customSubjectDomain || '',
           sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
           enableAudioCapture: enableAudioCapture || false,
           audioCaptureMode: audioCaptureMode || 'mandatory',
@@ -517,6 +647,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           examPeriods: examPeriods || [],
           studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
           studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
+          defaultLectureRecording: defaultLectureRecording !== false,
           aiQuota: 50,
           aiUsedQuota: 0,
         });
@@ -592,6 +723,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     if (type === 'live_audio') target = liveAudioPrompt;
     else if (type === 'session_audio') target = sessionAudioPrompt;
     else if (type === 'gemma_intent') target = gemmaIntentPrompt;
+    else if (type === 'subtitle') target = subtitlePrompt;
 
     setModalAudioPrompt(target);
     setModalAudioPromptText(target ? target.promptText : '');
@@ -605,15 +737,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       finalPrompt = {
         ...modalAudioPrompt,
         promptText: modalAudioPromptText,
-        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || 'Custom Voice Prompt'),
+        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt')),
         originalId: modalAudioPrompt.id || modalAudioPrompt.originalId,
       };
       if (finalPrompt.id) delete finalPrompt.id;
     } else if (modalAudioPromptText.trim()) {
       finalPrompt = {
-        name: 'Custom Voice Prompt',
+        name: audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt',
         promptText: modalAudioPromptText,
-        category: 'audios',
+        category: audioPromptModalType === 'subtitle' ? 'translations' : 'audios',
       };
     }
 
@@ -623,8 +755,46 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       setSessionAudioPrompt(finalPrompt);
     } else if (audioPromptModalType === 'gemma_intent') {
       setGemmaIntentPrompt(finalPrompt);
+    } else if (audioPromptModalType === 'subtitle') {
+      setSubtitlePrompt(finalPrompt);
     }
     setShowAudioPromptModal(false);
+  };
+
+  const handleOpenImagePromptModal = (type = 'live_image') => {
+    setImagePromptModalType(type);
+    const target = type === 'bingo' ? bingoPrompt : liveImagePrompt;
+    setModalImagePrompt(target);
+    setModalImagePromptText(target ? target.promptText : '');
+    setShowImagePromptModal(true);
+  };
+
+  const handleSetImagePrompt = () => {
+    let finalPrompt = null;
+    const isBingo = imagePromptModalType === 'bingo';
+    if (modalImagePrompt) {
+      const isModified = modalImagePrompt.promptText !== modalImagePromptText;
+      finalPrompt = {
+        ...modalImagePrompt,
+        promptText: modalImagePromptText,
+        name: isModified && modalImagePrompt.name ? `${modalImagePrompt.name} (Customized)` : (modalImagePrompt.name || (isBingo ? 'Custom Bingo Prompt' : 'Custom Image Prompt')),
+        originalId: modalImagePrompt.id || modalImagePrompt.originalId,
+      };
+      if (finalPrompt.id) delete finalPrompt.id;
+    } else if (modalImagePromptText.trim()) {
+      finalPrompt = {
+        name: isBingo ? 'Custom Bingo Prompt' : 'Custom Image Prompt',
+        promptText: modalImagePromptText,
+        category: 'images',
+      };
+    }
+
+    if (isBingo) {
+      setBingoPrompt(finalPrompt);
+    } else {
+      setLiveImagePrompt(finalPrompt);
+    }
+    setShowImagePromptModal(false);
   };
 
   return (
@@ -660,7 +830,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             ? 'Select Live Audio Invigilation Prompt'
             : audioPromptModalType === 'session_audio'
               ? 'Select Discussion / Session Audio Summary Prompt'
-              : 'Select On-Device Gemma Voice Intent Prompt'
+              : audioPromptModalType === 'subtitle'
+                ? 'Select Live Subtitles & Translation Prompt'
+                : 'Select On-Device Gemma Voice Intent Prompt'
         }
       >
         <AudioPromptSelector
@@ -677,7 +849,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               ? 'Live Audio Invigilation'
               : audioPromptModalType === 'session_audio'
                 ? 'Session Audio Summary'
-                : 'On-Device Gemma Voice Intent'
+                : audioPromptModalType === 'subtitle'
+                  ? 'Live Subtitles & Translation'
+                  : 'On-Device Gemma Voice Intent'
           }
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
@@ -688,12 +862,47 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               if (audioPromptModalType === 'live_audio') setLiveAudioPrompt(null);
               else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
               else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
+              else if (audioPromptModalType === 'subtitle') setSubtitlePrompt(null);
               setShowAudioPromptModal(false);
             }}
           >
             Clear Prompt
           </button>
           <button type="button" onClick={handleSetAudioPrompt}>
+            Save Prompt Selection
+          </button>
+        </div>
+      </Modal>
+
+      {/* Image & Bingo AI Prompt Modal */}
+      <Modal
+        show={showImagePromptModal}
+        onClose={() => setShowImagePromptModal(false)}
+        title={imagePromptModalType === 'bingo' ? 'Select Bingo Active Presence AI Prompt' : 'Select Live Image & Screen Invigilation Prompt'}
+      >
+        <ImagePromptSelector
+          user={user}
+          selectedPrompt={modalImagePrompt}
+          onSelectPrompt={(p) => {
+            setModalImagePrompt(p);
+            setModalImagePromptText(p ? p.promptText : '');
+          }}
+          promptText={modalImagePromptText}
+          onTextChange={setModalImagePromptText}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              if (imagePromptModalType === 'bingo') setBingoPrompt(null);
+              else setLiveImagePrompt(null);
+              setShowImagePromptModal(false);
+            }}
+          >
+            Clear Prompt
+          </button>
+          <button type="button" onClick={handleSetImagePrompt}>
             Save Prompt Selection
           </button>
         </div>
@@ -815,7 +1024,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         <div className="form-group">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <label style={{ margin: 0 }}>Student Email Addresses</label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
+                onClick={() => setShowBatchUploadModal(true)}
+                title="Batch upload or paste student names, nicknames, programmes, and cohort classes"
+              >
+                👥 Batch Upload Roster
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={handleInputAllStudents}
+                disabled={loadingAllStudents}
+                title="Add all registered students to this class roster"
+              >
+                {loadingAllStudents ? '⏳ Loading Students...' : '🎓 Add All Students'}
+              </button>
               <label className="btn-secondary" style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                 📥 Import (CSV/TXT)
                 <input
@@ -841,7 +1069,74 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             onChange={(e) => setStudentEmails(e.target.value)}
             rows="5"
           />
-          <p className="input-hint">Students with these emails will gain access to this class.</p>
+          <p className="input-hint">Students with these emails will gain access to this class. Use "Batch Upload Roster" to include first names, last names, nicknames, programmes, and class cohorts.</p>
+
+          {/* Roster Profiles Overview */}
+          {(() => {
+            const emailList = [...new Set(studentEmails.split(/[\n,]+/).map(s => s.trim().toLowerCase()).filter(Boolean))];
+            const profileCount = Object.keys(studentProfiles || {}).filter(e => emailList.includes(e)).length;
+
+            if (emailList.length === 0) return null;
+
+            return (
+              <div style={{ marginTop: '0.9rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>📋 Enrolled Roster Details ({emailList.length} students):</span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.1rem 0.45rem', borderRadius: '9999px', backgroundColor: profileCount > 0 ? '#dcfce7' : '#f1f5f9', color: profileCount > 0 ? '#166534' : '#64748b' }}>
+                      {profileCount}/{emailList.length} with profile metadata
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                    onClick={() => setShowRosterPreview(prev => !prev)}
+                  >
+                    {showRosterPreview ? 'Hide Table ▲' : 'Show Table ▼'}
+                  </button>
+                </div>
+
+                {showRosterPreview && (
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border, #cbd5e1)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                      <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)' }}>
+                        <tr>
+                          <th style={{ padding: '0.35rem 0.6rem' }}>Student Display Name</th>
+                          <th style={{ padding: '0.35rem 0.6rem' }}>Email</th>
+                          <th style={{ padding: '0.35rem 0.6rem' }}>Class / Cohort</th>
+                          <th style={{ padding: '0.35rem 0.6rem' }}>Programme</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailList.map((email, idx) => {
+                          const prof = studentProfiles[email] || {};
+                          return (
+                            <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
+                              <td style={{ padding: '0.35rem 0.6rem' }}>
+                                <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
+                              </td>
+                              <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
+                              <td style={{ padding: '0.35rem 0.6rem' }}>
+                                {prof.studentClass ? (
+                                  <span style={{ display: 'inline-block', padding: '0.1rem 0.4rem', fontSize: '0.72rem', fontWeight: 700, borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+                                    {prof.studentClass}
+                                  </span>
+                                ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                              </td>
+                              <td style={{ padding: '0.35rem 0.6rem', color: '#475569' }}>
+                                {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {(selectedClass || embeddedClassId) ? (
@@ -1065,6 +1360,23 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
 
         <div className="form-group">
+          <label htmlFor="bingo-time-limit-config">⏳ Student Bingo Answer Time Limit</label>
+          <select 
+            id="bingo-time-limit-config"
+            value={bingoTimeLimitSeconds} 
+            onChange={(e) => setBingoTimeLimitSeconds(parseInt(e.target.value, 10))}
+          >
+            <option value={15}>⚡ 15 Seconds (Rapid Attention Check)</option>
+            <option value={30}>⏱️ 30 Seconds (Default Presence Check)</option>
+            <option value={45}>🎯 45 Seconds (Standard Quiz)</option>
+            <option value={60}>📝 60 Seconds (1 Minute / Standard Quiz)</option>
+            <option value={90}>💻 90 Seconds (1.5 Minutes / Code Analysis)</option>
+            <option value={120}>🧠 120 Seconds (2 Minutes / Complex Problem)</option>
+          </select>
+          <p className="input-hint">The countdown duration students have to read and submit their Bingo response before the timer expires and records a strike.</p>
+        </div>
+
+        <div className="form-group">
           <label htmlFor="auto-bingo-enabled-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <input 
               id="auto-bingo-enabled-checkbox"
@@ -1080,18 +1392,29 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         {autoBingoEnabled && (
           <>
             <div className="form-group">
-              <label htmlFor="auto-bingo-interval-config">⏱️ Auto-Bingo Periodic Interval</label>
-              <select 
-                id="auto-bingo-interval-config"
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <label htmlFor="auto-bingo-interval-slider">⏱️ Auto-Bingo Periodic Interval</label>
+                <span className="badge" style={{ fontWeight: 600 }}>
+                  {autoBingoIntervalMinutes} {autoBingoIntervalMinutes === 5 ? 'Minutes (Minimum)' : 'Minutes'}
+                </span>
+              </div>
+              <input 
+                id="auto-bingo-interval-slider"
+                type="range"
+                min={5}
+                max={30}
+                step={1}
                 value={autoBingoIntervalMinutes} 
                 onChange={(e) => setAutoBingoIntervalMinutes(parseInt(e.target.value, 10))}
-              >
-                <option value={15}>⚡ Every 15 Minutes (Frequent Check)</option>
-                <option value={20}>🎯 Every 20 Minutes (Standard Default)</option>
-                <option value={30}>⏱️ Every 30 Minutes (Half-Hour)</option>
-                <option value={45}>☕ Every 45 Minutes</option>
-                <option value={60}>🛋️ Every 60 Minutes (Hourly)</option>
-              </select>
+                style={{ width: '100%', cursor: 'pointer' }}
+                aria-label="Auto-Bingo Periodic Interval"
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
+                <span>5 mins (Min / Default)</span>
+                <span>10 mins</span>
+                <span>20 mins</span>
+                <span>30 mins</span>
+              </div>
             </div>
 
             <div className="form-group">
@@ -1107,19 +1430,32 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               </select>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="auto-bingo-jitter-config">🎲 Anti-Collusion Stagger Jitter</label>
-              <select 
-                id="auto-bingo-jitter-config"
-                value={autoBingoJitterMinutes} 
-                onChange={(e) => setAutoBingoJitterMinutes(parseInt(e.target.value, 10))}
-              >
-                <option value={0}>🚫 No Jitter (Simultaneous Dispatch)</option>
-                <option value={2}>🎲 ±2 Minutes Randomized Jitter</option>
-                <option value={3}>🎲 ±3 Minutes Randomized Jitter (Standard Default)</option>
-                <option value={5}>🎲 ±5 Minutes Randomized Jitter (Spread Out)</option>
-              </select>
-              <p className="input-hint">Staggers individual student challenge popups across this jitter window via Google Cloud Tasks to prevent classroom collusion.</p>
+
+            <div className="form-group" style={{ marginTop: '10px' }}>
+              <label>🎯 Bingo Active Presence AI Prompt</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button type="button" className="secondary-btn" onClick={() => handleOpenImagePromptModal('bingo')}>
+                  {bingoPrompt ? `Selected: ${bingoPrompt.name || 'Custom Prompt'}` : 'Select Bingo Question Prompt'}
+                </button>
+                {bingoPrompt && (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setBingoPrompt(null)}
+                    style={{ color: '#ef4444' }}
+                  >
+                    Reset to Default
+                  </button>
+                )}
+              </div>
+              <p className="input-hint">
+                Custom prompt guiding question generation from lesson material, teacher screen, or student screen.
+              </p>
+              {bingoPrompt && (
+                <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+                  <strong>Prompt preview:</strong> {bingoPrompt.promptText.substring(0, 120)}...
+                </p>
+              )}
             </div>
           </>
         )}
@@ -1168,6 +1504,33 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             <span>Automatic Video Compilation</span>
           </label>
           <p className="input-hint">Generates a session video recording for each student when the class concludes.</p>
+        </div>
+
+        <div className="form-group">
+          <label>📸 AI Image &amp; Screen Invigilation Prompt</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button type="button" className="secondary-btn" onClick={() => handleOpenImagePromptModal('live_image')}>
+              {liveImagePrompt ? `Selected: ${liveImagePrompt.name || 'Custom Prompt'}` : 'Select Image Invigilation Prompt'}
+            </button>
+            {liveImagePrompt && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setLiveImagePrompt(null)}
+                style={{ color: '#ef4444' }}
+              >
+                Reset to Default
+              </button>
+            )}
+          </div>
+          <p className="input-hint">
+            Prompt steering Cloud Gemini visual verification (e.g. face presence, gaze orientation, or suspicious screen activity).
+          </p>
+          {liveImagePrompt && (
+            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+              <strong>Prompt preview:</strong> {liveImagePrompt.promptText.substring(0, 120)}...
+            </p>
+          )}
         </div>
 
         <div className="form-group">
@@ -1380,8 +1743,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 <>
                   <div className="form-row-2col" style={{ marginTop: '10px' }}>
                     <div className="form-group">
-                      <label>Window Duration</label>
+                      <label htmlFor="audio-moving-window-duration">Window Duration</label>
                       <select
+                        id="audio-moving-window-duration"
                         value={audioMovingWindowDuration}
                         onChange={(e) => setAudioMovingWindowDuration(parseInt(e.target.value, 10))}
                       >
@@ -1501,9 +1865,143 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         )}
       </div>
 
-      {/* Section 8: Security & Access Restrictions */}
+      {/* Section 8: Live Subtitles, Translation & Subject Domain */}
       <div className="settings-section-card">
-        <h3>🔒 8. Security & IP Restrictions</h3>
+        <h3>🌐 8. Live Subtitles, Translation & Subject Domain</h3>
+        <p className="input-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
+          Configure the subject domain context and custom speech-to-text / translation rules for this classroom. Ensures AI models (Gemini Live, LiteRT Whisper &amp; Gemma) recognize discipline-specific terminology rather than assuming Computer Science/IT.
+        </p>
+
+        <div className="form-group">
+          <label htmlFor="class-subject-domain-select">Course Subject / Discipline Domain</label>
+          <select
+            id="class-subject-domain-select"
+            value={subjectDomain}
+            onChange={(e) => setSubjectDomain(e.target.value)}
+          >
+            <option value="Computer Science &amp; Software Development">💻 Computer Science &amp; Software Development</option>
+            <option value="Business, Finance &amp; Accounting">💼 Business, Finance &amp; Accounting</option>
+            <option value="Design, Media &amp; Visual Arts">🎨 Design, Media &amp; Visual Arts</option>
+            <option value="Healthcare, Nursing &amp; Medical Sciences">🏥 Healthcare, Nursing &amp; Medical Sciences</option>
+            <option value="Engineering &amp; Construction">⚙️ Engineering &amp; Construction</option>
+            <option value="Hospitality, Culinary &amp; Tourism">🍳 Hospitality, Culinary &amp; Tourism</option>
+            <option value="Languages, Humanities &amp; Social Sciences">📚 Languages, Humanities &amp; Social Sciences</option>
+            <option value="General Studies &amp; Interdisciplinary">🎓 General Studies &amp; Interdisciplinary</option>
+            <option value="custom">✏️ Custom Subject Domain...</option>
+          </select>
+          <p className="input-hint">The subject context guides terminology preservation during lecture transcription and multilingual translation.</p>
+        </div>
+
+        {subjectDomain === 'custom' && (
+          <div className="form-group" style={{ marginTop: '10px' }}>
+            <label htmlFor="custom-subject-domain-input">Custom Subject Domain Description</label>
+            <input
+              id="custom-subject-domain-input"
+              type="text"
+              placeholder="e.g. Aeronautical Engineering, Fashion Merchandising, Biotechnology"
+              value={customSubjectDomain}
+              onChange={(e) => setCustomSubjectDomain(e.target.value)}
+            />
+          </div>
+        )}
+
+        <div className="form-group" style={{ marginTop: '1rem' }}>
+          <label>Live Subtitle &amp; Speech Translation AI Prompt</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('subtitle')}>
+              {subtitlePrompt ? `Selected: ${subtitlePrompt.name || 'Custom Prompt'}` : 'Select Subtitle Translation Prompt'}
+            </button>
+            {subtitlePrompt && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setSubtitlePrompt(null)}
+                style={{ color: '#ef4444' }}
+              >
+                Reset to Default
+              </button>
+            )}
+          </div>
+          {subtitlePrompt && (
+            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
+              <strong>Prompt preview:</strong> {subtitlePrompt.promptText.substring(0, 120)}...
+            </p>
+          )}
+        </div>
+
+        <div className="form-group" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🎥</span>
+            <span>Teacher Screen Broadcast &amp; Lecture Recording Default</span>
+          </label>
+          <p className="input-hint">
+            Configure whether teacher screen broadcasts automatically record HD video and voice for YouTube/CC archival by default, or stream live-only to students without saving.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', marginTop: '8px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: defaultLectureRecording ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: defaultLectureRecording ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="defaultLectureRecording"
+                checked={defaultLectureRecording === true}
+                onChange={() => setDefaultLectureRecording(true)}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🎥 Record &amp; Stream by Default (Recommended)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Broadcasting automatically records HD video and pure voice to Cloud Storage so lectures are never accidentally forgotten.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: !defaultLectureRecording ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: !defaultLectureRecording ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="defaultLectureRecording"
+                checked={defaultLectureRecording === false}
+                onChange={() => setDefaultLectureRecording(false)}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  📡 Live Stream Only by Default
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Broadcasting streams live to student screens in real-time. Zero storage files are saved unless manually checked.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 9: Security & Access Restrictions */}
+      <div className="settings-section-card">
+        <h3>🔒 9. Security &amp; IP Restrictions</h3>
         <div className="form-group">
           <label>Allowed Classroom IP Addresses</label>
           <textarea
@@ -1538,6 +2036,20 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </button>
         </div>
       )}
+
+      {/* Batch Student Roster Upload Modal */}
+      <BatchStudentUploadModal
+        isOpen={showBatchUploadModal}
+        onClose={() => setShowBatchUploadModal(false)}
+        onApply={({ studentEmails: newEmails, studentProfiles: newProfiles, addedCount }) => {
+          setStudentEmails(newEmails.join('\n'));
+          setStudentProfiles(newProfiles);
+          setSuccessMessage(`Successfully applied ${addedCount} student(s) to roster! Click Save Class Settings to save changes.`);
+        }}
+        existingEmails={studentEmails}
+        existingProfiles={studentProfiles}
+        classId={selectedClass || classId}
+      />
     </div>
   );
 };

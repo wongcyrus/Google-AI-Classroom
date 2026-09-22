@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import VideoLibrary from './VideoLibrary';
+import VideoLibrary, { getSafeVideoFilename } from './VideoLibrary';
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -30,6 +30,7 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn(),
   where: vi.fn(),
   orderBy: vi.fn(),
+  getDoc: vi.fn().mockResolvedValue({ exists: () => false, data: () => ({}) }),
   getDocs: (...args) => mockGetDocs(...args),
   setDoc: (...args) => mockSetDoc(...args),
   onSnapshot: vi.fn(() => vi.fn()),
@@ -79,11 +80,23 @@ vi.mock('../hooks/useCollectionQuery', () => ({
   default: () => mockUsePaginatedQueryReturn,
 }));
 
+vi.mock('../hooks/useVideoPrompts', () => ({
+  useVideoPrompts: () => [
+    { id: 'p1', name: 'Engagement Prompt', promptText: 'Check student engagement', accessLevel: 'public', category: 'videos' },
+  ],
+}));
+
 describe('VideoLibrary Full Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
+    mockUsePaginatedQueryReturn = {
+      data: mockVideos,
+      loading: false,
+      isLastPage: false,
+      fetchNextPage: mockFetchNextPage,
+    };
   });
 
   it('renders video table, selects all, and requests ZIP for all range', async () => {
@@ -157,7 +170,11 @@ describe('VideoLibrary Full Component Suite', () => {
     const selectPromptBtn = screen.getByRole('button', { name: /Select Video Prompt/i });
     fireEvent.click(selectPromptBtn);
 
+    const promptSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(promptSelect, { target: { value: 'p1' } });
+
     const promptInput = screen.getByPlaceholderText(/Select a prompt or enter text here/i);
+    expect(promptInput.value).toBe('Check student engagement');
     fireEvent.change(promptInput, { target: { value: 'Analyze student attentiveness' } });
 
     const analyzeSelectedBtn = screen.getByRole('button', { name: /Request Analysis for Selected/i });
@@ -314,6 +331,92 @@ describe('VideoLibrary Full Component Suite', () => {
 
     const exportBtn = screen.getByRole('button', { name: /Export Video Manifest/i });
     expect(exportBtn).toBeDisabled();
+  });
+
+  describe('getSafeVideoFilename', () => {
+    it('handles Timestamp objects properly', () => {
+      const video = {
+        classId: 'IT114115',
+        studentEmail: 'test.user@vtc.edu.hk',
+        startTime: { toDate: () => new Date('2026-09-18T14:30:00.000Z') },
+      };
+      expect(getSafeVideoFilename(video)).toBe('IT114115_test_user_vtc_edu_hk_2026-09-18_14-30-00.mp4');
+    });
+
+    it('handles Date instances and fallback studentUid and classId', () => {
+      const video = {
+        studentUid: 'uid123',
+        startTime: new Date('2026-09-18T10:15:30.000Z'),
+      };
+      expect(getSafeVideoFilename(video, 'FALLBACK_CLASS')).toBe('FALLBACK_CLASS_uid123_2026-09-18_10-15-30.mp4');
+    });
+
+    it('handles invalid or null dates gracefully', () => {
+      const video = {
+        startTime: null,
+      };
+      expect(getSafeVideoFilename(video)).toBe('class_student_unknown_time.mp4');
+    });
+  });
+
+  describe('handleDownload', () => {
+    it('downloads video via blob when fetch succeeds', async () => {
+      const originalCreateObjectURL = window.URL.createObjectURL;
+      const originalRevokeObjectURL = window.URL.revokeObjectURL;
+      window.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-video');
+      window.URL.revokeObjectURL = vi.fn();
+
+      const mockBlob = new Blob(['dummy content'], { type: 'video/mp4' });
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+      });
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      const downloadBtns = screen.getAllByRole('button', { name: /Download/i });
+      await act(async () => {
+        fireEvent.click(downloadBtns[0]);
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith('https://storage.local/video.mp4');
+      expect(window.URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+
+      window.URL.createObjectURL = originalCreateObjectURL;
+      window.URL.revokeObjectURL = originalRevokeObjectURL;
+    });
+
+    it('gracefully falls back to direct URL download if blob fetch throws', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const appendSpy = vi.spyOn(document.body, 'appendChild');
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      const downloadBtns = screen.getAllByRole('button', { name: /Download/i });
+      await act(async () => {
+        fireEvent.click(downloadBtns[0]);
+      });
+
+      expect(global.fetch).toHaveBeenCalled();
+      expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('Failed to download video'));
+      expect(appendSpy).toHaveBeenCalled();
+    });
   });
 });
 

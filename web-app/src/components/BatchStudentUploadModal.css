@@ -1,0 +1,225 @@
+.batch-roster-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.batch-roster-modal-card {
+  background: var(--color-surface, #ffffff);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border, #cbd5e1);
+}
+
+.batch-roster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.batch-roster-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-text-main, #0f172a);
+}
+
+.batch-roster-subtitle {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.batch-roster-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-text-muted, #94a3b8);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.batch-roster-close-btn:hover {
+  background-color: var(--color-bg-secondary, #f1f5f9);
+  color: var(--color-text-main, #0f172a);
+}
+
+.batch-roster-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem 1.5rem;
+  background-color: var(--color-bg-secondary, #f8fafc);
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.batch-roster-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.batch-roster-filename {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.batch-roster-mode-selector {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.mode-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--color-text-main, #334155);
+}
+
+.batch-roster-input-section {
+  padding: 1rem 1.5rem 0.5rem 1.5rem;
+}
+
+.batch-roster-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  margin-top: 0.35rem;
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #1e293b);
+  resize: vertical;
+}
+
+.batch-roster-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.batch-roster-hint {
+  margin: 0.35rem 0 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.batch-roster-alert {
+  margin: 0.75rem 1.5rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.alert-error {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.alert-success {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.batch-roster-preview-section {
+  padding: 0.5rem 1.5rem 1rem 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 150px;
+}
+
+.batch-roster-table-wrapper {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+}
+
+.batch-roster-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.batch-roster-preview-table th {
+  position: sticky;
+  top: 0;
+  background-color: var(--color-bg-secondary, #f8fafc);
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #475569);
+  border-bottom: 1px solid var(--color-border, #cbd5e1);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.batch-roster-preview-table td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--color-border, #f1f5f9);
+  color: var(--color-text-main, #334155);
+}
+
+.batch-roster-preview-table tr:hover {
+  background-color: rgba(248, 250, 252, 0.7);
+}
+
+.row-email-only td {
+  background-color: rgba(248, 250, 252, 0.4);
+}
+
+.preview-cohort-pill {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  background-color: rgba(99, 102, 241, 0.12);
+  color: var(--color-primary, #6366f1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.muted-dash {
+  color: var(--color-text-muted, #94a3b8);
+  font-style: italic;
+}
+
+.batch-roster-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border, #e2e8f0);
+  background-color: var(--color-bg-secondary, #f8fafc);
+}

@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { storage, auth } from '../firebase-config';
+import { db, storage, auth } from '../firebase-config';
 import { useParams } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import IncidentDossierExportModal from './IncidentDossierExportModal';
 import AudioTranscriptModal from './AudioTranscriptModal';
+import StudentBadge from './common/StudentBadge';
+import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
 const DualMediaPlayer = ({ data, onClose, onOpenTranscriptModal }) => {
   if (!data) return null;
@@ -93,61 +96,40 @@ const IrregularitiesView = ({ startTime, endTime }) => {
   const [mediaUrls, setMediaUrls] = useState({});
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [activeAudioModalData, setActiveAudioModalData] = useState(null);
+  const [studentProfiles, setStudentProfiles] = useState({});
 
-  // Period / Session Filter State
-  const [periodPreset, setPeriodPreset] = useState(startTime ? 'custom' : 'all'); // 'all' | 'today' | '24h' | '7d' | 'custom'
-  const [customStart, setCustomStart] = useState(startTime ? new Date(startTime).toISOString().slice(0, 16) : '');
-  const [customEnd, setCustomEnd] = useState(endTime ? new Date(endTime).toISOString().slice(0, 16) : '');
-  const [appliedCustomStart, setAppliedCustomStart] = useState(startTime || null);
-  const [appliedCustomEnd, setAppliedCustomEnd] = useState(endTime || null);
-
-  // Sync with top-level shared date filter
   useEffect(() => {
-    if (startTime) {
-      setCustomStart(new Date(startTime).toISOString().slice(0, 16));
-      setAppliedCustomStart(startTime);
-    } else {
-      setAppliedCustomStart(null);
-    }
-    if (endTime) {
-      setCustomEnd(new Date(endTime).toISOString().slice(0, 16));
-      setAppliedCustomEnd(endTime);
-    } else {
-      setAppliedCustomEnd(null);
-    }
-    if (startTime || endTime) {
-      setPeriodPreset('custom');
-    }
-  }, [startTime, endTime]);
+    if (!classId || !db) return;
+    const fetchClassProfiles = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'classes', classId));
+        if (snap && snap.exists && snap.exists()) {
+          setStudentProfiles(snap.data().studentProfiles || {});
+        }
+      } catch (err) {
+        console.debug('Could not load class studentProfiles:', err);
+      }
+    };
+    fetchClassProfiles();
+  }, [classId]);
 
   const effectiveTimeRange = useMemo(() => {
-    const now = new Date();
-    if (periodPreset === 'today') {
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-      return { start, end: now, label: 'Today (Since Midnight)' };
-    }
-    if (periodPreset === '24h') {
-      const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      return { start, end: now, label: 'Past 24 Hours' };
-    }
-    if (periodPreset === '7d') {
-      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return { start, end: now, label: 'Past 7 Days' };
-    }
-    if (periodPreset === 'custom') {
-      const start = appliedCustomStart ? new Date(appliedCustomStart) : (startTime ? new Date(startTime) : null);
-      const end = appliedCustomEnd ? new Date(appliedCustomEnd) : (endTime ? new Date(endTime) : null);
-      const label = start && end 
-        ? `${start.toLocaleDateString()} ${start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${end.toLocaleDateString()} ${end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`
-        : 'Custom Period Filter';
+    const start = startTime ? new Date(startTime) : null;
+    const end = endTime ? new Date(endTime) : null;
+    if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+      const label = `${start.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} (${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
       return { start, end, label };
     }
+    if (start && !isNaN(start.getTime())) {
+      const label = `From: ${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      return { start, end: null, label };
+    }
     return {
-      start: startTime ? new Date(startTime) : null,
-      end: endTime ? new Date(endTime) : null,
+      start: null,
+      end: null,
       label: 'All Recorded Sessions',
     };
-  }, [periodPreset, appliedCustomStart, appliedCustomEnd, startTime, endTime]);
+  }, [startTime, endTime]);
 
   const { 
     data: irregularities, 
@@ -236,10 +218,16 @@ const IrregularitiesView = ({ startTime, endTime }) => {
       return;
     }
 
-    const headers = ['Email', 'Title', 'Message', 'Screen Path', 'Webcam Path', 'Timestamp'];
-    const rows = irregularities.map(item =>
-      [
-        item.email || item.studentEmail || '',
+    const headers = ['Student Name', 'Email', 'Cohort', 'Programme', 'Title', 'Message', 'Screen Path', 'Webcam Path', 'Timestamp'];
+    const rows = irregularities.map(item => {
+      const email = item.email || item.studentEmail || '';
+      const prof = getStudentProfile(email, studentProfiles);
+      const displayName = getStudentDisplayName(email, studentProfiles);
+      return [
+        displayName,
+        email,
+        prof.studentClass || '',
+        prof.programme || '',
         item.title || item.type || 'Irregularity',
         item.message || item.details || '',
         item.screenUrl || item.imageUrl || '',
@@ -247,8 +235,8 @@ const IrregularitiesView = ({ startTime, endTime }) => {
         item.timestamp?.toDate ? item.timestamp.toDate().toLocaleString() : (item.startedAt?.toDate ? item.startedAt.toDate().toLocaleString() : String(item.timestamp || item.startedAt || '')),
       ]
         .map(value => `"${String(value ?? '').replace(/"/g, '""')}"`)
-        .join(',')
-    );
+        .join(',');
+    });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -266,101 +254,20 @@ const IrregularitiesView = ({ startTime, endTime }) => {
 
   return (
     <div className="view-container">
-      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <h2>🚨 Irregularities for Class: {classId}</h2>
-        <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
-          📊 Period: <span style={{ color: '#2563eb' }}>{effectiveTimeRange.label}</span>
-        </div>
-      </div>
-
-      {/* Period & Session Filter Bar */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: periodPreset === 'custom' ? '12px' : '0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#475569' }}>⏱️ Scope / Period:</span>
-            {[
-              { key: 'all', label: 'All Sessions' },
-              { key: 'today', label: 'Today' },
-              { key: '24h', label: 'Past 24h' },
-              { key: '7d', label: 'Past 7 Days' },
-              { key: 'custom', label: 'Custom Range...' },
-            ].map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => setPeriodPreset(p.key)}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '0.85rem',
-                  fontWeight: periodPreset === p.key ? 700 : 500,
-                  background: periodPreset === p.key ? '#2563eb' : '#f8fafc',
-                  color: periodPreset === p.key ? '#ffffff' : '#475569',
-                  border: periodPreset === p.key ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="actions-container" style={{ display: 'flex', gap: '8px', margin: 0 }}>
-            <button onClick={() => refetch && refetch()} style={{ background: '#0284c7', color: '#fff' }}>🔄 Refresh</button>
-            <button onClick={() => setShowExportModal(true)} style={{ background: '#2563eb', color: '#fff', fontWeight: 'bold' }}>
-              📄 Export Formal Dossier (.docx / .csv)
-            </button>
-            <button onClick={exportToCSV}>Quick CSV Page</button>
+      <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <div>
+          <h2 style={{ margin: '0 0 6px 0' }}>🚨 Irregularities for Class: {classId}</h2>
+          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+            📊 Period: <span style={{ color: '#2563eb', marginLeft: '4px' }}>{effectiveTimeRange.label}</span>
           </div>
         </div>
-
-        {/* Custom Date Range Picker */}
-        {periodPreset === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>From:</label>
-              <input
-                type="datetime-local"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>To:</label>
-              <input
-                type="datetime-local"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setAppliedCustomStart(customStart ? new Date(customStart) : null);
-                setAppliedCustomEnd(customEnd ? new Date(customEnd) : null);
-              }}
-              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '5px 14px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
-            >
-              Apply Filter
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCustomStart('');
-                setCustomEnd('');
-                setAppliedCustomStart(null);
-                setAppliedCustomEnd(null);
-                setPeriodPreset('all');
-              }}
-              style={{ background: '#94a3b8', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '0.85rem', cursor: 'pointer' }}
-            >
-              Reset
-            </button>
-          </div>
-        )}
+        <div className="actions-container" style={{ display: 'flex', gap: '8px', margin: 0, flexWrap: 'wrap' }}>
+          <button onClick={() => refetch && refetch()} style={{ background: '#0284c7', color: '#fff' }}>🔄 Refresh</button>
+          <button onClick={() => setShowExportModal(true)} style={{ background: '#2563eb', color: '#fff', fontWeight: 'bold' }}>
+            📄 Export Formal Dossier (.docx / .csv)
+          </button>
+          <button onClick={exportToCSV}>Quick CSV Page</button>
+        </div>
       </div>
 
       {loading ? <p>Loading irregularities...</p> : (
@@ -386,7 +293,16 @@ const IrregularitiesView = ({ startTime, endTime }) => {
 
                   return (
                     <tr key={item.id}>
-                      <td>{item.email || item.studentEmail || 'Unknown'}</td>
+                      <td>
+                        <StudentBadge
+                          student={{
+                            email: item.email || item.studentEmail || '',
+                            ...(studentProfiles[(item.email || item.studentEmail || '').toLowerCase()] || {})
+                          }}
+                          showEmail={true}
+                          size="sm"
+                        />
+                      </td>
                       <td>{timeFormatted}</td>
                       <td>
                         <span style={{

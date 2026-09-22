@@ -1,0 +1,125 @@
+import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import BatchStudentUploadModal from './BatchStudentUploadModal';
+
+describe('BatchStudentUploadModal', () => {
+  it('does not render when isOpen is false', () => {
+    const { container } = render(
+      <BatchStudentUploadModal isOpen={false} onClose={() => {}} onApply={() => {}} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders modal with download template button and textarea when open', () => {
+    render(
+      <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={() => {}} />
+    );
+    expect(screen.getByText(/Batch Upload Student Roster/i)).toBeDefined();
+    expect(screen.getByText(/Download CSV Template/i)).toBeDefined();
+    expect(screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i)).toBeDefined();
+  });
+
+  it('parses pasted CSV, displays summary count, and previews student rows', () => {
+    const onApply = vi.fn();
+    render(
+      <BatchStudentUploadModal isOpen={true} onClose={() => {}} onApply={onApply} />
+    );
+
+    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    const sampleCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
+230123456@stu.vtc.edu.hk,Tai Man,Chan,David,HDSE,IT114115/1A
+bob@school.edu,,,,,,`;
+
+    fireEvent.change(textarea, { target: { value: sampleCsv } });
+
+    // Summary alert
+    expect(screen.getByText(/Parsed 2 students:/i)).toBeDefined();
+    expect(screen.getByText(/David \(Chan Tai Man\)/i)).toBeDefined();
+    expect(screen.getAllByText(/IT114115\/1A/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/230123456@stu.vtc.edu.hk/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/bob@school.edu/i).length).toBeGreaterThanOrEqual(1);
+
+    // Click Apply
+    const applyButton = screen.getByRole('button', { name: /Apply to Class Roster/i });
+    fireEvent.click(applyButton);
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const appliedPayload = onApply.mock.calls[0][0];
+    expect(appliedPayload.studentEmails).toContain('230123456@stu.vtc.edu.hk');
+    expect(appliedPayload.studentEmails).toContain('bob@school.edu');
+    expect(appliedPayload.studentProfiles['230123456@stu.vtc.edu.hk'].nickname).toBe('David');
+    expect(appliedPayload.studentProfiles['230123456@stu.vtc.edu.hk'].studentClass).toBe('IT114115/1A');
+  });
+
+  it('merges with existing emails and profiles when merge mode is selected', () => {
+    const onApply = vi.fn();
+    const existingEmails = ['existing@school.edu'];
+    const existingProfiles = {
+      'existing@school.edu': {
+        firstName: 'Existing',
+        lastName: 'Student',
+        nickname: 'Ex',
+        studentClass: 'IT101',
+      },
+    };
+
+    render(
+      <BatchStudentUploadModal
+        isOpen={true}
+        onClose={() => {}}
+        onApply={onApply}
+        existingEmails={existingEmails}
+        existingProfiles={existingProfiles}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    fireEvent.change(textarea, {
+      target: {
+        value: `StudentEmail,FirstName,LastName,Nickname,Class\nnew@school.edu,New,Guy,Nick,IT102`,
+      },
+    });
+
+    const applyButton = screen.getByRole('button', { name: /Apply to Class Roster/i });
+    fireEvent.click(applyButton);
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const payload = onApply.mock.calls[0][0];
+    expect(payload.studentEmails).toContain('existing@school.edu');
+    expect(payload.studentEmails).toContain('new@school.edu');
+    expect(payload.studentProfiles['existing@school.edu'].firstName).toBe('Existing');
+    expect(payload.studentProfiles['new@school.edu'].firstName).toBe('New');
+  });
+
+  it('replaces entire roster when replace mode is selected', () => {
+    const onApply = vi.fn();
+    const existingEmails = ['existing@school.edu'];
+
+    render(
+      <BatchStudentUploadModal
+        isOpen={true}
+        onClose={() => {}}
+        onApply={onApply}
+        existingEmails={existingEmails}
+      />
+    );
+
+    const replaceRadio = screen.getByLabelText(/Replace entire roster/i);
+    fireEvent.click(replaceRadio);
+
+    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    fireEvent.change(textarea, {
+      target: {
+        value: `StudentEmail,FirstName,LastName\nonly_new@school.edu,Only,New`,
+      },
+    });
+
+    const applyButton = screen.getByRole('button', { name: /Apply to Class Roster/i });
+    fireEvent.click(applyButton);
+
+    const payload = onApply.mock.calls[0][0];
+    expect(payload.studentEmails).toEqual(['only_new@school.edu']);
+    expect(payload.studentEmails).not.toContain('existing@school.edu');
+  });
+});

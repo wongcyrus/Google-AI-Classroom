@@ -60,6 +60,10 @@ vi.mock('../firebase-config', () => ({
   },
 }));
 
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+}));
+
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   doc: vi.fn(),
@@ -290,16 +294,22 @@ describe('MonitorView Component Suite', () => {
   it('triggers teacher screen broadcast start and stop', async () => {
     render(<MonitorView {...defaultProps} />);
 
-    // Find and click Screen Broadcast button in top bar next to Live
-    const broadcastBtn = screen.getByRole('button', { name: /Share Screen to Class/i });
+    // Find and click Screen & Voice Broadcast button in top bar next to Live
+    const broadcastBtn = screen.getByRole('button', { name: /Broadcast Screen & Voice|Share Screen to Class/i });
     expect(broadcastBtn).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(broadcastBtn);
     });
 
-    // Setup modal opens with Start Sharing Screen button
-    const startBtn = screen.getByRole('button', { name: /Start Sharing Screen/i });
+    // In Step 1, click Next: Screen & Recording Setup
+    const nextBtn = screen.getByText(/Next: Screen & Recording Setup/i).closest('button');
+    await act(async () => {
+      fireEvent.click(nextBtn);
+    });
+
+    // Setup modal opens Step 2 with Start Live Stream button
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream/i });
     expect(startBtn).toBeInTheDocument();
 
     await act(async () => {
@@ -501,6 +511,29 @@ describe('MonitorView Component Suite', () => {
       undefined,
       expect.objectContaining({ isExamActive: false })
     );
+  });
+
+  it('does not log sensitive class metadata, raw class data, or student emails to console', async () => {
+    const logSpy = vi.spyOn(console, 'log');
+
+    render(<MonitorView {...defaultProps} />);
+
+    // Verify no debug logs for class metadata or raw data are emitted
+    const debugLogs = logSpy.mock.calls.filter(call =>
+      typeof call[0] === 'string' && (
+        call[0].includes('[MonitorView] DEBUG:') ||
+        call[0].includes('Raw class data:') ||
+        call[0].includes('uidToEmailMap')
+      )
+    );
+    expect(debugLogs.length).toBe(0);
+
+    // Verify student emails are never logged in any console.log argument
+    const loggedText = logSpy.mock.calls.map(call => JSON.stringify(call)).join(' ');
+    expect(loggedText).not.toContain('student1@school.edu');
+    expect(loggedText).not.toContain('student2@school.edu');
+
+    logSpy.mockRestore();
   });
 });
 

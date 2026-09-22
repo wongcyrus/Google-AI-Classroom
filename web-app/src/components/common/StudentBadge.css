@@ -1,0 +1,75 @@
+.student-badge-container {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  line-height: 1.25;
+}
+
+.student-badge-primary-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.student-badge-name {
+  font-weight: 600;
+  color: var(--color-text-main, #1e293b);
+}
+
+.student-badge-cohort {
+  display: inline-block;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  background-color: rgba(99, 102, 241, 0.12);
+  color: var(--color-primary, #6366f1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.student-badge-programme {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border-radius: 4px;
+  background-color: rgba(14, 165, 233, 0.1);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.student-badge-email-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #64748b);
+  margin-top: 0.1rem;
+  font-weight: 400;
+  font-family: monospace;
+}
+
+/* Sizing variations */
+.student-badge-sm .student-badge-name {
+  font-size: 0.8rem;
+}
+.student-badge-sm .student-badge-cohort {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.3rem;
+}
+
+.student-badge-md .student-badge-name {
+  font-size: 0.92rem;
+}
+
+.student-badge-lg .student-badge-name {
+  font-size: 1.15rem;
+}
+.student-badge-lg .student-badge-cohort {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.5rem;
+}

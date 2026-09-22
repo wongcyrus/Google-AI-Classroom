@@ -11,6 +11,18 @@ vi.mock('../firebase-config', () => ({
     },
   },
   db: {},
+  functions: {},
+}));
+
+const mockGetAllSystemStudentEmails = vi.fn().mockResolvedValue({
+  data: {
+    studentEmails: ['alice@school.edu', 'bob@school.edu', 'charlie@school.edu'],
+    total: 3,
+  },
+});
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => mockGetAllSystemStudentEmails),
 }));
 
 const mockSetDoc = vi.fn().mockResolvedValue({});
@@ -47,6 +59,18 @@ const mockGetDoc = vi.fn(() =>
   })
 );
 
+const mockGetDocs = vi.fn(() =>
+  Promise.resolve({
+    forEach: (cb) => {
+      cb({
+        data: () => ({
+          studentEmails: ['fallback.student@school.edu'],
+        }),
+      });
+    },
+  })
+);
+
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
   collection: vi.fn(),
@@ -65,6 +89,7 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(),
   limit: vi.fn(),
   getDoc: (...args) => mockGetDoc(...args),
+  getDocs: (...args) => mockGetDocs(...args),
   setDoc: (...args) => mockSetDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
@@ -132,11 +157,16 @@ describe('ClassManagement Full Component Test Suite', () => {
       fireEvent.change(startTimeSelect, { target: { value: '09:00' } });
     }
 
-    const dayCheckbox = screen.getByLabelText(/Mon/i);
+    const dayCheckbox = screen.getByLabelText(/^Mon$/i);
     fireEvent.click(dayCheckbox);
 
     const addScheduleBtn = screen.getByRole('button', { name: /Add Schedule/i });
     fireEvent.click(addScheduleBtn);
+
+    const captureCheckbox = screen.getByLabelText(/Automatic Live Capture/i);
+    const combineCheckbox = screen.getByLabelText(/Automatic Video Compilation/i);
+    expect(captureCheckbox).toBeChecked();
+    expect(combineCheckbox).toBeChecked();
 
     const createBtn = screen.getByRole('button', { name: /Create Class/i });
     expect(createBtn).toBeInTheDocument();
@@ -145,7 +175,13 @@ describe('ClassManagement Full Component Test Suite', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetDoc).toHaveBeenCalled();
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          automaticCapture: true,
+          automaticCombine: true,
+        })
+      );
     });
   });
 
@@ -319,7 +355,7 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(silenceToggle);
 
     // Window duration select
-    const windowSelect = screen.getByDisplayValue(/30 Seconds/i);
+    const windowSelect = screen.getByLabelText(/Window Duration/i);
     fireEvent.change(windowSelect, { target: { value: '20' } });
 
     // Stride select
@@ -450,5 +486,287 @@ describe('ClassManagement Full Component Test Suite', () => {
       );
     });
   });
+
+  it('renders Input All Students button and populates student emails on click', async () => {
+    mockGetAllSystemStudentEmails.mockResolvedValueOnce({
+      data: {
+        studentEmails: ['alice@school.edu', 'bob@school.edu', 'charlie@school.edu'],
+        total: 3,
+      },
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /🎓 Add All Students/i })).toBeInTheDocument();
+    });
+
+    const inputAllBtn = screen.getByRole('button', { name: /🎓 Add All Students/i });
+    await act(async () => {
+      fireEvent.click(inputAllBtn);
+    });
+
+    await waitFor(() => {
+      const textarea = screen.getByPlaceholderText(/Enter student emails/i);
+      expect(textarea.value).toContain('charlie@school.edu');
+      expect(textarea.value).toContain('alice@school.edu');
+      expect(textarea.value).toContain('bob@school.edu');
+      expect(window.alert).toHaveBeenCalledWith(expect.stringMatching(/populated 1 new student email/i));
+    });
+  });
+
+  it('falls back to Firestore classes collection when callable function rejects', async () => {
+    mockGetAllSystemStudentEmails.mockRejectedValueOnce(new Error('Cloud Function unavailable'));
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /🎓 Add All Students/i })).toBeInTheDocument();
+    });
+
+    const inputAllBtn = screen.getByRole('button', { name: /🎓 Add All Students/i });
+    await act(async () => {
+      fireEvent.click(inputAllBtn);
+    });
+
+    await waitFor(() => {
+      const textarea = screen.getByPlaceholderText(/Enter student emails/i);
+      expect(textarea.value).toContain('fallback.student@school.edu');
+      expect(window.alert).toHaveBeenCalledWith(expect.stringMatching(/populated 1 new student email/i));
+    });
+  });
+
+  it('preserves mixed-case class ID and deduplicates student email roster on save', async () => {
+    let capturedDocRef = null;
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementationOnce((ref, data) => {
+      capturedDocRef = ref;
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="IT114115-Demo" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Basic Information & Storage Quota/i)).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Enter student emails/i);
+    fireEvent.change(textarea, {
+      target: { value: 'student1@stu.vtc.edu.hk\nstudent1@stu.vtc.edu.hk\ncy.gdoc@gmail.com' }
+    });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedDocRef.path).toBe('classes/IT114115-Demo');
+    expect(capturedDocRef.id).toBe('IT114115-Demo');
+    expect(capturedUpdateData.studentEmails).toEqual([
+      'student1@stu.vtc.edu.hk',
+      'cy.gdoc@gmail.com'
+    ]);
+    expect(screen.getByText(/Class settings successfully updated!/i)).toBeInTheDocument();
+  });
+
+  it('loads, configures, and saves bingoTimeLimitSeconds in class settings', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementationOnce((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Student Bingo Answer Time Limit/i)).toBeInTheDocument();
+    });
+
+    const timeLimitSelect = screen.getByLabelText(/Student Bingo Answer Time Limit/i);
+    // Default is 30 seconds
+    expect(timeLimitSelect.value).toBe('30');
+
+    // Change to 60 seconds
+    fireEvent.change(timeLimitSelect, { target: { value: '60' } });
+    expect(timeLimitSelect.value).toBe('60');
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.bingoTimeLimitSeconds).toBe(60);
+  });
+
+  it('supports exporting student and teacher email rosters to CSV', async () => {
+    const originalCreateObjectURL = window.URL.createObjectURL;
+    const originalRevokeObjectURL = window.URL.revokeObjectURL;
+    window.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    window.URL.revokeObjectURL = vi.fn();
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Enter student emails/i)).toBeInTheDocument();
+    });
+
+    const exportCsvBtns = screen.getAllByRole('button', { name: /📤 Export CSV/i });
+    expect(exportCsvBtns.length).toBeGreaterThanOrEqual(2);
+
+    // Export students CSV
+    fireEvent.click(exportCsvBtns[0]);
+    expect(window.URL.createObjectURL).toHaveBeenCalled();
+    expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+
+    // Export teachers CSV
+    fireEvent.click(exportCsvBtns[1]);
+    expect(window.URL.createObjectURL).toHaveBeenCalledTimes(2);
+
+    window.URL.createObjectURL = originalCreateObjectURL;
+    window.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('validates, creates, and removes exam period windows', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Add Exam Period/i })).toBeInTheDocument();
+    });
+
+    const addPeriodBtn = screen.getByRole('button', { name: /Add Exam Period/i });
+
+    // 1. Submit without dates
+    fireEvent.click(addPeriodBtn);
+    expect(screen.getByText(/Please select both a start date\/time and end date\/time for the exam period/i)).toBeInTheDocument();
+
+    const startInput = screen.getByLabelText('Exam Period Start Date and Time');
+    const endInput = screen.getByLabelText('Exam Period End Date and Time');
+    const nameInput = screen.getByLabelText('Exam Assessment Name');
+
+    // 2. Start date after end date
+    fireEvent.change(startInput, { target: { value: '2026-10-15T12:00' } });
+    fireEvent.change(endInput, { target: { value: '2026-10-15T10:00' } });
+    fireEvent.click(addPeriodBtn);
+    expect(screen.getByText(/Start date\/time must be strictly before end date\/time/i)).toBeInTheDocument();
+
+    // 3. Valid dates and name
+    fireEvent.change(nameInput, { target: { value: 'Midterm Practical Exam' } });
+    fireEvent.change(startInput, { target: { value: '2026-10-15T09:00' } });
+    fireEvent.change(endInput, { target: { value: '2026-10-15T12:00' } });
+    fireEvent.click(addPeriodBtn);
+
+    expect(screen.getByText(/Midterm Practical Exam/i)).toBeInTheDocument();
+
+    // 4. Remove exam period
+    const removeBtn = screen.getByRole('button', { name: /Remove exam period Midterm Practical Exam/i });
+    fireEvent.click(removeBtn);
+    expect(screen.queryByText(/Midterm Practical Exam/i)).not.toBeInTheDocument();
+  });
+
+  it('configures, toggles, and saves default lecture recording policy in class settings', async () => {
+    mockGetDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        ...mockClassData,
+        defaultLectureRecording: true,
+      }),
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Teacher Screen Broadcast & Lecture Recording Default/i)).toBeInTheDocument();
+    });
+
+    const recordRadio = screen.getByRole('radio', { name: /Record & Stream by Default/i });
+    const liveOnlyRadio = screen.getByRole('radio', { name: /Live Stream Only by Default/i });
+
+    expect(recordRadio).toBeChecked();
+    expect(liveOnlyRadio).not.toBeChecked();
+
+    // Toggle to live only
+    fireEvent.click(liveOnlyRadio);
+    expect(liveOnlyRadio).toBeChecked();
+    expect(recordRadio).not.toBeChecked();
+
+    // Save settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          defaultLectureRecording: false,
+        })
+      );
+    });
+  });
+
+  it('supports batch student roster upload, previews identities, and saves studentProfiles', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementationOnce((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="IT114115-Demo" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Basic Information & Storage Quota/i)).toBeInTheDocument();
+    });
+
+    // Click Batch Upload Roster button
+    const batchUploadBtn = screen.getByRole('button', { name: /Batch Upload Roster/i });
+    fireEvent.click(batchUploadBtn);
+
+    // Modal should be visible
+    expect(screen.getByText(/Batch Upload Student Roster/i)).toBeInTheDocument();
+
+    const sampleCsv = `StudentEmail,FirstName,LastName,Nickname,Programme,Class
+chan.tm@stu.vtc.edu.hk,Tai Man,Chan,David,HD in Software Engineering,IT114115/1A
+lee.sm@stu.vtc.edu.hk,Siu Ming,Lee,,HD in Software Engineering,IT114115/1B`;
+
+    const textarea = screen.getByPlaceholderText(/StudentEmail,FirstName,LastName/i);
+    fireEvent.change(textarea, { target: { value: sampleCsv } });
+
+    // Click Apply
+    const applyBtn = screen.getByRole('button', { name: /Apply to Class Roster/i });
+    fireEvent.click(applyBtn);
+
+    // Modal closes and roster details table renders
+    await waitFor(() => {
+      expect(screen.queryByText(/Batch Upload Student Roster/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Enrolled Roster Details/i)).toBeInTheDocument();
+      expect(screen.getByText(/David \(Chan Tai Man\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Lee Siu Ming/i)).toBeInTheDocument();
+    });
+
+    // Save settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(capturedUpdateData).toBeDefined();
+      expect(capturedUpdateData.studentProfiles).toBeDefined();
+      expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].nickname).toBe('David');
+      expect(capturedUpdateData.studentProfiles['chan.tm@stu.vtc.edu.hk'].studentClass).toBe('IT114115/1A');
+      expect(capturedUpdateData.studentProfiles['lee.sm@stu.vtc.edu.hk'].firstName).toBe('Siu Ming');
+    });
+  });
 });
+
 

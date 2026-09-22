@@ -1,11 +1,11 @@
 import './firebase.js';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
-import { HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
-import { FUNCTION_REGION, deriveUserRole, getAllowedEmailDomainsDescription } from './config.js';
+import { FUNCTION_REGION, CORS_ORIGINS, deriveUserRole, getAllowedEmailDomainsDescription } from './config.js';
 
 const db = getFirestore();
 const adminAuth = getAuth();
@@ -74,7 +74,7 @@ const getOrCreateUsers = async (emails, userType) => {
 
 
 // Helper function to manage user-class associations in bulk
-const updateUserAssociations = async (classId, emails, userType, action) => {
+const updateUserAssociations = async (classId, emails, userType, action, studentProfiles = {}) => {
   if (!emails || emails.length === 0) {
     return;
   }
@@ -125,7 +125,9 @@ const updateUserAssociations = async (classId, emails, userType, action) => {
         classUpdatePayload[`students.${userRecord.uid}`] = userRecord.email;
         
         const studentPropsRef = classDocRef.collection('studentProperties').doc(userRecord.uid);
-        batch.set(studentPropsRef, classProps, { merge: true });
+        const normEmail = userRecord.email ? userRecord.email.trim().toLowerCase() : '';
+        const profileData = studentProfiles[normEmail] || {};
+        batch.set(studentPropsRef, { ...classProps, ...profileData }, { merge: true });
       } else {
         classUpdatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
       }
@@ -162,7 +164,7 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   const removedTeachers = [...teachersBefore].filter(email => !teachersAfter.has(email));
 
   const promises = [
-    updateUserAssociations(classId, addedStudents, 'student', 'add'),
+    updateUserAssociations(classId, addedStudents, 'student', 'add', afterData.studentProfiles || {}),
     updateUserAssociations(classId, removedStudents, 'student', 'remove'),
     updateUserAssociations(classId, addedTeachers, 'teacher', 'add'),
     updateUserAssociations(classId, removedTeachers, 'teacher', 'remove'),
@@ -249,3 +251,90 @@ export async function handleBeforeUserCreatedLogic(event, customDeps = {}) {
 export const beforeusercreated = beforeUserCreated({ region: FUNCTION_REGION }, async (event) => {
   return handleBeforeUserCreatedLogic(event);
 });
+
+export async function handleGetAllSystemStudentEmailsLogic(request, customDeps = {}) {
+  const currentAuth = customDeps.adminAuth || adminAuth;
+  const currentDb = customDeps.db || db;
+  const currentDeriveRole = customDeps.deriveUserRole || deriveUserRole;
+
+  if (!request?.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const callerEmail = request.auth.token?.email || '';
+  const callerRole = request.auth.token?.role || currentDeriveRole(callerEmail);
+
+  if (callerRole !== 'teacher') {
+    throw new HttpsError('permission-denied', 'Only teachers can access the system student directory.');
+  }
+
+  const studentEmailsSet = new Set();
+
+  // 1. Fetch from Firebase Auth users in batches
+  try {
+    let nextPageToken;
+    do {
+      const listUsersResult = await currentAuth.listUsers(1000, nextPageToken);
+      for (const userRecord of listUsersResult.users) {
+        if (!userRecord.email) continue;
+        const role = userRecord.customClaims?.role || currentDeriveRole(userRecord.email);
+        if (role === 'student') {
+          studentEmailsSet.add(userRecord.email.trim().toLowerCase());
+        }
+      }
+      nextPageToken = listUsersResult.pageToken;
+    } while (nextPageToken);
+  } catch (authErr) {
+    logger.warn('Error listing users from auth:', authErr);
+  }
+
+  // 2. Fetch from classes collection (studentEmails array and students map)
+  try {
+    const classesSnap = await currentDb.collection('classes').get();
+    classesSnap.forEach((docSnap) => {
+      const classData = docSnap.data();
+      if (Array.isArray(classData.studentEmails)) {
+        classData.studentEmails.forEach((e) => {
+          if (typeof e === 'string' && e.includes('@')) {
+            studentEmailsSet.add(e.trim().toLowerCase());
+          }
+        });
+      }
+      if (classData.students && typeof classData.students === 'object') {
+        Object.values(classData.students).forEach((e) => {
+          if (typeof e === 'string' && e.includes('@')) {
+            studentEmailsSet.add(e.trim().toLowerCase());
+          }
+        });
+      }
+    });
+  } catch (fsErr) {
+    logger.warn('Error querying classes for student emails:', fsErr);
+  }
+
+  // 3. Fetch from studentProfiles collection
+  try {
+    const studentProfilesSnap = await currentDb.collection('studentProfiles').get();
+    studentProfilesSnap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.email && typeof data.email === 'string' && data.email.includes('@')) {
+        studentEmailsSet.add(data.email.trim().toLowerCase());
+      }
+    });
+  } catch (spErr) {
+    logger.warn('Error querying studentProfiles for student emails:', spErr);
+  }
+
+  const sortedStudentEmails = Array.from(studentEmailsSet).sort();
+  return {
+    studentEmails: sortedStudentEmails,
+    total: sortedStudentEmails.length,
+  };
+}
+
+export const getAllSystemStudentEmails = onCall(
+  { region: FUNCTION_REGION, cors: CORS_ORIGINS },
+  async (request) => {
+    return handleGetAllSystemStudentEmailsLogic(request);
+  }
+);

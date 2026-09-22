@@ -13,6 +13,19 @@ describe('StudentScreen Component', () => {
     expect(screen.getByText('Not Sharing')).toBeInTheDocument();
   });
 
+  it('renders friendly displayName and studentClass cohort pill when provided', () => {
+    const studentWithProfile = {
+      name: 'David (Chan Tai Man)',
+      displayName: 'David (Chan Tai Man)',
+      email: 'chan.tm@stu.vtc.edu.hk',
+      studentClass: 'IT114115/1A'
+    };
+    render(<StudentScreen student={studentWithProfile} isSharing={false} screenshotUrl={null} />);
+    
+    expect(screen.getByText('David (Chan Tai Man)')).toBeInTheDocument();
+    expect(screen.getByText('IT114115/1A')).toBeInTheDocument();
+  });
+
   it('renders "Connecting..." placeholder when isSharing is true but no image is yet received', () => {
     render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={null} />);
     

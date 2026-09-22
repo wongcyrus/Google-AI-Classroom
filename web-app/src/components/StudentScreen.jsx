@@ -13,10 +13,32 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
     <div 
       className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} 
       onClick={onClick}
-      title={`Click to inspect ${student.name || student.email} in detail modal`}
+      title={`Click to inspect ${student.displayName || student.name || student.email}${student.email && student.displayName ? ` (${student.email})` : ''} in detail modal`}
     >
       <div className="student-header">
-        <h2>{student.name || student.email}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+          <h2 style={{ margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {student.displayName || student.name || student.email}
+          </h2>
+          {student.studentClass && (
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '0.1rem 0.35rem',
+                borderRadius: '9999px',
+                backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                color: 'var(--color-primary, #6366f1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}
+              title={`Cohort / Class: ${student.studentClass}`}
+            >
+              {student.studentClass}
+            </span>
+          )}
+        </div>
         <div className="header-status-group">
           {screenshotData?.screen?.url && <span className="stream-pill" title="Screen Feed Active">🖥️</span>}
           {screenshotData?.webcam?.url && <span className="stream-pill" title="Webcam Feed Active">📷</span>}

@@ -344,8 +344,20 @@ const IndividualStudentView = ({
       <div className="individual-student-view-content" onClick={(e) => e.stopPropagation()}>
         <div className="individual-student-view-header">
           <div>
-            <h2>{student.name || student.email}</h2>
-            <p className="student-subemail">{student.email}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0 }}>{student.displayName || student.name || student.email}</h2>
+              {student.studentClass && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+                  {student.studentClass}
+                </span>
+              )}
+              {student.programme && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.12rem 0.45rem', borderRadius: '4px', backgroundColor: 'rgba(14, 165, 233, 0.1)', color: '#0284c7', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
+                  {student.programme}
+                </span>
+              )}
+            </div>
+            <p className="student-subemail" style={{ margin: '0.2rem 0 0 0' }}>{student.email}</p>
           </div>
 
           <div className="channel-tab-group" role="tablist" aria-label="Student video channels">
