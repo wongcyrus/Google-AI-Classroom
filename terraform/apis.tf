@@ -25,7 +25,8 @@ locals {
     "bigquery.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
-    "cloudtasks.googleapis.com"
+    "cloudtasks.googleapis.com",
+    "drive.googleapis.com"
   ]
 }
 

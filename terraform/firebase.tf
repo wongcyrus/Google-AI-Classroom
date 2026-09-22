@@ -62,10 +62,10 @@ locals {
   is_dev_project       = var.project_id == "it114115-dev-2026" || can(regex("dev", var.project_id))
   env_student_domains  = local.is_dev_project ? "stu.vtc.edu.hk,gmail.com" : "stu.vtc.edu.hk"
   env_enable_app_check = "true"
-  target_env_files     = local.is_dev_project ? toset([
+  target_env_files = local.is_dev_project ? toset([
     "${path.module}/../web-app/.env",
     "${path.module}/../web-app/.env.development"
-  ]) : toset([
+    ]) : toset([
     "${path.module}/../web-app/.env.prod",
     "${path.module}/../web-app/.env.production"
   ])
@@ -97,6 +97,7 @@ VITE_USE_FIREBASE_EMULATOR=false
 VITE_STUDENT_DOMAINS=${local.env_student_domains}
 VITE_FIREBASE_AI_BACKEND=vertex
 VITE_VERTEX_AI_LOCATION=global
+VITE_GOOGLE_CLIENT_ID=${var.google_client_id}
 EOT
 }
 

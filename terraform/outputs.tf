@@ -22,3 +22,8 @@ output "storage_bucket" {
   value       = "gs://${var.project_id}.firebasestorage.app"
   description = "Firebase Default Storage Bucket"
 }
+
+output "google_drive_api" {
+  value       = "drive.googleapis.com"
+  description = "Google Drive API service enabled"
+}

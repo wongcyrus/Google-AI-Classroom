@@ -38,3 +38,9 @@ variable "recaptcha_site_key" {
   description = "reCAPTCHA v3 site key for frontend"
   default     = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
 }
+
+variable "google_client_id" {
+  type        = string
+  description = "Google OAuth 2.0 Web Client ID for Google Drive integration"
+  default     = ""
+}
