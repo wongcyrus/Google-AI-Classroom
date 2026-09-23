@@ -45,6 +45,7 @@ const VideoTable = ({ videos, selectedVideos, onSelectVideo, onPlayVideo, onDown
             <th>Duration</th>
             <th>Size</th>
             <th>Created At</th>
+            <th>Google Drive</th>
             <th>Download</th>
           </tr>
         </thead>
@@ -84,6 +85,33 @@ const VideoTable = ({ videos, selectedVideos, onSelectVideo, onPlayVideo, onDown
                 <td>{formatDuration(video.duration)}</td>
                 <td>{formatSize(video.size)}</td>
                 <td>{formatDate(video.createdAt)}</td>
+                <td>
+                  {video.driveWebViewLink ? (
+                    <a
+                      href={video.driveWebViewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '0.8rem',
+                        color: '#2563eb',
+                        textDecoration: 'none',
+                        fontWeight: 600,
+                        backgroundColor: '#eff6ff',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                      }}
+                      title={`Stored in: ${video.driveFolderPath || 'Google Drive'}`}
+                    >
+                      📁 Drive ↗
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Not backed up</span>
+                  )}
+                </td>
                 <td>
                   {video.videoPath ? (
                     <button 

@@ -110,4 +110,37 @@ describe('VideoTable Component', () => {
     expect(downloadingBtn).toBeInTheDocument();
     expect(downloadingBtn).toBeDisabled();
   });
+
+  it('renders Google Drive links when backed up and Not backed up badge when not', () => {
+    const videosWithDrive = [
+      {
+        ...mockVideos[0],
+        driveWebViewLink: 'https://drive.google.com/file/d/drive_xyz/view',
+        driveFolderPath: 'Classroom Archives/IT114115/Week1/Students/student1@stu.vtc.edu.hk',
+      },
+      {
+        ...mockVideos[1],
+        driveWebViewLink: null,
+      },
+    ];
+
+    render(
+      <VideoTable
+        videos={videosWithDrive}
+        selectedVideos={new Map()}
+        onSelectVideo={vi.fn()}
+        onPlayVideo={vi.fn()}
+        onDownloadVideo={vi.fn()}
+        onSelectAll={vi.fn()}
+        downloadingVideos={new Set()}
+      />
+    );
+
+    const driveLink = screen.getByRole('link', { name: /📁 Drive ↗/i });
+    expect(driveLink).toBeInTheDocument();
+    expect(driveLink).toHaveAttribute('href', 'https://drive.google.com/file/d/drive_xyz/view');
+    expect(driveLink).toHaveAttribute('title', 'Stored in: Classroom Archives/IT114115/Week1/Students/student1@stu.vtc.edu.hk');
+
+    expect(screen.getByText('Not backed up')).toBeInTheDocument();
+  });
 });

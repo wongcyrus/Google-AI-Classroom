@@ -66,3 +66,4 @@ if (import.meta.env.DEV) {
 }
 
 export { auth, db, storage, functions, app, appCheck };
+export default app;

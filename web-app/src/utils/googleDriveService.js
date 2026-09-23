@@ -153,6 +153,7 @@ export async function fetchGoogleUserInfo(accessToken) {
  * @param {Blob|File} params.fileBlob - Video file or Blob
  * @param {string} params.fileName - Name of the file in Google Drive
  * @param {string} [params.description] - Description of file
+ * @param {string} [params.folderId] - Optional Google Drive folder ID to place file into
  * @param {function} [params.onProgress] - Callback receiving upload percentage (0 - 100)
  * @returns {Promise<{ fileId: string, webViewLink: string, embedUrl: string, name: string }>}
  */
@@ -161,6 +162,7 @@ export async function uploadVideoToGoogleDrive({
   fileBlob,
   fileName,
   description = 'Classroom lecture recording',
+  folderId = null,
   onProgress = () => {},
 }) {
   if (!accessToken) throw new Error('Access token is required for Google Drive upload');
@@ -174,6 +176,7 @@ export async function uploadVideoToGoogleDrive({
     name: fileName,
     description,
     mimeType,
+    ...(folderId ? { parents: [folderId] } : {}),
   };
 
   const initResponse = await fetch(
@@ -284,3 +287,241 @@ export async function setGoogleDriveFilePublic(fileId, accessToken) {
 
   return permResponse.json();
 }
+
+/**
+ * In-memory cache for resolved Google Drive folder IDs.
+ */
+export const folderHierarchyCache = new Map();
+
+/**
+ * Creates a folder in Google Drive.
+ * 
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.folderName
+ * @param {string} [params.parentFolderId]
+ * @returns {Promise<{ id: string, name: string }>}
+ */
+export async function createGoogleDriveFolder({ accessToken, folderName, parentFolderId = null }) {
+  if (!accessToken) throw new Error('Access token is required');
+  if (!folderName) throw new Error('Folder name is required');
+
+  const metadata = {
+    name: folderName,
+    mimeType: 'application/vnd.google-apps.folder',
+    ...(parentFolderId ? { parents: [parentFolderId] } : {}),
+  };
+
+  const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+    },
+    body: JSON.stringify(metadata),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Failed to create Google Drive folder "${folderName}": ${response.status} ${errText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Finds an existing folder or creates it if not found.
+ * 
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.folderName
+ * @param {string} [params.parentFolderId]
+ * @param {Map} [params.cache]
+ * @returns {Promise<{ id: string, name: string }>}
+ */
+export async function findOrCreateGoogleDriveFolder({
+  accessToken,
+  folderName,
+  parentFolderId = null,
+  cache = folderHierarchyCache,
+}) {
+  const cacheKey = `${parentFolderId || 'root'}:${folderName}`;
+  if (cache && cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  const safeName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  let q = `mimeType = 'application/vnd.google-apps.folder' and name = '${safeName}' and trashed = false`;
+  if (parentFolderId) {
+    q += ` and '${parentFolderId}' in parents`;
+  }
+
+  try {
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.files && data.files.length > 0) {
+        const found = data.files[0];
+        if (cache) cache.set(cacheKey, found);
+        return found;
+      }
+    }
+  } catch (err) {
+    console.warn('[GoogleDriveService] Error searching folder, creating new:', err);
+  }
+
+  const created = await createGoogleDriveFolder({ accessToken, folderName, parentFolderId });
+  if (cache) cache.set(cacheKey, created);
+  return created;
+}
+
+/**
+ * Resolves or creates the hierarchical folder structure in Google Drive:
+ * [Base Folder] / [Class] / [Lesson] / [Teacher Lectures | Students / (studentEmail)]
+ * 
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} [params.baseFolderName='Classroom Archives']
+ * @param {string} params.className - e.g. "IT114115-Demo"
+ * @param {string} [params.lessonName='General Recordings'] - e.g. "Lesson 01 - 2026-09-23"
+ * @param {'lectures'|'students'} params.subfolderType
+ * @param {string} [params.studentEmail] - required if subfolderType is 'students'
+ * @param {Map} [params.cache]
+ * @returns {Promise<{ folderId: string, folderPath: string }>}
+ */
+export async function resolveClassroomFolderHierarchy({
+  accessToken,
+  baseFolderName = 'Classroom Archives',
+  className = 'General Class',
+  lessonName = 'General Recordings',
+  subfolderType = 'lectures',
+  studentEmail = null,
+  taskTitle = null,
+  cache = folderHierarchyCache,
+}) {
+  if (!accessToken) throw new Error('Access token is required');
+
+  const cleanBase = (baseFolderName || 'Classroom Archives').trim();
+  const cleanClass = (className || 'General Class').trim();
+  const cleanLesson = (lessonName || 'General Recordings').trim();
+
+  // 1. Root / Base folder
+  const baseFolder = await findOrCreateGoogleDriveFolder({
+    accessToken,
+    folderName: cleanBase,
+    parentFolderId: null,
+    cache,
+  });
+
+  // 2. Class folder
+  const classFolder = await findOrCreateGoogleDriveFolder({
+    accessToken,
+    folderName: cleanClass,
+    parentFolderId: baseFolder.id,
+    cache,
+  });
+
+  // subfolderType === 'task': [Base] / [Class] / Tasks / [Task Title] / Students / [studentEmail]
+  if (subfolderType === 'task') {
+    const rawTaskTitle = (taskTitle || 'Practical Task').trim();
+    const cleanTaskTitle = rawTaskTitle
+      .replace(/[/\\:*?"<>|]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Practical Task';
+
+    // 3. Tasks root folder under class
+    const tasksRootFolder = await findOrCreateGoogleDriveFolder({
+      accessToken,
+      folderName: 'Tasks',
+      parentFolderId: classFolder.id,
+      cache,
+    });
+
+    // 4. Specific Task folder
+    const specificTaskFolder = await findOrCreateGoogleDriveFolder({
+      accessToken,
+      folderName: cleanTaskTitle,
+      parentFolderId: tasksRootFolder.id,
+      cache,
+    });
+
+    // 5. Students folder under the specific task
+    const taskStudentsFolder = await findOrCreateGoogleDriveFolder({
+      accessToken,
+      folderName: 'Students',
+      parentFolderId: specificTaskFolder.id,
+      cache,
+    });
+
+    if (studentEmail) {
+      const cleanEmail = studentEmail.trim();
+      const studentFolder = await findOrCreateGoogleDriveFolder({
+        accessToken,
+        folderName: cleanEmail,
+        parentFolderId: taskStudentsFolder.id,
+        cache,
+      });
+      return {
+        folderId: studentFolder.id,
+        folderPath: `${cleanBase}/${cleanClass}/Tasks/${cleanTaskTitle}/Students/${cleanEmail}`,
+      };
+    }
+
+    return {
+      folderId: taskStudentsFolder.id,
+      folderPath: `${cleanBase}/${cleanClass}/Tasks/${cleanTaskTitle}/Students`,
+    };
+  }
+
+  // 3. Lesson folder
+  const lessonFolder = await findOrCreateGoogleDriveFolder({
+    accessToken,
+    folderName: cleanLesson,
+    parentFolderId: classFolder.id,
+    cache,
+  });
+
+  if (subfolderType === 'lectures') {
+    const lectureFolder = await findOrCreateGoogleDriveFolder({
+      accessToken,
+      folderName: 'Teacher Lectures',
+      parentFolderId: lessonFolder.id,
+      cache,
+    });
+    return {
+      folderId: lectureFolder.id,
+      folderPath: `${cleanBase}/${cleanClass}/${cleanLesson}/Teacher Lectures`,
+    };
+  }
+
+  // subfolderType === 'students'
+  const studentsRootFolder = await findOrCreateGoogleDriveFolder({
+    accessToken,
+    folderName: 'Students',
+    parentFolderId: lessonFolder.id,
+    cache,
+  });
+
+  if (studentEmail) {
+    const cleanEmail = studentEmail.trim();
+    const studentFolder = await findOrCreateGoogleDriveFolder({
+      accessToken,
+      folderName: cleanEmail,
+      parentFolderId: studentsRootFolder.id,
+      cache,
+    });
+    return {
+      folderId: studentFolder.id,
+      folderPath: `${cleanBase}/${cleanClass}/${cleanLesson}/Students/${cleanEmail}`,
+    };
+  }
+
+  return {
+    folderId: studentsRootFolder.id,
+    folderPath: `${cleanBase}/${cleanClass}/${cleanLesson}/Students`,
+  };
+}
+

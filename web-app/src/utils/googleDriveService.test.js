@@ -7,6 +7,9 @@ import {
   fetchGoogleUserInfo,
   uploadVideoToGoogleDrive,
   setGoogleDriveFilePublic,
+  createGoogleDriveFolder,
+  findOrCreateGoogleDriveFolder,
+  resolveClassroomFolderHierarchy,
 } from './googleDriveService';
 
 describe('googleDriveService', () => {
@@ -226,6 +229,197 @@ describe('googleDriveService', () => {
           method: 'POST',
           headers: expect.objectContaining({ Authorization: 'Bearer tok_456' }),
         })
+      );
+    });
+  });
+
+  describe('createGoogleDriveFolder', () => {
+    it('creates folder with mimeType application/vnd.google-apps.folder', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'folder_created_123', name: 'My Folder' }),
+      });
+
+      const res = await createGoogleDriveFolder({
+        accessToken: 'tok_abc',
+        folderName: 'My Folder',
+        parentFolderId: 'parent_999',
+      });
+
+      expect(res.id).toBe('folder_created_123');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer tok_abc',
+            'Content-Type': 'application/json; charset=UTF-8',
+          }),
+          body: JSON.stringify({
+            name: 'My Folder',
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: ['parent_999'],
+          }),
+        })
+      );
+    });
+  });
+
+  describe('findOrCreateGoogleDriveFolder', () => {
+    it('returns existing folder id when found', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          files: [{ id: 'existing_folder_456', name: 'Existing Folder' }],
+        }),
+      });
+
+      const res = await findOrCreateGoogleDriveFolder({
+        accessToken: 'tok_abc',
+        folderName: 'Existing Folder',
+        parentFolderId: 'parent_111',
+      });
+
+      expect(res.id).toBe('existing_folder_456');
+    });
+
+    it('creates folder when not found in search', async () => {
+      // First fetch: search returns empty list
+      // Second fetch: create returns new folder
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ id: 'newly_created_folder_789', name: 'New Folder' }),
+        });
+
+      const res = await findOrCreateGoogleDriveFolder({
+        accessToken: 'tok_abc',
+        folderName: 'New Folder',
+        parentFolderId: 'parent_111',
+      });
+
+      expect(res.id).toBe('newly_created_folder_789');
+    });
+
+    it('uses memory cache on consecutive calls with same parent and name', async () => {
+      const cache = new Map();
+      cache.set('root:Cached Folder', { id: 'cached_id_999', name: 'Cached Folder' });
+
+      const res = await findOrCreateGoogleDriveFolder({
+        accessToken: 'tok_abc',
+        folderName: 'Cached Folder',
+        parentFolderId: null,
+        cache,
+      });
+
+      expect(res.id).toBe('cached_id_999');
+    });
+  });
+
+  describe('resolveClassroomFolderHierarchy', () => {
+    it('resolves lecture hierarchy: Base / Class / Lesson / Teacher Lectures', async () => {
+      const cache = new Map();
+      let folderCounter = 0;
+      global.fetch = vi.fn().mockImplementation(async (url, options) => {
+        if (options?.method === 'POST') {
+          folderCounter++;
+          const body = JSON.parse(options.body);
+          return {
+            ok: true,
+            json: async () => ({ id: `folder_${folderCounter}_${body.name}`, name: body.name }),
+          };
+        }
+        // search returns empty to trigger creation
+        return {
+          ok: true,
+          json: async () => ({ files: [] }),
+        };
+      });
+
+      const result = await resolveClassroomFolderHierarchy({
+        accessToken: 'tok_abc',
+        baseFolderName: 'Classroom Archives',
+        className: 'IT114115-A',
+        lessonName: 'Lesson 01 - React State',
+        subfolderType: 'lectures',
+        cache,
+      });
+
+      expect(result.folderId).toBe('folder_4_Teacher Lectures');
+      expect(result.folderPath).toBe(
+        'Classroom Archives/IT114115-A/Lesson 01 - React State/Teacher Lectures'
+      );
+    });
+
+    it('resolves student hierarchy: Base / Class / Lesson / Students / studentEmail', async () => {
+      const cache = new Map();
+      let folderCounter = 0;
+      global.fetch = vi.fn().mockImplementation(async (url, options) => {
+        if (options?.method === 'POST') {
+          folderCounter++;
+          const body = JSON.parse(options.body);
+          return {
+            ok: true,
+            json: async () => ({ id: `folder_${folderCounter}_${body.name}`, name: body.name }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ files: [] }),
+        };
+      });
+
+      const result = await resolveClassroomFolderHierarchy({
+        accessToken: 'tok_abc',
+        baseFolderName: 'Classroom Archives',
+        className: 'IT114115-B',
+        lessonName: 'Week 2 Lab',
+        subfolderType: 'students',
+        studentEmail: '230123456@stu.vtc.edu.hk',
+        cache,
+      });
+
+      expect(result.folderId).toBe('folder_5_230123456@stu.vtc.edu.hk');
+      expect(result.folderPath).toBe(
+        'Classroom Archives/IT114115-B/Week 2 Lab/Students/230123456@stu.vtc.edu.hk'
+      );
+    });
+
+    it('resolves task hierarchy: Base / Class / Tasks / Task Title / Students / studentEmail', async () => {
+      const cache = new Map();
+      let folderCounter = 0;
+      global.fetch = vi.fn().mockImplementation(async (url, options) => {
+        if (options?.method === 'POST') {
+          folderCounter++;
+          const body = JSON.parse(options.body);
+          return {
+            ok: true,
+            json: async () => ({ id: `folder_${folderCounter}_${body.name}`, name: body.name }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ files: [] }),
+        };
+      });
+
+      const result = await resolveClassroomFolderHierarchy({
+        accessToken: 'tok_abc',
+        baseFolderName: 'Classroom Archives',
+        className: 'IT114115-B',
+        subfolderType: 'task',
+        taskTitle: 'Task 1: Docker Containerization',
+        studentEmail: '230123456@stu.vtc.edu.hk',
+        cache,
+      });
+
+      expect(result.folderId).toBe('folder_6_230123456@stu.vtc.edu.hk');
+      expect(result.folderPath).toBe(
+        'Classroom Archives/IT114115-B/Tasks/Task 1 Docker Containerization/Students/230123456@stu.vtc.edu.hk'
       );
     });
   });

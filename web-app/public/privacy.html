@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Gemini AI Classroom Assistant</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <style>
+    :root {
+      --primary: #1a365d;
+      --accent: #2b6cb0;
+      --text: #2d3748;
+      --bg: #f7fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background-color: var(--bg);
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      border-bottom: 3px solid var(--accent);
+    }
+    header h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.8rem;
+    }
+    header p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 1rem;
+    }
+    main {
+      max-width: 800px;
+      margin: 2rem auto;
+      background: var(--card-bg);
+      padding: 2.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+      border: 1px solid var(--border);
+    }
+    h2 {
+      color: var(--primary);
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.4rem;
+      margin-top: 1.8rem;
+      font-size: 1.3rem;
+    }
+    p, li {
+      font-size: 0.95rem;
+      color: #4a5568;
+    }
+    ul {
+      padding-left: 1.5rem;
+    }
+    .highlight-box {
+      background: #ebf8ff;
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.2rem;
+      border-radius: 4px;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: #718096;
+      font-size: 0.85rem;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Privacy Policy</h1>
+    <p>Gemini AI Multimodal Classroom Assistant</p>
+  </header>
+  <main>
+    <p><em>Last Updated: September 2026</em></p>
+
+    <div class="highlight-box">
+      <strong>Core Commitment:</strong> The Gemini AI Classroom Assistant is an educational pairing tool engineered to respect student privacy and intellectual property. We do not sell user data, track personal browsing habits, or retain unauthorized personal media.
+    </div>
+
+    <h2>1. Information We Collect</h2>
+    <p>When used in an authorized educational setting, the system processes:</p>
+    <ul>
+      <li><strong>Authentication Information:</strong> School email addresses and user roles (Teacher, Student, Admin) via Firebase Authentication and Google Identity Services.</li>
+      <li><strong>Classroom Media & Telemetry:</strong> Audio streams, webcam frames, and screen captures initiated during an active, proctored classroom session for real-time transcription and lab proctoring.</li>
+      <li><strong>Lecture Recordings:</strong> Audio/video streams captured during teacher-initiated lectures for automated note generation, transcription, and archiving.</li>
+    </ul>
+
+    <h2>2. Google Drive Integration & Scopes</h2>
+    <p>The Application includes an optional Google Drive integration for instructors to backup their lecture recordings:</p>
+    <ul>
+      <li><strong>Requested Scope:</strong> <code>https://www.googleapis.com/auth/drive.file</code> (Per-File / Non-Broad Access).</li>
+      <li><strong>Limited Purpose:</strong> This scope allows the application to upload only the video files created directly by the classroom session into the instructor's Google Drive.</li>
+      <li><strong>No Access to Personal Files:</strong> The application <strong>cannot</strong> view, edit, read, or delete any other files, folders, documents, or photos in the user's Google Drive.</li>
+      <li><strong>Token Retention:</strong> Temporary OAuth access tokens are stored only in the instructor's active browser session storage and are never persisted to external tracking servers.</li>
+    </ul>
+
+    <h2>3. Edge & On-Device Processing</h2>
+    <p>Whenever supported by the user's browser, artificial intelligence processing (including Whisper speech-to-text, Gemma text assessment, and MediaPipe face landmark detection) runs locally on the user's hardware via WebAssembly/WebGPU (LiteRT). Raw intermediate camera frames are not uploaded to cloud storage when evaluated on-device.</p>
+
+    <h2>4. Data Sharing & Security</h2>
+    <p>User records, transcripts, and attendance logs are secured using Google Cloud and Firebase enterprise-grade infrastructure with strict Firestore and Cloud Storage security rules. Data is never shared with third-party advertising networks.</p>
+
+    <h2>5. Contact & Inquiries</h2>
+    <p>For questions or data access requests regarding this Privacy Policy, please contact the institution system administrator or refer to your institutional course coordinator.</p>
+  </main>
+  <footer>
+    &copy; 2026 Gemini AI Classroom Assistant. All rights reserved. &bull; <a href="/terms.html">Terms of Service</a> &bull; <a href="/">Return to Application</a>
+  </footer>
+</body>
+</html>
