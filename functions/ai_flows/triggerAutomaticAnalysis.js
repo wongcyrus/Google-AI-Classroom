@@ -2,6 +2,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { FUNCTION_REGION } from './config.js';
+import { enqueueTaskEvaluation } from './evaluateTaskSubmission.js';
 
 const db = getFirestore();
 
@@ -14,6 +15,27 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   // Check if the job status changed to a terminal state
   if (isTerminal(beforeData.status) || !isTerminal(afterData.status)) {
     logger.info(`Job ${event.params.jobId} status did not transition to a terminal state. Before: ${beforeData.status}, After: ${afterData.status}. No action needed.`);
+    return;
+  }
+
+  // Handle practical task submission video completion
+  if (afterData.isTaskSubmission && afterData.taskId && afterData.studentUid) {
+    if (afterData.status === 'completed') {
+      logger.info(`Practical task video job ${event.params.jobId} completed. Enqueueing automated task evaluation for task ${afterData.taskId}, student ${afterData.studentUid}, attempt ${afterData.attemptNumber || 1}.`);
+      try {
+        await enqueueTaskEvaluation({
+          classId: afterData.classId,
+          taskId: afterData.taskId,
+          studentUid: afterData.studentUid,
+          attemptNumber: afterData.attemptNumber || 1,
+          compiledVideoPath: afterData.videoPath,
+        });
+      } catch (err) {
+        logger.error(`Failed to enqueue task evaluation for job ${event.params.jobId}:`, err);
+      }
+    } else {
+      logger.warn(`Practical task video job ${event.params.jobId} failed compilation. Skipping AI evaluation.`);
+    }
     return;
   }
 

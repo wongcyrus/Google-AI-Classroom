@@ -318,6 +318,9 @@ const TeacherView = ({ user }) => {
                   <Link to={`/class/${c.id}?tab=monitor`} className="shortcut-link">
                     <span>📡</span> Live Monitor
                   </Link>
+                  <Link to={`/class/${c.id}?tab=tasks`} className="shortcut-link" title="Practical Tasks & Homework">
+                    <span>📋</span> Tasks
+                  </Link>
                   <Link to={`/class/${c.id}?tab=video`} className="shortcut-link">
                     <span>🎬</span> Recordings
                   </Link>

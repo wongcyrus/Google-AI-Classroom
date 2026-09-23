@@ -21,6 +21,7 @@ import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
 import BingoModal, { playBingoChime } from './BingoModal';
+import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
@@ -272,6 +273,29 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
   const [classProperties, setClassProperties] = useState(null);
   const [myProperties, setMyProperties] = useState(null);
   const [enrolledBingoChallenges, setEnrolledBingoChallenges] = useState({});
+
+  // Active Practical Tasks State
+  const [activeTaskSession, setActiveTaskSession] = useState(null);
+  const [classTasks, setClassTasks] = useState([]);
+  const [isTaskWorkspaceOpen, setIsTaskWorkspaceOpen] = useState(false);
+  const [selectedTaskChallenge, setSelectedTaskChallenge] = useState(null);
+  const [currentTaskSubmission, setCurrentTaskSubmission] = useState(null);
+
+  // Subscribe to published tasks for activeClass
+  useEffect(() => {
+    if (!activeClass) {
+      setClassTasks([]);
+      return;
+    }
+    const tasksRef = collection(db, 'classes', activeClass, 'tasks');
+    const unsub = onSnapshot(tasksRef, (snapshot) => {
+      const list = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((t) => t.status === 'published');
+      setClassTasks(list);
+    }, (err) => console.warn('[StudentView] Tasks fetch error:', err));
+    return () => unsub();
+  }, [activeClass]);
 
   const isClassSessionOngoing = Boolean(isCapturing || activeClass);
 
@@ -1462,7 +1486,7 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
 
           for (const cls of classes) {
             try {
-              await addDoc(collection(db, 'screenshots'), {
+              const docData = {
                 classId: cls,
                 studentUid: user.uid,
                 email: user.email.toLowerCase(),
@@ -1473,7 +1497,12 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
                 expireAt: expireAtDate,
                 deleted: false,
                 ipAddress: ipAddress,
-              });
+              };
+              if (activeTaskSession?.taskId) {
+                docData.activeTaskId = activeTaskSession.taskId;
+                docData.activeAttemptNumber = activeTaskSession.attemptNumber || 1;
+              }
+              await addDoc(collection(db, 'screenshots'), docData);
 
               const statusRef = doc(db, "classes", cls, "status", user.uid);
               const statusUpdate = {
@@ -2180,6 +2209,32 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
             }}
           >
             Answer Challenge ➔
+          </button>
+        </div>
+      )}
+
+      {/* Active Practical Task Challenge Banner */}
+      {classTasks.length > 0 && (
+        <div className="bingo-top-alert-banner" style={{ background: 'linear-gradient(90deg, #1e3a8a, #2563eb)' }} role="alert">
+          <div className="bingo-alert-info">
+            <span className="bingo-pulse-icon">📋</span>
+            <div className="bingo-alert-text">
+              <strong style={{ color: '#fff' }}>Practical Task Available: {classTasks[0].title}</strong>
+              <span style={{ color: '#bfdbfe' }}>
+                {activeTaskSession ? 'Active attempt in progress — screen sharing is recorded.' : 'Complete this hands-on assignment.'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="bingo-banner-open-btn"
+            style={{ background: '#ffffff', color: '#1e3a8a', fontWeight: 'bold' }}
+            onClick={() => {
+              setSelectedTaskChallenge(classTasks[0]);
+              setIsTaskWorkspaceOpen(true);
+            }}
+          >
+            {activeTaskSession ? 'Open Workspace ➔' : 'Start Task ➔'}
           </button>
         </div>
       )}
@@ -3206,6 +3261,56 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
               ...prev,
               activeBingo: { ...prev.activeBingo, status: 'closed' }
             } : null);
+          }}
+        />
+      )}
+
+      {/* Practical Task Workspace Modal */}
+      {isTaskWorkspaceOpen && selectedTaskChallenge && (
+        <StudentTaskWorkspaceModal
+          isOpen={isTaskWorkspaceOpen}
+          onClose={() => setIsTaskWorkspaceOpen(false)}
+          task={selectedTaskChallenge}
+          submission={currentTaskSubmission}
+          existingScreenStream={screenStreamRef.current}
+          onStartAttempt={async (taskId, startedAttempt) => {
+            setActiveTaskSession({ taskId, attemptNumber: startedAttempt.attemptNumber });
+            if (activeClass && user?.uid) {
+              const subRef = doc(db, 'classes', activeClass, 'tasks', taskId, 'submissions', user.uid);
+              await setDoc(subRef, {
+                studentUid: user.uid,
+                email: user.email?.toLowerCase(),
+                status: 'in_progress',
+                latestAttempt: startedAttempt,
+                updatedAt: serverTimestamp(),
+              }, { merge: true });
+            }
+          }}
+          onFinishAttempt={async (taskId, finishedAttempt) => {
+            setActiveTaskSession(null);
+            if (activeClass && user?.uid) {
+              const subRef = doc(db, 'classes', activeClass, 'tasks', taskId, 'submissions', user.uid);
+              const finished = { ...finishedAttempt, finishedAt: new Date(), status: 'compiling' };
+              await setDoc(subRef, {
+                status: 'compiling',
+                latestAttempt: finished,
+                updatedAt: serverTimestamp(),
+              }, { merge: true });
+
+              await addDoc(collection(db, 'videoJobs'), {
+                jobId: `task_${taskId}_${user.uid}_att${finished.attemptNumber}_${Date.now()}`,
+                classId: activeClass,
+                studentUid: user.uid,
+                studentEmail: user.email?.toLowerCase(),
+                startTime: finished.startedAt,
+                endTime: finished.finishedAt,
+                status: 'pending',
+                isTaskSubmission: true,
+                taskId,
+                attemptNumber: finished.attemptNumber,
+                createdAt: serverTimestamp(),
+              });
+            }
           }}
         />
       )}

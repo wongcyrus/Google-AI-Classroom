@@ -22,6 +22,7 @@ import AiCostReportView from './AiCostReportView';
 import ClassManagement from './ClassManagement';
 import BingoResultsView from './BingoResultsView';
 import LectureRecordingsView from './LectureRecordingsView';
+import TasksManagementView from './tasks/TasksManagementView';
 
 import './ClassView.css';
 
@@ -33,6 +34,7 @@ const ClassView = ({ user }) => {
   // URL-synced tab state
   const mainTab = searchParams.get('tab') || 'monitor';
   const subTab = searchParams.get('sub') || (mainTab === 'video' ? 'library' : mainTab === 'analytics' ? 'irregularities' : '');
+  const isLiveMode = mainTab === 'monitor' || mainTab === 'messages';
 
   const [classInfo, setClassInfo] = useState(null);
   const [teacherClasses, setTeacherClasses] = useState([]);
@@ -143,11 +145,11 @@ const ClassView = ({ user }) => {
     switch (mainTab) {
       case 'video':
         switch (subTab) {
-          case 'recordings': return <LectureRecordingsView classId={classId} user={user} />;
-          case 'library': return <VideoLibrary {...props} />;
+          case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
+          case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
-          default: return <VideoLibrary {...props} />;
+          default: return <VideoLibrary {...props} lessons={lessons} />;
         }
       case 'analytics':
         switch (subTab) {
@@ -171,6 +173,17 @@ const ClassView = ({ user }) => {
           );
           default: return <IrregularitiesView {...props} />;
         }
+      case 'tasks':
+        return (
+          <TasksManagementView
+            classId={classId}
+            className={classInfo?.name || classId}
+            classSchedule={classInfo?.schedule}
+            lessons={lessons}
+            enrolledStudents={Object.values(classInfo?.students || {})}
+            studentProfiles={classInfo?.studentProfiles || {}}
+          />
+        );
       case 'messages':
         return <MessagesView user={user} classId={classId} />;
       case 'data':
@@ -186,18 +199,18 @@ const ClassView = ({ user }) => {
 
   return (
     <div className="class-view">
-      {/* Class Hub Context Banner */}
+      {/* Class Hub Context Banner (Compact) */}
       <div className="class-hub-header">
         <div className="class-hub-title-area">
           <div className="class-hub-icon">🏫</div>
-          <div>
+          <div className="class-hub-title-group">
             <h1 className="class-hub-title">
               {classInfo?.name || classId}
               <span className="class-hub-code-pill">{classId}</span>
             </h1>
-            <small style={{ color: '#64748b' }}>
+            <span className="class-hub-student-badge">
               {classInfo?.students ? `${Object.keys(classInfo.students).length} enrolled students` : 'Active Classroom Hub'}
-            </small>
+            </span>
           </div>
         </div>
 
@@ -220,50 +233,92 @@ const ClassView = ({ user }) => {
         )}
       </div>
 
-      {/* Primary Workflow Tabs */}
-      <nav className="tab-nav" aria-label="Classroom Sections">
-        <button
-          className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`}
-          onClick={() => setTab('monitor')}
-        >
-          <span>📡</span> Live Monitor
-        </button>
+      {/* Unified Compact Navigation Ribbon (Mode Switcher + Tabs in ONE Row) */}
+      <div className="class-hub-nav-bar" role="region" aria-label="Classroom Navigation">
+        {/* Mode Selector Segment */}
+        <div className="class-hub-mode-selector" role="region" aria-label="Classroom Mode Selector">
+          <button
+            type="button"
+            className={`hub-mode-btn ${isLiveMode ? 'active live' : ''}`}
+            onClick={() => {
+              if (!isLiveMode) setTab('monitor');
+            }}
+          >
+            <span className="live-indicator-dot"></span>
+            <span>🔴 Live Classroom</span>
+          </button>
 
-        <button
-          className={`tab-button ${mainTab === 'video' ? 'active' : ''}`}
-          onClick={() => setTab('video', 'library')}
-        >
-          <span>🎬</span> Recordings & Sessions
-        </button>
+          <button
+            type="button"
+            className={`hub-mode-btn ${!isLiveMode ? 'active offline' : ''}`}
+            onClick={() => {
+              if (isLiveMode) setTab('tasks');
+            }}
+          >
+            <span>📁 Coursework & Management</span>
+          </button>
+        </div>
 
-        <button
-          className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`}
-          onClick={() => setTab('analytics', 'irregularities')}
-        >
-          <span>📊</span> AI Analytics & Insights
-        </button>
+        <div className="nav-bar-divider" />
 
-        <button
-          className={`tab-button ${mainTab === 'messages' ? 'active' : ''}`}
-          onClick={() => setTab('messages')}
-        >
-          <span>💬</span> Live Alerts & Messages
-        </button>
+        {/* Primary Workflow Tabs for Active Mode */}
+        <nav className={`tab-nav ${isLiveMode ? 'live-tab-nav' : 'offline-tab-nav'}`} aria-label="Classroom Sections">
+          {isLiveMode ? (
+            <>
+              <button
+                className={`tab-button ${mainTab === 'monitor' ? 'active' : ''}`}
+                onClick={() => setTab('monitor')}
+              >
+                <span>📡</span> Live Screen Monitor
+              </button>
 
-        <button
-          className={`tab-button ${mainTab === 'data' ? 'active' : ''}`}
-          onClick={() => setTab('data')}
-        >
-          <span>🗄️</span> Data & Archives
-        </button>
+              <button
+                className={`tab-button ${mainTab === 'messages' ? 'active' : ''}`}
+                onClick={() => setTab('messages')}
+              >
+                <span>💬</span> Live Alerts & Messages
+              </button>
+            </>
+          ) : (
+          <>
+            <button
+              className={`tab-button ${mainTab === 'tasks' ? 'active' : ''}`}
+              onClick={() => setTab('tasks')}
+            >
+              <span>📋</span> Practical Tasks & Homework
+            </button>
 
-        <button
-          className={`tab-button ${mainTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setTab('settings')}
-        >
-          <span>⚙️</span> Class Settings & Roster
-        </button>
+            <button
+              className={`tab-button ${mainTab === 'video' ? 'active' : ''}`}
+              onClick={() => setTab('video', 'library')}
+            >
+              <span>🎬</span> Recordings & Sessions
+            </button>
+
+            <button
+              className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`}
+              onClick={() => setTab('analytics', 'irregularities')}
+            >
+              <span>📊</span> AI Analytics & Insights
+            </button>
+
+            <button
+              className={`tab-button ${mainTab === 'data' ? 'active' : ''}`}
+              onClick={() => setTab('data')}
+            >
+              <span>🗄️</span> Data & Archives
+            </button>
+
+            <button
+              className={`tab-button ${mainTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setTab('settings')}
+            >
+              <span>⚙️</span> Class Settings & Roster
+            </button>
+          </>
+        )}
       </nav>
+      </div>
 
       {/* Secondary Sub-Tabs for Video Module */}
       {mainTab === 'video' && (

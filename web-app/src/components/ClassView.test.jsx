@@ -15,6 +15,8 @@ vi.mock('firebase/firestore', () => ({
     exists: () => true,
     data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
   }),
+  getDocs: vi.fn().mockResolvedValue({ docs: [] }),
+  limit: vi.fn(),
   onSnapshot: vi.fn((ref, cb) => {
     cb({
       exists: () => true,
@@ -67,6 +69,7 @@ vi.mock('./ClassManagement', () => ({ default: () => <div data-testid="managemen
 vi.mock('./MessagesView', () => ({ default: () => <div data-testid="messages-view">Messages Content</div> }));
 vi.mock('./BingoResultsView', () => ({ default: () => <div data-testid="bingo-results-view">Bingo Results Content</div> }));
 vi.mock('./LectureRecordingsView', () => ({ default: () => <div data-testid="lecture-recordings-view">Lecture Recordings Content</div> }));
+vi.mock('./tasks/TasksManagementView', () => ({ default: () => <div data-testid="tasks-view">Tasks Content</div> }));
 
 describe('ClassView Component Full Suite', () => {
   const mockUser = { uid: 'teacher_001', email: 'teacher@school.edu' };
@@ -258,6 +261,10 @@ describe('ClassView Component Full Suite', () => {
       </MemoryRouter>
     );
 
+    // Switch to Coursework & Management mode
+    const courseworkModeBtn = screen.getByRole('button', { name: /Coursework & Management/i });
+    fireEvent.click(courseworkModeBtn);
+
     // Click Video tab
     const videoTab = screen.getByRole('button', { name: /Recordings & Sessions/i });
     fireEvent.click(videoTab);
@@ -294,9 +301,16 @@ describe('ClassView Component Full Suite', () => {
     const bingoSubTab = screen.getByRole('button', { name: /Bingo Presence Report/i });
     fireEvent.click(bingoSubTab);
 
+    // Switch back to Live Classroom mode
+    const liveModeBtn = screen.getByRole('button', { name: /Live Classroom/i });
+    fireEvent.click(liveModeBtn);
+
     // Click Live Alerts & Messages tab
     const messagesTab = screen.getByRole('button', { name: /Live Alerts & Messages/i });
     fireEvent.click(messagesTab);
+
+    // Switch back to Coursework & Management mode
+    fireEvent.click(screen.getByRole('button', { name: /Coursework & Management/i }));
 
     // Click Data tab
     const dataTab = screen.getByRole('button', { name: /Data & Archives/i });

@@ -207,3 +207,5 @@ export const dispatchScheduledBingoTask = onTaskDispatched(
 );
 
 export { processLectureSubtitles } from './processLectureSubtitles.js';
+export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';
+export { evaluateTaskSubmission, evaluateTaskSubmissionTask, enqueueTaskEvaluation } from './evaluateTaskSubmission.js';
