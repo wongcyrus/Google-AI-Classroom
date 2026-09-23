@@ -312,7 +312,14 @@ This directory contains Cloud Functions responsible for handling media-related t
 
 -   **`processZipJob`**:
     -   **Trigger**: `onDocumentCreated` in `zipJobs/{jobId}`.
+    -   **Configuration**: `memory`: `8GiB`, `cpu`: `2`, `timeoutSeconds`: `540` (9 minutes).
     -   **Description**: This function handles requests for bulk video downloads. When a new job is created in the `zipJobs` collection, it downloads the specified videos from Cloud Storage, archives them into a single ZIP file, and generates a `summary.csv` file with metadata. The final ZIP file is uploaded to a `zips/` directory in Cloud Storage, and an email is sent to the requester with a link to download the archive.
+    -   **Architectural Limitations & Scope**:
+        -   **Workable Scale**: Strictly limited to small video selections ($\le 5$ short clips, $< 1 \text{ GB}$).
+        -   **OOM Risk**: Because `/tmp` is a RAM-disk sharing container memory and video compression in ZIP yields $\approx 0\%$ size reduction, total RAM required is $\approx 2 \times S$. Batches exceeding $3.5 \text{ GB}$ trigger Out-Of-Memory container kills (`SIGKILL 137`).
+        -   **540s Timeout**: Large cohorts (20–40 students) easily exceed the 540-second serverless execution ceiling, resulting in aborted executions and orphaned jobs.
+        -   **No Image Support**: Only processes `videoJobs`. Does not support batch archiving raw screenshot images.
+        -   **Recommended Alternative**: For cohort backups, use the client-side [Google Drive Hierarchical Archival](./google-drive-backup-and-lesson-naming.md). See detailed [Batch Media Export & ZIP Archiving Technical Audit](./batch-media-export-and-zip-audit.md).
 
 -   **`processReportJob`**:
     -   **Trigger**: `onDocumentCreated` in `reportJobs/{jobId}`.

@@ -373,7 +373,41 @@ During formal examinations, strict academic confidentiality rules apply:
 
 ---
 
-## 11. Troubleshooting & Frequently Asked Questions
+## 11. Completing Practical Tasks & Homework Assignments
+
+Hands-on lab exercises and asynchronous homework challenges allow you to demonstrate practical skills directly on your computer, with continuous screen capture and automated AI feedback from Gemini.
+
+### 11.1 Accessing Your Practical Tasks
+You can access your assigned practical challenges through two pathways:
+1. **From the Student Records Dashboard (`⚡ Tasks & AI Progress`)**:
+   - Log in and navigate to **Records** &rarr; **`⚡ Tasks & AI Progress`**.
+   - Review your published tasks. Homework assignments are accessible **24/7** anytime before the deadline.
+   - Click **`▶ Start Challenge`** (or **`▶ Resume`**).
+2. **From Live Class Mode (`StudentView.jsx`)**:
+   - If an instructor launches an in-class lab challenge, a top alert banner will appear: **`📋 Practical Task Available: [Task Title]`**.
+   - Click **`Start Task ➔`** to open your workspace immediately. Your active classroom screen share is automatically linked—no second permission prompt is required!
+
+### 11.2 The Practical Task Workspace
+When you open the workspace modal:
+- **Pre-Flight Screen Sharing Check**: If you aren't already sharing your screen, click **`🖥️ Start Screen Share`** and select **Entire Screen**.
+- **Live Countdown HUD**:
+  - The HUD displays your remaining time.
+  - When less than 5 minutes remain, the timer changes to amber warning.
+  - When less than 1 minute remains, the timer pulses red with an urgent alert.
+  - **Graceful Auto-Submit**: If time expires, the system automatically submits your attempt and stops recording so that all completed work is saved.
+- **Dual-Pane Layout**: Follow the instructions and rubric checklist on the left pane while your active screen preview confirms your recording is crystal clear on the right pane.
+- **Finishing Your Attempt**: When you have completed the challenge, click **`Submit Lab Task`**. The system compiles your recording slice and sends it to Gemini for evaluation.
+
+### 11.3 Reviewing AI Feedback & Scores
+Once evaluation completes (typically 1–2 minutes):
+- Open your task card and click **`📋 Feedback & Review`**.
+- Review your **Overall Score** and **Gemini Summary Evaluation**.
+- Check the **Step-by-Step Checklist**: See which criteria were satisfied, view point allocations, and click the blue timestamp links to jump directly to that point in your submission video.
+- If your instructor has provided manual feedback or score adjustments, their comments will be highlighted.
+
+---
+
+## 12. Troubleshooting & Frequently Asked Questions
 
 ### Q: Why does the app say "Google Chrome Required"?
 **A:** Other browsers (Safari, Firefox, Edge) do not support the exact WebRTC display surface verification or MediaPipe WebAssembly threading required by the system. Install the latest version of **Google Chrome** to resolve this.

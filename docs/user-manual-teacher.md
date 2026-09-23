@@ -19,13 +19,14 @@ Welcome to the **Gemini Multimodal Classroom Agent** Instructor Guide. This manu
 8. [Individual Student Inspection, Intercom & Interventions](#8-individual-student-inspection-intercom--interventions)
 9. [Interactive "Bingo" Active Presence Verification](#9-interactive-bingo-active-presence-verification)
 10. [Session Review, Video Library & Synchronized Scrubbing](#10-session-review-video-library--synchronized-scrubbing)
-11. [AI Video Analysis & Task Prompt Synthesis Studio](#11-ai-video-analysis--task-prompt-synthesis-studio)
-12. [Attendance Matrix, Bitmasks & Working Time Estimation](#12-attendance-matrix-bitmasks--working-time-estimation)
-13. [Irregularities, Biometric Logs & Audio Diarization](#13-irregularities-biometric-logs--audio-diarization)
-14. [Performance Analytics & Milestone Bottlenecks](#14-performance-analytics--milestone-bottlenecks)
-15. [AI Cost Monitoring & FinOps Governance](#15-ai-cost-monitoring--finops-governance)
-16. [Exporting Formal Incident Dossiers](#16-exporting-formal-incident-dossiers)
-17. [Troubleshooting & Best Practices](#17-troubleshooting--best-practices)
+11. [Practical Hands-On Tasks & Google Drive Archival](#11-practical-hands-on-tasks--google-drive-archival)
+12. [AI Video Analysis & Task Prompt Synthesis Studio](#12-ai-video-analysis--task-prompt-synthesis-studio)
+13. [Attendance Matrix, Bitmasks & Working Time Estimation](#13-attendance-matrix-bitmasks--working-time-estimation)
+14. [Irregularities, Biometric Logs & Audio Diarization](#14-irregularities-biometric-logs--audio-diarization)
+15. [Performance Analytics & Milestone Bottlenecks](#15-performance-analytics--milestone-bottlenecks)
+16. [AI Cost Monitoring & FinOps Governance](#16-ai-cost-monitoring--finops-governance)
+17. [Exporting Formal Incident Dossiers](#17-exporting-formal-incident-dossiers)
+18. [Troubleshooting & Best Practices](#18-troubleshooting--best-practices)
 
 ---
 
@@ -538,9 +539,52 @@ Teachers can review their own screen/microphone lecture recordings, play them wi
 4. Click **`📦 Request Selected as ZIP`** (or **`📦 Request All as ZIP`**). Cloud Functions will assemble a single ZIP package in the background. A download notification will appear in your **Mailbox** upon completion.
 5. Click **`📥 Export Video Manifest (Excel)`** to export recording URLs, durations, and timestamps mapped to student display names and emails (`Class_{classId}_Video_Manifest_{timestamp}.xlsx`).
 
+### Standardized Lesson Naming & Google Drive Archival
+1. **Automated Lesson Name Resolution:** Videos and lecture recordings are automatically mapped to syllabus lessons using a 3-tier hierarchy:
+   - **Tier 1 (Hands-on Tasks):** Screencasts submitted for practical tasks are grouped under `Tasks / [Task Title]`.
+   - **Tier 2 (Syllabus Timetable Matching):** Sessions falling within $\pm 30$ minutes of a scheduled class slot are formatted as `Lesson 01 - Docker Architecture (2026-09-23)`.
+   - **Tier 3 (Ad-hoc Fallback):** Unscheduled recordings fall back to `Lesson (YYYY-MM-DD)`.
+2. **Configuring Base Google Drive Folder:** In the toolbar, customize the top-level Google Drive folder (defaults to `Classroom Archives`). All recordings are archived under `[Base] / [Class] / [Lesson or Tasks] / ...` without cluttering personal Drive files.
+3. **One-Click & Bulk Drive Backups:**
+   - In `VideoLibrary.jsx`, click **`☁️ Backup Selected to Drive`** or **`☁️ Backup All Class Videos to Drive`** to archive recordings.
+   - Monitor real-time progress via the dual-bar `DriveBackupProgressModal`.
+   - Table rows display a `📁 Drive ↗` button with direct links to backed-up files.
+
 ---
 
-## 11. AI Video Analysis & Task Prompt Synthesis Studio
+## 11. Practical Hands-On Tasks & Google Drive Archival
+
+Instructors can design interactive laboratory tasks, specify milestone-based grading rubrics, evaluate student screencasts, and back up submission recordings to Google Drive:
+
+### 1. Managing & Creating Tasks (`TasksManagementView.jsx`)
+- Navigate to the **`📝 Tasks`** sub-tab in Class Management.
+- Click **`➕ Create Task`** to launch the **Task Editor Modal** (`TaskEditorModal.jsx`).
+- Configure task parameters:
+  - **Task Title & Description:** Set clear instructions and expected terminal commands.
+  - **Max Score & Duration:** Set point total and time limit in minutes.
+  - **Allowed Attempts:** Specify maximum attempts per student (e.g. 3).
+  - **✨ Extract Steps from Demo:** Upload a teacher reference recording, and Gemini 3.8 Flash automatically extracts structured rubric milestones (`rubricSteps`).
+
+### 2. Task Grading Matrix View (`TaskGradingMatrixView.jsx`)
+Click **`📊 Grade Submissions`** on any task card to open the grading matrix:
+- **Real-Time Synchronized Table:** Displays enrolled students, submission status, attempt count, duration, effective score, and scores for each rubric milestone.
+- **Manual Score Override & Feedback:** Click on any student's score cell to adjust points or add individualized teacher feedback.
+- **Inspect AI Report (`🔍 Inspect`):** Open the student's evaluation modal to review AI reasoning for each milestone, evidence timestamps, and error analysis.
+
+### 3. Backing Up Task Videos to Google Drive
+- **Top Toolbar Action:** Click **`☁️ Backup Task Videos (N)`** to archive all completed student screencasts to Google Drive. The counter dynamically reflects how many student recordings exist in Firebase Storage.
+- **Target Drive Hierarchy:** Media is systematically saved under:
+  ```text
+  [Base Folder] / [Class Name] / Tasks / [Task Title] / Students / [studentEmail] /
+  ```
+- **Single-Student Backup:** Click **`☁️ Backup`** on any student's row to archive only their video immediately.
+- **Direct Drive Links (`📁 Drive ↗`):** Once backed up, the cell renders a clickable blue Drive button opening the video in Google Drive.
+- **Built-In Screencast Preview (`▶️ Watch`):** Click **`▶️ Watch`** to open the in-browser HTML5 video player modal and inspect the student's attempt recording without leaving the grading workspace.
+- **Excel Gradebook Export with Drive Links:** Click **`📥 Export Excel`** to download an OpenXML `.xlsx` spreadsheet (`Task_{Title}_Grading_Results.xlsx`). The report includes complete student profiles, individual milestone points, and a dedicated **Google Drive Link** column.
+
+---
+
+## 12. AI Video Analysis & Task Prompt Synthesis Studio
 
 Navigate to the **Video Analysis Jobs** subtab to run asynchronous rubric evaluations across recorded video screencasts.
 
@@ -744,7 +788,39 @@ flowchart LR
 
 ---
 
-## 17. Troubleshooting & Best Practices
+## 18. Managing Practical Tasks & Lab Exams
+**Primary Tab:** `📋 Tasks & Homework` (in Class View navigation)
+
+The **Practical Task & Lab Exam System** enables instructors to evaluate hands-on technical skills and code execution via continuous screen recording and automated Gemini 3.8 Flash multimodal rubric grading.
+
+### 18.1 Creating a Practical Task
+1. Navigate to your class and click the **`📋 Tasks & Homework`** tab.
+2. Click **`+ Create Practical Task`** to launch the 4-tab Task Editor modal:
+   - **Tab 1: Basic Info**: Enter the assignment title, detailed instructions (Markdown supported), total points (e.g. 100), and schedule mode:
+     - **`🏠 Homework (Asynchronous)`**: Available 24/7 without requiring an active lecture. Students complete on their own schedule before the deadline.
+     - **`🏫 In-Class Lab Exam`**: Linked to a specific scheduled lesson slot.
+     - **`🔄 Flexible`**: Homework that can also be completed in class.
+   - **Tab 2: Constraints**: Set time limit (e.g., 45 minutes), maximum attempts allowed (e.g., 2 attempts, or 0 for unlimited), and deadline date/time.
+   - **Tab 3: Gemini Demo Video Rubric Extraction**:
+     - Select a walkthrough recording from the class video library.
+     - Click **`✨ Analyze Video & Extract Rubric`**.
+     - Gemini 3.8 Flash analyzes the instructor demonstration video in Google Cloud Storage and automatically generates the step-by-step rubric.
+   - **Tab 4: Rubric Checklist**: Review, fine-tune, or adjust points for each extracted step.
+3. Click **`Save & Publish Task`**.
+
+### 18.2 Monitoring & Reviewing Submissions (Grading Matrix)
+1. On the task card, click **`📊 Grading Matrix`**.
+2. View the full class roster populated with student display names, cohorts, and programmes.
+3. For each student:
+   - View their latest attempt status (`⏳ Evaluating`, `✅ Completed`).
+   - Click to inspect the step-by-step breakdown: which criteria passed, point deductions, and Gemini's technical findings.
+   - Jump directly to exact timecodes in the student's submission video.
+4. **Override Scores & Add Feedback**: Enter instructor adjustments in the score override field and provide direct guidance notes.
+5. **Exporting Grades**: Click **`📥 Export Matrix (.xlsx)`** to download a pure OpenXML Excel spreadsheet containing complete student identities, attempt numbers, step criteria scores, and timestamps ready for official grade submission.
+
+---
+
+## 19. Troubleshooting & Best Practices
 
 | Symptom | Cause | Solution |
 | :--- | :--- | :--- |

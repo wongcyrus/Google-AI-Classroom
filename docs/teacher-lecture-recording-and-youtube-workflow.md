@@ -603,7 +603,64 @@ sequenceDiagram
      - `📁 Google Drive Stream (Direct Preview)` (when linked to Google Drive)
      - `🎞️ Cloud Storage HTML5 Player (Multilingual CC)` (always accessible for offline/raw playback)
 5. **Direct Configuration & Portability**:
-   - Teachers can configure custom Google Client IDs directly in the UI if deploying to their own school domain, or use the pre-configured environment default (`VITE_GOOGLE_CLIENT_ID`).
+   - Configured via environment variable (`VITE_GOOGLE_CLIENT_ID`) in `web-app/.env.prod` (or `web-app/.env.dev`).
+
+### 10.4 Setting Up `VITE_GOOGLE_CLIENT_ID` (Step-by-Step Instructions & Warning)
+
+> [!WARNING]
+> If `VITE_GOOGLE_CLIENT_ID` is not configured or left empty, direct browser-to-Drive cloud upload in Teacher Lecture Recordings is disabled by default. Teachers will see:
+> `🔒 Google Drive direct cloud upload is disabled (not configured for this system).`
+> Teachers can still link already-uploaded videos via Step B (Link Existing Google Drive Video), but 1-click cloud upload requires this configuration key.
+
+#### How to Configure `VITE_GOOGLE_CLIENT_ID`
+1. **Google Cloud Console Credentials**:
+   - Open **APIs & Services > Credentials** in your GCP project.
+   - Click **+ Create Credentials > OAuth client ID**.
+   - Application type: **Web application**.
+   - Name: `Classroom Assistant Web Client`.
+2. **Authorized JavaScript Origins**:
+   - Add your application hosting URLs:
+     - Production: `https://it114115-2627.web.app` and `https://it114115-2627.firebaseapp.com`
+     - Development: `https://it114115-dev-2026.web.app` and `https://it114115-dev-2026.firebaseapp.com`
+     - Local Dev: `http://localhost:5173`
+3. **OAuth Consent Screen Scope**:
+   - Ensure the scope `https://www.googleapis.com/auth/drive.file` is selected.
+4. **Set Environment File**:
+   - In `web-app/.env.prod` (for production) or `web-app/.env.dev` (for development), add:
+     ```bash
+     VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+     ```
+   *(Note: You only need to edit `.env.prod`. Scripts will automatically copy it to `.env.production` during deployment).*
+5. **Deploy**:
+   - Run `./deploy.sh prod` (or `./deploy.sh dev`).
+
+---
+
+### 10.5 Troubleshooting: "Access blocked / Error 403: access_denied"
+
+If you see:
+> *"Access blocked: it114115-2627.web.app has not completed the Google verification process. The app is currently being tested, and can only be accessed by developer-approved testers. Error 403: access_denied"*
+
+This occurs because your OAuth Consent Screen in Google Cloud Console is in **Testing** mode (the default for newly created credentials).
+
+#### Solution Option 1: Add Authorized Test Users (Instant Fix)
+1. Open the [Google Cloud Console OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent).
+2. Select your project (e.g. `it114115-2627`).
+3. Scroll down to the **Test users** section.
+4. Click **+ ADD USERS**.
+5. Enter your email (e.g. `cy.gdoc@gmail.com` and any colleagues' emails).
+6. Click **SAVE**.
+7. Refresh `https://it114115-2627.web.app` and click **📁 Connect Google Drive**. Sign-in will succeed immediately!
+
+#### Solution Option 2: Publish the App (All Google Users)
+1. On the same **OAuth consent screen** page, under **Publishing status**, click **PUBLISH APP**.
+2. Confirm the prompt to push the app to production.
+3. *Note*: Since the requested scope `https://www.googleapis.com/auth/drive.file` is restricted to only files created by this application, you can use the app without requiring an exhaustive Google verification audit (users may see an "Advanced > Proceed" prompt on first consent).
+
+#### Solution Option 3: Internal Organization (Workspace for Education)
+If your Google Cloud Project belongs to your school's Google Workspace organization, set the **User Type** to **Internal**. All teachers within `@vtc.edu.hk` can then sign in directly with zero test-user limits and zero verification screens.
+
+
 
 
 

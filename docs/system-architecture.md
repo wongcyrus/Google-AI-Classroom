@@ -218,6 +218,7 @@ To optimize cost, privacy, and responsiveness, computational workloads are parti
 │  - LiteRT Gemma (Prompt-based intent filtering)        │
 │  - Screen capture downscaling (1920x1080p, 0.85 JPEG)  │
 │  - Delta compression diffing for teacher broadcast     │
+│  - Google Drive Media Archival (Client-side streaming) │
 └──────────────────────────┬─────────────────────────────┘
                            │ Fallback or Escalation Only
                            ▼
@@ -238,6 +239,11 @@ To optimize cost, privacy, and responsiveness, computational workloads are parti
 1. **Biometric Privacy by Design**: Raw webcam feeds, facial landmark vectors, and continuous audio waveforms **never leave the student's browser**. Only aggregated numerical telemetry (e.g., Eye Aspect Ratio, Mouth Aspect Ratio) or teacher-verified audio anomalies are transmitted.
 2. **FinOps Quota Governance**:
    - Class-level AI spending caps (default: $10.00/class) prevent runaway expenditures.
+   - Per-student daily budget alerts and token consumption metrics logged to Firestore.
+3. **Zero-Server-Egress Google Drive Archival**:
+   - Video backups to Google Drive execute **100% client-side** directly in the instructor's browser using Google Identity Services (least-privilege `drive.file` scope) and browser `XMLHttpRequest` resumable streaming.
+   - Video payloads stream directly between Firebase Cloud Storage, browser memory, and the Google Drive API, bypassing backend Cloud Functions.
+   - **Benefits**: Completely eliminates backend double-egress network fees, prevents 540-second serverless execution timeouts during large batch archives, and guarantees instructor Google OAuth credentials are never handled or stored by the backend.
    - Client-side acoustic silence suppression discards >80% of audio clips before cloud transmission.
    - Two-stage Map-Reduce-Map prompt synthesis eliminates repeated whole-video multimodal reprocessing.
 

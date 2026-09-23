@@ -688,7 +688,58 @@ Stores information about each class.
                 *   `title`: (string) Optimized YouTube video title.
                 *   `description`: (string) Description containing timestamped chapter markers (`00:00 - Introduction`).
                 *   `chapters`: (array of objects) Array of `{ time: "00:00", title: "Introduction" }`.
+            *   `driveFileId`: (string | null) Google Drive unique file identifier if archived to Google Drive.
+            *   `driveWebViewLink`: (string | null) Google Drive direct web viewing URL.
+            *   `driveEmbedUrl`: (string | null) Google Drive embeddable preview URL.
+            *   `driveFolderPath`: (string | null) Human-readable Google Drive directory path (e.g. `Classroom Archives / IT114115-A / Lesson 01 - Docker Architecture / Teacher Lectures`).
+            *   `driveBackedUpAt`: (timestamp | null) Server timestamp when the recording was archived to Google Drive.
+            *   `driveBackedUpBy`: (string | null) Email of instructor who initiated the backup.
         *   **Security Rules**: Enrolled teachers have read/write access. Enrolled students have read access to published recordings (`status == 'ready'`).
+    *   **`classes/{classId}/tasks`**: Stores definitions and AI evaluation rubrics for practical hands-on lab exercises and technical assignments.
+        *   **Document ID**: `taskId` (string, e.g. `task_docker_1`).
+        *   **Fields**:
+            *   `taskId` / `id`: (string) Unique task identifier.
+            *   `title`: (string) Task title (e.g. `Practical Lab 1 - Docker Compose & Microservices`).
+            *   `description`: (string) Instructions or problem statement provided to students.
+            *   `maxScore`: (number) Total maximum points for the task (e.g. `100`).
+            *   `maxDurationMinutes`: (number) Permitted lab duration in minutes.
+            *   `maxAttempts`: (number) Maximum attempts allowed per student (default `3`).
+            *   `rubricSteps`: (array of objects) Granular evaluation milestones extracted or authored by the teacher:
+                *   `stepNumber`: (number) 1-indexed milestone sequence number.
+                *   `title`: (string) Milestone title (e.g. `Git Repository Clone`, `Container Build`).
+                *   `expectedVisuals`: (string) Visual artifacts looked for in the screencast by Gemini.
+                *   `points`: (number) Weighting points allocated to this milestone.
+            *   `evaluationPrompt`: (object | null) Prompt configuration used by Gemini 3.8 Flash to evaluate submissions.
+            *   `createdAt`: (timestamp) Server timestamp when task was created.
+            *   `updatedAt`: (timestamp) Server timestamp when task was last modified.
+        *   **Subcollections**:
+            *   **`submissions`** (`classes/{classId}/tasks/{taskId}/submissions`):
+                *   **Document ID**: `studentUid` (string)
+                *   **Fields**:
+                    *   `studentUid`: (string) UID of the student.
+                    *   `email`: (string) Student institutional email.
+                    *   `displayName`: (string) Student full name.
+                    *   `status`: (string) Evaluation lifecycle state (`'not_started'`, `'in_progress'`, `'submitted'`, `'evaluating'`, `'evaluated'`).
+                    *   `attemptsCount`: (number) Number of attempts executed by student.
+                    *   `effectiveScore`: (number) Final authoritative score awarded (AI score or teacher override).
+                    *   `manualScoreOverride`: (number | null) Teacher manual override score if adjusted.
+                    *   `manualFeedback`: (string | null) Teacher custom feedback note.
+                    *   `compiledVideoPath`: (string | null) Firebase Storage path to latest attempt MP4.
+                    *   `videoJobId`: (string | null) Associated `videoJobs` document ID.
+                    *   `evaluation`: (map | null) Latest AI rubric evaluation report:
+                        *   `finalScore`: (number) Total score computed by AI.
+                        *   `stepResults`: (array) Itemized rubric milestone statuses (`completed`, `partial`, `missed`) and points.
+                        *   `summary`: (string) Narrative feedback explaining score rationale.
+                    *   `driveFileId`: (string | null) Google Drive unique file identifier if backed up.
+                    *   `driveWebViewLink`: (string | null) Google Drive web link opening the student's submission video.
+                    *   `driveEmbedUrl`: (string | null) Google Drive embed URL.
+                    *   `driveFolderPath`: (string | null) Human-readable Drive directory path (e.g. `Classroom Archives / IT114115-A / Tasks / Docker Compose / Students / student@stu.vtc.edu.hk`).
+                    *   `driveBackedUpAt`: (timestamp | null) Timestamp of Google Drive backup.
+                    *   `driveBackedUpBy`: (string | null) Email of the teacher who triggered the backup.
+            *   **`attempts`** (`classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempts`):
+                *   **Document ID**: `attemptNumber` (string, e.g. `'1'`, `'2'`).
+                *   **Fields**: Granular historical snapshot for each attempt including `attemptNumber`, `startedAt`, `submittedAt`, `durationSeconds`, `videoPath`, `evaluation`, and individual Google Drive backup links.
+        *   **Security Rules**: Enrolled teachers have full read/write access. Students can read/write their own submission documents (`request.auth.uid == studentUid`).
 
 
 ### `irregularities`
@@ -771,14 +822,31 @@ Stores the system and instructor AI prompts. Under the system rule, **all** AI p
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `name`: (string) The name of the prompt (e.g. `'On-Device Gemma Multilingual Lecture Translator'`, `'Gemini Live Multimodal Lecture Translator'`, `'Cloud Fallback Face & Gaze Invigilator'`, `'Two-Stage Map-Reduce Lab Rubric Synthesizer'`).
-    *   `category`: (string) The category of the prompt (`images`, `videos`, `audios`, or `translations`).
+    *   `category`: (string) The category of the prompt (`images`, `videos`, `audios`, `translations`, or `rubrics`).
     *   `promptText`: (string) The prompt text markdown body. May include variable placeholders like `{{transcript}}`, `{{courseContext}}`, `{{sourceLang}}`, `{{targetLangs}}`, `{{studentEmail}}`, etc.
-    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`).
+    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
     *   `createdAt`: (timestamp) A timestamp of when the prompt was created.
     *   `lastUpdated`: (timestamp) A timestamp of when the prompt was last edited.
-    *   `accessLevel`: (string) The access level of the prompt (`private`, `shared`, `public`).
-    *   `owner`: (string) The UID of the user who created the prompt (empty string for system public prompts).
-    *   `sharedWith`: (array) An array of UIDs with whom the prompt is shared.
+    *   `accessLevel`: (string) The visibility scope of the prompt (`'private'`, `'shared'`, `'public'`).
+        *   `'private'`: Personal prompt visible only to the author (`owner == auth.uid`).
+        *   `'shared'`: Collaborative prompt visible and editable by the author and specific colleagues listed in `sharedWith`.
+        *   `'public'`: Institution-wide prompt visible to all instructors.
+    *   `isSystem`: (boolean) Flag distinguishing pre-seeded official templates (`true`) from instructor-created prompts (`false` or omitted).
+    *   `owner`: (string) The UID of the creator (`'system'` for official pre-seeded templates, teacher's UID for instructor-authored prompts).
+    *   `ownerEmail`: (string) Email address of the author for instructor-created prompts, displayed in prompt headers.
+    *   `sharedWith`: (array) An array of instructor UIDs with whom the prompt is shared when `accessLevel == 'shared'`.
+
+#### Prompt Governance & Immutability Rules
+The prompt library implements a **two-tier governance model** that decouples **Authority/Origin** from **Visibility Scope**:
+1. **Official System Templates (`isSystem: true`, `owner: 'system'`, `accessLevel: 'public'`)**:
+   - Seeded from `admin/prompts/` via Admin SDK (`admin/scripts/seed_prompts.cjs` and `seed_initial_data.mjs`).
+   - Immutable to all client teachers: blocked at the Firestore security rule level (`resource.data.owner != 'system' && !resource.data.isSystem`).
+   - In the UI, system templates render with a `🔒 System Template (Read-Only)` banner and a prominent green **`📋 Make a Copy to Personalize`** button.
+2. **Instructor-Authored Public Prompts (`isSystem: false`, `owner: teacherUid`, `accessLevel: 'public'`)**:
+   - Teachers can create and publish prompts for the entire school by selecting the `Public` access level.
+   - **Author Permissions**: The author teacher who owns the document retains full editing (`Save Changes`) and deletion rights (`Delete`).
+   - **Colleague Permissions**: Other teachers viewing the prompt see it as `🌐 Community Prompt by [authorEmail] (Read-Only)`. They can use it directly in their classes or click **`📋 Make a Copy to Personalize`** to fork an editable private copy into their own library without modifying the original author's prompt.
+   - Enforced both in React UI and in `firestore.rules` (`resource.data.owner == request.auth.uid`).
 
 ### `propertyUploadJobs`
 
@@ -931,6 +999,15 @@ Stores information about video processing jobs.
     *   `errorStack`: (string) The stack trace of the error.
     *   `ffmpegError`: (string) The error from ffmpeg if it failed.
     *   `isExam`: (boolean) Whether the video job was recorded during an exam slot or active exam session, determining student access restrictions under exam policies.
+    *   `isTaskSubmission`: (boolean) Flag indicating if the video corresponds to a hands-on practical task attempt.
+    *   `taskId`: (string | null) Associated task ID if `isTaskSubmission: true`.
+    *   `attemptNumber`: (number | null) Attempt sequence number for this task submission.
+    *   `driveFileId`: (string | null) Google Drive unique file identifier if backed up.
+    *   `driveWebViewLink`: (string | null) Direct web viewing URL in Google Drive.
+    *   `driveEmbedUrl`: (string | null) Embed URL for Google Drive preview.
+    *   `driveFolderPath`: (string | null) Full directory hierarchy path in Google Drive (e.g. `Classroom Archives / IT114115-A / Tasks / Docker Lab / Students / student@stu.vtc.edu.hk`).
+    *   `driveBackedUpAt`: (timestamp | null) Server timestamp when the video was archived to Google Drive.
+    *   `driveBackedUpBy`: (string | null) Email of teacher who executed the cloud backup.
 
 ### `zipJobs`
 

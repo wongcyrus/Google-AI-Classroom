@@ -4,9 +4,112 @@
 **System**: Gemini AI Classroom Assistant  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 1. Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation
+
+**Date**: September 2026  
+**Status**: Implemented, Verified, and Ready for Deployment  
+**Primary Files**:
+- Container & Layout: [`PromptManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.jsx)
+- Sidebar & Filtering: [`PromptList.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptList.jsx)
+- Form & Editor Canvas: [`PromptForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptForm.jsx)
+- Styles: [`PromptManagement.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.css)
+
+### 1.1 Full-Screen Screen Utilization & Fluid Layout
+- **Elimination of Artificial Margin Box**: Previously, Prompt Management was wrapped in `.view-container` capped at `max-width: 1200px;` and `.prompt-management-content` capped at `height: 70vh;`, wasting 40–50% of screen real estate on modern 1080p, 1440p, or 4K displays.
+- **Fluid Viewport Expansion**: Implemented `.prompt-studio-view` expanding across 100% of the viewport width and dynamic `height: calc(100vh - 145px); min-height: 560px;`, allowing the Markdown editor to occupy the full physical height of the monitor.
+
+### 1.2 Collapsible Sidebar for 100% Editor Screen Width
+- **`◀ Hide List` / `▶ Show List` Toggle**: Teachers can collapse the left prompt list column with one click.
+- **100% Horizontal Expansion**: When the sidebar is collapsed, `.prompt-form-column` smoothly expands to take 100% of the container width, providing unconstrained horizontal space for split side-by-side Markdown editing and live rendered preview.
+
+### 1.3 Distraction-Free Zen Fullscreen Writing Mode (`⛶ Zen Mode`)
+- **Immersive Writing Canvas**: Toggling `⛶ Zen Mode` transforms the prompt editor into a fixed `100vw × 100vh` full-screen overlay with zero browser distractions.
+- **Dedicated Controls**: Docked top toolbar with quick save, duplicate, AI optimization, and one-click `✕ Exit Zen` button (or Escape key), perfect for authoring lengthy practical rubrics or multi-language translation dictionaries.
+
+### 1.4 Ergonomic Two-Tier Form & Collapsible Permissions Drawer
+- **Compact Top Action Bar**: Prompt name input and all action buttons (`Save Changes` / `Save Prompt`, `Duplicate`, `Delete`, `✨ Optimize`, `Undo`, and `Zen Mode`) are docked into a sleek, space-efficient horizontal header.
+- **Maximized MDEditor Canvas**: The syntax-highlighted Markdown editor expands to occupy 80–85% of vertical space (`flex: 1; height: 100%`).
+- **Collapsible "Scope & Permissions" Drawer (`⚙️ Scope & Permissions`)**: Application scopes, access level radio options (`Private` / `Shared`), and co-teacher email sharing management are housed in a collapsible accordion drawer at the bottom. By default, it stays compact so it does not steal vertical lines from the Markdown editing area.
+
+### 1.5 Multi-Category Navigation with Real-Time Prompt Counters
+- **5 Comprehensive Categories**:
+  - `🖼️ Image Prompts (N)`
+  - `🎬 Video Prompts (N)`
+  - `🎙️ Voice / Audio Prompts (N)`
+  - `🌐 Translation Prompts (N)`
+  - `📋 Task Rubric Prompts (N)`
+- **Dynamic Counters**: Category tab buttons feature live count badges showing exactly how many prompts are saved in each category.
+- **Scope Pills & Search Clear**: Saved prompt list items render scope badges (e.g. `[Lab Rubrics]`, `[Gemma Voice]`, `[Dual Subtitles]`), and the search box features a quick-clear (`✕`) button.
+
+### 1.6 Two-Tier Prompt Governance Architecture: System Templates vs. Instructor Public Prompts
+- **Problem Statement**:
+  - The previous design conflated **Authority/Origin** with **Visibility Scope**: it treated `accessLevel: 'public'` as strictly meaning "pre-seeded official system template", thereby barring instructors from choosing or saving `public` prompts.
+  - This contradicted real-world collaborative teaching: instructors creating high-quality prompts (e.g. specialized translation glossaries, assessment rubrics) frequently want to share them school-wide ("public"), while still retaining ownership of their own work.
+- **Two-Tier Governance Model (Guaranteed Zero Breaking Changes)**:
+  - Preserves the `accessLevel: ['private', 'shared', 'public']` enum across all existing Firestore queries (`where('accessLevel', '==', 'public')`) and selector dropdowns without requiring database migrations.
+  - **Tier 1: Official System Templates (`isSystem: true`, `owner: 'system'`, `accessLevel: 'public'`)**:
+    - Seeded from `admin/prompts/` via Admin SDK (`seed_prompts.cjs`, `seed_initial_data.mjs`).
+    - Immutable to all client teachers: enforced in `firestore.rules` (`resource.data.owner != 'system' && !resource.data.isSystem`).
+    - Render in UI with `🔒 System Template (Read-Only)` notice and green `📋 Make a Copy to Personalize` button.
+  - **Tier 2: Instructor-Authored Public Prompts (`isSystem: false`, `owner: teacherUid`, `accessLevel: 'public'`)**:
+    - Instructors can select `Public` when creating or editing their prompts to share them with all instructors across the institution.
+    - **Author Permissions**: The author teacher who owns the document retains full editing (`Save Changes`) and deletion rights (`Delete`).
+    - **Colleague Permissions**: Other teachers viewing the prompt see it as `🌐 Community Prompt by [authorEmail] (Read-Only)`. They can use it directly in their classes or click **`📋 Make a Copy to Personalize`** to fork an editable private copy into their own library without modifying the original author's prompt.
+- **Security Rule Enforcement (`firestore.rules`)**:
+  - `create`: requires teacher authentication, `owner == auth.uid`, `isSystem != true`, and `accessLevel in ['private', 'shared', 'public']`.
+  - `update`: blocks modifying system templates (`owner != 'system' && !isSystem`). Requires user to be author (`owner == auth.uid`) or listed in `sharedWith`.
+  - `delete`: blocks deleting system templates. Requires author ownership (`owner == auth.uid`).
+- **Test Coverage**:
+  - Added test suite coverage in `PromptManagement.test.jsx` and `PromptFormAndList.test.jsx` verifying system template immutability, instructor-owned public prompt mutability, community prompt read-only protection, and the "Make a Copy to Personalize" workflow.
+
 ---
 
-## 1. Distributed Cloud Tasks Map-Reduce Architecture for AI Video Analysis
+## 2. Lesson Name Resolution Conventions & Google Drive Task Video Backup
+
+**Date**: September 2026  
+**Status**: Implemented, Verified, and Deployed to Production (`https://it114115-2627.web.app`)
+
+### 1.1 Standardized Lesson Name Resolution Model
+To eliminate arbitrary ISO fallback strings (e.g. `2026-09-23` or generic `General Recordings`) when storing videos in Cloud Storage or backing up to Google Drive, a structured 3-tier lesson naming resolution system is implemented in [`web-app/src/utils/lessonUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/lessonUtils.js):
+
+1. **Explicit Task Assignment**:
+   - If a video corresponds to a hands-on practical task (`video.isTaskSubmission: true`), the lesson name is resolved directly to the task title or folder: `Tasks / [Task Title]`.
+2. **Class Schedule Timetable Matching (`schedule.lessonTitles`)**:
+   - When timestamps match an active schedule slot within a temporal threshold (+/- 30 minutes), the system resolves the lesson using the teacher-configured syllabus index and title:
+     - Standard display: `Lesson 01 - Docker Architecture (2026-09-23)`
+     - Clean folder convention: `Lesson 01 - Docker Architecture`
+     - Auto 2-digit zero padding: `Lesson 01`, `Lesson 02`, ..., `Lesson 12`.
+3. **Temporal Date Fallback**:
+   - For unscheduled ad-hoc recordings outside any class timetable window, falls back cleanly to the local ISO date: `Lesson (YYYY-MM-DD)`.
+
+Illegal filesystem/Drive characters (`[/\\:*?"<>|]`) are automatically stripped using `sanitizeFolderName`.
+
+### 1.2 Google Drive Task Video Hierarchy Resolution
+Google Drive service (`googleDriveService.js` and `useGoogleDrive.js`) supports dedicated folder routing for student task screencast recordings:
+```
+[Base Folder] (default: "Classroom Archives")
+  └── [Class Name / ID] (e.g. "IT114115-A")
+      └── Tasks
+          └── [Task Title] (e.g. "Practical Lab 1 - Docker Compose")
+              └── Students
+                  └── [Student Email] (e.g. "student@vtc.edu.hk")
+                      └── [studentEmail]_[taskTitle]_attempt_[N].mp4
+```
+
+### 1.3 End-to-End Teacher Backup Workflow in TaskGradingMatrixView
+Teachers grading practical tasks have complete control over backing up student recordings to Google Drive:
+- **Top Toolbar Batch Backup**: A persistent `☁️ Backup Task Videos (N)` button displays the count of student submission recordings ready for backup and launches the animated batch progress modal (`DriveBackupProgressModal.jsx`).
+- **Interactive Google Drive Destination**: Displays the resolved Drive directory path with breadcrumb navigation.
+- **Roster Table Integration**:
+  - `📁 Drive ↗`: Direct external hyperlink to the backed-up MP4 in Google Drive for already backed-up submissions.
+  - `☁️ Backup`: Single-click backup action for individual student submissions.
+  - `▶️ Watch`: Instant built-in HTML5 video modal previewing the student screencast attempt without leaving the grading view.
+- **Inspect Modal Status**: AI assessment rubric inspection displays the live Google Drive cloud backup status and direct actions.
+- **Excel Export**: `exportTaskGradingToExcel` appends a `Google Drive Link` column containing the direct web view URL for each student's attempt video.
+
+---
+
+## 2. Distributed Cloud Tasks Map-Reduce Architecture for AI Video Analysis
 
 The system's AI processing focus has evolved from periodic Bingo presence checks to a high-throughput, horizontally scalable **Google Cloud Tasks Map-Reduce architecture** for AI Video Analysis Jobs.
 
@@ -786,6 +889,218 @@ Every user interface modal, monitoring alert, and data export across the platfor
 - **Git Repository**:
   - Changes pushed to remote `main` branch.
 
+---
+
+## 24. Asynchronous Practical Tasks & Hands-On Lab Exam System
+
+### 24.1 Motivation & Multimodal Assessment Paradigm
+Traditional computer science homework and hands-on laboratory assessments rely on static code submissions (e.g., zip files or GitHub repositories), which fail to capture students' actual development workflow, debugging approaches, IDE execution steps, or problem-solving authentications. The **Asynchronous Practical Task & Lab Exam System** transforms practical coursework evaluation into an automated, continuous, multimodal experience powered by **Gemini 3.8 Flash** and automated screencast synthesis.
+
+Instructors can define hands-on lab challenges or homework assignments, attach reference teacher solution screencasts, and automatically synthesize objective step-by-step rubrics. Students execute the challenge directly on their own desktops with continuous screen streaming, receiving automated AI step-by-step verification, timecode links to their submission video, and instructor feedback.
+
+### 24.2 Master Container Architecture (`Class` -> `Tasks` & `Class` -> `Schedule`)
+To maintain consistent cohort governance, the `Class` entity acts as the master container governing both chronological timetable slots and practical task assignments:
+```mermaid
+graph TD
+    C["Class Container: it114115"] --> S["Class Schedule: Timetable Slots"]
+    C --> T["Class Tasks: Practical Exercises & Homework"]
+    
+    S --> L1["Lesson 1: 09:00 - 11:00"]
+    S --> L2["Lesson 2: 14:00 - 16:00"]
+    
+    T --> T1["In-Class Lab Exam: linked to Lesson 1"]
+    T --> T2["Asynchronous Homework: open 24/7 before deadline"]
+    
+    T1 -.->|Optionally linked to| L1
+```
+- **In-Class Exam Mode (`in_class`)**: The task is linked to a specific timetable schedule slot (`lessonId`). Active time limits, attempts, and proctoring constraints are synchronized with the live session.
+- **Asynchronous Homework Mode (`homework`)**: The task is available 24/7 without requiring an active lecture or teacher presence. Students can launch attempts outside school hours whenever convenient before the `deadline`.
+- **Flexible Mode (`flexible`)**: Operates as homework by default but can also be triggered during class labs.
+
+### 24.3 Unified Single-Stream Screen Sharing Mechanics
+A critical design requirement was avoiding screen-sharing fatigue and repetitive browser permissions:
+- When students join a live class session (`StudentView.jsx`), they grant screen capture once.
+- When an in-class practical task is started, the system **reuses the existing active media stream (`screenStreamRef.current`)** without triggering any additional permission dialogs.
+- Continuous screenshot uploads (`addDoc(collection(db, 'screenshots'))`) are automatically tagged with `activeTaskId: task.id` and `activeAttemptNumber: attempt.attemptNumber`.
+- For asynchronous homework launched from the student dashboard (`StudentRecordsView.jsx`), the `StudentTaskWorkspaceModal` initiates a single screen share session for the duration of the attempt.
+- When the attempt is finished or the countdown expires:
+  - An atomic `videoJobs` document is submitted with `isTaskSubmission: true, taskId, attemptNumber`.
+  - The Cloud Function (`processVideoJob.js`) compiles the exact screenshot slice into `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempt_{attemptNumber}.mp4`.
+  - Upon compilation completion, `evaluateTaskSubmission.js` automatically invokes Gemini 3.8 Flash to evaluate each rubric step against the student's submission video.
+
+### 24.4 Automated Demo Video Rubric Extraction via Gemini 3.8 Flash
+Teachers can create comprehensive practical task rubrics in seconds by selecting an existing recording from the class video library:
+1. **Teacher Action**: In `TaskEditorModal.jsx`, navigate to the **Gemini Demo Video Rubric** tab and select any instructor walkthrough video.
+2. **Callable Backend (`extractTaskDemoSteps.js`)**: Passes the Google Cloud Storage URI (`gs://...`) directly to `gemini-3.8-flash`.
+3. **Structured Output**: Returns a validated JSON payload containing:
+   - Overall task description and objective.
+   - Ordered array of procedural steps with `stepNumber`, `title`, `description`, `points`, `expectedAction`, and `evidenceCriteria`.
+4. **Interactive Rubric Editor**: Teachers can inspect the extracted steps, adjust allocated points, modify evaluation criteria, or add custom guidance before publishing.
+
+### 24.5 Student Workspace HUD & Countdown Auto-Submit
+The student workspace (`StudentTaskWorkspaceModal.jsx`) provides a focused, distraction-free lab environment:
+- **Pre-Flight Verification**: Validates whether the student has remaining attempts, whether the task start window has arrived, and checks whether the deadline has passed (`taskConstraintUtils.js`).
+- **Live Status HUD**: Displays an animated status pill, total points, and dynamic time-remaining countdown.
+- **Visual Alert Thresholds**:
+  - Normal state (> 5m): Slate dark HUD.
+  - Warning state (≤ 5m): Amber border and text alert.
+  - Critical urgency (≤ 1m): Pulsing crimson border with urgent audio cues.
+- **Automated Graceful Auto-Submit**: If the time limit reaches zero, the timer initiates an immediate submission flush, stopping the screen stream and dispatching the compilation job so no work is lost.
+
+### 24.6 Class-Wide Grading Matrix & Pure OpenXML (.xlsx) Export
+Instructors monitor cohort performance in `TaskGradingMatrixView.jsx`:
+- **Student Identity Resolution**: Enriched with full 4-part student identity (`Student Display Name`, `Student Email`, `Class / Cohort`, `Programme`).
+- **Rubric Breakdown**: Expandable drawers show step-by-step scores, pass/fail status pills, and Gemini rationale.
+- **Teacher Score Override**: Teachers can override automated AI scores inline and provide instructor feedback notes, which immediately update student-facing views.
+- **Pure OpenXML Excel Export (`.xlsx`)**: 1-click export generates structured multi-column grade sheets formatted for institutional gradebooks, completely eliminating deprecated CSV formats.
+
+### 24.7 Complete Verification Summary
+- **Backend AI Flows Test Suite**: 13 test files passed, 158 tests passed (`functions/ai_flows`).
+- **Media Processing Test Suite**: 6 test files passed, 42 tests passed (`functions/media_processing`).
+- **Web App Test Suite**: 116 test files passed, 1,030 tests passed (`web-app`).
+- **Production Build**: Vite compiled successfully with zero warnings/errors.
+
+---
+
+## 25. Rubric Milestones AI Prompt Synthesis & Prompt Library Unification
+
+### 25.1 Elimination of Hardcoded Rubric Steps (Zero Hardcode Standard)
+Prior implementations seeded tasks with 3 generic dummy milestone steps (`Set up development environment`, `Complete main lab implementation`, `Verify lab implementation and test`). This led to unintended boilerplate in published tasks if teachers forgot to edit them:
+- **Empty-First Milestone State**: Initialized `rubricSteps` state strictly to `initialTask?.rubricSteps || []`.
+- **Empty-State UI Guidance**: When a task has zero milestones, Tab 3 ("Rubric Milestones") renders a prominent, high-contrast Empty State card explaining the workflow and offering two clear paths:
+  1. `[ ✨ Generate from Video & Prompt (Tab 2) ]`: Takes the teacher to Tab 2 to synthesize milestones from a demo video and chosen AI prompt.
+  2. `[ ➕ Add Milestone Manually ]`: Allows immediate freeform authoring of custom milestones with custom titles, descriptions, action criteria, and points.
+- **Validation Gate**: Publishing or saving requires at least one milestone (`rubricSteps.length >= 1`), preventing empty rubric tasks from being saved.
+
+### 25.2 First-Class AI Prompts Library Integration for Rubrics
+Practical task rubric generation is now fully integrated into the system's central **AI Prompts Library**:
+- **Prompt Seed Definition (`admin/prompts/rubrics/practical_task_rubric_generator.json`)**:
+  - Registered under category `"rubrics"` with `applyTo: ["Lab Rubric Milestones", "Video Analysis"]`.
+  - Automatically seeded into both dev (`it114115-dev-2026`) and prod (`it114115-2627`) Firestore databases via `seed_prompts.cjs` and `seed_initial_data.mjs`.
+- **Reactive Firestore Hook (`useRubricPrompts.js`)**:
+  - Implements real-time Firestore synchronization for rubric prompts.
+  - Resolves public system prompts, teacher-authored prompts (`ownerUid`), and shared prompts (`sharedWith`).
+  - Covered by dedicated Vitest unit tests in `useRubricPrompts.test.js`.
+- **Interactive Library Dropdown in Task Editor**:
+  - In Tab 2 ("Gemini Demo Video Rubric"), teachers can select from pre-defined institutional rubric prompts or choose `Custom / Ad-hoc Prompt (Free-form)`.
+  - Expandable/collapsible prompt template preview card allows teachers to inspect the underlying system prompt before execution.
+  - Optional teacher guidance text area allows instructors to append task-specific instructions (e.g., *"Focus specifically on Docker container configuration and endpoint health checks"*).
+
+### 25.3 Multimodal Gemini 3.8 Flash Backend Pipeline (`extractTaskDemoSteps.js`)
+The Cloud Function (`extractTaskDemoSteps`) was upgraded to support custom prompts from the library:
+- Accepts both `promptText` (from the selected AI Prompts Library template) and `promptGuidelines` (instructor ad-hoc notes).
+- Dynamically prepends the prompt template to Gemini's multimodal extraction prompt.
+- Analyzes the demo video stored in Google Cloud Storage (`gs://...`) and synthesizes structured JSON:
+  - Auto-populates Task Title and Description if currently blank.
+  - Generates milestones with balanced point distributions matching the task's `maxScore`.
+- Thoroughly tested with a new unit test in `extractTaskDemoSteps.test.js` verifying that prompt library instructions are passed to Gemini.
+
+### 25.4 Fixed Bug: "Translation Prompts is empty"
+Investigated and resolved the issue where Translation Prompts appeared empty:
+- **Seed Synchronization**: Ensured translation prompts (`live_speech_translation.json`, `lecture_subtitles_refinement.json`) were seeded into both `it114115-dev-2026` and `it114115-2627` Firestore collections.
+- **Auth Listener Race Condition**: Updated `PromptManagement.jsx` to ensure category tabs wait for authentication initialization before querying user-scoped prompts, ensuring public and system prompts render immediately on first load.
+
+### 25.5 Dual Deployment & Governance Verification
+- **Dual Deployment Completed**:
+  - **Dev**: Successfully deployed via `./deploy.sh dev` to `https://it114115-dev-2026.web.app`.
+  - **Prod**: Successfully deployed via `./deploy.sh prod` to `https://it114115-2627.web.app`.
+- **GCP Project Invariant Maintained**:
+  - Global project configuration verified at `pytest-runner-2627` via `gcloud config get-value project`.
+
+---
+
+## 26. Google Drive Upload: Warnings, Instructions & Single-Config Clarification
+
+### 26.1 In-App UI Guidance (`LectureRecordingsView.jsx`)
+When `VITE_GOOGLE_CLIENT_ID` is unconfigured:
+- Replaced ambiguous disabled messages with an accessible, high-contrast warning callout.
+- Added an interactive `<details>` / `<summary>` disclosure element: **📖 How to set VITE_GOOGLE_CLIENT_ID (Step-by-Step Instructions)**.
+- Step-by-step instructions provide:
+  - Exact Google Cloud Console path (*APIs & Services > Credentials*).
+  - Web client creation parameters with automatically detected current site origin (`window.location.origin`).
+  - Required OAuth consent scope (`https://www.googleapis.com/auth/drive.file`).
+  - Environment file location (`web-app/.env.prod` / `web-app/.env.dev`) and code snippet.
+  - Reminder that manual linking via Step B remains available immediately without OAuth setup.
+
+### 26.2 CLI & Build Script Warnings (`deploy.sh` & `switch-env.sh`)
+- Automated detection in `switch-env.sh` and `deploy.sh`:
+  - Scans active target environment file for `VITE_GOOGLE_CLIENT_ID`.
+  - Emits formatted warning and 3-step remediation instructions in the terminal if unconfigured.
+  - Emits positive confirmation (`✅ Google Drive integration configured`) when present.
+
+### 26.3 Single Source of Truth for Environment Configuration
+- Documented that developers/administrators only need to edit `web-app/.env.prod` (or `web-app/.env.dev`).
+
+---
+
+## 27. Google Drive OAuth UX Streamlining & "Error 403: access_denied" Troubleshooting
+
+### 27.1 Interactive Connect-on-Upload Button UX
+- **Previous State**: In `LectureRecordingsView.jsx`, Step A ("1-Click Direct Cloud Upload") showed a disabled button labeled `🔒 Connect Google Drive to Upload` when the user had not yet authenticated their Google account. This created confusion because clicking it was impossible and forced users to look up for the header button.
+- **Improved UX**: The Step A button is now active and clickable (`📁 Connect Google Drive to Upload` / `⏳ Connecting...`). Clicking it directly triggers the Google Identity Services popup (`connectGdrive()`). Once authenticated, it transforms into `☁️ Upload Video to Google Drive`.
+
+### 27.2 OAuth 403 / "App has not completed Google verification" Handling
+- When a Google Cloud OAuth client is newly created, the OAuth Consent Screen defaults to **Testing** publishing status.
+- Added explicit handling in `useGoogleDrive.js` catching `access_denied`, `403`, and `verification process` errors, guiding administrators to add their email to **Test users** in Google Cloud Console or click **Publish App**.
+- Documented step-by-step resolution in Section 10.5 of `docs/teacher-lecture-recording-and-youtube-workflow.md`.
+
+### 27.3 `deploy.sh` Hosting-Only Argument Support
+- Fixed argument passing in `deploy.sh` so `./deploy.sh prod hosting` deploys only the hosting target in ~20 seconds without re-running full backend and functions deployments.
+
+---
+
+## 28. Google Drive Hierarchical Folder Organization & Student Video Cloud Backup
+
+### 28.1 Problem Statement & Educational Need
+- **Previous State**: Lecture recordings uploaded to Google Drive were placed directly in the user's root Drive (`My Drive/`), cluttering personal folders and lacking institutional structure.
+- **Student Video Backup**: Student desktop screencasts and webcam recordings recorded during lab sessions (`videoJobs`) were stored only in Cloud Storage. Teachers had no native mechanism to archive and organize student videos into Google Drive by class, lesson, and student.
+
+### 28.2 Standard Hierarchical Folder Convention
+Implemented a standardized, fully automated folder hierarchy in Google Drive using the least-privilege `drive.file` scope:
+```text
+My Drive/
+  └── [Base Folder] (default: "Classroom Archives", customizable by teacher)
+        └── [Class] (e.g. "IT114115-A" or "itp4124")
+              └── [Lesson] (e.g. "Lesson 01 - React State" or "Week 1 Lab")
+                    ├── Teacher Lectures/
+                    │     └── {Date}_{ClassId}_Lecture_{Title}.webm
+                    └── Students/
+                          ├── student1@stu.vtc.edu.hk/
+                          │     └── {studentEmail}_{Date}_{Time}_screencast.webm
+                          └── student2@stu.vtc.edu.hk/
+                                └── {studentEmail}_{Date}_{Time}_screencast.webm
+```
+
+### 28.3 Core Services & Architecture
+1. **Google Drive Folder Management (`googleDriveService.js`)**:
+   - `createGoogleDriveFolder({ accessToken, folderName, parentFolderId })`: Creates a folder with `mimeType: application/vnd.google-apps.folder` under a specified parent ID.
+   - `findOrCreateGoogleDriveFolder({ accessToken, folderName, parentFolderId, cache })`: Searches for existing non-trashed folders matching the name and parent ID before creating a duplicate, utilizing an in-memory `cache` (`Map<string, folderObj>`) for high-throughput batch efficiency.
+   - `resolveClassroomFolderHierarchy({ accessToken, baseFolderName, className, lessonName, subfolderType, studentEmail, cache })`: Resolves the entire path segment-by-segment and returns `{ folderId, folderPath }`.
+   - `uploadVideoToGoogleDrive`: Updated to accept `folderId`, adding `parents: [folderId]` in the resumable session metadata.
+
+2. **Google Drive Hook Extensions (`useGoogleDrive.js`)**:
+   - `baseFolderName`: State initialized from `localStorage` (key: `classroom_gdrive_base_folder`, fallback: `'Classroom Archives'`).
+   - `setBaseFolderName(name)`: Updates state and persists to `localStorage`.
+   - `uploadRecording`: Automatically resolves `[Base] / [Class] / [Lesson] / Teacher Lectures`, uploads the video to that folder, and writes `driveFolderPath` to Firestore `classes/{classId}/lectureRecordings/{recordingId}`.
+   - `backupStudentVideosToDrive({ videos, classId, className, baseFolder, onBatchProgress, abortSignal })`: Bulk-processes student videos with live streaming callbacks, downloads video blobs from Cloud Storage, resolves `[Base] / [Class] / [Lesson] / Students / [studentEmail]`, uploads each video, and persists metadata to `videoJobs/{videoId}`.
+
+3. **Batch Progress Streaming Modal (`DriveBackupProgressModal.jsx`)**:
+   - Displays overall progress bar (`X / Y completed (Z%)`).
+   - Displays live upload progress bar for current active file.
+   - Interactive item status list (`⏳ Pending`, `🔄 Uploading`, `✅ Backed up` with direct Drive links, `❌ Error`).
+   - Features `Cancel Backup` (`AbortController`) and `Done / Close` controls.
+
+4. **UI Integrations in Video Library & Table**:
+   - **`VideoLibrary.jsx`**:
+     - Added Google Drive destination status bar with customizable base folder input.
+     - Added `☁️ Backup Selected to Drive ({count})` and `☁️ Backup All Class Videos to Drive` buttons.
+     - Updated Excel export (`handleExportManifestExcel`) to include `Google Drive Link` and `Google Drive Path` columns.
+   - **`VideoTable.jsx`**:
+     - Added a dedicated `<th>Google Drive</th>` table column.
+     - Renders an interactive `📁 Drive ↗` badge linking to `video.driveWebViewLink` with folder path tooltip, or `"Not backed up"`.
+   - **`LectureRecordingsView.jsx`**:
+     - Displays destination folder badge and base folder quick-editor.
+     - Displays `📁 Stored in: {driveFolderPath}` under active Google Drive link.
 
 
 

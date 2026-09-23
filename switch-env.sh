@@ -31,12 +31,25 @@ case "$ENV_TARGET" in
     ;;
 esac
 
+# Safety check: Prevent targeting unapproved projects like pytest-runner
+ALLOWED_PROJECTS=("it114115-dev-2026" "it114115-2627")
+if [[ ! " ${ALLOWED_PROJECTS[@]} " =~ " ${PROJECT_ID} " ]]; then
+    echo "🚨 CRITICAL SAFETY ABORT: Target project '$PROJECT_ID' is not permitted in this repo!"
+    echo "Allowed projects: ${ALLOWED_PROJECTS[*]}"
+    exit 1
+fi
+
 echo "=========================================================="
 echo "🔄 Switching active environment to: $ENV_NAME ($PROJECT_ID)"
 echo "=========================================================="
 
 # 1. Switch Firebase CLI active project
 firebase use "$FIREBASE_ALIAS" 2>/dev/null || firebase use "$PROJECT_ID"
+
+# Export environment variables for current subshell to protect global gcloud config
+export CLOUDSDK_CORE_PROJECT="$PROJECT_ID"
+export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
+export GCLOUD_PROJECT="$PROJECT_ID"
 
 # 2. Copy the active web-app/.env and mode-specific files
 if [ -f "$ENV_FILE" ]; then
@@ -49,6 +62,18 @@ if [ -f "$ENV_FILE" ]; then
         echo "📄 Updated web-app/.env and web-app/.env.development"
     else
         echo "📄 Updated web-app/.env"
+    fi
+
+    # 2b. Check Google Drive OAuth Client ID configuration
+    if ! grep -q "^VITE_GOOGLE_CLIENT_ID=[a-zA-Z0-9]" "$ENV_FILE" 2>/dev/null; then
+        echo "⚠️  [WARNING] VITE_GOOGLE_CLIENT_ID is not configured in $ENV_FILE"
+        echo "   -> Direct Google Drive upload in Teacher Lecture Recordings will be disabled."
+        echo "   -> To enable Google Drive direct upload:"
+        echo "      1. In Google Cloud Console, create an OAuth 2.0 Web Client ID with scope 'https://www.googleapis.com/auth/drive.file'"
+        echo "      2. Add Authorized JavaScript origin: https://${PROJECT_ID}.web.app (and http://localhost:5173 for local dev)"
+        echo "      3. Set VITE_GOOGLE_CLIENT_ID=<client-id>.apps.googleusercontent.com in $ENV_FILE"
+    else
+        echo "✅ Google Drive integration configured (VITE_GOOGLE_CLIENT_ID detected)."
     fi
 fi
 

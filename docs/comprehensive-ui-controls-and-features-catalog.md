@@ -523,9 +523,14 @@ flowchart TD
 - **`📦 Request All as ZIP` Button:** Submits background archive job for all class videos in range.
 - **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`), and trigger analysis for selected videos or the whole class.
 - **`📥 Export Video Manifest (Excel)` Button:** Exports video metadata (IDs, student display names, emails, cohorts, timestamps, storage paths) to `.xlsx`.
+- **Google Drive Archival Toolbar:**
+  - **Base Folder Name Input:** Textbox allowing custom Google Drive archive root directory (defaults to `Classroom Archives`), persisted in `localStorage`.
+  - **`☁️ Backup Selected to Drive` Button:** Archives selected video recordings to Google Drive under `[Base] / [Class] / [Lesson] / Students / [studentEmail] /`.
+  - **`☁️ Backup All Class Videos to Drive` Button:** Bulk archives all class session screencasts across the selected lesson or full semester.
 - **Video Table Actions:**
   - `▶ Play`: Launches `VideoPlayerModal` with custom controls and speed toggles (0.5x, 1x, 1.5x, 2x).
   - `⬇ Download`: Direct browser download of MP4 file.
+  - `📁 Drive ↗`: Direct external hyperlink button opening the backed-up video in Google Drive.
 - **Pagination Buttons:** `Previous` and `Next` page navigation.
 
 ### Synchronized Dual Playback (`SessionReviewView.jsx` & `PlaybackView.jsx`)
@@ -685,24 +690,65 @@ flowchart TD
 ---
 
 ## 17. Prompt Management Studio & AI Prompt Optimizer
-**Primary Sources:** [`PromptManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.jsx), [`PromptForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptForm.jsx), [`PromptList.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptList.jsx)
+**Primary Sources:** [`PromptManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.jsx), [`PromptForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptForm.jsx), [`PromptList.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptList.jsx), [`PromptManagement.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.css)
 
-### Category Navigation & Search
-- **Category Tabs:** `🖼️ Images`, `🎬 Videos`, `🎙️ Audio / Voice AI`.
-- **Prompt Search Bar:** Filters prompts by keyword or title.
-- **Prompt List:** Displays access tags (`Public`, `Private`, `Shared`) and application scope badges (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`).
+### Full-Screen Studio Layout & Ergonomics
+- **Fluid Full-Bleed Layout (`.prompt-studio-view`):** Overrides default 1200px max-width container to occupy 100% of the viewport width with dynamic vertical space (`calc(100vh - 145px)`), eliminating boxed margins and squashed editor ceilings.
+- **Collapsible Sidebar (`◀ Hide List` / `▶ Show List`):** Allows teachers to collapse the prompt list column completely, granting **100% of the screen width** exclusively to the prompt editor and Markdown preview.
+- **Distraction-Free Zen Fullscreen (`⛶ Zen Mode`):** One-click toggle that expands the prompt editor into a fixed 100vw × 100vh full-screen writing canvas with docked controls, perfect for writing multi-step technical rubrics or extensive translation dictionaries.
+- **Two-Tier Form Architecture:**
+  - *Top Action Bar:* Places Prompt Name, Save, Duplicate, Delete, Optimize, Undo, and Zen toggle in a compact header strip.
+  - *Maximized Center Canvas:* `MDEditor` occupies ~80–85% of vertical space with side-by-side edit and rendered preview.
+  - *Collapsible Scope & Permissions Accordion (`⚙️ Scope & Permissions`):* Compact bottom drawer housing application scopes, access level radios, and shared user email management, expandable on demand so it does not crowd the editing canvas.
 
-### Markdown Prompt Editor & Controls
-- **Prompt Name Input:** Title of prompt template.
-- **Split Markdown Editor (`@uiw/react-md-editor`):** Syntax-highlighted Markdown editor with live preview toggle.
-- **Application Scope Checkboxes:** Configures where the prompt appears in dropdowns across the application.
-- **Access Level Radio Buttons:** `Private` vs `Shared`.
-  - **Shared With User Group:** Add co-teacher emails to grant collaborative prompt access.
-- **AI Prompt Optimizer (`✨ Optimize` Button):** Calls Gemini Enterprise Agent Platform/Gemini to enhance prompt clarity, specify explicit JSON output schemas, and reduce hallucination.
-- **`Undo` Button:** Reverts AI optimization back to original text.
-- **Action Buttons:** `Save Prompt` / `Save Changes`, `Duplicate Prompt`, `Delete Prompt`, and `Clear Form`.
+### Multi-Type Category Navigation & Search
+- **Category Tabs with Live Prompt Counters:**
+  - `🖼️ Image Prompts (N)`: Vision proctoring and screenshot analysis prompts.
+  - `🎬 Video Prompts (N)`: Lecture video processing and segmentation prompts.
+  - `🎙️ Voice / Audio Prompts (N)`: Live audio invigilation, session summaries, and on-device Gemma voice intents.
+  - `🌐 Translation Prompts (N)`: Real-time dual-line subtitles, Cantonese-English code-switching, and discipline glossaries.
+  - `📋 Task Rubric Prompts (N)`: Practical task demo milestone extraction and student screen recording evaluators.
+- **Search & Quick Clear (`✕`):** Filters prompts instantly with clear icon.
+- **Prompt List Badges:** Displays access tags (`Public`, `Private`, `Shared`) and application scope badges (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
+
+### AI Prompt Optimizer (`✨ Optimize` Button)
+- **Domain-Tailored AI Rewriting Guidelines:**
+  - *Images/Videos:* Visual grounding, bbox verification, and hallucination elimination.
+  - *Voice/Audios:* Multi-speaker dynamics, conversational intent, and acoustic collusion detection.
+  - *Translations:* Dual-line subtitle pacing, code-switching handling, and clinical/technical terminology preservation.
+  - *Rubrics:* Chronological milestone structuring (3–8 steps), observable on-screen evidence definitions, balanced 100-point weighting, and strict JSON output schemas.
+- **`Undo` Button:** Reverts AI optimization back to original text with full state rollback.
+- **Action Buttons:** `Save Prompt` / `Save Changes`, `Duplicate` (for custom prompts), `📋 Make a Copy to Personalize` (for system templates), `Delete`, `Optimize`, `Undo`, and `⛶ Zen Mode`.
+
+### Two-Tier Prompt Governance Architecture & Collaboration Model
+The platform decouples **Authority/Origin** (`isSystem` and `owner`) from **Visibility Scope** (`accessLevel: 'private' | 'shared' | 'public'`):
+
+1. **Official System Templates (`isSystem: true`, `owner: 'system'`, `accessLevel: 'public'`)**:
+   - Master prompts seeded from `admin/prompts/` (e.g., Live Subtitles, GEMMA intent, Lab Rubric Synthesizer).
+   - Render with a `🔒 System Template (Read-Only)` banner: `🔒 This is a public prompt and cannot be edited. To personalize this prompt for your class, click "Make a Copy to Personalize".`
+   - Fully locked in `MDEditor` (`hideToolbar={true}`, `textareaProps={{ readOnly: true }}`). `Save Changes` and `Delete` buttons are hidden.
+   - Teachers click **`📋 Make a Copy to Personalize`** (emerald button) to fork an editable private clone (`${Name} - Copy`) into their personal library.
+
+2. **Instructor-Authored Public Prompts (`isSystem: false`, `owner: teacherUid`, `accessLevel: 'public'`)**:
+   - Instructors can publish prompts school-wide for all teachers by selecting the `Public` access level radio button.
+   - **Author Experience**: The author who created the prompt sees `🌐 Public Prompt (Owned by you — visible to all instructors)`. The author retains full edit and delete permissions (`Save Changes`, `Delete`, `Duplicate`, AI `✨ Optimize`).
+   - **Colleague Experience**: Other instructors viewing the prompt see `🌐 Community Prompt by colleague@school.edu (Read-Only)`. The prompt content is locked from accidental overwrites. Colleague teachers can use the prompt in classes as-is, or click **`📋 Make a Copy to Personalize`** to customize a personal copy.
+
+3. **Collaborative Shared Prompts (`accessLevel: 'shared'`)**:
+   - Shared with specific colleagues via email. Collaborators with UIDs in `sharedWith` can collaborate directly.
+
+4. **Private Personal Prompts (`accessLevel: 'private'`)**:
+   - Visible and editable exclusively by the author teacher.
+
+5. **Security Enforcement (`firestore.rules`)**:
+   - Enforced at the Firestore security rule level:
+     - `create`: requires teacher authentication, `owner == auth.uid`, `isSystem != true`, and `accessLevel in ['private', 'shared', 'public']`.
+     - `update`: blocks modifying system templates (`owner != 'system' && !isSystem`). Requires user to be author (`owner == auth.uid`) or listed in `sharedWith`.
+     - `delete`: blocks deleting system templates. Requires author ownership (`owner == auth.uid`).
+
 
 ---
+
 
 ## 18. Data Management, Bulk ZIP Archives & Retention Deletion
 **Primary Source:** [`DataManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/DataManagementView.jsx)
@@ -734,8 +780,79 @@ flowchart TD
   - Downloadable File Attachments: Secure Cloud Storage links to generated PDF/DOCX reports and exported spreadsheets.
 
 ---
-*Catalog Version: 2026.3.0 &bull; Platform: Gemini Multimodal Classroom Agent &bull; Audited from Source Code*
+
+## 20. Practical Tasks & Homework Management System
+**Primary Sources:** [`TasksManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TasksManagementView.jsx), [`TaskEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskEditorModal.jsx), [`TaskGradingMatrixView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskGradingMatrixView.jsx), [`StudentTaskWorkspaceModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskWorkspaceModal.jsx), [`StudentTaskFeedbackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskFeedbackView.jsx)
+
+### 20.1 Teacher Tasks Management Dashboard
+- **Create Task Button (`+ Create Practical Task`):** Launches the 4-tab task creator modal.
+- **Task Card Grid:**
+  - Status Pills: `Active`, `Draft`, `Closed`.
+  - Mode Badges: `🏠 Homework (24/7)` or `🏫 In-Class Exam (Lesson-Linked)`.
+  - Constraint Metadata: Time limit (`⏱️ 45m`), max attempts (`🔄 2 attempts allowed`), deadline countdown (`⏳ Due in 3 days`).
+  - Action Buttons: `Edit`, `Grading Matrix (N submissions)`, `Delete Task`.
+
+### 20.2 Task Editor Modal
+- **Tab 1: Basic Information:** Title, Markdown description, maximum score, schedule mode (`homework` vs `in_class` vs `flexible`), linked lesson selector, available-from and deadline date-time pickers.
+- **Tab 2: Time & Attempt Constraints:** Time limit in minutes, maximum allowed attempts (or unlimited), grace period, allow late submissions toggle.
+- **Tab 3: Gemini Demo Video Rubric Extraction:**
+  - Demo video dropdown populated from class recording library.
+  - Custom extraction guidelines prompt input.
+  - `✨ Analyze Video & Extract Rubric` button: Invokes `gemini-3.8-flash` on the Cloud Storage video URI to extract objective steps.
+- **Tab 4: Rubric & Scoring Checklist:**
+  - Interactive table of criteria steps (`Step #`, `Title`, `Description`, `Max Points`, `Evidence Criteria`).
+  - Add Step, Delete Step, and inline point adjustment.
+
+### 20.3 Class-Wide Grading Matrix & Pure OpenXML Export
+- **Top Toolbar Controls:**
+  - **Dynamic Backup Task Videos Button (`☁️ Backup Task Videos (N)`):** Counts all student recordings compiled and ready in Cloud Storage; triggers batch Google Drive upload.
+  - **Google Drive Target Destination Breadcrumb:** Prominently displays the resolved hierarchy path: `📁 [Base Folder] / [Class Name] / Tasks / [Task Title]`.
+  - **Export to Excel Button (`📥 Export Excel`):** Downloads OpenXML `.xlsx` spreadsheet with student profiles, individual rubric scores, and a dedicated **Google Drive Link** column.
+  - **Status Filter Pills:** Toggle between `All`, `Completed`, `In Progress`, and `Not Started`.
+- **Student Roster & Submission Table:**
+  - Complete student identity columns (`Student Display Name`, `Student Email`, `Class / Cohort`, `Programme`).
+  - Submission Status Badges: `⏳ Evaluating`, `✅ Completed`, `⚠️ Needs Review`, `❌ Not Started`.
+  - Attempts count and duration indicators.
+  - Effective Score with inline teacher manual override and feedback textbox.
+  - Individual rubric step point columns.
+- **Dedicated Video / Drive Column (Column 7):**
+  - **`📁 Drive ↗` Badge Button:** Direct hyperlink opening the student's submission video in Google Drive (rendered once backed up).
+  - **`☁️ Backup` Button:** Single-click button to immediately archive an individual student's recording to Google Drive without triggering a batch run.
+  - **`▶️ Watch` Button:** Launches the built-in HTML5 video preview modal.
+- **In-Browser HTML5 Video Player Modal:**
+  - Plays the exact student lab attempt MP4 recording directly inside the grading view.
+  - Native playback controls (seeking, volume, playback rate, full-screen).
+  - Safe overlay teardown that preserves table filters, sorting, and pagination.
+- **Interactive Batch Progress Modal (`DriveBackupProgressModal.jsx`):**
+  - Dual animated progress bars: Overall batch progress (`N / M files, %`) and current file upload streaming (`%`).
+  - Real-time student upload status log with file sizes and resulting Drive URLs.
+  - **AbortController Cancel Button:** Immediately terminates active chunked PUT streams without leaving orphaned files.
+- **Inspect Modal Integration:**
+  - Detailed rubric milestone breakdown with status pills (`completed`, `partial`, `missed`) and points.
+  - Student work duration telemetry.
+  - **Google Drive Archival Card:** Displays cloud backup status (`📁 Backed up to Google Drive` with direct link, or `☁️ Backup to Google Drive` action button) and inline `▶️ Watch Screencast` trigger.
+
+### 20.4 Student Active Workspace Modal
+- **Pre-Flight Screen Sharing Check:** Verifies screen share stream is active before unlocking start button; reuses live session screen stream if already connected.
+- **Live HUD Banner:**
+  - Status pill (`In Progress`).
+  - Dynamic time-remaining countdown (turns amber at < 5m, pulsing red at < 1m).
+  - Automated auto-submit on countdown expiry.
+- **Dual-Pane Workspace:**
+  - Left Pane: Task instructions, prerequisites, step checklist, and reference links.
+  - Right Pane: Active screen stream preview with resolution badges (`1080p @ 30fps`).
+- **Finish Submission Button (`Submit Lab Task`):** Confirms submission, stops recording, and dispatches automated compilation and evaluation.
+
+### 20.5 Student Feedback Scorecard
+- **Overall Grade Pill:** Final score out of 100 with percentage progress ring.
+- **AI Verdict Card:** Overall assessment narrative generated by Gemini 3.8 Flash.
+- **Instructor Remarks Card:** Displays teacher override comments if reviewed.
+- **Step-by-Step Breakdown Checklist:** Green checkmarks for verified criteria, red cross for missed steps, with evidence rationale and clickable timecode links to review the student's submission video.
+
+---
+*Catalog Version: 2026.4.0 &bull; Platform: Gemini Multimodal Classroom Agent &bull; Audited from Source Code*
 
 ---
 
 [← Back to Documentation Index](../README.md#documentation-index)
+
