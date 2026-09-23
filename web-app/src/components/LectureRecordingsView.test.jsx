@@ -593,35 +593,41 @@ describe('LectureRecordingsView Component', () => {
     });
 
     it('disables Google Drive direct cloud upload feature in UI when no client ID key is configured', async () => {
-      render(<LectureRecordingsView classId="test_class" />);
+      const originalClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      import.meta.env.VITE_GOOGLE_CLIENT_ID = '';
+      try {
+        render(<LectureRecordingsView classId="test_class" />);
 
-      const mockDocs = [
-        {
-          id: 'rec_gdrive_config',
-          data: () => ({
-            title: 'Config Test Lecture',
-            durationSeconds: 300,
-            status: 'ready',
-            videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
-          }),
-        },
-      ];
+        const mockDocs = [
+          {
+            id: 'rec_gdrive_config',
+            data: () => ({
+              title: 'Config Test Lecture',
+              durationSeconds: 300,
+              status: 'ready',
+              videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
+            }),
+          },
+        ];
 
-      await act(async () => {
-        snapshotCallback({ docs: mockDocs });
-      });
+        await act(async () => {
+          snapshotCallback({ docs: mockDocs });
+        });
 
-      // Connect button is not rendered when unconfigured
-      expect(screen.queryByRole('button', { name: /Connect Google Drive/i })).not.toBeInTheDocument();
+        // Connect button is not rendered when unconfigured
+        expect(screen.queryByRole('button', { name: /^Connect Google Drive$/i })).not.toBeInTheDocument();
 
-      // Cloud upload button is not rendered when unconfigured
-      expect(screen.queryByRole('button', { name: /Upload Video to Google Drive|Connect Google Drive to Upload/i })).not.toBeInTheDocument();
+        // Cloud upload button is not rendered when unconfigured
+        expect(screen.queryByRole('button', { name: /Upload Video to Google Drive|Connect Google Drive to Upload/i })).not.toBeInTheDocument();
 
-      // Ensure no developer client ID input or configure button is present in the UI
-      expect(screen.queryByRole('button', { name: /Configure Client ID/i })).not.toBeInTheDocument();
-      expect(screen.queryByPlaceholderText(/123456789-abcdef\.apps\.googleusercontent\.com/i)).not.toBeInTheDocument();
-      expect(screen.getByText(/Google Drive direct cloud upload is disabled \(not configured for this system\)/i)).toBeInTheDocument();
-      expect(screen.getByText(/Direct cloud upload is disabled \(no Google OAuth client configured\)/i)).toBeInTheDocument();
+        // Ensure no developer client ID input or configure button is present in the UI
+        expect(screen.queryByRole('button', { name: /Configure Client ID/i })).not.toBeInTheDocument();
+        expect(screen.queryByPlaceholderText(/123456789-abcdef\.apps\.googleusercontent\.com/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/Google Drive direct cloud upload is disabled \(not configured for this system\)/i)).toBeInTheDocument();
+        expect(screen.getByText(/Direct cloud upload is disabled \(no Google OAuth client configured\)/i)).toBeInTheDocument();
+      } finally {
+        import.meta.env.VITE_GOOGLE_CLIENT_ID = originalClientId;
+      }
     });
   });
 });

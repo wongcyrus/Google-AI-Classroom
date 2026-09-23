@@ -785,6 +785,30 @@
   gap: 12px;
 }
 
+.gdrive-connect-prompt.unconfigured {
+  background: #fffaf0;
+  border: 1px solid #feebc8;
+  border-radius: 8px;
+  padding: 12px 16px;
+  align-items: flex-start;
+}
+
+.gdrive-instructions-details summary {
+  user-select: none;
+  outline: none;
+  transition: color 0.2s;
+}
+
+.gdrive-instructions-details summary:hover {
+  color: #2b6cb0;
+  text-decoration: underline;
+}
+
+.gdrive-instructions-details[open] summary {
+  margin-bottom: 6px;
+}
+
+
 .btn-connect-drive {
   background: #276749;
   color: #ffffff;

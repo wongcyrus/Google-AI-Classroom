@@ -13,7 +13,13 @@ const toLocalISOString = (date) => {
   return `${y}-${m}-${day}T${h}:${min}`;
 };
 
-export const generateLessons = (schedule, tz = 'UTC') => {
+import {
+  formatLessonTitle,
+  formatLessonDisplayName,
+  formatLessonFolderName,
+} from '../utils/lessonUtils';
+
+export const generateLessons = (schedule, tz = 'UTC', customLessonTitles = {}) => {
   const lessons = [];
   const { startDate, endDate, timeSlots } = schedule || {};
   if (!startDate || !endDate || !timeSlots) return lessons;
@@ -38,6 +44,20 @@ export const generateLessons = (schedule, tz = 'UTC') => {
       }
     });
   }
+
+  // Sort ascending chronologically to compute 1-based index (Lesson 01, Lesson 02...)
+  lessons.sort((a, b) => a.start - b.start);
+  const titles = customLessonTitles || schedule?.lessonTitles || {};
+
+  lessons.forEach((l, i) => {
+    l.index = i + 1;
+    l.id = l.start.toISOString();
+    l.title = formatLessonTitle({ lesson: l, index: l.index, customTitles: titles });
+    l.displayName = formatLessonDisplayName({ lesson: l, index: l.index, customTitles: titles });
+    l.folderName = formatLessonFolderName({ lesson: l, index: l.index, customTitles: titles });
+  });
+
+  // Preserve existing convention: return sorted descending (newest first)
   return lessons.sort((a, b) => b.start - a.start);
 };
 
@@ -115,7 +135,8 @@ export const useClassSchedule = (classId) => {
         setTimezone(tz);
         setSchedule(scheduleData);
         if (scheduleData) {
-          const generatedLessons = generateLessons(scheduleData, tz);
+          const titles = classData.lessonTitles || scheduleData?.lessonTitles || {};
+          const generatedLessons = generateLessons(scheduleData, tz, titles);
           setLessons(generatedLessons);
           const defaultLesson = await getSmartDefaultLesson(generatedLessons, classId);
           if (defaultLesson) {

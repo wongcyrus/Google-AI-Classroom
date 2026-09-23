@@ -226,7 +226,14 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       isExamTimeRange(startTime, endTime, classData?.examPeriods)
     );
 
-    const destinationPath = `videos/${classId}/${outputVideoName}`;
+    const isTaskSubmission = Boolean(jobData.isTaskSubmission);
+    const taskId = jobData.taskId || null;
+    const attemptNumber = jobData.attemptNumber || 1;
+
+    const destinationPath = isTaskSubmission && taskId
+      ? `classes/${classId}/tasks/${taskId}/submissions/${studentUid}/attempt_${attemptNumber}.mp4`
+      : `videos/${classId}/${outputVideoName}`;
+
     await retry(() => bucket.upload(outputVideoPath, {
       destination: destinationPath,
       metadata: {
@@ -239,12 +246,15 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
           endTime,
           duration,
           size,
-          isExam: isExamSession ? 'true' : 'false'
+          isExam: isExamSession ? 'true' : 'false',
+          isTaskSubmission: isTaskSubmission ? 'true' : 'false',
+          taskId: taskId || '',
+          attemptNumber: String(attemptNumber)
         }
       }
     }), 3, 2000, 'Failed to upload video after multiple retries.');
 
-    console.log(`Video uploaded to ${destinationPath} (isExam: ${isExamSession})`);
+    console.log(`Video uploaded to ${destinationPath} (isExam: ${isExamSession}, isTaskSubmission: ${isTaskSubmission})`);
 
     await jobRef.update({
       status: 'completed',
@@ -252,8 +262,31 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       videoPath: destinationPath,
       duration,
       size,
-      isExam: isExamSession
+      isExam: isExamSession,
+      isTaskSubmission,
+      taskId,
+      attemptNumber
     });
+
+    if (isTaskSubmission && taskId) {
+      try {
+        const attemptRef = db.collection('classes').doc(classId)
+          .collection('tasks').doc(taskId)
+          .collection('submissions').doc(studentUid)
+          .collection('attempts').doc(String(attemptNumber));
+
+        await attemptRef.set({
+          status: 'compiling_complete',
+          compiledVideoPath: destinationPath,
+          videoJobId: jobId,
+          duration,
+          size,
+          compiledAt: new Date()
+        }, { merge: true });
+      } catch (attErr) {
+        console.warn(`[processVideoJob] Failed to update task attempt document:`, attErr);
+      }
+    }
 
     // Clean up local files
     fs.rmSync(tempDir, { recursive: true, force: true });

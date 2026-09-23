@@ -58,6 +58,8 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
     isConfigured: isGdriveConfigured,
     isConnected: isGdriveConnected,
     connectedUser: gdriveUser,
+    baseFolderName,
+    setBaseFolderName,
     isConnecting: isGdriveConnecting,
     isUploading: isGdriveUploading,
     uploadProgress: gdriveUploadProgress,
@@ -72,6 +74,8 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   } = useGoogleDrive();
 
   const [manualDriveUrlInput, setManualDriveUrlInput] = useState('');
+  const [isEditingBaseFolder, setIsEditingBaseFolder] = useState(false);
+  const [baseFolderDraft, setBaseFolderDraft] = useState('');
 
   const videoRef = useRef(null);
 
@@ -990,17 +994,151 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                   {/* Google Account Connection Status Bar */}
                   <div className="gdrive-status-bar">
                     {isGdriveConnected ? (
-                      <div className="gdrive-connected-info">
-                        <span>🟢 Connected: <strong>{gdriveUser?.email}</strong></span>
-                        <button className="btn-disconnect-drive" onClick={disconnectGdrive}>
-                          Disconnect
-                        </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        <div className="gdrive-connected-info">
+                          <span>🟢 Connected: <strong>{gdriveUser?.email}</strong></span>
+                          <button className="btn-disconnect-drive" onClick={disconnectGdrive}>
+                            Disconnect
+                          </button>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '8px',
+                            padding: '8px 12px',
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            fontSize: '0.82rem',
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: '#64748b' }}>📁 Destination Folder: </span>
+                            <strong style={{ color: '#1e293b' }}>
+                              {baseFolderName} / {classId || 'Class'} / {selectedRecording?.lessonTitle || selectedRecording?.title || 'General'} / Teacher Lectures
+                            </strong>
+                          </div>
+                          {!isEditingBaseFolder ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBaseFolderDraft(baseFolderName);
+                                setIsEditingBaseFolder(true);
+                              }}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                padding: '2px 8px',
+                                fontSize: '0.78rem',
+                                color: '#334155',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              ✏️ Edit Base Folder
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                value={baseFolderDraft}
+                                onChange={(e) => setBaseFolderDraft(e.target.value)}
+                                placeholder="e.g. Classroom Archives or IT114115"
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '0.8rem',
+                                  borderRadius: '4px',
+                                  border: '1px solid #94a3b8',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (baseFolderDraft.trim()) {
+                                    setBaseFolderName(baseFolderDraft.trim());
+                                  }
+                                  setIsEditingBaseFolder(false);
+                                }}
+                                style={{
+                                  background: '#2563eb',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '3px 8px',
+                                  fontSize: '0.78rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingBaseFolder(false)}
+                                style={{
+                                  background: '#f1f5f9',
+                                  color: '#475569',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '4px',
+                                  padding: '3px 8px',
+                                  fontSize: '0.78rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : !isGdriveConfigured ? (
-                      <div className="gdrive-connect-prompt">
-                        <span style={{ fontSize: '0.88rem', color: '#718096' }}>
-                          🔒 Google Drive direct cloud upload is disabled (not configured for this system).
-                        </span>
+                      <div className="gdrive-connect-prompt unconfigured" style={{ flexDirection: 'column', alignItems: 'flex-start', width: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#c53030', fontWeight: 600 }}>
+                          <span>🔒 Google Drive direct cloud upload is disabled (not configured for this system).</span>
+                        </div>
+                        <div style={{ marginTop: '6px', fontSize: '0.84rem', color: '#4a5568', lineHeight: 1.5 }}>
+                          ⚠️ <strong>Warning:</strong> The configuration key <code>VITE_GOOGLE_CLIENT_ID</code> is not configured. Direct browser-to-drive streaming requires a Google OAuth 2.0 Web Client ID.
+                        </div>
+                        <details className="gdrive-instructions-details" style={{ marginTop: '10px', width: '100%' }}>
+                          <summary className="gdrive-instructions-summary" style={{ cursor: 'pointer', fontWeight: 600, color: '#2b6cb0', fontSize: '0.85rem' }}>
+                            📖 How to set VITE_GOOGLE_CLIENT_ID (Step-by-Step Instructions)
+                          </summary>
+                          <div className="gdrive-instructions-body" style={{ marginTop: '8px', padding: '12px 16px', background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.83rem', color: '#2d3748', lineHeight: 1.6 }}>
+                            <ol style={{ paddingLeft: '20px', margin: '4px 0 10px 0' }}>
+                              <li>
+                                <strong>Open Google Cloud Console:</strong> Navigate to <em>APIs & Services &gt; Credentials</em> in your GCP project.
+                              </li>
+                              <li>
+                                <strong>Create Credentials:</strong> Click <em>+ Create Credentials &gt; OAuth client ID</em> and choose <strong>Web application</strong>.
+                              </li>
+                              <li>
+                                <strong>Add Authorized JavaScript Origins:</strong> Add this site origin:
+                                <div style={{ margin: '4px 0' }}>
+                                  <code style={{ background: '#edf2f7', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {typeof window !== 'undefined' ? window.location.origin : 'https://it114115-2627.web.app'}
+                                  </code>
+                                </div>
+                              </li>
+                              <li>
+                                <strong>Check Scopes:</strong> Under <em>OAuth consent screen</em>, ensure <code>https://www.googleapis.com/auth/drive.file</code> is added.
+                              </li>
+                              <li>
+                                <strong>Set Configuration Key:</strong> Open <code>web-app/.env.prod</code> (for production) or <code>web-app/.env.dev</code> (for dev) and set:
+                                <pre style={{ background: '#edf2f7', padding: '6px 10px', borderRadius: '4px', margin: '6px 0', overflowX: 'auto', fontSize: '0.8rem' }}>
+VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+                                </pre>
+                              </li>
+                              <li>
+                                <strong>Deploy:</strong> Re-deploy using <code>./deploy.sh prod</code> or <code>./deploy.sh dev</code>.
+                              </li>
+                            </ol>
+                            <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: '4px', padding: '8px 12px', color: '#2b6cb0', fontSize: '0.8rem' }}>
+                              💡 <strong>Note:</strong> You can still link existing Google Drive videos right now without OAuth using <strong>Step B (Link Existing Google Drive Video)</strong> below!
+                            </div>
+                          </div>
+                        </details>
                       </div>
                     ) : (
                       <div className="gdrive-connect-prompt">
@@ -1058,27 +1196,45 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                         </div>
                       ) : !isGdriveConfigured ? (
                         <div style={{ fontSize: '0.85rem', color: '#718096', padding: '6px 0' }}>
-                          🔒 Direct cloud upload is disabled (no Google OAuth client configured). You can link an existing video in Step B below.
+                          🔒 Direct cloud upload is disabled (no Google OAuth client configured). See the instructions above to configure <code>VITE_GOOGLE_CLIENT_ID</code>, or link an existing video in Step B below.
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <button
-                            className="btn-upload-drive"
-                            onClick={() => uploadToGdrive({ recording: selectedRecording, classId })}
-                            disabled={!isGdriveConnected || isGdriveUploading}
-                          >
-                            {isGdriveConnected ? '☁️ Upload Video to Google Drive' : '🔒 Connect Google Drive to Upload'}
-                          </button>
-
-                          {selectedRecording.driveWebViewLink && (
-                            <a
-                              href={selectedRecording.driveWebViewLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn-open-drive"
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <button
+                              className="btn-upload-drive"
+                              onClick={isGdriveConnected ? () => uploadToGdrive({
+                                recording: selectedRecording,
+                                classId,
+                                className: classId,
+                                lessonName: selectedRecording.lessonTitle || selectedRecording.title || 'General Recordings',
+                                baseFolder: baseFolderName,
+                              }) : () => connectGdrive()}
+                              disabled={isGdriveConnecting || isGdriveUploading}
                             >
-                              📂 View in Google Drive ↗
-                            </a>
+                              {isGdriveConnected
+                                ? '☁️ Upload Video to Google Drive'
+                                : isGdriveConnecting
+                                ? '⏳ Connecting Google Drive...'
+                                : '📁 Connect Google Drive to Upload'}
+                            </button>
+
+                            {selectedRecording.driveWebViewLink && (
+                              <a
+                                href={selectedRecording.driveWebViewLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-open-drive"
+                              >
+                                📂 View in Google Drive ↗
+                              </a>
+                            )}
+                          </div>
+
+                          {selectedRecording.driveFolderPath && (
+                            <div style={{ fontSize: '0.8rem', color: '#4a5568' }}>
+                              📁 Stored in: <code>{selectedRecording.driveFolderPath}</code>
+                            </div>
                           )}
                         </div>
                       )}
