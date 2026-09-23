@@ -22,6 +22,12 @@ vi.mock('firebase/storage', () => ({
 
 const mockGetDoc = vi.fn();
 const mockGetDocs = vi.fn();
+const mockOnSnapshot = vi.fn((ref, callback) => {
+  if (typeof callback === 'function') {
+    callback({ docs: [] });
+  }
+  return vi.fn();
+});
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id) => ({ id, col })),
@@ -30,6 +36,10 @@ vi.mock('firebase/firestore', () => ({
   where: vi.fn((field, op, val) => ({ field, op, val })),
   getDoc: (...args) => mockGetDoc(...args),
   getDocs: (...args) => mockGetDocs(...args),
+  onSnapshot: (...args) => mockOnSnapshot(...args),
+  setDoc: vi.fn().mockResolvedValue(true),
+  addDoc: vi.fn().mockResolvedValue({ id: 'mock-doc-id' }),
+  serverTimestamp: vi.fn(() => ({ toMillis: () => Date.now() })),
 }));
 
 vi.mock('./VideoPlayerModal', () => ({

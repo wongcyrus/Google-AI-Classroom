@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { escapeCsvField, generateCsvContent, exportToExcel, readExcelFile, exportToJson, exportToText } from "./exportUtils";
+import { escapeCsvField, generateCsvContent, exportToExcel, readExcelFile, exportToJson, exportToText, exportTaskGradingToExcel } from "./exportUtils";
 
 describe("exportUtils Unit Tests", () => {
   let originalCreateObjectURL;
@@ -93,6 +93,53 @@ describe("exportUtils Unit Tests", () => {
       exportToText("sample log", "log.txt");
       expect(clickedLink.getAttribute("download")).toBe("log.txt");
       expect(clickedLink.click).toHaveBeenCalled();
+    });
+  });
+
+  describe("exportTaskGradingToExcel", () => {
+    it("exports task grading matrix with student profile and step results", async () => {
+      const task = {
+        title: "Docker Lab",
+        maxScore: 100,
+        rubricSteps: [
+          { stepNumber: 1, title: "Git Clone" },
+          { stepNumber: 2, title: "Docker Build" },
+        ],
+      };
+      const submissions = [
+        {
+          displayName: "大文 (Chan Tai Man)",
+          email: "taiman@vtc.edu.hk",
+          cohort: "IT114115/1A",
+          programme: "Software Engineering",
+          status: "evaluated",
+          attemptsCount: 1,
+          durationSeconds: 1500,
+          effectiveScore: 90,
+          driveWebViewLink: "https://drive.google.com/file/d/test-task-drive/view",
+          evaluation: {
+            finalScore: 90,
+            stepResults: [
+              { stepNumber: 1, status: "completed", scoreAwarded: 40 },
+              { stepNumber: 2, status: "completed", scoreAwarded: 50 },
+            ],
+          },
+        },
+      ];
+
+      const blob = await exportTaskGradingToExcel(task, submissions);
+      expect(blob).toBeInstanceOf(Blob);
+      expect(clickedLink.getAttribute("download")).toBe("Task_Docker_Lab_Grading_Results.xlsx");
+      expect(clickedLink.click).toHaveBeenCalled();
+
+      const rows = await readExcelFile(blob);
+      expect(rows[0]).toContain("Student Display Name");
+      expect(rows[0]).toContain("Google Drive Link");
+      expect(rows[0]).toContain("Step 1: Git Clone");
+      expect(rows[0]).toContain("Step 2: Docker Build");
+      expect(rows[1]).toContain("大文 (Chan Tai Man)");
+      expect(rows[1]).toContain("https://drive.google.com/file/d/test-task-drive/view");
+      expect(rows[1]).toContain("40 pts (completed)");
     });
   });
 });

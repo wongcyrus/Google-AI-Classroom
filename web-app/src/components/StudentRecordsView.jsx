@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, storage, functions } from '../firebase-config';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { ref, getDownloadURL } from 'firebase/storage';
 import VideoPlayerModal from './VideoPlayerModal';
+import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
+import StudentTaskFeedbackView from './tasks/StudentTaskFeedbackView';
 import { computeLessonDuration, getLessonId } from '../utils/attendanceUtils';
 import { generateLessons } from '../hooks/useClassSchedule';
 import './StudentRecordsView.css';
@@ -131,6 +133,47 @@ const StudentRecordsView = ({ user }) => {
   const [aiJobsFeedback, setAiJobsFeedback] = useState([]);
   const [irregularities, setIrregularities] = useState([]);
   const [audioRecords, setAudioRecords] = useState([]);
+
+  // Practical Tasks & Lab Exams State
+  const [practicalTasks, setPracticalTasks] = useState([]);
+  const [taskSubmissionsMap, setTaskSubmissionsMap] = useState({});
+  const [activeWorkspaceTask, setActiveWorkspaceTask] = useState(null);
+  const [viewingFeedbackTask, setViewingFeedbackTask] = useState(null);
+  const [feedbackSubmission, setFeedbackSubmission] = useState(null);
+
+  // Subscribe to practical tasks and submissions
+  useEffect(() => {
+    if (!selectedClassId || !user?.uid) {
+      setPracticalTasks([]);
+      setTaskSubmissionsMap({});
+      return;
+    }
+
+    if (typeof onSnapshot !== 'function') return;
+
+    const tasksRef = collection(db, 'classes', selectedClassId, 'tasks');
+    const unsub = onSnapshot(tasksRef, async (snap) => {
+      const tasksList = (snap?.docs || []).map((d) => ({ id: d.id, ...d.data() }));
+      setPracticalTasks(tasksList);
+
+      const subMap = {};
+      for (const t of tasksList) {
+        try {
+          const subDoc = await getDoc(doc(db, 'classes', selectedClassId, 'tasks', t.id, 'submissions', user.uid));
+          if (subDoc && subDoc.exists()) {
+            subMap[t.id] = { id: subDoc.id, ...subDoc.data() };
+          }
+        } catch (e) {
+          console.debug('No submission doc for task:', t.id);
+        }
+      }
+      setTaskSubmissionsMap(subMap);
+    });
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [selectedClassId, user?.uid]);
 
   // Video player modal state
   const [showPlayer, setShowPlayer] = useState(false);
@@ -842,6 +885,73 @@ const StudentRecordsView = ({ user }) => {
     } finally {
       setAudioLoadingId(null);
     }
+  };
+
+  // Practical Task attempt handlers
+  const handleStartTaskAttempt = async (taskId, startedAttempt) => {
+    if (!selectedClassId || !user?.uid) return;
+    const subRef = doc(db, 'classes', selectedClassId, 'tasks', taskId, 'submissions', user.uid);
+    const existing = taskSubmissionsMap[taskId] || {};
+    const attempts = [...(existing.attempts || [])];
+    const existingIdx = attempts.findIndex((a) => a.attemptNumber === startedAttempt.attemptNumber);
+    if (existingIdx >= 0) {
+      attempts[existingIdx] = startedAttempt;
+    } else {
+      attempts.push(startedAttempt);
+    }
+
+    const payload = {
+      studentUid: user.uid,
+      email: user.email?.toLowerCase(),
+      status: 'in_progress',
+      attemptsCount: attempts.length,
+      attempts,
+      latestAttempt: startedAttempt,
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(subRef, payload, { merge: true });
+    setTaskSubmissionsMap((prev) => ({ ...prev, [taskId]: { ...existing, ...payload } }));
+  };
+
+  const handleFinishTaskAttempt = async (taskId, finishedAttempt) => {
+    if (!selectedClassId || !user?.uid) return;
+    const subRef = doc(db, 'classes', selectedClassId, 'tasks', taskId, 'submissions', user.uid);
+    const existing = taskSubmissionsMap[taskId] || {};
+    const attemptWithEnd = {
+      ...finishedAttempt,
+      finishedAt: new Date(),
+      status: 'compiling',
+    };
+
+    const attempts = (existing.attempts || []).map((a) =>
+      a.attemptNumber === attemptWithEnd.attemptNumber ? attemptWithEnd : a
+    );
+
+    const payload = {
+      status: 'compiling',
+      attempts,
+      latestAttempt: attemptWithEnd,
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(subRef, payload, { merge: true });
+
+    // Submit videoJob for task slice compilation
+    const jobId = `task_${taskId}_${user.uid}_att${attemptWithEnd.attemptNumber}_${Date.now()}`;
+    await addDoc(collection(db, 'videoJobs'), {
+      jobId,
+      classId: selectedClassId,
+      studentUid: user.uid,
+      studentEmail: user.email?.toLowerCase(),
+      startTime: attemptWithEnd.startedAt,
+      endTime: attemptWithEnd.finishedAt,
+      status: 'pending',
+      isTaskSubmission: true,
+      taskId,
+      attemptNumber: attemptWithEnd.attemptNumber,
+      createdAt: serverTimestamp(),
+    });
+
+    setTaskSubmissionsMap((prev) => ({ ...prev, [taskId]: { ...existing, ...payload } }));
   };
 
   if (loading) {
@@ -1736,14 +1846,142 @@ const StudentRecordsView = ({ user }) => {
       )}
 
       {/* Tab 3: Tasks & AI Progress */}
-      {activeTab === 'tasks' && (
+      {activeTab === 'tasks' && viewingFeedbackTask && (
         <div className="tab-panel-card">
-          <div className="panel-header">
-            <h2 className="panel-title">Completed Lab Tasks & Progress</h2>
-            <small style={{ color: '#64748b' }}>
-              Real-time task telemetry and automated AI evaluation reports for {activeClassObj?.name || selectedClassId}
-            </small>
+          <StudentTaskFeedbackView
+            task={viewingFeedbackTask}
+            submission={feedbackSubmission}
+            onBack={() => {
+              setViewingFeedbackTask(null);
+              setFeedbackSubmission(null);
+            }}
+          />
+        </div>
+      )}
+
+      {activeTab === 'tasks' && !viewingFeedbackTask && (
+        <div className="tab-panel-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Section A: Practical Tasks & Lab Challenges */}
+          <div>
+            <div className="panel-header">
+              <h2 className="panel-title">📋 Practical Tasks & Homework Challenges</h2>
+              <small style={{ color: '#64748b' }}>
+                Assigned lab exercises and asynchronous homework for {activeClassObj?.name || selectedClassId}
+              </small>
+            </div>
+
+            {practicalTasks.length === 0 ? (
+              <div className="empty-state-box" style={{ padding: '1.5rem' }}>
+                <div className="empty-state-icon">📝</div>
+                <div className="empty-state-text">No practical tasks published yet for this class.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                {practicalTasks.map((t) => {
+                  const sub = taskSubmissionsMap[t.id];
+                  const isEvaluated = sub?.status === 'evaluated';
+                  const effectiveScore = typeof sub?.teacherOverride?.manualScore === 'number'
+                    ? sub.teacherOverride.manualScore
+                    : (typeof sub?.effectiveScore === 'number' ? sub.effectiveScore : sub?.evaluation?.finalScore);
+
+                  return (
+                    <div
+                      key={t.id}
+                      style={{
+                        padding: '1.25rem',
+                        borderRadius: '0.75rem',
+                        border: '1px solid #e2e8f0',
+                        background: '#ffffff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              textTransform: 'uppercase',
+                              background: t.scheduleMode === 'homework' ? '#f3e8ff' : '#eff6ff',
+                              color: t.scheduleMode === 'homework' ? '#7e22ce' : '#1d4ed8',
+                            }}
+                          >
+                            {t.scheduleMode === 'homework' ? '🏠 Homework' : '🏫 In-Class'}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                            {t.maxScore || 100} pts
+                          </span>
+                        </div>
+                        <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                          {t.title}
+                        </h4>
+                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                          {t.description || 'Hands-on practical challenge.'}
+                        </p>
+                      </div>
+
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          {isEvaluated ? (
+                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#16a34a' }}>
+                              Score: {effectiveScore} / {t.maxScore || 100}
+                            </span>
+                          ) : sub?.status === 'compiling' || sub?.status === 'submitted' ? (
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
+                              ⏳ Evaluating...
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                              Attempts: {sub?.attemptsCount || 0} / {t.constraints?.attempts?.maxAttempts || 1}
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          {isEvaluated ? (
+                            <button
+                              type="button"
+                              className="scope-toggle-btn"
+                              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                              onClick={() => {
+                                setViewingFeedbackTask(t);
+                                setFeedbackSubmission(sub);
+                              }}
+                            >
+                              📊 View Feedback
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="scope-toggle-btn"
+                              style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#2563eb', color: '#fff' }}
+                              onClick={() => setActiveWorkspaceTask(t)}
+                            >
+                              {sub?.status === 'in_progress' ? '▶ Resume' : '▶ Start Challenge'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          {/* Section B: In-Session Lab Tasks & Telemetry */}
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
+            <div className="panel-header">
+              <h3 className="panel-title" style={{ fontSize: '1.1rem' }}>Completed Lab Tasks & Progress</h3>
+              <small style={{ color: '#64748b' }}>
+                Real-time task telemetry and automated AI evaluation reports for {activeClassObj?.name || selectedClassId}
+              </small>
+            </div>
           {filteredMetrics.length === 0 && filteredProgress.length === 0 ? (
             <div className="empty-state-box">
               <div className="empty-state-icon">📋</div>
@@ -1831,6 +2069,7 @@ const StudentRecordsView = ({ user }) => {
               </table>
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -2029,6 +2268,18 @@ const StudentRecordsView = ({ user }) => {
           }}
           videoUrl={playerVideoUrl}
           loading={playerLoading}
+        />
+      )}
+
+      {/* Practical Task Workspace Modal */}
+      {activeWorkspaceTask && (
+        <StudentTaskWorkspaceModal
+          isOpen={Boolean(activeWorkspaceTask)}
+          onClose={() => setActiveWorkspaceTask(null)}
+          task={activeWorkspaceTask}
+          submission={taskSubmissionsMap[activeWorkspaceTask.id] || null}
+          onStartAttempt={handleStartTaskAttempt}
+          onFinishAttempt={handleFinishTaskAttempt}
         />
       )}
     </div>

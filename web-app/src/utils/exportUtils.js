@@ -148,6 +148,73 @@ export function exportToJson(data, filename = "export.json") {
 }
 
 /**
+ * Exports task grading matrix to Microsoft Excel (.xlsx) with universal student profile resolution.
+ * 
+ * @param {Object} task The task object containing title, rubricSteps, etc.
+ * @param {Array<Object>} submissions Array of student submissions with resolved profiles and evaluations.
+ * @param {string} [filename]
+ * @returns {Promise<Blob>}
+ */
+export async function exportTaskGradingToExcel(task, submissions = [], filename) {
+  const taskTitle = task?.title ? task.title.replace(/[/\\?%*:|"<> ]/g, '_') : 'Task';
+  const cleanFilename = filename || `Task_${taskTitle}_Grading_Results.xlsx`;
+  const rubricSteps = task?.rubricSteps || [];
+
+  const headers = [
+    'Student Display Name',
+    'Student Email',
+    'Class / Cohort',
+    'Programme',
+    'Submission Status',
+    'Attempts',
+    'Duration (mins)',
+    'Effective Score',
+    'Max Score',
+    'Teacher Override Score',
+    'Teacher Remarks',
+    'Google Drive Link',
+    ...rubricSteps.map((step, idx) => `Step ${step.stepNumber || idx + 1}: ${step.title || 'Milestone'}`)
+  ];
+
+  const rows = submissions.map(sub => {
+    const evalData = sub.evaluation || {};
+    const effectiveScore = typeof sub.teacherOverride?.manualScore === 'number'
+      ? sub.teacherOverride.manualScore
+      : (typeof sub.effectiveScore === 'number' ? sub.effectiveScore : (evalData.finalScore ?? ''));
+
+    const durationMins = typeof sub.durationSeconds === 'number'
+      ? Math.round((sub.durationSeconds / 60) * 10) / 10
+      : '';
+
+    const stepScores = rubricSteps.map((step, idx) => {
+      const stepRes = (evalData.stepResults || []).find(r => r.stepNumber === (step.stepNumber || idx + 1));
+      if (!stepRes) return '-';
+      return typeof stepRes.scoreAwarded === 'number'
+        ? `${stepRes.scoreAwarded} pts (${stepRes.status})`
+        : stepRes.status || 'evaluated';
+    });
+
+    return [
+      sub.displayName || sub.studentName || sub.email || 'Unknown',
+      sub.email || sub.studentEmail || '',
+      sub.cohort || sub.studentClass || '',
+      sub.programme || '',
+      sub.status || 'not_started',
+      sub.attemptsCount || 0,
+      durationMins,
+      effectiveScore,
+      task?.maxScore ?? 100,
+      sub.teacherOverride?.manualScore ?? '',
+      sub.teacherOverride?.teacherComment || '',
+      sub.driveWebViewLink || '',
+      ...stepScores
+    ];
+  });
+
+  return exportToExcel(headers, rows, cleanFilename);
+}
+
+/**
  * Exports plain text to a text file.
  * 
  * @param {string} text - Text content
@@ -156,3 +223,4 @@ export function exportToJson(data, filename = "export.json") {
 export function exportToText(text, filename = "export.txt") {
   downloadFile(text, filename, "text/plain;charset=utf-8;");
 }
+
