@@ -26,15 +26,11 @@ const PromptManagement = () => {
   const [emailInput, setEmailInput] = useState('');
   const [originalPromptText, setOriginalPromptText] = useState('');
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isZenMode, setIsZenMode] = useState(false);
 
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-        return;
-    }
-    const { uid } = currentUser;
-
-    const unsubscribers = [];
+    let unsubscribers = [];
     let publicPrompts = [], privatePrompts = [], sharedPrompts = [];
 
     const combineAndSetPrompts = () => {
@@ -44,25 +40,48 @@ const PromptManagement = () => {
         setPrompts(unique);
     };
 
-    const qPublic = query(promptsCollectionRef, where('accessLevel', '==', 'public'));
-    unsubscribers.push(onSnapshot(qPublic, snapshot => {
-        publicPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
+    const setupListeners = (user) => {
+        unsubscribers.forEach(u => u());
+        unsubscribers = [];
+        publicPrompts = [];
+        privatePrompts = [];
+        sharedPrompts = [];
 
-    const qOwner = query(promptsCollectionRef, where('owner', '==', uid));
-    unsubscribers.push(onSnapshot(qOwner, snapshot => {
-        privatePrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
+        if (!user) {
+            setPrompts([]);
+            return;
+        }
+        const { uid } = user;
 
-    const qShared = query(promptsCollectionRef, where('sharedWith', 'array-contains', uid));
-    unsubscribers.push(onSnapshot(qShared, snapshot => {
-        sharedPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        combineAndSetPrompts();
-    }));
+        const qPublic = query(promptsCollectionRef, where('accessLevel', '==', 'public'));
+        unsubscribers.push(onSnapshot(qPublic, snapshot => {
+            publicPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            combineAndSetPrompts();
+        }));
 
-    return () => unsubscribers.forEach(unsub => unsub());
+        const qOwner = query(promptsCollectionRef, where('owner', '==', uid));
+        unsubscribers.push(onSnapshot(qOwner, snapshot => {
+            privatePrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            combineAndSetPrompts();
+        }));
+
+        const qShared = query(promptsCollectionRef, where('sharedWith', 'array-contains', uid));
+        unsubscribers.push(onSnapshot(qShared, snapshot => {
+            sharedPrompts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            combineAndSetPrompts();
+        }));
+    };
+
+    if (auth.onAuthStateChanged) {
+        const unsub = auth.onAuthStateChanged(user => setupListeners(user || auth.currentUser));
+        return () => {
+            if (typeof unsub === 'function') unsub();
+            unsubscribers.forEach(u => u());
+        };
+    } else {
+        setupListeners(auth.currentUser);
+        return () => unsubscribers.forEach(u => u());
+    }
   }, []);
 
   const handleSelectPrompt = async (prompt) => {
@@ -99,7 +118,10 @@ const PromptManagement = () => {
     setSelectedPrompt(null);
     setName('');
     setPromptText('');
-    setApplyTo(tab === 'translations' ? ['Live Subtitles & Translation'] : []);
+    let defaultApply = [];
+    if (tab === 'translations') defaultApply = ['Live Subtitles & Translation'];
+    else if (tab === 'rubrics') defaultApply = ['Lab Rubric Milestones'];
+    setApplyTo(defaultApply);
     setAccessLevel('private');
     setSharedWithUids([]);
     setSharedWithUsers([]);
@@ -109,10 +131,27 @@ const PromptManagement = () => {
   };
 
   const handleSave = async () => {
-    const { uid, email } = auth.currentUser;
+    const { uid, email } = auth.currentUser || {};
     if (!uid) {
         alert('You must be logged in to save prompts.');
         return;
+    }
+
+    if (selectedPrompt) {
+        const isSystem = selectedPrompt.isSystem || 
+                         selectedPrompt.owner === 'system' || 
+                         (selectedPrompt.accessLevel === 'public' && (!selectedPrompt.owner || selectedPrompt.owner === 'system'));
+        const isOwner = !selectedPrompt.owner || selectedPrompt.owner === uid;
+        const isSharedEditor = selectedPrompt.accessLevel === 'shared' && selectedPrompt.sharedWith?.includes(uid);
+
+        if (isSystem) {
+            alert('This is a pre-seeded system prompt and cannot be edited. Please click "Make a Copy to Personalize" to save a customized version.');
+            return;
+        }
+        if (!isOwner && !isSharedEditor) {
+            alert('You do not have permission to edit this prompt. Please click "Make a Copy to Personalize" to save your own customized version.');
+            return;
+        }
     }
 
     let promptData;
@@ -138,6 +177,17 @@ const PromptManagement = () => {
           applyTo: applyTo.length > 0 ? applyTo : ['Live Subtitles & Translation'],
           category: 'translations',
         };
+    } else if (activeTab === 'rubrics') {
+        if (!name || !promptText) {
+            alert('Please fill in all fields.');
+            return;
+        }
+        promptData = {
+          name,
+          promptText,
+          applyTo: applyTo.length > 0 ? applyTo : ['Lab Rubric Milestones'],
+          category: 'rubrics',
+        };
     } else {
         if (!name || !promptText || applyTo.length === 0) {
           alert('Please fill in all fields and select at least one application type.');
@@ -155,8 +205,9 @@ const PromptManagement = () => {
         ...promptData,
         accessLevel,
         sharedWith: accessLevel === 'shared' ? sharedWithUids : [],
-        owner: uid,
-        ownerEmail: email,
+        owner: selectedPrompt?.owner && selectedPrompt.owner !== 'system' ? selectedPrompt.owner : uid,
+        ownerEmail: selectedPrompt?.ownerEmail || email,
+        isSystem: false,
         lastUpdated: serverTimestamp()
     };
 
@@ -177,7 +228,18 @@ const PromptManagement = () => {
   };
 
   const handleDelete = async () => {
-    if (!selectedPrompt || selectedPrompt.accessLevel === 'public') return;
+    if (!selectedPrompt) return;
+    const isSystem = selectedPrompt.isSystem || 
+                     selectedPrompt.owner === 'system' || 
+                     (selectedPrompt.accessLevel === 'public' && (!selectedPrompt.owner || selectedPrompt.owner === 'system'));
+    if (isSystem) return;
+
+    const { uid } = auth.currentUser || {};
+    const isOwner = !selectedPrompt.owner || selectedPrompt.owner === uid;
+    if (!isOwner) {
+        alert('Only the author can delete this prompt.');
+        return;
+    }
     if (!window.confirm(`Are you sure you want to delete "${selectedPrompt.name}"?`)) return;
 
     const promptDoc = doc(db, 'prompts', selectedPrompt.id);
@@ -187,11 +249,19 @@ const PromptManagement = () => {
 
   const handleDuplicate = () => {
     if (!selectedPrompt) return;
+    const isSystem = selectedPrompt.isSystem || 
+                     selectedPrompt.owner === 'system' || 
+                     (selectedPrompt.accessLevel === 'public' && (!selectedPrompt.owner || selectedPrompt.owner === 'system'));
+    const isOwner = !selectedPrompt.owner || selectedPrompt.owner === auth.currentUser?.uid;
+
     setSelectedPrompt(null); // Switch to create mode
     setName(`${name} - Copy`);
     setAccessLevel('private');
     setSharedWithUids([]);
     setSharedWithUsers([]);
+    if (isSystem || !isOwner) {
+      alert(`Created a personal copy of "${selectedPrompt.name}". You can now customize and save it.`);
+    }
   };
 
   const handleAddEmail = async () => {
@@ -350,10 +420,30 @@ const PromptManagement = () => {
 
 **Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
 
+      const rubricOptimizerPrompt = `You are an expert prompt engineer specializing in Google's Gemini models for **technical practical task assessment, milestone extraction, and automated rubric generation**. Your task is to rewrite and expand the user's input into a high-quality, precise rubric extraction prompt following Google's best practices.
+
+**Rewrite the following user-provided prompt based on these strict guidelines:**
+
+**User's prompt:** "${promptText}"
+
+---
+
+**REWRITING GUIDELINES (incorporating Google's best practices):**
+
+1.  **Role Definition (Persona):** State clearly: "You are an expert technical educator, university curriculum designer, and automated practical skills assessment evaluator."
+2.  **Context Integration:** Guide the AI to inspect teacher demonstration recordings, identifying visual commands, code editor changes, configuration steps, and verification indicators.
+3.  **Milestone Structure:** Instruct the AI to extract between 3 and 8 distinct, chronological milestones.
+4.  **Observable Evidence:** Explicitly mandate that each milestone specifies expected visual evidence (e.g. terminal output text, HTTP status codes, opened network ports, browser UI, green test checks).
+5.  **Balanced Scoring:** Mandate allocating point weights that sum to 100 points, calibrated to the difficulty and pedagogical weight of each step.
+6.  **Output Format:** Specify that output must strictly be structured JSON with fields: title, description, suggestedMaxScore, and steps (stepNumber, title, description, expectedEvidence, points).
+
+**Return ONLY the rewritten, complete prompt as raw text, without any markdown code blocks, introductory text, or explanations.**`;
+
       const optimizerPrompt = 
         activeTab === 'videos' ? videoOptimizerPrompt : 
         activeTab === 'audios' ? audioOptimizerPrompt : 
         activeTab === 'translations' ? translationOptimizerPrompt : 
+        activeTab === 'rubrics' ? rubricOptimizerPrompt :
         imageOptimizerPrompt;
 
       let result = null;
@@ -405,10 +495,41 @@ const PromptManagement = () => {
 
 
 
+  const categoryCounts = React.useMemo(() => {
+    const counts = { images: 0, videos: 0, audios: 0, translations: 0, rubrics: 0 };
+    prompts.forEach(p => {
+      if (p.category === 'images') counts.images++;
+      else if (p.category === 'videos') counts.videos++;
+      else if (p.category === 'audios') counts.audios++;
+      else if (p.category === 'translations') counts.translations++;
+      else if (p.category === 'rubrics') counts.rubrics++;
+      // Cross-scope fallbacks
+      if (p.category !== 'translations' && p.applyTo?.includes('Live Subtitles & Translation')) {
+        counts.translations++;
+      }
+      if (p.category !== 'rubrics' && (p.applyTo?.includes('Lab Rubric Milestones') || p.applyTo?.includes('Task Milestones Extraction'))) {
+        counts.rubrics++;
+      }
+    });
+    return counts;
+  }, [prompts]);
+
   return (
-    <div className="view-container">
-        <div className="view-header">
-            <h2>Manage Prompts</h2>
+    <div className={`view-container prompt-studio-view ${isZenMode ? 'zen-mode-active' : ''}`}>
+        <div className="view-header prompt-studio-header">
+            <div className="prompt-header-title-row">
+                <h2>Manage Prompts</h2>
+                <div className="prompt-header-actions">
+                    <button 
+                        type="button" 
+                        className={`sidebar-toggle-btn ${isSidebarCollapsed ? 'collapsed' : ''}`}
+                        onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                        title={isSidebarCollapsed ? "Expand Prompts List" : "Collapse Prompts List to Maximize Editor"}
+                    >
+                        {isSidebarCollapsed ? "▶ Show List" : "◀ Hide List"}
+                    </button>
+                </div>
+            </div>
         </div>
         <div className="prompt-management-content">
             <PromptList 
@@ -420,6 +541,9 @@ const PromptManagement = () => {
                 selectedPrompt={selectedPrompt}
                 onSelectPrompt={handleSelectPrompt}
                 onClearForm={clearForm}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+                categoryCounts={categoryCounts}
             />
             <PromptForm 
                 selectedPrompt={selectedPrompt}
@@ -444,6 +568,10 @@ const PromptManagement = () => {
                 handleUndo={handleUndo}
                 isOptimizing={isOptimizing}
                 originalPromptText={originalPromptText}
+                isZenMode={isZenMode}
+                setIsZenMode={setIsZenMode}
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
             />
         </div>
     </div>

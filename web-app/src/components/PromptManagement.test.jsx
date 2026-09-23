@@ -238,4 +238,155 @@ describe('PromptManagement Component', () => {
     fireEvent.click(undoBtn);
     expect(textarea).toHaveValue('check cheating');
   });
+
+  it('toggles collapsible sidebar to maximize editor screen', () => {
+    render(<PromptManagement />);
+
+    const sidebarToggle = screen.getByRole('button', { name: /Hide List/i });
+    expect(sidebarToggle).toBeInTheDocument();
+
+    // Collapse sidebar
+    fireEvent.click(sidebarToggle);
+    expect(screen.getByRole('button', { name: /Show List/i })).toBeInTheDocument();
+    expect(document.querySelector('.prompt-list-column')).toHaveClass('collapsed');
+
+    // Uncollapse sidebar via header button
+    fireEvent.click(screen.getByRole('button', { name: /Show List/i }));
+    expect(document.querySelector('.prompt-list-column')).not.toHaveClass('collapsed');
+  });
+
+  it('toggles distraction-free Zen fullscreen mode', () => {
+    render(<PromptManagement />);
+
+    const zenToggle = screen.getByRole('button', { name: /Zen Mode/i });
+    expect(zenToggle).toBeInTheDocument();
+
+    // Enable Zen mode
+    fireEvent.click(zenToggle);
+    expect(screen.getByRole('button', { name: /Exit Zen/i })).toBeInTheDocument();
+    expect(document.querySelector('.prompt-studio-view')).toHaveClass('zen-mode-active');
+    expect(document.querySelector('.prompt-form-column')).toHaveClass('zen-active');
+
+    // Exit Zen mode
+    fireEvent.click(screen.getByRole('button', { name: /Exit Zen/i }));
+    expect(document.querySelector('.prompt-studio-view')).not.toHaveClass('zen-mode-active');
+    expect(document.querySelector('.prompt-form-column')).not.toHaveClass('zen-active');
+  });
+
+  it('toggles scope and permissions accordion drawer', () => {
+    render(<PromptManagement />);
+
+    const accordionBtn = screen.getByRole('button', { name: /Scope & Permissions/i });
+    expect(accordionBtn).toBeInTheDocument();
+
+    // By default expanded
+    expect(document.querySelector('.scope-settings-panel')).toHaveClass('expanded');
+
+    // Collapse
+    fireEvent.click(accordionBtn);
+    expect(document.querySelector('.scope-settings-panel')).toHaveClass('collapsed');
+
+    // Expand
+    fireEvent.click(accordionBtn);
+    expect(document.querySelector('.scope-settings-panel')).toHaveClass('expanded');
+  });
+
+  it('protects public pre-seeded prompts from direct edits and supports Make a Copy to Personalize', async () => {
+    const publicPrompt = {
+      id: 'pub-prompt-1',
+      name: 'System Default Evaluation',
+      promptText: 'Analyze classroom video for teacher actions.',
+      applyTo: ['Per Video'],
+      category: 'videos',
+      accessLevel: 'public',
+    };
+
+    render(<PromptManagement />);
+
+    // Feed public prompt
+    mockPublicCb({
+      docs: [{ id: 'pub-prompt-1', data: () => publicPrompt }],
+    });
+
+    // Switch to Video Prompts tab
+    fireEvent.click(screen.getByRole('button', { name: 'Video Prompts' }));
+
+    // Select the public prompt
+    const promptItem = await screen.findByText('System Default Evaluation');
+    fireEvent.click(promptItem);
+
+    // Verify public banner & disabled name input
+    expect(screen.getByText(/This is a public prompt and cannot be edited/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Prompt Name')).toBeDisabled();
+
+    // Verify Save Changes is NOT present
+    expect(screen.queryByRole('button', { name: /Save Changes/i })).not.toBeInTheDocument();
+
+    // Verify "Make a Copy to Personalize" button is present
+    const copyBtn = screen.getByRole('button', { name: /Make a Copy to Personalize/i });
+    expect(copyBtn).toBeInTheDocument();
+
+    // Click "Make a Copy to Personalize"
+    fireEvent.click(copyBtn);
+
+    // Verify switched to editable copy
+    expect(screen.getByPlaceholderText('Prompt Name')).not.toBeDisabled();
+    expect(screen.getByPlaceholderText('Prompt Name')).toHaveValue('System Default Evaluation - Copy');
+    expect(screen.getByRole('button', { name: /Save Prompt/i })).toBeInTheDocument();
+  });
+
+  it('allows instructors to edit their own public prompts while protecting other instructors public prompts', async () => {
+    render(<PromptManagement />);
+
+    // Feed a public prompt owned by current teacher, and one owned by another teacher
+    mockPublicCb({
+      docs: [
+        {
+          id: 'pub-my',
+          data: () => ({
+            name: 'My Shared Rubric',
+            category: 'images',
+            promptText: 'Rubric text authored by me',
+            applyTo: ['Per Image'],
+            accessLevel: 'public',
+            owner: 'teacher_1',
+            ownerEmail: 'teacher@school.edu',
+            isSystem: false,
+          }),
+        },
+        {
+          id: 'pub-other',
+          data: () => ({
+            name: 'Colleague Shared Rubric',
+            category: 'images',
+            promptText: 'Rubric text authored by colleague',
+            applyTo: ['Per Image'],
+            accessLevel: 'public',
+            owner: 'other_teacher_456',
+            ownerEmail: 'colleague@school.edu',
+            isSystem: false,
+          }),
+        },
+      ],
+    });
+
+    // 1. Select my own public prompt: should be editable!
+    const myItem = await screen.findByText('My Shared Rubric');
+    fireEvent.click(myItem);
+    expect(screen.getByPlaceholderText('Prompt Name')).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Save Changes/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Delete/i })).toBeInTheDocument();
+    expect(screen.getByText(/Public Prompt \(Owned by you/i)).toBeInTheDocument();
+
+    // 2. Select colleague's public prompt: should be read-only!
+    const otherItem = await screen.findByText('Colleague Shared Rubric');
+    fireEvent.click(otherItem);
+    expect(screen.getByPlaceholderText('Prompt Name')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Save Changes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Delete/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Community Prompt by colleague@school.edu/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Make a Copy to Personalize/i })).toBeInTheDocument();
+  });
 });
+
+

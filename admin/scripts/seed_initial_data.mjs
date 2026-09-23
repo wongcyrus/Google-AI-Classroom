@@ -106,6 +106,8 @@ async function seedPrompts() {
       if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
         applyTo.push('Technical Discipline Glossary');
       }
+    } else if (category === 'rubrics') {
+      applyTo = ['Lab Rubric Milestones', 'Task Milestones Extraction'];
     } else {
       applyTo = [];
     }
@@ -116,10 +118,12 @@ async function seedPrompts() {
       category,
       applyTo,
       accessLevel: 'public',
+      isSystem: true,
+      owner: 'system',
       createdAt: FieldValue.serverTimestamp(),
       lastUpdated: FieldValue.serverTimestamp()
     });
-    createdPrompts[name] = { id: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public' };
+    createdPrompts[name] = { id: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public', isSystem: true, owner: 'system' };
     addedCount++;
     console.log(`✨ Seeded new prompt: "${name}" (${category})`);
   }

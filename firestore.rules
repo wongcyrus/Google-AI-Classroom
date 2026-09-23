@@ -139,6 +139,23 @@ service cloud.firestore {
       match /questionBank/{questionId} {
         allow read, write: if isTeacherInClass(classId);
       }
+
+      match /tasks/{taskId} {
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+
+        match /submissions/{studentUid} {
+          allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
+          allow create, update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid && isStudentInClass(classId));
+          allow delete: if isTeacherInClass(classId) || isTeacher();
+
+          match /attempts/{attemptId} {
+            allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
+            allow create, update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid && isStudentInClass(classId));
+            allow delete: if isTeacherInClass(classId) || isTeacher();
+          }
+        }
+      }
     }
 
     match /screenshots/{screenshotId} {
@@ -157,7 +174,35 @@ service cloud.firestore {
     }
 
     match /prompts/{promptId} {
-      allow read, write: if isTeacher();
+      allow read: if isTeacher();
+
+      // Teachers can create private, shared, or public prompts, as long as they are the owner
+      // Public system templates can ONLY be seeded/created via Admin SDK / backend
+      allow create: if isTeacher() && 
+                       request.resource.data.owner == request.auth.uid && 
+                       (!('isSystem' in request.resource.data) || request.resource.data.isSystem == false) &&
+                       request.resource.data.accessLevel in ['private', 'shared', 'public'];
+
+      // Teachers can update their own prompts (private, shared, or public),
+      // or shared prompts if their UID is in sharedWith.
+      // System templates (owner == 'system' or isSystem == true or no owner) are strictly immutable to all teachers.
+      allow update: if isTeacher() && 
+                       resource.data.owner != 'system' && 
+                       resource.data.owner != '' && 
+                       ('owner' in resource.data) && 
+                       (!('isSystem' in resource.data) || resource.data.isSystem == false) && 
+                       (!('isSystem' in request.resource.data) || request.resource.data.isSystem == false) && 
+                       request.resource.data.owner == resource.data.owner && 
+                       (resource.data.owner == request.auth.uid || 
+                        (resource.data.accessLevel == 'shared' && request.auth.uid in resource.data.sharedWith));
+
+      // Only the prompt owner can delete their prompt. System templates cannot be deleted by teachers.
+      allow delete: if isTeacher() && 
+                       resource.data.owner != 'system' && 
+                       resource.data.owner != '' && 
+                       ('owner' in resource.data) && 
+                       (!('isSystem' in resource.data) || resource.data.isSystem == false) && 
+                       resource.data.owner == request.auth.uid;
     }
 
     match /irregularities/{irregularityId} {
@@ -177,7 +222,7 @@ service cloud.firestore {
     }
 
     match /videoJobs/{jobId} {
-      allow create: if isTeacher();
+      allow create: if isTeacher() || (request.auth != null && request.auth.uid == request.resource.data.studentUid && request.resource.data.isTaskSubmission == true);
       allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
       allow delete: if isTeacher();
     }

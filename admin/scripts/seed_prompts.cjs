@@ -80,6 +80,8 @@ async function seedPrompts(db) {
             if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
                 applyTo.push('Technical Discipline Glossary');
             }
+        } else if (category === 'rubrics') {
+            applyTo = ['Lab Rubric Milestones', 'Task Milestones Extraction'];
         } else {
             applyTo = [];
         }
@@ -90,6 +92,8 @@ async function seedPrompts(db) {
             category: category,
             applyTo: applyTo,
             accessLevel: 'public',
+            isSystem: true,
+            owner: 'system',
             lastUpdated: admin.firestore.FieldValue.serverTimestamp()
         };
 

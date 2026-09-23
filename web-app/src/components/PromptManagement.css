@@ -1,130 +1,212 @@
-.prompt-management-content {
-  display: flex;
-  gap: 20px;
-  height: 70vh; /* Keep a height for the layout to work */
-}
+/* ==============================================================================
+   Prompt Management Studio Styles (Full Screen Utilization & Ergonomics)
+   ============================================================================== */
 
-.prompt-list-column {
-  flex: 1;
-  border-right: 1px solid #ccc;
-  padding-right: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.prompt-list-column h3 {
-  margin-top: 0;
-}
-
-.new-prompt-btn {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  padding: 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-bottom: 15px;
-  text-align: center;
-}
-
-.prompt-list-column ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  overflow-y: auto;
-}
-
-.prompt-list-column li {
-  padding: 10px;
-  cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 5px;
-}
-
-.prompt-list-column li:hover {
-  background-color: #f0f0f0;
-}
-
-.prompt-list-column li.selected {
-  background-color: #007bff;
-  color: white;
-}
-
-.prompt-form-column {
-  flex: 2;
-  display: flex;
-  flex-direction: column;
-}
-
-.prompt-form-column h3 {
-  margin-top: 0;
-}
-
-.prompt-form-column input[type="text"],
-.prompt-form-column textarea {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 15px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+/* Fluid Studio Container: override standard 1200px container width */
+.view-container.prompt-studio-view {
+  max-width: 100% !important;
+  margin: 0 !important;
+  width: 100% !important;
+  padding: 1.25rem 1.75rem !important;
   box-sizing: border-box;
 }
 
-.prompt-form-column textarea {
-  flex-grow: 1;
-  resize: none;
-  font-family: inherit;
+.prompt-studio-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
 }
 
-.apply-to-group {
-  margin-bottom: 15px;
-}
-
-.apply-to-group label {
-  margin-right: 20px;
-}
-
-.form-actions {
+.prompt-header-title-row {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.prompt-header-actions {
+  display: flex;
+  align-items: center;
   gap: 10px;
 }
 
-.form-actions button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
+.sidebar-toggle-btn,
+.zen-toggle-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  color: #334155;
   cursor: pointer;
-  background-color: #28a745;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.sidebar-toggle-btn:hover,
+.zen-toggle-btn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.zen-toggle-btn.active {
+  background-color: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+/* Studio Main Split Workspace */
+.prompt-management-content {
+  display: flex;
+  gap: 16px;
+  height: calc(100vh - 145px);
+  min-height: 560px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ==============================================================================
+   Prompt List Column (Collapsible Sidebar)
+   ============================================================================== */
+.prompt-list-column {
+  flex: 0 0 320px;
+  width: 320px;
+  max-width: 320px;
+  border-right: 1px solid var(--color-border, #e2e8f0);
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+/* Collapsed State: gives 100% width to editor */
+.prompt-list-column.collapsed {
+  flex: 0 0 0px !important;
+  width: 0px !important;
+  max-width: 0px !important;
+  padding: 0 !important;
+  border-right: none !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.prompt-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.prompt-list-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.new-prompt-btn {
+  background-color: #2563eb;
   color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background-color 0.15s ease;
 }
 
-.form-actions .delete-btn {
-  background-color: #dc3545;
+.new-prompt-btn:hover {
+  background-color: #1d4ed8;
 }
 
-.form-actions .secondary-btn {
-  background-color: #6c757d;
+/* Search Box with icon and clear button */
+.search-box-wrapper {
+  position: relative;
+  width: 100%;
+  margin-bottom: 10px;
 }
 
-/* Tab Styles */
+.search-box {
+  width: 100%;
+  padding: 8px 28px 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font-size: 13.5px;
+  transition: border-color 0.15s;
+}
+
+.search-box:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.clear-search-btn:hover {
+  color: #475569;
+}
+
+/* Category Tabs */
 .tabs {
   display: flex;
-  border-bottom: 2px solid #ccc;
-  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 10px;
 }
 
 .tabs button {
-  padding: 10px 20px;
+  padding: 6px 10px;
   border: none;
   background-color: transparent;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 12.5px;
   position: relative;
-  color: #555;
+  color: #64748b;
+  font-weight: 500;
+  border-radius: 6px 6px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.tabs button:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
 }
 
 .tabs button.active {
-  color: #007bff;
+  color: #2563eb;
+  font-weight: 600;
+  background-color: #eff6ff;
 }
 
 .tabs button.active::after {
@@ -134,25 +216,465 @@
   left: 0;
   right: 0;
   height: 2px;
-  background-color: #007bff;
+  background-color: #2563eb;
 }
 
-.search-box {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
+.tab-count-badge {
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  font-weight: 600;
 }
 
-.editor-container {
-  flex-grow: 1;
+.tabs button.active .tab-count-badge {
+  background: #bfdbfe;
+  color: #1e40af;
+}
+
+/* Prompt List */
+.prompt-list-column ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 200px; /* Add a minimum height to ensure it's visible */
+  gap: 5px;
+}
+
+.prompt-list-column li {
+  padding: 9px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid #f1f5f9;
+  background: #ffffff;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prompt-list-column li:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.prompt-list-column li.selected {
+  background-color: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.prompt-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-item-name {
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  display: inline-block;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.prompt-badge.public {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.prompt-badge.shared {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.prompt-badge.private {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+.prompt-item-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.scope-tag {
+  font-size: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ==============================================================================
+   Prompt Form Column (Maximizing Editor Canvas)
+   ============================================================================== */
+.prompt-form-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Zen / Fullscreen Mode Overlay */
+.prompt-form-column.zen-active {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  background: #ffffff !important;
+  padding: 16px 24px !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  box-sizing: border-box !important;
+  border-radius: 0 !important;
+}
+
+.form-header-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.form-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.form-title-row h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.btn-uncollapse-sidebar {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #2563eb;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.btn-uncollapse-sidebar:hover {
+  background: #e2e8f0;
+}
+
+.public-prompt-notice {
+  margin: 0;
+  font-size: 12px;
+  color: #92400e;
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.public-prompt-notice.community-notice {
+  color: #1e40af;
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.public-prompt-notice.author-notice {
+  color: #065f46;
+  background-color: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.prompt-badge.system {
+  background-color: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.copy-template-btn {
+  background-color: #059669 !important;
+  color: white !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
+}
+
+.copy-template-btn:hover {
+  background-color: #047857 !important;
+}
+
+.form-name-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prompt-form-column input[type="text"].prompt-name-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-sizing: border-box;
+  margin-bottom: 0;
+}
+
+.prompt-form-column input[type="text"].prompt-name-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.form-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.form-actions button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: #2563eb;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.form-actions button:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.form-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.form-actions .delete-btn {
+  background-color: #dc2626;
+}
+
+.form-actions .delete-btn:hover:not(:disabled) {
+  background-color: #b91c1c;
+}
+
+.form-actions .secondary-btn {
+  background-color: #64748b;
+}
+
+.form-actions .secondary-btn:hover:not(:disabled) {
+  background-color: #475569;
+}
+
+.form-actions .zen-btn {
+  background-color: #0284c7;
+}
+
+.form-actions .zen-btn:hover:not(:disabled) {
+  background-color: #0369a1;
+}
+
+/* ==============================================================================
+   Maximized Markdown Editor Container
+   ============================================================================== */
+.editor-container {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
 .editor-container .w-md-editor {
-  flex-grow: 1;
+  flex: 1;
+  height: 100% !important;
+  min-height: 280px;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.editor-container .w-md-editor-content {
+  height: calc(100% - 29px) !important;
+}
+
+/* ==============================================================================
+   Collapsible Scope, Access & Permissions Accordion
+   ============================================================================== */
+.scope-settings-panel {
+  margin-top: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f8fafc;
+}
+
+.scope-settings-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: #f8fafc;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.scope-settings-toggle:hover {
+  background: #f1f5f9;
+}
+
+.toggle-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-summary {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.scope-settings-body {
+  padding: 10px 14px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.apply-to-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13.5px;
+}
+
+.apply-to-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.access-level-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13.5px;
+}
+
+.access-level-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.shared-with-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.email-input-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.email-input-group input {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 13px;
+  flex: 1;
+  max-width: 320px;
+}
+
+.email-input-group button {
+  padding: 6px 12px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.shared-with-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shared-with-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.shared-with-list li button {
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
 }

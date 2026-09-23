@@ -120,4 +120,28 @@ describe('PromptList Component Suite', () => {
     expect(screen.getByText('Whisper Cheating Detect')).toBeInTheDocument();
     expect(screen.getByText('Private')).toBeInTheDocument();
   });
+
+  it('displays rubric category prompts including Lab Rubric Milestones applyTo fallback', () => {
+    const rubricPrompts = [
+      ...mockPrompts,
+      { id: '6', name: 'Software Engineering Project Milestone Extractor', category: 'rubrics', accessLevel: 'public', owner: 'other_user' },
+      { id: '7', name: 'Custom Lab Rubric', category: 'other', applyTo: ['Lab Rubric Milestones'], accessLevel: 'private', owner: 'user_123' },
+    ];
+
+    render(
+      <PromptList
+        prompts={rubricPrompts}
+        activeTab="rubrics"
+        setActiveTab={vi.fn()}
+        searchTerm=""
+        setSearchTerm={vi.fn()}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        onClearForm={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Software Engineering Project Milestone Extractor')).toBeInTheDocument();
+    expect(screen.getByText('Custom Lab Rubric')).toBeInTheDocument();
+  });
 });
