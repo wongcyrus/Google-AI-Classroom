@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
 import { auth } from '../firebase-config';
@@ -104,6 +104,14 @@ export default function TeacherScreenBroadcastModal({
   // Local fallback for prompts
   const fetchedPrompts = useAudioPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts || [];
+  const selectedSubtitlePromptId = useMemo(() => {
+    if (!subtitlePrompt) return '';
+    if (subtitlePrompt.id && promptsList.some((p) => p.id === subtitlePrompt.id)) return subtitlePrompt.id;
+    if (subtitlePrompt.originalId && promptsList.some((p) => p.id === subtitlePrompt.originalId)) return subtitlePrompt.originalId;
+    const match = promptsList.find((p) => p.name === subtitlePrompt.name);
+    if (match) return match.id;
+    return subtitlePrompt.id || subtitlePrompt.originalId || '';
+  }, [subtitlePrompt, promptsList]);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [customPromptDraft, setCustomPromptDraft] = useState(subtitlePrompt?.promptText || '');
 
@@ -669,7 +677,7 @@ export default function TeacherScreenBroadcastModal({
                     {onSelectSubtitlePrompt && promptsList.length > 0 && (
                       <select
                         aria-label="Translation AI Prompt"
-                        value={subtitlePrompt?.id || ''}
+                        value={selectedSubtitlePromptId}
                         onChange={(e) => {
                           const found = promptsList.find((p) => p.id === e.target.value);
                           onSelectSubtitlePrompt?.(found || null);

@@ -72,7 +72,7 @@ export const recordIrregularity = ai.defineTool(
         email: studentEmail || '',
         title: title || 'Distraction / Irregularity Detected',
         message: message || '',
-        type: 'image',
+        type: imagePath ? 'image' : 'video',
         imageUrl: imagePath,
         timestamp: FieldValue.serverTimestamp(),
         classId: classId || '',

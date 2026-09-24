@@ -25,10 +25,11 @@ const ImagePromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
 
   const selectedPromptId = useMemo(() => {
     if (!selectedPrompt) return '';
-    if (selectedPrompt.id) return selectedPrompt.id;
-    if (selectedPrompt.originalId) return selectedPrompt.originalId;
+    if (selectedPrompt.id && prompts.some(p => p.id === selectedPrompt.id)) return selectedPrompt.id;
+    if (selectedPrompt.originalId && prompts.some(p => p.id === selectedPrompt.originalId)) return selectedPrompt.originalId;
     const match = prompts.find(p => p.name === selectedPrompt.name);
-    return match ? match.id : '';
+    if (match) return match.id;
+    return selectedPrompt.id || selectedPrompt.originalId || '';
   }, [selectedPrompt, prompts]);
 
   return (

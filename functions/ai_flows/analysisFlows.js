@@ -15,7 +15,7 @@ export function getToolsForImageAnalysis() {
 }
 
 export function getToolsForVideoAnalysis() {
-  return [recordVideoIrregularity, recordStudentProgress, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary];
+  return [recordVideoIrregularity, recordIrregularity, recordStudentProgress, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary];
 }
 
 export function getToolsForAudioAnalysis() {

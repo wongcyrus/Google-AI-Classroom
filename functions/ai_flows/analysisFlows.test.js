@@ -86,7 +86,7 @@ describe('generateWithResilience and Flow Tools', () => {
 
     const videoTools = getToolsForVideoAnalysis();
     expect(Array.isArray(videoTools)).toBe(true);
-    expect(videoTools.length).toBe(6);
+    expect(videoTools.length).toBe(7);
 
     const audioTools = getToolsForAudioAnalysis();
     expect(Array.isArray(audioTools)).toBe(true);

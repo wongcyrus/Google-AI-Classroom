@@ -62,4 +62,33 @@ describe('ImagePromptSelector Component', () => {
     expect(screen.getByText(/Private Image Proctor/i)).toBeInTheDocument();
     expect(screen.queryByText(/Cloud Fallback Face & Gaze Invigilator/i)).not.toBeInTheDocument();
   });
+
+  it('falls back to originalId or name when id is stale/not found in prompts', () => {
+    render(
+      <ImagePromptSelector
+        user={mockUser}
+        selectedPrompt={{ id: 'stale-img-id', originalId: 'img-2', name: 'Bingo Question Bank Generator' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 2"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select.value).toBe('img-2');
+
+    const { unmount } = render(
+      <ImagePromptSelector
+        user={mockUser}
+        selectedPrompt={{ id: 'stale-1', originalId: 'stale-2', name: 'Cloud Fallback Face & Gaze Invigilator' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 1"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const selects = screen.getAllByRole('combobox');
+    expect(selects[selects.length - 1].value).toBe('img-1');
+    unmount();
+  });
 });

@@ -134,4 +134,34 @@ describe('VideoPromptSelector Component', () => {
     const select = screen.getByRole('combobox');
     expect(select.value).toBe('p2');
   });
+
+  it('falls back to originalId or name when id is stale/not found in prompts', () => {
+    render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ id: 'stale-id-123', originalId: 'p3', name: 'Shared Video Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 3"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select.value).toBe('p3');
+
+    // Also verify when both id and originalId are stale, but name matches
+    const { unmount } = render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ id: 'stale-1', originalId: 'stale-2', name: 'Public Video Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 1"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const selects = screen.getAllByRole('combobox');
+    expect(selects[selects.length - 1].value).toBe('p1');
+    unmount();
+  });
 });

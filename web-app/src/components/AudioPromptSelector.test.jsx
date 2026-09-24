@@ -121,4 +121,33 @@ describe('AudioPromptSelector Component', () => {
     expect(screen.getByText('-- Select a translation AI prompt --')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Select a translation prompt or enter custom instructions here...')).toBeInTheDocument();
   });
+
+  it('falls back to originalId or name when id is stale/not found in prompts', () => {
+    render(
+      <AudioPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ id: 'stale-voice-id', originalId: 'p2', name: 'Private Audio Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 2"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select.value).toBe('p2');
+
+    const { unmount } = render(
+      <AudioPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ id: 'stale-1', originalId: 'stale-2', name: 'Public Audio Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 1"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const selects = screen.getAllByRole('combobox');
+    expect(selects[selects.length - 1].value).toBe('p1');
+    unmount();
+  });
 });
