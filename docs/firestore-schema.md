@@ -561,6 +561,10 @@ Stores information about each class.
         *   **Document `session`** (`classes/{classId}/screenBroadcast/session`):
             *   `isBroadcasting`: (boolean) Whether teacher screen broadcasting is currently active.
             *   `broadcastMode`: (string) Broadcast transmission mode (`'frame'`). Pure frame architecture avoiding WebRTC mesh CPU exhaustion.
+            *   `resolution`: (string) Broadcast target resolution preset (`'720p'`, `'1080p'`, `'1440p'`). Defaults to `'720p'`.
+            *   `interval`: (number) Frame capture cadence in milliseconds (`3000`, `1500`, `800`, `500`). Defaults to `3000` (3.0s / 0.33 FPS).
+            *   `isPublic`: (boolean) Whether Public Presentation Mode is active. When `true`, spectators outside the class roster can watch via QR code/PIN. Automatically resets to `false` when the broadcast is stopped.
+            *   `publicPin`: (string | null) 4-digit session security PIN (e.g. `'4819'`) required for anonymous audience verification. Cleared to `null` when the broadcast stops.
             *   `teacherUid`: (string) UID of the teacher who started the broadcast.
             *   `teacherEmail`: (string) Email of the broadcasting teacher.
             *   `startedAt`: (timestamp) Server timestamp when the broadcast commenced.
@@ -570,14 +574,20 @@ Stores information about each class.
             *   `frameSeq`: (number) Monotonically increasing sequence number for viewer synchronization.
             *   `width`: (number) Frame width in pixels (clamped to max 1280).
             *   `height`: (number) Frame height in pixels (clamped to max 720).
-            *   `timestamp`: (timestamp) Server timestamp of the emitted frame (emitted every 1.5s on visual change, or 5s heartbeat if static).
-    *   **`screenBroadcastViewers`**: Real-time viewer presence tracker for students tuned into the teacher's screen broadcast.
-        *   **Document ID**: `studentUid` (string)
+            *   `timestamp`: (timestamp) Server timestamp of the emitted frame (emitted every 3.0s or on visual change, with 5s heartbeat if static).
+    *   **`screenBroadcastViewers`**: Real-time viewer presence tracker for students and public attendees tuned into the teacher's screen broadcast.
+        *   **Document ID**: `viewerUid` (string, student UID or anonymous attendee UID).
         *   **Fields**:
-            *   `studentEmail`: (string) Enrolled student email.
-            *   `joinedAt`: (timestamp) Timestamp when the student opened the viewer modal.
+            *   `studentEmail`: (string | null) Student email (or `'anonymous@public.live'` for public spectators).
+            *   `pin`: (string | null) 4-digit PIN submitted by the spectator for verification.
+            *   `joinedAt`: (timestamp) Timestamp when the viewer opened the stream.
             *   `status`: (string) Viewer status (`'watching'`).
             *   `connectionState`: (string) Viewer connection state (`'connected'`).
+        *   **Security Rules & Public Gatekeeping**:
+            *   Helper `isPublicBroadcastActive(classId)`: Verifies `session.isBroadcasting == true && session.isPublic == true`.
+            *   Helper `isAuthorizedPublicViewer(classId)`: Verifies `isPublicBroadcastActive(classId)` AND `request.auth != null` AND `exists(.../screenBroadcastViewers/$(request.auth.uid))`.
+            *   Creating a viewer presence doc requires either being an enrolled student/teacher OR submitting `request.resource.data.pin == get(.../session).data.publicPin`.
+            *   This prevents unauthorized clients from discovering the PIN by reading the `session` doc directly; access to `screenBroadcast` and `liveSubtitles` is unlocked only after a valid PIN-verified viewer presence record is created.
     *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual translation stream.
         *   **Document `current`** (`classes/{classId}/liveSubtitles/current`):
             *   `active`: (boolean) Whether live subtitling is currently active for this class.
@@ -589,7 +599,7 @@ Stores information about each class.
             *   `targetLanguages`: (array of strings) Enabled target languages for translation.
             *   `updatedAt`: (timestamp) Server timestamp of the latest subtitle update.
             *   `history`: (array of objects) Rolling buffer of the last 5 finalized turns (`[{ original, translations, timestamp }]`) for UI history and contextual recall.
-        *   **Security Rules**: Enrolled students have real-time read access (`allow read: if isTeacherInClass(classId) || isStudentInClass(classId);`), while writes are restricted exclusively to the authorized teacher (`allow write: if isTeacherInClass(classId);`).
+        *   **Security Rules**: Readable by teachers, enrolled students, or authorized public spectators (`allow read: if isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);`), while writes remain strictly restricted to the authorized teacher (`allow write: if isTeacherInClass(classId);`).
     *   **`classes/{classId}/irregularities`**: Class-scoped incident logs for class-specific report generation and teacher dashboards.
         *   **Document ID**: Auto-generated.
         *   **Fields**: Mirror the root `irregularities` schema (`classId`, `studentUid`, `studentEmail`, `category`, `severity`, `confidence`, `transcript`, `evidence`, `rationale`, `source`, `timestamp`).

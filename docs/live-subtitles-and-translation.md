@@ -53,6 +53,12 @@ flowchart TD
         Snapshot --> Overlay["LiveSubtitleOverlay Component"]
         Overlay --> DualLine["Dual-Line Rendering:\nLine 1: Spoken Original\nLine 2: Selected Translation"]
     end
+
+    subgraph PublicAudience["Public / Conference Audience (PublicLiveView at /live/:classId)"]
+        FS --> PubSnapshot["onSnapshot Real-Time Listener (Authorized via PIN Presence)"]
+        PubSnapshot --> PubOverlay["Mobile Subtitle Overlay & Language Picker"]
+        PubOverlay --> PubDual["Real-time Translated Subtitles overlaid on Screen Broadcast"]
+    end
 ```
 
 ### Feature & Architecture Comparison Matrix
@@ -576,12 +582,20 @@ The platform supports 8 academic disciplines plus custom definitions:
 - The hook [`useAudioPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioPrompts.js) queries prompts filtered by `Live Subtitles & Translation` and makes them available in the dropdown.
 - Instructors can reset customized prompts back to the library default at any time using **`↺ Reset to Library Original`**.
 
+### 8.4 Public Presentation Spectator Subtitles
+When the speaker activates **Public Presentation Mode** during a screen broadcast:
+- Public spectators scanning the session QR code or navigating to `/live/:classId?pin=XXXX` receive the live subtitle stream via [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
+- The audience member can pick their individual preferred translation language (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`, `de`, `vi`) from the floating toolbar on their mobile device.
+- Subtitle lines are rendered directly beneath the live instructor screen frames with high-contrast text outlines and responsive font scaling.
+
 ---
 
 ## 9. File Structure & Reference Map
 
 | Component / Utility | File Path | Responsibility |
 | :--- | :--- | :--- |
+| **Public Audience Spectator** | [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) | Mobile spectator UI for anonymous audience members with PIN auth, screen zoom, and live multilingual subtitles. |
+| **Presentation QR Code Modal** | [`web-app/src/components/broadcast/PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) | Projector-ready high-contrast modal displaying SVG QR code and 4-digit PIN for conference talks. |
 | **Chrome Translator Utility** | [`web-app/src/utils/chromeTranslator.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/chromeTranslator.js) | Production wrapper for `window.Translator`, language normalization, availability checks, and caching. |
 | **Gemma LiteRT Loader** | [`web-app/src/utils/gemmaLiteRTLoader.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/gemmaLiteRTLoader.js) | Pre-flight viability check (`precheckGemmaViability`), CacheStorage model download manager. |
 | **Gemma Web Worker** | [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js) | LiteRT WebGPU execution worker for exam proctoring and real-time multilingual translation. |
@@ -593,4 +607,5 @@ The platform supports 8 academic disciplines plus custom definitions:
 | **Backend Translation Flow** | [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js) | Callable Cloud Function for Gemini 3.5 Flash-Lite batch translation with teacher prompt injection. |
 | **Whisper Web Worker** | [`web-app/src/workers/litertWhisper.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertWhisper.worker.js) | Background LiteRT Whisper WebGPU/WASM STT worker. |
 | **Architecture Guide** | [`docs/teacher-ai-prompt-configuration-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/teacher-ai-prompt-configuration-guide.md) | Comprehensive technical architecture and trace-down for all teacher-configured prompts. |
+
 

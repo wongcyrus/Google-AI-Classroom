@@ -288,22 +288,69 @@ Each card in the student grid provides real-time multi-sensor status:
 
 ---
 
-## 7. Screen Broadcasting to Students
+## 7. Screen Broadcasting to Students & Public Presentation Mode
 
-You can broadcast your own instructor desktop directly to all 50+ students in real-time without external software:
+You can broadcast your instructor desktop and live speech subtitles directly to all 50+ students in real-time, or open an anonymous public presentation mode for conference audiences:
 
+### 7.1 Standard In-Class Screen Broadcast
 1. In the **Controls Panel**, locate the **Teacher Screen Sharing** section.
 2. Select **Broadcast Quality**:
-   - `720p (Fast)`: Recommended for low-bandwidth networks.
-   - `1080p (Standard)`: Standard laboratory quality.
-   - `1440p (High-Res)`: For fine text or small terminal fonts.
-3. Select **Broadcast Frame Rate (FPS)**: Choose `5 FPS`, `10 FPS`, or `15 FPS`.
-4. Click **`🖥️ Broadcast Screen`**.
-5. Select the display or application window you wish to present.
-6. The broadcast transmits through lightweight frame diffing directly into the student client's floating presentation window.
-7. Click **`⏹️ Stop Sharing`** when your demonstration is finished.
+   - `720p (Fast) [Recommended]`: Default high-efficiency mode (`1280x720`) balancing crystal-clear terminal text with minimal bandwidth consumption.
+   - `1080p (Standard)`: Full HD quality (`1920x1080`).
+   - `1440p (High-Res)`: 2K resolution for extra-fine terminal fonts or high-DPI displays.
+3. Select **Broadcast Frame Interval**:
+   - `3.0s / 0.3 FPS (Default)`: Economy bandwidth mode ideal for slides, lectures, and terminal code.
+   - `1.5s / 0.7 FPS`: Standard responsiveness.
+   - `0.8s / 1.2 FPS` or `0.5s / 2.0 FPS`: High responsiveness for live UI interactions.
+4. Click **`🖥️ Broadcast Screen & Audio`** to open the setup modal.
+5. In **Step 1**, select your microphone device (for live subtitles) and audio recording preferences.
+6. In **Step 2**, confirm resolution and interval presets.
+7. Click **`Start Sharing & Subtitles`** and select the display or application window you wish to present.
+8. The broadcast transmits through lightweight diffed JPEG frames directly into the student client's floating presentation window.
+9. Click **`⏹️ Stop Sharing`** when your demonstration is finished.
 
 ---
+
+### 7.2 Anonymous Public Presentation Mode (Conference & Open Talks)
+
+When delivering a seminar, lightning talk, or public conference presentation, you can allow any attendee in the room to view your live screen and real-time multilingual subtitles on their mobile phone—**without requiring student account registration or prior enrollment**.
+
+> [!IMPORTANT]
+> **Control Location**: Public Presentation Mode is controlled directly inside the **"Broadcast Screen & Audio"** modal (Step 2) and live broadcast HUD.
+> 
+> **Why is it NOT in Class Management?**
+> Public Mode is designed as an **ephemeral, session-level feature** rather than a permanent class setting:
+> - Normal classes remain **100% private** by default.
+> - Teachers can safely use an existing class that already has registered students without modifying the class roster or exposing sensitive classroom data.
+> - As soon as you click **"Stop Sharing"**, public access is **automatically terminated and revoked immediately**, restoring total classroom privacy without any manual cleanup.
+
+#### Step-by-Step Speaker Workflow:
+1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🖥️ Broadcast Screen & Audio`**.
+2. **Enable Public Presentation Mode**: In **Step 2 (Broadcast Settings)**, locate the **"Public Presentation Mode (QR Code & PIN)"** card and switch the toggle **ON**.
+3. **Session PIN & QR Code**:
+   - The system automatically generates a secure 4-digit PIN (e.g., `8341`). You can also click **`Generate New PIN`** or type a custom 4-digit number.
+   - Click **`Show Projector QR`** to open the full-screen projector modal.
+4. **Project to the Audience**:
+   - The **Projector QR Code Modal** (`PresentationQrModal`) displays a crisp SVG QR code pointing to `https://<domain>/live/<classId>?pin=XXXX` along with the bold 4-digit PIN and a quick link copy button.
+   - Project this QR code onto the auditorium projector screen so attendees can scan it with their smartphone cameras.
+5. **Start Broadcast**: Click **`Start Sharing & Subtitles`** to begin.
+6. **In-Flight Live HUD Controls**:
+   - During the live talk, a floating broadcast HUD displays a green **`📢 Public PIN: XXXX`** badge.
+   - Click the **`Projector QR`** button in the HUD at any time during your presentation to re-display the QR code on stage for late arrivals.
+7. **Instant Automatic Teardown**:
+   - Click **`⏹️ Stop Sharing`** at the end of the talk.
+   - The session document in Firestore instantly resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`.
+   - Firestore security rules immediately revoke external access. Spectator devices display "Broadcast ended".
+
+#### Audience Spectator Experience (`/live/:classId`):
+- **Zero Login Friction**: When an attendee scans the QR code, the public viewer automatically logs them in anonymously (`signInAnonymously`).
+- **Automatic PIN Verification**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly without needing to manually type the PIN. (If accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed).
+- **Responsive Screen Viewing**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens.
+- **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native translation picker (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
+- **Privacy & Isolation**: Attendees have **zero access** to any other classroom collections, student names, grades, submissions, or teacher administrative tools.
+
+---
+
 
 ## 8. Individual Student Inspection, Intercom & Interventions
 

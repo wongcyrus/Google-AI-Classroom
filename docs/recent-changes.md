@@ -4,7 +4,46 @@
 **System**: Google AI Classroom Assistant  
 **Production URL**: `https://it114115-2627.web.app`
 
-## 1. Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation
+## 1. Anonymous Public Presentation Mode with 4-Digit PIN & Projector QR Code
+
+**Date**: September 24, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1087/1087 tests), and Deployed (Dev & Prod)  
+**Primary Files**:
+- Firestore Security Rules: [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules)
+- Teacher Broadcast Hook: [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js)
+- Teacher Broadcast Setup Modal: [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx)
+- Projector QR Modal: [`PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx)
+- Public Spectator Viewer: [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) & [`PublicLiveView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.css)
+- Application Routes & Shell: [`App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx)
+
+### 1.1 Overview & Architecture Rationale
+- **Objective**: Allow conference speakers, lightning talk presenters, and seminar instructors to broadcast their live screen and real-time multilingual subtitles to any attendee in the room by projecting a QR code with a 4-digit PIN.
+- **Control Location (Why Broadcast Modal instead of Class Management?)**:
+  - The Public Presentation Mode switch lives directly inside the **"Broadcast Screen & Audio"** modal (Step 2) and live floating broadcast HUD, **not** in Class Management.
+  - Making this an ephemeral session control ensures ordinary classrooms remain 100% private by default. Teachers can run a public presentation using any existing class that already has registered students without exposing roster data or needing to change class settings before and after every talk.
+  - When the speaker clicks **"Stop Sharing"**, `isPublic` and `publicPin` automatically reset, instantaneously revoking all external permissions at the Firestore security rule level.
+
+### 1.2 Firestore Security Model
+- Anonymous spectators cannot directly read `classes/{classId}/screenBroadcast/session` or `liveFrame` to scrape the PIN.
+- Spectators write an entry to `classes/{classId}/screenBroadcastViewers/{uid}` with `{ pin: enteredPin }`.
+- Firestore security rules validate `request.resource.data.pin == get(.../session).data.publicPin && session.isPublic == true && session.isBroadcasting == true`.
+- Once verified, `isAuthorizedPublicViewer(classId)` unlocks read access to `screenBroadcast` and `liveSubtitles`.
+
+### 1.3 Audience Spectator Experience (`/live/:classId`)
+- Mobile-first, responsive dark theme with zero user account login required (`signInAnonymously`).
+- Auto-verifies the 4-digit PIN when scanned via QR code query parameter (`?pin=XXXX`).
+- Displays live screen frames with pinch/zoom controls (`1x`, `1.5x`, `2x`).
+- Displays real-time bilingual subtitle overlay with client-side translation language selector supporting 9 languages.
+- Header and footer navigation bars are suppressed to maintain an immersive viewing experience.
+
+### 1.4 Screen Broadcast Defaults & Sub-Tab Navigation
+- **Broadcast Resolution Default**: Changed default quality preset from `1080p` to `720p (Fast) [Recommended]`.
+- **Frame Interval Default**: Changed default interval from `1.5s` to `3.0s / 0.3 FPS (Default)` to minimize bandwidth usage during slide-based talks.
+- **Lecture Recordings Routing**: In `ClassView.jsx`, visiting `/class/:classId?tab=video` now defaults directly to the first sub-tab: **🎥 Teacher Lecture Recordings** (`sub=recordings`).
+
+---
+
+## 2. Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation
 
 **Date**: September 2026  
 **Status**: Implemented, Verified, and Ready for Deployment  

@@ -149,10 +149,27 @@ flowchart TD
   - `💾 Data Management`: Bulk archive generation and retention deletion.
   - `⚙️ Settings`: Class configuration, roster, AI parameters, and exam periods.
 
-### Live Controls Panel (`ControlsPanel.jsx`)
-- **Teacher Screen Broadcast Switch (`🖥️ Broadcast Screen`):** Captures the teacher's desktop via `getDisplayMedia` and broadcasts low-latency WebRTC frames across Firestore signaling to all 50+ students.
-  - **Broadcast Quality Selector:** Dropdown with `720p (Fast)`, `1080p (Standard)`, and `1440p (High-Res)`.
-  - **Broadcast Frame Rate (FPS) Selector:** Dropdown with `5 FPS` (low bandwidth), `10 FPS`, or `15 FPS`.
+### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
+- **Teacher Screen Broadcast Switch (`🖥️ Broadcast Screen & Audio`):** Opens the 2-step broadcast wizard:
+  - **Step 1 (Audio & Subtitles):** Select microphone device, live volume VU meter test, recording checkboxes, and subtitle translation settings.
+  - **Step 2 (Stream & Presentation Presets):**
+    - **Broadcast Quality Selector:** Dropdown with `720p (Fast) [Recommended]`, `1080p (Standard)`, and `1440p (High-Res)`.
+    - **Broadcast Frame Interval Selector:** Dropdown with `3.0s / 0.3 FPS (Default)`, `1.5s / 0.7 FPS`, `0.8s / 1.2 FPS`, or `0.5s / 2.0 FPS`.
+    - **Public Presentation Mode Toggle (`isPublicMode`):** Enables public presentation mode for conference and seminar audiences.
+      > **Architecture Note**: This setting lives directly inside the broadcast modal rather than Class Management to keep everyday classes private by default, allow hybrid use of existing classes with enrolled students, and auto-terminate public access the moment broadcasting ends.
+      - **4-Digit PIN Management:** Displays auto-generated 4-digit PIN with "Generate New PIN" button and manual override input.
+      - **Projector QR Code Launcher (`Show Projector QR`):** Opens [`PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) displaying a high-contrast SVG QR code pointing to `https://<domain>/live/<classId>?pin=XXXX` with one-click copy and bold PIN typography.
+  - **Live Floating HUD:**
+    - Displays active broadcast status, frame counter, recording duration, and dynamic quality/interval selectors.
+    - **Public PIN Pill:** Shows active `📢 Public PIN: XXXX`.
+    - **`Projector QR` Button:** Re-opens the projector QR code modal at any point during the presentation.
+    - **`⏹️ Stop Sharing` Button:** Terminates screen capture, resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`, immediately closing external guest access.
+- **Public Spectator View (`PublicLiveView.jsx` at `/live/:classId`):**
+  - Public audience portal requiring zero prior registration or student accounts.
+  - Anonymous Firebase Auth (`signInAnonymously`) authentication.
+  - Auto-PIN verification when accessed via QR code `?pin=XXXX`, or interactive 4-digit PIN pad entry.
+  - Dark-mode responsive video canvas with `1x`, `1.5x`, and `2x` zoom controls.
+  - Real-time bilingual subtitle overlay with native language dropdown (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
 - **Global Bingo Challenge Trigger (`🎯 Call Class Bingo`):** Dispatches an immediate presence challenge to all active students with a 60-second response window.
 - **Question Bank Launcher Button (`📚 Bingo Question Bank`):** Opens the Question Bank Management modal.
 - **Snapshot Cadence Slider (`Capture Cadence: 5s - 60s`):** Controls the interval at which student clients upload screen and camera snapshots.
