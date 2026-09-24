@@ -59,24 +59,16 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   const classData = classDoc.data();
   const { students, afterClassVideoPrompt } = classData;
 
-  // Check if the class is configured for automatic analysis
-  if (classData.aiMonitoringMode === 'disabled' || classData.aiMonitoringMode === 'client_only') {
-    logger.info(`Class ${classId} has aiMonitoringMode='${classData.aiMonitoringMode}'. Skipping automatic cloud video analysis.`);
-    return;
-  }
-
   if (!classData.automaticCombine || !afterClassVideoPrompt || !afterClassVideoPrompt.promptText) {
     logger.info(`Class ${classId} is not configured for automatic analysis.`);
     return;
   }
 
-  const studentUids = students ? Object.keys(students) : [];
-  if (studentUids.length === 0) {
+  const totalStudents = (students && Object.keys(students).length) || (Array.isArray(classData.studentEmails) && classData.studentEmails.length) || 0;
+  if (totalStudents === 0) {
     logger.warn(`Class ${classId} has no students configured.`);
     return;
   }
-
-  const totalStudents = studentUids.length;
 
   // Check if all videos for this session are finished (completed or failed)
   const videoJobsRef = db.collection('videoJobs');

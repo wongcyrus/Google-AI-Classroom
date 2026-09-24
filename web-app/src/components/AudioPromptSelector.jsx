@@ -25,6 +25,14 @@ const AudioPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
 
   const isSubtitle = applyToFilter === 'Live Subtitles & Translation';
 
+  const selectedPromptId = useMemo(() => {
+    if (!selectedPrompt) return '';
+    if (selectedPrompt.id) return selectedPrompt.id;
+    if (selectedPrompt.originalId) return selectedPrompt.originalId;
+    const match = prompts.find(p => p.name === selectedPrompt.name);
+    return match ? match.id : '';
+  }, [selectedPrompt, prompts]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
@@ -34,7 +42,7 @@ const AudioPromptSelector = ({ user, selectedPrompt, onSelectPrompt, promptText,
         <label><input type="radio" value="shared" name="audioPromptFilter" checked={promptFilter === 'shared'} onChange={(e) => setPromptFilter(e.target.value)} /> Shared</label>
       </div>
       <select 
-        value={selectedPrompt ? selectedPrompt.id : ''} 
+        value={selectedPromptId} 
         onChange={(e) => {
           const prompt = prompts.find(p => p.id === e.target.value);
           onSelectPrompt(prompt);

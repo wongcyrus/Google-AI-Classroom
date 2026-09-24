@@ -104,4 +104,34 @@ describe('VideoPromptSelector Component', () => {
     fireEvent.change(textarea, { target: { value: 'New text' } });
     expect(handleTextChange).toHaveBeenCalledWith('New text');
   });
+
+  it('correctly pre-selects prompt when selectedPrompt only has originalId and no id', () => {
+    render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ originalId: 'p1', name: 'Public Video Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 1"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select.value).toBe('p1');
+  });
+
+  it('correctly pre-selects prompt when matching by prompt name', () => {
+    render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={{ name: 'Private Video Prompt' }}
+        onSelectPrompt={vi.fn()}
+        promptText="Text 2"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select.value).toBe('p2');
+  });
 });

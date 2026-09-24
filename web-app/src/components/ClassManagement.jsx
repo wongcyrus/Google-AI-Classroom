@@ -911,13 +911,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const handleSetPrompt = () => {
     if (modalPrompt) {
       const isModified = modalPrompt.promptText !== modalPromptText;
+      const promptId = modalPrompt.id || modalPrompt.originalId || null;
       const finalPrompt = {
         ...modalPrompt,
         promptText: modalPromptText,
         name: isModified && modalPrompt.name ? `${modalPrompt.name} (Customized)` : (modalPrompt.name || 'Custom Prompt'),
-        originalId: modalPrompt.id || modalPrompt.originalId,
+        originalId: promptId,
+        id: promptId,
       };
-      if (finalPrompt.id) delete finalPrompt.id;
       setAfterClassVideoPrompt(finalPrompt);
     } else if (modalPromptText.trim()) {
       setAfterClassVideoPrompt({
@@ -948,13 +949,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     let finalPrompt = null;
     if (modalAudioPrompt) {
       const isModified = modalAudioPrompt.promptText !== modalAudioPromptText;
+      const promptId = modalAudioPrompt.id || modalAudioPrompt.originalId || null;
       finalPrompt = {
         ...modalAudioPrompt,
         promptText: modalAudioPromptText,
         name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt')),
-        originalId: modalAudioPrompt.id || modalAudioPrompt.originalId,
+        originalId: promptId,
+        id: promptId,
       };
-      if (finalPrompt.id) delete finalPrompt.id;
     } else if (modalAudioPromptText.trim()) {
       finalPrompt = {
         name: audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt',
@@ -988,13 +990,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     const isBingo = imagePromptModalType === 'bingo';
     if (modalImagePrompt) {
       const isModified = modalImagePrompt.promptText !== modalImagePromptText;
+      const promptId = modalImagePrompt.id || modalImagePrompt.originalId || null;
       finalPrompt = {
         ...modalImagePrompt,
         promptText: modalImagePromptText,
         name: isModified && modalImagePrompt.name ? `${modalImagePrompt.name} (Customized)` : (modalImagePrompt.name || (isBingo ? 'Custom Bingo Prompt' : 'Custom Image Prompt')),
-        originalId: modalImagePrompt.id || modalImagePrompt.originalId,
+        originalId: promptId,
+        id: promptId,
       };
-      if (finalPrompt.id) delete finalPrompt.id;
     } else if (modalImagePromptText.trim()) {
       finalPrompt = {
         name: isBingo ? 'Custom Bingo Prompt' : 'Custom Image Prompt',
