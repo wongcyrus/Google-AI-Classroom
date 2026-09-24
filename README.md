@@ -1,6 +1,6 @@
-<p align="center"><img src="web-app/src/assets/logo.jpg" alt="Gemini Multimodal Classroom Agent Logo" width="180"/></p>
+<p align="center"><img src="web-app/src/assets/logo.jpg" alt="Google AI Classroom Assistant Logo" width="180"/></p>
 
-# Gemini Multimodal Classroom Agent
+# Google AI Classroom Assistant
 
 [![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com)
 [![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com)

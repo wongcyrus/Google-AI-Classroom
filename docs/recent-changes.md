@@ -1,7 +1,7 @@
 # Recent Changes & Architectural Enhancements
 
 **Date**: September 2026  
-**System**: Gemini AI Classroom Assistant  
+**System**: Google AI Classroom Assistant  
 **Production URL**: `https://it114115-2627.web.app`
 
 ## 1. Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation

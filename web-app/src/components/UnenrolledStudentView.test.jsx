@@ -11,7 +11,7 @@ describe('UnenrolledStudentView Component', () => {
   it('renders student email and waiting status message', () => {
     render(<UnenrolledStudentView user={mockUser} />);
 
-    expect(screen.getByText('Welcome to Classroom Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Welcome to Google AI Classroom Assistant')).toBeInTheDocument();
     expect(screen.getByText(/You are signed in with your student account/i)).toBeInTheDocument();
     expect(screen.getByText('newstudent@school.edu')).toBeInTheDocument();
     expect(screen.getByText('Awaiting Instructor Enrollment')).toBeInTheDocument();

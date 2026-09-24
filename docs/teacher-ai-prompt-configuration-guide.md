@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary & Design Principles
 
-The **Gemini Multimodal Classroom Agent** is built around three core architectural tenets governing AI execution:
+The **Google AI Classroom Assistant** is built around three core architectural tenets governing AI execution:
 1. **Universal Prompt Library**: Every AI system prompt across every sensory modality (Live Subtitle Translation, On-Device Gemma Voice Intent, Acoustic Invigilation, Discussion Diarization, Image/Screen Invigilation, Bingo Active Presence, and After-Class Video Analysis) is cataloged as a reusable, versioned asset in the central prompt library (`prompts` collection and `admin/prompts/`).
 2. **Zero Hardcoding & Full Instructor Agency**: Instructors are never locked into rigid, one-size-fits-all prompts. Teachers can select, preview, tweak, inline-edit, or reset prompts for any class, ensuring terminology is tailored to the specific course curriculum.
 3. **Dual-Surface Configuration**:
