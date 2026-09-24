@@ -339,7 +339,26 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 39:30 – 40:30 | Slide 21: Real-Time Live Subtitles & Multilingual Translation Engine
+### 38:30 – 39:30 | Slide 21: Anonymous Public Presentation Mode: Projector QR & 4-Digit PIN
+*Visual: `slide_public_presentation_mode.png`*
+
+> **Cyrus Wong:**  
+> "When presenting at tech conferences, open seminars, or lightning talks, audience members often struggle to see small terminal fonts on distant stage projectors or speak different native languages. We solved this with **Anonymous Public Presentation Mode**:
+>
+> 1. **Zero-Friction Audience Access via Projector QR Code:**
+>    - In Step 2 of screen broadcasting, the speaker toggles 'Public Presentation Mode', generating a high-contrast SVG QR code modal.
+>    - When projected onto the auditorium screen, audience members scan the QR code (`/live/:classId?pin=XXXX`) on their smartphones.
+>    - Firebase automatically logs them in anonymously (`signInAnonymously`), unlocking the live screen stream with 1x/1.5x/2x zoom and real-time multilingual subtitles.
+> 2. **Strict Server-Side Firestore Security Rules (`firestore.rules`):**
+>    - The PIN is never exposed in readable session metadata.
+>    - Attendees write a viewer presence record with their PIN, which Firestore security rules validate against `session.publicPin`. Only valid writes unlock read access to `screenBroadcast` and `liveSubtitles`.
+> 3. **Hybrid Classroom & Ephemeral Teardown:**
+>    - Teachers can use an existing class with enrolled students without exposing any student rosters or grades.
+>    - As soon as the speaker clicks 'Stop Sharing', `isPublic` and `publicPin` are wiped, immediately terminating public access and keeping normal classroom data 100% private!"
+
+---
+
+### 39:30 – 40:30 | Slide 22: Real-Time Live Subtitles & Multilingual Translation Engine
 *Visual: `slide_live_subtitles_translation.png`*
 
 > **Cyrus Wong:**  

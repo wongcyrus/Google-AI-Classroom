@@ -410,6 +410,26 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Anonymous Public Presentation Mode: Projector QR & 4-Digit PIN
+### Zero-Friction Conference Spectator Viewing, Instant Teardown & Hard Firestore Rules
+
+![bg right:60% 95%](images/slide_public_presentation_mode.png)
+
+- **Instant Audience Access via Projector QR Code:**
+  - High-contrast SVG QR code on the auditorium projector screen pointing to `/live/:classId?pin=XXXX`.
+  - Attendees scan with any mobile browser; auto-authenticates via Firebase Anonymous Auth (`signInAnonymously`).
+  - Seamless mobile viewing with **1x, 1.5x, 2x zoom** and real-time dual-line multilingual subtitles.
+- **Strict Server-Side PIN Guardrails (`firestore.rules`):**
+  - Session document hides PIN from unauthenticated snooping; access to `screenBroadcast` and `liveSubtitles` is locked.
+  - Spectator must write to `screenBroadcastViewers/{uid}` with matching `request.resource.data.pin == session.publicPin`.
+  - Only valid PIN writes unlock real-time streaming reads (`isAuthorizedPublicViewer`).
+- **Hybrid Classroom & Ephemeral Lifecycle:**
+  - Works with existing classes with enrolled students—students watch via their normal portal, guests watch via QR.
+  - Controlled directly in the Screen Broadcast modal (Step 2) & Live HUD, **not** Class Management.
+  - Clicking **"Stop Sharing"** immediately revokes all public tokens (`isPublic: false`, `publicPin: null`), restoring complete classroom privacy.
+
+---
+
 ## Real-Time Live Subtitles & Multilingual Translation Engine
 ### 3-Tier Multi-Engine: Edge Gemini Nano, Serverless Genkit & Live WebSockets
 
