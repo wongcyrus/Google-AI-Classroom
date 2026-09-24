@@ -21,6 +21,17 @@ service cloud.firestore {
       return isStudentByEmail || isStudentByUid;
     }
 
+    function isPublicBroadcastActive(classId) {
+      let session = get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data;
+      return session != null && session.isBroadcasting == true && session.isPublic == true;
+    }
+
+    function isAuthorizedPublicViewer(classId) {
+      return isPublicBroadcastActive(classId) &&
+             request.auth != null &&
+             exists(/databases/$(database)/documents/classes/$(classId)/screenBroadcastViewers/$(request.auth.uid));
+    }
+
     match /studentProfiles/{userId} {
       allow read, write: if request.auth.uid == userId;
     }
@@ -85,16 +96,31 @@ service cloud.firestore {
       }
 
       match /screenBroadcast/{docId} {
-        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);
         allow write: if isTeacher() || isTeacherInClass(classId);
       }
 
       match /screenBroadcastViewers/{studentUid} {
-        allow read, write: if isTeacher() || isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow read: if isTeacher() || isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
+        allow create: if request.auth != null && request.auth.uid == studentUid &&
+          (
+            isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) ||
+            (
+              isPublicBroadcastActive(classId) &&
+              request.resource.data.pin != null &&
+              request.resource.data.pin == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.publicPin
+            )
+          );
+        allow update: if request.auth != null && request.auth.uid == studentUid &&
+          (
+            isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) ||
+            isAuthorizedPublicViewer(classId)
+          );
+        allow delete: if request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId));
       }
 
       match /liveSubtitles/{docId} {
-        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);
         allow write: if isTeacher() || isTeacherInClass(classId);
       }
 

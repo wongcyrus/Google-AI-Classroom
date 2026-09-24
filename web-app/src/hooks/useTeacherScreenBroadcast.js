@@ -59,6 +59,8 @@ export const FRAMERATE_PRESETS = [
  */
 export default function useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail }) {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isPublicBroadcast, setIsPublicBroadcast] = useState(false);
+  const [publicPin, setPublicPin] = useState(null);
   const [broadcastMode] = useState(BROADCAST_MODES.FRAME);
   const [screenStream, setScreenStream] = useState(null);
   const [lastFrameData, setLastFrameData] = useState(null);
@@ -222,6 +224,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
         await setDoc(sessionDocRef, {
           isBroadcasting: false,
+          isPublic: false,
+          publicPin: null,
           teacherUid: teacherUid || null,
           endedAt: serverTimestamp(),
         }, { merge: true });
@@ -237,6 +241,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     }
 
     setIsBroadcasting(false);
+    setIsPublicBroadcast(false);
+    setPublicPin(null);
     setScreenStream(null);
     setLastFrameData(null);
     setViewers([]);
@@ -258,6 +264,11 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       const activeRes = options.resolution || broadcastResolutionRef.current || '720p';
       const preset = RESOLUTION_PRESETS[activeRes] || RESOLUTION_PRESETS['720p'];
       const activeInterval = options.interval || broadcastIntervalRef.current || 3000;
+      const isPublic = Boolean(options.isPublic);
+      const publicPin = options.publicPin ? String(options.publicPin).trim() : null;
+
+      setIsPublicBroadcast(isPublic);
+      setPublicPin(isPublic ? publicPin : null);
 
       // Update refs to match selected startup options
       broadcastResolutionRef.current = activeRes;
@@ -335,6 +346,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         broadcastMode: 'frame',
         resolution: activeRes,
         intervalMs: activeInterval,
+        isPublic,
+        publicPin: isPublic ? publicPin : null,
         teacherUid: teacherUid || null,
         teacherEmail: teacherEmail || null,
         startedAt: serverTimestamp(),
@@ -599,6 +612,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
   return {
     isBroadcasting,
+    isPublicBroadcast,
+    publicPin,
     broadcastMode,
     screenStream,
     lastFrameData,

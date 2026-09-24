@@ -77,6 +77,10 @@ vi.mock('./components/ChangePasswordModal', () => ({
   default: ({ show, onClose }) => (show ? <div data-testid="change-pwd-modal"><button onClick={onClose}>Close Pwd Modal</button></div> : null),
 }));
 
+vi.mock('./components/public/PublicLiveView', () => ({
+  default: () => <div data-testid="public-live-view">Public Live View</div>,
+}));
+
 vi.mock('./assets/HKIIT_logo_RGB_horizontal.jpg', () => ({
   default: 'logo.jpg',
 }));
@@ -357,4 +361,22 @@ describe('App & MainHeader Components', () => {
 
     window.history.pushState({}, 'Dashboard', '/teacher');
   });
+
+  it('renders PublicLiveView on /live/:classId without requiring authentication and hides navigation headers', async () => {
+    window.history.pushState({}, 'Public Live Talk', '/live/PUBLIC_SESSION_42');
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(null);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('public-live-view')).toBeInTheDocument();
+    expect(screen.queryByAltText(/HKIIT Logo/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('auth-page')).not.toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/');
+  });
 });
+

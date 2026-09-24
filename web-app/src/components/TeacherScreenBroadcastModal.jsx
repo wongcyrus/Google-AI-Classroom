@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
 import { auth } from '../firebase-config';
+import PresentationQrModal from './broadcast/PresentationQrModal';
 import './TeacherScreenBroadcastModal.css';
 
 const RESOLUTION_OPTIONS = [
@@ -86,6 +87,11 @@ export default function TeacherScreenBroadcastModal({
   lectureRecorder = null,
   defaultRecordOnStart = true,
   onOpenRecordings = null,
+
+  // Public presentation QR & PIN mode
+  classId = '',
+  isPublicBroadcast = false,
+  publicPin = null,
 }) {
   const [step, setStep] = useState(initialStep);
   const [selectedRes, setSelectedRes] = useState(broadcastResolution || '720p');
@@ -95,6 +101,23 @@ export default function TeacherScreenBroadcastModal({
   const [lectureTitle, setLectureTitle] = useState('');
   const [lectureTopic, setLectureTopic] = useState('');
   const [isStarting, setIsStarting] = useState(false);
+
+  // Public presentation mode with 4-digit PIN
+  const [isPublicMode, setIsPublicMode] = useState(isPublicBroadcast !== undefined ? Boolean(isPublicBroadcast) : false);
+  const [sessionPin, setSessionPin] = useState(() => publicPin || String(Math.floor(1000 + Math.random() * 9000)));
+  const [showQrModal, setShowQrModal] = useState(false);
+
+  useEffect(() => {
+    if (isPublicBroadcast !== undefined) {
+      setIsPublicMode(Boolean(isPublicBroadcast));
+    }
+  }, [isPublicBroadcast]);
+
+  useEffect(() => {
+    if (publicPin) {
+      setSessionPin(String(publicPin));
+    }
+  }, [publicPin]);
 
   // Audio testing state
   const [audioDevices, setAudioDevices] = useState([]);
@@ -336,6 +359,8 @@ export default function TeacherScreenBroadcastModal({
         await onStartBroadcast({
           resolution: selectedRes,
           interval: selectedInterval,
+          isPublic: isPublicMode,
+          publicPin: isPublicMode ? sessionPin : null,
           recordOnStart,
           lectureTitle,
           lectureTopic,
@@ -913,6 +938,132 @@ export default function TeacherScreenBroadcastModal({
                     )}
                   </div>
                 )}
+
+                {/* Public Presentation Mode Section */}
+                <div className="setup-section" style={{ marginTop: '1.25rem' }}>
+                  <label className="setup-section-label">
+                    <span className="label-icon">🌐</span>
+                    <span>Audience Access &amp; Public Presentation Mode</span>
+                  </label>
+
+                  <div
+                    className={`broadcast-mode-card ${isPublicMode ? 'selected-record' : ''}`}
+                    onClick={() => setIsPublicMode((prev) => !prev)}
+                    tabIndex={0}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      border: isPublicMode ? '2px solid #059669' : '1px solid #cbd5e1',
+                      backgroundColor: isPublicMode ? '#ecfdf5' : '#ffffff',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          checked={isPublicMode}
+                          onChange={(e) => {
+                            setIsPublicMode(e.target.checked);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ cursor: 'pointer', transform: 'scale(1.15)' }}
+                          aria-label="Enable Public Presentation Mode"
+                        />
+                        <span>Enable Public Presentation Mode (QR Code &amp; PIN)</span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          backgroundColor: isPublicMode ? '#a7f3d0' : '#f1f5f9',
+                          color: isPublicMode ? '#065f46' : '#64748b',
+                        }}
+                      >
+                        {isPublicMode ? 'Public Watch Active' : 'Private to Class'}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4, paddingLeft: '24px' }}>
+                      Allows audience members at a conference, lightning talk, or seminar to scan a QR code and enter a 4-digit PIN to watch the presentation screen and live subtitles in real time on their phones without signing in.
+                    </p>
+                  </div>
+
+                  {isPublicMode && (
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #a7f3d0',
+                        backgroundColor: '#f0fdf4',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                          4-Digit Presentation PIN:
+                        </span>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={sessionPin}
+                          onChange={(e) => setSessionPin(e.target.value.replace(/\D/g, ''))}
+                          style={{
+                            width: '80px',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            letterSpacing: '2px',
+                            fontSize: '1rem',
+                            padding: '4px 6px',
+                            borderRadius: '6px',
+                            border: '1px solid #059669',
+                            color: '#065f46',
+                            backgroundColor: '#ffffff',
+                          }}
+                          title="4-digit access PIN"
+                          aria-label="Presentation PIN"
+                        />
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => setSessionPin(String(Math.floor(1000 + Math.random() * 9000)))}
+                          style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                          title="Generate new random 4-digit PIN"
+                        >
+                          🔄 New PIN
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() => setShowQrModal(true)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          backgroundColor: '#ffffff',
+                          borderColor: '#059669',
+                          color: '#059669',
+                        }}
+                      >
+                        <span>📱 Preview Projector QR Code</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -986,6 +1137,14 @@ export default function TeacherScreenBroadcastModal({
             )}
           </div>
         </div>
+
+        {/* Audience Presentation QR Code Modal */}
+        <PresentationQrModal
+          isOpen={showQrModal}
+          onClose={() => setShowQrModal(false)}
+          classId={classId}
+          pin={sessionPin}
+        />
       </div>
     );
   }
@@ -1055,6 +1214,11 @@ export default function TeacherScreenBroadcastModal({
               {effectiveSubtitlesEnabled && (
                 <span className="badge-pill" style={{ background: '#7c3aed', color: '#fff' }}>
                   🎙️ Subtitles Active
+                </span>
+              )}
+              {isPublicMode && (
+                <span className="badge-pill" style={{ background: '#059669', color: '#fff' }}>
+                  🌐 Public PIN: {sessionPin}
                 </span>
               )}
               <span className="badge-pill viewer-pill">
@@ -1200,6 +1364,34 @@ export default function TeacherScreenBroadcastModal({
                   {effectiveSubtitlesEnabled ? '🟢 Live CC Active' : '⚪ CC Disabled'}
                 </button>
               </div>
+
+              {isPublicMode && (
+                <div className="stat-row" style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="stat-label">Public PIN:</span>
+                    <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.92rem', letterSpacing: '1px' }}>
+                      {sessionPin}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setShowQrModal(true)}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      borderRadius: '4px',
+                      borderColor: '#059669',
+                      color: '#059669',
+                      backgroundColor: '#ffffff',
+                    }}
+                    title="Show Presentation QR Code on Projector"
+                  >
+                    📱 Projector QR
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Students Connected Roster */}
@@ -1381,6 +1573,14 @@ export default function TeacherScreenBroadcastModal({
           </button>
         </div>
       </div>
+
+      {/* Audience Presentation QR Code Modal */}
+      <PresentationQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        classId={classId}
+        pin={sessionPin}
+      />
     </div>
   );
 }

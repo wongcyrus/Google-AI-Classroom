@@ -83,6 +83,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     viewers: broadcastViewers,
     broadcastResolution,
     broadcastInterval,
+    isPublicBroadcast,
+    publicPin,
     setBroadcastResolution,
     setBroadcastInterval,
     startBroadcast: startScreenBroadcast,
@@ -163,6 +165,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       const {
         resolution = broadcastResolution || '720p',
         interval = broadcastInterval || 3000,
+        isPublic = false,
+        publicPin = null,
         micDeviceId = selectedMicDeviceId || '',
         enableSubtitles = isSubtitleBroadcastEnabled,
         recordOnStart = false,
@@ -235,8 +239,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     // 4. Atomic concurrent launch of Screen Broadcast, Subtitles, and Recording
     await startScreenBroadcast(
       screenStream
-        ? { resolution, interval, existingStream: screenStream }
-        : { resolution, interval }
+        ? { resolution, interval, isPublic, publicPin, existingStream: screenStream }
+        : { resolution, interval, isPublic, publicPin }
     );
 
     if (enableSubtitles) {
@@ -1901,6 +1905,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         lectureRecorder={lectureRecorder}
         defaultRecordOnStart={classDefaultLectureRecording}
         onOpenRecordings={() => setShowRecordingsModal(true)}
+        classId={classId}
+        isPublicBroadcast={isPublicBroadcast}
+        publicPin={publicPin}
       />
 
       {/* Teacher Lecture Recordings & YouTube CC Modal */}

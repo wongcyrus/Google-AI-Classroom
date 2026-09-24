@@ -41,6 +41,7 @@ const EmailDetailView = lazyWithRetry(() => import('./components/EmailDetailView
 const PromptManagement = lazyWithRetry(() => import('./components/PromptManagement'));
 const ClassView = lazyWithRetry(() => import('./components/ClassView'));
 const StudentRecordsView = lazyWithRetry(() => import('./components/StudentRecordsView'));
+const PublicLiveView = lazyWithRetry(() => import('./components/public/PublicLiveView'));
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -161,9 +162,12 @@ const AppShell = ({
     studentViewMode === 'mobile'
   );
 
+  const isPublicLiveActive = location.pathname.startsWith('/live/');
+  const isMinimalView = isStudentMobileActive || isPublicLiveActive;
+
   return (
-    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''}`}>
-      {user && !isStudentMobileActive && <MainHeader onLogout={handleLogout} user={user} role={role} />}
+    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''} ${isPublicLiveActive ? 'in-public-live-view' : ''}`}>
+      {user && !isMinimalView && <MainHeader onLogout={handleLogout} user={user} role={role} />}
       <main className="main-content">
         <Suspense fallback={
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', flexDirection: 'column', gap: '0.75rem', color: '#64748b' }}>
@@ -212,11 +216,12 @@ const AppShell = ({
             <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/live/:classId" element={<PublicLiveView />} />
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
         </Suspense>
       </main>
-      {!isStudentMobileActive && (
+      {!isMinimalView && (
         <footer className="app-footer">
           <p>
             Made with ❤️ by{' '}

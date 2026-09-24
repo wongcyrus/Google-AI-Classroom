@@ -346,5 +346,57 @@ describe('useTeacherScreenBroadcast Hook', () => {
       await result.current.stopBroadcast();
     });
   });
+
+  it('supports public presentation broadcast with 4-digit PIN and cleans up on stop', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_PUBLIC_TEST',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    expect(result.current.isPublicBroadcast).toBe(false);
+    expect(result.current.publicPin).toBeNull();
+
+    await act(async () => {
+      await result.current.startBroadcast({
+        isPublic: true,
+        publicPin: '9988',
+      });
+    });
+
+    expect(result.current.isBroadcasting).toBe(true);
+    expect(result.current.isPublicBroadcast).toBe(true);
+    expect(result.current.publicPin).toBe('9988');
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_PUBLIC_TEST/screenBroadcast/session' }),
+      expect.objectContaining({
+        isBroadcasting: true,
+        isPublic: true,
+        publicPin: '9988',
+      }),
+      { merge: true }
+    );
+
+    await act(async () => {
+      await result.current.stopBroadcast();
+    });
+
+    expect(result.current.isBroadcasting).toBe(false);
+    expect(result.current.isPublicBroadcast).toBe(false);
+    expect(result.current.publicPin).toBeNull();
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_PUBLIC_TEST/screenBroadcast/session' }),
+      expect.objectContaining({
+        isBroadcasting: false,
+        isPublic: false,
+        publicPin: null,
+      }),
+      { merge: true }
+    );
+  });
 });
 

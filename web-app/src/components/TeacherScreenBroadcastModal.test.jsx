@@ -3,6 +3,12 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import TeacherScreenBroadcastModal from './TeacherScreenBroadcastModal';
 
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mockqr'),
+  },
+}));
+
 describe('TeacherScreenBroadcastModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -469,6 +475,56 @@ describe('TeacherScreenBroadcastModal', () => {
         expect.objectContaining({
           resolution: '720p',
           interval: 3000,
+        })
+      );
+    });
+  });
+
+  it('allows enabling Public Presentation Mode with 4-digit PIN and passes options to onStartBroadcast', async () => {
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={{ isRecording: false, startRecording: vi.fn() }}
+        classId="TALK-2026"
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    // Click Public Presentation Mode card
+    const publicCard = screen.getByText(/Enable Public Presentation Mode/i).closest('.broadcast-mode-card');
+    fireEvent.click(publicCard);
+
+    // PIN input should be displayed
+    const pinInput = screen.getByLabelText(/Presentation PIN/i);
+    expect(pinInput).toBeInTheDocument();
+    fireEvent.change(pinInput, { target: { value: '7788' } });
+
+    // Click preview QR code
+    const previewQrBtn = screen.getByRole('button', { name: /Preview Projector QR Code/i });
+    fireEvent.click(previewQrBtn);
+    expect(screen.getByText(/Presentation Screen & Subtitles QR Code/i)).toBeInTheDocument();
+    expect(screen.getByText('7788')).toBeInTheDocument();
+
+    // Close QR modal
+    fireEvent.click(screen.getByRole('button', { name: /Done/i }));
+
+    // Start broadcast
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledTimes(1);
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isPublic: true,
+          publicPin: '7788',
         })
       );
     });
