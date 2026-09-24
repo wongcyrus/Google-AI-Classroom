@@ -33,7 +33,7 @@ const ClassView = ({ user }) => {
 
   // URL-synced tab state
   const mainTab = searchParams.get('tab') || 'monitor';
-  const subTab = searchParams.get('sub') || (mainTab === 'video' ? 'library' : mainTab === 'analytics' ? 'irregularities' : '');
+  const subTab = searchParams.get('sub') || (mainTab === 'video' ? 'recordings' : mainTab === 'analytics' ? 'irregularities' : '');
   const isLiveMode = mainTab === 'monitor' || mainTab === 'messages';
 
   const [classInfo, setClassInfo] = useState(null);
@@ -122,7 +122,7 @@ const ClassView = ({ user }) => {
   const setTab = (newMainTab, defaultSub = '') => {
     const params = { tab: newMainTab };
     if (newMainTab === 'video') {
-      params.sub = defaultSub || 'library';
+      params.sub = defaultSub || 'recordings';
     } else if (newMainTab === 'analytics') {
       params.sub = defaultSub || 'irregularities';
     }
@@ -149,7 +149,7 @@ const ClassView = ({ user }) => {
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
-          default: return <VideoLibrary {...props} lessons={lessons} />;
+          default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
         }
       case 'analytics':
         switch (subTab) {
@@ -195,7 +195,8 @@ const ClassView = ({ user }) => {
     }
   };
 
-  const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab) && subTab !== 'recordings';
+  const isRecordingsTab = mainTab === 'video' && (!subTab || subTab === 'recordings' || subTab === 'default');
+  const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab) && !isRecordingsTab;
 
   return (
     <div className="class-view">
@@ -290,7 +291,7 @@ const ClassView = ({ user }) => {
 
             <button
               className={`tab-button ${mainTab === 'video' ? 'active' : ''}`}
-              onClick={() => setTab('video', 'library')}
+              onClick={() => setTab('video', 'recordings')}
             >
               <span>🎬</span> Recordings & Sessions
             </button>
@@ -324,13 +325,13 @@ const ClassView = ({ user }) => {
       {mainTab === 'video' && (
         <nav className="sub-tab-nav" aria-label="Video Sub-sections">
           <button
-            className={`tab-button ${subTab === 'recordings' ? 'active' : ''}`}
+            className={`tab-button ${subTab === 'recordings' || (!subTab || subTab === 'default') ? 'active' : ''}`}
             onClick={() => setSub('recordings')}
           >
             <span>🎥</span> Teacher Lecture Recordings
           </button>
           <button
-            className={`tab-button ${subTab === 'library' || (!subTab || subTab === 'default') ? 'active' : ''}`}
+            className={`tab-button ${subTab === 'library' ? 'active' : ''}`}
             onClick={() => setSub('library')}
           >
             <span>📁</span> Video Library

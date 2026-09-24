@@ -102,13 +102,13 @@ describe('useTeacherScreenBroadcast Hook', () => {
 
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', resolution: '1080p', teacherUid: 'teacher_123' }),
+      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', resolution: '720p', teacherUid: 'teacher_123' }),
       { merge: true }
     );
 
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
-      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123', resolution: '1080p' })
+      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123', resolution: '720p' })
     );
 
     // Simulate student joining collection listener
@@ -237,7 +237,7 @@ describe('useTeacherScreenBroadcast Hook', () => {
       });
 
       expect(result.current.isBroadcasting).toBe(true);
-      expect(mockPostMessage).toHaveBeenCalledWith({ action: 'start', interval: 1500 });
+      expect(mockPostMessage).toHaveBeenCalledWith({ action: 'start', interval: 3000 });
       expect(workerInstance).not.toBeNull();
 
       // Simulate a tick from background worker
@@ -309,9 +309,9 @@ describe('useTeacherScreenBroadcast Hook', () => {
       })
     );
 
-    // Initial default is 1080p and 1500ms
-    expect(result.current.broadcastResolution).toBe('1080p');
-    expect(result.current.broadcastInterval).toBe(1500);
+    // Initial default is 720p and 3000ms
+    expect(result.current.broadcastResolution).toBe('720p');
+    expect(result.current.broadcastInterval).toBe(3000);
 
     // Change resolution to native and interval to 1000ms
     act(() => {

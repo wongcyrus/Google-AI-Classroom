@@ -6,11 +6,18 @@ import './TeacherScreenBroadcastModal.css';
 
 const RESOLUTION_OPTIONS = [
   {
+    id: '720p',
+    title: '720p (HD - Balanced)',
+    desc: '1280×720 · Low network latency & lower data transfer',
+    badge: 'Recommended',
+    badgeType: 'primary',
+  },
+  {
     id: '1080p',
     title: '1080p (Full HD - Sharp)',
     desc: '1920×1080 · High clarity for programming code & diagrams',
-    badge: 'Recommended',
-    badgeType: 'primary',
+    badge: 'Full HD',
+    badgeType: 'neutral',
   },
   {
     id: 'native',
@@ -18,13 +25,6 @@ const RESOLUTION_OPTIONS = [
     desc: 'Full screen capture · Pristine text readability for 4K / Retina displays',
     badge: 'Ultra HD',
     badgeType: 'purple',
-  },
-  {
-    id: '720p',
-    title: '720p (HD - Balanced)',
-    desc: '1280×720 · Low network latency & lower data transfer',
-    badge: 'Fast',
-    badgeType: 'success',
   },
   {
     id: '480p',
@@ -36,10 +36,10 @@ const RESOLUTION_OPTIONS = [
 ];
 
 const FRAMERATE_OPTIONS = [
-  { interval: 1000, label: '1.0s / 1 FPS', desc: 'Smooth lecture delivery' },
-  { interval: 1500, label: '1.5s / 0.7 FPS', desc: 'Standard balance (Default)' },
+  { interval: 3000, label: '3.0s / 0.3 FPS', desc: 'Economy bandwidth mode (Default)' },
   { interval: 2000, label: '2.0s / 0.5 FPS', desc: 'Relaxed classroom viewing' },
-  { interval: 3000, label: '3.0s / 0.3 FPS', desc: 'Economy bandwidth mode' },
+  { interval: 1500, label: '1.5s / 0.7 FPS', desc: 'Standard balance' },
+  { interval: 1000, label: '1.0s / 1 FPS', desc: 'Smooth lecture delivery' },
 ];
 
 const AVAILABLE_LANGUAGES = [
@@ -63,8 +63,8 @@ export default function TeacherScreenBroadcastModal({
   viewers = [],
   onStartBroadcast = null,
   onStopBroadcast = null,
-  broadcastResolution = '1080p',
-  broadcastInterval = 1500,
+  broadcastResolution = '720p',
+  broadcastInterval = 3000,
   setBroadcastResolution = null,
   setBroadcastInterval = null,
 
@@ -88,8 +88,8 @@ export default function TeacherScreenBroadcastModal({
   onOpenRecordings = null,
 }) {
   const [step, setStep] = useState(initialStep);
-  const [selectedRes, setSelectedRes] = useState(broadcastResolution || '1080p');
-  const [selectedInterval, setSelectedInterval] = useState(broadcastInterval || 1500);
+  const [selectedRes, setSelectedRes] = useState(broadcastResolution || '720p');
+  const [selectedInterval, setSelectedInterval] = useState(broadcastInterval || 3000);
   const [recordOnStart, setRecordOnStart] = useState(defaultRecordOnStart !== undefined ? Boolean(defaultRecordOnStart) : true);
   const userToggledRecordRef = useRef(false);
   const [lectureTitle, setLectureTitle] = useState('');
@@ -150,11 +150,11 @@ export default function TeacherScreenBroadcastModal({
   }, [subtitlePrompt]);
 
   useEffect(() => {
-    setSelectedRes(broadcastResolution || '1080p');
+    setSelectedRes(broadcastResolution || '720p');
   }, [broadcastResolution]);
 
   useEffect(() => {
-    setSelectedInterval(broadcastInterval || 1500);
+    setSelectedInterval(broadcastInterval || 3000);
   }, [broadcastInterval]);
 
   useEffect(() => {
@@ -1047,7 +1047,7 @@ export default function TeacherScreenBroadcastModal({
                 </span>
               )}
               <span className="badge-pill" style={{ background: '#2563eb', color: '#fff' }}>
-                📺 {(broadcastResolution || '1080p').toUpperCase()}
+                📺 {(broadcastResolution || '720p').toUpperCase()}
               </span>
               <span className="badge-pill" style={{ background: '#059669', color: '#fff' }}>
                 🌐 Classroom Stream (50+ Students)
@@ -1130,7 +1130,7 @@ export default function TeacherScreenBroadcastModal({
               <div className="stat-row" style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #e2e8f0' }}>
                 <span className="stat-label">Resolution:</span>
                 <select
-                  value={broadcastResolution || '1080p'}
+                  value={broadcastResolution || '720p'}
                   onChange={(e) => {
                     setBroadcastResolution?.(e.target.value);
                     setSelectedRes(e.target.value);
@@ -1145,9 +1145,9 @@ export default function TeacherScreenBroadcastModal({
                   }}
                   title="Change broadcast resolution on the fly"
                 >
+                  <option value="720p">720p (HD - Balanced)</option>
                   <option value="1080p">1080p (Full HD - Sharp)</option>
                   <option value="native">Native (Original / 2K)</option>
-                  <option value="720p">720p (HD - Balanced)</option>
                   <option value="480p">480p (SD - Low Data)</option>
                 </select>
               </div>
@@ -1156,7 +1156,7 @@ export default function TeacherScreenBroadcastModal({
               <div className="stat-row">
                 <span className="stat-label">Framerate:</span>
                 <select
-                  value={broadcastInterval || 1500}
+                  value={broadcastInterval || 3000}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     setBroadcastInterval?.(val);
@@ -1172,10 +1172,10 @@ export default function TeacherScreenBroadcastModal({
                   }}
                   title="Change refresh interval on the fly"
                 >
-                  <option value={1000}>1.0s / 1 FPS (Smooth)</option>
-                  <option value={1500}>1.5s / 0.7 FPS (Standard)</option>
-                  <option value={2000}>2.0s / 0.5 FPS (Relaxed)</option>
                   <option value={3000}>3.0s / 0.3 FPS (Economy)</option>
+                  <option value={2000}>2.0s / 0.5 FPS (Relaxed)</option>
+                  <option value={1500}>1.5s / 0.7 FPS (Standard)</option>
+                  <option value={1000}>1.0s / 1 FPS (Smooth)</option>
                 </select>
               </div>
 

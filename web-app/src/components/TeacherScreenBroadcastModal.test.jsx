@@ -443,4 +443,34 @@ describe('TeacherScreenBroadcastModal', () => {
     expect(img).toBeInTheDocument();
     expect(img.getAttribute('src')).toBe(base64Data);
   });
+
+  it('defaults broadcast resolution to 720p and interval to 3000ms when starting broadcast', async () => {
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={{ isRecording: false, startRecording: vi.fn() }}
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledTimes(1);
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resolution: '720p',
+          interval: 3000,
+        })
+      );
+    });
+  });
 });

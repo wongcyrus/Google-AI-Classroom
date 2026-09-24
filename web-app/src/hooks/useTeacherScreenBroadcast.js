@@ -70,18 +70,18 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const [broadcastResolution, setBroadcastResolutionState] = useState(() => {
     try {
       const saved = localStorage.getItem('gemini_teacher_broadcast_resolution');
-      return (saved && RESOLUTION_PRESETS[saved]) ? saved : '1080p';
+      return (saved && RESOLUTION_PRESETS[saved]) ? saved : '720p';
     } catch {
-      return '1080p';
+      return '720p';
     }
   });
 
   const [broadcastInterval, setBroadcastIntervalState] = useState(() => {
     try {
       const saved = Number(localStorage.getItem('gemini_teacher_broadcast_interval'));
-      return [1000, 1500, 2000, 3000].includes(saved) ? saved : 1500;
+      return [1000, 1500, 2000, 3000].includes(saved) ? saved : 3000;
     } catch {
-      return 1500;
+      return 3000;
     }
   });
 
@@ -255,9 +255,9 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       setError(null);
       isStoppingRef.current = false;
 
-      const activeRes = options.resolution || broadcastResolutionRef.current || '1080p';
-      const preset = RESOLUTION_PRESETS[activeRes] || RESOLUTION_PRESETS['1080p'];
-      const activeInterval = options.interval || broadcastIntervalRef.current || 1500;
+      const activeRes = options.resolution || broadcastResolutionRef.current || '720p';
+      const preset = RESOLUTION_PRESETS[activeRes] || RESOLUTION_PRESETS['720p'];
+      const activeInterval = options.interval || broadcastIntervalRef.current || 3000;
 
       // Update refs to match selected startup options
       broadcastResolutionRef.current = activeRes;
@@ -423,8 +423,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
             lastDiffDataRef.current = currentDiffData;
 
             // Render to capture canvas dynamically adapting to active resolution preset
-            const currentRes = broadcastResolutionRef.current || '1080p';
-            const currentPreset = RESOLUTION_PRESETS[currentRes] || RESOLUTION_PRESETS['1080p'];
+            const currentRes = broadcastResolutionRef.current || '720p';
+            const currentPreset = RESOLUTION_PRESETS[currentRes] || RESOLUTION_PRESETS['720p'];
 
             let targetWidth = vWidth;
             let targetHeight = vHeight;

@@ -161,8 +161,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     isStartingBroadcastRef.current = true;
     try {
       const {
-        resolution = broadcastResolution || '1080p',
-        interval = broadcastInterval || 1500,
+        resolution = broadcastResolution || '720p',
+        interval = broadcastInterval || 3000,
         micDeviceId = selectedMicDeviceId || '',
         enableSubtitles = isSubtitleBroadcastEnabled,
         recordOnStart = false,

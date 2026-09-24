@@ -426,4 +426,18 @@ describe('ClassView Component Full Suite', () => {
     const recordingsSubTabBtn = screen.getByRole('button', { name: /Teacher Lecture Recordings/i });
     expect(recordingsSubTabBtn).toBeInTheDocument();
   });
+
+  it('defaults to LectureRecordingsView as first sub-tab when tab=video without sub param', () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=video']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('lecture-recordings-view')).toBeInTheDocument();
+    const recordingsSubTabBtn = screen.getByRole('button', { name: /Teacher Lecture Recordings/i });
+    expect(recordingsSubTabBtn).toHaveClass('active');
+  });
 });
