@@ -75,7 +75,7 @@ async function seedPrompts() {
     const existingSnap = await db.collection('prompts').where('name', '==', name).limit(1).get();
     if (!existingSnap.empty) {
       const existingDoc = existingSnap.docs[0];
-      createdPrompts[name] = { id: existingDoc.id, ...existingDoc.data() };
+      createdPrompts[name] = { id: existingDoc.id, originalId: existingDoc.id, ...existingDoc.data() };
       continue;
     }
     
@@ -123,7 +123,7 @@ async function seedPrompts() {
       createdAt: FieldValue.serverTimestamp(),
       lastUpdated: FieldValue.serverTimestamp()
     });
-    createdPrompts[name] = { id: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public', isSystem: true, owner: 'system' };
+    createdPrompts[name] = { id: docRef.id, originalId: docRef.id, name, promptText: content, category, applyTo, accessLevel: 'public', isSystem: true, owner: 'system' };
     addedCount++;
     console.log(`✨ Seeded new prompt: "${name}" (${category})`);
   }
