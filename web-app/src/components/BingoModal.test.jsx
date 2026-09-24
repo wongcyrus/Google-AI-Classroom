@@ -33,8 +33,15 @@ describe('BingoModal Component', () => {
     expect(screen.getByText(/45s/)).toBeInTheDocument();
   });
 
-  it('calls onSubmit with selected option index and closes immediately', async () => {
-    const mockSubmit = vi.fn().mockResolvedValue({ result: 'passed', isCorrect: true });
+  it('calls onSubmit with selected option index and displays result with speed and ranking card', async () => {
+    const mockSubmit = vi.fn().mockResolvedValue({
+      result: 'passed',
+      isCorrect: true,
+      rank: 1,
+      totalStudents: 30,
+      responseTimeSec: 2.1,
+      pointsAwarded: 180,
+    });
     const mockClose = vi.fn();
     render(<BingoModal activeBingo={mockBingo} onSubmit={mockSubmit} onClose={mockClose} />);
 
@@ -50,6 +57,18 @@ describe('BingoModal Component', () => {
         responseTimeSec: expect.any(Number),
       })
     );
+
+    // Verify Result & Ranking Card is displayed
+    expect(screen.getByTestId('bingo-result-card')).toBeInTheDocument();
+    expect(screen.getByTestId('bingo-stat-speed')).toBeInTheDocument();
+    expect(screen.getByTestId('bingo-stat-rank')).toBeInTheDocument();
+    expect(screen.getByText('Correct!')).toBeInTheDocument();
+
+    // Verify Dismiss button closes modal
+    const dismissBtn = screen.getByTestId('bingo-btn-dismiss');
+    await act(async () => {
+      fireEvent.click(dismissBtn);
+    });
 
     expect(mockClose).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
@@ -76,7 +95,7 @@ describe('BingoModal Component', () => {
         selectedIndex: null,
       })
     );
-    expect(screen.getByTestId('bingo-feedback')).toHaveTextContent(/Time Expired/);
+    expect(screen.getByTestId('bingo-result-card')).toHaveTextContent(/Time Expired/);
   });
 
   it('does not render or popup when challenge is already expired before mount', () => {

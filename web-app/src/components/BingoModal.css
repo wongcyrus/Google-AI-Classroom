@@ -738,3 +738,237 @@
 .bingo-modal-container.is-mobile.is-landscape .bingo-footer-note {
   display: none !important;
 }
+
+/* ==========================================================================
+   Bingo Result & Ranking Card Styles
+   ========================================================================== */
+.bingo-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: bingoFadeIn 0.25s ease-out;
+}
+
+.bingo-result-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.25rem 1rem;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.bingo-result-hero.correct {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #86efac;
+}
+
+.bingo-result-hero.incorrect {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: #fca5a5;
+}
+
+.bingo-result-hero.timeout {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: #fde68a;
+}
+
+.bingo-result-icon {
+  font-size: 2.25rem;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+  animation: bingoScaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.bingo-result-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.bingo-result-hero.correct .bingo-result-title {
+  color: #15803d;
+}
+
+.bingo-result-hero.incorrect .bingo-result-title {
+  color: #b91c1c;
+}
+
+.bingo-result-hero.timeout .bingo-result-title {
+  color: #b45309;
+}
+
+.bingo-result-subtitle {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Metrics Grid: Dual/Triple Pod */
+.bingo-result-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.bingo-stat-pod {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.85rem 0.5rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.bingo-stat-pod.speed {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.bingo-stat-pod.rank {
+  background: #fefce8;
+  border-color: #fef08a;
+}
+
+.bingo-stat-pod.points {
+  background: #faf5ff;
+  border-color: #e9d5ff;
+}
+
+.bingo-stat-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.bingo-stat-pod.speed .bingo-stat-label {
+  color: #1d4ed8;
+}
+
+.bingo-stat-pod.rank .bingo-stat-label {
+  color: #a16207;
+}
+
+.bingo-stat-pod.points .bingo-stat-label {
+  color: #7e22ce;
+}
+
+.bingo-stat-value {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0.25rem 0 0.15rem 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.bingo-stat-hint {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Mini Leaderboard */
+.bingo-mini-leaderboard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bingo-leaderboard-header {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.bingo-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.bingo-leaderboard-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.6rem;
+  background: #ffffff;
+  border-radius: 0.5rem;
+  border: 1px solid #f1f5f9;
+  font-size: 0.82rem;
+}
+
+.bingo-leaderboard-item.highlight-me {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  font-weight: 700;
+}
+
+.leaderboard-rank-badge {
+  font-weight: 800;
+  font-size: 0.9rem;
+  width: 1.6rem;
+}
+
+.leaderboard-name {
+  flex: 1;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+}
+
+.leaderboard-speed {
+  font-weight: 700;
+  color: #2563eb;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dismiss Action */
+.bingo-result-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+.bingo-btn-dismiss {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 0.65rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.bingo-btn-dismiss:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 600px) {
+  .bingo-result-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+

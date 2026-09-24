@@ -196,6 +196,8 @@ describe('BingoResultsView Component', () => {
     expect(exportSpy).toHaveBeenCalledTimes(1);
     const [headers, rows, filename] = exportSpy.mock.calls[0];
 
+    expect(headers).toContain('Rank');
+    expect(headers).toContain('Points Awarded');
     expect(headers).toContain('Question');
     expect(headers).toContain('Correct Answer');
     expect(headers).toContain('Student Selected Option');
@@ -446,5 +448,30 @@ describe('BingoResultsView Component', () => {
 
     expect(screen.getByText('student99@stu.vtc.edu.hk')).toBeInTheDocument();
     expect(screen.queryByText('student1@stu.vtc.edu.hk')).not.toBeInTheDocument();
+  });
+
+  it('renders Rank and Points in student response table', () => {
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    // Verify Rank header and medal badges
+    expect(screen.getByRole('columnheader', { name: 'Rank' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Points' })).toBeInTheDocument();
+    expect(screen.getByText('🥇 #1')).toBeInTheDocument();
+    expect(screen.getByText('+100 pts')).toBeInTheDocument();
+  });
+
+  it('toggles to Cumulative Class Leaderboard tab and renders podium and leaderboard table', () => {
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    const leaderboardTab = screen.getByTestId('tab-leaderboard');
+    fireEvent.click(leaderboardTab);
+
+    // Verify Podium and Cumulative Leaderboard Table are visible
+    expect(screen.getByTestId('bingo-podium-card')).toBeInTheDocument();
+    expect(screen.getByTestId('bingo-cumulative-leaderboard')).toBeInTheDocument();
+    expect(screen.getByText(/Round Speed & Accuracy Podium/i)).toBeInTheDocument();
+    expect(screen.getByText(/Total Score/i)).toBeInTheDocument();
   });
 });

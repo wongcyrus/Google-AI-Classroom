@@ -273,9 +273,153 @@ export default function BingoResultsView({
     };
   }, [recordsInScope]);
 
+  const [activeTab, setActiveTab] = useState('responses'); // 'responses' | 'leaderboard'
+
+  // Map each record in recordsInScope with its round-level rank & points
+  const recordsWithRank = useMemo(() => {
+    if (!recordsInScope.length) return [];
+
+    const roundGroups = new Map();
+    recordsInScope.forEach((r) => {
+      const millis = getTimestampMillis(r);
+      const bucket = Math.floor(millis / 180000);
+      const rKey = r.roundId || `${r.question || 'prompt'}_${bucket}`;
+      if (!roundGroups.has(rKey)) roundGroups.set(rKey, []);
+      roundGroups.get(rKey).push(r);
+    });
+
+    const rankMap = new Map();
+    roundGroups.forEach((groupRecords) => {
+      const passed = groupRecords
+        .filter((r) => r.result === 'passed')
+        .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+      const incorrect = groupRecords
+        .filter((r) => r.result === 'failed_incorrect')
+        .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+      const timeout = groupRecords.filter((r) => r.result === 'missed_timeout');
+      const pending = groupRecords.filter((r) => r.result === 'pending');
+
+      const fullSorted = [...passed, ...incorrect, ...timeout, ...pending];
+      fullSorted.forEach((r, idx) => {
+        rankMap.set(r.id, {
+          rank: r.result === 'passed' ? idx + 1 : (r.result === 'failed_incorrect' ? idx + 1 : null),
+          points: r.pointsAwarded !== undefined ? r.pointsAwarded : (r.result === 'passed' ? 100 : 0),
+        });
+      });
+    });
+
+    return recordsInScope.map((r) => {
+      const rankInfo = rankMap.get(r.id) || {};
+      return {
+        ...r,
+        computedRank: r.rank || rankInfo.rank || null,
+        computedPoints: r.pointsAwarded !== undefined ? r.pointsAwarded : (rankInfo.points || 0),
+      };
+    });
+  }, [recordsInScope]);
+
+  // Round Podium: Top 3 fastest correct responders for activeRound
+  const roundPodium = useMemo(() => {
+    if (!activeRound?.records?.length) return [];
+    return activeRound.records
+      .filter((r) => r.result === 'passed' && r.responseTimeSec !== null && r.responseTimeSec !== undefined)
+      .sort((a, b) => Number(a.responseTimeSec) - Number(b.responseTimeSec))
+      .slice(0, 3)
+      .map((r, idx) => ({
+        ...r,
+        podiumRank: idx + 1,
+        displayName: getStudentDisplayName(r.studentEmail || '', studentProfiles),
+      }));
+  }, [activeRound, studentProfiles]);
+
+  // Speed metrics for active round
+  const roundSpeedMetrics = useMemo(() => {
+    if (!activeRound?.records?.length) return null;
+    const passedLatencies = activeRound.records
+      .filter((r) => r.result === 'passed' && r.responseTimeSec !== null && r.responseTimeSec !== undefined)
+      .map((r) => Number(r.responseTimeSec))
+      .sort((a, b) => a - b);
+
+    if (!passedLatencies.length) return null;
+    const fastest = passedLatencies[0].toFixed(2);
+    const slowest = passedLatencies[passedLatencies.length - 1].toFixed(2);
+    const median = (
+      passedLatencies.length % 2 === 1
+        ? passedLatencies[Math.floor(passedLatencies.length / 2)]
+        : (passedLatencies[passedLatencies.length / 2 - 1] + passedLatencies[passedLatencies.length / 2]) / 2
+    ).toFixed(2);
+
+    return { fastest, median, slowest, count: passedLatencies.length };
+  }, [activeRound]);
+
+  // Cumulative Class Leaderboard across all lessonFilteredRecords
+  const cumulativeLeaderboard = useMemo(() => {
+    if (!lessonFilteredRecords.length) return [];
+
+    const studentMap = new Map();
+    lessonFilteredRecords.forEach((r) => {
+      const email = (r.studentEmail || '').toLowerCase();
+      const uid = r.studentUid || email;
+      if (!uid) return;
+
+      if (!studentMap.has(uid)) {
+        studentMap.set(uid, {
+          studentUid: uid,
+          studentEmail: email,
+          total: 0,
+          passed: 0,
+          failed: 0,
+          timeout: 0,
+          latencies: [],
+          totalPoints: 0,
+        });
+      }
+
+      const st = studentMap.get(uid);
+      st.total += 1;
+      if (r.result === 'passed') {
+        st.passed += 1;
+        if (r.responseTimeSec !== null && r.responseTimeSec !== undefined) {
+          st.latencies.push(Number(r.responseTimeSec));
+        }
+        st.totalPoints += r.pointsAwarded !== undefined ? Number(r.pointsAwarded) : 100;
+      } else if (r.result === 'failed_incorrect') {
+        st.failed += 1;
+      } else if (r.result === 'missed_timeout') {
+        st.timeout += 1;
+      }
+    });
+
+    const list = Array.from(studentMap.values()).map((st) => {
+      const passRate = st.total > 0 ? Math.round((st.passed / st.total) * 100) : 0;
+      const avgLatency = st.latencies.length > 0
+        ? (st.latencies.reduce((a, b) => a + b, 0) / st.latencies.length).toFixed(2)
+        : '—';
+      const fastest = st.latencies.length > 0 ? Math.min(...st.latencies).toFixed(2) : '—';
+      return {
+        ...st,
+        passRate,
+        avgLatency,
+        fastest,
+        displayName: getStudentDisplayName(st.studentEmail, studentProfiles),
+        profile: getStudentProfile(st.studentEmail, studentProfiles),
+      };
+    });
+
+    list.sort((a, b) => {
+      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      if (b.passed !== a.passed) return b.passed - a.passed;
+      const latA = a.avgLatency !== '—' ? Number(a.avgLatency) : 999;
+      const latB = b.avgLatency !== '—' ? Number(b.avgLatency) : 999;
+      return latA - latB;
+    });
+
+    return list.map((item, idx) => ({ ...item, overallRank: idx + 1 }));
+  }, [lessonFilteredRecords, studentProfiles]);
+
   // Apply search and status tab filters to student rows
   const filteredRecords = useMemo(() => {
-    return recordsInScope.filter((r) => {
+    return recordsWithRank.filter((r) => {
       if (statusFilter !== 'all' && r.result !== statusFilter) {
         return false;
       }
@@ -289,13 +433,14 @@ export default function BingoResultsView({
       }
       return true;
     });
-  }, [recordsInScope, statusFilter, searchQuery]);
+  }, [recordsWithRank, statusFilter, searchQuery]);
 
   // CSV Export Handler
   const handleExportCsv = () => {
     if (!filteredRecords.length) return;
 
     const headers = [
+      'Rank',
       'Challenge ID',
       'Date',
       'Time',
@@ -311,6 +456,7 @@ export default function BingoResultsView({
       'Student Selected Option',
       'Result Status',
       'Response Time (s)',
+      'Points Awarded',
       'Window Focused',
       'Strike Number',
       'Trigger Type',
@@ -339,6 +485,7 @@ export default function BingoResultsView({
         : (r.selectedOptionText || (r.result === 'missed_timeout' ? 'Timed Out' : 'Pending'));
 
       return [
+        r.computedRank !== null && r.computedRank !== undefined ? r.computedRank : '',
         r.id || '',
         dateStr,
         timeStr,
@@ -354,6 +501,7 @@ export default function BingoResultsView({
         studentText,
         r.result || 'pending',
         r.responseTimeSec !== null && r.responseTimeSec !== undefined ? r.responseTimeSec : '',
+        r.computedPoints !== null && r.computedPoints !== undefined ? r.computedPoints : 0,
         r.windowFocused ? 'Yes' : 'No',
         r.strikeNumber || 1,
         r.triggerType || '',
@@ -598,216 +746,387 @@ export default function BingoResultsView({
             </div>
           )}
 
-          {/* Filtering Toolbar */}
-          <div className="bingo-toolbar">
-            <div className="bingo-toolbar-left">
-              {/* Round Selector */}
-              <div className="bingo-round-select-wrapper">
-                <label htmlFor="bingo-round-select" className="bingo-round-select-label">
-                  Filter Round:
-                </label>
-                <select
-                  id="bingo-round-select"
-                  className="bingo-round-select"
-                  value={selectedRoundId}
-                  onChange={(e) => setSelectedRoundId(e.target.value)}
-                >
-                  <option value="all">🌐 All Challenges ({lessonFilteredRecords.length} records)</option>
-                  {rounds.map((rd, i) => (
-                    <option key={rd.id} value={rd.id}>
-                      #{rounds.length - i}: {rd.question.slice(0, 32)}... ({rd.records.length} students, {formatTime(rd.latestMillis, timezone)})
-                    </option>
-                  ))}
-                </select>
+          {/* View Mode Toggle: Round Challenges vs Cumulative Class Leaderboard */}
+          <div className="bingo-view-mode-toggle" data-testid="bingo-view-mode-toggle">
+            <button
+              type="button"
+              className={`bingo-view-btn ${activeTab === 'responses' ? 'active' : ''}`}
+              onClick={() => setActiveTab('responses')}
+              data-testid="tab-responses"
+            >
+              🎯 Round Challenges ({filteredRecords.length})
+            </button>
+            <button
+              type="button"
+              className={`bingo-view-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('leaderboard')}
+              data-testid="tab-leaderboard"
+            >
+              🏆 Cumulative Class Leaderboard ({cumulativeLeaderboard.length})
+            </button>
+          </div>
+
+          {activeTab === 'responses' ? (
+            <>
+              {/* Filtering Toolbar */}
+              <div className="bingo-toolbar">
+                <div className="bingo-toolbar-left">
+                  {/* Round Selector */}
+                  <div className="bingo-round-select-wrapper">
+                    <label htmlFor="bingo-round-select" className="bingo-round-select-label">
+                      Filter Round:
+                    </label>
+                    <select
+                      id="bingo-round-select"
+                      className="bingo-round-select"
+                      value={selectedRoundId}
+                      onChange={(e) => setSelectedRoundId(e.target.value)}
+                    >
+                      <option value="all">🌐 All Challenges ({lessonFilteredRecords.length} records)</option>
+                      {rounds.map((rd, i) => (
+                        <option key={rd.id} value={rd.id}>
+                          #{rounds.length - i}: {rd.question.slice(0, 32)}... ({rd.records.length} students, {formatTime(rd.latestMillis, timezone)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Student Search */}
+                  <input
+                    type="text"
+                    placeholder="🔍 Search student email or UID..."
+                    className="bingo-search-input"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                {/* Status Filter Tabs */}
+                <div className="bingo-status-tabs">
+                  <button
+                    type="button"
+                    className={`bingo-tab-btn ${statusFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    All ({recordsInScope.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`bingo-tab-btn ${statusFilter === 'passed' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('passed')}
+                  >
+                    Passed ({kpiStats.passed})
+                  </button>
+                  <button
+                    type="button"
+                    className={`bingo-tab-btn ${statusFilter === 'failed_incorrect' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('failed_incorrect')}
+                  >
+                    Incorrect ({kpiStats.failedIncorrect})
+                  </button>
+                  <button
+                    type="button"
+                    className={`bingo-tab-btn ${statusFilter === 'missed_timeout' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('missed_timeout')}
+                  >
+                    Timed Out ({kpiStats.missedTimeout})
+                  </button>
+                  {kpiStats.pending > 0 && (
+                    <button
+                      type="button"
+                      className={`bingo-tab-btn ${statusFilter === 'pending' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('pending')}
+                    >
+                      Pending ({kpiStats.pending})
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Student Search */}
-              <input
-                type="text"
-                placeholder="🔍 Search student email or UID..."
-                className="bingo-search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            {/* Status Filter Tabs */}
-            <div className="bingo-status-tabs">
-              <button
-                type="button"
-                className={`bingo-tab-btn ${statusFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('all')}
-              >
-                All ({recordsInScope.length})
-              </button>
-              <button
-                type="button"
-                className={`bingo-tab-btn ${statusFilter === 'passed' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('passed')}
-              >
-                Passed ({kpiStats.passed})
-              </button>
-              <button
-                type="button"
-                className={`bingo-tab-btn ${statusFilter === 'failed_incorrect' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('failed_incorrect')}
-              >
-                Incorrect ({kpiStats.failedIncorrect})
-              </button>
-              <button
-                type="button"
-                className={`bingo-tab-btn ${statusFilter === 'missed_timeout' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('missed_timeout')}
-              >
-                Timed Out ({kpiStats.missedTimeout})
-              </button>
-              {kpiStats.pending > 0 && (
-                <button
-                  type="button"
-                  className={`bingo-tab-btn ${statusFilter === 'pending' ? 'active' : ''}`}
-                  onClick={() => setStatusFilter('pending')}
-                >
-                  Pending ({kpiStats.pending})
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Student Response Table */}
-          <div className="bingo-table-wrapper">
-            <table className="bingo-table">
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Chosen Answer</th>
-                  <th>Result</th>
-                  <th>Latency</th>
-                  <th>Window Focus</th>
-                  <th>Strike</th>
-                  <th>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                      No student records match the active filters.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRecords.map((r) => {
-                    const millis = getTimestampMillis(r);
-                    const options = Array.isArray(r.options) ? r.options : [];
-                    const isSelected = r.selectedIndex !== null && r.selectedIndex !== undefined;
-                    const optTag = isSelected ? OPTION_LABELS[r.selectedIndex] || r.selectedIndex : null;
-                    const optText = isSelected ? options[r.selectedIndex] : r.selectedOptionText;
-
-                    return (
-                      <tr key={r.id}>
-                        {/* Student */}
-                        <td>
-                          {(() => {
-                            const email = r.studentEmail || '';
-                            const prof = getStudentProfile(email, studentProfiles);
-                            const displayName = getStudentDisplayName(email, studentProfiles);
-                            const hasDistinctName = displayName && displayName !== email;
-                            return (
-                              <div className="bingo-student-cell">
-                                <span className="bingo-student-email" style={{ fontWeight: 600 }}>{displayName || email || 'Unknown Student'}</span>
-                                {hasDistinctName && <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{email}</span>}
-                                {(prof.studentClass || prof.programme) && (
-                                  <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px', alignSelf: 'flex-start' }}>
-                                    {[prof.studentClass, prof.programme].filter(Boolean).join(' • ')}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
-
-                        {/* Chosen Answer */}
-                        <td>
-                          {isSelected ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{
-                                width: '20px',
-                                height: '20px',
-                                borderRadius: '50%',
-                                background: r.result === 'passed' ? '#dcfce7' : '#fee2e2',
-                                color: r.result === 'passed' ? '#15803d' : '#b91c1c',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                              }}>
-                                {optTag}
-                              </span>
-                              <span style={{ fontSize: '0.84rem', color: '#0f172a' }}>
-                                {optText}
-                              </span>
-                            </div>
-                          ) : r.result === 'missed_timeout' ? (
-                            <span style={{ color: '#b91c1c', fontStyle: 'italic', fontSize: '0.82rem' }}>
-                              ⏱️ No answer (Countdown expired)
-                            </span>
-                          ) : (
-                            <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.82rem' }}>
-                              ⏳ Pending response...
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Result Badge */}
-                        <td>
-                          <span className={`bingo-badge badge-${r.result}`}>
-                            {r.result === 'passed' && '✅ Verified Present'}
-                            {r.result === 'failed_incorrect' && '❌ Incorrect Choice'}
-                            {r.result === 'missed_timeout' && '⚠️ Timed Out'}
-                            {r.result === 'pending' && '⏳ In Progress'}
-                          </span>
-                        </td>
-
-                        {/* Latency */}
-                        <td>
-                          {r.responseTimeSec !== null && r.responseTimeSec !== undefined ? (
-                            <span style={{ fontWeight: 600, color: r.responseTimeSec > 35 ? '#ea580c' : '#0f172a' }}>
-                              {Number(r.responseTimeSec).toFixed(1)}s
-                            </span>
-                          ) : (
-                            <span style={{ color: '#94a3b8' }}>—</span>
-                          )}
-                        </td>
-
-                        {/* Window Focus */}
-                        <td>
-                          {r.windowFocused !== undefined && r.windowFocused !== null ? (
-                            <span className={`bingo-focus-indicator ${r.windowFocused ? 'focused' : 'unfocused'}`}>
-                              {r.windowFocused ? '🖥️ Focused' : '❌ Unfocused'}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#94a3b8' }}>—</span>
-                          )}
-                        </td>
-
-                        {/* Strike */}
-                        <td>
-                          <span className={`bingo-strike-pill strike-${r.strikeNumber || 1}`}>
-                            {r.strikeNumber === 2 ? '🚨 Strike 2 (Deduction)' : 'Strike 1'}
-                          </span>
-                        </td>
-
-                        {/* Time */}
-                        <td style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.8rem' }}>
-                          {formatDate(millis, timezone)} {formatTime(millis, timezone)}
+              {/* Student Response Table */}
+              <div className="bingo-table-wrapper">
+                <table className="bingo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '70px', textAlign: 'center' }}>Rank</th>
+                      <th>Student</th>
+                      <th>Chosen Answer</th>
+                      <th>Result</th>
+                      <th>Latency</th>
+                      <th>Points</th>
+                      <th>Window Focus</th>
+                      <th>Strike</th>
+                      <th>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                          No student records match the active filters.
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      filteredRecords.map((r) => {
+                        const millis = getTimestampMillis(r);
+                        const options = Array.isArray(r.options) ? r.options : [];
+                        const isSelected = r.selectedIndex !== null && r.selectedIndex !== undefined;
+                        const optTag = isSelected ? OPTION_LABELS[r.selectedIndex] || r.selectedIndex : null;
+                        const optText = isSelected ? options[r.selectedIndex] : r.selectedOptionText;
+
+                        return (
+                          <tr key={r.id}>
+                            {/* Rank */}
+                            <td style={{ textAlign: 'center', fontWeight: 800 }}>
+                              {r.computedRank === 1 ? '🥇 #1' :
+                               r.computedRank === 2 ? '🥈 #2' :
+                               r.computedRank === 3 ? '🥉 #3' :
+                               r.computedRank ? `#${r.computedRank}` : '—'}
+                            </td>
+
+                            {/* Student */}
+                            <td>
+                              {(() => {
+                                const email = r.studentEmail || '';
+                                const prof = getStudentProfile(email, studentProfiles);
+                                const displayName = getStudentDisplayName(email, studentProfiles);
+                                const hasDistinctName = displayName && displayName !== email;
+                                return (
+                                  <div className="bingo-student-cell">
+                                    <span className="bingo-student-email" style={{ fontWeight: 600 }}>{displayName || email || 'Unknown Student'}</span>
+                                    {hasDistinctName && <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{email}</span>}
+                                    {(prof.studentClass || prof.programme) && (
+                                      <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px', alignSelf: 'flex-start' }}>
+                                        {[prof.studentClass, prof.programme].filter(Boolean).join(' • ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+
+                            {/* Chosen Answer */}
+                            <td>
+                              {isSelected ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    background: r.result === 'passed' ? '#dcfce7' : '#fee2e2',
+                                    color: r.result === 'passed' ? '#15803d' : '#b91c1c',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                  }}>
+                                    {optTag}
+                                  </span>
+                                  <span style={{ fontSize: '0.84rem', color: '#0f172a' }}>
+                                    {optText}
+                                  </span>
+                                </div>
+                              ) : r.result === 'missed_timeout' ? (
+                                <span style={{ color: '#b91c1c', fontStyle: 'italic', fontSize: '0.82rem' }}>
+                                  ⏱️ No answer (Countdown expired)
+                                </span>
+                              ) : (
+                                <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.82rem' }}>
+                                  ⏳ Pending response...
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Result Badge */}
+                            <td>
+                              <span className={`bingo-badge badge-${r.result}`}>
+                                {r.result === 'passed' && '✅ Verified Present'}
+                                {r.result === 'failed_incorrect' && '❌ Incorrect Choice'}
+                                {r.result === 'missed_timeout' && '⚠️ Timed Out'}
+                                {r.result === 'pending' && '⏳ In Progress'}
+                              </span>
+                            </td>
+
+                            {/* Latency */}
+                            <td>
+                              {r.responseTimeSec !== null && r.responseTimeSec !== undefined ? (
+                                <span style={{ fontWeight: 600, color: r.responseTimeSec > 35 ? '#ea580c' : '#0f172a' }}>
+                                  {Number(r.responseTimeSec).toFixed(1)}s
+                                </span>
+                              ) : (
+                                <span style={{ color: '#94a3b8' }}>—</span>
+                              )}
+                            </td>
+
+                            {/* Points */}
+                            <td>
+                              <span style={{
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                color: r.result === 'passed' ? '#16a34a' : (r.result === 'failed_incorrect' ? '#dc2626' : '#64748b'),
+                                background: r.result === 'passed' ? '#dcfce7' : (r.result === 'failed_incorrect' ? '#fee2e2' : '#f1f5f9'),
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
+                              }}>
+                                {r.result === 'passed' ? `+${r.computedPoints || 100} pts` : `${r.computedPoints || 0} pts`}
+                              </span>
+                            </td>
+
+                            {/* Window Focus */}
+                            <td>
+                              {r.windowFocused !== undefined && r.windowFocused !== null ? (
+                                <span className={`bingo-focus-indicator ${r.windowFocused ? 'focused' : 'unfocused'}`}>
+                                  {r.windowFocused ? '🖥️ Focused' : '❌ Unfocused'}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#94a3b8' }}>—</span>
+                              )}
+                            </td>
+
+                            {/* Strike */}
+                            <td>
+                              <span className={`bingo-strike-pill strike-${r.strikeNumber || 1}`}>
+                                {r.strikeNumber === 2 ? '🚨 Strike 2 (Deduction)' : 'Strike 1'}
+                              </span>
+                            </td>
+
+                            {/* Time */}
+                            <td style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.8rem' }}>
+                              {formatDate(millis, timezone)} {formatTime(millis, timezone)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Round Speed & Accuracy Podium */}
+              {roundPodium.length > 0 && (
+                <div className="bingo-podium-card" data-testid="bingo-podium-card">
+                  <div className="bingo-podium-header">
+                    <span className="bingo-podium-title">⚡ Round Speed & Accuracy Podium</span>
+                    {roundSpeedMetrics && (
+                      <div className="bingo-podium-benchmarks">
+                        <span>⚡ Fastest: <strong>{roundSpeedMetrics.fastest}s</strong></span>
+                        <span>📊 Median: <strong>{roundSpeedMetrics.median}s</strong></span>
+                        <span>⏱️ Slowest Correct: <strong>{roundSpeedMetrics.slowest}s</strong></span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="bingo-podium-grid">
+                    {roundPodium.map((pod, idx) => (
+                      <div key={pod.id} className={`bingo-podium-step step-${idx + 1}`} data-testid={`podium-step-${idx + 1}`}>
+                        <div className="podium-badge">
+                          {idx === 0 ? '🥇 1st' : idx === 1 ? '🥈 2nd' : '🥉 3rd'}
+                        </div>
+                        <div className="podium-avatar">
+                          {idx === 0 ? '👑' : idx === 1 ? '⭐' : '✨'}
+                        </div>
+                        <div className="podium-student-name" title={pod.displayName}>
+                          {pod.displayName}
+                        </div>
+                        <div className="podium-student-email">
+                          {pod.studentEmail}
+                        </div>
+                        <div className="podium-stats">
+                          <span className="podium-speed">⚡ {pod.responseTimeSec}s</span>
+                          <span className="podium-points">+{pod.computedPoints || 100} pts</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cumulative Class Leaderboard */}
+              <div className="bingo-table-wrapper" data-testid="bingo-cumulative-leaderboard">
+              <table className="bingo-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '80px', textAlign: 'center' }}>Rank</th>
+                    <th>Student</th>
+                    <th>Cohort / Programme</th>
+                    <th>Total Score</th>
+                    <th>Checks Passed</th>
+                    <th>Accuracy</th>
+                    <th>Fastest Speed</th>
+                    <th>Avg Speed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cumulativeLeaderboard.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                        No student leaderboard records available.
+                      </td>
+                    </tr>
+                  ) : (
+                    cumulativeLeaderboard.map((st) => (
+                      <tr key={st.studentUid}>
+                        <td style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem' }}>
+                          {st.overallRank === 1 ? '🥇 #1' :
+                           st.overallRank === 2 ? '🥈 #2' :
+                           st.overallRank === 3 ? '🥉 #3' :
+                           `#${st.overallRank}`}
+                        </td>
+                        <td>
+                          <div className="bingo-student-cell">
+                            <span className="bingo-student-email" style={{ fontWeight: 600 }}>
+                              {st.displayName}
+                            </span>
+                            {st.displayName !== st.studentEmail && (
+                              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{st.studentEmail}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '0.8rem', color: '#475569' }}>
+                            {[st.profile?.studentClass, st.profile?.programme].filter(Boolean).join(' • ') || '—'}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{
+                            fontSize: '0.92rem',
+                            fontWeight: 800,
+                            color: '#7e22ce',
+                            background: '#faf5ff',
+                            padding: '3px 10px',
+                            borderRadius: '9999px',
+                            border: '1px solid #e9d5ff',
+                          }}>
+                            ⭐ {st.totalPoints} pts
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{st.passed}</strong> / {st.total}
+                        </td>
+                        <td>
+                          <span style={{
+                            fontWeight: 700,
+                            color: st.passRate >= 80 ? '#16a34a' : (st.passRate >= 50 ? '#d97706' : '#dc2626')
+                          }}>
+                            {st.passRate}%
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 700, color: '#2563eb' }}>
+                          {st.fastest !== '—' ? `${st.fastest}s` : '—'}
+                        </td>
+                        <td style={{ fontWeight: 600, color: '#475569' }}>
+                          {st.avgLatency !== '—' ? `${st.avgLatency}s` : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         </>
       )}
 

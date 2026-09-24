@@ -617,8 +617,10 @@ export async function generateBingoChallenge({
     }
 
     const bingoRef = db.collection(`classes/${classId}/bingoRecords`).doc();
+    const roundId = `round_${studentIssuedAtMillis}`;
     const bingoRecord = {
       id: bingoRef.id,
+      roundId,
       classId,
       studentUid,
       studentEmail,
@@ -629,6 +631,8 @@ export async function generateBingoChallenge({
       selectedOptionText: null,
       result: 'pending',
       responseTimeSec: null,
+      rank: null,
+      pointsAwarded: 0,
       questionSource: qData.questionSource,
       bankQuestionId: qData.bankQuestionId || null,
       screenshotUrl: qData.screenshotUrl || null,
@@ -647,6 +651,7 @@ export async function generateBingoChallenge({
     const studentPropsData = {
       activeBingo: {
         bingoId: bingoRef.id,
+        roundId,
         classId,
         question: qData.question,
         options: qData.options,
@@ -657,6 +662,8 @@ export async function generateBingoChallenge({
         result: null,
         selectedIndex: null,
         responseTimeSec: null,
+        rank: null,
+        pointsAwarded: 0,
         strikeNumber: Number(strikeNumber) || 1,
         questionSource: qData.questionSource,
         priorBingoId: priorBingoId || null,
@@ -757,6 +764,100 @@ export async function submitBingoResponse({
   const retryDelayMinutes = Math.min(15, Math.max(1, Number(classData.bingoRetryDelayMinutes) || 3));
   const retryDelaySeconds = retryDelayMinutes * 60;
 
+  // Query all submissions for this round to compute live rank & leaderboard
+  const issuedAtMillis = record.issuedAtMillis;
+  let roundRecords = [];
+  try {
+    if (issuedAtMillis) {
+      const snap = await db.collection(`classes/${classId}/bingoRecords`)
+        .where('issuedAtMillis', '==', issuedAtMillis)
+        .get();
+      if (snap && typeof snap.forEach === 'function') {
+        snap.forEach((d) => {
+          if (d && typeof d.data === 'function') {
+            roundRecords.push({ id: d.id, ...d.data() });
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[submitBingoResponse] Error querying round records for ranking:', err);
+  }
+
+  // Ensure current record is reflected in the round list with latest values
+  const currentRecordData = {
+    ...record,
+    id: bingoId,
+    studentUid,
+    studentEmail: record.studentEmail || '',
+    result,
+    responseTimeSec: actualLatency,
+    isCorrect,
+  };
+  const myRecordIdx = roundRecords.findIndex((r) => r.id === bingoId);
+  if (myRecordIdx >= 0) {
+    roundRecords[myRecordIdx] = currentRecordData;
+  } else {
+    roundRecords.push(currentRecordData);
+  }
+
+  // Split into categories to compute fair ranking:
+  // 1. Correct answers (passed), sorted by lowest latency first
+  // 2. Incorrect answers (failed_incorrect), sorted by latency
+  // 3. Timed-out answers (missed_timeout)
+  // 4. Pending answers
+  const passedList = roundRecords
+    .filter((r) => r.result === 'passed')
+    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+  const incorrectList = roundRecords
+    .filter((r) => r.result === 'failed_incorrect')
+    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+  const timeoutList = roundRecords
+    .filter((r) => r.result === 'missed_timeout')
+    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+  const pendingList = roundRecords.filter((r) => r.result === 'pending');
+
+  const fullRankedList = [...passedList, ...incorrectList, ...timeoutList, ...pendingList];
+  const myRankIndex = fullRankedList.findIndex((r) => r.studentUid === studentUid);
+  const currentRank = myRankIndex >= 0 ? myRankIndex + 1 : roundRecords.length;
+  const totalStudentsInRound = roundRecords.length || Object.keys(classData.students || {}).length || 1;
+
+  // Build top 5 podium leaderboard for this round
+  const topLeaderboard = fullRankedList.slice(0, 5).map((r, idx) => ({
+    rank: idx + 1,
+    studentUid: r.studentUid,
+    studentEmail: r.studentEmail || '',
+    result: r.result,
+    responseTimeSec: r.responseTimeSec !== null && r.responseTimeSec !== undefined ? Number(Number(r.responseTimeSec).toFixed(2)) : null,
+  }));
+
+  // Scoring Rule calculation
+  const scoringRule = classData.bingoScoringRule || {
+    enabled: true,
+    baseCorrectPoints: 100,
+    speedBonusMaxPoints: 50,
+    rankBonus: { 1: 50, 2: 30, 3: 20 },
+    incorrectDeduction: 0,
+  };
+
+  let pointsAwarded = 0;
+  if (isCorrect) {
+    const base = Number(scoringRule.baseCorrectPoints ?? 100);
+    const maxSpeed = Number(scoringRule.speedBonusMaxPoints ?? 50);
+    const timeLimit = Number(record.timeLimitSeconds || 30);
+    const timeRatioRemaining = Math.max(0, Math.min(1, (timeLimit - actualLatency) / timeLimit));
+    const speedBonus = Math.round(maxSpeed * timeRatioRemaining);
+
+    const rankBonusMap = scoringRule.rankBonus || { 1: 50, 2: 30, 3: 20 };
+    const rankBonus = Number(rankBonusMap[currentRank] || rankBonusMap[String(currentRank)] || 0);
+
+    pointsAwarded = base + speedBonus + rankBonus;
+  } else if (result === 'failed_incorrect') {
+    pointsAwarded = -Math.abs(Number(scoringRule.incorrectDeduction || 0));
+  } else {
+    pointsAwarded = 0;
+  }
+
   // 1. Update the permanent bingoRecord
   await bingoDocRef.update({
     selectedIndex: isTimeout ? null : Number(selectedIndex),
@@ -765,6 +866,10 @@ export async function submitBingoResponse({
     responseTimeSec: actualLatency,
     windowFocused: Boolean(windowFocused),
     answeredAt: FieldValue.serverTimestamp(),
+    rank: currentRank,
+    totalStudents: totalStudentsInRound,
+    pointsAwarded,
+    roundId: record.roundId || (issuedAtMillis ? `round_${issuedAtMillis}` : null),
   });
 
   // 2. Update student properties status and stats
@@ -772,11 +877,24 @@ export async function submitBingoResponse({
   const studentPropsDoc = await studentPropsRef.get();
   const prevStats = studentPropsDoc.exists ? (studentPropsDoc.data()?.bingoStats || {}) : {};
 
+  const prevTotalPoints = Number(prevStats.totalPoints || 0);
+  const prevTotalLatency = Number(prevStats.totalLatency || 0);
+  const prevLatencyCount = Number(prevStats.latencyCount || 0);
+  const newLatencyCount = prevLatencyCount + 1;
+  const newTotalLatency = prevTotalLatency + actualLatency;
+  const avgLatency = Number((newTotalLatency / newLatencyCount).toFixed(2));
+  const bestRank = Math.min(Number(prevStats.bestRank || 9999), currentRank);
+
   const newStats = {
     total: (prevStats.total || 0) + 1,
     passed: (prevStats.passed || 0) + (result === 'passed' ? 1 : 0),
     failed: (prevStats.failed || 0) + (result !== 'passed' ? 1 : 0),
     lastResult: result,
+    totalPoints: prevTotalPoints + pointsAwarded,
+    averageResponseTimeSec: avgLatency,
+    totalLatency: newTotalLatency,
+    latencyCount: newLatencyCount,
+    bestRank: bestRank === 9999 ? currentRank : bestRank,
   };
 
   const existingActiveBingo = (studentPropsDoc.exists && studentPropsDoc.data()?.activeBingo) || {};
@@ -787,6 +905,10 @@ export async function submitBingoResponse({
       status: result,
       result: result,
       responseTimeSec: actualLatency,
+      rank: currentRank,
+      totalStudents: totalStudentsInRound,
+      pointsAwarded,
+      leaderboard: topLeaderboard,
     },
     bingoStats: newStats,
   };
@@ -888,6 +1010,11 @@ export async function submitBingoResponse({
     result,
     isCorrect,
     correctIndex: record.correctIndex,
+    responseTimeSec: actualLatency,
+    rank: currentRank,
+    totalStudents: totalStudentsInRound,
+    pointsAwarded,
+    leaderboard: topLeaderboard,
   };
 }
 

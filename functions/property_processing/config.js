@@ -31,7 +31,7 @@ const _detectedProjectId = process.env.GCLOUD_PROJECT || (() => {
   try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId; } catch { return ''; }
 })() || '';
 const _isDevRuntime = _detectedProjectId === 'it114115-dev-2026' || _detectedProjectId.includes('dev');
-const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : 'stu.vtc.edu.hk,gmail.com';
+const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : 'stu.vtc.edu.hk';
 
 export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || _fallbackStudentDomains)
   .split(',')

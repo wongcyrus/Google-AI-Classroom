@@ -246,6 +246,14 @@ describe('StudentMobileView Component', () => {
           selectedIndex: 0,
         })
       );
+      expect(screen.getByTestId('bingo-result-card')).toBeInTheDocument();
+    });
+
+    // Dismiss the ranking result card
+    const dismissBtn = screen.getByTestId('bingo-btn-dismiss');
+    fireEvent.click(dismissBtn);
+
+    await waitFor(() => {
       expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
     });
   });
@@ -303,6 +311,14 @@ describe('StudentMobileView Component', () => {
           selectedIndex: 0,
         })
       );
+      expect(screen.getByTestId('bingo-result-card')).toBeInTheDocument();
+    });
+
+    // Dismiss the ranking result card
+    const dismissBtn = screen.getByTestId('bingo-btn-dismiss');
+    fireEvent.click(dismissBtn);
+
+    await waitFor(() => {
       expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
     });
   });

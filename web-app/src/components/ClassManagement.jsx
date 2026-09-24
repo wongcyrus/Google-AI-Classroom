@@ -57,6 +57,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [autoBingoEnabled, setAutoBingoEnabled] = useState(false);
   const [autoBingoIntervalMinutes, setAutoBingoIntervalMinutes] = useState(5);
   const [autoBingoMode, setAutoBingoMode] = useState('question_bank');
+  const [bingoScoringRule, setBingoScoringRule] = useState({
+    enabled: true,
+    baseCorrectPoints: 100,
+    speedBonusMaxPoints: 50,
+    rankBonus: { 1: 50, 2: 30, 3: 20 },
+  });
   const [enableClientAi, setEnableClientAi] = useState(true);
   const [gazeSensitivity, setGazeSensitivity] = useState('standard');
   const [customYawAngle, setCustomYawAngle] = useState(25);
@@ -254,6 +260,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setAutoBingoEnabled(Boolean(classData.autoBingoEnabled));
           setAutoBingoIntervalMinutes(classData.autoBingoIntervalMinutes !== undefined ? classData.autoBingoIntervalMinutes : 5);
           setAutoBingoMode(classData.autoBingoMode || 'question_bank');
+          setBingoScoringRule(classData.bingoScoringRule || {
+            enabled: true,
+            baseCorrectPoints: 100,
+            speedBonusMaxPoints: 50,
+            rankBonus: { 1: 50, 2: 30, 3: 20 },
+          });
           
           let derivedMode = classData.aiMonitoringMode;
           if (!derivedMode) {
@@ -352,6 +364,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAutoBingoEnabled(false);
         setAutoBingoIntervalMinutes(5);
         setAutoBingoMode('question_bank');
+        setBingoScoringRule({
+          enabled: true,
+          baseCorrectPoints: 100,
+          speedBonusMaxPoints: 50,
+          rankBonus: { 1: 50, 2: 30, 3: 20 },
+        });
       }
     };
     fetchClassDetails();
@@ -717,6 +735,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           autoBingoEnabled: Boolean(autoBingoEnabled),
           autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
           autoBingoMode: autoBingoMode || 'question_bank',
+          bingoScoringRule: bingoScoringRule || null,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -783,6 +802,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           autoBingoEnabled: Boolean(autoBingoEnabled),
           autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
           autoBingoMode: autoBingoMode || 'question_bank',
+          bingoScoringRule: bingoScoringRule || null,
           aiMonitoringMode: aiMonitoringMode || 'hybrid',
           voiceAiMode: voiceAiMode || 'hybrid',
           enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
@@ -1709,6 +1729,79 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </div>
           </>
         )}
+
+        {/* Bingo Speed & Ranking Scoring Rules Panel */}
+        <div className="form-group" style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '1rem' }} data-testid="bingo-scoring-rules-panel">
+          <label style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>
+            🏆 Bingo Speed & Ranking Scoring Rules
+          </label>
+          <p className="input-hint" style={{ margin: '0 0 12px 0' }}>
+            Configure how points are awarded for active presence checks based on answer correctness, answering speed, and class ranking.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+            <div>
+              <label htmlFor="bingo-base-points" style={{ fontSize: '0.8rem', color: '#475569' }}>Base Correct Pts</label>
+              <input
+                type="number"
+                id="bingo-base-points"
+                min="0"
+                max="1000"
+                value={bingoScoringRule.baseCorrectPoints ?? 100}
+                onChange={(e) => setBingoScoringRule(prev => ({ ...prev, baseCorrectPoints: parseInt(e.target.value, 10) || 0 }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+            <div>
+              <label htmlFor="bingo-speed-points" style={{ fontSize: '0.8rem', color: '#475569' }}>Max Speed Bonus</label>
+              <input
+                type="number"
+                id="bingo-speed-points"
+                min="0"
+                max="500"
+                value={bingoScoringRule.speedBonusMaxPoints ?? 50}
+                onChange={(e) => setBingoScoringRule(prev => ({ ...prev, speedBonusMaxPoints: parseInt(e.target.value, 10) || 0 }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+            <div>
+              <label htmlFor="bingo-rank1-points" style={{ fontSize: '0.8rem', color: '#475569' }}>🥇 1st Place Bonus</label>
+              <input
+                type="number"
+                id="bingo-rank1-points"
+                min="0"
+                max="500"
+                value={bingoScoringRule.rankBonus?.[1] ?? 50}
+                onChange={(e) => setBingoScoringRule(prev => ({ ...prev, rankBonus: { ...(prev.rankBonus || {}), 1: parseInt(e.target.value, 10) || 0 } }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+            <div>
+              <label htmlFor="bingo-rank2-points" style={{ fontSize: '0.8rem', color: '#475569' }}>🥈 2nd Place Bonus</label>
+              <input
+                type="number"
+                id="bingo-rank2-points"
+                min="0"
+                max="500"
+                value={bingoScoringRule.rankBonus?.[2] ?? 30}
+                onChange={(e) => setBingoScoringRule(prev => ({ ...prev, rankBonus: { ...(prev.rankBonus || {}), 2: parseInt(e.target.value, 10) || 0 } }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+            <div>
+              <label htmlFor="bingo-rank3-points" style={{ fontSize: '0.8rem', color: '#475569' }}>🥉 3rd Place Bonus</label>
+              <input
+                type="number"
+                id="bingo-rank3-points"
+                min="0"
+                max="500"
+                value={bingoScoringRule.rankBonus?.[3] ?? 20}
+                onChange={(e) => setBingoScoringRule(prev => ({ ...prev, rankBonus: { ...(prev.rankBonus || {}), 3: parseInt(e.target.value, 10) || 0 } }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+          </div>
+        </div>
 
 
         {(aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only') && (

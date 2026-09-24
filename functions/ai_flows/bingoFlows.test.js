@@ -265,13 +265,57 @@ describe('bingoFlows', () => {
       expect(res.success).toBe(true);
       expect(res.result).toBe('passed');
       expect(res.isCorrect).toBe(true);
+      expect(res.rank).toBe(1);
+      expect(res.pointsAwarded).toBeGreaterThan(100); // 100 base + speed bonus + rank 1 bonus
       expect(mockDocUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           result: 'passed',
           selectedIndex: 2,
           responseTimeSec: 3.4,
+          rank: 1,
+          pointsAwarded: expect.any(Number),
         })
       );
+    });
+
+    it('computes rank 2 when another student in the same round answered faster', async () => {
+      mockDocGet.mockImplementation(() => Promise.resolve({
+        exists: true,
+        data: () => ({
+          result: 'pending',
+          correctIndex: 1,
+          options: ['A', 'B', 'C', 'D'],
+          timeLimitSeconds: 30,
+          issuedAtMillis: 1727160000000,
+        }),
+      }));
+
+      // Simulate an existing faster student record in this round
+      mockCollectionGet.mockImplementation(() => Promise.resolve([
+        {
+          id: 'faster_bingo_id',
+          data: () => ({
+            studentUid: 'student_faster',
+            studentEmail: 'faster@stu.vtc.edu.hk',
+            result: 'passed',
+            responseTimeSec: 1.2,
+            isCorrect: true,
+          }),
+        },
+      ]));
+
+      const res = await submitBingoResponse({
+        classId: 'class_1',
+        studentUid: 'student_slower',
+        bingoId: 'bingo_slower_id',
+        selectedIndex: 1,
+        responseTimeSec: 4.5,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.rank).toBe(2);
+      expect(res.leaderboard[0].studentUid).toBe('student_faster');
+      expect(res.leaderboard[1].studentUid).toBe('student_slower');
     });
 
     it('marks failed_incorrect when wrong option is selected without triggering Strike 2 absence deduction', async () => {

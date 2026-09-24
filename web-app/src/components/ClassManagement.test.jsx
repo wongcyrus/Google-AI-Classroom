@@ -943,6 +943,59 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(screen.getByText(/大文/i)).toBeInTheDocument();
     });
   });
+
+  it('renders and configures Bingo speed and ranking scoring rules', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementationOnce((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    mockGetDoc.mockImplementation(() => Promise.resolve({
+      exists: () => true,
+      data: () => ({
+        ...mockClassData,
+        bingoScoringRule: {
+          enabled: true,
+          baseCorrectPoints: 120,
+          speedBonusMaxPoints: 60,
+          rankBonus: { 1: 80, 2: 40, 3: 20 },
+        },
+      }),
+    }));
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_SCORE" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('bingo-scoring-rules-panel')).toBeInTheDocument();
+      expect(screen.getByLabelText(/Base Correct Pts/i)).toHaveValue(120);
+    });
+
+    expect(screen.getByLabelText(/Max Speed Bonus/i)).toHaveValue(60);
+    expect(screen.getByLabelText(/1st Place Bonus/i)).toHaveValue(80);
+    expect(screen.getByLabelText(/2nd Place Bonus/i)).toHaveValue(40);
+    expect(screen.getByLabelText(/3rd Place Bonus/i)).toHaveValue(20);
+
+    const basePtsInput = screen.getByLabelText(/Base Correct Pts/i);
+    fireEvent.change(basePtsInput, { target: { value: '150' } });
+    expect(basePtsInput).toHaveValue(150);
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.bingoScoringRule).toMatchObject({
+      enabled: true,
+      baseCorrectPoints: 150,
+      speedBonusMaxPoints: 60,
+      rankBonus: { 1: 80, 2: 40, 3: 20 },
+    });
+  });
 });
 
 
