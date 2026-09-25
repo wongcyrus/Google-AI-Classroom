@@ -134,32 +134,13 @@ export async function executeMergeLectureRecordings(
     (r) => !r.storagePath || r.status === 'recording' || r.status === 'discarded'
   );
 
-  // If there are invalid/incomplete stubs and insufficient valid clips, clean them up and return early
+  // If there are fewer than 2 valid clips, simply return without modifying any Firestore documents
   if (validRecordings.length < 2) {
-    if (invalidRecordings.length > 0) {
-      try {
-        const cleanupBatch = currentDb.batch();
-        for (const badRec of invalidRecordings) {
-          if (badRec.status !== 'discarded') {
-            const badDocRef = recordingsRef.doc(badRec.id);
-            cleanupBatch.update(badDocRef, {
-              status: 'discarded',
-              discardReason: 'incomplete_or_interrupted_segment',
-              discardedAt: FieldValue.serverTimestamp(),
-            });
-          }
-        }
-        await cleanupBatch.commit();
-      } catch (cleanupErr) {
-        console.warn('Failed to auto-discard incomplete recording stubs:', cleanupErr.message);
-      }
-    }
-
     if (validRecordings.length === 1) {
       return {
         success: false,
         reason: 'single_valid_clip',
-        message: 'Only 1 completed recording clip exists (interrupted segments were ignored and cleaned up). Single clips do not require merging.',
+        message: 'Only 1 completed recording clip exists. Single clips do not require merging.',
         count: 1,
         ignoredIncompleteCount: invalidRecordings.length,
       };
@@ -319,7 +300,13 @@ export async function executeMergeLectureRecordings(
     }
 
     for (const badRec of invalidRecordings) {
-      if (badRec.status !== 'discarded') {
+      const startedMs = badRec.startedAt?.toMillis
+        ? badRec.startedAt.toMillis()
+        : badRec.startedAt
+        ? new Date(badRec.startedAt).getTime()
+        : 0;
+      const isStale = !startedMs || Date.now() - startedMs > 30 * 60 * 1000;
+      if (isStale && badRec.status !== 'discarded') {
         const badDocRef = recordingsRef.doc(badRec.id);
         batch.update(badDocRef, {
           status: 'discarded',
