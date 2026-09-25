@@ -186,11 +186,25 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
     return Object.values(groups)
       .filter((grp) => {
         const hasCombined = grp.items.some((r) => r.isCombined);
-        const unmergedClips = grp.items.filter((r) => !r.isCombined && !r.mergedIntoSessionId);
+        const unmergedClips = grp.items.filter(
+          (r) =>
+            !r.isCombined &&
+            !r.mergedIntoSessionId &&
+            (r.storagePath || r.videoUrl) &&
+            r.status !== 'recording' &&
+            r.status !== 'discarded'
+        );
         return !hasCombined && unmergedClips.length >= 2;
       })
       .map((grp) => {
-        const unmergedClips = grp.items.filter((r) => !r.isCombined && !r.mergedIntoSessionId);
+        const unmergedClips = grp.items.filter(
+          (r) =>
+            !r.isCombined &&
+            !r.mergedIntoSessionId &&
+            (r.storagePath || r.videoUrl) &&
+            r.status !== 'recording' &&
+            r.status !== 'discarded'
+        );
         const totalSecs = unmergedClips.reduce((sum, r) => sum + (r.durationSeconds || 0), 0);
         return {
           groupId: grp.groupId,

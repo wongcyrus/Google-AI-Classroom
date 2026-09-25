@@ -126,14 +126,56 @@ export async function executeMergeLectureRecordings(
     throw new HttpsError('invalid-argument', 'Either recordingIds or sessionGroupId must be specified.');
   }
 
-  if (recordingsToMerge.length < 2) {
+  // Separate valid completed recordings from incomplete/interrupted stubs
+  const validRecordings = recordingsToMerge.filter(
+    (r) => r.storagePath && r.status !== 'recording' && r.status !== 'discarded'
+  );
+  const invalidRecordings = recordingsToMerge.filter(
+    (r) => !r.storagePath || r.status === 'recording' || r.status === 'discarded'
+  );
+
+  // If there are invalid/incomplete stubs and insufficient valid clips, clean them up and return early
+  if (validRecordings.length < 2) {
+    if (invalidRecordings.length > 0) {
+      try {
+        const cleanupBatch = currentDb.batch();
+        for (const badRec of invalidRecordings) {
+          if (badRec.status !== 'discarded') {
+            const badDocRef = recordingsRef.doc(badRec.id);
+            cleanupBatch.update(badDocRef, {
+              status: 'discarded',
+              discardReason: 'incomplete_or_interrupted_segment',
+              discardedAt: FieldValue.serverTimestamp(),
+            });
+          }
+        }
+        await cleanupBatch.commit();
+      } catch (cleanupErr) {
+        console.warn('Failed to auto-discard incomplete recording stubs:', cleanupErr.message);
+      }
+    }
+
+    if (validRecordings.length === 1) {
+      return {
+        success: false,
+        reason: 'single_valid_clip',
+        message: 'Only 1 completed recording clip exists (interrupted segments were ignored and cleaned up). Single clips do not require merging.',
+        count: 1,
+        ignoredIncompleteCount: invalidRecordings.length,
+      };
+    }
+
     return {
       success: false,
       reason: 'insufficient_clips',
-      message: 'At least 2 recording clips are required to merge.',
-      count: recordingsToMerge.length,
+      message: 'No completed recording clips available to merge.',
+      count: validRecordings.length,
+      ignoredIncompleteCount: invalidRecordings.length,
     };
   }
+
+  // Use only the valid clips for FFmpeg concatenation
+  recordingsToMerge = validRecordings;
 
   // Sort chronologically by startedAt ascending
   recordingsToMerge.sort((a, b) => {
@@ -141,13 +183,6 @@ export async function executeMergeLectureRecordings(
     const timeB = b.startedAt?.toMillis ? b.startedAt.toMillis() : (b.startedAt ? new Date(b.startedAt).getTime() : 0);
     return timeA - timeB;
   });
-
-  // Verify all recordings have storage paths
-  for (const rec of recordingsToMerge) {
-    if (!rec.storagePath) {
-      throw new HttpsError('failed-precondition', `Recording "${rec.id}" has no video storage path.`);
-    }
-  }
 
   // 3. Set up temporary working directory
   const workDir = path.join(os.tmpdir(), `merge_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`);
@@ -270,7 +305,7 @@ export async function executeMergeLectureRecordings(
       classId,
     });
 
-    // 12. Mark individual source clips as merged fragments
+    // 12. Mark individual source clips as merged fragments & clean up dangling stubs
     const batch = currentDb.batch();
     for (let idx = 0; idx < recordingsToMerge.length; idx++) {
       const rec = recordingsToMerge[idx];
@@ -281,6 +316,17 @@ export async function executeMergeLectureRecordings(
         totalFragments: recordingsToMerge.length,
         mergedIntoSessionId: combinedSessionId,
       });
+    }
+
+    for (const badRec of invalidRecordings) {
+      if (badRec.status !== 'discarded') {
+        const badDocRef = recordingsRef.doc(badRec.id);
+        batch.update(badDocRef, {
+          status: 'discarded',
+          discardReason: 'ignored_incomplete_segment_during_merge',
+          discardedAt: FieldValue.serverTimestamp(),
+        });
+      }
     }
     await batch.commit();
 
@@ -294,6 +340,7 @@ export async function executeMergeLectureRecordings(
       storagePath: destVideoPath,
       audioStoragePath: destAudioPath,
       clipCount: recordingsToMerge.length,
+      ignoredIncompleteCount: invalidRecordings.length,
     };
   } finally {
     // 13. Clean up temporary files

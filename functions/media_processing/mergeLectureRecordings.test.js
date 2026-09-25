@@ -89,7 +89,19 @@ describe('mergeLectureRecordings Cloud Function', () => {
     ).rejects.toThrow(/Only teachers of this class can merge lecture recordings/);
   });
 
-  it('returns insufficient_clips if fewer than 2 clips exist to merge', async () => {
+  it('returns insufficient_clips if 0 valid clips exist to merge', async () => {
+    const db = createMockDb({
+      recordings: [],
+    });
+    const result = await executeMergeLectureRecordings(
+      { classId: 'CLASS-1', sessionGroupId: 'grp_1', auth: { uid: 'teacher-1' } },
+      { db }
+    );
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('insufficient_clips');
+  });
+
+  it('returns single_valid_clip if only 1 clip exists to merge', async () => {
     const db = createMockDb({
       recordings: [
         { id: 'rec_1', storagePath: 'recordings/CLASS-1/rec_1/lecture.webm', startedAt: 1000 },
@@ -100,7 +112,7 @@ describe('mergeLectureRecordings Cloud Function', () => {
       { db }
     );
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('insufficient_clips');
+    expect(result.reason).toBe('single_valid_clip');
   });
 
   it('successfully merges multiple clips and writes combined record', async () => {
@@ -140,5 +152,81 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(result.durationSeconds).toBe(3182);
     expect(result.clipCount).toBe(2);
     expect(result.videoUrl).toContain('firebasestorage.googleapis.com');
+  });
+
+  it('ignores trailing interrupted segment and merges valid clips successfully', async () => {
+    const recordings = [
+      {
+        id: 'rec_1',
+        storagePath: 'recordings/CLASS-1/rec_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711308 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+      {
+        id: 'rec_2',
+        storagePath: 'recordings/CLASS-1/rec_2/lecture.webm',
+        startedAt: { toMillis: () => 1789957830040 },
+        durationSeconds: 120,
+        status: 'ready',
+      },
+      {
+        id: 'rec_3_interrupted',
+        storagePath: null,
+        startedAt: { toMillis: () => 1789958000000 },
+        status: 'recording',
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(180);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_1', 'rec_2', 'rec_3_interrupted'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.clipCount).toBe(2);
+    expect(result.ignoredIncompleteCount).toBe(1);
+  });
+
+  it('handles 1 valid clip and 1 incomplete clip gracefully by returning single_valid_clip', async () => {
+    const recordings = [
+      {
+        id: 'rec_1',
+        storagePath: 'recordings/CLASS-1/rec_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711308 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+      {
+        id: 'rec_interrupted',
+        storagePath: null,
+        startedAt: { toMillis: () => 1789958000000 },
+        status: 'recording',
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_1', 'rec_interrupted'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('single_valid_clip');
+    expect(result.count).toBe(1);
+    expect(result.ignoredIncompleteCount).toBe(1);
   });
 });
