@@ -1,10 +1,44 @@
 # Recent Changes & Architectural Enhancements
 
 **Date**: September 2026  
-**System**: Google AI Classroom Assistant  
+**System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
-## 1. Anonymous Public Presentation Mode with 4-Digit PIN & Projector QR Code
+## 1. Schedule Segments (`scheduleHistory`) & Past Lesson Preservation Architecture
+
+**Date**: September 25, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1097/1097 tests, 121 test files), Database Migrated & Backed Up, and Deployed (Dev & Prod)  
+**Primary Files**:
+- Scheduling Engine: [`useClassSchedule.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useClassSchedule.js) & [`useClassSchedule.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useClassSchedule.test.js)
+- Safeguard Modal: [`ScheduleChangeModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleChangeModal.jsx), [`ScheduleChangeModal.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleChangeModal.css), [`ScheduleChangeModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleChangeModal.test.jsx)
+- Timetable Controls: [`ScheduleManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleManager.jsx) & [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx)
+- Student Portal Integration: [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)
+- Production Migration & Pre-flight Backup: [`migrate_class_schedules.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/migrate_class_schedules.mjs)
+- Architecture Documentation: [`schedule-segments-and-past-lesson-preservation.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/schedule-segments-and-past-lesson-preservation.md)
+
+### 1.1 Problem & Vulnerability
+- Previously, editing a class timetable mid-semester recalculated all lessons from the original semester `startDate`.
+- This shifted or wiped the start timestamps (`ISOString`) of lessons that had already occurred, orphaning past attendance documents (`classes/{classId}/attendance/{lessonId}`), compiled lesson videos, and custom titles.
+
+### 1.2 Multi-Segment Solution (`scheduleHistory`)
+- Extended `generateLessons(schedule, tz, customTitles, scheduleHistory)` to normalize and traverse all historical segments in `scheduleHistory` alongside the active `schedule`.
+- Lessons are generated strictly within their respective date boundaries (`startDate` to `endDate`), deduplicated at boundary timestamps, sorted chronologically, and indexed with continuous 1-based numbering (`Lesson 01`, `Lesson 02`...).
+- Downstream contracts (`DateRangeFilter`, `AttendanceView`, `VideoLibrary`, `StudentRecordsView`, Google Drive export) remain 100% stable because lesson ISO keys match existing Firestore records.
+
+### 1.3 Safeguard Modal & Class Management Interception
+- In `ClassManagement.jsx`, modifying the timetable on a class with completed lessons intercepts the save and triggers `ScheduleChangeModal`:
+  - **Option 1 (Recommended)**: Archives the previous timetable up to yesterday (or the last completed lesson date) into `scheduleHistory` and starts the new timetable today without shifting past records.
+  - **Option 2**: Overwrites the entire schedule from the start date (recalculating past lessons).
+- **Normal Class Sessions**: When a class ends normally, attendance and videos are saved without touching `scheduleHistory`. A history item is only created when an instructor explicitly updates the class timetable in Class Management.
+- **Multiple Timetable Changes**: Supports chaining 2, 3, or more timetable changes across a term. Each change appends another historical segment, maintaining an unbroken semester sequence.
+
+### 1.4 Production Migration & Pre-Flight Backups
+- Built `admin/scripts/migrate_class_schedules.mjs` which exports full JSON snapshots of all classes and subcollections to `admin/backups/` before performing any database writes.
+- Backed up and initialized `scheduleHistory: []` on all 9 production classes in `it114115-2627` with zero downtime and verified idempotence.
+
+---
+
+## 2. Anonymous Public Presentation Mode with 4-Digit PIN & Projector QR Code
 
 **Date**: September 24, 2026  
 **Status**: Implemented, Verified, Full Test Suite Passed (1087/1087 tests), and Deployed (Dev & Prod)  

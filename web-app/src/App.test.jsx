@@ -134,7 +134,7 @@ describe('App & MainHeader Components', () => {
     render(<App />);
 
     expect(await screen.findByTestId('teacher-view')).toBeInTheDocument();
-    expect(screen.getByText('Google AI Classroom Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Google AI Classroom')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
     expect(screen.getByText('⚙️ Class Manager')).toBeInTheDocument();
     expect(screen.getByText('📬 Mailbox')).toBeInTheDocument();

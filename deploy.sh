@@ -87,8 +87,14 @@ for arg in "$@"; do
     if [ "$arg" = "hosting" ]; then
         ONLY_HOSTING=true
         FIREBASE_DEPLOY_ARGS+=(--only hosting)
+    elif [ "$arg" = "functions" ]; then
+        FIREBASE_DEPLOY_ARGS+=(--only functions)
+    elif [ -d "functions/$arg" ] || [ -d "functions/${arg//-/_}" ]; then
+        codebase_name="${arg//_/-}"
+        FIREBASE_DEPLOY_ARGS+=(--only "functions:$codebase_name")
+    elif [[ "$arg" =~ ^functions: ]]; then
+        FIREBASE_DEPLOY_ARGS+=(--only "$arg")
     elif [ "$arg" = "--only" ]; then
-        ONLY_HOSTING=true
         FIREBASE_DEPLOY_ARGS+=("$arg")
     else
         FIREBASE_DEPLOY_ARGS+=("$arg")

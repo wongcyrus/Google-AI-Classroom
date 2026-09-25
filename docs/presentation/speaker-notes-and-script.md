@@ -4,7 +4,7 @@
 
 ---
 
-## Google AI Classroom Assistant
+## Google AI Classroom
 **Presenter:** Cyrus Wong (黃俊彥) — Google Developer Expert (GCP & AI/ML)  
 Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC) Hong Kong  
 **Event:** Google Cloud Tech Talk & Developer Conference Series  
@@ -654,7 +654,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  
-> "To conclude, the Google AI Classroom Assistant demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
+> "To conclude, the Google AI Classroom demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
 >
 > By pairing Google Cloud's world-class **Gemini Enterprise Agent Platform (Gemini 3 suite)** with **browser-native edge computing**, we achieved:
 > - Complete privacy-by-design with zero raw biometrics egress.

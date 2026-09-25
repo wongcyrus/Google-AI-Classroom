@@ -414,7 +414,8 @@ const StudentRecordsView = ({ user }) => {
         if (classObj.schedule) {
           try {
             const tz = classObj.timeZone || classObj.schedule?.timeZone || 'UTC';
-            const scheduled = generateLessons(classObj.schedule, tz);
+            const history = Array.isArray(classObj.scheduleHistory) ? classObj.scheduleHistory : [];
+            const scheduled = generateLessons(classObj.schedule, tz, {}, history);
             // If more than 60 scheduled slots (e.g. daily demo class over multiple years),
             // filter to slots up to now + 24h to avoid hundreds of empty future days
             const filteredSched = scheduled.length > 60

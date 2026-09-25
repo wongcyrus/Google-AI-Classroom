@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import MonitorView from './MonitorView';
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg_1' });
@@ -374,7 +374,7 @@ describe('MonitorView Component Suite', () => {
     expect(mockRunPerImageAnalysis).toHaveBeenCalled();
   });
 
-  it('opens and closes Not Sharing students modal', () => {
+  it('opens and closes Not Sharing students modal, allows sorting and searching', () => {
     render(<MonitorView {...defaultProps} />);
 
     // Not sharing button
@@ -382,7 +382,39 @@ describe('MonitorView Component Suite', () => {
     expect(notSharingBtn).toBeInTheDocument();
 
     fireEvent.click(notSharingBtn);
-    expect(screen.getByText(/Students Not Sharing/i)).toBeInTheDocument();
+    const modalTitle = screen.getByText(/Students Not Sharing/i);
+    expect(modalTitle).toBeInTheDocument();
+
+    // Verify search and sort controls exist
+    const searchInput = screen.getByPlaceholderText(/Search name, email, class/i);
+    expect(searchInput).toBeInTheDocument();
+
+    const sortSelect = screen.getByRole('combobox', { name: /Sort non-sharing students by/i });
+    expect(sortSelect).toBeInTheDocument();
+
+    const sortDirectionBtn = screen.getByRole('button', { name: /Toggle sort direction/i });
+    expect(sortDirectionBtn).toBeInTheDocument();
+
+    // Verify student is displayed in modal with email and never as Unknown Student
+    expect(screen.getAllByText('student2@school.edu').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Unknown Student')).not.toBeInTheDocument();
+
+    // Test changing sort option and direction
+    fireEvent.change(sortSelect, { target: { value: 'email' } });
+    expect(sortSelect.value).toBe('email');
+
+    fireEvent.click(sortDirectionBtn);
+    expect(screen.getByText(/↓ Desc \(Z-A\)/i)).toBeInTheDocument();
+
+    // Test searching
+    fireEvent.change(searchInput, { target: { value: 'student2' } });
+    expect(screen.getAllByText('student2@school.edu').length).toBeGreaterThanOrEqual(2);
+
+    fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
+    expect(screen.getByText(/No non-sharing students match "nonexistent"/i)).toBeInTheDocument();
+
+    // Clear search
+    fireEvent.change(searchInput, { target: { value: '' } });
 
     // Close modal
     const closeBtn = screen.getByRole('button', { name: /Close/i });

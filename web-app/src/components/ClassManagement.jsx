@@ -9,6 +9,8 @@ import './ClassManagement.css';
 import Modal from './Modal';
 import CustomPropertiesManager from './CustomPropertiesManager';
 import ScheduleManager from './ScheduleManager';
+import ScheduleChangeModal from './ScheduleChangeModal';
+import { generateLessons } from '../hooks/useClassSchedule';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
 import StudentBadge from './common/StudentBadge';
 import {
@@ -42,6 +44,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Hong_Kong');
   const [classSchedules, setClassSchedules] = useState([]);
+  const [initialSchedule, setInitialSchedule] = useState(null);
+  const [scheduleHistory, setScheduleHistory] = useState([]);
+  const [pastCompletedLessons, setPastCompletedLessons] = useState([]);
+  const [showScheduleChangeModal, setShowScheduleChangeModal] = useState(false);
+  const [pendingSavePayload, setPendingSavePayload] = useState(null);
 
   const [ipRestrictions, setIpRestrictions] = useState('');
   const [automaticCapture, setAutomaticCapture] = useState(true);
@@ -222,16 +229,36 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           } else {
             setStorageLimit('5');
           }
+          const history = Array.isArray(classData.scheduleHistory) ? classData.scheduleHistory : [];
+          setScheduleHistory(history);
           if (classData.schedule) {
+            setInitialSchedule(classData.schedule);
             setScheduleStartDate(classData.schedule.startDate || '');
             setScheduleEndDate(classData.schedule.endDate || '');
             setTimeZone(classData.schedule.timeZone || 'Asia/Hong_Kong');
             setClassSchedules(classData.schedule.timeSlots || []);
+
+            try {
+              const allLessons = generateLessons(
+                classData.schedule,
+                classData.schedule.timeZone || 'Asia/Hong_Kong',
+                classData.customLessonTitles || {},
+                history
+              );
+              const now = new Date();
+              const past = allLessons.filter((l) => new Date(l.end) < now);
+              setPastCompletedLessons(past);
+            } catch (err) {
+              console.warn('Error generating past lessons in ClassManagement:', err);
+              setPastCompletedLessons([]);
+            }
           } else {
+            setInitialSchedule(null);
             setScheduleStartDate('');
             setScheduleEndDate('');
             setTimeZone('Asia/Hong_Kong');
             setClassSchedules([]);
+            setPastCompletedLessons([]);
           }
           if (classData.teacherEmails) {
             setTeacherEmails(classData.teacherEmails.join('\n'));
@@ -327,6 +354,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setScheduleEndDate('');
         setTimeZone('Asia/Hong_Kong');
         setClassSchedules([]);
+        setInitialSchedule(null);
+        setScheduleHistory([]);
+        setPastCompletedLessons([]);
         setTeacherEmails('');
         setStudentEmails('');
         setStudentProfiles({});
@@ -640,6 +670,214 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     }
   };
 
+  const executeClassSave = async (payload, activeSchedule, historyToSave) => {
+    const {
+      targetClassId,
+      classRef,
+      teacherEmailList,
+      studentEmailList,
+      resolvedStudentProfiles,
+      storageQuotaBytes,
+      retentionDaysNum,
+      videoRetentionDaysNum,
+      ipList,
+    } = payload;
+
+    const updatedTeachers = [auth.currentUser.email, ...teacherEmailList];
+    const uniqueTeachers = [...new Set(updatedTeachers.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+
+    const updateData = {
+      name: className.trim() || targetClassId,
+      storageQuota: storageQuotaBytes,
+      retentionDays: retentionDaysNum,
+      videoRetentionDays: videoRetentionDaysNum,
+      schedule: activeSchedule,
+      scheduleHistory: historyToSave,
+      studentEmails: studentEmailList,
+      studentProfiles: resolvedStudentProfiles,
+      teacherEmails: uniqueTeachers,
+      ipRestrictions: ipList,
+      automaticCapture: automaticCapture,
+      automaticCombine: automaticCombine,
+      captureMode: captureMode || 'dual',
+      aiModel: aiModel || 'gemini-3.5-flash-lite',
+      requireFullScreenOnly: requireFullScreenOnly !== false,
+      faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
+      bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
+      bingoTimeLimitSeconds: parseInt(bingoTimeLimitSeconds, 10) || 30,
+      autoBingoEnabled: Boolean(autoBingoEnabled),
+      autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
+      autoBingoMode: autoBingoMode || 'question_bank',
+      bingoScoringRule: bingoScoringRule || null,
+      aiMonitoringMode: aiMonitoringMode || 'hybrid',
+      voiceAiMode: voiceAiMode || 'hybrid',
+      enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
+      gazeSensitivity: gazeSensitivity || 'standard',
+      customYawAngle: parseInt(customYawAngle, 10) || 25,
+      customPitchDownAngle: parseInt(customPitchDownAngle, 10) || -22,
+      customPitchUpAngle: parseInt(customPitchUpAngle, 10) || 26,
+      enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
+      cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
+      afterClassVideoPrompt: afterClassVideoPrompt || null,
+      liveImagePrompt: liveImagePrompt || null,
+      bingoPrompt: bingoPrompt || null,
+      liveAudioPrompt: liveAudioPrompt || null,
+      sessionAudioPrompt: sessionAudioPrompt || null,
+      gemmaIntentPrompt: gemmaIntentPrompt || null,
+      subtitlePrompt: subtitlePrompt || null,
+      subjectDomain:
+        subjectDomain === 'custom'
+          ? customSubjectDomain.trim() || 'General Studies & Interdisciplinary'
+          : subjectDomain || 'Computer Science & Software Development',
+      customSubjectDomain: customSubjectDomain || '',
+      sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
+      enableAudioCapture: enableAudioCapture || false,
+      audioCaptureMode: audioCaptureMode || 'mandatory',
+      audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
+      audioSilenceSuppression: audioSilenceSuppression !== false,
+      enableSegmentTranscription: enableSegmentTranscription || false,
+      enableCombinedLongAudio: enableCombinedLongAudio || false,
+      audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
+      audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
+      examPeriods: examPeriods || [],
+      studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
+      studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
+      defaultLectureRecording: defaultLectureRecording !== false,
+    };
+
+    await updateDoc(classRef, updateData);
+    setStudentEmails(studentEmailList.join('\n'));
+    setSuccessMessage('Class settings successfully updated!');
+
+    setInitialSchedule(activeSchedule);
+    setScheduleHistory(historyToSave);
+    setScheduleStartDate(activeSchedule.startDate);
+    setScheduleEndDate(activeSchedule.endDate);
+    setClassSchedules(activeSchedule.timeSlots || []);
+    setTimeZone(activeSchedule.timeZone || 'Asia/Hong_Kong');
+
+    try {
+      const refreshedLessons = generateLessons(
+        activeSchedule,
+        activeSchedule.timeZone || 'Asia/Hong_Kong',
+        {},
+        historyToSave
+      );
+      const now = new Date();
+      setPastCompletedLessons(refreshedLessons.filter((l) => new Date(l.end) < now));
+    } catch (e) {
+      console.warn('Error recalculating past lessons:', e);
+    }
+
+    // Sync all profiles to institutional studentDirectory
+    try {
+      const dirBatch = writeBatch(db);
+      let dirCount = 0;
+      for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
+        if (!normEmail || !prof || typeof prof !== 'object') continue;
+        if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
+        const dirRef = doc(db, 'studentDirectory', normEmail);
+        dirBatch.set(
+          dirRef,
+          {
+            email: normEmail,
+            studentName: prof.studentName || '',
+            nickname: prof.nickname || '',
+            programme: prof.programme || '',
+            studentClass: prof.studentClass || '',
+            lastUpdatedByClass: targetClassId,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+        dirCount++;
+      }
+      if (dirCount > 0) {
+        await dirBatch.commit();
+        setStudentDirectory((prev) => ({ ...prev, ...resolvedStudentProfiles }));
+      }
+    } catch (dirErr) {
+      console.warn('Direct studentDirectory batch sync skipped (backend trigger handles sync):', dirErr);
+    }
+    setStudentProfiles(resolvedStudentProfiles);
+    setPendingSavePayload(null);
+  };
+
+  const handleConfirmScheduleChange = async ({ action }) => {
+    setShowScheduleChangeModal(false);
+    if (!pendingSavePayload) return;
+
+    setSaving(true);
+    try {
+      let finalActiveSchedule = {
+        startDate: scheduleStartDate,
+        endDate: scheduleEndDate,
+        timeZone: timeZone,
+        timeSlots: classSchedules,
+      };
+      let finalScheduleHistory = [...(scheduleHistory || [])];
+
+      if (action === 'archive_and_apply') {
+        const tz = timeZone || 'Asia/Hong_Kong';
+        const now = new Date();
+        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(yesterday);
+
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(tomorrow);
+
+        const latestPastLesson = pastCompletedLessons[0];
+        const latestPastDateStr = latestPastLesson?.start
+          ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(latestPastLesson.start))
+          : null;
+
+        let archiveEndDate = yesterdayStr;
+        let newStartDate = todayStr;
+
+        if (latestPastDateStr && latestPastDateStr >= todayStr) {
+          archiveEndDate = todayStr;
+          newStartDate = tomorrowStr;
+        }
+
+        if (scheduleStartDate && scheduleStartDate > newStartDate) {
+          newStartDate = scheduleStartDate;
+          const dBefore = new Date(newStartDate + 'T00:00:00Z');
+          dBefore.setUTCDate(dBefore.getUTCDate() - 1);
+          archiveEndDate = dBefore.toISOString().split('T')[0];
+        }
+
+        if (archiveEndDate < (initialSchedule?.startDate || archiveEndDate)) {
+          archiveEndDate = initialSchedule.startDate;
+        }
+
+        const archivedSegment = {
+          startDate: initialSchedule?.startDate || archiveEndDate,
+          endDate: archiveEndDate,
+          timeZone: initialSchedule?.timeZone || tz,
+          timeSlots: initialSchedule?.timeSlots || [],
+          archivedAt: new Date().toISOString(),
+        };
+
+        finalScheduleHistory.push(archivedSegment);
+        finalActiveSchedule = {
+          ...finalActiveSchedule,
+          startDate: newStartDate,
+        };
+      }
+
+      await executeClassSave(pendingSavePayload, finalActiveSchedule, finalScheduleHistory);
+    } catch (err) {
+      console.error('Error saving schedule change:', err);
+      setError('Failed to update class schedule: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleUpdateClass = async () => {
     const activeClassId = (embeddedClassId || selectedClass || '').trim();
     const targetClassId = activeClassId || (classId || '').trim();
@@ -705,75 +943,50 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     });
 
     try {
-      if (classSnap.exists()) {
-        const updatedTeachers = [auth.currentUser.email, ...teacherEmailList];
-        const uniqueTeachers = [...new Set(updatedTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
+      const payload = {
+        targetClassId,
+        classRef,
+        teacherEmailList,
+        studentEmailList,
+        resolvedStudentProfiles,
+        storageQuotaBytes,
+        retentionDaysNum,
+        videoRetentionDaysNum,
+        ipList,
+      };
 
-        const updateData = {
-          name: className.trim() || targetClassId,
-          storageQuota: storageQuotaBytes,
-          retentionDays: retentionDaysNum,
-          videoRetentionDays: videoRetentionDaysNum,
-          schedule: {
-            startDate: scheduleStartDate,
-            endDate: scheduleEndDate,
-            timeZone: timeZone,
-            timeSlots: classSchedules,
-          },
-          studentEmails: studentEmailList,
-          studentProfiles: resolvedStudentProfiles,
-          teacherEmails: uniqueTeachers,
-          ipRestrictions: ipList,
-          automaticCapture: automaticCapture,
-          automaticCombine: automaticCombine,
-          captureMode: captureMode || 'dual',
-          aiModel: aiModel || 'gemini-3.5-flash-lite',
-          requireFullScreenOnly: requireFullScreenOnly !== false,
-          faceDebounceSeconds: parseInt(faceDebounceSeconds, 10) || 3,
-          bingoRetryDelayMinutes: parseInt(bingoRetryDelayMinutes, 10) || 3,
-          bingoTimeLimitSeconds: parseInt(bingoTimeLimitSeconds, 10) || 30,
-          autoBingoEnabled: Boolean(autoBingoEnabled),
-          autoBingoIntervalMinutes: parseInt(autoBingoIntervalMinutes, 10) || 5,
-          autoBingoMode: autoBingoMode || 'question_bank',
-          bingoScoringRule: bingoScoringRule || null,
-          aiMonitoringMode: aiMonitoringMode || 'hybrid',
-          voiceAiMode: voiceAiMode || 'hybrid',
-          enableClientAi: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'client_only',
-          gazeSensitivity: gazeSensitivity || 'standard',
-          customYawAngle: parseInt(customYawAngle, 10) || 25,
-          customPitchDownAngle: parseInt(customPitchDownAngle, 10) || -22,
-          customPitchUpAngle: parseInt(customPitchUpAngle, 10) || 26,
-          enableCloudFallback: aiMonitoringMode === 'hybrid' || aiMonitoringMode === 'cloud_only',
-          cloudFallbackRate: parseInt(cloudFallbackRate, 10) || 3,
-          afterClassVideoPrompt: afterClassVideoPrompt || null,
-          liveImagePrompt: liveImagePrompt || null,
-          bingoPrompt: bingoPrompt || null,
-          liveAudioPrompt: liveAudioPrompt || null,
-          sessionAudioPrompt: sessionAudioPrompt || null,
-          gemmaIntentPrompt: gemmaIntentPrompt || null,
-          subtitlePrompt: subtitlePrompt || null,
-          subjectDomain: subjectDomain === 'custom' ? (customSubjectDomain.trim() || 'General Studies & Interdisciplinary') : (subjectDomain || 'Computer Science & Software Development'),
-          customSubjectDomain: customSubjectDomain || '',
-          sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
-          enableAudioCapture: enableAudioCapture || false,
-          audioCaptureMode: audioCaptureMode || 'mandatory',
-          audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
-          audioSilenceSuppression: audioSilenceSuppression !== false,
-          enableSegmentTranscription: enableSegmentTranscription || false,
-          enableCombinedLongAudio: enableCombinedLongAudio || false,
-          audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
-          audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
-          examPeriods: examPeriods || [],
-          studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
-          studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
-          defaultLectureRecording: defaultLectureRecording !== false,
+      if (classSnap.exists()) {
+        const scheduleChanged = initialSchedule && (
+          initialSchedule.startDate !== scheduleStartDate ||
+          initialSchedule.endDate !== scheduleEndDate ||
+          initialSchedule.timeZone !== timeZone ||
+          JSON.stringify(initialSchedule.timeSlots || []) !== JSON.stringify(classSchedules || [])
+        );
+
+        if (scheduleChanged && pastCompletedLessons.length > 0) {
+          setPendingSavePayload(payload);
+          setSaving(false);
+          setShowScheduleChangeModal(true);
+          return;
+        }
+
+        const activeSchedule = {
+          startDate: scheduleStartDate,
+          endDate: scheduleEndDate,
+          timeZone: timeZone,
+          timeSlots: classSchedules,
         };
-        await updateDoc(classRef, updateData);
-        setStudentEmails(studentEmailList.join('\n'));
-        setSuccessMessage('Class settings successfully updated!');
+        await executeClassSave(payload, activeSchedule, scheduleHistory || []);
       } else {
         const initialTeachers = [auth.currentUser.email, ...teacherEmailList];
         const uniqueTeachers = [...new Set(initialTeachers.map(e => e.trim().toLowerCase()).filter(Boolean))];
+
+        const newSchedule = {
+          startDate: scheduleStartDate,
+          endDate: scheduleEndDate,
+          timeZone: timeZone,
+          timeSlots: classSchedules,
+        };
 
         await setDoc(classRef, {
           name: className.trim() || targetClassId,
@@ -783,12 +996,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
           videoRetentionDays: videoRetentionDaysNum,
-          schedule: {
-            startDate: scheduleStartDate,
-            endDate: scheduleEndDate,
-            timeZone: timeZone,
-            timeSlots: classSchedules,
-          },
+          schedule: newSchedule,
+          scheduleHistory: [],
           storageUsage: 0,
           ipRestrictions: ipList,
           automaticCapture: automaticCapture,
@@ -839,39 +1048,42 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         });
 
         setSuccessMessage('Class successfully created!');
+        setInitialSchedule(newSchedule);
+        setScheduleHistory([]);
+        setPastCompletedLessons([]);
         if (!embeddedClassId) {
           setClasses(prev => [...prev, { id: targetClassId }]);
           setSelectedClass(targetClassId);
         }
-      }
 
-      // Sync all profiles to institutional studentDirectory
-      try {
-        const dirBatch = writeBatch(db);
-        let dirCount = 0;
-        for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
-          if (!normEmail || !prof || typeof prof !== 'object') continue;
-          if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
-          const dirRef = doc(db, 'studentDirectory', normEmail);
-          dirBatch.set(dirRef, {
-            email: normEmail,
-            studentName: prof.studentName || '',
-            nickname: prof.nickname || '',
-            programme: prof.programme || '',
-            studentClass: prof.studentClass || '',
-            lastUpdatedByClass: targetClassId,
-            updatedAt: new Date().toISOString(),
-          }, { merge: true });
-          dirCount++;
+        // Sync all profiles to institutional studentDirectory
+        try {
+          const dirBatch = writeBatch(db);
+          let dirCount = 0;
+          for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
+            if (!normEmail || !prof || typeof prof !== 'object') continue;
+            if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
+            const dirRef = doc(db, 'studentDirectory', normEmail);
+            dirBatch.set(dirRef, {
+              email: normEmail,
+              studentName: prof.studentName || '',
+              nickname: prof.nickname || '',
+              programme: prof.programme || '',
+              studentClass: prof.studentClass || '',
+              lastUpdatedByClass: targetClassId,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true });
+            dirCount++;
+          }
+          if (dirCount > 0) {
+            await dirBatch.commit();
+            setStudentDirectory(prev => ({ ...prev, ...resolvedStudentProfiles }));
+          }
+        } catch (dirErr) {
+          console.warn('Direct studentDirectory batch sync skipped (backend trigger handles sync):', dirErr);
         }
-        if (dirCount > 0) {
-          await dirBatch.commit();
-          setStudentDirectory(prev => ({ ...prev, ...resolvedStudentProfiles }));
-        }
-      } catch (dirErr) {
-        console.warn('Direct studentDirectory batch sync skipped (backend trigger handles sync):', dirErr);
+        setStudentProfiles(resolvedStudentProfiles);
       }
-      setStudentProfiles(resolvedStudentProfiles);
     } catch (err) {
       console.error('Error updating or creating class:', err);
       setError(err.message || 'Failed to save class.');
@@ -1232,6 +1444,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setTimeZone={setTimeZone} 
           classSchedules={classSchedules} 
           setClassSchedules={setClassSchedules} 
+          pastLessonsCount={pastCompletedLessons.length}
         />
       </div>
 
@@ -2396,6 +2609,25 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         existingEmails={studentEmails}
         existingProfiles={{ ...studentDirectory, ...studentProfiles }}
         classId={selectedClass || classId}
+      />
+
+      {/* Class Timetable Safeguard Modal */}
+      <ScheduleChangeModal
+        show={showScheduleChangeModal}
+        onClose={() => {
+          setShowScheduleChangeModal(false);
+          setSaving(false);
+          setPendingSavePayload(null);
+        }}
+        onConfirm={handleConfirmScheduleChange}
+        pastLessons={pastCompletedLessons}
+        existingSchedule={initialSchedule || {}}
+        newSchedule={{
+          startDate: scheduleStartDate,
+          endDate: scheduleEndDate,
+          timeZone: timeZone,
+          timeSlots: classSchedules,
+        }}
       />
     </div>
   );

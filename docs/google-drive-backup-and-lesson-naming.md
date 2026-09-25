@@ -91,7 +91,7 @@ export const sanitizeFolderName = (name) => {
 ### 3.1 Least-Privilege OAuth 2.0 Scope
 The Google Drive integration adheres strictly to Google's principle of least privilege:
 - **Requested Scope**: `https://www.googleapis.com/auth/drive.file`
-- **Security Boundary**: Grants access **ONLY** to files and folders opened or created by the Google AI Classroom Assistant application. The app cannot view, modify, list, or delete the user's personal documents, photos, or existing Google Drive files.
+- **Security Boundary**: Grants access **ONLY** to files and folders opened or created by the Google AI Classroom application. The app cannot view, modify, list, or delete the user's personal documents, photos, or existing Google Drive files.
 - **Token Management**: The OAuth access token is retained in browser memory (`useGoogleDrive.js`) with proactive token validation before batch uploads.
 
 ### 3.2 Configurable Base Folder

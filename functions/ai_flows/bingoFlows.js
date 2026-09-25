@@ -1,5 +1,6 @@
 import './firebase.js';
 import { getFirestore, FieldValue, FieldPath } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { getFunctions } from 'firebase-admin/functions';
 import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
@@ -407,20 +408,50 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
   if (questionSource === 'student_screen') {
     if (!studentUid) return null;
     try {
-      // Check livePeeks first for ultra-fresh thumbnail, else recent screenshots collection
       let screenshotUrl = null;
-      const livePeekDoc = await db.doc(`classes/${classId}/livePeeks/${studentUid}`).get();
-      if (livePeekDoc.exists && livePeekDoc.data()?.screenshotUrl) {
-        screenshotUrl = livePeekDoc.data().screenshotUrl;
-      } else {
-        const snap = await db.collection('screenshots')
-          .where('classId', '==', classId)
-          .where('studentUid', '==', studentUid)
-          .orderBy('timestamp', 'desc')
-          .limit(1)
-          .get();
-        if (!snap.empty && snap.docs?.[0]) {
-          screenshotUrl = snap.docs[0].data()?.screenshotUrl;
+
+      // 1. Check live status document first (classes/{classId}/status/{studentUid})
+      const statusDoc = await db.doc(`classes/${classId}/status/${studentUid}`).get();
+      const statusData = statusDoc.exists ? statusDoc.data() : null;
+      const imagePath = statusData?.latestScreenPath || statusData?.latestImagePath;
+
+      if (imagePath) {
+        try {
+          const storage = getStorage();
+          const file = storage.bucket().file(imagePath);
+          const [exists] = await file.exists();
+          if (exists) {
+            const [fileBuffer] = await file.download();
+            screenshotUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
+          }
+        } catch (storageErr) {
+          console.warn(`[resolveBingoQuestion] Could not load storage image from ${imagePath}:`, storageErr);
+        }
+      }
+
+      // 2. Check livePeeks / screenshots collection fallback
+      if (!screenshotUrl) {
+        const livePeekDoc = await db.doc(`classes/${classId}/livePeeks/${studentUid}`).get();
+        if (livePeekDoc.exists && livePeekDoc.data()?.screenshotUrl) {
+          screenshotUrl = livePeekDoc.data().screenshotUrl;
+        } else {
+          const snap = await db.collection('screenshots')
+            .where('classId', '==', classId)
+            .where('studentUid', '==', studentUid)
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+          if (!snap.empty && snap.docs?.[0]) {
+            const data = snap.docs[0].data();
+            screenshotUrl = data?.screenshotUrl;
+            if (!screenshotUrl && data?.imagePath) {
+              try {
+                const storage = getStorage();
+                const [fileBuffer] = await storage.bucket().file(data.imagePath).download();
+                screenshotUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
+              } catch (e) {}
+            }
+          }
         }
       }
 
@@ -571,28 +602,51 @@ export async function generateBingoChallenge({
     return { success: false, message: 'No target students found' };
   }
 
-  // If questionSource is 'teacher_screen' or 'question_bank', generate question ONCE for all targets!
-  // Safety: For multiple targets, student_screen mode would trigger N sequential vision calls. Use teacher_screen instead.
-  let effectiveQuestionSource = questionSource;
-  if (targetUids.length > 1 && effectiveQuestionSource === 'student_screen') {
-    console.log(`[generateBingoChallenge] Multiple targets (${targetUids.length}) specified with student_screen mode. Using teacher_screen for class-wide efficiency.`);
-    effectiveQuestionSource = 'teacher_screen';
-  }
-
   let sharedQuestionData = null;
-  if (effectiveQuestionSource !== 'student_screen') {
+  if (questionSource !== 'student_screen') {
     sharedQuestionData = await resolveBingoQuestion({
       classId,
       studentUid: targetUids[0],
-      questionSource: effectiveQuestionSource,
+      questionSource,
     });
-    if (!sharedQuestionData && effectiveQuestionSource === 'teacher_screen') {
+    if (!sharedQuestionData && questionSource === 'teacher_screen') {
       return {
         success: false,
         skipped: true,
         reason: 'teacher_screen_not_broadcasting',
         message: 'Teacher screen broadcast frame is unavailable. Skipped vision challenge without fallback.',
       };
+    }
+  }
+
+  // Pre-resolve questions for all students (supporting bounded concurrency for student_screen anti-decoy)
+  const studentQuestions = {};
+  if (sharedQuestionData) {
+    for (const sUid of targetUids) {
+      studentQuestions[sUid] = sharedQuestionData;
+    }
+  } else {
+    const CONCURRENCY = 5;
+    for (let i = 0; i < targetUids.length; i += CONCURRENCY) {
+      const chunk = targetUids.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map(async (studentUid) => {
+        let qData = await resolveBingoQuestion({
+          classId,
+          studentUid,
+          questionSource,
+        });
+        // Anti-decoy Fallback: If student has no active screen capture or is offline,
+        // fallback to class question bank so that non-sharing students cannot escape presence verification!
+        if (!qData) {
+          console.log(`[generateBingoChallenge] Student ${studentUid} screen capture unavailable. Falling back to question bank for this student.`);
+          qData = await resolveBingoQuestion({
+            classId,
+            studentUid,
+            questionSource: 'question_bank',
+          });
+        }
+        studentQuestions[studentUid] = qData;
+      }));
     }
   }
 
@@ -603,13 +657,7 @@ export async function generateBingoChallenge({
 
   for (const studentUid of targetUids) {
     const studentEmail = (studentsMap[studentUid] || '').toLowerCase();
-
-    // If individual student screen mode, generate per-student
-    const qData = sharedQuestionData || await resolveBingoQuestion({
-      classId,
-      studentUid,
-      questionSource: effectiveQuestionSource,
-    });
+    const qData = studentQuestions[studentUid];
 
     if (!qData) {
       console.log(`[generateBingoChallenge] Skipping student ${studentUid} because question could not be generated.`);

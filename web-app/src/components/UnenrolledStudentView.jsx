@@ -63,7 +63,7 @@ const UnenrolledStudentView = ({ user, onRefresh, onSignOut }) => {
           <div className="unenrolled-icon-wrapper">
             <span role="img" aria-label="School">🏫</span>
           </div>
-          <h1 className="unenrolled-title">Welcome to Google AI Classroom Assistant</h1>
+          <h1 className="unenrolled-title">Welcome to Google AI Classroom</h1>
           <p className="unenrolled-subtitle">
             You are signed in with your student account, but you haven't been enrolled in any classroom rosters yet.
           </p>

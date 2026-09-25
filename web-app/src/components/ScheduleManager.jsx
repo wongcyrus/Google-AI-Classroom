@@ -40,7 +40,8 @@ const ScheduleManager = ({
     timeZone, 
     setTimeZone, 
     classSchedules, 
-    setClassSchedules 
+    setClassSchedules,
+    pastLessonsCount = 0
 }) => {
   const [newSchedule, setNewSchedule] = useState({
     startTime: '',
@@ -117,6 +118,26 @@ const ScheduleManager = ({
 
   return (
     <>
+      {pastLessonsCount > 0 && (
+        <div className="schedule-past-info-banner" style={{
+          backgroundColor: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          borderRadius: '6px',
+          padding: '0.65rem 0.95rem',
+          marginBottom: '1rem',
+          fontSize: '0.85rem',
+          color: '#1e40af',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}>
+          <span>ℹ️</span>
+          <span>
+            <strong>{pastLessonsCount} completed {pastLessonsCount === 1 ? 'lesson is' : 'lessons are'}</strong> recorded under this class. Changing dates or times will automatically preserve past lesson attendance and videos.
+          </span>
+        </div>
+      )}
+
       <div className="form-group">
         <label>Schedule</label>
         <div className="schedule-settings">

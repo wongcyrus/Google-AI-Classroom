@@ -4,7 +4,7 @@
 
 ---
 
-Welcome to the **Google AI Classroom Assistant** Administrator and DevOps Manual. This guide details cloud provisioning, Terraform infrastructure-as-code, Firebase security rules governance, multi-codebase Cloud Functions, automated identity lifecycle management, AI FinOps budgeting, and disaster recovery.
+Welcome to the **Google AI Classroom** Administrator and DevOps Manual. This guide details cloud provisioning, Terraform infrastructure-as-code, Firebase security rules governance, multi-codebase Cloud Functions, automated identity lifecycle management, AI FinOps budgeting, and disaster recovery.
 
 ---
 

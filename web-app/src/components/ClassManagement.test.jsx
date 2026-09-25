@@ -996,6 +996,122 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       rankBonus: { 1: 80, 2: 40, 3: 20 },
     });
   });
+
+  it('opens schedule safeguard modal when schedule changes with completed lessons and archives history on confirm', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          schedule: {
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeZone: 'Asia/Hong_Kong',
+            timeSlots: [{ startTime: '09:00', endTime: '11:00', days: ['Mon'] }],
+          },
+          scheduleHistory: [],
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_SCHED" />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026-09-01')).toBeInTheDocument();
+    });
+
+    // Modify schedule end date
+    const endDateInput = screen.getByDisplayValue('2026-12-31');
+    fireEvent.change(endDateInput, { target: { value: '2027-01-31' } });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    // Safeguard modal should appear
+    await waitFor(() => {
+      expect(screen.getByText(/Class Timetable Change Safeguard/i)).toBeInTheDocument();
+    });
+
+    // Click confirm "Apply & Preserve History"
+    const applyBtn = screen.getByRole('button', { name: /Apply & Preserve History/i });
+    await act(async () => {
+      fireEvent.click(applyBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.scheduleHistory).toHaveLength(1);
+    expect(capturedUpdateData.scheduleHistory[0].startDate).toBe('2026-09-01');
+    expect(capturedUpdateData.schedule.endDate).toBe('2027-01-31');
+  });
+
+  it('allows overwrite option in schedule safeguard modal', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          schedule: {
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeZone: 'Asia/Hong_Kong',
+            timeSlots: [{ startTime: '09:00', endTime: '11:00', days: ['Mon'] }],
+          },
+          scheduleHistory: [],
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_OVERWRITE" />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026-09-01')).toBeInTheDocument();
+    });
+
+    const endDateInput = screen.getByDisplayValue('2026-12-31');
+    fireEvent.change(endDateInput, { target: { value: '2027-02-15' } });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Class Timetable Change Safeguard/i)).toBeInTheDocument();
+    });
+
+    // Select overwrite radio
+    const overwriteRadio = screen.getByRole('radio', { name: /Overwrite/i });
+    fireEvent.click(overwriteRadio);
+
+    const overwriteBtn = screen.getByRole('button', { name: /Overwrite Entire Schedule/i });
+    await act(async () => {
+      fireEvent.click(overwriteBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.scheduleHistory).toEqual([]);
+    expect(capturedUpdateData.schedule.endDate).toBe('2027-02-15');
+  });
 });
 
 

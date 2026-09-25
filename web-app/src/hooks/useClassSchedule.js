@@ -19,37 +19,71 @@ import {
   formatLessonFolderName,
 } from '../utils/lessonUtils';
 
-export const generateLessons = (schedule, tz = 'UTC', customLessonTitles = {}) => {
-  const lessons = [];
-  const { startDate, endDate, timeSlots } = schedule || {};
-  if (!startDate || !endDate || !timeSlots) return lessons;
+export const generateLessons = (schedule, tz = 'UTC', customLessonTitles = {}, scheduleHistory = []) => {
+  const allLessons = [];
 
-  const start = new Date(`${startDate}T00:00:00.000Z`);
-  const end = new Date(`${endDate}T23:59:59.999Z`);
+  // Normalize segments: can be an array of segments, a class object with scheduleHistory + schedule,
+  // or a single schedule object with separate scheduleHistory parameter.
+  let segments = [];
+  if (Array.isArray(schedule)) {
+    segments = schedule;
+  } else if (schedule && typeof schedule === 'object') {
+    const history = Array.isArray(scheduleHistory) && scheduleHistory.length > 0
+      ? scheduleHistory
+      : (Array.isArray(schedule.scheduleHistory) ? schedule.scheduleHistory : []);
 
-  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    const dayOfWeek = formatInTimeZone(d, tz, 'E');
+    const active = schedule.schedule || (schedule.timeSlots ? schedule : null);
+    segments = [...history, active].filter(Boolean);
+  }
 
-    timeSlots.forEach(slot => {
-      if (slot.days && slot.days.includes(dayOfWeek)) {
-        const datePart = d.toISOString().split('T')[0];
-        
-        const lessonStartString = `${datePart}T${slot.startTime}:00`;
-        const lessonEndString = `${datePart}T${slot.endTime}:00`;
+  if (segments.length === 0) return [];
 
-        const lessonStart = fromZonedTime(lessonStartString, tz);
-        const lessonEnd = fromZonedTime(lessonEndString, tz);
-        
-        lessons.push({ start: lessonStart, end: lessonEnd });
-      }
-    });
+  // Generate lessons across each segment within its date bounds
+  for (const segment of segments) {
+    const { startDate, endDate, timeSlots, timeZone: segmentTz } = segment || {};
+    if (!startDate || !endDate || !Array.isArray(timeSlots) || timeSlots.length === 0) continue;
+
+    const segmentTimezone = segmentTz || tz || 'UTC';
+    const start = new Date(`${startDate}T00:00:00.000Z`);
+    const end = new Date(`${endDate}T23:59:59.999Z`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) continue;
+
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      const dayOfWeek = formatInTimeZone(d, segmentTimezone, 'E');
+
+      timeSlots.forEach(slot => {
+        if (slot.days && slot.days.includes(dayOfWeek)) {
+          const datePart = d.toISOString().split('T')[0];
+
+          const lessonStartString = `${datePart}T${slot.startTime}:00`;
+          const lessonEndString = `${datePart}T${slot.endTime}:00`;
+
+          const lessonStart = fromZonedTime(lessonStartString, segmentTimezone);
+          const lessonEnd = fromZonedTime(lessonEndString, segmentTimezone);
+
+          allLessons.push({ start: lessonStart, end: lessonEnd });
+        }
+      });
+    }
+  }
+
+  // Deduplicate any overlapping timestamps (e.g. edge boundary dates)
+  const seenTimes = new Set();
+  const uniqueLessons = [];
+  for (const l of allLessons) {
+    const key = l.start.getTime();
+    if (!seenTimes.has(key)) {
+      seenTimes.add(key);
+      uniqueLessons.push(l);
+    }
   }
 
   // Sort ascending chronologically to compute 1-based index (Lesson 01, Lesson 02...)
-  lessons.sort((a, b) => a.start - b.start);
+  uniqueLessons.sort((a, b) => a.start - b.start);
   const titles = customLessonTitles || schedule?.lessonTitles || {};
 
-  lessons.forEach((l, i) => {
+  uniqueLessons.forEach((l, i) => {
     l.index = i + 1;
     l.id = l.start.toISOString();
     l.title = formatLessonTitle({ lesson: l, index: l.index, customTitles: titles });
@@ -58,11 +92,12 @@ export const generateLessons = (schedule, tz = 'UTC', customLessonTitles = {}) =
   });
 
   // Preserve existing convention: return sorted descending (newest first)
-  return lessons.sort((a, b) => b.start - a.start);
+  return uniqueLessons.sort((a, b) => b.start - a.start);
 };
 
 export const useClassSchedule = (classId) => {
   const [schedule, setSchedule] = useState(null);
+  const [scheduleHistory, setScheduleHistory] = useState([]);
   const [lessons, setLessons] = useState([]);
   const [selectedLesson, setSelectedLesson] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -131,12 +166,14 @@ export const useClassSchedule = (classId) => {
       if (classSnap.exists()) {
         const classData = classSnap.data();
         const scheduleData = classData.schedule;
+        const historyData = Array.isArray(classData.scheduleHistory) ? classData.scheduleHistory : [];
         const tz = classData.schedule?.timeZone || 'UTC';
         setTimezone(tz);
         setSchedule(scheduleData);
-        if (scheduleData) {
+        setScheduleHistory(historyData);
+        if (scheduleData || historyData.length > 0) {
           const titles = classData.lessonTitles || scheduleData?.lessonTitles || {};
-          const generatedLessons = generateLessons(scheduleData, tz, titles);
+          const generatedLessons = generateLessons(scheduleData, tz, titles, historyData);
           setLessons(generatedLessons);
           const defaultLesson = await getSmartDefaultLesson(generatedLessons, classId);
           if (defaultLesson) {
@@ -166,5 +203,5 @@ export const useClassSchedule = (classId) => {
     } 
   };
 
-  return { schedule, lessons, selectedLesson, startTime, endTime, setStartTime, setEndTime, handleLessonChange, timezone };
+  return { schedule, scheduleHistory, lessons, selectedLesson, startTime, endTime, setStartTime, setEndTime, handleLessonChange, timezone };
 };

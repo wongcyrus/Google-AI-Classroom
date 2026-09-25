@@ -68,3 +68,6 @@ Thumbs.db
 coverage/
 *.lcov
 .nyc_output
+
+# Local DB Backups
+admin/backups/

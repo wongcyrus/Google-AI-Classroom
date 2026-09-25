@@ -4,7 +4,7 @@
 
 ---
 
-This document outlines the testing architecture, test suites, execution commands, and coverage targets for the **Google AI Classroom Assistant**.
+This document outlines the testing architecture, test suites, execution commands, and coverage targets for the **Google AI Classroom**.
 
 ---
 

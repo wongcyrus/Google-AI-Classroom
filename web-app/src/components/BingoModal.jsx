@@ -1,41 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isMobileDevice } from '../utils/browserDetection';
+import { playBingoChime, triggerBingoNotification } from '../utils/systemNotification';
 import './BingoModal.css';
 
-/**
- * Clean Web Audio API chime (two-tone gentle notification ping).
- * Safe against autoplay policy (catches unhandled AudioContext errors).
- */
-export function playBingoChime() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
-
-    const now = ctx.currentTime;
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); // D5
-    osc1.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
-
-    gain1.gain.setValueAtTime(0.3, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-
-    osc1.start(now);
-    osc1.stop(now + 0.5);
-  } catch (err) {
-    console.warn('[BingoModal] AudioContext chime notice:', err);
-  }
-}
+export { playBingoChime };
 
 export default function BingoModal({
   activeBingo,
@@ -148,26 +117,15 @@ export default function BingoModal({
     }
   }, [activeBingo?.bingoId]);
 
-  // Play audio chime and trigger OS notification on mount ONLY if challenge is fresh
+  // Play multi-channel alert (audio chime, OS notification, tab title flash, vibration) on mount ONLY if challenge is fresh
   useEffect(() => {
     if (!activeBingo || isExpiredOnMountRef.current) return;
-    playBingoChime();
-
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        const notif = new Notification('🎯 Bingo Active Check!', {
-          body: `Quick ${totalSeconds}s presence check. Click to respond.`,
-          icon: '/favicon.ico',
-          tag: 'bingo-check',
-        });
-        notif.onclick = () => {
-          window.focus();
-          notif.close();
-        };
-      } catch (e) {
-        console.warn('[BingoModal] Notification error:', e);
+    const stopAttention = triggerBingoNotification(activeBingo);
+    return () => {
+      if (typeof stopAttention === 'function') {
+        stopAttention();
       }
-    }
+    };
   }, [activeBingo?.bingoId]);
 
   // Synchronized countdown timer

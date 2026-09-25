@@ -1,10 +1,10 @@
-# 📘 Google AI Classroom Assistant: Comprehensive UI Controls & Feature Catalog
+# 📘 Google AI Classroom: Comprehensive UI Controls & Feature Catalog
 
 [🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Teacher Manual](./user-manual-teacher.md) | [🧑‍🎓 Student Manual](./user-manual-student.md) | [🛠️ Admin Manual](./user-manual-admin.md)
 
 ---
 
-This document provides an exhaustive, granular inventory of every User Interface (UI) control, interactive element, configuration toggle, analytics view, and operational capability across the entire Google AI Classroom Assistant platform.
+This document provides an exhaustive, granular inventory of every User Interface (UI) control, interactive element, configuration toggle, analytics view, and operational capability across the entire Google AI Classroom platform.
 
 ---
 
@@ -867,7 +867,7 @@ The platform decouples **Authority/Origin** (`isSystem` and `owner`) from **Visi
 - **Step-by-Step Breakdown Checklist:** Green checkmarks for verified criteria, red cross for missed steps, with evidence rationale and clickable timecode links to review the student's submission video.
 
 ---
-*Catalog Version: 2026.4.0 &bull; Platform: Google AI Classroom Assistant &bull; Audited from Source Code*
+*Catalog Version: 2026.4.0 &bull; Platform: Google AI Classroom &bull; Audited from Source Code*
 
 ---
 

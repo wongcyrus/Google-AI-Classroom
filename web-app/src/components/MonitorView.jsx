@@ -52,6 +52,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
+  const [notSharingSortBy, setNotSharingSortBy] = useState('name');
+  const [notSharingSortDirection, setNotSharingSortDirection] = useState('asc');
+  const [notSharingSearchQuery, setNotSharingSearchQuery] = useState('');
   const [now, setNow] = useState(new Date());
   const [showControls, setShowControls] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -569,6 +572,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                 newMap.set(uid, email);
             });
         }
+        setUidToEmailMap(newMap);
         
         const baseProfiles = data.studentProfiles || {};
         getDocs(collection(db, 'studentDirectory')).then(dirSnap => {
@@ -672,6 +676,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         setAiUsedQuota(data.aiUsedQuota || 0);
       } else {
         setClassList([]);
+        setUidToEmailMap(new Map());
       }
     });
 
@@ -725,6 +730,17 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         return acc;
       }, {}));
       setStudentStatuses(latestStatuses);
+      setUidToEmailMap(prev => {
+        let changed = false;
+        const updated = new Map(prev);
+        latestStatuses.forEach(s => {
+          if (s.id && s.email && !updated.has(s.id)) {
+            updated.set(s.id, s.email);
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
     });
 
     return () => {
@@ -1272,20 +1288,58 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     setSelectedStudent(student);
   };
 
-  const sharingStudentUids = useMemo(() => new Set(
-    studentStatuses
-      .filter(status => status.isSharing)
-      .map(status => status.id)
-  ), [studentStatuses]);
+  const notSharingStudents = useMemo(() => {
+    return students
+      .filter(s => !s.isSharing)
+      .map(s => {
+        const rawDisplayName = s.displayName;
+        const displayName = rawDisplayName && rawDisplayName !== 'Unknown Student'
+          ? rawDisplayName
+          : (s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student'));
+        return {
+          ...s,
+          displayName,
+          name: displayName,
+          studentClass: s.studentClass || s.profile?.studentClass || '',
+          programme: s.programme || s.profile?.programme || '',
+        };
+      });
+  }, [students]);
 
-  const notSharingStudents = useMemo(() => classList
-    .filter(uid => !sharingStudentUids.has(uid))
-    .map(uid => {
-      const email = uidToEmailMap.get(uid) || '';
-      const displayName = getStudentDisplayName(email, studentProfiles);
-      const prof = getStudentProfile(email, studentProfiles);
-      return { id: uid, email, displayName, name: displayName, studentClass: prof.studentClass, programme: prof.programme };
-    }), [classList, sharingStudentUids, uidToEmailMap, studentProfiles]);
+  const sortedNotSharingStudents = useMemo(() => {
+    let list = [...notSharingStudents];
+
+    if (notSharingSearchQuery.trim()) {
+      const q = notSharingSearchQuery.trim().toLowerCase();
+      list = list.filter(s =>
+        (s.displayName || '').toLowerCase().includes(q) ||
+        (s.email || '').toLowerCase().includes(q) ||
+        (s.studentClass || '').toLowerCase().includes(q) ||
+        (s.programme || '').toLowerCase().includes(q)
+      );
+    }
+
+    list.sort((a, b) => {
+      let valA = '';
+      let valB = '';
+
+      if (notSharingSortBy === 'name') {
+        valA = (a.displayName || a.name || a.email || '').toLowerCase();
+        valB = (b.displayName || b.name || b.email || '').toLowerCase();
+      } else if (notSharingSortBy === 'email') {
+        valA = (a.email || '').toLowerCase();
+        valB = (b.email || '').toLowerCase();
+      } else if (notSharingSortBy === 'studentClass') {
+        valA = `${a.studentClass || ''} ${a.programme || ''}`.trim().toLowerCase();
+        valB = `${b.studentClass || ''} ${b.programme || ''}`.trim().toLowerCase();
+      }
+
+      const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      return notSharingSortDirection === 'asc' ? cmp : -cmp;
+    });
+
+    return list;
+  }, [notSharingStudents, notSharingSortBy, notSharingSortDirection, notSharingSearchQuery]);
 
   const liveSelectedStudent = selectedStudent
     ? students.find(student => student.id === selectedStudent.id) || selectedStudent
@@ -1801,42 +1855,133 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         />
       </div>
 
-      <Modal show={showNotSharingModal} onClose={() => setShowNotSharingModal(false)} title="Students Not Sharing Screen">
+      <Modal 
+        show={showNotSharingModal} 
+        onClose={() => setShowNotSharingModal(false)} 
+        title={`Students Not Sharing Screen (${notSharingStudents.length})`}
+      >
         {notSharingStudents.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '60vh', overflowY: 'auto' }}>
-            {notSharingStudents.map(s => {
-              const hasDistinctName = s.displayName && s.displayName !== s.email;
-              return (
-                <div 
-                  key={s.id} 
-                  style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    padding: '0.65rem 0.9rem',
-                    backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--color-border, #e2e8f0)'
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', height: '100%', minHeight: 0 }}>
+            {/* Toolbar for Search & Sort */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.6rem',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '0.6rem',
+              borderBottom: '1px solid var(--color-border, #e2e8f0)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 200px' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search name, email, class..."
+                  value={notSharingSearchQuery}
+                  onChange={(e) => setNotSharingSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--color-border, #cbd5e1)',
+                    outline: 'none',
+                    backgroundColor: 'var(--color-surface, #ffffff)',
+                    color: 'var(--color-text-main, #1e293b)'
                   }}
+                  aria-label="Search non-sharing students"
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
+                  Sort by:
+                </label>
+                <select
+                  value={notSharingSortBy}
+                  onChange={(e) => setNotSharingSortBy(e.target.value)}
+                  style={{
+                    padding: '0.42rem 0.65rem',
+                    fontSize: '0.82rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--color-border, #cbd5e1)',
+                    backgroundColor: 'var(--color-surface, #ffffff)',
+                    color: 'var(--color-text-main, #1e293b)',
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                  aria-label="Sort non-sharing students by"
                 >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
-                      {s.displayName || s.email}
-                    </div>
-                    {hasDistinctName && (
-                      <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
-                        {s.email}
+                  <option value="name">Name</option>
+                  <option value="email">Email / ID</option>
+                  <option value="studentClass">Class / Programme</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setNotSharingSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  style={{
+                    padding: '0.42rem 0.65rem',
+                    fontSize: '0.82rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--color-border, #cbd5e1)',
+                    backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                    color: 'var(--color-text-main, #334155)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontWeight: 600
+                  }}
+                  title={notSharingSortDirection === 'asc' ? 'Sort Ascending (A to Z)' : 'Sort Descending (Z to A)'}
+                  aria-label="Toggle sort direction"
+                >
+                  {notSharingSortDirection === 'asc' ? '↑ Asc (A-Z)' : '↓ Desc (Z-A)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Students List */}
+            {sortedNotSharingStudents.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '4px' }}>
+                {sortedNotSharingStudents.map(s => {
+                  const hasDistinctName = s.displayName && s.email && s.displayName !== s.email;
+                  return (
+                    <div 
+                      key={s.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        padding: '0.65rem 0.9rem',
+                        backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-border, #e2e8f0)'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
+                          {s.displayName || s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
+                        </div>
+                        {hasDistinctName && (
+                          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
+                            {s.email}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  {(s.studentClass || s.programme) && (
-                    <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#475569' }}>
-                      {[s.studentClass, s.programme].filter(Boolean).join(' • ')}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+                      {(s.studentClass || s.programme) && (
+                        <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#475569' }}>
+                          {[s.studentClass, s.programme].filter(Boolean).join(' • ')}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ margin: 0, padding: '1rem 0', textAlign: 'center', color: 'var(--color-text-muted, #64748b)' }}>
+                No non-sharing students match "{notSharingSearchQuery}".
+              </p>
+            )}
           </div>
         ) : <p style={{ margin: 0, padding: '0.5rem 0', color: 'var(--color-text-muted, #64748b)' }}>All students are sharing their screen.</p>}
       </Modal>

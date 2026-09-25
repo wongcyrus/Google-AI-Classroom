@@ -4,7 +4,7 @@
 
 ---
 
-Welcome to the **Google AI Classroom Assistant** Instructor Guide. This manual details everything you need to know to create classes, configure proctoring settings, monitor live student sessions, conduct one-on-one interventions, trigger active presence challenges, review synthesized AI rubrics, and export formal academic incident dossiers.
+Welcome to the **Google AI Classroom** Instructor Guide. This manual details everything you need to know to create classes, configure proctoring settings, monitor live student sessions, conduct one-on-one interventions, trigger active presence challenges, review synthesized AI rubrics, and export formal academic incident dossiers.
 
 ---
 
@@ -99,6 +99,28 @@ Open the **Settings** tab in your class workspace and locate the **Timetable & S
 4. **Automated Scheduling Behaviors:**
    - ✅ *Automatically start live capture during scheduled hours*: Student clients automatically connect when a scheduled lesson begins.
    - ✅ *Automatically compile lesson screencasts into MP4 videos after class*: Cloud Functions assemble student frames into full MP4 videos as soon as the scheduled lesson finishes.
+
+### Mid-Semester Timetable Changes & Past Lesson Safeguard (Schedule Segments)
+If your class schedule changes mid-semester (e.g. room reallocations, department rescheduling, or day/time shifts):
+
+1. **Automatic Safeguard Interception**:
+   - If lessons have already taken place under the current schedule, modifying the dates or time slots and clicking **"Save Class Settings"** will automatically trigger the **Class Timetable Change Safeguard Modal**.
+   - This prevents past attendance records, video recordings, and custom titles from becoming orphaned.
+
+2. **Safeguard Options**:
+   - **Option 1 (Recommended): Archive Past Lessons & Apply New Timetable From Today**  
+     Archives the existing timetable up to yesterday (or the last completed lesson date) into `scheduleHistory`. The new timetable automatically takes effect starting today without shifting or altering any past class history.
+   - **Option 2: Overwrite Entire Schedule (Recalculate Past)**  
+     Retroactively recalculates all lesson slots from the original start date. (Only use this if the previous timetable was entered incorrectly and you intentionally wish to rewrite the entire semester).
+
+3. **Multiple Timetable Changes Throughout a Semester**:
+   - If a class changes schedule multiple times (e.g., Week 3, Week 7, and Week 11), each change appends another segment to `scheduleHistory`.
+   - The scheduling engine seamlessly chains all segments together into one continuous, unbroken semester portfolio (`Lesson 01`, `Lesson 02`, `Lesson 03`...).
+   - In all lesson dropdowns (`DateRangeFilter`), teachers and students see the complete semester sequence in chronological order. Selecting any past lesson pulls up the exact attendance records and videos recorded during that period.
+
+> [!NOTE]
+> **Does normal class completion add to `scheduleHistory`?**  
+> **No.** When a class session finishes normally, student attendance is recorded in `attendance/{lessonId}` and video jobs are processed. `scheduleHistory` is **only** modified when an instructor explicitly updates the class timetable in Class Management. If a class never has its schedule changed, `scheduleHistory` remains empty (`[]`) for the entire semester.
 
 ---
 

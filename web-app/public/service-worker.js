@@ -10,12 +10,28 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'show-notification') {
-    const { title, body } = event.data;
-    console.log('Service Worker received message to show notification:', { title, body });
+    const {
+      title,
+      body,
+      icon = '/favicon.ico',
+      badge = '/favicon.ico',
+      tag = 'message',
+      requireInteraction = true,
+      renotify = true,
+      vibrate = [300, 150, 300, 150, 300],
+      data = {},
+    } = event.data;
+
+    console.log('Service Worker received message to show notification:', { title, body, tag });
     const promiseChain = self.registration.showNotification(title, {
-      body: body,
-      requireInteraction: true,
-      tag: 'message' // Use a tag to prevent stacking notifications
+      body,
+      icon,
+      badge,
+      tag,
+      requireInteraction,
+      renotify,
+      vibrate,
+      data,
     }).then(() => {
         console.log('Notification shown successfully by service worker.');
         if (event.ports && event.ports[0]) {

@@ -4,7 +4,7 @@
 
 ---
 
-This document provides a comprehensive technical reference for the real-time data retention, autonomous Firestore TTL lifecycle, Storage event-driven deletion triggers, and cascading class removal in the Google AI Classroom Assistant.
+This document provides a comprehensive technical reference for the real-time data retention, autonomous Firestore TTL lifecycle, Storage event-driven deletion triggers, and cascading class removal in the Google AI Classroom.
 
 ---
 

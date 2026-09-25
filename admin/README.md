@@ -4,7 +4,7 @@
 
 ---
 
-This directory contains scripts for administering the Google AI Classroom Assistant application's Firebase backend.
+This directory contains scripts for administering the Google AI Classroom application's Firebase backend.
 
 ## Prerequisites
 

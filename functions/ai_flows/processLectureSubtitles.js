@@ -142,7 +142,7 @@ ${chaptersBlock}
 Closed Captions (CC) Available in YouTube Player:
 ${langsList}
 
-Recorded with Google AI Classroom Assistant.`;
+Recorded with Google AI Classroom.`;
 
   return { title: ytTitle, description };
 }

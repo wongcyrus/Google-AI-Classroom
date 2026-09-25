@@ -57,7 +57,7 @@ const UnsupportedBrowserNotice = ({ detectedBrowser, onBackToLogin }) => {
         </div>
 
         <div className="unsupported-browser-footer">
-          <span>Google AI Classroom Assistant • Examination & Invigilation System</span>
+          <span>Google AI Classroom • Examination & Invigilation System</span>
         </div>
       </div>
     </div>

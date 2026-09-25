@@ -20,7 +20,13 @@ import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
 import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
-import BingoModal, { playBingoChime } from './BingoModal';
+import BingoModal from './BingoModal';
+import {
+  showSystemNotification as sendOsNotification,
+  requestSystemNotificationPermission,
+  triggerBingoNotification,
+  playBingoChime,
+} from '../utils/systemNotification';
 import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
@@ -259,13 +265,11 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
   }, []);
 
   const requestNotificationPermission = useCallback(async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      try {
-        const result = await window.Notification.requestPermission();
-        setNotificationPermission(result);
-      } catch (err) {
-        console.error("Error requesting notification permission:", err);
-      }
+    try {
+      const result = await requestSystemNotificationPermission();
+      setNotificationPermission(result);
+    } catch (err) {
+      console.error("Error requesting notification permission:", err);
     }
   }, []);
 
@@ -350,15 +354,23 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
     return true;
   }, [currentBingoChallenge, isClassSessionOngoing, userClasses]);
 
-  // Proactively exit browser fullscreen when active Bingo challenge is issued to ensure unhindered visibility
+  // Proactively exit browser fullscreen and trigger multi-channel alert when active Bingo challenge is issued
   useEffect(() => {
     if (isBingoActiveAndValid && currentBingoChallenge) {
       if (typeof document !== 'undefined' && document.fullscreenElement) {
         document.exitFullscreen?.().catch(() => {});
       }
       setIsPlayerFullscreen(false);
+
+      // Trigger multi-channel alert (chime, OS notification, tab title flash, vibration)
+      const stopAttention = triggerBingoNotification(currentBingoChallenge);
+      return () => {
+        if (typeof stopAttention === 'function') {
+          stopAttention();
+        }
+      };
     }
-  }, [isBingoActiveAndValid, currentBingoChallenge]);
+  }, [isBingoActiveAndValid, currentBingoChallenge?.bingoId]);
 
   // Auto-dismiss pending Bingo modal if class session ends and no enrolled classes
   useEffect(() => {
@@ -1016,20 +1028,12 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
     setNotification('');
   };
 
-  const showSystemNotification = useCallback((message) => {
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
-
-    if (window.Notification.permission === 'granted') {
-      navigator.serviceWorker.ready.then((registration) => {
-        if (registration && registration.active) {
-          registration.active.postMessage({
-            type: 'show-notification',
-            title: 'New Message',
-            body: message,
-          });
-        }
-      }).catch(err => console.debug("ServiceWorker notification skipped:", err));
-    }
+  const showSystemNotification = useCallback((message, title = 'New Message') => {
+    sendOsNotification({
+      title,
+      body: message,
+      tag: 'classroom-alert',
+    });
   }, []);
 
   const updateCaptureStatus = useCallback(async (activeStreams, classIdOrClasses) => {

@@ -70,7 +70,7 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
   }, [isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
 
   const activeClassName = useMemo(() => {
-    if (!activeClass || !userClasses) return 'Google AI Classroom Assistant';
+    if (!activeClass || !userClasses) return 'Google AI Classroom';
     const found = userClasses.find(c => (typeof c === 'string' ? c : c.id) === activeClass);
     return (typeof found === 'object' ? found?.name : found) || activeClass;
   }, [activeClass, userClasses]);

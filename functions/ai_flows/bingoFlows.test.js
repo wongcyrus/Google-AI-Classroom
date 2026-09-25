@@ -1041,6 +1041,60 @@ describe('bingoFlows', () => {
       );
     });
 
+    it('generateBingoChallenge dispatches student_screen anti-decoy challenges to all students with question bank fallback', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/CLASS_ANTI_DECOY') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              students: {
+                stu_active: 'active@school.edu',
+                stu_offline: 'offline@school.edu',
+              },
+              questionBank: [
+                {
+                  id: 'bank_q1',
+                  question: 'What is a REST API?',
+                  options: ['HTTP Interface', 'Database', 'Operating System', 'Compiler'],
+                  correctIndex: 0,
+                },
+              ],
+            }),
+          });
+        }
+        if (path === 'classes/CLASS_ANTI_DECOY/livePeeks/stu_active') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ screenshotUrl: 'https://storage.googleapis.com/bucket/active.jpg' }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      generateWithResilience.mockResolvedValueOnce({
+        response: {
+          output: {
+            question: 'What terminal command is running?',
+            options: ['npm test', 'git push', 'docker build', 'ls -la'],
+            correctIndex: 0,
+            observedEvidence: 'npm test is running',
+          },
+          usageMetadata: { promptTokenCount: 150, candidatesTokenCount: 40 },
+        },
+        modelUsed: 'gemini-3.5-flash-lite',
+      });
+
+      const res = await generateBingoChallenge({
+        classId: 'CLASS_ANTI_DECOY',
+        targetStudentUid: 'all',
+        questionSource: 'student_screen',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.createdCount).toBe(2);
+      expect(mockBatch.commit).toHaveBeenCalled();
+    });
+
     it('generateBingoChallenge cleanly skips and does not dispatch questions when teacher screen is missing', async () => {
       mockDocGet.mockImplementation((path) => {
         if (path === 'classes/CLASS_TEST_NO_FRAME') {

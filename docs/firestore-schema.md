@@ -61,6 +61,7 @@ erDiagram
         number retentionDays "Raw screenshots TTL days"
         number videoRetentionDays "Compiled MP4 TTL days"
         object schedule "TimeSlots and TimeZone"
+        array scheduleHistory "Historical timetable segments"
         array ipRestrictions "Allowed CIDR IP subnets"
         boolean automaticCapture
         boolean automaticCombine
@@ -441,11 +442,18 @@ Stores information about each class.
     *   `storageQuota`: (number) The storage limit for the class in bytes.
     *   `retentionDays`: (number) The screenshot data retention period in days (e.g., 7, 14, 30, 90). Screenshots older than this duration are automatically purged.
     *   `videoRetentionDays`: (number) The video retention period in days (e.g., 30, 90, 180, 365). Compiled lesson videos older than this duration are automatically purged.
-    *   `schedule`: (object) An object containing the class schedule.
-        *   `startDate`: (string) The start date of the class.
-        *   `endDate`: (string) The end date of the class.
-        *   `timeZone`: (string) The time zone for the class.
-        *   `timeSlots`: (array) An array of time slots, each with `startTime`, `endTime`, and an array of `days`.
+    *   `schedule`: (object) An object containing the active class schedule.
+        *   `startDate`: (string) The start date of the active schedule segment (YYYY-MM-DD).
+        *   `endDate`: (string) The end date of the active schedule segment (YYYY-MM-DD).
+        *   `timeZone`: (string) The time zone for the class (e.g. `Asia/Hong_Kong`).
+        *   `timeSlots`: (array) An array of time slots, each with `startTime` (HH:MM), `endTime` (HH:MM), and an array of `days` (e.g. `['Mon', 'Wed']`).
+    *   `scheduleHistory`: (array) An array of previous schedule segments archived when an instructor modifies the timetable mid-semester after completed lessons have already occurred. Preserves past attendance hashes, video recordings, and custom lesson titles. Each segment contains:
+        *   `startDate`: (string) Historical segment start date (YYYY-MM-DD).
+        *   `endDate`: (string) Historical segment end date (YYYY-MM-DD, set up to the day before the new timetable took effect).
+        *   `timeZone`: (string) Time zone for the segment.
+        *   `timeSlots`: (array) Time slots applicable during that historical period.
+        *   `archivedAt`: (string) ISO timestamp indicating when the segment was archived.
+        *   *Note: If a class has never had its timetable changed mid-semester, `scheduleHistory` is `[]`. Lessons finishing normally do not add items to `scheduleHistory`.*
     *   `ipRestrictions`: (array) An array of allowed IP addresses.
     *   `automaticCapture`: (boolean) A boolean indicating if automatic screen capture is enabled.
     *   `automaticCombine`: (boolean) A boolean indicating if automatic video combination is enabled.
