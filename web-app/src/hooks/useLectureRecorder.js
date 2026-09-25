@@ -650,6 +650,22 @@ export default function useLectureRecorder({
     [classId]
   );
 
+  // Prevent accidental tab closing/refreshing while recording or uploading
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (recordingState === 'recording' || recordingState === 'paused' || recordingState === 'uploading') {
+        e.preventDefault();
+        e.returnValue = 'A lecture recording is currently active or uploading. Leaving now will discard the current recording segment.';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [recordingState]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
