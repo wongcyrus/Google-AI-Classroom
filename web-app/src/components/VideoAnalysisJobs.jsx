@@ -478,6 +478,28 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     return p;
   };
 
+  const sanitizeForFirestore = (obj) => {
+    if (obj === null || obj === undefined || typeof obj !== 'object') {
+      return obj;
+    }
+    // Preserve Firestore Timestamps, FieldValues, or Dates
+    if (obj instanceof Date || obj._methodName || typeof obj.toMillis === 'function' || typeof obj.toDate === 'function') {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj
+        .map(sanitizeForFirestore)
+        .filter((v) => v !== undefined);
+    }
+    const clean = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        clean[key] = sanitizeForFirestore(value);
+      }
+    }
+    return clean;
+  };
+
   const handleLaunchJobWithPrompt = async () => {
     if (!generatedPromptText.trim()) {
       alert('Prompt cannot be empty.');
@@ -487,18 +509,19 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     setIsLaunchingJob(true);
     try {
       if (saveToLibrary && taskPromptName.trim()) {
-        await addDoc(collection(db, 'prompts'), {
+        const promptPayload = sanitizeForFirestore({
           title: taskPromptName.trim(),
           text: generatedPromptText,
           description: `Auto-synthesized from analysis job ${selectedAnalysisJob.id}`,
-          classId: selectedAnalysisJob.classId,
+          classId: selectedAnalysisJob.classId || '',
           type: 'lab_task',
           isSystem: false,
-          createdBy: user?.uid || selectedAnalysisJob.requester,
+          createdBy: user?.uid || selectedAnalysisJob.requester || '',
           creatorEmail: user?.email || '',
           updatedAt: serverTimestamp(),
           createdAt: serverTimestamp(),
         });
+        await addDoc(collection(db, 'prompts'), promptPayload);
       }
 
       let targetVideos = [];
@@ -509,7 +532,11 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
             return {
               ...v,
               videoPath: path,
-              path: path
+              path: path,
+              classId: v.classId || selectedAnalysisJob.classId || '',
+              studentUid: v.studentUid || '',
+              studentEmail: v.studentEmail || '',
+              startTime: v.startTime || null,
             };
           }).filter(v => v.videoPath);
         } else if (aiJobs.length > 0) {
@@ -519,10 +546,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
             return {
               videoPath: path,
               path: path,
-              classId: j.classId || selectedAnalysisJob.classId,
-              studentUid: j.studentUid,
-              studentEmail: j.studentEmail,
-              startTime: j.startTime,
+              classId: j.classId || selectedAnalysisJob.classId || '',
+              studentUid: j.studentUid || '',
+              studentEmail: j.studentEmail || '',
+              startTime: j.startTime || null,
             };
           }).filter(v => v.videoPath);
         }
@@ -542,10 +569,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
             return {
               videoPath: path,
               path: path,
-              classId: v.classId || selectedAnalysisJob.classId,
-              studentUid: v.studentUid,
-              studentEmail: v.studentEmail,
-              startTime: v.startTime,
+              classId: v.classId || selectedAnalysisJob.classId || '',
+              studentUid: v.studentUid || '',
+              studentEmail: v.studentEmail || '',
+              startTime: v.startTime || null,
             };
           }).filter(v => v.videoPath);
         }
@@ -559,20 +586,22 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
 
       const newJobRef = doc(collection(db, 'videoAnalysisJobs'));
       const effectiveFilterField = filterField || selectedAnalysisJob.filterField || 'startTime';
-      await setDoc(newJobRef, {
+      const rawJobPayload = {
         jobId: newJobRef.id,
-        classId: selectedAnalysisJob.classId,
-        requester: user?.uid || selectedAnalysisJob.requester,
-        videos: targetVideos,
+        classId: selectedAnalysisJob.classId || '',
+        requester: user?.uid || selectedAnalysisJob.requester || '',
+        videos: targetVideos.map(v => sanitizeForFirestore(v)),
         status: 'pending',
         createdAt: serverTimestamp(),
-        startTime: selectedAnalysisJob.startTime,
-        endTime: selectedAnalysisJob.endTime,
+        startTime: selectedAnalysisJob.startTime || null,
+        endTime: selectedAnalysisJob.endTime || null,
         filterField: effectiveFilterField,
         deleted: false,
         prompt: generatedPromptText,
-        model: selectedModel,
-      });
+        model: selectedModel || 'gemini-2.5-flash',
+      };
+
+      await setDoc(newJobRef, sanitizeForFirestore(rawJobPayload));
 
       alert(`Successfully launched new analysis job (${targetVideos.length} videos) with your lab task prompt!`);
       setShowTaskPromptModal(false);
