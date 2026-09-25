@@ -466,7 +466,18 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
     }
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, rec) => {
+    const startedMs = rec?.startedAt?.toDate
+      ? rec.startedAt.toDate().getTime()
+      : rec?.startedAt
+      ? new Date(rec.startedAt).getTime()
+      : 0;
+    const isStaleRecording = status === 'recording' && startedMs && (Date.now() - startedMs > 2 * 3600 * 1000);
+
+    if (isStaleRecording && !rec?.videoUrl) {
+      return <span className="recording-status-badge status-failed">⚠️ Incomplete / Interrupted</span>;
+    }
+
     switch (status) {
       case 'ready':
         return <span className="recording-status-badge status-ready">✅ Ready (Multi-CC)</span>;
@@ -635,7 +646,7 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                           </span>
                         )}
                       </div>
-                      {getStatusBadge(rec.status)}
+                      {getStatusBadge(rec.status, rec)}
                     </div>
                   </div>
                 </div>
@@ -807,7 +818,30 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                   </video>
                 </div>
               ) : (
-                <div className="empty-state">Video upload in progress or unavailable.</div>
+                <div className="empty-state" style={{ padding: '2rem 1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                  {selectedRecording.status === 'recording' && (!selectedRecording.startedAt || Date.now() - (selectedRecording.startedAt.toDate?.()?.getTime() || new Date(selectedRecording.startedAt).getTime()) > 2 * 3600 * 1000) ? (
+                    <div>
+                      <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>⚠️</div>
+                      <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: '1.05rem' }}>Incomplete Recording Session</h4>
+                      <p style={{ color: '#64748b', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto 16px', lineHeight: 1.5 }}>
+                        This recording was initiated earlier, but the browser window was closed or disconnected before the local video stream finished uploading to Cloud Storage.
+                      </p>
+                      <p style={{ color: '#475569', fontSize: '0.84rem', margin: '0 0 16px' }}>
+                        You can link a YouTube or Google Drive URL below if recorded externally, or remove this incomplete entry.
+                      </p>
+                      <button
+                        className="btn-delete-recording"
+                        onClick={() => handleDeleteRecording(selectedRecording.id)}
+                        disabled={isDeleting}
+                        style={{ margin: '0 auto' }}
+                      >
+                        {isDeleting ? '🗑️ Removing...' : '🗑️ Remove Incomplete Entry'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div>Video upload in progress or unavailable.</div>
+                  )}
+                </div>
               )}
 
               {/* YouTube Studio Export & Link Management Section (Phase 1) */}
