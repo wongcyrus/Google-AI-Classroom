@@ -12,6 +12,7 @@ vi.mock('qrcode', () => ({
 describe('TeacherScreenBroadcastModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue();
   });
 
   it('does not render when isOpen is false', () => {
@@ -528,5 +529,309 @@ describe('TeacherScreenBroadcastModal', () => {
         })
       );
     });
+  });
+
+  it('handles Step 1 audio device selection and language settings via teacherSubtitles', () => {
+    const onSelectMicDeviceId = vi.fn();
+    const mockTeacherSubtitles = {
+      speechLanguage: 'zh-HK',
+      setSpeechLanguage: vi.fn(),
+      engineMode: 'server',
+      setEngineMode: vi.fn(),
+      targetLanguages: ['en', 'zh-Hans'],
+      setTargetLanguages: vi.fn(),
+    };
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        selectedMicDeviceId="mic_1"
+        onSelectMicDeviceId={onSelectMicDeviceId}
+        teacherSubtitles={mockTeacherSubtitles}
+      />
+    );
+
+    // Change spoken language
+    const speechLangSelect = screen.getByLabelText(/Spoken Speech Language/i);
+    fireEvent.change(speechLangSelect, { target: { value: 'en-US' } });
+    expect(mockTeacherSubtitles.setSpeechLanguage).toHaveBeenCalledWith('en-US');
+
+    // Toggle engine mode to client
+    const clientEngineLabel = screen.getByText(/Client Model/i).closest('label');
+    fireEvent.click(clientEngineLabel);
+    expect(mockTeacherSubtitles.setEngineMode).toHaveBeenCalledWith('client');
+
+    // Toggle target languages
+    const jaLabel = screen.getByText('Japanese');
+    fireEvent.click(jaLabel);
+    expect(mockTeacherSubtitles.setTargetLanguages).toHaveBeenCalled();
+  });
+
+  it('allows teacher to enter lecture title and topic in Step 2 and passes them to onStartBroadcast', async () => {
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        lectureRecorder={{ isRecording: false, startRecording: vi.fn() }}
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    // Navigate to Step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    // Fill Title and Topic
+    const titleInput = screen.getByPlaceholderText(/Lecture Title \(e\.g\. Unit 4: Cloud Architecture\)/i);
+    fireEvent.change(titleInput, { target: { value: 'Advanced Cloud Deployments' } });
+
+    const topicInput = screen.getByPlaceholderText(/Topic \/ Tags/i);
+    fireEvent.change(topicInput, { target: { value: 'Docker, Kubernetes' } });
+
+    // Click Start
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lectureTitle: 'Advanced Cloud Deployments',
+          lectureTopic: 'Docker, Kubernetes',
+        })
+      );
+    });
+  });
+
+  it('handles active lecture recording controls (start recording from HUD, resume from pause, upload progress)', () => {
+    const mockScreenStream = { id: 'screen-stream-hud' };
+    const mockLectureRecorder = {
+      isRecording: false,
+      isPaused: false,
+      isUploading: false,
+      recordingState: 'idle',
+      durationFormatted: '00:00',
+      startRecording: vi.fn(),
+      pauseRecording: vi.fn(),
+      resumeRecording: vi.fn(),
+      stopRecording: vi.fn(),
+    };
+
+    const { rerender } = render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        screenStream={mockScreenStream}
+        lectureRecorder={mockLectureRecorder}
+      />
+    );
+
+    // Ready state and start recording button
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+    const startRecordBtn = screen.getByRole('button', { name: /Start Recording/i });
+    fireEvent.click(startRecordBtn);
+    expect(mockLectureRecorder.startRecording).toHaveBeenCalledWith({ screenStream: mockScreenStream });
+
+    // When paused
+    rerender(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        screenStream={mockScreenStream}
+        lectureRecorder={{
+          ...mockLectureRecorder,
+          isRecording: false,
+          isPaused: true,
+          durationFormatted: '03:45',
+        }}
+      />
+    );
+
+    expect(screen.getByText(/PAUSED 03:45/i)).toBeInTheDocument();
+    const resumeBtn = screen.getByRole('button', { name: /Resume/i });
+    fireEvent.click(resumeBtn);
+    expect(mockLectureRecorder.resumeRecording).toHaveBeenCalled();
+
+    // When uploading
+    rerender(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        screenStream={mockScreenStream}
+        lectureRecorder={{
+          ...mockLectureRecorder,
+          isRecording: false,
+          isPaused: false,
+          isUploading: true,
+          uploadProgress: 76,
+        }}
+      />
+    );
+
+    expect(screen.getByText(/Uploading 76%/i)).toBeInTheDocument();
+  });
+
+  it('allows changing broadcast interval on the fly and toggling public projector QR in active broadcast', () => {
+    const setBroadcastInterval = vi.fn();
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        broadcastInterval={1500}
+        setBroadcastInterval={setBroadcastInterval}
+        isPublicBroadcast={true}
+        publicPin="9988"
+      />
+    );
+
+    // Interval select
+    const intervalSelect = screen.getByTitle('Change refresh interval on the fly');
+    expect(intervalSelect).toBeInTheDocument();
+    fireEvent.change(intervalSelect, { target: { value: '1000' } });
+    expect(setBroadcastInterval).toHaveBeenCalledWith(1000);
+
+    // Public PIN and Projector QR button
+    expect(screen.getByText('9988')).toBeInTheDocument();
+    const qrBtn = screen.getByRole('button', { name: /Projector QR/i });
+    fireEvent.click(qrBtn);
+
+    expect(screen.getByText(/Presentation Screen & Subtitles QR Code/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Done/i }));
+  });
+
+  it('renders subtitle AI prompt selector in Step 1 and calls onSelectSubtitlePrompt', () => {
+    const onSelectSubtitlePrompt = vi.fn();
+    const promptsList = [
+      { id: 'p_ai', name: 'AI & Data Science Domain' },
+      { id: 'p_sec', name: 'Cybersecurity Domain' },
+    ];
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        courseContext="Data Engineering"
+        availablePrompts={promptsList}
+        selectedSubtitlePromptId="p_ai"
+        onSelectSubtitlePrompt={onSelectSubtitlePrompt}
+      />
+    );
+
+    const promptSelect = screen.getByLabelText(/Translation AI Prompt/i);
+    expect(promptSelect).toBeInTheDocument();
+    fireEvent.change(promptSelect, { target: { value: 'p_sec' } });
+    expect(onSelectSubtitlePrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'p_sec', name: 'Cybersecurity Domain' })
+    );
+  });
+
+  it('allows generating a new random 4-digit PIN in Step 2', () => {
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+      />
+    );
+
+    // Go to step 2
+    fireEvent.click(screen.getByText(/Next: Screen & Recording Setup/i).closest('button'));
+
+    // Enable presentation mode
+    const publicCheckbox = screen.getByLabelText(/Enable Public Presentation Mode/i);
+    fireEvent.click(publicCheckbox);
+
+    // Click New PIN button
+    const newPinBtn = screen.getByRole('button', { name: /New PIN/i });
+    fireEvent.click(newPinBtn);
+
+    const pinInput = screen.getByLabelText(/Presentation PIN/i);
+    expect(pinInput.value).toMatch(/^\d{4}$/);
+  });
+
+  it('renders available microphone devices and handles live mic level volume meter in Step 1', async () => {
+    const onSelectMicDeviceId = vi.fn();
+    navigator.mediaDevices = {
+      ...navigator.mediaDevices,
+      enumerateDevices: vi.fn().mockResolvedValue([
+        { kind: 'audioinput', deviceId: 'mic-builtin', label: 'Built-in Audio' },
+        { kind: 'audioinput', deviceId: 'mic-usb', label: 'Yeti USB Mic' },
+      ]),
+    };
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        selectedMicDeviceId="mic-builtin"
+        onSelectMicDeviceId={onSelectMicDeviceId}
+      />
+    );
+
+    // Select dropdown
+    const select = screen.getByLabelText(/Audio Input \(Microphone\)/i);
+    await waitFor(() => {
+      expect(screen.getByText('Built-in Audio')).toBeInTheDocument();
+      expect(screen.getByText('Yeti USB Mic')).toBeInTheDocument();
+    });
+
+    fireEvent.change(select, { target: { value: 'mic-usb' } });
+    expect(onSelectMicDeviceId).toHaveBeenCalledWith('mic-usb');
+  });
+
+  it('renders live subtitle ticker, frame stats, video click play, and dynamic resolution tuning in active broadcast', () => {
+    const setBroadcastResolution = vi.fn();
+    const mockScreenStream = { id: 'stream-active-test' };
+    const mockTeacherSubtitles = {
+      latestTranscript: 'Now explaining Kubernetes pods',
+      latestTranslations: {
+        en: 'Now explaining Kubernetes pods',
+        'zh-Hans': '现在解释 Kubernetes 容器组',
+      },
+      speechLanguage: 'en-US',
+    };
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        screenStream={mockScreenStream}
+        broadcastResolution="720p"
+        setBroadcastResolution={setBroadcastResolution}
+        teacherSubtitles={mockTeacherSubtitles}
+        frameStats={{ emittedFrames: 142 }}
+        viewers={[{ studentUid: 's1', studentEmail: 'sam@school.edu' }]}
+      />
+    );
+
+    // Live Subtitles Ticker Strip
+    expect(screen.getAllByText('Now explaining Kubernetes pods').length).toBe(2);
+    expect(screen.getByText('现在解释 Kubernetes 容器组')).toBeInTheDocument();
+
+    // Frame stats
+    expect(screen.getByText('Frames Published:')).toBeInTheDocument();
+    expect(screen.getByText('142')).toBeInTheDocument();
+
+    // Viewer count singular
+    expect(screen.getByText(/1 Student Watching/i)).toBeInTheDocument();
+
+    // Dynamic Resolution Select
+    const resSelect = screen.getByTitle('Change broadcast resolution on the fly');
+    fireEvent.change(resSelect, { target: { value: '1080p' } });
+    expect(setBroadcastResolution).toHaveBeenCalledWith('1080p');
+
+    // Video click
+    const video = screen.getByTitle(/Click to resume preview if paused/i);
+    fireEvent.click(video);
   });
 });

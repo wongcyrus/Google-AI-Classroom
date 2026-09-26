@@ -599,6 +599,94 @@ describe('Tasks Component Suite', () => {
       });
     });
 
+    it('handles Tab 4: late policy, scoring strategy, retry cooldown, dual camera, feedback release, and footer step navigation', async () => {
+      const mockOnSave = vi.fn();
+      render(
+        <TaskEditorModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onSave={mockOnSave}
+          classId="class_1"
+        />
+      );
+
+      // Verify footer wizard navigation from Tab 1 to Tab 2 to Tab 3 to Tab 4
+      const nextBtn = screen.getByRole('button', { name: /Next Step →/i });
+      fireEvent.click(nextBtn); // to demo
+      expect(screen.getByText(/Public YouTube Link/i)).toBeInTheDocument();
+
+      fireEvent.click(nextBtn); // to rubric
+      expect(screen.getByRole('button', { name: /Add Milestone Manually/i })).toBeInTheDocument();
+
+      fireEvent.click(nextBtn); // to constraints
+      expect(screen.getByText(/Late Submission Policy/i)).toBeInTheDocument();
+
+      // Now on Tab 4: test footer Previous button navigation back
+      expect(screen.getByRole('button', { name: /← Previous/i })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /← Previous/i })); // goes to rubric
+      expect(screen.getByRole('button', { name: /Add Milestone Manually/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /← Previous/i })); // goes to demo
+      expect(screen.getByText(/Public YouTube Link/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /← Previous/i })); // goes to basic
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\., Dockerizing Node\.js/i), {
+        target: { value: 'Advanced Distributed Systems Task' },
+      });
+
+      // Jump directly to Tab 4
+      fireEvent.click(screen.getByRole('button', { name: /4\. Constraints & Policies/i }));
+
+      // Late policy
+      const latePolicySelect = screen.getByDisplayValue(/Allow with Late Flag/i);
+      fireEvent.change(latePolicySelect, { target: { value: 'strictly_closed' } });
+
+      // Scoring strategy
+      const scoringSelect = screen.getByDisplayValue(/Keep Highest Score/i);
+      fireEvent.change(scoringSelect, { target: { value: 'latest' } });
+
+      // Retry cooldown
+      const cooldownInput = screen.getByDisplayValue('15');
+      fireEvent.change(cooldownInput, { target: { value: '30' } });
+
+      // Required media channels
+      const channelSelect = screen.getByDisplayValue(/Screen Share Only/i);
+      fireEvent.change(channelSelect, { target: { value: 'dual_screen_webcam' } });
+
+      // Feedback release policy
+      const feedbackSelect = screen.getByDisplayValue(/Immediate/i);
+      fireEvent.change(feedbackSelect, { target: { value: 'after_deadline' } });
+
+      // Add a milestone so task can be published
+      fireEvent.click(screen.getByRole('button', { name: /3\. Rubric Milestones/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Add Milestone Manually/i }));
+
+      // Save and publish
+      fireEvent.click(screen.getByRole('button', { name: /4\. Constraints & Policies/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Publish Task/i }));
+
+      await waitFor(() => {
+        expect(mockOnSave).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Advanced Distributed Systems Task',
+            constraints: expect.objectContaining({
+              timing: expect.objectContaining({ latePolicy: 'strictly_closed' }),
+              attempts: expect.objectContaining({
+                scoringStrategy: 'latest',
+                retryCooldownMinutes: 30,
+              }),
+              proctoring: expect.objectContaining({
+                requiredChannel: 'dual_screen_webcam',
+              }),
+              feedbackRelease: expect.objectContaining({
+                policy: 'after_deadline',
+              }),
+            }),
+          })
+        );
+      });
+    });
+
     it('validates empty title and displays error alert', async () => {
       render(
         <TaskEditorModal

@@ -1143,6 +1143,128 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     );
     expect(await screen.findByText(/has been reset successfully/i)).toBeInTheDocument();
   });
+
+  it('configures and saves classroom IP restrictions', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementationOnce((ref, data) => {
+      capturedUpdateData = data;
+      return Promise.resolve();
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/🔒 9\. Security & IP Restrictions/i)).toBeInTheDocument();
+    });
+
+    const ipTextarea = screen.getByPlaceholderText(/e\.g\. 202\.125\.10\.0\/24/i);
+    fireEvent.change(ipTextarea, {
+      target: { value: '202.125.10.0/24\n192.168.1.0/24' },
+    });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.ipRestrictions).toEqual(['202.125.10.0/24', '192.168.1.0/24']);
+  });
+
+  it('handles class deletion from Danger Zone with user confirmation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Delete This Class/i })).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete This Class/i });
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('CLASS_101'));
+    expect(mockDeleteDoc).toHaveBeenCalledWith(expect.objectContaining({ id: 'CLASS_101' }));
+    expect(alertSpy).toHaveBeenCalledWith('Class deleted successfully.');
+
+    confirmSpy.mockRestore();
+    alertSpy.mockRestore();
+  });
+
+  it('aborts class deletion if user cancels confirmation dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Delete This Class/i })).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete This Class/i });
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('handles closing the schedule change safeguard modal without applying changes', async () => {
+    mockGetDoc.mockImplementation(() =>
+      Promise.resolve({
+        exists: () => true,
+        data: () => ({
+          ...mockClassData,
+          schedule: {
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeZone: 'Asia/Hong_Kong',
+            timeSlots: [{ startTime: '09:00', endTime: '11:00', days: ['Mon'] }],
+          },
+          scheduleHistory: [],
+        }),
+      })
+    );
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_CANCEL_SAFEGUARD" />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026-09-01')).toBeInTheDocument();
+    });
+
+    // Change schedule date to trigger safeguard modal
+    const endDateInput = screen.getByDisplayValue('2026-12-31');
+    fireEvent.change(endDateInput, { target: { value: '2027-02-15' } });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    // Safeguard modal should appear
+    await waitFor(() => {
+      expect(screen.getByText(/Class Timetable Change Safeguard/i)).toBeInTheDocument();
+    });
+
+    // Click Cancel button in ScheduleChangeModal
+    const cancelSafeguardBtn = screen.getByRole('button', { name: /^Cancel$/i });
+    await act(async () => {
+      fireEvent.click(cancelSafeguardBtn);
+    });
+
+    // Modal should close without updating Firestore
+    await waitFor(() => {
+      expect(screen.queryByText(/Class Timetable Change Safeguard/i)).not.toBeInTheDocument();
+    });
+  });
 });
 
 

@@ -25,6 +25,7 @@ const {
       get: () => mockDocGet(id),
     })),
     where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
     get: () => mockCollectionGet(),
     add: mockCollectionAdd,
   };
@@ -517,6 +518,63 @@ describe('WebAuthn Passkey Flows Backend', () => {
       await expect(
         handleResetStudentPasskey({ studentUid: null, studentEmail: null })
       ).rejects.toThrow('Missing studentUid or studentEmail.');
+    });
+
+    it('looks up studentUid by studentEmail when studentUid is not provided', async () => {
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'looked_up_uid_1',
+            data: () => ({
+              studentEmail: 'student_lookup@vtc.edu.hk',
+              deviceModel: 'Pixel 8',
+              credentialID: 'cred_pixel_8',
+            }),
+          },
+        ],
+      });
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentEmail: 'student_lookup@vtc.edu.hk',
+          deviceModel: 'Pixel 8',
+          credentialID: 'cred_pixel_8',
+        }),
+      });
+
+      const res = await handleResetStudentPasskey({
+        studentUid: null,
+        studentEmail: 'STUDENT_LOOKUP@VTC.EDU.HK',
+        classId: 'class_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.previousDeviceModel).toBe('Pixel 8');
+      expect(mockDocDelete).toHaveBeenCalled();
+    });
+
+    it('catches and logs student properties update errors without failing the reset', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentEmail: 'student_prop_err@vtc.edu.hk',
+          deviceModel: 'Samsung S24',
+        }),
+      });
+
+      mockDocUpdate.mockRejectedValueOnce(new Error('Permission denied on subcollection'));
+
+      const res = await handleResetStudentPasskey({
+        studentUid: 'student_s24',
+        classId: 'class_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.previousDeviceModel).toBe('Samsung S24');
     });
   });
 });

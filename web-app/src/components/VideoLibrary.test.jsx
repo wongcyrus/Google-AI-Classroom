@@ -86,9 +86,38 @@ vi.mock('../hooks/useVideoPrompts', () => ({
   ],
 }));
 
+const mockConnectGdrive = vi.fn().mockResolvedValue(true);
+let mockBaseFolderName = 'Classroom Archives';
+const mockSetBaseFolderName = vi.fn((val) => { mockBaseFolderName = val; });
+const mockBackupStudentVideosToDrive = vi.fn().mockImplementation(async ({ videos, onBatchProgress }) => {
+  if (onBatchProgress && videos && videos.length > 0) {
+    onBatchProgress({ index: 0, total: videos.length, currentVideo: videos[0], percentage: 100, status: 'success' });
+  }
+  return { successCount: videos?.length || 0, failedCount: 0 };
+});
+let mockGdriveConnected = true;
+let mockGdriveConnecting = false;
+
+vi.mock('../hooks/useGoogleDrive', () => ({
+  useGoogleDrive: () => ({
+    isConfigured: true,
+    isConnected: mockGdriveConnected,
+    isConnecting: mockGdriveConnecting,
+    connectedUser: { email: 'teacher@vtc.edu.hk', name: 'Teacher' },
+    baseFolderName: mockBaseFolderName,
+    setBaseFolderName: mockSetBaseFolderName,
+    connect: mockConnectGdrive,
+    disconnect: vi.fn(),
+    backupStudentVideosToDrive: mockBackupStudentVideosToDrive,
+  }),
+}));
+
 describe('VideoLibrary Full Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGdriveConnected = true;
+    mockGdriveConnecting = false;
+    mockBaseFolderName = 'Classroom Archives';
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
     mockUsePaginatedQueryReturn = {
@@ -420,6 +449,130 @@ describe('VideoLibrary Full Component Suite', () => {
       expect(global.fetch).toHaveBeenCalled();
       expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('Failed to download video'));
       expect(appendSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Google Drive Integration and Backup Workflows', () => {
+    it('renders connect Google Drive button when disconnected and triggers connect on click', async () => {
+      mockGdriveConnected = false;
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      const connectBtn = screen.getByRole('button', { name: /Connect Google Drive/i });
+      expect(connectBtn).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(connectBtn);
+      });
+
+      expect(mockConnectGdrive).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows editing base folder name and saving draft', async () => {
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      expect(screen.getByText('Classroom Archives')).toBeInTheDocument();
+
+      // Click Edit Base Folder
+      const editBtn = screen.getByRole('button', { name: /Edit Base Folder/i });
+      fireEvent.click(editBtn);
+
+      // Input appears
+      const input = screen.getByPlaceholderText(/e\.g\. Classroom Archives/i);
+      expect(input).toBeInTheDocument();
+      fireEvent.change(input, { target: { value: 'Semester 1 Backup' } });
+
+      // Save
+      const saveBtn = screen.getByRole('button', { name: 'Save' });
+      fireEvent.click(saveBtn);
+
+      expect(mockSetBaseFolderName).toHaveBeenCalledWith('Semester 1 Backup');
+    });
+
+    it('allows canceling base folder editing without saving changes', () => {
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      const editBtn = screen.getByRole('button', { name: /Edit Base Folder/i });
+      fireEvent.click(editBtn);
+
+      const input = screen.getByPlaceholderText(/e\.g\. Classroom Archives/i);
+      fireEvent.change(input, { target: { value: 'Discarded Name' } });
+
+      const cancelBtn = screen.getByRole('button', { name: 'Cancel' });
+      fireEvent.click(cancelBtn);
+
+      expect(screen.getByText('Classroom Archives')).toBeInTheDocument();
+      expect(screen.queryByText('Discarded Name')).not.toBeInTheDocument();
+    });
+
+    it('backs up selected videos to Google Drive and updates progress modal', async () => {
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      // Select first video
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[1]);
+
+      const backupBtn = screen.getByRole('button', { name: /Backup Selected to Drive \(1\)/i });
+      await act(async () => {
+        fireEvent.click(backupBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockBackupStudentVideosToDrive).toHaveBeenCalled();
+      });
+    });
+
+    it('backs up all class videos to Google Drive when requested', async () => {
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T01:00:00Z"
+          filterField="startTime"
+        />
+      );
+
+      const backupAllBtn = screen.getByRole('button', { name: /Backup All Class Videos to Drive/i });
+      await act(async () => {
+        fireEvent.click(backupAllBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockBackupStudentVideosToDrive).toHaveBeenCalled();
+      });
     });
   });
 });

@@ -1,7 +1,14 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import StudentRecordsView, { isRecordInLesson, parseTimeMs, isExamRecord } from './StudentRecordsView';
+import StudentRecordsView, {
+  isRecordInLesson,
+  parseTimeMs,
+  isExamRecord,
+  formatDuration,
+  formatBytes,
+  formatDate,
+} from './StudentRecordsView';
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -29,16 +36,19 @@ const mockOnSnapshot = vi.fn((ref, callback) => {
   return vi.fn();
 });
 
+const mockSetDoc = vi.fn().mockResolvedValue(true);
+const mockAddDoc = vi.fn().mockResolvedValue({ id: 'mock-doc-id' });
+
 vi.mock('firebase/firestore', () => ({
-  doc: vi.fn((db, col, id) => ({ id, col })),
-  collection: vi.fn((db, ...path) => ({ path })),
+  doc: vi.fn((db, ...args) => ({ id: args[args.length - 1], path: args.join('/') })),
+  collection: vi.fn((db, ...path) => ({ path: path.join('/') })),
   query: vi.fn((...args) => ({ args })),
   where: vi.fn((field, op, val) => ({ field, op, val })),
   getDoc: (...args) => mockGetDoc(...args),
   getDocs: (...args) => mockGetDocs(...args),
   onSnapshot: (...args) => mockOnSnapshot(...args),
-  setDoc: vi.fn().mockResolvedValue(true),
-  addDoc: vi.fn().mockResolvedValue({ id: 'mock-doc-id' }),
+  setDoc: (...args) => mockSetDoc(...args),
+  addDoc: (...args) => mockAddDoc(...args),
   serverTimestamp: vi.fn(() => ({ toMillis: () => Date.now() })),
 }));
 
@@ -50,6 +60,47 @@ vi.mock('./VideoPlayerModal', () => ({
         <button onClick={onClose}>Close Player</button>
       </div>
     ) : null,
+}));
+
+vi.mock('./tasks/StudentTaskWorkspaceModal', () => ({
+  default: ({ isOpen, onClose, task, submission, onStartAttempt, onFinishAttempt }) =>
+    isOpen ? (
+      <div data-testid="student-task-workspace-modal">
+        <span>Workspace: {task?.title}</span>
+        <button onClick={onClose}>Close Task Workspace</button>
+        <button
+          onClick={() =>
+            onStartAttempt?.(task.id, {
+              attemptNumber: 1,
+              startedAt: new Date('2026-09-12T10:00:00Z'),
+            })
+          }
+        >
+          Mock Start Attempt
+        </button>
+        <button
+          onClick={() =>
+            onFinishAttempt?.(task.id, {
+              attemptNumber: 1,
+              score: 90,
+              startedAt: new Date('2026-09-12T10:00:00Z'),
+              finishedAt: new Date('2026-09-12T10:25:00Z'),
+            })
+          }
+        >
+          Mock Finish Attempt
+        </button>
+      </div>
+    ) : null,
+}));
+
+vi.mock('./tasks/StudentTaskFeedbackView', () => ({
+  default: ({ task, submission, onBack }) => (
+    <div data-testid="student-task-feedback-view">
+      <span>Feedback View: {task?.title}</span>
+      <button onClick={onBack}>Back to Tasks</button>
+    </div>
+  ),
 }));
 
 describe('StudentRecordsView Component', () => {
@@ -1424,6 +1475,494 @@ describe('StudentRecordsView Component', () => {
       expect(mockGetDownloadURL).not.toHaveBeenCalled();
 
       alertSpy.mockRestore();
+    });
+  });
+
+  describe('Utility Formatters & Record Matchers', () => {
+    it('formats durations accurately across seconds and minutes', () => {
+      expect(formatDuration(0)).toBe('0s');
+      expect(formatDuration(null)).toBe('0s');
+      expect(formatDuration(NaN)).toBe('0s');
+      expect(formatDuration(45)).toBe('45s');
+      expect(formatDuration(120)).toBe('2m 0s');
+      expect(formatDuration(125)).toBe('2m 5s');
+    });
+
+    it('formats bytes accurately across units', () => {
+      expect(formatBytes(0)).toBe('0 B');
+      expect(formatBytes(null)).toBe('0 B');
+      expect(formatBytes(NaN)).toBe('0 B');
+      expect(formatBytes(500)).toBe('500 B');
+      expect(formatBytes(1024)).toBe('1 KB');
+      expect(formatBytes(1048576)).toBe('1 MB');
+      expect(formatBytes(1073741824)).toBe('1 GB');
+    });
+
+    it('formats dates safely handling null, invalid dates, strings, and Timestamp objects', () => {
+      expect(formatDate(null)).toBe('N/A');
+      expect(formatDate('invalid-date-string')).toBe('N/A');
+      const sample = new Date('2026-09-12T10:00:00Z');
+      expect(formatDate(sample)).toBe(sample.toLocaleString());
+      const mockTimestamp = { toDate: () => sample };
+      expect(formatDate(mockTimestamp)).toBe(sample.toLocaleString());
+    });
+
+    it('parses timestamps reliably from numbers, seconds, millis, and Dates', () => {
+      expect(isNaN(parseTimeMs(null))).toBe(true);
+      expect(isNaN(parseTimeMs('not-a-date'))).toBe(true);
+
+      const nowMs = Date.now();
+      expect(parseTimeMs({ toMillis: () => nowMs })).toBe(nowMs);
+      expect(parseTimeMs({ seconds: 1700000000 })).toBe(1700000000000);
+      expect(parseTimeMs(new Date(nowMs))).toBe(nowMs);
+      expect(parseTimeMs('2026-09-12T10:00:00Z')).toBe(new Date('2026-09-12T10:00:00Z').getTime());
+    });
+
+    it('accurately evaluates isRecordInLesson boundaries and buffer windows', () => {
+      expect(isRecordInLesson(null, null)).toBe(false);
+      expect(isRecordInLesson({ classId: 'CLASS_A' }, { classId: 'CLASS_B' })).toBe(false);
+
+      const lesson = {
+        classId: 'CLASS_A',
+        lessonId: 'LESSON_1',
+        startTime: '2026-09-12T10:00:00Z',
+        endTime: '2026-09-12T12:00:00Z',
+      };
+
+      // Exact lessonId match
+      expect(isRecordInLesson({ classId: 'CLASS_A', lessonId: 'LESSON_1' }, lesson)).toBe(true);
+
+      // Within lesson bounds
+      expect(isRecordInLesson({ classId: 'CLASS_A', timestamp: '2026-09-12T11:00:00Z' }, lesson)).toBe(true);
+
+      // Within 30min pre-buffer
+      expect(isRecordInLesson({ classId: 'CLASS_A', timestamp: '2026-09-12T09:40:00Z' }, lesson)).toBe(true);
+
+      // Outside pre-buffer (>30min prior)
+      expect(isRecordInLesson({ classId: 'CLASS_A', timestamp: '2026-09-12T09:00:00Z' }, lesson)).toBe(false);
+
+      // Range record overlapping with lesson window
+      expect(isRecordInLesson({
+        classId: 'CLASS_A',
+        startTime: '2026-09-12T11:50:00Z',
+        endTime: '2026-09-12T12:30:00Z',
+      }, lesson)).toBe(true);
+    });
+
+    it('accurately detects exam records across flags, lessonTypes, and period dates', () => {
+      expect(isExamRecord(null, null)).toBe(false);
+      expect(isExamRecord({ isExam: true }, {})).toBe(true);
+      expect(isExamRecord({ lessonType: 'exam' }, {})).toBe(true);
+
+      const classObj = {
+        examPeriods: [
+          { startDate: '2026-10-01T09:00:00Z', endDate: '2026-10-01T12:00:00Z' },
+        ],
+      };
+
+      expect(isExamRecord({ timestamp: '2026-10-01T10:00:00Z' }, classObj)).toBe(true);
+      expect(isExamRecord({ timestamp: '2026-10-01T13:00:00Z' }, classObj)).toBe(false);
+      expect(isExamRecord({ timestamp: 'invalid' }, classObj)).toBe(false);
+    });
+  });
+
+  describe('Audio Playback & Practical Tasks Interactions', () => {
+    it('plays, caches, and stops audio snippets on demand', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('videoJobs')) {
+          return {
+            docs: [
+              {
+                id: 'job_audio_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  videoPath: 'videos/CLASS_A/job_audio_1.mp4',
+                  status: 'completed',
+                  duration: 120,
+                  size: 1048576,
+                  startTime: '2026-09-12T10:00:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'audio_test_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  language: '廣東話',
+                  transcript: '請教老師關於K8s Pod網絡問題',
+                  audioPath: 'audio/CLASS_A/clip1.webm',
+                  timestamp: '2026-09-12T10:20:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      mockGetDownloadURL.mockResolvedValue('https://storage.mock/audio_clip1.webm');
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      // Switch to Audio Recordings tab
+      const audioTab = screen.getByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTab);
+
+      // If scope banner is visible, click Show All Lessons
+      const showAllBtn = screen.queryByRole('button', { name: /Show All Lessons/i });
+      if (showAllBtn) {
+        fireEvent.click(showAllBtn);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText('請教老師關於K8s Pod網絡問題')).toBeInTheDocument();
+      });
+
+      const playBtn = screen.getByRole('button', { name: /▶ Play Clip/i });
+      fireEvent.click(playBtn);
+
+      await waitFor(() => {
+        expect(mockGetDownloadURL).toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: /⏹ Stop/i })).toBeInTheDocument();
+      });
+
+      // Clicking stop toggles playback off
+      const stopBtn = screen.getByRole('button', { name: /⏹ Stop/i });
+      fireEvent.click(stopBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /▶ Play Clip/i })).toBeInTheDocument();
+      });
+    });
+
+    it('blocks audio playback if the recording took place during an exam session', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM') {
+          return {
+            exists: () => true,
+            id: 'CLASS_EXAM',
+            data: () => ({
+              name: 'Final Exam Class',
+              examPeriods: [{ startDate: '2026-09-12T00:00:00Z', endDate: '2026-09-12T23:59:59Z' }],
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'exam_audio_1',
+                data: () => ({
+                  classId: 'CLASS_EXAM',
+                  studentUid: 'student-test-123',
+                  audioPath: 'audio/CLASS_EXAM/exam1.webm',
+                  isExam: true,
+                  timestamp: '2026-09-12T10:20:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Final Exam Class/i).length).toBeGreaterThan(0);
+      });
+
+      const audioTab = screen.getByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTab);
+
+      // Exam audio records are filtered out from visible audio table to protect integrity
+      await waitFor(() => {
+        expect(screen.getByText(/Assessment Confidentiality: Exam Audio Restricted/i)).toBeInTheDocument();
+      });
+
+      alertSpy.mockRestore();
+    });
+
+    it('launches practical task workspace and supports start/finish attempts', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.path && docRef.path.includes('submissions')) {
+          return {
+            exists: () => true,
+            id: 'student-test-123',
+            data: () => ({ attemptsCount: 0, status: 'not_started' }),
+          };
+        }
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((ref, callback) => {
+        if (typeof callback === 'function') {
+          callback({
+            docs: [
+              {
+                id: 'task_deploy_1',
+                data: () => ({
+                  title: 'Deploy Nginx Pod on Cluster',
+                  description: 'Configure pod manifest and expose service',
+                  maxScore: 100,
+                  constraints: { attempts: { maxAttempts: 3 } },
+                }),
+              },
+            ],
+          });
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      // Switch to Tasks tab
+      const tasksTab = screen.getByRole('tab', { name: /Tasks & AI Progress/i });
+      fireEvent.click(tasksTab);
+
+      await waitFor(() => {
+        expect(screen.getByText('Deploy Nginx Pod on Cluster')).toBeInTheDocument();
+      });
+
+      // Click "▶ Start Challenge"
+      const startChallengeBtn = screen.getByRole('button', { name: /▶ Start Challenge/i });
+      fireEvent.click(startChallengeBtn);
+
+      // Workspace modal should open
+      await waitFor(() => {
+        expect(screen.getByTestId('student-task-workspace-modal')).toBeInTheDocument();
+        expect(screen.getByText(/Workspace: Deploy Nginx Pod on Cluster/i)).toBeInTheDocument();
+      });
+
+      // Start attempt inside workspace modal
+      const startAttemptBtn = screen.getByRole('button', { name: /Mock Start Attempt/i });
+      fireEvent.click(startAttemptBtn);
+
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalledWith(
+          expect.objectContaining({ path: expect.stringContaining('submissions') }),
+          expect.objectContaining({
+            studentUid: 'student-test-123',
+            attemptsCount: 1,
+            status: 'in_progress',
+          }),
+          { merge: true }
+        );
+      });
+
+      // Finish attempt inside workspace modal
+      const finishAttemptBtn = screen.getByRole('button', { name: /Mock Finish Attempt/i });
+      fireEvent.click(finishAttemptBtn);
+
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalledWith(
+          expect.objectContaining({ path: expect.stringContaining('submissions') }),
+          expect.objectContaining({
+            status: 'compiling',
+          }),
+          { merge: true }
+        );
+      });
+
+      // Close modal
+      const closeBtn = screen.getByRole('button', { name: /Close Task Workspace/i });
+      fireEvent.click(closeBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('student-task-workspace-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('views feedback view for evaluated practical tasks', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.path && docRef.path.includes('submissions')) {
+          return {
+            exists: () => true,
+            id: 'student-test-123',
+            data: () => ({
+              attemptsCount: 1,
+              status: 'evaluated',
+              effectiveScore: 95,
+              finalScore: 95,
+              grade: 'A',
+            }),
+          };
+        }
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((ref, callback) => {
+        if (typeof callback === 'function') {
+          callback({
+            docs: [
+              {
+                id: 'task_eval_1',
+                data: () => ({
+                  title: 'Setup Helm Chart',
+                  maxScore: 100,
+                }),
+              },
+            ],
+          });
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const tasksTab = screen.getByRole('tab', { name: /Tasks & AI Progress/i });
+      fireEvent.click(tasksTab);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Score: 95 \/ 100/i)).toBeInTheDocument();
+      });
+
+      const feedbackBtn = screen.getByRole('button', { name: /📊 View Feedback/i });
+      fireEvent.click(feedbackBtn);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('student-task-feedback-view')).toBeInTheDocument();
+        expect(screen.getByText(/Feedback View: Setup Helm Chart/i)).toBeInTheDocument();
+      });
+
+      // Back button in feedback view
+      const backBtn = screen.getByRole('button', { name: /Back to Tasks/i });
+      fireEvent.click(backBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('student-task-feedback-view')).not.toBeInTheDocument();
+      });
+    });
+
+    it('downloads video directly via callable playback url fallback to storage', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return {
+            exists: () => true,
+            id: 'CLASS_A',
+            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('videoJobs')) {
+          return {
+            docs: [
+              {
+                id: 'job_dl_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  videoPath: 'videos/CLASS_A/job_dl_1.mp4',
+                  status: 'completed',
+                  duration: 120,
+                  size: 1048576,
+                  startTime: '2026-09-12T10:00:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      // Mock callable to resolve valid download URL
+      mockHttpsCallable.mockImplementation(() => {
+        return vi.fn().mockResolvedValue({
+          data: { url: 'https://cdn.example.com/download_recording.mp4' },
+        });
+      });
+
+      // Mock DOM element creation and click
+      const clickSpy = vi.fn();
+      const appendSpy = vi.spyOn(document.body, 'appendChild');
+      const removeSpy = vi.spyOn(document.body, 'removeChild');
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation((tagName) => {
+        const el = origCreateElement(tagName);
+        if (tagName === 'a') {
+          el.click = clickSpy;
+        }
+        return el;
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const dlBtn = await screen.findByRole('button', { name: /Download/i });
+      fireEvent.click(dlBtn);
+
+      await waitFor(() => {
+        expect(clickSpy).toHaveBeenCalled();
+      });
+
+      appendSpy.mockRestore();
+      removeSpy.mockRestore();
+      document.createElement.mockRestore();
     });
   });
 });

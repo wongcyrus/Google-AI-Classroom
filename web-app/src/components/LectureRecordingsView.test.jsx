@@ -629,5 +629,141 @@ describe('LectureRecordingsView Component', () => {
         import.meta.env.VITE_GOOGLE_CLIENT_ID = originalClientId;
       }
     });
+
+    it('allows deleting a recording with confirmation dialog and handles cancel', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm');
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_del_1',
+          data: () => ({
+            title: 'Delete Me Lecture',
+            durationSeconds: 100,
+            status: 'ready',
+            videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      const delBtns = screen.getAllByRole('button', { name: /Delete Recording/i });
+      const delBtn = delBtns[0];
+
+      // 1. Cancel deletion
+      confirmSpy.mockReturnValueOnce(false);
+      fireEvent.click(delBtn);
+      expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+      // 2. Confirm deletion
+      confirmSpy.mockReturnValueOnce(true);
+      await act(async () => {
+        fireEvent.click(delBtn);
+      });
+
+      expect(mockDeleteDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_del_1' })
+      );
+
+      confirmSpy.mockRestore();
+    });
+
+    it('triggers manual subtitle retry when recording is in failed or non-ready status', async () => {
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_failed_sub',
+          data: () => ({
+            title: 'Failed Subtitles Lecture',
+            topic: 'Debugging',
+            durationSeconds: 150,
+            status: 'failed',
+            videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
+            storagePath: 'classes/test_class/recordings/rec_failed_sub.webm',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      const retryBtn = screen.getByRole('button', { name: /Generate \/ Retry Subtitles/i });
+      expect(retryBtn).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(retryBtn);
+      });
+
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'test_class',
+          sessionId: 'rec_failed_sub',
+          title: 'Failed Subtitles Lecture',
+          topic: 'Debugging',
+        })
+      );
+    });
+
+    it('handles unlinking YouTube and Google Drive links', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { container } = render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_linked_all',
+          data: () => ({
+            title: 'Fully Linked Lecture',
+            durationSeconds: 200,
+            status: 'ready',
+            videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
+            youtubeUrl: 'https://www.youtube.com/watch?v=abc123xyz',
+            youtubeVideoId: 'abc123xyz',
+            driveFileId: 'drive_file_id_123',
+            driveEmbedUrl: 'https://drive.google.com/file/d/drive_file_id_123/preview',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      // Unlink YouTube
+      const unlinkYtBtn = container.querySelector('.btn-unlink-youtube');
+      expect(unlinkYtBtn).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(unlinkYtBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_linked_all' }),
+        expect.objectContaining({
+          youtubeUrl: null,
+          youtubeVideoId: null,
+        })
+      );
+
+      // Unlink Google Drive
+      const unlinkDriveBtn = container.querySelector('.btn-unlink-drive');
+      expect(unlinkDriveBtn).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(unlinkDriveBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_linked_all' }),
+        expect.objectContaining({
+          driveFileId: null,
+          driveEmbedUrl: null,
+        })
+      );
+
+      confirmSpy.mockRestore();
+    });
   });
 });

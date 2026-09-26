@@ -69,10 +69,13 @@ graph LR
 <a id="documentation-index"></a>
 ## 📚 Documentation Index
 
+> 🔍 **Developer Master Index**: For a paragraph-by-paragraph and diagram-to-code cross-reference linking all documentation to source implementations and tracking documentation drift, see the **[Master Documentation-to-Code & Diagram Index](./docs/documentation-code-index.md)**.
+
 Every operational workflow, data model, AI pipeline, and security policy is documented in depth:
 
 | Category | Document | Description |
 | :--- | :--- | :--- |
+| **Master Index & Discrepancies** | 🧭 **[Documentation-to-Code Master Index](./docs/documentation-code-index.md)** | Two-way cross-reference linking every markdown paragraph and diagram to source code, with a drift audit registry. |
 | **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: Gemini 3 migration, multi-location architecture, Bingo 1-min scheduler & FinOps, Live Subtitles, and Chrome enforcement. |
 | **User Manuals & UI Catalogs** | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | Live grid invigilation, WebRTC peek & talkback, Bingo challenges, rubric studio, and incident dossiers. |
 | | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, HUD indicators, and self-service portal. |

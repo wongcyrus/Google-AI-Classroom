@@ -10,7 +10,7 @@ import { computeLessonDuration, getLessonId } from '../utils/attendanceUtils';
 import { generateLessons } from '../hooks/useClassSchedule';
 import './StudentRecordsView.css';
 
-const formatDuration = (totalSeconds) => {
+export const formatDuration = (totalSeconds) => {
   if (!totalSeconds || isNaN(totalSeconds)) return '0s';
   const mins = Math.floor(totalSeconds / 60);
   const secs = Math.round(totalSeconds % 60);
@@ -18,7 +18,7 @@ const formatDuration = (totalSeconds) => {
   return `${mins}m ${secs}s`;
 };
 
-const formatBytes = (bytes) => {
+export const formatBytes = (bytes) => {
   if (!bytes || isNaN(bytes) || bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -26,7 +26,7 @@ const formatBytes = (bytes) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
-const formatDate = (val) => {
+export const formatDate = (val) => {
   if (!val) return 'N/A';
   try {
     const d = val?.toDate ? val.toDate() : new Date(val);

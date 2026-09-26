@@ -228,6 +228,34 @@ vi.mock('../hooks/useStudentLiveSubtitles', () => ({
   useStudentLiveSubtitles: () => mockSubtitlesReturn,
 }));
 
+vi.mock('./tasks/StudentTaskWorkspaceModal', () => ({
+  default: ({ isOpen, onClose, task, submission, onStartAttempt, onFinishAttempt }) =>
+    isOpen ? (
+      <div data-testid="student-task-workspace-modal">
+        <span>Task Workspace: {task?.title}</span>
+        <button onClick={onClose}>Close Workspace</button>
+        <button
+          onClick={() =>
+            onStartAttempt?.(task.id, { attemptNumber: 1, startedAt: new Date('2026-09-12T10:00:00Z') })
+          }
+        >
+          Begin Attempt
+        </button>
+        <button
+          onClick={() =>
+            onFinishAttempt?.(task.id, {
+              attemptNumber: 1,
+              startedAt: new Date('2026-09-12T10:00:00Z'),
+              finishedAt: new Date('2026-09-12T10:30:00Z'),
+            })
+          }
+        >
+          Submit Attempt
+        </button>
+      </div>
+    ) : null,
+}));
+
 
 describe('StudentView Component Extended Test Suite', () => {
   const mockUser = {
@@ -1350,6 +1378,206 @@ describe('StudentView Component Extended Test Suite', () => {
       value: null,
       configurable: true,
       writable: true,
+    });
+  });
+
+  it('toggles primary feed between screen and webcam via Swap Focus button and PiP stream container', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const wizardBtn = screen.getByRole('button', { name: /Start Setup & Readiness Test/i });
+    fireEvent.click(wizardBtn);
+
+    // Step 1: Next to camera check
+    await waitFor(() => {
+      const nextBtn1 = screen.getByRole('button', { name: /Next: Camera Check/i });
+      fireEvent.click(nextBtn1);
+    });
+
+    // Step 2: Calibrate & Next to screen share
+    await waitFor(() => {
+      const calibrateBtn = screen.getByRole('button', { name: /Set Center Pose/i });
+      fireEvent.click(calibrateBtn);
+      const nextBtn2 = screen.getByRole('button', { name: /Next: Screen Share/i });
+      fireEvent.click(nextBtn2);
+    });
+
+    // Step 3: Screen share & Complete
+    await waitFor(() => {
+      const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
+      fireEvent.click(screenShareBtn);
+    });
+
+    await waitFor(() => {
+      const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
+      fireEvent.click(finishBtn);
+    });
+
+    // Dual stream is now live and Swap Focus button is available
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Swap Focus/i })).toBeInTheDocument();
+    });
+
+    // Initial state: primary stream is screen, webcam is PiP
+    const webcamPip = screen.getByTitle('Click to make Webcam main feed');
+    expect(webcamPip).toBeInTheDocument();
+
+    // Click Swap Focus button
+    const swapBtn = screen.getByRole('button', { name: /Swap Focus/i });
+    fireEvent.click(swapBtn);
+
+    // State flipped: primary stream is webcam, screen is PiP
+    await waitFor(() => {
+      expect(screen.getByTitle('Click to make Screen main feed')).toBeInTheDocument();
+    });
+
+    // Click the PiP stream wrapper directly
+    const screenPip = screen.getByTitle('Click to make Screen main feed');
+    fireEvent.click(screenPip);
+
+    // State flipped back: primary stream is screen, webcam is PiP
+    await waitFor(() => {
+      expect(screen.getByTitle('Click to make Webcam main feed')).toBeInTheDocument();
+    });
+  });
+
+  it('dismisses active Bingo challenge and marks status closed in studentProperties', async () => {
+    mockCallableInstance.mockResolvedValueOnce({
+      data: { success: true, result: 'passed', score: 100 },
+    });
+
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+      expect(studentPropsCallback).toBeDefined();
+    });
+
+    const studentPropsCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('studentProperties'));
+    act(() => {
+      studentPropsCallback.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'fresh_bingo_dismiss_test',
+            question: 'What is a closure in JavaScript?',
+            options: ['Function with bundled lexical scope', 'Syntax Error', 'CSS Property'],
+            timeLimitSeconds: 45,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 45000,
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('🎯 Class Bingo Check')).toBeInTheDocument();
+      expect(screen.getByText('What is a closure in JavaScript?')).toBeInTheDocument();
+    });
+
+    // Select option (which directly triggers submission in BingoModal)
+    const optionBtn = screen.getByText('Function with bundled lexical scope');
+    fireEvent.click(optionBtn);
+
+    // Wait for dismiss button
+    await waitFor(() => {
+      expect(screen.getByTestId('bingo-btn-dismiss')).toBeInTheDocument();
+    });
+
+    const dismissBtn = screen.getByTestId('bingo-btn-dismiss');
+    fireEvent.click(dismissBtn);
+
+    await waitFor(() => {
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: expect.stringContaining('studentProperties') }),
+        expect.objectContaining({
+          activeBingo: expect.objectContaining({
+            status: 'closed',
+          }),
+        }),
+        { merge: true }
+      );
+    });
+  });
+
+  it('opens practical task workspace modal from banner and handles task attempt lifecycles', async () => {
+    render(<StudentView user={mockUser} />);
+
+    await waitFor(() => {
+      const tasksCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('tasks'));
+      expect(tasksCallback).toBeDefined();
+    });
+
+    const tasksCallback = snapshotCallbacks.find(item => item.ref?.path?.includes('tasks'));
+    act(() => {
+      tasksCallback.callback({
+        docs: [
+          {
+            id: 'task_k8s_service_1',
+            data: () => ({
+              title: 'Expose Kubernetes Cluster Service',
+              status: 'published',
+              maxScore: 100,
+            }),
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Practical Task Available: Expose Kubernetes Cluster Service/i)).toBeInTheDocument();
+    });
+
+    const startTaskBtn = screen.getByRole('button', { name: /Start Task ➔/i });
+    fireEvent.click(startTaskBtn);
+
+    // Workspace modal opens
+    await waitFor(() => {
+      expect(screen.getByTestId('student-task-workspace-modal')).toBeInTheDocument();
+      expect(screen.getByText(/Task Workspace: Expose Kubernetes Cluster Service/i)).toBeInTheDocument();
+    });
+
+    // Begin attempt
+    const beginAttemptBtn = screen.getByRole('button', { name: /Begin Attempt/i });
+    fireEvent.click(beginAttemptBtn);
+
+    await waitFor(() => {
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: expect.stringContaining('submissions') }),
+        expect.objectContaining({
+          studentUid: 'student123',
+          status: 'in_progress',
+        }),
+        { merge: true }
+      );
+    });
+
+    // Submit attempt
+    const submitAttemptBtn = screen.getByRole('button', { name: /Submit Attempt/i });
+    fireEvent.click(submitAttemptBtn);
+
+    await waitFor(() => {
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: expect.stringContaining('submissions') }),
+        expect.objectContaining({
+          status: 'compiling',
+        }),
+        { merge: true }
+      );
+    });
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: /Close Workspace/i });
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('student-task-workspace-modal')).not.toBeInTheDocument();
     });
   });
 });
