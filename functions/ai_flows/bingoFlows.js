@@ -160,7 +160,7 @@ export function isDuplicateQuestion(candidateQuestion, priorQuestions) {
 export async function resolveBingoQuestion({
   classId,
   studentUid,
-  questionSource = 'question_bank',
+  questionSource = 'teacher_screen',
 }) {
   const classDoc = await db.doc(`classes/${classId}`).get();
   const classData = classDoc.exists ? (classDoc.data() || {}) : {};
@@ -550,7 +550,7 @@ THREE options MUST be plausible distractors.`;
 export async function generateBingoChallenge({
   classId,
   targetStudentUid = 'all',
-  questionSource = 'question_bank',
+  questionSource = 'teacher_screen',
   triggerType = 'teacher_manual_all',
   timeLimitSeconds = null,
   strikeNumber = 1,
@@ -1205,7 +1205,7 @@ export async function handleDispatchBingoRetry({ classId, studentUid, priorBingo
 /**
  * Enqueue a periodic staggered Bingo task to Google Cloud Tasks
  */
-export async function enqueueScheduledBingoTask({ classId, studentUid, questionSource = 'question_bank', delaySeconds = 0 }) {
+export async function enqueueScheduledBingoTask({ classId, studentUid, questionSource = 'teacher_screen', delaySeconds = 0 }) {
   try {
     const queue = getFunctions().taskQueue(`locations/${FUNCTION_REGION}/functions/dispatchScheduledBingoTask`);
     const sanitizedTaskId = `auto-${classId}-${studentUid}-${Date.now()}`
@@ -1305,7 +1305,7 @@ export function isClassSessionActive(classData, now = new Date()) {
 /**
  * Worker for dispatchScheduledBingoTask (called by Cloud Tasks queue worker)
  */
-export async function handleDispatchScheduledBingo({ classId, studentUid, questionSource = 'question_bank' }) {
+export async function handleDispatchScheduledBingo({ classId, studentUid, questionSource = 'teacher_screen' }) {
   if (!classId || !studentUid) {
     console.warn('[handleDispatchScheduledBingo] Missing classId or studentUid. Skipping.');
     return { skipped: true, reason: 'missing_arguments' };

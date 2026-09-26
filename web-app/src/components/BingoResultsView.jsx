@@ -881,26 +881,40 @@ export default function BingoResultsView({
                 <p className="bingo-qa-question-text">{activeRound.question}</p>
               </div>
 
-              {/* Options Grid */}
-              <div className="bingo-qa-options-grid">
-                {activeRound.options.map((opt, idx) => {
-                  const isCorrect = idx === activeRound.correctIndex;
-                  return (
-                    <div
-                      key={idx}
-                      className={`bingo-qa-option-card ${isCorrect ? 'is-correct' : ''}`}
-                    >
-                      <span className="bingo-qa-option-tag">{OPTION_LABELS[idx] || (idx + 1)}</span>
-                      <span className="bingo-qa-option-text">{opt}</span>
-                      {isCorrect && (
-                        <span className="bingo-qa-correct-pill">
-                          ✓ Correct Answer
-                        </span>
-                      )}
+              {/* Options Grid OR Biometric Passkey Info */}
+              {activeRound.questionSource === 'mobile_passkey' ? (
+                <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '0.75rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.5rem 0' }}>
+                  <span style={{ fontSize: '1.75rem' }}>🔐</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#5b21b6', fontSize: '0.95rem' }}>
+                      Biometric WebAuthn Attendance Challenge
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ fontSize: '0.85rem', color: '#6d28d9', marginTop: '0.2rem' }}>
+                      Physical hardware biometric touch (Face ID, Touch ID, or Android Fingerprint) on student&apos;s paired smartphone. Students are ranked by reaction speed (fastest response latency).
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bingo-qa-options-grid">
+                  {activeRound.options.map((opt, idx) => {
+                    const isCorrect = idx === activeRound.correctIndex;
+                    return (
+                      <div
+                        key={idx}
+                        className={`bingo-qa-option-card ${isCorrect ? 'is-correct' : ''}`}
+                      >
+                        <span className="bingo-qa-option-tag">{OPTION_LABELS[idx] || (idx + 1)}</span>
+                        <span className="bingo-qa-option-text">{opt}</span>
+                        {isCorrect && (
+                          <span className="bingo-qa-correct-pill">
+                            ✓ Correct Answer
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* AI Vision Evidence & Lightbox Preview */}
               {(activeRound.screenshotUrl || activeRound.observedEvidence) && (

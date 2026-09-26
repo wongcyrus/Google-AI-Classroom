@@ -515,8 +515,8 @@ describe('WebAuthn Passkey Flows Backend', () => {
 
     it('throws invalid-argument when studentUid is missing', async () => {
       await expect(
-        handleResetStudentPasskey({ studentUid: null })
-      ).rejects.toThrow('Missing studentUid.');
+        handleResetStudentPasskey({ studentUid: null, studentEmail: null })
+      ).rejects.toThrow('Missing studentUid or studentEmail.');
     });
   });
 });
