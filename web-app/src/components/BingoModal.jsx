@@ -496,8 +496,38 @@ export default function BingoModal({
                     )}
                   </div>
 
+                  {isMobileViewport && (
+                    <a
+                      href={`/verify-passkey?classId=${activeBingo.classId}&bingoId=${activeBingo.bingoId}`}
+                      className="passkey-btn passkey-btn-primary"
+                      data-testid="btn-verify-on-mobile-direct"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        textDecoration: 'none',
+                        width: '100%',
+                        maxWidth: '320px',
+                        boxSizing: 'border-box',
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.95rem',
+                        fontWeight: '700',
+                        borderRadius: '0.75rem',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        marginBottom: '0.75rem',
+                        boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)',
+                      }}
+                    >
+                      🔐 Verify on This Phone (Face ID / Fingerprint)
+                    </a>
+                  )}
+
                   <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#334155', fontWeight: 500, textAlign: 'center' }}>
-                    📱 Point your phone camera at this QR code to verify attendance via Face ID / Fingerprint.
+                    {isMobileViewport
+                      ? '📱 Tap the button above to verify using Face ID or Fingerprint on this device.'
+                      : '📱 Point your phone camera at this QR code to verify attendance via Face ID / Fingerprint.'}
                   </p>
 
                   {inPersonClaimSubmitted ? (

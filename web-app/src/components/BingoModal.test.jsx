@@ -394,6 +394,26 @@ describe('BingoModal Component', () => {
     expect(screen.getByText('📱 Passkey Verified!')).toBeInTheDocument();
     expect(screen.getByText('1.8s')).toBeInTheDocument();
   });
+
+  it('renders direct verify button on mobile viewport for mobile_passkey mode', async () => {
+    const passkeyBingo = {
+      ...mockBingo,
+      questionSource: 'mobile_passkey',
+      classId: 'class_it101',
+      studentUid: 'student_1',
+    };
+
+    await act(async () => {
+      render(
+        <BingoModal activeBingo={passkeyBingo} isMobile={true} onSubmit={vi.fn()} onClose={vi.fn()} />
+      );
+    });
+
+    const directBtn = screen.getByTestId('btn-verify-on-mobile-direct');
+    expect(directBtn).toBeInTheDocument();
+    expect(directBtn).toHaveAttribute('href', expect.stringContaining('/verify-passkey?classId=class_it101&bingoId=bingo_abc123'));
+    expect(screen.getByText(/Tap the button above to verify using Face ID or Fingerprint on this device/i)).toBeInTheDocument();
+  });
 });
 
 
