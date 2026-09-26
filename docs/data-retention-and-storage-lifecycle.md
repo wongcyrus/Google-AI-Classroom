@@ -39,6 +39,8 @@ flowchart TD
         Triggers --> T1[onScreenshotDocDeleted: Deletes .jpg from GCS]
         Triggers --> T2[onVideoJobDocDeleted: Deletes .mp4 from GCS]
         Triggers --> T3[onZipJobDocDeleted: Deletes .zip from GCS]
+        Triggers --> T4[onAudioDocDeleted: Deletes .webm from GCS]
+        Triggers --> T5[onLectureRecordingDeleted: Deletes lecture recordings from GCS]
     end
 
     Triggers -->|4. Cloud Storage Object Deleted Event| Quota[onObjectDeleted: Auto-Decrements Class Storage Quota]
@@ -78,6 +80,14 @@ Every generated document is stamped with a deterministic UTC expiration timestam
 * **Trigger**: `onDocumentDeleted('zipJobs/{jobId}')`
 * **Behavior**: Extracts `zipPath` (e.g., `zips/{classId}/{jobId}.zip`) and deletes the temporary ZIP archive from Cloud Storage.
 
+### `onAudioDocDeleted`
+* **Trigger**: `onDocumentDeleted('audio/{audioId}')`
+* **Behavior**: Extracts `audioPath` and immediately deletes the physical audio file (.webm) from Cloud Storage (`bucket.file(audioPath).delete({ ignoreNotFound: true })`).
+
+### `onLectureRecordingDeleted`
+* **Trigger**: `onDocumentDeleted('classes/{classId}/lectureRecordings/{recordingId}')`
+* **Behavior**: Extracts `audioGcsPath`, `videoGcsPath`, `vttGcsPath`, and `srtGcsPath` from the lecture recording document and deletes all associated media and subtitle blobs from Cloud Storage.
+
 ### `onClassRetentionUpdated`
 * **Trigger**: `onDocumentUpdated('classes/{classId}')`
 * **Timeout**: 300 seconds | **Memory**: 512MiB
@@ -107,7 +117,9 @@ flowchart TD
     subgraph S1 [Stage 1: Cloud Storage Purge]
         C --> St1[Purge screenshots/classId/*]
         C --> St2[Purge videos/classId/*]
-        C --> St3[Purge zips/classId/*]
+        C --> St3[Purge audio/classId/*]
+        C --> St4[Purge recordings/classId/*]
+        C --> St5[Purge zips/classId/*]
     end
     
     subgraph S2 [Stage 2: Firestore Batch Purge in 500s]
@@ -121,6 +133,7 @@ flowchart TD
     
     subgraph S3 [Stage 3: Subcollection Cleanup]
         C --> M1[Delete classes/classId/metadata/storage]
+        C --> M2[Delete subcollections: lectureRecordings, screenBroadcast, liveSubtitles]
     end
     
     subgraph S4 [Stage 4: Profile Unlinking]
@@ -131,7 +144,7 @@ flowchart TD
 
 ### Stage Details:
 1. **Stage 1 (Cloud Storage Purge)**:
-   Purges all file prefixes under the class directory (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`).
+   Purges all file prefixes under the class directory (`screenshots/{classId}/`, `videos/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, `zips/{classId}/`).
 2. **Stage 2 (Firestore Collection Batch Purge)**:
    Queries and batch-deletes all documents linked by `classId` in 500-item chunks across:
    * `screenshots`

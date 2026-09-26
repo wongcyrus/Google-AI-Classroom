@@ -26,39 +26,59 @@ Before running any of these scripts, you need to complete the following steps:
 
 All scripts are located in the `scripts` subdirectory and should be run from the `admin` directory.
 
-### User Management
+## Scripts Catalog
+
+All scripts are located in the `scripts` subdirectory and should be run from the repository root or the `admin` directory with `sp.json` service account configured.
+
+### 1. Identity & User Management
 
 *   **`scripts/grantTeacherRole.js`**
-    *   **Purpose:** Assigns the 'teacher' role to one or more users in Firebase Authentication. Users with this role are granted access to the teacher-specific parts of the application.
-    *   **Usage:**
-        1.  Open the script and add the email addresses of the users you want to make teachers to the `emails` array.
-        2.  Run the script:
-            ```bash
-            node scripts/grantTeacherRole.js
-            ```
-
-*   **`scripts/verifyUser.js`**
-    *   **Purpose:** Manually marks a user's email as verified.
-    *   **Usage:**
-        1.  Open the script and add the email addresses of the users you want to verify to the `emails` array.
-        2.  Run the script:
-            ```bash
-            node scripts/verifyUser.js
-            ```
-
-### Data Management
-
-*   **`scripts/generate_mock_data.js`**
-    *   **Purpose:** Populates your Firestore database with mock data for UI development and testing. This includes creating sample users, a class, progress records, and irregularities.
+    *   **Purpose:** Assigns the `teacher` role custom claim in Firebase Authentication and performs atomic Firestore migration between `studentProfiles` and `teacherProfiles`.
     *   **Usage:**
         ```bash
-        node scripts/generate_mock_data.js
+        node scripts/grantTeacherRole.js
         ```
+*   **`scripts/verifyUser.js`**
+    *   **Purpose:** Manually marks target user accounts as email-verified in Firebase Authentication.
+*   **`scripts/export_users.mjs`**
+    *   **Purpose:** Exports all Firebase Authentication accounts, custom claims, and metadata to JSON/CSV for backup and institutional audit.
+*   **`scripts/import_users.mjs`**
+    *   **Purpose:** Bulk imports students and instructors from CSV into Firebase Authentication with deterministic claims and auto-linking.
+*   **`scripts/findDuplicateUsers.cjs`**
+    *   **Purpose:** Scans Firebase Authentication and Firestore profiles for duplicate emails, conflicting casing, or orphaned records.
 
-*   **`scripts/reset_app.js`**
-    *   **Purpose:** Deletes all data from your Firestore collections and files from Firebase Storage. This is useful for starting with a clean slate.
-    *   **WARNING:** This script will permanently delete data.
+### 2. Environment & System Data Seeding
+
+*   **`scripts/seed_initial_data.mjs`**
+    *   **Purpose:** Stage 3 automated provisioning script. Pre-seeds lead instructor (`teacher1@vtc.edu.hk`), demo students (`student1..5@stu.vtc.edu.hk`), and creates the 24/7 active demo class `IT114115-Demo`.
     *   **Usage:**
         ```bash
-        node scripts/reset_app.js
+        node scripts/seed_initial_data.mjs
+        ```
+*   **`scripts/seed_prompts.cjs`**
+    *   **Purpose:** Scans version-controlled prompt templates in `admin/prompts/` (across `images`, `videos`, `audios`, `translations`, `rubrics`) and seeds/updates Firestore system prompts with zero downtime.
+*   **`scripts/seed_demo_class.js`**
+    *   **Purpose:** Lightweight seeding utility for spinning up a single sandbox class.
+*   **`scripts/generate_mock_data.js`**
+    *   **Purpose:** Populates Firestore with synthetic screenshots, face angles, and telemetry for UI testing.
+*   **`scripts/revert_mock_data.js`**
+    *   **Purpose:** Cleans up synthetic documents created by `generate_mock_data.js`.
+
+### 3. Migrations & Maintenance
+
+*   **`scripts/migrate_class_schedules.mjs`**
+    *   **Purpose:** Migrates legacy single-schedule classes to the multi-segment `scheduleHistory` array format, backing up original documents to `classes_schedule_backup.json`.
+*   **`scripts/reset_environment.mjs`**
+    *   **Purpose:** Cleanly resets development or sandbox environments while preserving administrative credentials and pricing configuration.
+*   **`scripts/reset_app.js`**
+    *   **Purpose:** Hard purge of all Firestore collections and Cloud Storage buckets.
+    *   **WARNING:** Permanent data deletion. Only run in development sandboxes.
+
+### 4. Verification & Testing
+
+*   **`scripts/smoke_test.mjs`**
+    *   **Purpose:** Level 4 end-to-end automated smoke testing suite (28 cloud assertions validating Auth, Firestore TTL, Cloud Functions triggers, and Storage quotas).
+    *   **Usage:**
+        ```bash
+        npm run test:smoke
         ```

@@ -6,7 +6,7 @@
 [![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Functions_Gen_2_|_Firestore_|_Storage-FFA611?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![React 18](https://img.shields.io/badge/React_18-Vite_SPA-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Tests](https://img.shields.io/badge/Tests-1087+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
+[![Tests](https://img.shields.io/badge/Tests-1450+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform**, the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
@@ -115,7 +115,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 ## ⚡ Quick Start (Local & Cloud)
 
 ### 🚀 1-Command Automated Cloud Deployment (Zero UI Clicks)
-Provision all 15 GCP services, Firestore, Storage buckets, GCIP Auth, and Cloud Functions automatically via Terraform:
+Provision all 27 GCP services, Firestore, Storage buckets, GCIP Auth, and Cloud Functions automatically via Terraform:
 ```bash
 ./setup-new-project.sh <PROJECT_ID> [BILLING_ACCOUNT_ID]
 ```
@@ -147,7 +147,7 @@ The development sandbox ([`it114115-dev-2026.web.app`](https://it114115-dev-2026
 
 ## 🧪 Testing & Quality Assurance
 
-The repository enforces strict continuous integration standards with **846+ tests and assertions**, exceeding the **80% line and branch coverage benchmark**:
+The repository enforces strict continuous integration standards with **>1,450 tests and assertions**, exceeding the **80% line and branch coverage benchmark** (achieving **81.66% line coverage** on frontend):
 
 ```bash
 # Run all test suites across the entire repository
@@ -157,8 +157,8 @@ npm test
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest: 636 tests across 90 suites)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 138 tests across 6 codebases)
+npm run test:frontend   # React component & utility unit tests (Vitest: 1,184 tests across 126 suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 146+ tests across 7 codebases)
 npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
 npm run test:security   # Real-token security rules verification (42 assertions)
 ```

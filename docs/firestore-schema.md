@@ -297,7 +297,7 @@ erDiagram
     prompts {
         string promptId PK
         string name
-        string category "image | video | audio | translation"
+        string category "images | videos | audios | translations | rubrics"
         string prompt
         array applyTo
         string accessLevel "private | shared | public"
@@ -357,12 +357,72 @@ erDiagram
         timestamp createdAt
     }
 
+    lectureRecordings "classes/{classId}/lectureRecordings" {
+        string recordingId PK
+        string classId FK
+        string teacherUid FK
+        string audioGcsPath
+        string videoGcsPath
+        string vttGcsPath
+        string srtGcsPath
+        string status "uploading | processing | completed | failed"
+        timestamp createdAt
+    }
+
+    tasks "classes/{classId}/tasks" {
+        string taskId PK
+        string classId FK
+        string title
+        string description
+        string demoVideoPath
+        array demoSteps
+        boolean autoGradingEnabled
+        timestamp createdAt
+    }
+
+    submissions "classes/{classId}/tasks/{taskId}/submissions" {
+        string studentUid PK
+        string latestAttemptId
+        number score
+        string status "submitted | evaluating | graded"
+    }
+
+    studentPasskeys {
+        string credentialId PK
+        string studentUid FK
+        string publicKey
+        number counter
+        string deviceBrand
+        string deviceModel
+        timestamp registeredAt
+        timestamp lastUsedAt
+    }
+
+    passkeyPairingTokens {
+        string token PK
+        string studentUid FK
+        timestamp expiresAt
+    }
+
+    passkeyAuditLogs {
+        string logId PK
+        string action "register | auth | reset | override"
+        string studentUid FK
+        string operatorUid FK
+        timestamp timestamp
+    }
+
     classes ||--o{ studentProfiles : "enrolled in"
     classes ||--o{ teacherProfiles : "managed by"
     classes }o--|| users : "created by teachers"
     studentDirectory ||--o{ classes : "propagates profile metadata across"
     classes ||--o{ bingoRecords : "dispatches"
     classes ||--o{ attendanceAdjustments : "penalizes unacknowledged presence"
+    classes ||--o{ lectureRecordings : "records whole-class audio/video"
+    classes ||--o{ tasks : "assigns practical coursework"
+    tasks ||--o{ submissions : "receives attempts"
+    studentProfiles ||--o{ studentPasskeys : "registers FIDO2 hardware"
+    studentProfiles ||--o{ passkeyAuditLogs : "logs security actions"
     bingoRecords }o--|| studentProfiles : "challenges"
     attendanceAdjustments }o--|| studentProfiles : "adjusts attendance for"
     screenshots }o--|| classes : "captured in"

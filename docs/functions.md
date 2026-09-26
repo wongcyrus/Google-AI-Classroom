@@ -4,7 +4,7 @@
 
 ---
 
-This document provides an overview of all the backend Cloud Functions used in the AI Invigilator application. The functions are organized across 6 isolated Gen 2 runtime modules.
+This document provides an overview of all the backend Cloud Functions used in the AI Invigilator application. The functions are organized across 7 isolated Gen 2 runtime modules deploying over 50 Cloud Functions.
 
 ---
 
@@ -43,10 +43,17 @@ flowchart TD
         T_Call -->|analyzeFaceFallback| AFF[Gemini 3.5 Flash-Lite Gaze Estimation]
         T_Call -->|analyzeImage / analyzeAll| AI[Gemini 3.7 Flash Multimodal Analysis]
         T_Call -->|triggerBingoCheck| TBC[triggerBingoCheck: 3 FinOps Challenge Generator]
+        T_Call -->|cancelActiveBingo| CAB[cancelActiveBingo: Class Check Cancellation]
         T_Call -->|submitBingoAnswer| SBA[submitBingoAnswer: 2-Strike State Machine & Penalties]
         SBA -.->|Enqueues on Strike 1 Timeout| CT_Bingo[(Cloud Tasks Queue)]
         CT_Bingo -->|onTaskDispatched| DBR[dispatchBingoRetryTask: Strike 2 Grace Dispatcher]
+        CT_Bingo -->|onTaskDispatched| DSB[dispatchScheduledBingoTask / processBingoJob]
         T_Call -->|generateQuestionBankAi| GQB[generateQuestionBankAi: Gemini 3.5 Flash Lite MCQ Drafter]
+        T_Call -->|translateTeacherSpeech| TTS[translateTeacherSpeech: Live Multi-Language Subtitles]
+        T_Call -->|processLectureSubtitles| PLS[processLectureSubtitles: Whole-Class Audio & VTT/SRT]
+        T_Call -->|extractTaskDemoSteps| ETD[extractTaskDemoSteps: Practical Task AI Rubric Extractor]
+        T_Call -->|evaluateTaskSubmission| ETS[evaluateTaskSubmission: Practical Task AI Auto-Grading]
+        T_Call -->|passkeyFlows| PKF[WebAuthn Passkeys: 9 FIDO2 Callables]
         T_Doc -->|videoAnalysisJobs created| PJA[processVideoAnalysisJob Flow]
     end
 
@@ -58,9 +65,13 @@ flowchart TD
         T_Doc -->|reportJobs created| PRJ[processReportJob: DOCX & CSV Dossier Generation]
     end
 
+    subgraph PropertyModule [property_processing]
+        T_Doc -->|propertyUploadJobs created| PPU[processPropertyUpload: CSV Bulk Ingestion]
+    end
+
     subgraph StorageModule [storage_triggers]
         T_Store -->|Object Finalized| SOF[onObjectFinalized: Tracks Byte Usage]
-        T_Doc -->|Document Deleted| ODD[onScreenshotDocDeleted / onVideoJobDocDeleted]
+        T_Doc -->|Document Deleted| ODD[onScreenshotDocDeleted / onVideoJobDocDeleted / onAudioDocDeleted / onLectureRecordingDeleted]
         ODD -->|Purges Blob from GCS| SOD[onObjectDeleted: Auto-Decrements Quotas]
         T_Doc -->|classes deleted| CAD[onClassDocDeleted: 4-Stage Cascading Purge]
     end
@@ -217,6 +228,17 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Technical Lexicon Integrity**: System instructions strictly enforce preservation of English programming terminology, variable names, keywords, and command lines (e.g., `useState`, `Docker`, `git commit`, `npm`, `SQL`, `flexbox`).
     -   **Input Schema**: `{ text: string, sourceLang: string, targetLangs: string[], classId: string, courseContext?: string }`.
     -   **Output Schema**: `{ translations: { [langCode: string]: string } }`.
+- **`extractTaskDemoSteps`**:
+    -   **Trigger**: `onCall` (`functions/ai_flows/extractTaskDemoSteps.js`).
+    -   **Authentication & Security**: Requires teacher authentication and ownership of `classes/{classId}`.
+    -   **Description**: Analyzes an instructor's demonstration screen recording using Gemini 3.8 Flash to automatically extract milestone demonstration steps, estimated durations, and objective grading criteria. Formats output as structured JSON for the Practical Tasks editor (`TaskEditorModal.jsx`).
+    -   **Input Schema**: `{ videoGcsPath: string, classId: string, taskTitle?: string }`.
+    -   **Output Schema**: `{ demoSteps: Array<{ stepNumber: number, title: string, description: string, expectedDurationMinutes: number, criteria: string[] }> }`.
+- **`evaluateTaskSubmission` & `evaluateTaskSubmissionTask`**:
+    -   **Trigger**: `onCall` (initiator) & Google Cloud Tasks push worker (`locations/asia-east2/functions/evaluateTaskSubmissionTask`).
+    -   **Authentication & Security**: Authenticated student or teacher role; checks enrolled class boundaries.
+    -   **Description**: Automated AI grading worker for student practical task video submissions. Resolves the submission video blob from Cloud Storage, fetches task rubrics, and invokes Gemini 3.8 Flash to evaluate whether each required demonstration step was successfully completed. Updates the submission attempt document in `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempts/{attemptId}` with step-by-step scoring, completion percentages, feedback summaries, and writes duration heatmaps to the grading matrix (`TaskGradingMatrixView.jsx`).
+    -   **Worker Configuration**: Dedicated `2GiB` RAM, `300s` timeout, rate-limited Cloud Tasks push queue preventing Gemini quota exhaustion.
 
 
 #### Genkit AI Tools (`aiTools.js`)

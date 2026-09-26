@@ -143,10 +143,11 @@ flowchart TD
 - **Timezone Badge:** Shows canonical class timezone (e.g., `Asia/Hong_Kong`).
 - **Main View Tabs:**
   - `🖥️ Monitor`: Real-time student video/screen grid and broadcast controls (persistently mounted).
-  - `🎥 Videos`: Subtabs for Video Library, Session Review, and Video Analysis Jobs.
-  - `📊 Analytics`: Subtabs for Irregularities, Student Progress, Attendance Matrix, Performance Milestones, and AI Cost Report.
+  - `🎥 Videos`: Subtabs for Video Library, Session Review, Video Analysis Jobs, and Lecture Recordings.
+  - `📋 Tasks`: Practical Tasks management view (`TasksManagementView.jsx`), AI demo rubric extraction, student video submission attempt grading, and grading matrix.
+  - `📊 Analytics`: Subtabs for Irregularities, Student Progress, Attendance Matrix, Performance Milestones, Bingo Verification Results (`BingoResultsView.jsx`), and AI Cost Report.
   - `💬 Messages`: Notification audit stream.
-  - `💾 Data Management`: Bulk archive generation and retention deletion.
+  - `💾 Data Management`: Bulk archive generation, Google Drive backup, and retention deletion.
   - `⚙️ Settings`: Class configuration, roster, AI parameters, and exam periods.
 
 ### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)

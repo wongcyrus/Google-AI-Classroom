@@ -49,7 +49,7 @@ graph TD
         VertexAI["Gemini Enterprise Agent Platform (Gemini 3 Suite)"]
     end
 
-    subgraph "Serverless Backend Tier (Cloud Functions Gen 2)"
+    subgraph "Serverless Backend Tier (Cloud Functions Gen 2 - 7 Isolated Codebases)"
         subgraph "AI Flows (`ai_flows`)"
             F_analyzeImage["analyzeImage (onCall)"]
             F_analyzeAllImages["analyzeAllImages (onCall)"]
@@ -57,9 +57,16 @@ graph TD
             F_analyzeAudio["analyzeAudio (onCall: gemini-3.5-transcribe-preview)"]
             F_triggerBingoCheck["triggerBingoCheck (onCall: 3 FinOps modes)"]
             F_submitBingoAnswer["submitBingoAnswer (onCall: 2-Strike presence)"]
+            F_cancelActiveBingo["cancelActiveBingo (onCall)"]
             F_dispatchBingoRetryTask["dispatchBingoRetryTask (onTaskDispatched: Cloud Tasks)"]
+            F_dispatchScheduledBingoTask["dispatchScheduledBingoTask (onTaskDispatched)"]
+            F_processBingoJob["processBingoJob (onTaskDispatched)"]
             F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 3.5 Flash Lite)"]
             F_translateTeacherSpeech["translateTeacherSpeech (onCall: Gemini 3.5 Flash Lite)"]
+            F_processLectureSubtitles["processLectureSubtitles (onCall: Gemini 3.8 Flash)"]
+            F_extractTaskDemoSteps["extractTaskDemoSteps (onCall: Practical Tasks AI)"]
+            F_evaluateTaskSubmission["evaluateTaskSubmission (onCall & Task: AI Auto-Grading)"]
+            F_passkeyFlows["WebAuthn Passkey Callables (9 functions: pair, register, authenticate, reset)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]
@@ -73,10 +80,15 @@ graph TD
 
         subgraph "Media Processing (`media_processing`)"
             F_getStudentVideoPlaybackUrl["getStudentVideoPlaybackUrl (onCall)"]
+            F_mergeLectureRecordings["mergeLectureRecordings (onCall)"]
             F_processVideoJob["processVideoJob (onCreate videoJobs)"]
             F_processZipJob["processZipJob (onCreate zipJobs)"]
             F_processReportJob["processReportJob (onCreate reportJobs)"]
             F_cleanupStuckJobs["cleanupStuckJobs (onSchedule)"]
+        end
+
+        subgraph "Property Processing (`property_processing`)"
+            F_processPropertyUpload["processPropertyUpload (onCreate propertyUploadJobs)"]
         end
 
         subgraph "Scheduled Tasks (`scheduled_tasks`)"
@@ -89,7 +101,7 @@ graph TD
             F_updateStorageUpload["updateStorageUsageOnUpload (onFinalize)"]
             F_updateStorageDelete["updateStorageUsageOnDelete (onDelete)"]
             F_deleteScreenshots["deleteScreenshotsByDateRange (onCall)"]
-            F_cleanupDeletedTriggers["onScreenshotDocDeleted / onVideoJobDocDeleted (onDelete)"]
+            F_cleanupDeletedTriggers["onScreenshotDocDeleted / onVideoJobDocDeleted / onAudioDocDeleted / onLectureRecordingDeleted (onDelete)"]
             F_onClassRetentionUpdated["onClassRetentionUpdated / onClassDocDeleted (onWrite)"]
         end
 

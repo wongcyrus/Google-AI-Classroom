@@ -5543,6 +5543,11 @@ footer, header {
 <li>One-click <strong>&quot;<img class="emoji" draggable="false" alt="📥" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4e5.svg" data-marp-twemoji=""/> Download YouTube Package (.zip)&quot;</strong> bundling MP4 video, multilingual <code>.srt</code> files (<code>en</code>, <code>zh-Hant</code>, <code>zh-Hans</code>, <code>ja</code>), and <code>youtube_metadata.txt</code>.</li>
 </ul>
 </li>
+<li><strong>Hierarchical Google Drive Archival &amp; 3-Tier Lesson Naming:</strong>
+<ul>
+<li>100% client-side streaming (<code>useGoogleDrive.js</code>) with zero server egress, least-privilege <code>drive.file</code> scope, in-memory folder caching, and standardized 3-tier naming (<code>resolveVideoLessonName</code>: Task <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> Schedule <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> Date).</li>
+</ul>
+</li>
 <li><strong>5-Minute Overlap Protection:</strong> Isolated session subcollections prevent back-to-back class bleed.</li>
 </ul>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
@@ -6050,6 +6055,11 @@ footer, header {
 <ul>
 <li>Automated Live Capture (5m before/after) &amp; Session Video Compilation default checked.</li>
 <li><strong>Zero-Waste Single Storage Upload:</strong> One image blob upload mapped to multi-class Firestore records (<code>targetClasses</code>).</li>
+</ul>
+</li>
+<li><strong>Schedule Segments &amp; Past Lesson Preservation (<code>scheduleHistory</code>):</strong>
+<ul>
+<li>Timetable changes preserve historical lesson segments, maintaining continuous chronological lesson numbering (<code>Lesson 1..N</code>) for past attendance and recordings without data loss.</li>
 </ul>
 </li>
 <li><strong>Student Self-Service Records Portal (<code>StudentRecordsView.jsx</code>):</strong>
@@ -6802,12 +6812,12 @@ footer, header {
 </li>
 <li><strong>Event-Driven Cloud Storage Cleanup (<code>storage_triggers/</code>):</strong>
 <ul>
-<li><code>onScreenshotDocDeleted</code>, <code>onVideoJobDocDeleted</code>, <code>onZipJobDocDeleted</code> purge GCS blobs immediately.</li>
+<li><code>onScreenshotDocDeleted</code>, <code>onVideoJobDocDeleted</code>, <code>onZipJobDocDeleted</code>, <code>onAudioDocDeleted</code>, and <code>onLectureRecordingDeleted</code> purge GCS blobs immediately.</li>
 </ul>
 </li>
 <li><strong>4-Stage Cascading Class Deletion (<code>onClassDocDeleted</code>):</strong>
 <ul>
-<li>Single teacher delete action cascades across screenshots, videos, zip archives, subcollections (<code>properties</code>, <code>status</code>, <code>broadcast</code>), and records. Auto-decrements class storage quotas.</li>
+<li>Single teacher delete action cascades across screenshots, videos, audio, recordings, zip archives, subcollections (<code>properties</code>, <code>status</code>, <code>broadcast</code>, <code>lectureRecordings</code>, <code>screenBroadcast</code>, <code>liveSubtitles</code>), and student profiles. Auto-decrements class storage quotas.</li>
 </ul>
 </li>
 </ul>
@@ -7063,10 +7073,11 @@ footer, header {
 <li>Color-coded heatmap duration badges with RFC 4180 CSV export and <code>JobResultModal</code> featuring default word wrapping (<code>Wrap: ON/OFF</code>).</li>
 </ul>
 </li>
-<li><strong>Dynamic AI Lab Task Generator &amp; Cloud Fallbacks:</strong>
+<li><strong>Dynamic AI Lab Task Generator &amp; Practical Tasks System:</strong>
 <ul>
-<li><strong><code>generateLabTaskPrompt</code>:</strong> Aggregates child <code>aiJobs</code> via Gemini 3.8 Flash 1M context to synthesize objective hands-on lab tasks with step-by-step scoring.</li>
-<li><strong><code>analyzeFaceFallback</code>:</strong> High-efficiency multimodal cloud fallback (<code>gemini-3.5-flash-lite</code>, temp 0.1) when edge MediaPipe face landmarks are occluded.</li>
+<li><strong><code>extractTaskDemoSteps</code>:</strong> Analyzes instructor lab demo video with Gemini 3.8 Flash, extracting milestone steps, durations, and structured grading rubrics.</li>
+<li><strong><code>evaluateTaskSubmission</code>:</strong> Cloud Tasks worker automatically scores student hands-on screen recordings against rubrics with structured step feedback.</li>
+<li>Integrated with <strong><code>TasksManagementView.jsx</code></strong>, <strong><code>StudentTaskWorkspaceModal.jsx</code></strong>, and <strong><code>TaskGradingMatrixView.jsx</code></strong>.</li>
 </ul>
 </li>
 </ul>
@@ -7815,7 +7826,7 @@ footer, header {
 }
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="39" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
-<h2 id="multi-persona-operations--23-ui-control-domains">Multi-Persona Operations &amp; 23 UI Control Domains</h2>
+<h2 id="multi-persona-operations--19-ui-control-domains">Multi-Persona Operations &amp; 19 UI Control Domains</h2>
 <h3 id="role-based-manuals-student-mobile-portal--granular-ui-control-domains">Role-Based Manuals, Student Mobile Portal &amp; Granular UI Control Domains</h3>
 
 <ul>
@@ -7834,7 +7845,7 @@ footer, header {
 <li>GCIP domain auto-provisioning, zero-trust exam storage rules, 7 Cloud Run Functions codebases &amp; daily FinOps Gemini pricing sync.</li>
 </ul>
 </li>
-<li><strong>23 Audited UI Control Domains &amp; 15 Mermaid Diagrams:</strong>
+<li><strong>19 Audited UI Control Domains &amp; 26 Diagrams:</strong>
 <ul>
 <li>Complete operational transparency with zero guesswork across all platform features.</li>
 </ul>
@@ -8331,7 +8342,7 @@ footer, header {
 <li><strong>1-Command Zero-Click Provisioning (<code>setup-new-project.sh</code>):</strong>
 <ul>
 <li>Single command: <code>./setup-new-project.sh &lt;PROJECT_ID&gt; &lt;BILLING_ACCOUNT_ID&gt;</code>.</li>
-<li>100% Terraform Infrastructure as Code (<code>terraform/</code>) provisions 17 Google Cloud APIs, Cloud Firestore Native in <code>asia-east2</code>, Cloud Storage with custom CORS, GCIP Identity Platform, IAM service agent tokens.</li>
+<li>100% Terraform Infrastructure as Code (<code>terraform/</code>) provisions 27 Google Cloud APIs, Cloud Firestore Native in <code>asia-east2</code>, Cloud Storage with custom CORS, GCIP Identity Platform, IAM service agent tokens.</li>
 <li>Automatically generates <code>web-app/.env</code> and <code>functions/config.js</code> with zero manual copy-pasting.</li>
 </ul>
 </li>
@@ -8578,13 +8589,13 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="39" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="09--devsecops--production-reliability-engineering">09 | DevSecOps &amp; Production Reliability Engineering</h2>
-<h3 id="multi-tier-automated-testing-pyramid-1100-tests--100-gemini-3-standard">Multi-Tier Automated Testing Pyramid (&gt;1,100 Tests) &amp; 100% Gemini 3 Standard</h3>
+<h3 id="multi-tier-automated-testing-pyramid-1450-tests--100-gemini-3-standard">Multi-Tier Automated Testing Pyramid (&gt;1,450 Tests) &amp; 100% Gemini 3 Standard</h3>
 
 <ul>
-<li><strong>1,100+ Automated Tests &amp; Assertions (Zero Flaky Tests):</strong>
+<li><strong>1,450+ Automated Tests &amp; Assertions (Zero Flaky Tests):</strong>
 <ul>
-<li><strong>Level 1 (Frontend):</strong> 890 unit tests across 108 suites in Vitest (&gt;80% code coverage across all core modules).</li>
-<li><strong>Level 2 (Backend Cloud Functions):</strong> 151 tests in <code>functions/ai_flows</code> + dozens across attendance, auth, media, and scheduled tasks.</li>
+<li><strong>Level 1 (Frontend):</strong> 1,184 unit tests across 126 suites in Vitest (81.66% line coverage across all core modules).</li>
+<li><strong>Level 2 (Backend Cloud Functions):</strong> 146+ tests across 7 isolated codebases (ai_flows, attendance, auth, media, scheduled, storage).</li>
 <li><strong>Level 3 (Security Rules):</strong> 42 real-token isolation test scenarios (student self-read, exam shielding &amp; attendance adjustment isolation).</li>
 <li><strong>Level 4 (Live Smoke Tests):</strong> 28 live end-to-end cloud assertions.</li>
 </ul>
@@ -9074,7 +9085,7 @@ footer, header {
 <ul>
 <li><strong>Live Application:</strong> <a href="https://it114115-2627.web.app">https://it114115-2627.web.app</a></li>
 <li><strong>Open-Source Repository:</strong> <a href="https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant">github.com/wongcyrus/Gemini-AI-Classroom-Assistant</a></li>
-<li><strong>Enterprise Documentation:</strong> Comprehensive User Manuals (Teacher, Student, Admin) &amp; 23 UI Control Domains Catalog with 15 Mermaid interaction diagrams.</li>
+<li><strong>Enterprise Documentation:</strong> Comprehensive User Manuals (Teacher, Student, Admin), Master Documentation-to-Code Index &amp; 19 UI Control Domains Catalog with 26 architectural interaction diagrams.</li>
 <li><strong>Presenter:</strong> <strong>Cyrus Wong (黃俊彥)</strong>
 <ul>
 <li>Google Developer Expert in GCP &amp; AI/ML</li>

@@ -1,5 +1,8 @@
 ### **Detailed Plan: Enhanced AI Analysis & Feedback**
 
+> [!NOTE]
+> **Archival & Superseded Architectural Notice**: This document outlines early exploratory designs. In the production architecture, student-teacher messaging is implemented via direct WebRTC talkback and live Firestore messaging rather than the proposed `handleStudentReply` HTTP loop; performance metrics are captured autonomously via Genkit tools (`recordTaskDuration`, `recordActualWorkingTime`) during Map-Reduce video analysis rather than a standalone cron aggregator.
+
 This plan breaks down the implementation into three main features: the Automated Feedback Loop, Sentiment Analysis, and AI-driven Performance Metrics.
 
 ---

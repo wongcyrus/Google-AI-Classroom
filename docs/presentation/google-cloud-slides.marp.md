@@ -511,6 +511,8 @@ const processFrame = async (now, metadata) => {
   - Generates SubRip (`.srt`, comma millisecond separator) for YouTube Studio.
 - **1-Click YouTube Studio Package:**
   - One-click **"📥 Download YouTube Package (.zip)"** bundling MP4 video, multilingual `.srt` files (`en`, `zh-Hant`, `zh-Hans`, `ja`), and `youtube_metadata.txt`.
+- **Hierarchical Google Drive Archival & 3-Tier Lesson Naming:**
+  - 100% client-side streaming (`useGoogleDrive.js`) with zero server egress, least-privilege `drive.file` scope, in-memory folder caching, and standardized 3-tier naming (`resolveVideoLessonName`: Task $\to$ Schedule $\to$ Date).
 - **5-Minute Overlap Protection:** Isolated session subcollections prevent back-to-back class bleed.
 
 ---
@@ -550,6 +552,8 @@ const processFrame = async (now, metadata) => {
 - **Concurrent Classes & 10-Minute Back-to-Back Buffer:**
   - Automated Live Capture (5m before/after) & Session Video Compilation default checked.
   - **Zero-Waste Single Storage Upload:** One image blob upload mapped to multi-class Firestore records (`targetClasses`).
+- **Schedule Segments & Past Lesson Preservation (`scheduleHistory`):**
+  - Timetable changes preserve historical lesson segments, maintaining continuous chronological lesson numbering (`Lesson 1..N`) for past attendance and recordings without data loss.
 - **Student Self-Service Records Portal (`StudentRecordsView.jsx`):**
   - 5 tabbed views (Videos, Attendance, Tasks, Irregularities, Audio) with exam confidentiality shields.
 
@@ -601,9 +605,9 @@ const processFrame = async (now, metadata) => {
   - Stamped at ingestion time across screenshots, video jobs, and audio segments.
   - Handled autonomously by **Firestore Native TTL Engine** at $0 maintenance overhead.
 - **Event-Driven Cloud Storage Cleanup (`storage_triggers/`):**
-  - `onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted` purge GCS blobs immediately.
+  - `onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted`, `onAudioDocDeleted`, and `onLectureRecordingDeleted` purge GCS blobs immediately.
 - **4-Stage Cascading Class Deletion (`onClassDocDeleted`):**
-  - Single teacher delete action cascades across screenshots, videos, zip archives, subcollections (`properties`, `status`, `broadcast`), and records. Auto-decrements class storage quotas.
+  - Single teacher delete action cascades across screenshots, videos, audio, recordings, zip archives, subcollections (`properties`, `status`, `broadcast`, `lectureRecordings`, `screenBroadcast`, `liveSubtitles`), and student profiles. Auto-decrements class storage quotas.
 
 ---
 
@@ -622,9 +626,10 @@ const processFrame = async (now, metadata) => {
 - **Phase 3: Map (Milestone Evaluation & Subjob Inspection):**
   - Evaluates student videos against synthesized rubric; autonomous tool calls log milestones into `StudentMilestoneMatrix.jsx`.
   - Color-coded heatmap duration badges with RFC 4180 CSV export and `JobResultModal` featuring default word wrapping (`Wrap: ON/OFF`).
-- **Dynamic AI Lab Task Generator & Cloud Fallbacks:**
-  - **`generateLabTaskPrompt`:** Aggregates child `aiJobs` via Gemini 3.8 Flash 1M context to synthesize objective hands-on lab tasks with step-by-step scoring.
-  - **`analyzeFaceFallback`:** High-efficiency multimodal cloud fallback (`gemini-3.5-flash-lite`, temp 0.1) when edge MediaPipe face landmarks are occluded.
+- **Dynamic AI Lab Task Generator & Practical Tasks System:**
+  - **`extractTaskDemoSteps`:** Analyzes instructor lab demo video with Gemini 3.8 Flash, extracting milestone steps, durations, and structured grading rubrics.
+  - **`evaluateTaskSubmission`:** Cloud Tasks worker automatically scores student hands-on screen recordings against rubrics with structured step feedback.
+  - Integrated with **`TasksManagementView.jsx`**, **`StudentTaskWorkspaceModal.jsx`**, and **`TaskGradingMatrixView.jsx`**.
 
 ---
 
@@ -658,7 +663,7 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Multi-Persona Operations & 23 UI Control Domains
+## Multi-Persona Operations & 19 UI Control Domains
 ### Role-Based Manuals, Student Mobile Portal & Granular UI Control Domains
 
 ![bg right:60% 95%](images/slide_multipersona_operations.png)
@@ -669,7 +674,7 @@ const processFrame = async (now, metadata) => {
   - 3-step hardware readiness wizard, dual-stream capture, on-device LiteRT Whisper/Gemma proctor, docked & floating live subtitles HUD, and **Student Mobile View** (`StudentMobileView.jsx`) for portable attendance.
 - **Admin & DevOps Governance (11 Chapters):**
   - GCIP domain auto-provisioning, zero-trust exam storage rules, 7 Cloud Run Functions codebases & daily FinOps Gemini pricing sync.
-- **23 Audited UI Control Domains & 15 Mermaid Diagrams:**
+- **19 Audited UI Control Domains & 26 Diagrams:**
   - Complete operational transparency with zero guesswork across all platform features.
 
 ---
@@ -701,7 +706,7 @@ const processFrame = async (now, metadata) => {
 
 - **1-Command Zero-Click Provisioning (`setup-new-project.sh`):**
   - Single command: `./setup-new-project.sh <PROJECT_ID> <BILLING_ACCOUNT_ID>`.
-  - 100% Terraform Infrastructure as Code (`terraform/`) provisions 17 Google Cloud APIs, Cloud Firestore Native in `asia-east2`, Cloud Storage with custom CORS, GCIP Identity Platform, IAM service agent tokens.
+  - 100% Terraform Infrastructure as Code (`terraform/`) provisions 27 Google Cloud APIs, Cloud Firestore Native in `asia-east2`, Cloud Storage with custom CORS, GCIP Identity Platform, IAM service agent tokens.
   - Automatically generates `web-app/.env` and `functions/config.js` with zero manual copy-pasting.
 - **24/7 Pre-Seeded Development Sandbox (`IT114115-Demo`):**
   - Pre-seeded lead instructor: `teacher1@vtc.edu.hk` (`teacherProfiles` document & custom claims).
@@ -713,13 +718,13 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## 09 | DevSecOps & Production Reliability Engineering
-### Multi-Tier Automated Testing Pyramid (>1,100 Tests) & 100% Gemini 3 Standard
+### Multi-Tier Automated Testing Pyramid (>1,450 Tests) & 100% Gemini 3 Standard
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **1,100+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 890 unit tests across 108 suites in Vitest (>80% code coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 151 tests in `functions/ai_flows` + dozens across attendance, auth, media, and scheduled tasks.
+- **1,450+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 1,184 unit tests across 126 suites in Vitest (81.66% line coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 146+ tests across 7 isolated codebases (ai_flows, attendance, auth, media, scheduled, storage).
   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 - **100% Gemini 3 Family Standardization:**
@@ -749,7 +754,7 @@ const processFrame = async (now, metadata) => {
 
 - **Live Application:** [https://it114115-2627.web.app](https://it114115-2627.web.app)
 - **Open-Source Repository:** [github.com/wongcyrus/Gemini-AI-Classroom-Assistant](https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant)
-- **Enterprise Documentation:** Comprehensive User Manuals (Teacher, Student, Admin) & 23 UI Control Domains Catalog with 15 Mermaid interaction diagrams.
+- **Enterprise Documentation:** Comprehensive User Manuals (Teacher, Student, Admin), Master Documentation-to-Code Index & 19 UI Control Domains Catalog with 26 architectural interaction diagrams.
 - **Presenter:** **Cyrus Wong (黃俊彥)**
   - Google Developer Expert in GCP & AI/ML
   - Senior Lecturer, HKIIT / VTC Hong Kong

@@ -33,7 +33,7 @@ The project employs a 3-stage automated provisioning, deployment, and data seedi
 flowchart TD
     subgraph S1 [STAGE 1: 100% Terraform Infrastructure as Code]
         direction TB
-        TF1[Project Creation & Billing Link] --> TF2[17 Google Cloud APIs Activation]
+        TF1[Project Creation & Billing Link] --> TF2[27 Google Cloud APIs Activation]
         TF2 --> TF3[Cloud Firestore Native DB in asia-east2]
         TF3 --> TF4[Cloud Storage Bucket & Custom CORS]
         TF4 --> TF5[IAM Roles & Service Agent Token Permissions]
@@ -45,7 +45,7 @@ flowchart TD
         direction TB
         FB1[Build React Vite Frontend Bundle] --> FB2[Deploy Firestore Rules & 18 Indexes]
         FB2 --> FB3[Deploy Cloud Storage Security Rules]
-        FB3 --> FB4[Deploy 14 Cloud Functions Gen 2 across 6 Codebases]
+        FB3 --> FB4[Deploy >50 Cloud Functions Gen 2 across 7 Codebases]
         FB4 --> FB5[Release Static Assets to Firebase Hosting]
     end
 

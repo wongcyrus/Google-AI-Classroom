@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - 845 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >1,450 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 42 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 139 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 636 Tests across 90 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 146+ Tests across 7 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,184 Tests across 126 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -67,7 +67,7 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (113 Test Files / 1,485 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (126 Test Files / 1,184 Tests).
 * **Covered Modules**:
   * `web-app/src/components/ClassManagement.test.jsx`: Validates class creation, settings persistence, exam period definitions, roster Excel (`.xlsx`) exports/imports with Unicode Chinese character preservation, custom gaze thresholds, and configurable **Bingo Active Presence Retry Grace Delay** dropdown (`bingoRetryDelayMinutes`: 1m, 2m, 3m default, 5m, 10m).
   * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, signed video playback modal triggers, exam audio confidentiality shielding, irregularity evidence suppression during tests, and immediate abortion of direct GCS fallback upon backend callable permission denial.
@@ -157,7 +157,7 @@ web-app (utils)    |   91.37 |    80.11 |   95.52 |   92.53 | 🟢 Exceeds Targe
 web-app (workers)  |   88.00 |    69.23 |   86.04 |   88.77 | 🟢 Exceeds Target (>85%)
 web-app (hooks)    |   79.27 |    60.72 |   81.12 |   81.01 | 🟢 Exceeds 80% Target
 web-app (components|   75.98 |    65.05 |   79.36 |   77.34 | 🟢 Exceeds Target (>75%)
-web-app (all)      |   79.18 |    66.72 |   80.12 |   80.64 | 🟢 Exceeds >= 80% Benchmark
+web-app (all)      |   79.98 |    68.45 |   80.32 |   81.66 | 🟢 Exceeds >= 80% Benchmark
 functions/ai_flows |   80.38 |    55.78 |   94.73 |   80.38 | 🟢 High Functional
 functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
 ==================================================================================

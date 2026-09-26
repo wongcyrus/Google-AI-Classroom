@@ -110,7 +110,7 @@
 
 ---
 
-## 2. Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation
+## 2.1 Prompt Management Studio Redesign: Full-Screen Workspace, Collapsible Sidebar & Multi-Category Navigation
 
 **Date**: September 2026  
 **Status**: Implemented, Verified, and Ready for Deployment  
@@ -170,7 +170,7 @@
 
 ---
 
-## 2. Lesson Name Resolution Conventions & Google Drive Task Video Backup
+## 2.2 Lesson Name Resolution Conventions & Google Drive Task Video Backup
 
 **Date**: September 2026  
 **Status**: Implemented, Verified, and Deployed to Production (`https://it114115-2627.web.app`)
@@ -215,7 +215,7 @@ Teachers grading practical tasks have complete control over backing up student r
 
 ---
 
-## 2. Distributed Cloud Tasks Map-Reduce Architecture for AI Video Analysis
+## 2.3 Distributed Cloud Tasks Map-Reduce Architecture for AI Video Analysis
 
 The system's AI processing focus has evolved from periodic Bingo presence checks to a high-throughput, horizontally scalable **Google Cloud Tasks Map-Reduce architecture** for AI Video Analysis Jobs.
 
@@ -256,7 +256,7 @@ To guarantee that any fresh deployment works out-of-the-box without manual Googl
 
 ---
 
-## 2. AI Model Modernization & Multi-Location Architecture
+## 2.4 AI Model Modernization & Multi-Location Architecture
 
 ### 2.1 Transition to Official Gemini 3 Models
 Aligned all generative AI and multimodal endpoints with Google's official [Firebase AI Logic Models Documentation](https://firebase.google.com/docs/ai-logic/models):

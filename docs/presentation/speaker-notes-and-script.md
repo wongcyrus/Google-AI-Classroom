@@ -24,8 +24,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **34:00 – 38:00** | **05 \| Zero-Trust Security** | Zero-Trust Exam Mode, 1-Min Bingo Presence & 2-Strike State Machine | Slides 18–19 |
 | **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Live Subtitles, Subject Domains & Custom Translation Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
 | **48:00 – 52:00** | **07 \| Video AI Pipeline** | Map-Reduce-Map Video Intelligence Pipeline, Dynamic Lab Tasks & Sortable Milestone Matrix | Slide 29 |
-| **52:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 23 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 30–34 |
-| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,100+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
+| **52:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 19 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 30–34 |
+| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,450+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
 | **59:00 – 60:00** | **10 \| Conclusion & Q&A** | Summary, Enterprise Docs & Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 37 |
 
 ---
@@ -444,7 +444,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >    - Generates WebVTT (`.vtt`, period millisecond delimiter) for the in-app HTML5 video player `<track>`.
 >    - Generates SubRip (`.srt`, comma millisecond delimiter) for native YouTube Studio upload.
 > 4. **1-Click "Download YouTube Package (.zip)":**
->    - Instructors click one button to download a ZIP containing the MP4 video, multilingual `.srt` captions (`en`, `zh-Hant`, `zh-Hans`, `ja`), and `youtube_metadata.txt` containing chapter timestamps, ready for drag-and-drop into YouTube Studio!"
+>    - Instructors click one button to download a ZIP containing the MP4 video, multilingual `.srt` captions (`en`, `zh-Hant`, `zh-Hans`, `ja`), and `youtube_metadata.txt` containing chapter timestamps, ready for drag-and-drop into YouTube Studio!
+> 5. **Hierarchical Google Drive Archival & 3-Tier Lesson Naming:**
+>    - In addition to local ZIP packages, instructors can archive recordings directly into institutional Google Drive using 100% client-side streaming (`useGoogleDrive.js`), eliminating server bandwidth egress, leveraging least-privilege `drive.file` permissions, and organizing folders using standardized 3-tier lesson naming (`resolveVideoLessonName`: Task $\to$ Schedule $\to$ Date)."
 
 ---
 
@@ -486,7 +488,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >    - Supports manual class selection with a 1-click **'Follow Schedule'** restore button.
 > 3. **Concurrent Classes & 10-Minute Back-to-Back Buffer:**
 >    - Automatically starts capture 5 minutes before scheduled start and ends 5 minutes after class conclusion.
->    - **Zero-Waste Single Storage Upload:** One image blob is uploaded to Cloud Storage, while Firestore records metadata for all overlapping courses (`targetClasses`). Neither instructor misses student telemetry!"
+>    - **Zero-Waste Single Storage Upload:** One image blob is uploaded to Cloud Storage, while Firestore records metadata for all overlapping courses (`targetClasses`). Neither instructor misses student telemetry!
+> 4. **Schedule Segments & Past Lesson Preservation (`scheduleHistory`):**
+>    - When an instructor updates class schedules mid-semester, the system automatically seals the previous schedule into `scheduleHistory`, preserving past lesson numbering (`Lesson 1..N`) and prior attendance and recordings without data loss."
 
 ---
 
@@ -542,9 +546,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >    - Every screenshot, video job, and audio chunk is stamped with an explicit UTC `expireAt` timestamp upon ingestion.
 >    - Managed autonomously by the **Firestore Native TTL Engine** at zero maintenance cost.
 > 3. **Event-Driven GCS Blob Deletion Triggers (`storage_triggers/`):**
->    - `onScreenshotDocDeleted`, `onVideoJobDocDeleted`, and `onZipJobDocDeleted` detect Firestore document deletions (whether triggered by TTL or teacher deletion) and immediately delete the underlying physical blobs from Cloud Storage.
+>    - `onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted`, `onAudioDocDeleted`, and `onLectureRecordingDeleted` detect Firestore document deletions (whether triggered by TTL or teacher deletion) and immediately delete the underlying physical blobs from Cloud Storage.
 > 4. **4-Stage Cascading Class Purge (`onClassDocDeleted`):**
->    - When a teacher deletes a class in the UI, a single Firestore delete triggers a Cloud Function that cascades across screenshots, compiled videos, zip archives, subcollections (`properties`, `status`, `broadcast`), and records.
+>    - When a teacher deletes a class in the UI, a single Firestore delete triggers a Cloud Function that cascades across screenshots, compiled videos, audio recordings, zip archives, subcollections (`properties`, `status`, `broadcast`, `lectureRecordings`, `screenBroadcast`, `liveSubtitles`), and student profiles.
 >    - Class storage quotas are automatically decremented via `onObjectDeleted`, ensuring zero orphaned files and zero runaway storage costs."
 
 ---
@@ -558,8 +562,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - **Phase 1: Map (Parallel Video Discovery):** The master dispatcher initializes progress counters and enqueues individual tasks to **Google Cloud Tasks** (`analyzeSingleVideoTask`) in ~2 seconds. Tasks are throttled to 4 concurrent workers (`maxDispatchesPerSecond: 2`) with dedicated 300s/2GiB containers, eliminating Cloud Function timeout walls and Gemini 429 rate limit spikes.
 > - **Phase 2: Reduce (Coursework Rubric Synthesis):** A cross-student aggregator feeds all student discovery summaries into **Gemini 3.8 Flash**, which synthesizes a unified coursework rubric and objective milestone prompt. An animated UI stepper tracks this multi-stage synthesis in real time.
 > - **Phase 3: Map (Milestone Evaluation & Matrix):** Mapped AI jobs evaluate each student video against the rubric. Autonomous tool calling logs milestone durations into the **Student Milestone Matrix** (`StudentMilestoneMatrix.jsx`), featuring interactive sortable heatmaps (<20m green, 20-40m amber, >40m red) and 1-click RFC 4180 CSV export.
-> - **Dynamic AI Lab Task Generator (`generateLabTaskPrompt`):** Beyond passive evaluation, the aggregator flow synthesizes completed child jobs (`aiJobs`) into real-world hands-on lab tasks with step-by-step logic, correct solution routes, and grading criteria.
-> - **Cloud Multimodal Fallback (`analyzeFaceFallback`):** When student edge MediaPipe landmarks are occluded, face lighting is poor, or WebGL is unavailable, a high-efficiency serverless fallback (`gemini-3.5-flash-lite`, temperature 0.1) performs resilient gaze and face verification in the cloud."
+> - **Dynamic AI Lab Task Generator & Practical Tasks System:** Beyond passive evaluation, teachers can author hands-on coursework using Gemini 3.8 Flash. With `extractTaskDemoSteps`, the model analyzes the instructor's demonstration screen recording and extracts milestone steps, duration bounds, and structured rubrics. Student practical video submissions are automatically scored via `evaluateTaskSubmission` in Cloud Tasks, updating `TasksManagementView.jsx` and the student workspace modal with granular step feedback."
 
 ---
 
@@ -590,16 +593,16 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 53:30 – 54:30 | Slide 32: Multi-Persona Operations & 23 UI Control Domains
+### 53:30 – 54:30 | Slide 32: Multi-Persona Operations & 19 UI Control Domains
 *Visual: `slide_multipersona_operations.png`*
 
 > **Cyrus Wong:**  
-> "A common failure mode in academic software is the gap between code capabilities and user accessibility. To ensure seamless institutional adoption, we published exhaustive role-based user documentation and mapped all 23 UI control domains across the platform:
+> "A common failure mode in academic software is the gap between code capabilities and user accessibility. To ensure seamless institutional adoption, we published exhaustive role-based user documentation and mapped all 19 UI control domains across the platform:
 >
 > - **Instructor & TA Command Center (17 Chapters):** Operational guidance covering timetable automation, zero-space problem filters, 1-to-1 WebRTC Live Peek and Opus intercom, Pure Frame Broadcaster, 1-minute Bingo challenges, Teacher Prompt Management Studio, YouTube CC studio, and Word/CSV incident dossiers.
 > - **Student & Examinee Portal (12 Chapters):** Self-service workflows detailing the 3-step hardware readiness wizard, dual-stream webcam/screen capture, on-device LiteRT Whisper and Gemma proctoring, 1-min Bingo focus HUD, docked & floating live subtitles HUD, and the **Student Mobile View** (`StudentMobileView.jsx`) for attendance on phones.
 > - **Admin & DevOps Governance (11 Chapters):** Enterprise administration detailing GCIP blocking auth triggers for institutional domain claim mapping, zero-trust exam confidentiality storage rules, the 7 isolated Cloud Run Functions codebases, and daily FinOps Gemini pricing sync.
-> - **15 Mermaid Interaction & State Diagrams:** We mapped every critical interaction—from lesson lifecycle and WebRTC signaling to the Bingo Cloud Tasks retry state machine and two-stage rubric synthesis—into clear, auditable diagrams with zero guesswork."
+> - **26 Mermaid Interaction & State Diagrams:** We mapped every critical interaction—from lesson lifecycle and WebRTC signaling to the Bingo Cloud Tasks retry state machine and two-stage rubric synthesis—into clear, auditable diagrams with zero guesswork."
 
 ---
 
@@ -629,7 +632,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > - **1-Command Provisioning (`./setup-new-project.sh <PROJECT_ID> <BILLING_ACCOUNT_ID>`):**
 >   - Executes 100% Terraform Infrastructure as Code (`terraform/`).
->   - Activates 17 Google Cloud APIs, spins up Cloud Firestore Native in `asia-east2`, creates Cloud Storage buckets with custom CORS, deploys Cloud Run Functions Gen 2, and configures GCIP Identity Platform.
+>   - Activates 27 Google Cloud APIs, spins up Cloud Firestore Native in `asia-east2`, creates Cloud Storage buckets with custom CORS, deploys Cloud Run Functions Gen 2, and configures GCIP Identity Platform.
 >   - Automatically generates `web-app/.env` and `functions/config.js` with zero manual configuration.
 > - **24/7 Pre-Seeded Development Sandbox (`IT114115-Demo`):**
 >   - The setup script pre-seeds a verified lead teacher account (`teacher1@vtc.edu.hk`) and 5 demo students (`student1`..`student5@stu.vtc.edu.hk`).
@@ -645,9 +648,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **1,100+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 890 tests across 108 suites achieving **>80% code coverage** in Vitest.
->   - **Level 2 (Backend Cloud Functions):** 151 tests in `functions/ai_flows` + dozens across attendance, auth, media, and scheduled tasks.
+> - **1,450+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 1,184 tests across 126 suites achieving **81.66% line coverage** in Vitest.
+>   - **Level 2 (Backend Cloud Functions):** 146+ tests across 7 isolated codebases (ai_flows, attendance, auth, media, scheduled, storage).
 >   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 > - **100% Gemini 3 Family Standardization:** Standardized entirely on the Gemini 3 family in compliance with Google Cloud 2026 platform standards.
@@ -679,7 +682,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - Complete privacy-by-design with zero raw biometrics egress.
 > - 99.8% cost reduction at sub-$0.02 per student.
 > - High-density teacher ergonomics that eliminate cognitive overload.
-> - Enterprise-grade documentation with comprehensive user manuals and 15 system interaction diagrams.
+> - Enterprise-grade documentation with comprehensive user manuals, Master Documentation-to-Code Index, and 26 system interaction diagrams.
 >
 > The entire project is open-source on GitHub, and our live production environment is accessible right now at `https://it114115-2627.web.app`.
 >

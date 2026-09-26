@@ -1,5 +1,8 @@
 # Application Enhancement Plan
 
+> [!NOTE]
+> **Archival & Historical Roadmap Notice**: This document reflects early ideation for the platform. Core features (RBAC custom claims, live WebRTC screen talkback, MediaPipe edge tracking, automated performance metrics, and Passkeys) have been fully implemented in production. Backlog explorations (external LMS sync, sentiment heuristics) are preserved here for historical context.
+
 This document outlines potential enhancements for the AI Invigilator application.
 
 ### 1. **Enhanced AI Analysis & Feedback**

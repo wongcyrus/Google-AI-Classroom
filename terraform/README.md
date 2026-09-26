@@ -10,7 +10,7 @@ This directory contains the Infrastructure as Code (IaC) configuration to provis
 
 ## 📋 What This Provisions Automatically
 
-1. **APIs**: Enables all 15 required GCP/Firebase services (`cloudfunctions`, `cloudbuild`, `run`, `eventarc`, `pubsub`, `cloudscheduler`, `artifactregistry`, `firebasestorage`, `firestore`, `identitytoolkit`, etc.).
+1. **APIs**: Enables all 27 required GCP/Firebase services (`cloudfunctions`, `cloudbuild`, `run`, `eventarc`, `pubsub`, `cloudscheduler`, `cloudtasks`, `drive`, `artifactregistry`, `firebasestorage`, `firestore`, `identitytoolkit`, etc.).
 2. **Firestore**: Creates the `(default)` Firestore Native Database in your chosen region (default: `asia-east2`).
 3. **Storage**: Provisions `gs://<project_id>.firebasestorage.app` and pre-creates the regional Functions v2 staging bucket to prevent deployment race conditions.
 4. **Authentication**: Automatically enables Google Cloud Identity Platform (GCIP) and Email/Password sign-in.
