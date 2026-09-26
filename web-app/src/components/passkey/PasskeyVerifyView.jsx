@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
+import { isMobileDevice } from '../../utils/browserDetection';
 import { functions } from '../../firebase-config';
 import './passkey.css';
 
@@ -10,7 +11,7 @@ const PasskeyVerifyView = () => {
   const classId = searchParams.get('classId');
   const bingoId = searchParams.get('bingoId');
 
-  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error'
+  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked'
   const [errorMessage, setErrorMessage] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [latencySec, setLatencySec] = useState(null);
@@ -18,9 +19,15 @@ const PasskeyVerifyView = () => {
   const hasAutoStarted = useRef(false);
 
   useEffect(() => {
+    if (!isMobileDevice()) {
+      setStatus('desktop_blocked');
+      setErrorMessage('Mobile passkey attendance verification must be performed from your personal smartphone. Please scan the QR code displayed on your lab PC monitor using your phone camera.');
+      return;
+    }
+
     if (!browserSupportsWebAuthn()) {
       setStatus('error');
-      setErrorMessage('This browser or device does not support biometric passkeys. Please scan using Safari (iOS) or Chrome (Android).');
+      setErrorMessage('This mobile browser or device does not support biometric passkeys. Please scan using Safari (iOS) or Chrome (Android).');
       return;
     }
 
@@ -117,7 +124,28 @@ const PasskeyVerifyView = () => {
   return (
     <div className="passkey-container">
       <div className="passkey-card">
-        {status === 'success' ? (
+        {status === 'desktop_blocked' ? (
+          <>
+            <div className="passkey-icon-badge error">🚫</div>
+            <h1 className="passkey-title">Mobile Phone Required</h1>
+            <p className="passkey-subtitle">
+              Attendance verification must be performed using your paired smartphone.
+            </p>
+            <div className="passkey-alert passkey-alert-error" style={{ textAlign: 'left', lineHeight: 1.5 }}>
+              {errorMessage}
+            </div>
+            <div className="passkey-info-box">
+              <div className="passkey-info-row">
+                <span className="passkey-info-label">Action</span>
+                <span className="passkey-info-value">Scan PC QR Code</span>
+              </div>
+              <div className="passkey-info-row">
+                <span className="passkey-info-label">Lab Desktop PC</span>
+                <span className="passkey-info-value" style={{ color: '#ef4444' }}>Desktop Prohibited</span>
+              </div>
+            </div>
+          </>
+        ) : status === 'success' ? (
           <>
             <div className="passkey-icon-badge success">✅</div>
             <h1 className="passkey-title">Verified Present!</h1>

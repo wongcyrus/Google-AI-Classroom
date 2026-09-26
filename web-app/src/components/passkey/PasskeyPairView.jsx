@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
+import { isMobileDevice } from '../../utils/browserDetection';
 import { functions } from '../../firebase-config';
 import './passkey.css';
 
@@ -9,16 +10,23 @@ const PasskeyPairView = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
-  const [status, setStatus] = useState('idle'); // 'idle' | 'prompting' | 'verifying' | 'success' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'prompting' | 'verifying' | 'success' | 'error' | 'desktop_blocked'
   const [errorMessage, setErrorMessage] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [isSupported, setIsSupported] = useState(true);
 
   useEffect(() => {
+    if (!isMobileDevice()) {
+      setIsSupported(false);
+      setStatus('desktop_blocked');
+      setErrorMessage('Mobile Passkeys must be registered on your personal smartphone (iOS or Android) to enable biometric attendance. Shared desktop computers in the lab cannot be registered as mobile passkeys. Please scan the QR code displayed on your PC screen using your smartphone camera.');
+      return;
+    }
+
     if (!browserSupportsWebAuthn()) {
       setIsSupported(false);
       setStatus('error');
-      setErrorMessage('Your browser or device does not support WebAuthn biometric passkeys. Please use Safari (iOS) or Chrome (Android).');
+      setErrorMessage('Your mobile browser or device does not support WebAuthn biometric passkeys. Please use Safari (iOS) or Chrome (Android).');
     }
   }, []);
 
@@ -99,7 +107,28 @@ const PasskeyPairView = () => {
   return (
     <div className="passkey-container">
       <div className="passkey-card">
-        {status === 'success' ? (
+        {status === 'desktop_blocked' ? (
+          <>
+            <div className="passkey-icon-badge error">🚫</div>
+            <h1 className="passkey-title">Mobile Phone Required</h1>
+            <p className="passkey-subtitle">
+              Passkey device registration is restricted to personal mobile phones.
+            </p>
+            <div className="passkey-alert passkey-alert-error" style={{ textAlign: 'left', lineHeight: 1.5 }}>
+              {errorMessage}
+            </div>
+            <div className="passkey-info-box">
+              <div className="passkey-info-row">
+                <span className="passkey-info-label">Supported Devices</span>
+                <span className="passkey-info-value">Apple iPhone / Android Phone</span>
+              </div>
+              <div className="passkey-info-row">
+                <span className="passkey-info-label">Lab Desktop PC</span>
+                <span className="passkey-info-value" style={{ color: '#ef4444' }}>Blocked (Shared Computer)</span>
+              </div>
+            </div>
+          </>
+        ) : status === 'success' ? (
           <>
             <div className="passkey-icon-badge success">🎉</div>
             <h1 className="passkey-title">Phone Paired!</h1>

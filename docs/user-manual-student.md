@@ -277,6 +277,11 @@ In computer labs without webcams, your instructor may use **Mobile Passkey Verif
 
 > 📖 **Comprehensive Guide**: For complete step-by-step UI instructions and diagrams, see **[📱 Mobile Passkey Device Registration & Attendance Guide](./passkey-device-registration-guide.md)**.
 
+> [!NOTE]
+> **No Session Displacement & Desktop Block Policy**:
+> - Scanning the pairing or attendance QR code with your phone camera does **not** create a separate login session on mobile. Your proctored Lab PC session remains 100% uninterrupted and will never be displaced.
+> - Passkeys must be registered on your personal mobile phone (iOS Safari or Android Chrome). Attempting to register on a shared desktop PC is blocked.
+
 1. **Initial Pairing (No Password Required)**:
    - On your logged-in Lab PC, click the **`📲 Pair Phone`** button.
    - A 10-minute temporary pairing QR code appears on your screen.

@@ -8,10 +8,12 @@ import { useStudentClassSchedule } from '../../hooks/useStudentClassSchedule';
 import useTeacherScreenBroadcastStudent from '../../hooks/useTeacherScreenBroadcastStudent';
 import { useStudentLiveSubtitles } from '../../hooks/useStudentLiveSubtitles';
 import BingoModal from '../BingoModal';
+import PasskeyPairModal from '../passkey/PasskeyPairModal';
 import './StudentMobileView.css';
 
 export default function StudentMobileView({ user, onSwitchToDesktop }) {
   const navigate = useNavigate();
+  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   // Mobile View Mode: 'overlay' (Screen & Overlap CC), 'screen' (Screen Only), 'cc' (CC Only)
   const [mobileViewMode, setMobileViewMode] = useState(() => {
     try {
@@ -466,6 +468,16 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
           <button
             type="button"
             className="mobile-records-nav-btn"
+            onClick={() => setShowPasskeyModal(true)}
+            title="Link or View Mobile Passkey"
+            aria-label="Link or View Mobile Passkey"
+            style={{ background: '#4f46e5', color: '#ffffff' }}
+          >
+            📱 Passkey
+          </button>
+          <button
+            type="button"
+            className="mobile-records-nav-btn"
             onClick={() => navigate('/student/records')}
             title="View Attendance & Quiz Records"
             aria-label="View Attendance & Quiz Records"
@@ -846,6 +858,15 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
             });
             setActiveClassBingo(null);
           }}
+        />
+      )}
+
+      {showPasskeyModal && (
+        <PasskeyPairModal
+          show={showPasskeyModal}
+          onClose={() => setShowPasskeyModal(false)}
+          user={user}
+          classId={activeClass}
         />
       )}
     </div>

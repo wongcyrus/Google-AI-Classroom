@@ -583,10 +583,12 @@ In computer labs lacking webcams where students may share login credentials, tea
    - The teacher physically verifies the student standing at the podium and clicks **`[✅ Verify In-Person]`** with 1 click to mark them present.
 3. **Teacher Passkey Reset for Phone Replacement (`[🔄 Reset Passkey]`)**:
    - When a student buys a new phone, loses their phone, or resets their hardware, the previous device lock must be unlinked.
-   - Teachers can click **`[🔄 Reset Passkey]`** in either:
-     - The **Podium Action** column in `BingoResultsView.jsx`
-     - The **Enrolled Roster Details** table in `ClassManagement.jsx`
-   - A confirmation dialog appears. Confirming securely unlinks the old phone's credential in `studentPasskeys/{studentUid}`, logs an immutable record in `passkeyAuditLogs`, and allows the student to immediately scan the pairing QR code on their Lab PC to bind their new device.
+   - Teachers can click **`[🔄 Reset Passkey]`** in either the **Podium Action** column in `BingoResultsView.jsx` or the **Enrolled Roster Details** table in `ClassManagement.jsx`.
+   - Confirming unlinks the old phone's credential in `studentPasskeys/{studentUid}`, logs an immutable record in `passkeyAuditLogs`, and allows the student to immediately scan the pairing QR code on their Lab PC to bind their new device.
+4. **Desktop Registration Block Guarantee**:
+   - Shared lab computers are strictly prohibited from registering or executing passkey challenges. If accessed on desktop, `/pair-phone` and `/verify-passkey` display a blocked alert requiring a mobile phone.
+5. **Zero Session Displacement Conflicts (No Dual Login Needed)**:
+   - Mobile passkey verification operates completely sessionless and passwordless on mobile. The student's active Desktop streaming session (`status.sessionId`) is never touched or disconnected, while the single-session anti-cheating barrier prevents multiple simultaneous PC logins.
 
 ---
 

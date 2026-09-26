@@ -20,10 +20,15 @@ vi.mock('../../firebase-config', () => ({
 
 const mockStartAuthentication = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
+const mockIsMobileDevice = vi.fn(() => true);
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: (...args) => mockStartAuthentication(...args),
   browserSupportsWebAuthn: () => mockBrowserSupportsWebAuthn(),
+}));
+
+vi.mock('../../utils/browserDetection', () => ({
+  isMobileDevice: () => mockIsMobileDevice(),
 }));
 
 import PasskeyVerifyView from './PasskeyVerifyView';
@@ -32,6 +37,23 @@ describe('PasskeyVerifyView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
+    mockIsMobileDevice.mockReturnValue(true);
+  });
+
+  it('blocks desktop verification with clear mobile required notice', async () => {
+    mockIsMobileDevice.mockReturnValue(false);
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/verify-passkey?classId=class_101&bingoId=bingo_999']}>
+          <PasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText('Mobile Phone Required')).toBeInTheDocument();
+    expect(screen.getByText(/Attendance verification must be performed using your paired smartphone/i)).toBeInTheDocument();
+    expect(mockGetAuthOptions).not.toHaveBeenCalled();
   });
 
   it('automatically triggers Face ID / Fingerprint on mount and shows success screen', async () => {

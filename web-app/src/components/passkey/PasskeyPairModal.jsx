@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { isMobileDevice } from '../../utils/browserDetection';
 import { functions, db } from '../../firebase-config';
 import './passkey.css';
 
 const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [pairingToken, setPairingToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isPaired, setIsPaired] = useState(false);
   const [pairedDevice, setPairedDevice] = useState('');
+  const isMobile = isMobileDevice();
 
   // 1. Generate pairing token and QR code when modal opens
   useEffect(() => {
@@ -29,6 +32,10 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
 
         if (!tokenId) {
           throw new Error('Could not generate pairing token.');
+        }
+
+        if (isMounted) {
+          setPairingToken(tokenId);
         }
 
         const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
@@ -135,13 +142,39 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
                 <div className="passkey-qr-frame">
                   <img src={qrDataUrl} alt="Pair Phone QR Code" className="passkey-qr-image" />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
                   <span>1. Open Camera</span>
                   <span>•</span>
                   <span>2. Scan QR</span>
                   <span>•</span>
                   <span>3. Face ID / Fingerprint</span>
                 </div>
+
+                {isMobile && pairingToken && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <a
+                      href={`/pair-phone?token=${pairingToken}`}
+                      className="passkey-btn passkey-btn-primary"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        textDecoration: 'none',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '0.65rem 1rem',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        borderRadius: '0.5rem',
+                        background: '#4f46e5',
+                        color: '#ffffff',
+                      }}
+                    >
+                      📱 Pair This Phone Directly
+                    </a>
+                  </div>
+                )}
               </div>
             ) : null}
 
