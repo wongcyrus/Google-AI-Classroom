@@ -141,5 +141,25 @@ describe("exportUtils Unit Tests", () => {
       expect(rows[1]).toContain("https://drive.google.com/file/d/test-task-drive/view");
       expect(rows[1]).toContain("40 pts (completed)");
     });
+
+    it("resolves student identity when fields use studentEmail, studentClass, or profile aliases", async () => {
+      const task = { title: "Python Lab", maxScore: 100, rubricSteps: [] };
+      const submissions = [
+        {
+          studentEmail: "sub.fallback@vtc.edu.hk",
+          studentName: "Fallback Student",
+          studentClass: "AI-101",
+          programme: "Cloud Computing",
+          status: "submitted",
+        },
+      ];
+
+      const blob = await exportTaskGradingToExcel(task, submissions);
+      const rows = await readExcelFile(blob);
+      expect(rows[1][0]).toBe("Fallback Student");
+      expect(rows[1][1]).toBe("sub.fallback@vtc.edu.hk");
+      expect(rows[1][2]).toBe("AI-101");
+      expect(rows[1][3]).toBe("Cloud Computing");
+    });
   });
 });

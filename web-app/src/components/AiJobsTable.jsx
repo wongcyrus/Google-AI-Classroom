@@ -5,7 +5,12 @@ import { exportToExcel, exportToJson } from '../utils/exportUtils';
 
 const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
   const handleExportSingleJob = (job, format) => {
-    const studentTag = job.studentEmail ? job.studentEmail.replace(/[^a-zA-Z0-9]/g, '_') : 'Student';
+    const studentEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (job.studentUid?.includes('@') ? job.studentUid : '');
+    const studentUid = job.studentUid || job.uid || job.userId || job.id || '';
+    const displayName = job.displayName || job.studentName || job.name || job.profile?.studentName || studentEmail || studentUid || 'Student';
+    const studentClass = job.studentClass || job.cohort || job.class || job.className || job.profile?.studentClass || job.profile?.class || '';
+    const programme = job.programme || job.program || job.profile?.programme || job.profile?.program || '';
+    const studentTag = displayName.replace(/[^a-zA-Z0-9]/g, '_');
     const rawResult = job.result;
     const isObj = typeof rawResult === 'object' && rawResult !== null;
     const resultStr = isObj ? JSON.stringify(rawResult, null, 2) : String(rawResult || '');
@@ -14,11 +19,11 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
       const headers = ['Property', 'Value'];
       const rows = [
         ['AI Job ID', job.id || ''],
-        ['Student Name', job.displayName || job.studentName || ''],
-        ['Student Email', job.studentEmail || ''],
-        ['Class / Cohort', job.studentClass || ''],
-        ['Programme', job.programme || ''],
-        ['Student UID', job.studentUid || ''],
+        ['Student Name', displayName],
+        ['Student Email', studentEmail],
+        ['Class / Cohort', studentClass],
+        ['Programme', programme],
+        ['Student UID', studentUid],
         ['Model', job.modelUsed || 'gemini-3.5-flash-lite'],
         ['Status', job.status || ''],
         ['Cost (USD)', job.cost != null ? Number(job.cost).toFixed(4) : '0.0000'],
@@ -31,8 +36,11 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
     } else if (format === 'json') {
       const payload = {
         id: job.id,
-        studentEmail: job.studentEmail,
-        studentUid: job.studentUid,
+        studentName: displayName,
+        studentEmail: studentEmail,
+        studentClass: studentClass,
+        programme: programme,
+        studentUid: studentUid,
         modelUsed: job.modelUsed,
         cost: job.cost,
         status: job.status,

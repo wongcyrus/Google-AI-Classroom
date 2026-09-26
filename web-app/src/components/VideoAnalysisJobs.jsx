@@ -305,10 +305,12 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     ];
     
     const rows = listToExport.map(job => {
-      const studentEmail = job.studentEmail || '';
-      const studentUid = job.studentUid || '';
-      const prof = getStudentProfile(studentEmail, studentProfiles);
-      const studentName = job.displayName || getStudentDisplayName(studentEmail, studentProfiles);
+      const studentEmail = job.studentEmail || job.email || job.userEmail || (job.studentUid?.includes('@') ? job.studentUid : '');
+      const studentUid = job.studentUid || job.uid || job.userId || '';
+      const prof = getStudentProfile(job, studentProfiles);
+      const studentName = job.displayName || job.studentName || prof.studentName || getStudentDisplayName(job, studentProfiles);
+      const studentClass = prof.studentClass || job.studentClass || job.cohort || '';
+      const programme = prof.programme || job.programme || '';
       const model = job.modelUsed || selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite';
       const status = job.status || '';
       const costStr = job.cost != null ? Number(job.cost).toFixed(4) : '0.0000';
@@ -321,9 +323,9 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         job.id,
         selectedAnalysisJob.id,
         studentName,
-        studentEmail,
-        prof.studentClass || '',
-        prof.programme || '',
+        studentEmail || prof.email || '',
+        studentClass,
+        programme,
         studentUid,
         model,
         status,

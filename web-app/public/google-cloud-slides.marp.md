@@ -2,7 +2,7 @@
 marp: true
 theme: default
 paginate: true
-header: "Google Cloud Tech Talk | Google AI Classroom Assistant | Cyrus Wong (GDE)"
+header: "Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)"
 footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent"
 style: |
   section {
@@ -53,7 +53,7 @@ style: |
 ---
 
 <!-- _class: lead -->
-# Google AI Classroom Assistant
+# Google AI Classroom
 ### Architecting Edge-to-Cloud Multimodal AI with Google Cloud, Firebase & Gemini
 **Google Cloud Tech Talk & Developer Conference Series**  
 **Presenter:** **Cyrus Wong (黃俊彥)** — Google Developer Expert (GCP & AI/ML)  
@@ -104,7 +104,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
   - 100% continuous video streaming (classroom Wi-Fi saturation).
   - High false-positive flags with zero pedagogical context.
   - $15–$25/student institutional licensing fees.
-- **Google AI Classroom Assistant:**
+- **Google AI Classroom:**
   - **100% Browser-Native** (Zero software installation).
   - **95%+ Local Edge Compute** (Zero raw biometrics leave student laptop).
   - Real-time teacher command center with 1-click targeted nudges.
@@ -394,6 +394,27 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
+### Zero-Password Pairing, Biometric Attendance (<2s) & Anti-Proxy Physical Security
+
+![bg right:60% 95%](images/slide_edge_vision_gaze.png)
+
+- **The Password-Sharing Human Proxy Challenge:**
+  - In computer labs without webcams, students share login credentials. Proxy helpers log in adjacent PCs.
+  - Passive browser canvas/fingerprinting fails because identical student iPhone models share identical signatures.
+- **Cryptographic 1-to-1 Device Hardware Binding:**
+  - Leverages Apple Secure Enclave & Android Titan/StrongBox WebAuthn platform authenticators.
+  - Generates cryptographically unique ECDSA keys per device stored in `studentPasskeys`.
+  - Backend enforces strict uniqueness: **1 physical phone can only be bound to 1 student account**.
+- **Frictionless Passwordless Attendance Flow:**
+  - **Pair Once:** Logged-in Lab PC displays pairing QR code; student scans once with camera—zero passwords typed on phone.
+  - **Instant Attendance:** In-class Bingo challenge displays QR code; scanned in **~1.8s via Face ID / Touch ID**.
+- **Teacher In-Person Podium Override & Phone Replacement Reset:**
+  - Dead / broken phone fallback: `🙋 I don't have my phone today` queues up for 1-click teacher podium verification.
+  - Phone replacement: Teacher securely unlinks old passkeys via `resetStudentPasskey` with audit trail (`passkeyAuditLogs`).
+
+---
+
 ## 06 | Real-Time Classroom Media Pipelines
 ### 1-to-1 WebRTC Live Peek & Pure Frame Classroom Broadcaster
 
@@ -612,7 +633,7 @@ const processFrame = async (now, metadata) => {
 
 ![bg right:60% 95%](images/slide_ai_cost_finops.png)
 
-| Resource Layer | Commercial Surveillance SaaS | Google AI Classroom Assistant | Savings |
+| Resource Layer | Commercial Surveillance SaaS | Google AI Classroom | Savings |
 | :--- | :--- | :--- | :--- |
 | **Compute Location** | 100% Cloud Servers | 95%+ Local Student Edge | **-95% Server Load** |
 | **Audio Processing** | Continuous 100% Streaming | Local Whisper + RMS Silence Cut | **-80% Ingestion** |

@@ -250,18 +250,20 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       'Error Details'
     ];
     const rows = filteredVideoJobs.map(job => {
-      const student = students.find(s => s.uid === job.studentUid || s.email === job.studentEmail);
-      const studentName = student?.displayName || job.studentName || (job.studentEmail ? job.studentEmail : 'All Students');
-      const studentClass = student?.studentClass || '';
-      const programme = student?.programme || '';
+      const student = students.find(s => s.uid === job.studentUid || s.email === job.studentEmail || s.email === job.email);
+      const studentEmail = job.studentEmail || job.email || job.userEmail || student?.email || (job.studentUid?.includes('@') ? job.studentUid : '');
+      const studentUid = job.studentUid || job.uid || student?.uid || 'N/A';
+      const studentName = student?.displayName || job.displayName || job.studentName || job.name || (studentEmail || 'All Students');
+      const studentClass = student?.studentClass || student?.cohort || job.studentClass || job.cohort || '';
+      const programme = student?.programme || job.programme || '';
 
       return [
         job.id,
         studentName,
-        job.studentEmail || 'All Students',
+        studentEmail || 'All Students',
         studentClass,
         programme,
-        job.studentUid || 'N/A',
+        studentUid,
         job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
         job.endTime?.toDate ? job.endTime.toDate().toISOString() : (job.endTime || 'N/A'),
         job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),

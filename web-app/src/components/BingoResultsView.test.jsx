@@ -18,6 +18,11 @@ function triggerSnapshot(dataList = []) {
 
 vi.mock('../firebase-config', () => ({
   db: {},
+  functions: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: { success: true } })),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -461,6 +466,67 @@ describe('BingoResultsView Component', () => {
     expect(screen.getByText('+100 pts')).toBeInTheDocument();
   });
 
+  it('identifies ghost attendees (screen sharing active, but timed out / AFK) and renders Ghost KPI and verdict badges', () => {
+    const mockStudentStatuses = [
+      { id: 'student_1', email: 'student1@stu.vtc.edu.hk', isSharing: true },
+      { id: 'student_2', email: 'student2@stu.vtc.edu.hk', isSharing: false },
+      { id: 'student_3', email: 'student3@stu.vtc.edu.hk', isSharing: true },
+    ];
+
+    render(
+      <BingoResultsView
+        classId="IT114115-Demo"
+        studentStatuses={mockStudentStatuses}
+      />
+    );
+    triggerSnapshot(sampleRecords);
+
+    // Verify Ghost Attendees KPI card is rendered
+    expect(screen.getByTestId('kpi-ghost-absent')).toBeInTheDocument();
+    expect(screen.getByText('🚨 Ghost Attendees')).toBeInTheDocument();
+
+    // Verify presence verdict badges in table
+    expect(screen.getByText('🚨 Ghost Present (AFK)')).toBeInTheDocument();
+    expect(screen.getByText('✅ Verified Active')).toBeInTheDocument();
+    expect(screen.getByText('⚠️ Answered (No Screen)')).toBeInTheDocument();
+
+    // Verify Ghost Present tab is displayed and filtering works
+    const ghostTab = screen.getByTestId('tab-ghost-absent');
+    expect(ghostTab).toHaveTextContent('🚨 Ghost Present (1)');
+    fireEvent.click(ghostTab);
+
+    // Only student 3 (ghost absent) should be visible
+    expect(screen.getByText('student3@stu.vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.queryByText('student1@stu.vtc.edu.hk')).not.toBeInTheDocument();
+  });
+
+  it('exports screen sharing and presence verdict columns to Excel when studentStatuses is provided', () => {
+    const exportSpy = vi.spyOn(exportUtils, 'exportToExcel').mockImplementation(() => {});
+    const mockStudentStatuses = [
+      { id: 'student_1', email: 'student1@stu.vtc.edu.hk', isSharing: true },
+      { id: 'student_3', email: 'student3@stu.vtc.edu.hk', isSharing: true },
+    ];
+
+    render(
+      <BingoResultsView
+        classId="IT114115-Demo"
+        studentStatuses={mockStudentStatuses}
+      />
+    );
+    triggerSnapshot(sampleRecords);
+
+    const exportBtn = screen.getByRole('button', { name: /Export Excel/i });
+    fireEvent.click(exportBtn);
+
+    expect(exportSpy).toHaveBeenCalled();
+    const exportedHeaders = exportSpy.mock.calls[0][0];
+    const exportedRows = exportSpy.mock.calls[0][1];
+    expect(exportedHeaders).toContain('Screen Sharing');
+    expect(exportedHeaders).toContain('Presence Verdict');
+    expect(exportedRows.length).toBeGreaterThan(0);
+    exportSpy.mockRestore();
+  });
+
   it('toggles to Cumulative Class Leaderboard tab and renders podium and leaderboard table', () => {
     render(<BingoResultsView classId="IT114115-Demo" />);
     triggerSnapshot(sampleRecords);
@@ -474,4 +540,105 @@ describe('BingoResultsView Component', () => {
     expect(screen.getByText(/Round Speed & Accuracy Podium/i)).toBeInTheDocument();
     expect(screen.getByText(/Total Score/i)).toBeInTheDocument();
   });
+
+  it('renders pending in-person claims banner and handles teacher override', async () => {
+    const claimRecords = [
+      {
+        id: 'bingo_claim_1',
+        roundId: 'round_1',
+        studentUid: 'student_claim',
+        studentEmail: 'claim@stu.vtc.edu.hk',
+        question: 'Passkey presence check',
+        questionSource: 'mobile_passkey',
+        result: 'pending',
+        inPersonClaim: true,
+        issuedAtMillis: Date.now(),
+      },
+    ];
+
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(claimRecords);
+
+    expect(screen.getByTestId('pending-inperson-claims-card')).toBeInTheDocument();
+    expect(screen.getByText(/Pending In-Person Podium Claims/i)).toBeInTheDocument();
+
+    const verifyBtn = screen.getByTestId('btn-verify-inperson-student_claim');
+    await act(async () => {
+      fireEvent.click(verifyBtn);
+    });
+  });
+
+  it('displays Passkey Verified badge and latency in student table', () => {
+    const passkeyRecords = [
+      {
+        id: 'bingo_passkey_1',
+        roundId: 'round_1',
+        studentUid: 'student_passkey',
+        studentEmail: 'passkey@stu.vtc.edu.hk',
+        question: 'Passkey presence check',
+        questionSource: 'mobile_passkey',
+        result: 'passed',
+        passkeyVerified: true,
+        responseTimeSec: 1.9,
+        issuedAtMillis: Date.now(),
+      },
+    ];
+
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(passkeyRecords);
+
+    expect(screen.getByText('📱 Passkey Verified')).toBeInTheDocument();
+    expect(screen.getAllByText('1.9s').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('opens passkey reset confirmation modal when teacher clicks Reset Passkey button', () => {
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    const resetBtn = screen.getByTestId('btn-reset-passkey-student_1');
+    expect(resetBtn).toBeInTheDocument();
+    fireEvent.click(resetBtn);
+
+    expect(screen.getByTestId('modal-reset-passkey-confirm')).toBeInTheDocument();
+    expect(screen.getByText(/Phone Replacement Mode/i)).toBeInTheDocument();
+    expect(screen.getByTestId('btn-confirm-reset-passkey')).toBeInTheDocument();
+  });
+
+  it('unlinks passkey and displays action feedback banner upon confirmation', async () => {
+    const { httpsCallable } = await import('firebase/functions');
+    const mockCallableFn = vi.fn().mockResolvedValue({ data: { success: true } });
+    vi.mocked(httpsCallable).mockReturnValue(mockCallableFn);
+
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    const resetBtn = screen.getByTestId('btn-reset-passkey-student_1');
+    fireEvent.click(resetBtn);
+
+    const confirmBtn = screen.getByTestId('btn-confirm-reset-passkey');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(mockCallableFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentUid: 'student_1',
+        classId: 'IT114115-Demo',
+      })
+    );
+    expect(screen.getByTestId('bingo-action-feedback')).toBeInTheDocument();
+    expect(screen.getByText(/has been reset/i)).toBeInTheDocument();
+  });
+
+  it('cancels passkey reset confirmation modal when Cancel is clicked', () => {
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    fireEvent.click(screen.getByTestId('btn-reset-passkey-student_1'));
+    expect(screen.getByTestId('modal-reset-passkey-confirm')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('btn-cancel-reset-passkey'));
+    expect(screen.queryByTestId('modal-reset-passkey-confirm')).not.toBeInTheDocument();
+  });
 });
+

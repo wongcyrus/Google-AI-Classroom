@@ -394,6 +394,27 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
+### Zero-Password Pairing, Biometric Attendance (<2s) & Anti-Proxy Physical Security
+
+![bg right:60% 95%](images/slide_edge_vision_gaze.png)
+
+- **The Password-Sharing Human Proxy Challenge:**
+  - In computer labs without webcams, students share login credentials. Proxy helpers log in adjacent PCs.
+  - Passive browser canvas/fingerprinting fails because identical student iPhone models share identical signatures.
+- **Cryptographic 1-to-1 Device Hardware Binding:**
+  - Leverages Apple Secure Enclave & Android Titan/StrongBox WebAuthn platform authenticators.
+  - Generates cryptographically unique ECDSA keys per device stored in `studentPasskeys`.
+  - Backend enforces strict uniqueness: **1 physical phone can only be bound to 1 student account**.
+- **Frictionless Passwordless Attendance Flow:**
+  - **Pair Once:** Logged-in Lab PC displays pairing QR code; student scans once with camera—zero passwords typed on phone.
+  - **Instant Attendance:** In-class Bingo challenge displays QR code; scanned in **~1.8s via Face ID / Touch ID**.
+- **Teacher In-Person Podium Override & Phone Replacement Reset:**
+  - Dead / broken phone fallback: `🙋 I don't have my phone today` queues up for 1-click teacher podium verification.
+  - Phone replacement: Teacher securely unlinks old passkeys via `resetStudentPasskey` with audit trail (`passkeyAuditLogs`).
+
+---
+
 ## 06 | Real-Time Classroom Media Pipelines
 ### 1-to-1 WebRTC Live Peek & Pure Frame Classroom Broadcaster
 

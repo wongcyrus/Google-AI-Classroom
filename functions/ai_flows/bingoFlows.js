@@ -166,6 +166,19 @@ export async function resolveBingoQuestion({
   const classData = classDoc.exists ? (classDoc.data() || {}) : {};
   const customBingoPrompt = classData.bingoPrompt?.promptText || null;
 
+  // Mode 0: Mobile Passkey Biometric QR Check (Anti-Proxy / 1-to-1 Device Hardware Lock)
+  if (questionSource === 'mobile_passkey') {
+    return {
+      question: 'Scan this QR code with your paired smartphone to verify physical attendance with Face ID / Fingerprint.',
+      options: ['Mobile Passkey Verification Active'],
+      correctIndex: 0,
+      observedEvidence: 'Biometric WebAuthn hardware device check',
+      questionSource: 'mobile_passkey',
+      bankQuestionId: null,
+      screenshotUrl: null,
+    };
+  }
+
   // Mode 1: Predefined Question Bank (Zero AI cost, $0.00)
   if (questionSource === 'question_bank') {
     const classConfigDoc = await db.doc(`classes/${classId}/classProperties/config`).get();
@@ -790,6 +803,9 @@ export async function submitBingoResponse({
   }
 
   const isTimeout = selectedIndex === null || selectedIndex === undefined;
+  if (record.questionSource === 'mobile_passkey' && !isTimeout) {
+    throw new Error('Mobile passkey attendance challenges must be verified using biometric passkey authentication.');
+  }
   const isCorrect = !isTimeout && Number(selectedIndex) === record.correctIndex;
   
   let result = 'failed_incorrect';

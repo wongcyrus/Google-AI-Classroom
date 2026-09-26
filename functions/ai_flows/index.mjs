@@ -6,8 +6,30 @@ import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyz
 import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
-import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
+import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import {
+  handleRequestPasskeyPairingToken,
+  handleGetPasskeyRegistrationOptions,
+  handleVerifyPasskeyRegistration,
+  handleGetPasskeyAuthOptions,
+  handleVerifyPasskeyAuth,
+  handleClaimInPersonAttendance,
+  handleVerifyInPersonAttendanceOverride,
+  handleGetStudentPasskeyStatus,
+  handleResetStudentPasskey,
+} from './passkeyFlows.js';
+export {
+  handleRequestPasskeyPairingToken,
+  handleGetPasskeyRegistrationOptions,
+  handleVerifyPasskeyRegistration,
+  handleGetPasskeyAuthOptions,
+  handleVerifyPasskeyAuth,
+  handleClaimInPersonAttendance,
+  handleVerifyInPersonAttendanceOverride,
+  handleGetStudentPasskeyStatus,
+  handleResetStudentPasskey,
+};
 import {
   generateBingoChallenge,
   submitBingoResponse,
@@ -205,6 +227,122 @@ export const dispatchScheduledBingoTask = onTaskDispatched(
     return await handleDispatchScheduledBingo({ classId, studentUid, questionSource });
   }
 );
+
+export const requestPasskeyPairingToken = onCall(callOptions, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  const { classId } = request.data || {};
+  return await handleRequestPasskeyPairingToken({
+    studentUid: request.auth.uid,
+    studentEmail: request.auth.token?.email || '',
+    classId,
+  });
+});
+
+export const getPasskeyRegistrationOptions = onCall(callOptions, async (request) => {
+  const { pairingToken, clientRpId } = request.data || {};
+  return await handleGetPasskeyRegistrationOptions({ pairingToken, clientRpId });
+});
+
+export const verifyPasskeyRegistration = onCall(callOptions, async (request) => {
+  const { pairingToken, attestationResponse, clientRpId, deviceModel } = request.data || {};
+  return await handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel });
+});
+
+export const getPasskeyAuthOptions = onCall(callOptions, async (request) => {
+  const { classId, bingoId, clientRpId } = request.data || {};
+  return await handleGetPasskeyAuthOptions({ classId, bingoId, clientRpId });
+});
+
+export const verifyPasskeyAuth = onCall(callOptions, async (request) => {
+  const { classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis } = request.data || {};
+  return await handleVerifyPasskeyAuth({ classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis });
+});
+
+export const claimInPersonAttendance = onCall(callOptions, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  const { classId, bingoId } = request.data || {};
+  return await handleClaimInPersonAttendance({ classId, bingoId, studentUid: request.auth.uid });
+});
+
+export const verifyInPersonAttendanceOverride = onCall(callOptions, async (request) => {
+  let isTeacher = request.auth?.token?.role === 'teacher';
+  const { classId, bingoId, studentUid } = request.data || {};
+  if (!isTeacher && classId && request.auth?.uid) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher for in-person override:', e);
+    }
+  }
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers can verify attendance in person.');
+  }
+  return await handleVerifyInPersonAttendanceOverride({
+    classId,
+    bingoId,
+    studentUid,
+    teacherUid: request.auth.uid,
+    teacherEmail: request.auth.token?.email || 'teacher',
+  });
+});
+
+export const getStudentPasskeyStatus = onCall(callOptions, async (request) => {
+  const studentUid = request.data?.studentUid || request.auth?.uid;
+  if (!studentUid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  return await handleGetStudentPasskeyStatus({ studentUid });
+});
+
+export const resetStudentPasskey = onCall(callOptions, async (request) => {
+  let isTeacher = request.auth?.token?.role === 'teacher';
+  const { studentUid, studentEmail, classId, reason } = request.data || {};
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  if (!studentUid && !studentEmail) {
+    throw new HttpsError('invalid-argument', 'Missing studentUid or studentEmail.');
+  }
+
+  if (!isTeacher && classId) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher for passkey reset:', e);
+    }
+  }
+
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers can reset student passkeys.');
+  }
+
+  return await handleResetStudentPasskey({
+    studentUid,
+    studentEmail,
+    classId,
+    reason,
+    teacherUid: request.auth.uid,
+    teacherEmail: request.auth.token?.email || 'teacher',
+  });
+});
 
 export { processLectureSubtitles } from './processLectureSubtitles.js';
 export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';

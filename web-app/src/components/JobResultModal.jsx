@@ -36,17 +36,22 @@ const JobResultModal = ({ show, onClose, job }) => {
   };
 
   const handleDownloadExcel = async () => {
-    const displayName = job.displayName || job.studentName || job.studentEmail;
-    const studentTag = (displayName || job.studentEmail || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
+    const studentEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (job.studentUid?.includes('@') ? job.studentUid : '');
+    const studentUid = job.studentUid || job.uid || job.userId || job.id || '';
+    const displayName = job.displayName || job.studentName || job.name || job.profile?.studentName || studentEmail || studentUid || 'Student';
+    const studentClass = job.studentClass || job.cohort || job.class || job.className || job.profile?.studentClass || job.profile?.class || '';
+    const programme = job.programme || job.program || job.profile?.programme || job.profile?.program || '';
+
+    const studentTag = displayName.replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `Job_${job.id || 'Result'}_${studentTag}.xlsx`;
     const headers = ['Property', 'Value'];
     const rows = [
       ['AI Job ID', job.id || ''],
-      ['Student Name', displayName || ''],
-      ['Student Email', job.studentEmail || ''],
-      ['Class / Cohort', job.studentClass || ''],
-      ['Programme', job.programme || ''],
-      ['Student UID', job.studentUid || ''],
+      ['Student Name', displayName],
+      ['Student Email', studentEmail],
+      ['Class / Cohort', studentClass],
+      ['Programme', programme],
+      ['Student UID', studentUid],
       ['Model Used', job.modelUsed || job.model || 'gemini-3.5-flash-lite'],
       ['Status', job.status || ''],
       ['Cost (USD)', job.cost != null ? Number(job.cost).toFixed(4) : '0.0000'],

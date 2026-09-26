@@ -1,6 +1,21 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mockqrdata'),
+  },
+}));
+
+vi.mock('firebase/functions', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: { success: true } })),
+  };
+});
+
 import BingoModal, { playBingoChime } from './BingoModal';
 
 describe('BingoModal Component', () => {
@@ -315,6 +330,69 @@ describe('BingoModal Component', () => {
       });
       fakeFsElement.remove();
     }
+  });
+
+  it('renders passkey QR code and in-person backup button when questionSource is mobile_passkey', async () => {
+    const passkeyBingo = {
+      ...mockBingo,
+      questionSource: 'mobile_passkey',
+      question: 'Scan QR with your phone to verify attendance',
+    };
+
+    await act(async () => {
+      render(
+        <BingoModal activeBingo={passkeyBingo} onSubmit={vi.fn()} onClose={vi.fn()} />
+      );
+    });
+
+    expect(screen.getByText('Scan QR with your phone to verify attendance')).toBeInTheDocument();
+    expect(screen.getByTestId('passkey-attendance-qr')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-claim-in-person')).toHaveTextContent("I don't have my phone today");
+    expect(screen.getByTestId('btn-open-pair-modal')).toBeInTheDocument();
+  });
+
+  it('handles in-person claim submission when student has no phone', async () => {
+    const passkeyBingo = {
+      ...mockBingo,
+      questionSource: 'mobile_passkey',
+      classId: 'class_it101',
+      studentUid: 'student_1',
+    };
+
+    await act(async () => {
+      render(
+        <BingoModal activeBingo={passkeyBingo} onSubmit={vi.fn()} onClose={vi.fn()} />
+      );
+    });
+
+    const claimBtn = screen.getByTestId('btn-claim-in-person');
+    await act(async () => {
+      fireEvent.click(claimBtn);
+    });
+
+    expect(screen.getByTestId('in-person-claim-alert')).toHaveTextContent('In-Person Claim Submitted');
+  });
+
+  it('displays Passkey Verified celebration card when activeBingo updates with passkeyVerified', async () => {
+    const verifiedPasskeyBingo = {
+      ...mockBingo,
+      questionSource: 'mobile_passkey',
+      result: 'passed',
+      status: 'completed',
+      passkeyVerified: true,
+      responseTimeSec: 1.8,
+      pointsAwarded: 10,
+    };
+
+    await act(async () => {
+      render(
+        <BingoModal activeBingo={verifiedPasskeyBingo} onSubmit={vi.fn()} onClose={vi.fn()} />
+      );
+    });
+
+    expect(screen.getByTestId('bingo-result-card')).toBeInTheDocument();
+    expect(screen.getByText('📱 Passkey Verified!')).toBeInTheDocument();
+    expect(screen.getByText('1.8s')).toBeInTheDocument();
   });
 });
 

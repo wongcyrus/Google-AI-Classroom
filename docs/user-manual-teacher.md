@@ -566,7 +566,27 @@ The Bingo Presence Report is deeply integrated with the class schedule:
    - **Window Focus:** `🖥️ Focused` (green) or `❌ Unfocused` (rose red).
    - **Strike Indicator:** `Strike 1` or `🚨 Strike 2 (Deduction)` badges.
 6. **Student Search & Status Filtering:** Search by email prefix or student UID, and filter by status tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
-7. **Excel Export (`📥 Export Excel`):** Click **`📥 Export Excel`** to download an OpenXML `.xlsx` spreadsheet with student names, nicknames, cohorts, programmes, timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `Bingo_Results_CLASS101_2026_09_17.xlsx`).
+7. **Excel Export (`📥 Export Excel`):** Click **`📥 Export Excel`** to download an OpenXML `.xlsx` spreadsheet with student names, nicknames, cohorts, programmes, timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, verification methods (`Mobile Passkey`, `In-Person Podium`, `Predefined Question Bank`), and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `Bingo_Results_CLASS101_2026_09_17.xlsx`).
+
+#### 4. 📱 Mobile Passkey Mode, In-Person Podium Claims & Phone Replacement Reset
+
+In computer labs lacking webcams where students may share login credentials, teachers can activate **`📱 Mobile Passkey QR (1-Phone Lock / Biometrics)`** in `ControlsPanel.jsx`:
+
+> 📖 **Comprehensive Guide**: For complete step-by-step UI instructions and diagrams, see **[📱 Mobile Passkey Device Registration & Attendance Guide](./passkey-device-registration-guide.md)**.
+
+1. **Anti-Proxy 1-Phone Hardware Lock**:
+   - Each student account is cryptographically bound to one physical phone via WebAuthn platform authenticators (Apple Secure Enclave, Android Titan).
+   - If a student tries to pair a friend's phone to answer on their behalf, registration is blocked with a hardware collision error.
+2. **In-Person Podium Claims Alert Banner**:
+   - Students whose phones are dead, forgotten, or unconfigured can click `🙋 I don't have my phone today` on their Lab PC.
+   - A bright amber alert card appears at the top of the teacher's Bingo view: **`Pending In-Person Podium Claims`**.
+   - The teacher physically verifies the student standing at the podium and clicks **`[✅ Verify In-Person]`** with 1 click to mark them present.
+3. **Teacher Passkey Reset for Phone Replacement (`[🔄 Reset Passkey]`)**:
+   - When a student buys a new phone, loses their phone, or resets their hardware, the previous device lock must be unlinked.
+   - Teachers can click **`[🔄 Reset Passkey]`** in either:
+     - The **Podium Action** column in `BingoResultsView.jsx`
+     - The **Enrolled Roster Details** table in `ClassManagement.jsx`
+   - A confirmation dialog appears. Confirming securely unlinks the old phone's credential in `studentPasskeys/{studentUid}`, logs an immutable record in `passkeyAuditLogs`, and allows the student to immediately scan the pairing QR code on their Lab PC to bind their new device.
 
 ---
 

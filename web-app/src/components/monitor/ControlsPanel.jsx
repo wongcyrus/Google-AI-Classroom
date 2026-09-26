@@ -56,6 +56,7 @@ const ControlsPanel = ({
     handleRunAnalysis,
     handleRunAllImagesAnalysis,
     isAnalyzing = false,
+    onOpenBingoModal,
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
@@ -805,6 +806,16 @@ const ControlsPanel = ({
                   />
                   <span>💻 <strong>Student Screens</strong> (AI anti-decoy check)</span>
                 </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="bingoMode"
+                    value="mobile_passkey"
+                    checked={bingoMode === 'mobile_passkey'}
+                    onChange={(e) => handleModeChange(e.target.value)}
+                  />
+                  <span>📱 <strong>Mobile Passkey QR</strong> (1-Phone Lock / Biometrics)</span>
+                </label>
               </div>
 
               <div style={{ marginTop: '0.25rem' }}>
@@ -938,6 +949,32 @@ const ControlsPanel = ({
                 )}
               </div>
 
+              {onOpenBingoModal && (
+                <button
+                  type="button"
+                  onClick={onOpenBingoModal}
+                  className="outline-action-btn"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: '#f8fafc',
+                    borderColor: '#94a3b8',
+                    color: '#1e293b',
+                    borderRadius: '6px',
+                    marginTop: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                  data-testid="open-bingo-modal-btn"
+                >
+                  📊 View Live Bingo Results & Absence Verification
+                </button>
+              )}
 
               {bingoFeedback && (
                 <div style={{
@@ -1301,15 +1338,15 @@ const ControlsPanel = ({
                       onChange={(e) => setModalVoiceAiMode(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
                     >
-                      <option value="hybrid">⚡ LiteRT Whisper + Gemma (Recommended — Free on-device STT & collusion reasoning)</option>
-                      <option value="client_only">💻 Client LiteRT STT Only (Free on-device transcription without intent evaluation)</option>
-                      <option value="cloud_only">☁️ Cloud Gemini Audio (Cloud multimodal audio analysis)</option>
+                      <option value="cloud_only">☁️ Cloud Gemini Audio (Cloud multimodal audio analysis — Recommended for Windows)</option>
+                      <option value="hybrid">⚡ LiteRT.js Whisper + Gemma 4 (On-device STT & collusion reasoning)</option>
+                      <option value="client_only">💻 Client LiteRT STT Only (On-device Whisper transcription without intent evaluation)</option>
                       <option value="disabled">🚫 Disabled (Deactivate speech recognition & audio AI)</option>
                     </select>
                     <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
-                      {modalVoiceAiMode === 'hybrid' && 'Transcribes speech locally via Whisper and analyzes conversation intent using LiteRT Gemma on student browsers with cloud fallback.'}
-                      {modalVoiceAiMode === 'client_only' && 'Only performs local Whisper STT transcription. Transcripts are sent directly to the monitor view without LLM intent classification.'}
-                      {modalVoiceAiMode === 'cloud_only' && 'Transcribes and evaluates audio segments periodically via Gemini Multimodal Audio in the cloud.'}
+                      {modalVoiceAiMode === 'cloud_only' && 'Transcribes and evaluates audio segments via Gemini Multimodal Audio in the cloud. 100% reliable across all student PCs including Windows.'}
+                      {modalVoiceAiMode === 'hybrid' && 'Transcribes speech locally via LiteRT Whisper and analyzes conversation intent using LiteRT.js Gemma 4 on student browsers with cloud fallback.'}
+                      {modalVoiceAiMode === 'client_only' && 'Only performs local LiteRT Whisper STT transcription. Transcripts are sent directly to the monitor view without LLM intent classification.'}
                       {modalVoiceAiMode === 'disabled' && 'Voice AI processing is deactivated. Audio is captured only for manual teacher playback if audio capture is enabled.'}
                     </p>
                   </div>

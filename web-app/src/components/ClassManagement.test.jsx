@@ -1112,6 +1112,38 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(capturedUpdateData.scheduleHistory).toEqual([]);
     expect(capturedUpdateData.schedule.endDate).toBe('2027-02-15');
   });
+
+  it('renders Phone Passkey column and resets passkey when teacher clicks Reset button', async () => {
+    const mockResetCallable = vi.fn().mockResolvedValue({ data: { success: true } });
+    const { httpsCallable } = await import('firebase/functions');
+    vi.mocked(httpsCallable).mockReturnValue(mockResetCallable);
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('alice@school.edu').length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getByText('Phone Passkey')).toBeInTheDocument();
+
+    const resetBtn = screen.getByTestId('btn-roster-reset-passkey-alice_school_edu');
+    expect(resetBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(resetBtn);
+    });
+
+    expect(mockResetCallable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentEmail: 'alice@school.edu',
+        classId: 'CLASS_101',
+      })
+    );
+    expect(await screen.findByText(/has been reset successfully/i)).toBeInTheDocument();
+  });
 });
+
 
 

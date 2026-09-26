@@ -4,6 +4,39 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0. WebAuthn (FIDO2) Mobile Passkeys: 1-Phone Hardware Lock & Teacher Reset
+
+**Date**: September 26, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1,315+ tests, 125 test files frontend + 15 backend files), and Deployed (Dev & Prod)  
+**Primary Files**:
+- Cloud Functions Backend: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js) & [`passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js)
+- Cloud Functions Registry: [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
+- Challenge Orchestration: [`functions/ai_flows/bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js)
+- Student Mobile Views: [`PasskeyPairView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyPairView.jsx) & [`PasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyVerifyView.jsx)
+- PC Desktop Modals: [`PasskeyPairModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyPairModal.jsx) & [`BingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoModal.jsx)
+- Teacher Podium & Review: [`BingoResultsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoResultsView.jsx) & [`BingoResultsView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoResultsView.css)
+- Class Roster Management: [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx)
+
+### 0.1 Problem & Vulnerability Addressed
+- In institutional computer laboratories lacking webcams, students frequently share passwords, allowing proxy helpers on adjacent lab PCs to answer on behalf of absent peers.
+- Passive browser fingerprinting (Canvas/WebGL) fails because identical iPhone models share identical signatures.
+- Students must not be burdened with typing complex passwords into mobile web browsers during class.
+
+### 0.2 Cryptographic 1-to-1 Device Hardware Lock
+- Utilizes WebAuthn (FIDO2) platform authenticators (Apple Secure Enclave, Android Titan/StrongBox) to generate unique asymmetric ECDSA key pairs per physical smartphone.
+- Stores credentials in `studentPasskeys/{studentUid}` and verifies globally that each `credentialID` belongs to only one student UID.
+- If a proxy attempts to verify for an absent peer using an already-registered device, the backend immediately blocks registration with a hardware collision error.
+
+### 0.3 Zero-Password Student Experience
+- **1-Click Pairing**: Logged-in Lab PC creates a 10-minute temporary token QR code (`passkeyPairingTokens/{tokenId}`). Scanning once binds the device with zero passwords typed.
+- **Routine Attendance in ~1.8s**: In-class Bingo challenge displays a dynamic QR code. Scanning immediately triggers native Face ID or Touch ID authentication.
+
+### 0.4 In-Person Podium Override & Teacher Passkey Reset
+- **Dead/Broken Phone Fallback**: Students click `🙋 I don't have my phone today`, queueing up on the instructor's podium view for 1-click manual verification.
+- **Phone Replacement**: Teachers can reset/unlink old passkeys directly from `BingoResultsView` or `ClassManagement`, writing an immutable record to `passkeyAuditLogs` and allowing students to pair their new phone immediately.
+
+---
+
 ## 1. Schedule Segments (`scheduleHistory`) & Past Lesson Preservation Architecture
 
 **Date**: September 25, 2026  

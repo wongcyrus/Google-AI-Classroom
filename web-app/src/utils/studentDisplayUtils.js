@@ -28,45 +28,137 @@ export const normalizeStudentEmail = (email) => {
  */
 export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
   let email = '';
+  let uid = '';
   let directProfile = null;
 
   if (typeof studentOrEmail === 'string') {
-    email = normalizeStudentEmail(studentOrEmail);
+    const raw = studentOrEmail.trim();
+    if (raw.includes('@')) {
+      email = normalizeStudentEmail(raw);
+    } else {
+      uid = raw;
+    }
   } else if (studentOrEmail && typeof studentOrEmail === 'object') {
     email = normalizeStudentEmail(
       studentOrEmail.email ||
       studentOrEmail.studentEmail ||
       studentOrEmail.userEmail ||
+      studentOrEmail.studentMail ||
+      studentOrEmail.mail ||
+      studentOrEmail.user?.email ||
+      studentOrEmail.authorEmail ||
       ''
     );
+    uid = String(
+      studentOrEmail.studentUid ||
+      studentOrEmail.uid ||
+      studentOrEmail.userId ||
+      studentOrEmail.id ||
+      ''
+    ).trim();
+
     if (studentOrEmail.profile && typeof studentOrEmail.profile === 'object') {
       directProfile = studentOrEmail.profile;
     } else {
       // Check if student object itself carries profile fields
-      const { studentName, name, nickname, programme, studentClass } = studentOrEmail;
-      if (studentName || name || nickname || programme || studentClass) {
+      const {
+        studentName,
+        displayName,
+        name,
+        fullname,
+        fullName,
+        chineseName,
+        nickname,
+        programme,
+        program,
+        studentClass,
+        cohort,
+        className
+      } = studentOrEmail;
+
+      if (studentName || displayName || name || fullname || fullName || chineseName || nickname || programme || program || studentClass || cohort || className) {
         directProfile = {
-          studentName: studentName || name,
+          studentName: studentName || displayName || name || fullname || fullName || chineseName,
           nickname,
-          programme,
-          studentClass,
+          programme: programme || program,
+          studentClass: studentClass || cohort || className,
         };
       }
     }
   }
 
-  const mapProfile = (email && profileMap && typeof profileMap === 'object')
-    ? (profileMap[email] || null)
-    : null;
+  // Look up profile in profileMap by email (case-insensitive), raw key, UID, or searching values
+  let mapProfile = null;
+  if (profileMap && typeof profileMap === 'object') {
+    if (email) {
+      mapProfile = profileMap[email] || profileMap[email.toLowerCase()] || null;
+    }
+    if (!mapProfile && uid) {
+      mapProfile = profileMap[uid] || null;
+    }
+    if (!mapProfile) {
+      // Search values of profileMap
+      const values = Object.values(profileMap);
+      mapProfile = values.find(p => {
+        if (!p || typeof p !== 'object') return false;
+        const pEmail = normalizeStudentEmail(p.email || p.studentEmail || p.userEmail);
+        const pUid = String(p.uid || p.studentUid || p.userId || p.id || '').trim();
+        return (email && pEmail === email) || (uid && pUid === uid);
+      }) || null;
+    }
+  }
 
-  const studentName = (directProfile?.studentName || directProfile?.name || mapProfile?.studentName || mapProfile?.name || '').trim();
+  const studentName = (
+    directProfile?.studentName ||
+    directProfile?.displayName ||
+    directProfile?.name ||
+    directProfile?.fullname ||
+    directProfile?.fullName ||
+    directProfile?.chineseName ||
+    mapProfile?.studentName ||
+    mapProfile?.displayName ||
+    mapProfile?.name ||
+    mapProfile?.fullname ||
+    mapProfile?.fullName ||
+    mapProfile?.chineseName ||
+    ''
+  ).trim();
+
+  const nickname = (
+    directProfile?.nickname ||
+    mapProfile?.nickname ||
+    ''
+  ).trim();
+
+  const programme = (
+    directProfile?.programme ||
+    directProfile?.program ||
+    mapProfile?.programme ||
+    mapProfile?.program ||
+    ''
+  ).trim();
+
+  const studentClass = (
+    directProfile?.studentClass ||
+    directProfile?.class ||
+    directProfile?.cohort ||
+    directProfile?.className ||
+    mapProfile?.studentClass ||
+    mapProfile?.class ||
+    mapProfile?.cohort ||
+    mapProfile?.className ||
+    ''
+  ).trim();
+
+  const resolvedEmail = email || normalizeStudentEmail(mapProfile?.email || mapProfile?.studentEmail || '');
 
   const merged = {
-    email,
+    email: resolvedEmail,
+    uid: uid || mapProfile?.uid || mapProfile?.studentUid || '',
     studentName,
-    nickname: (directProfile?.nickname || mapProfile?.nickname || '').trim(),
-    programme: (directProfile?.programme || mapProfile?.programme || '').trim(),
-    studentClass: (directProfile?.studentClass || directProfile?.class || mapProfile?.studentClass || mapProfile?.class || '').trim(),
+    nickname,
+    programme,
+    studentClass,
   };
 
   return merged;
@@ -79,8 +171,8 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
  * 1. Nickname + Student Name: `Nickname (Student Name)` (e.g. "David (Chan Tai Man)")
  * 2. Student Name Only: `Student Name` (e.g. "Chan Tai Man")
  * 3. Nickname Only: `Nickname` (e.g. "David")
- * 4. Status/Custom Name: `student.name` if present and distinct from email
- * 5. Fallback: Normalized email address (e.g. "student@school.edu") or 'Unknown Student'
+ * 4. Status/Custom Name: `student.displayName` / `student.name` if present and distinct from email
+ * 5. Fallback: Normalized email address (e.g. "student@school.edu"), UID, or 'Unknown Student'
  * 
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap 
@@ -88,7 +180,7 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
  */
 export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
   const profile = getStudentProfile(studentOrEmail, profileMap);
-  const { studentName, nickname, email } = profile;
+  const { studentName, nickname, email, uid } = profile;
 
   // Tier 1: Nickname + Student Name
   if (nickname && studentName) {
@@ -105,10 +197,10 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
     return nickname;
   }
 
-  // Tier 4: Existing student.name if distinct from email
-  if (typeof studentOrEmail === 'object' && studentOrEmail?.name) {
-    const rawName = String(studentOrEmail.name).trim();
-    if (rawName && rawName.toLowerCase() !== email.toLowerCase()) {
+  // Tier 4: Existing student.displayName / student.name if distinct from email
+  if (typeof studentOrEmail === 'object' && studentOrEmail) {
+    const rawName = String(studentOrEmail.displayName || studentOrEmail.name || '').trim();
+    if (rawName && rawName.toLowerCase() !== email.toLowerCase() && rawName.toLowerCase() !== uid.toLowerCase()) {
       return rawName;
     }
   }
@@ -116,6 +208,10 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
   // Tier 5: Email or fallback
   if (email) {
     return email;
+  }
+
+  if (uid) {
+    return uid;
   }
 
   return 'Unknown Student';
@@ -412,7 +508,7 @@ export const exportStudentRosterExcel = async (studentEmails = [], studentProfil
     const cleanEmail = normalizeStudentEmail(email);
     if (!cleanEmail) return;
 
-    const prof = studentProfiles[cleanEmail] || {};
+    const prof = getStudentProfile(cleanEmail, studentProfiles);
     rows.push([
       cleanEmail,
       prof.studentName || '',

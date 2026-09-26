@@ -422,9 +422,8 @@ async function handleMessage(event) {
             if (isValidWhisperTokenSequence(outputTokens)) {
               transcriptText = decodeWhisperTokens(outputTokens, whisperVocabulary);
             } else {
-              clientInferenceSupported = false;
-              console.warn(
-                '[LiteRTWorker] This runtime cannot execute the model dynamic output; using selected-track speech transcription.'
+              console.debug(
+                '[LiteRTWorker] Segment token sequence was not recognized as valid speech; skipping segment.'
               );
             }
           } catch (inferErr) {

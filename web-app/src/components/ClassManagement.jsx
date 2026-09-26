@@ -30,6 +30,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [studentDirectory, setStudentDirectory] = useState({});
   const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
   const [showRosterPreview, setShowRosterPreview] = useState(true);
+  const [studentsMap, setStudentsMap] = useState({});
+  const [resettingPasskeys, setResettingPasskeys] = useState({});
+  const [passkeyResetSuccess, setPasskeyResetSuccess] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -270,6 +273,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           } else {
             setStudentEmails('');
           }
+          setStudentsMap(classData.students || {});
           setStudentProfiles(classData.studentProfiles || {});
           if (classData.ipRestrictions) {
             setIpRestrictions(classData.ipRestrictions.join('\n'));
@@ -547,8 +551,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     if (type === 'students') {
       const exportProfiles = {};
       emails.forEach(email => {
-        const p1 = studentDirectory[email] || {};
-        const p2 = studentProfiles[email] || {};
+        const lowerEmail = email.toLowerCase();
+        const p1 = studentDirectory[email] || studentDirectory[lowerEmail] || {};
+        const p2 = studentProfiles[email] || studentProfiles[lowerEmail] || {};
         exportProfiles[email] = {
           studentName: p2.studentName || p1.studentName || '',
           nickname: p2.nickname || p1.nickname || '',
@@ -667,6 +672,32 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       alert(`Failed to load system students: ${err.message || 'Unknown error'}`);
     } finally {
       setLoadingAllStudents(false);
+    }
+  };
+
+  const handleResetStudentPasskey = async (email, studentName) => {
+    const studentUid = Object.keys(studentsMap).find(u => (studentsMap[u] || '').toLowerCase() === email.toLowerCase());
+    const targetLabel = studentName ? `${studentName} (${email})` : email;
+    if (!window.confirm(`Reset Mobile Passkey for ${targetLabel}?\n\nThis will unlink their old phone so they can scan the pairing QR code on their PC to register their new phone.`)) {
+      return;
+    }
+
+    setResettingPasskeys(prev => ({ ...prev, [email]: true }));
+    try {
+      const resetFn = httpsCallable(functions, 'resetStudentPasskey');
+      await resetFn({
+        studentUid: studentUid || null,
+        studentEmail: email,
+        classId: selectedClass || embeddedClassId || null,
+        reason: 'Teacher reset in Class Management for phone replacement',
+      });
+      setPasskeyResetSuccess(`Passkey for ${targetLabel} has been reset successfully. Student can now pair their new phone.`);
+      setTimeout(() => setPasskeyResetSuccess(''), 6000);
+    } catch (err) {
+      console.error('Failed to reset student passkey:', err);
+      alert(`Failed to reset passkey: ${err.message || 'Unknown error'}`);
+    } finally {
+      setResettingPasskeys(prev => ({ ...prev, [email]: false }));
     }
   };
 
@@ -1568,6 +1599,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
                 {showRosterPreview && (
                   <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border, #cbd5e1)', borderRadius: '6px' }}>
+                    {passkeyResetSuccess && (
+                      <div style={{ backgroundColor: '#ecfdf5', color: '#065f46', borderBottom: '1px solid #a7f3d0', padding: '0.4rem 0.8rem', fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>✅ {passkeyResetSuccess}</span>
+                        <button type="button" onClick={() => setPasskeyResetSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                      </div>
+                    )}
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                       <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)' }}>
                         <tr>
@@ -1576,6 +1613,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                           <th style={{ padding: '0.35rem 0.6rem' }}>Student Name</th>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Class / Cohort</th>
                           <th style={{ padding: '0.35rem 0.6rem' }}>Programme</th>
+                          <th style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>Phone Passkey</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1612,6 +1650,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                               </td>
                               <td style={{ padding: '0.35rem 0.6rem', color: '#475569' }}>
                                 {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                              </td>
+                              <td style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn-secondary btn-sm"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    padding: '0.15rem 0.45rem',
+                                    color: '#b91c1c',
+                                    borderColor: '#fca5a5',
+                                    background: '#fff',
+                                    cursor: 'pointer',
+                                  }}
+                                  onClick={() => handleResetStudentPasskey(email, resolvedStudentName)}
+                                  disabled={Boolean(resettingPasskeys[email])}
+                                  data-testid={`btn-roster-reset-passkey-${email.replace(/[@.]/g, '_')}`}
+                                  title="Unlink phone passkey if student replaced their device"
+                                >
+                                  {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
+                                </button>
                               </td>
                             </tr>
                           );

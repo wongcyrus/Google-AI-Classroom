@@ -212,16 +212,18 @@ export async function exportComplianceResultsToExcel(filteredStudents = [], filt
       timestampStr = new Date().toISOString();
     }
 
-    const displayName = student.displayName || student.name || student.email || student.id;
-    const studentClass = student.studentClass || student.profile?.studentClass || '';
-    const programme = student.programme || student.profile?.programme || '';
+    const studentEmail = student.email || student.studentEmail || student.userEmail || student.studentMail || student.profile?.email || (typeof student.id === 'string' && student.id.includes('@') ? student.id : '');
+    const displayName = student.displayName || student.studentName || student.name || student.profile?.studentName || student.profile?.displayName || student.profile?.name || (studentEmail || student.id || 'Unknown Student');
+    const studentClass = student.studentClass || student.cohort || student.class || student.className || student.profile?.studentClass || student.profile?.class || student.profile?.cohort || '';
+    const programme = student.programme || student.program || student.profile?.programme || student.profile?.program || '';
+    const studentId = student.studentId || student.id || student.uid || student.studentUid || student.profile?.studentId || student.profile?.id || student.profile?.uid || '';
 
     return [
       displayName,
-      student.email || student.id,
+      studentEmail || student.id || '',
       studentClass,
       programme,
-      student.id,
+      studentId,
       filterType,
       isCompliant ? 'Compliant' : 'Non-Compliant',
       issuesText,

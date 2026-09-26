@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 import './BingoResultsView.css';
@@ -53,6 +54,10 @@ export default function BingoResultsView({
   handleLessonChange,
   isModal = false,
   onClose,
+  studentStatuses = [],
+  classList = [],
+  uidToEmailMap = null,
+  externalProfiles = null,
 }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,9 +65,56 @@ export default function BingoResultsView({
 
   // Filters
   const [selectedRoundId, setSelectedRoundId] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'passed' | 'failed_incorrect' | 'missed_timeout' | 'pending'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'ghost_absent' | 'passed' | 'failed_incorrect' | 'missed_timeout' | 'pending'
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxImg, setLightboxImg] = useState(null);
+  const [overridingUids, setOverridingUids] = useState({});
+  const [resettingUids, setResettingUids] = useState({});
+  const [resetConfirmStudent, setResetConfirmStudent] = useState(null);
+  const [actionFeedback, setActionFeedback] = useState(null);
+
+  const handleTeacherOverride = async (bingoId, studentUid) => {
+    if (!classId || !bingoId || !studentUid) return;
+    setOverridingUids((prev) => ({ ...prev, [bingoId]: true }));
+    try {
+      const overrideFn = httpsCallable(functions, 'verifyInPersonAttendanceOverride');
+      await overrideFn({
+        classId,
+        bingoId,
+        studentUid,
+      });
+    } catch (err) {
+      console.error('[BingoResultsView] Failed to verify student in-person:', err);
+    } finally {
+      setOverridingUids((prev) => ({ ...prev, [bingoId]: false }));
+    }
+  };
+
+  const handleResetPasskey = async (studentUid, displayName) => {
+    if (!studentUid) return;
+    setResettingUids((prev) => ({ ...prev, [studentUid]: true }));
+    try {
+      const resetFn = httpsCallable(functions, 'resetStudentPasskey');
+      await resetFn({
+        studentUid,
+        classId,
+        reason: 'Phone replaced / re-pairing requested by teacher',
+      });
+      setActionFeedback({
+        type: 'success',
+        message: `Passkey for ${displayName || studentUid} has been reset. The student can now scan the pairing QR code on their PC to link their new phone.`,
+      });
+    } catch (err) {
+      console.error('[BingoResultsView] Failed to reset student passkey:', err);
+      setActionFeedback({
+        type: 'error',
+        message: `Failed to reset passkey: ${err.message || 'Unknown error'}`,
+      });
+    } finally {
+      setResettingUids((prev) => ({ ...prev, [studentUid]: false }));
+      setResetConfirmStudent(null);
+    }
+  };
 
   // Derive matched lesson and effective start/end timestamps from classroom schedule
   const matchedLesson = useMemo(() => {
@@ -90,7 +142,7 @@ export default function BingoResultsView({
     return null;
   }, [matchedLesson, endTime]);
 
-  const [studentProfiles, setStudentProfiles] = useState({});
+  const [studentProfiles, setStudentProfiles] = useState(externalProfiles || {});
 
   useEffect(() => {
     if (!classId) return;
@@ -107,16 +159,16 @@ export default function BingoResultsView({
               dirProfiles[d.id.trim().toLowerCase()] = d.data();
             });
           }
-          setStudentProfiles({ ...dirProfiles, ...baseProfiles });
+          setStudentProfiles({ ...dirProfiles, ...baseProfiles, ...(externalProfiles || {}) });
         } catch {
-          setStudentProfiles(baseProfiles);
+          setStudentProfiles({ ...baseProfiles, ...(externalProfiles || {}) });
         }
       } catch (err) {
         console.warn('Could not load studentProfiles for Bingo:', err);
       }
     };
     fetchProfiles();
-  }, [classId]);
+  }, [classId, externalProfiles]);
 
   // Real-time Firestore subscription to classes/{classId}/bingoRecords
   useEffect(() => {
@@ -226,56 +278,31 @@ export default function BingoResultsView({
     return targetRound ? targetRound.records : lessonFilteredRecords;
   }, [selectedRoundId, rounds, lessonFilteredRecords]);
 
-  // KPI Calculations across records in scope
-  const kpiStats = useMemo(() => {
-    const total = recordsInScope.length;
-    let passed = 0;
-    let failedIncorrect = 0;
-    let missedTimeout = 0;
-    let pending = 0;
-    let totalLatency = 0;
-    let latencyCount = 0;
-    let focusedCount = 0;
-    let focusableCount = 0;
+  // Helper to check live screen sharing for a student
+  const getLiveScreenSharingStatus = (record) => {
+    if (!studentStatuses || !studentStatuses.length) return null;
+    const sUid = record.studentUid;
+    const sEmail = (record.studentEmail || '').toLowerCase();
 
-    recordsInScope.forEach((r) => {
-      if (r.result === 'passed') passed += 1;
-      else if (r.result === 'failed_incorrect') failedIncorrect += 1;
-      else if (r.result === 'missed_timeout') missedTimeout += 1;
-      else pending += 1;
-
-      if (r.responseTimeSec !== null && r.responseTimeSec !== undefined) {
-        totalLatency += Number(r.responseTimeSec);
-        latencyCount += 1;
-      }
-
-      if (r.windowFocused !== undefined && r.windowFocused !== null) {
-        focusableCount += 1;
-        if (r.windowFocused) focusedCount += 1;
-      }
+    const statusObj = studentStatuses.find((st) => {
+      if (!st) return false;
+      const stId = st.id || st.uid;
+      const stEmail = (st.email || st.studentEmail || '').toLowerCase();
+      if (sUid && stId === sUid) return true;
+      if (sEmail && (stEmail === sEmail || stId === sEmail)) return true;
+      return false;
     });
 
-    const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-    const timeoutRate = total > 0 ? Math.round((missedTimeout / total) * 100) : 0;
-    const avgLatency = latencyCount > 0 ? (totalLatency / latencyCount).toFixed(1) : '—';
-    const focusRate = focusableCount > 0 ? Math.round((focusedCount / focusableCount) * 100) : null;
+    if (!statusObj) return false;
+    return Boolean(
+      statusObj.isSharing ||
+      (Array.isArray(statusObj.activeStreams) && statusObj.activeStreams.includes('screen')) ||
+      statusObj.latestScreenPath ||
+      statusObj.latestImagePath
+    );
+  };
 
-    return {
-      total,
-      passed,
-      failedIncorrect,
-      missedTimeout,
-      pending,
-      passRate,
-      timeoutRate,
-      avgLatency,
-      focusRate,
-    };
-  }, [recordsInScope]);
-
-  const [activeTab, setActiveTab] = useState('responses'); // 'responses' | 'leaderboard'
-
-  // Map each record in recordsInScope with its round-level rank & points
+  // Map each record in recordsInScope with its round-level rank, points, and presence verification verdict
   const recordsWithRank = useMemo(() => {
     if (!recordsInScope.length) return [];
 
@@ -310,13 +337,116 @@ export default function BingoResultsView({
 
     return recordsInScope.map((r) => {
       const rankInfo = rankMap.get(r.id) || {};
+      const isSharing = getLiveScreenSharingStatus(r);
+      const isExpired = Date.now() > (r.expiresAtMillis || 0);
+
+      let presenceVerdict = 'unknown';
+      let presenceLabel = 'Active';
+
+      if (isSharing === true) {
+        if (r.result === 'missed_timeout' || (r.result === 'pending' && isExpired)) {
+          presenceVerdict = 'ghost_absent';
+          presenceLabel = '🚨 Ghost Present (AFK)';
+        } else if (r.result === 'passed' || r.result === 'failed_incorrect') {
+          presenceVerdict = 'verified_active';
+          presenceLabel = '✅ Verified Active';
+        } else {
+          presenceVerdict = 'pending';
+          presenceLabel = '⏳ In Progress';
+        }
+      } else if (isSharing === false) {
+        if (r.result === 'passed' || r.result === 'failed_incorrect') {
+          presenceVerdict = 'no_screen_active';
+          presenceLabel = '⚠️ Answered (No Screen)';
+        } else if (r.result === 'missed_timeout' || (r.result === 'pending' && isExpired)) {
+          presenceVerdict = 'absent';
+          presenceLabel = '❌ Absent / Offline';
+        } else {
+          presenceVerdict = 'pending';
+          presenceLabel = '⏳ In Progress';
+        }
+      } else {
+        if (r.result === 'passed') {
+          presenceVerdict = 'passed';
+          presenceLabel = '✅ Verified Present';
+        } else if (r.result === 'failed_incorrect') {
+          presenceVerdict = 'failed_incorrect';
+          presenceLabel = '❌ Incorrect Choice';
+        } else if (r.result === 'missed_timeout') {
+          presenceVerdict = 'missed_timeout';
+          presenceLabel = '⚠️ Timed Out';
+        } else {
+          presenceVerdict = 'pending';
+          presenceLabel = '⏳ Pending';
+        }
+      }
+
       return {
         ...r,
         computedRank: r.rank || rankInfo.rank || null,
         computedPoints: r.pointsAwarded !== undefined ? r.pointsAwarded : (rankInfo.points || 0),
+        isSharing,
+        presenceVerdict,
+        presenceLabel,
       };
     });
-  }, [recordsInScope]);
+  }, [recordsInScope, studentStatuses]);
+
+  // KPI Calculations across records in scope
+  const kpiStats = useMemo(() => {
+    const total = recordsWithRank.length;
+    let passed = 0;
+    let failedIncorrect = 0;
+    let missedTimeout = 0;
+    let pending = 0;
+    let totalLatency = 0;
+    let latencyCount = 0;
+    let focusedCount = 0;
+    let focusableCount = 0;
+    let ghostAbsent = 0;
+    let verifiedActive = 0;
+
+    recordsWithRank.forEach((r) => {
+      if (r.result === 'passed') passed += 1;
+      else if (r.result === 'failed_incorrect') failedIncorrect += 1;
+      else if (r.result === 'missed_timeout') missedTimeout += 1;
+      else pending += 1;
+
+      if (r.presenceVerdict === 'ghost_absent') ghostAbsent += 1;
+      if (r.presenceVerdict === 'verified_active') verifiedActive += 1;
+
+      if (r.responseTimeSec !== null && r.responseTimeSec !== undefined) {
+        totalLatency += Number(r.responseTimeSec);
+        latencyCount += 1;
+      }
+
+      if (r.windowFocused !== undefined && r.windowFocused !== null) {
+        focusableCount += 1;
+        if (r.windowFocused) focusedCount += 1;
+      }
+    });
+
+    const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+    const timeoutRate = total > 0 ? Math.round((missedTimeout / total) * 100) : 0;
+    const avgLatency = latencyCount > 0 ? (totalLatency / latencyCount).toFixed(1) : '—';
+    const focusRate = focusableCount > 0 ? Math.round((focusedCount / focusableCount) * 100) : null;
+
+    return {
+      total,
+      passed,
+      failedIncorrect,
+      missedTimeout,
+      pending,
+      ghostAbsent,
+      verifiedActive,
+      passRate,
+      timeoutRate,
+      avgLatency,
+      focusRate,
+    };
+  }, [recordsWithRank]);
+
+  const [activeTab, setActiveTab] = useState('responses'); // 'responses' | 'leaderboard'
 
   // Round Podium: Top 3 fastest correct responders for activeRound
   const roundPodium = useMemo(() => {
@@ -420,20 +550,34 @@ export default function BingoResultsView({
   // Apply search and status tab filters to student rows
   const filteredRecords = useMemo(() => {
     return recordsWithRank.filter((r) => {
-      if (statusFilter !== 'all' && r.result !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'ghost_absent' && r.presenceVerdict !== 'ghost_absent') {
+          return false;
+        }
+        if (statusFilter === 'verified_active' && r.presenceVerdict !== 'verified_active') {
+          return false;
+        }
+        if (statusFilter !== 'ghost_absent' && statusFilter !== 'verified_active' && r.result !== statusFilter) {
+          return false;
+        }
       }
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const email = (r.studentEmail || '').toLowerCase();
         const uid = (r.studentUid || '').toLowerCase();
-        if (!email.includes(query) && !uid.includes(query)) {
+        const prof = getStudentProfile(email || uid, studentProfiles);
+        const name = (prof.studentName || '').toLowerCase();
+        if (!email.includes(query) && !uid.includes(query) && !name.includes(query)) {
           return false;
         }
       }
       return true;
     });
-  }, [recordsWithRank, statusFilter, searchQuery]);
+  }, [recordsWithRank, statusFilter, searchQuery, studentProfiles]);
+
+  const pendingInPersonClaims = useMemo(() => {
+    return filteredRecords.filter((r) => r.inPersonClaim && r.result !== 'passed');
+  }, [filteredRecords]);
 
   // CSV Export Handler
   const handleExportCsv = () => {
@@ -450,6 +594,9 @@ export default function BingoResultsView({
       'Class / Cohort',
       'Programme',
       'Student UID',
+      'Screen Sharing',
+      'Presence Verdict',
+      'Verification Method',
       'Question',
       'Question Source',
       'Correct Answer',
@@ -484,6 +631,14 @@ export default function BingoResultsView({
         ? `${OPTION_LABELS[r.selectedIndex] || r.selectedIndex}: ${options[r.selectedIndex]}`
         : (r.selectedOptionText || (r.result === 'missed_timeout' ? 'Timed Out' : 'Pending'));
 
+      const verificationMethod = r.passkeyVerified
+        ? 'Mobile Passkey'
+        : r.inPersonVerified
+          ? 'Teacher Podium Override'
+          : r.result === 'passed'
+            ? 'Active Answer'
+            : (r.inPersonClaim ? 'In-Person Claim' : 'None');
+
       return [
         r.computedRank !== null && r.computedRank !== undefined ? r.computedRank : '',
         r.id || '',
@@ -495,6 +650,9 @@ export default function BingoResultsView({
         prof.studentClass || '',
         prof.programme || '',
         r.studentUid || '',
+        r.isSharing === true ? 'Active' : (r.isSharing === false ? 'Off' : 'N/A'),
+        r.presenceLabel || r.result || '',
+        verificationMethod,
         r.question || '',
         r.questionSource || '',
         correctText,
@@ -676,6 +834,23 @@ export default function BingoResultsView({
               <span className="bingo-kpi-sub">Response speed</span>
             </div>
 
+            {studentStatuses && studentStatuses.length > 0 && (
+              <>
+                <div className="bingo-kpi-card kpi-ghost" data-testid="kpi-ghost-absent">
+                  <span className="bingo-kpi-label">🚨 Ghost Attendees</span>
+                  <span className="bingo-kpi-value">{kpiStats.ghostAbsent}</span>
+                  <span className="bingo-kpi-sub">
+                    Screen active • <strong>AFK / Timed Out</strong>
+                  </span>
+                </div>
+                <div className="bingo-kpi-card kpi-verified-active">
+                  <span className="bingo-kpi-label">🛡️ Verified Active</span>
+                  <span className="bingo-kpi-value">{kpiStats.verifiedActive}</span>
+                  <span className="bingo-kpi-sub">Screen + Answer active</span>
+                </div>
+              </>
+            )}
+
             {kpiStats.focusRate !== null && (
               <div className="bingo-kpi-card kpi-focus">
                 <span className="bingo-kpi-label">🖥️ OS Window Focus</span>
@@ -693,6 +868,7 @@ export default function BingoResultsView({
                   <span className={`bingo-qa-badge source-${activeRound.questionSource}`}>
                     {activeRound.questionSource === 'teacher_screen' ? '🖥️ Teacher Screen Vision' :
                      activeRound.questionSource === 'student_screen' ? '💻 Student Screen Vision' :
+                     activeRound.questionSource === 'mobile_passkey' ? '📱 Mobile Passkey Biometric' :
                      '📚 Question Bank'}
                   </span>
                   <span className="bingo-qa-timestamp">
@@ -831,6 +1007,26 @@ export default function BingoResultsView({
                   >
                     Timed Out ({kpiStats.missedTimeout})
                   </button>
+                  {studentStatuses && studentStatuses.length > 0 && kpiStats.ghostAbsent > 0 && (
+                    <button
+                      type="button"
+                      className={`bingo-tab-btn tab-ghost ${statusFilter === 'ghost_absent' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('ghost_absent')}
+                      data-testid="tab-ghost-absent"
+                    >
+                      🚨 Ghost Present ({kpiStats.ghostAbsent})
+                    </button>
+                  )}
+                  {studentStatuses && studentStatuses.length > 0 && (
+                    <button
+                      type="button"
+                      className={`bingo-tab-btn tab-verified ${statusFilter === 'verified_active' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('verified_active')}
+                      data-testid="tab-verified-active"
+                    >
+                      🛡️ Verified Active ({kpiStats.verifiedActive})
+                    </button>
+                  )}
                   {kpiStats.pending > 0 && (
                     <button
                       type="button"
@@ -843,6 +1039,130 @@ export default function BingoResultsView({
                 </div>
               </div>
 
+              {/* Action Feedback Banner */}
+              {actionFeedback && (
+                <div
+                  className={`bingo-action-feedback ${actionFeedback.type}`}
+                  data-testid="bingo-action-feedback"
+                >
+                  <span>{actionFeedback.message}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActionFeedback(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}
+                    aria-label="Dismiss feedback"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* In-Person Claims Alert Banner */}
+              {pendingInPersonClaims && pendingInPersonClaims.length > 0 && (
+                <div
+                  className="bingo-inperson-claims-card"
+                  data-testid="pending-inperson-claims-card"
+                  style={{
+                    background: '#fffbeb',
+                    border: '2px solid #f59e0b',
+                    borderRadius: '0.875rem',
+                    padding: '1rem 1.25rem',
+                    marginBottom: '1rem',
+                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.12)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.4rem' }}>🙋</span>
+                      <h4 style={{ margin: 0, color: '#92400e', fontSize: '1.05rem', fontWeight: 700 }}>
+                        Pending In-Person Podium Claims ({pendingInPersonClaims.length})
+                      </h4>
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', padding: '0.2rem 0.6rem', borderRadius: '1rem', fontWeight: 600 }}>
+                      Action Required
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: '#78350f', lineHeight: 1.4 }}>
+                    The following students have reported phone battery or hardware issues and are waiting at your podium for manual verification:
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {pendingInPersonClaims.map((claim) => {
+                      const email = claim.studentEmail || '';
+                      const name = getStudentDisplayName(email, studentProfiles);
+                      const isProcessing = Boolean(overridingUids[claim.id]);
+                      return (
+                        <div
+                          key={claim.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: '#ffffff',
+                            padding: '0.6rem 0.875rem',
+                            borderRadius: '0.5rem',
+                            border: '1px solid #fde68a',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{name}</span>
+                            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                              {email} • Claimed at {formatTime(claim.inPersonClaimedAt ? getTimestampMillis({ issuedAt: claim.inPersonClaimedAt }) : getTimestampMillis(claim), timezone)}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => setResetConfirmStudent({
+                                studentUid: claim.studentUid,
+                                displayName: name,
+                                email,
+                              })}
+                              disabled={Boolean(resettingUids[claim.studentUid])}
+                              data-testid={`btn-podium-reset-passkey-${claim.studentUid}`}
+                              style={{
+                                background: '#fff',
+                                color: '#b91c1c',
+                                border: '1px solid #fca5a5',
+                                borderRadius: '0.5rem',
+                                padding: '0.45rem 0.75rem',
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                              title="Reset student passkey if phone was replaced"
+                            >
+                              {resettingUids[claim.studentUid] ? 'Resetting...' : '🔄 Reset Passkey'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTeacherOverride(claim.id, claim.studentUid)}
+                              disabled={isProcessing}
+                              data-testid={`btn-verify-inperson-${claim.studentUid}`}
+                              style={{
+                                background: '#10b981',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '0.5rem',
+                                padding: '0.45rem 0.85rem',
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                                opacity: isProcessing ? 0.7 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                              }}
+                            >
+                              {isProcessing ? 'Verifying...' : '✅ Verify In-Person'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Student Response Table */}
               <div className="bingo-table-wrapper">
                 <table className="bingo-table">
@@ -850,6 +1170,12 @@ export default function BingoResultsView({
                     <tr>
                       <th style={{ width: '70px', textAlign: 'center' }}>Rank</th>
                       <th>Student</th>
+                      {studentStatuses && studentStatuses.length > 0 && (
+                        <>
+                          <th style={{ width: '110px', textAlign: 'center' }}>Screen Share</th>
+                          <th>Presence Verdict</th>
+                        </>
+                      )}
                       <th>Chosen Answer</th>
                       <th>Result</th>
                       <th>Latency</th>
@@ -857,12 +1183,13 @@ export default function BingoResultsView({
                       <th>Window Focus</th>
                       <th>Strike</th>
                       <th>Time</th>
+                      <th style={{ width: '130px', textAlign: 'center' }}>Podium Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                        <td colSpan={studentStatuses && studentStatuses.length > 0 ? 12 : 10} style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
                           No student records match the active filters.
                         </td>
                       </tr>
@@ -905,9 +1232,43 @@ export default function BingoResultsView({
                               })()}
                             </td>
 
+                            {/* Live Screen Sharing & Presence Verdict */}
+                            {studentStatuses && studentStatuses.length > 0 && (
+                              <>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span className={`bingo-screen-badge ${r.isSharing ? 'sharing-active' : 'sharing-off'}`}>
+                                    {r.isSharing ? '📺 Sharing' : '📵 Off'}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`bingo-verdict-badge verdict-${r.presenceVerdict}`}>
+                                    {r.presenceLabel}
+                                  </span>
+                                </td>
+                              </>
+                            )}
+
                             {/* Chosen Answer */}
                             <td>
-                              {isSelected ? (
+                              {r.questionSource === 'mobile_passkey' ? (
+                                r.passkeyVerified ? (
+                                  <span style={{ fontSize: '0.84rem', color: '#6d28d9', fontWeight: 600 }}>
+                                    📱 Biometric Passkey Verified
+                                  </span>
+                                ) : r.inPersonVerified ? (
+                                  <span style={{ fontSize: '0.84rem', color: '#0369a1', fontWeight: 600 }}>
+                                    🙋 Verified In-Person ({r.verifiedByTeacherEmail?.split('@')[0] || 'Teacher'})
+                                  </span>
+                                ) : r.inPersonClaim ? (
+                                  <span style={{ fontSize: '0.84rem', color: '#b45309', fontWeight: 600 }}>
+                                    🙋 Student at Podium (Phone Issue)
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.84rem', color: '#64748b', fontStyle: 'italic' }}>
+                                    📱 Awaiting QR Scan / Face ID...
+                                  </span>
+                                )
+                              ) : isSelected ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span style={{
                                     width: '20px',
@@ -940,11 +1301,14 @@ export default function BingoResultsView({
 
                             {/* Result Badge */}
                             <td>
-                              <span className={`bingo-badge badge-${r.result}`}>
-                                {r.result === 'passed' && '✅ Verified Present'}
+                              <span className={`bingo-badge badge-${r.result} ${r.passkeyVerified ? 'badge-passkey' : ''} ${r.inPersonVerified ? 'badge-in-person' : ''} ${r.inPersonClaim && r.result !== 'passed' ? 'badge-in-person-claim' : ''}`}>
+                                {r.passkeyVerified && '📱 Passkey Verified'}
+                                {r.inPersonVerified && '✅ Teacher In-Person'}
+                                {!r.passkeyVerified && !r.inPersonVerified && r.result === 'passed' && '✅ Verified Present'}
+                                {r.inPersonClaim && r.result !== 'passed' && '🙋 In-Person Claim'}
                                 {r.result === 'failed_incorrect' && '❌ Incorrect Choice'}
                                 {r.result === 'missed_timeout' && '⚠️ Timed Out'}
-                                {r.result === 'pending' && '⏳ In Progress'}
+                                {r.result === 'pending' && !r.inPersonClaim && '⏳ In Progress'}
                               </span>
                             </td>
 
@@ -994,6 +1358,57 @@ export default function BingoResultsView({
                             {/* Time */}
                             <td style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.8rem' }}>
                               {formatDate(millis, timezone)} {formatTime(millis, timezone)}
+                            </td>
+
+                            {/* Podium Action */}
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                {r.result === 'passed' ? (
+                                  <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 600 }}>
+                                    {r.passkeyVerified ? '📱 Verified' : (r.inPersonVerified ? '✅ In-Person' : '✅ Verified')}
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTeacherOverride(r.id, r.studentUid)}
+                                    disabled={Boolean(overridingUids[r.id])}
+                                    data-testid={`btn-row-override-${r.studentUid}`}
+                                    style={{
+                                      background: r.inPersonClaim ? '#f59e0b' : '#3b82f6',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: '0.375rem',
+                                      padding: '4px 8px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 600,
+                                      cursor: Boolean(overridingUids[r.id]) ? 'not-allowed' : 'pointer',
+                                      opacity: Boolean(overridingUids[r.id]) ? 0.6 : 1,
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                    title="Verify student in person at instructor podium"
+                                  >
+                                    {overridingUids[r.id] ? 'Verifying...' : (r.inPersonClaim ? '🙋 Verify In-Person' : 'Podium Override')}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const studentEmail = r.studentEmail || '';
+                                    const studentName = getStudentDisplayName(studentEmail, studentProfiles);
+                                    setResetConfirmStudent({
+                                      studentUid: r.studentUid,
+                                      displayName: studentName || r.studentUid,
+                                      email: studentEmail,
+                                    });
+                                  }}
+                                  disabled={Boolean(resettingUids[r.studentUid])}
+                                  data-testid={`btn-reset-passkey-${r.studentUid}`}
+                                  className="btn-reset-passkey"
+                                  title="Unlink phone passkey if student replaced their device"
+                                >
+                                  {resettingUids[r.studentUid] ? 'Resetting...' : '🔄 Reset Passkey'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1142,6 +1557,79 @@ export default function BingoResultsView({
               ✕ Close
             </button>
             <img src={lightboxImg} alt="Enlarged Vision Screenshot" />
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Passkey Reset (Phone Replacement) */}
+      {resetConfirmStudent && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+          data-testid="modal-reset-passkey-confirm"
+        >
+          <div
+            className="modal-card"
+            style={{
+              background: '#ffffff',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '440px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1.2rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🔄 Reset Student Passkey
+            </h3>
+            <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#334155' }}>
+              Unlink physical mobile device for <strong>{resetConfirmStudent.displayName}</strong> ({resetConfirmStudent.email})?
+            </p>
+            <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px', margin: '12px 0', fontSize: '0.82rem', color: '#991b1b', lineHeight: 1.4 }}>
+              <strong>⚠️ Phone Replacement Mode:</strong> This will revoke the hardware lock for the student's old phone. The student will be able to scan the pairing QR code on their Lab PC to bind their new phone.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setResetConfirmStudent(null)}
+                data-testid="btn-cancel-reset-passkey"
+                style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleResetPasskey(resetConfirmStudent.studentUid, resetConfirmStudent.displayName)}
+                disabled={Boolean(resettingUids[resetConfirmStudent.studentUid])}
+                data-testid="btn-confirm-reset-passkey"
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#fff',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {resettingUids[resetConfirmStudent.studentUid] ? 'Resetting...' : 'Confirm Reset & Unlink'}
+              </button>
+            </div>
           </div>
         </div>
       )}

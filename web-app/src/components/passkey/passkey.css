@@ -1,0 +1,229 @@
+/* Mobile Passkey WebAuthn Styles */
+.passkey-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.passkey-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1.5rem;
+  padding: 2rem 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.passkey-icon-badge {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5);
+  animation: pulse-glow 3s infinite ease-in-out;
+}
+
+.passkey-icon-badge.success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5);
+}
+
+.passkey-icon-badge.error {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 15px 35px 0px rgba(99, 102, 241, 0.7);
+  }
+}
+
+.passkey-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+}
+
+.passkey-subtitle {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.45;
+}
+
+.passkey-info-box {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  padding: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.passkey-info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.passkey-info-row:last-child {
+  border-bottom: none;
+}
+
+.passkey-info-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.passkey-info-value {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.passkey-btn {
+  width: 100%;
+  padding: 0.875rem 1.25rem;
+  border-radius: 0.875rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.passkey-btn-primary {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: white;
+  box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.4);
+}
+
+.passkey-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+  transform: translateY(-1px);
+}
+
+.passkey-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.passkey-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  margin-top: 0.75rem;
+}
+
+.passkey-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.passkey-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.passkey-alert {
+  padding: 0.875rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.passkey-alert-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.passkey-alert-success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+/* Modal styles for PC pairing view */
+.passkey-pair-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.passkey-pair-modal-content {
+  background: #ffffff;
+  color: #1e293b;
+  border-radius: 1.25rem;
+  padding: 2rem;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  position: relative;
+}
+
+.passkey-qr-frame {
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  display: inline-block;
+  margin: 1.25rem 0;
+}
+
+.passkey-qr-image {
+  display: block;
+  width: 220px;
+  height: 220px;
+  border-radius: 0.5rem;
+}

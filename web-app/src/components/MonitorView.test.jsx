@@ -132,6 +132,15 @@ vi.mock('../hooks/useAnalysis', () => ({
   })),
 }));
 
+vi.mock('./BingoResultsView', () => ({
+  default: ({ classId, isModal, studentStatuses }) => (
+    <div data-testid="mock-bingo-results-modal">
+      <span>Mock Bingo Results View for {classId}</span>
+      <span>Statuses count: {studentStatuses?.length || 0}</span>
+    </div>
+  ),
+}));
+
 describe('MonitorView Component Suite', () => {
   const defaultProps = {
     classId: 'CLASS_101',
@@ -570,6 +579,30 @@ describe('MonitorView Component Suite', () => {
     expect(loggedText).not.toContain('student2@school.edu');
 
     logSpy.mockRestore();
+  });
+
+  it('opens and closes the Live Bingo Presence Verification modal over monitor view', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    // Click the button in ControlsPanel to open Bingo modal
+    const openBingoBtn = screen.getByTestId('open-bingo-modal-btn');
+    expect(openBingoBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(openBingoBtn);
+    });
+
+    // Verify modal appears with Bingo title and content
+    expect(screen.getByText(/Live Bingo Presence Verification & Results/i)).toBeInTheDocument();
+    expect(screen.getByTestId('mock-bingo-results-modal')).toBeInTheDocument();
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    await act(async () => {
+      fireEvent.click(closeBtn);
+    });
+
+    expect(screen.queryByTestId('mock-bingo-results-modal')).not.toBeInTheDocument();
   });
 });
 

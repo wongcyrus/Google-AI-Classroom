@@ -64,12 +64,14 @@ export function generateAiCostCsv(summary, metadata = {}) {
   lines.push(`"--- STUDENT USAGE BREAKDOWN ---"`);
   lines.push(`"Student Name","Student Email","Class / Cohort","Programme","Student UID","Job Count","Input Tokens","Output Tokens","Total Tokens","Total Cost (USD)","Share of Class Spend"`);
   (summary.byStudent || []).forEach(s => {
+    const sEmail = s.studentEmail || (s.studentUid?.includes('@') ? s.studentUid : '');
+    const sName = s.studentName || s.displayName || sEmail || 'Unknown Student';
     lines.push([
-      escapeCsv(s.studentName || s.studentEmail),
-      escapeCsv(s.studentEmail),
-      escapeCsv(s.studentClass || ''),
+      escapeCsv(sName),
+      escapeCsv(sEmail || s.studentUid || 'N/A'),
+      escapeCsv(s.studentClass || s.cohort || ''),
       escapeCsv(s.programme || ''),
-      escapeCsv(s.studentUid),
+      escapeCsv(s.studentUid || 'N/A'),
       s.jobCount,
       s.inputTokens,
       s.outputTokens,
@@ -91,12 +93,14 @@ export function generateAiCostCsv(summary, metadata = {}) {
     const usage = job.usage || {};
     const inputTokens = usage.inputTokens ?? usage.promptTokenCount ?? 0;
     const outputTokens = usage.outputTokens ?? usage.candidatesTokenCount ?? 0;
+    const studentEmail = job.studentEmail || job.email || job.userEmail || (job.studentUid?.includes('@') ? job.studentUid : '');
+    const studentName = job.displayName || job.studentName || job.name || (studentEmail || 'N/A');
 
     lines.push([
       escapeCsv(jobTime),
       escapeCsv(job.id || 'N/A'),
-      escapeCsv(job.displayName || job.studentName || job.studentEmail || 'N/A'),
-      escapeCsv(job.studentEmail || 'N/A'),
+      escapeCsv(studentName),
+      escapeCsv(studentEmail || 'N/A'),
       escapeCsv(job.jobType || 'N/A'),
       escapeCsv(job.modelUsed || 'gemini-3.5-flash-lite'),
       escapeCsv(job.status || 'unknown'),
@@ -179,13 +183,15 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
 
   rows.push(['BY STUDENT', 'Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Class Spend']);
   (summary.byStudent || []).forEach(s => {
+    const sEmail = s.studentEmail || (s.studentUid?.includes('@') ? s.studentUid : '');
+    const sName = s.studentName || s.displayName || sEmail || 'Unknown Student';
     rows.push([
       'STUDENT_ROW',
-      s.studentName || s.studentEmail,
-      s.studentEmail,
-      s.studentClass || '',
+      sName,
+      sEmail || s.studentUid || 'N/A',
+      s.studentClass || s.cohort || '',
       s.programme || '',
-      s.studentUid,
+      s.studentUid || 'N/A',
       s.jobCount,
       s.inputTokens,
       s.outputTokens,
@@ -204,13 +210,15 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
     const usage = job.usage || {};
     const inputTokens = usage.inputTokens ?? usage.promptTokenCount ?? 0;
     const outputTokens = usage.outputTokens ?? usage.candidatesTokenCount ?? 0;
+    const studentEmail = job.studentEmail || job.email || job.userEmail || (job.studentUid?.includes('@') ? job.studentUid : '');
+    const studentName = job.displayName || job.studentName || job.name || (studentEmail || 'N/A');
 
     rows.push([
       'AUDIT_ROW',
       jobTime,
       job.id || 'N/A',
-      job.displayName || job.studentName || job.studentEmail || 'N/A',
-      job.studentEmail || 'N/A',
+      studentName,
+      studentEmail || 'N/A',
       job.jobType || 'N/A',
       job.modelUsed || 'gemini-3.5-flash-lite',
       job.status || 'unknown',

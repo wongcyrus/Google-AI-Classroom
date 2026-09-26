@@ -579,6 +579,7 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(screen.getAllByText(/Question Bank/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Teacher Screen/i)).toBeInTheDocument();
     expect(screen.getByText(/Student Screens/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mobile Passkey QR/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Call Bingo \(All Students\)/i })).toBeInTheDocument();
 
     const delaySelect = screen.getByLabelText(/Strike 2 Grace Delay/i);
@@ -891,6 +892,22 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.click(saveApplyBtn);
 
     expect(handleSaveAiSettings).toHaveBeenCalled();
+  });
+
+  it('triggers onOpenBingoModal when View Live Bingo Results button is clicked', () => {
+    const onOpenBingoModal = vi.fn();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        onOpenBingoModal={onOpenBingoModal}
+      />
+    );
+
+    const openBingoBtn = screen.getByTestId('open-bingo-modal-btn');
+    expect(openBingoBtn).toBeInTheDocument();
+    fireEvent.click(openBingoBtn);
+    expect(onOpenBingoModal).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -271,6 +271,30 @@ To confirm that students are actively attending lectures and not running automat
   - **Strike 1 (Warning):** If you fail to respond before the 45-second timer expires, the system schedules a **grace retry in 1–5 minutes**.
   - **Strike 2 (Deduction):** If you also miss the grace retry, the system logs consecutive non-presence and voids elapsed unverified attendance minutes between the checks (recorded as code `2` / orange stripes in your attendance matrix).
 
+### 📱 Mobile Passkey (1-Phone Hardware Lock Attendance)
+
+In computer labs without webcams, your instructor may use **Mobile Passkey Verification** (WebAuthn / FIDO2).
+
+> 📖 **Comprehensive Guide**: For complete step-by-step UI instructions and diagrams, see **[📱 Mobile Passkey Device Registration & Attendance Guide](./passkey-device-registration-guide.md)**.
+
+1. **Initial Pairing (No Password Required)**:
+   - On your logged-in Lab PC, click the **`📲 Pair Phone`** button.
+   - A 10-minute temporary pairing QR code appears on your screen.
+   - Scan the QR code using your smartphone's camera.
+   - Tap **"Save Passkey"** on your phone to register your Face ID / Touch ID / Fingerprint via your phone's hardware security chip.
+   - Your phone is now paired! **Note:** Each physical phone can only be paired to one student account.
+2. **Routine In-Class Attendance (<2 Seconds)**:
+   - When the teacher triggers a Passkey Bingo check, a dynamic QR code appears on your Lab PC.
+   - Scan the QR code with your paired phone.
+   - Confirm via native Face ID or Fingerprint on your phone.
+   - Your Lab PC instantly turns green with **"📱 Passkey Verified!"** and records your attendance.
+3. **If Your Phone Battery Dies or Phone is Broken (`🙋 I don't have my phone today`)**:
+   - On the Lab PC Bingo dialog, click **`🙋 I don't have my phone today`**.
+   - Walk up to the teacher's podium. The teacher will verify you in person and click **`[✅ Verify In-Person]`** with 1 click.
+4. **If You Replaced Your Phone**:
+   - Ask your teacher to click **`[🔄 Reset Passkey]`** next to your name in their podium view or class roster.
+   - Once reset, click **`📲 Pair Phone`** on your Lab PC to pair your new smartphone.
+
 ### 🎯 Bingo Challenge Response & Attendance State Machine
 
 ```mermaid

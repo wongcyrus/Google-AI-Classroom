@@ -42,6 +42,8 @@ const PromptManagement = lazyWithRetry(() => import('./components/PromptManageme
 const ClassView = lazyWithRetry(() => import('./components/ClassView'));
 const StudentRecordsView = lazyWithRetry(() => import('./components/StudentRecordsView'));
 const PublicLiveView = lazyWithRetry(() => import('./components/public/PublicLiveView'));
+const PasskeyPairView = lazyWithRetry(() => import('./components/passkey/PasskeyPairView'));
+const PasskeyVerifyView = lazyWithRetry(() => import('./components/passkey/PasskeyVerifyView'));
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -163,10 +165,11 @@ const AppShell = ({
   );
 
   const isPublicLiveActive = location.pathname.startsWith('/live/');
-  const isMinimalView = isStudentMobileActive || isPublicLiveActive;
+  const isPasskeyRoute = location.pathname.startsWith('/pair-phone') || location.pathname.startsWith('/verify-passkey');
+  const isMinimalView = isStudentMobileActive || isPublicLiveActive || isPasskeyRoute;
 
   return (
-    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''} ${isPublicLiveActive ? 'in-public-live-view' : ''}`}>
+    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''} ${isPublicLiveActive ? 'in-public-live-view' : ''} ${isPasskeyRoute ? 'in-passkey-view' : ''}`}>
       {user && !isMinimalView && <MainHeader onLogout={handleLogout} user={user} role={role} />}
       <main className="main-content">
         <Suspense fallback={
@@ -217,6 +220,8 @@ const AppShell = ({
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
             <Route path="/live/:classId" element={<PublicLiveView />} />
+            <Route path="/pair-phone" element={<PasskeyPairView />} />
+            <Route path="/verify-passkey" element={<PasskeyVerifyView />} />
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
         </Suspense>

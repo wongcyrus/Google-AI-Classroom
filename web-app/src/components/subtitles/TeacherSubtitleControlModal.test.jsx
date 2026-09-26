@@ -35,7 +35,6 @@ describe('TeacherSubtitleControlModal Component', () => {
         onSelectSpeechLanguage={onSelectSpeechLanguage}
         targetLanguages={['zh-Hant', 'en']}
         onToggleTargetLanguage={onToggleTargetLanguage}
-        isNanoAvailable={true}
         latestTranscript="測試說話"
         latestTranslations={{ 'zh-Hant': '測試說話翻譯' }}
         status="idle"
@@ -50,15 +49,10 @@ describe('TeacherSubtitleControlModal Component', () => {
     fireEvent.click(broadcastBtn);
     expect(onToggleEnabled).toHaveBeenCalled();
 
-    // Select Client Model
+    // Select Client Model (LiteRT.js)
     const clientRadio = screen.getByLabelText(/Client Model/i);
     fireEvent.click(clientRadio);
     expect(onSelectEngineMode).toHaveBeenCalledWith('client');
-
-    // Select Gemini Live Model
-    const liveRadio = screen.getByLabelText(/Gemini Live/i);
-    fireEvent.click(liveRadio);
-    expect(onSelectEngineMode).toHaveBeenCalledWith('firebase_live');
 
     // Change speech language
     const speechSelect = screen.getByLabelText(/Spoken Speech Language/i);
@@ -76,45 +70,7 @@ describe('TeacherSubtitleControlModal Component', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('renders live telemetry and AI costing info when engineMode is firebase_live', () => {
-    const mockUsageStats = {
-      durationSeconds: 125,
-      audioTokens: 3500,
-      outputTokens: 420,
-      totalTokens: 3920,
-      estimatedCostUsd: 0.00315,
-      modelUsed: 'gemini-3.1-flash-live-preview',
-    };
-
-    render(
-      <TeacherSubtitleControlModal
-        isOpen={true}
-        onClose={vi.fn()}
-        enabled={true}
-        onToggleEnabled={vi.fn()}
-        engineMode="firebase_live"
-        onSelectEngineMode={vi.fn()}
-        speechLanguage="zh-HK"
-        onSelectSpeechLanguage={vi.fn()}
-        targetLanguages={['en']}
-        onToggleTargetLanguage={vi.fn()}
-        isNanoAvailable={false}
-        status="listening"
-        liveUsageStats={mockUsageStats}
-      />
-    );
-
-    expect(screen.getByTestId('live-telemetry-section')).toBeInTheDocument();
-    expect(screen.getByText(/2m 5s/)).toBeInTheDocument();
-    expect(screen.getByText(/3,500 tokens/)).toBeInTheDocument();
-    expect(screen.getByText(/420 tokens/)).toBeInTheDocument();
-    expect(screen.getByText(/\$0.0032/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Free Tier Eligible/).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('renders warning banner and 1-click switch button when client mode is selected without Nano', () => {
-    const onSelectEngineMode = vi.fn();
-
+  it('renders LiteRT.js Gemma 4 status in client mode', () => {
     render(
       <TeacherSubtitleControlModal
         isOpen={true}
@@ -122,31 +78,21 @@ describe('TeacherSubtitleControlModal Component', () => {
         enabled={false}
         onToggleEnabled={vi.fn()}
         engineMode="client"
-        onSelectEngineMode={onSelectEngineMode}
+        onSelectEngineMode={vi.fn()}
         speechLanguage="zh-HK"
         onSelectSpeechLanguage={vi.fn()}
         targetLanguages={['en']}
         onToggleTargetLanguage={vi.fn()}
-        isNanoAvailable={false}
+        isGemmaAvailable={true}
         status="idle"
       />
     );
 
-    expect(screen.getByTestId('nano-warning-banner')).toBeInTheDocument();
-    expect(screen.getByText(/Chrome Built-in AI \(Gemini Nano\) is unavailable/i)).toBeInTheDocument();
-
-    const switchBtn = screen.getByRole('button', { name: /Switch to Recommended Server Model/i });
-    fireEvent.click(switchBtn);
-    expect(onSelectEngineMode).toHaveBeenCalledWith('server');
+    expect(screen.getByText(/LiteRT\.js \(Whisper STT \+ Gemma 4 E2B\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/On-Device Gemma 4 Ready/i)).toBeInTheDocument();
   });
 
-  it('renders language readiness pills and client fallback note in client mode', () => {
-    const mockPairStatuses = {
-      en: { status: 'readily', baseSource: 'zh', baseTarget: 'en' },
-      ja: { status: 'after-download', baseSource: 'zh', baseTarget: 'ja' },
-      'zh-Hant': { status: 'unsupported', baseSource: 'zh', baseTarget: 'zh' },
-    };
-
+  it('renders downloading state for Gemma 4 model progress', () => {
     render(
       <TeacherSubtitleControlModal
         isOpen={true}
@@ -157,17 +103,15 @@ describe('TeacherSubtitleControlModal Component', () => {
         onSelectEngineMode={vi.fn()}
         speechLanguage="zh-HK"
         onSelectSpeechLanguage={vi.fn()}
-        targetLanguages={['en', 'ja', 'zh-Hant']}
+        targetLanguages={['en']}
         onToggleTargetLanguage={vi.fn()}
-        isNanoAvailable={true}
-        languagePairStatuses={mockPairStatuses}
+        isGemmaAvailable={false}
+        gemmaProgress={45}
+        status="idle"
       />
     );
 
-    expect(screen.getByTestId('pair-pill-en')).toHaveTextContent('Ready');
-    expect(screen.getByTestId('pair-pill-ja')).toHaveTextContent('Download Required');
-    expect(screen.getByTestId('pair-pill-zh-Hant')).toHaveTextContent('Cloud Fallback');
-    expect(screen.getByText(/Client mode: Supported languages are translated on-device/)).toBeInTheDocument();
+    expect(screen.getByText(/Downloading Gemma 4 Model \(45%\)/i)).toBeInTheDocument();
   });
 
   it('renders microphone selection dropdown and triggers onSelectMicDeviceId', async () => {
@@ -315,15 +259,14 @@ describe('TeacherSubtitleControlModal Component', () => {
     expect(onSelectSubtitlePrompt).toHaveBeenCalledWith(null);
   });
 
-  it('allows switching between server and live engines, and provides fallback button when nano unavailable', () => {
+  it('allows switching between server and client LiteRT.js engines', () => {
     const onSelectEngineMode = vi.fn();
 
-    const { rerender } = render(
+    render(
       <TeacherSubtitleControlModal
         isOpen={true}
         onClose={vi.fn()}
         engineMode="client"
-        isNanoAvailable={false}
         onSelectEngineMode={onSelectEngineMode}
         selectedMicDeviceId="mic-1"
         onSelectMicDeviceId={vi.fn()}
@@ -338,16 +281,6 @@ describe('TeacherSubtitleControlModal Component', () => {
         onSelectCourseContext={vi.fn()}
       />
     );
-
-    // Nano warning banner is shown with recommendation button
-    const switchRecommendedBtn = screen.getByRole('button', { name: /Switch to Recommended Server Model/i });
-    fireEvent.click(switchRecommendedBtn);
-    expect(onSelectEngineMode).toHaveBeenCalledWith('server');
-
-    // Switch to firebase_live radio
-    const liveRadio = document.querySelector('input[value="firebase_live"]');
-    fireEvent.click(liveRadio);
-    expect(onSelectEngineMode).toHaveBeenCalledWith('firebase_live');
 
     // Switch to server radio
     const serverRadio = document.querySelector('input[value="server"]');

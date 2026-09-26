@@ -221,14 +221,16 @@ const IrregularitiesView = ({ startTime, endTime }) => {
 
     const headers = ['Student Name', 'Email', 'Cohort', 'Programme', 'Title', 'Message', 'Screen Path', 'Webcam Path', 'Timestamp'];
     const rows = irregularities.map(item => {
-      const email = item.email || item.studentEmail || '';
-      const prof = getStudentProfile(email, studentProfiles);
-      const displayName = getStudentDisplayName(email, studentProfiles);
+      const email = item.email || item.studentEmail || item.userEmail || (item.studentUid?.includes('@') ? item.studentUid : '');
+      const prof = getStudentProfile(item, studentProfiles);
+      const displayName = item.displayName || item.studentName || prof.studentName || getStudentDisplayName(item, studentProfiles);
+      const studentClass = prof.studentClass || item.studentClass || item.cohort || '';
+      const programme = prof.programme || item.programme || '';
       return [
         displayName,
-        email,
-        prof.studentClass || '',
-        prof.programme || '',
+        email || prof.email || item.studentUid || item.uid || 'N/A',
+        studentClass,
+        programme,
         item.title || item.type || 'Irregularity',
         item.message || item.details || '',
         item.screenUrl || item.imageUrl || '',

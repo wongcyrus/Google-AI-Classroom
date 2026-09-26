@@ -76,6 +76,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: Gemini 3 migration, multi-location architecture, Bingo 1-min scheduler & FinOps, Live Subtitles, and Chrome enforcement. |
 | **User Manuals & UI Catalogs** | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | Live grid invigilation, WebRTC peek & talkback, Bingo challenges, rubric studio, and incident dossiers. |
 | | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, HUD indicators, and self-service portal. |
+| | 📱 **[Mobile Passkey & Device Guide](./docs/passkey-device-registration-guide.md)** | Zero-password mobile WebAuthn passkey registration, 1-phone hardware lock, and teacher reset workflow. |
 | | 🛠️ **[System Admin & DevOps Manual](./docs/user-manual-admin.md)** | Cloud provisioning, Terraform IaC, GCIP blocking functions, zero-trust storage rules, and disaster recovery. |
 | | 📘 **[Comprehensive UI Controls & Features Catalog](./docs/comprehensive-ui-controls-and-features-catalog.md)** | Exhaustive 19-domain UI inventory detailing every button, slider, modal, toggle, and data flow. |
 | **Architecture & Data Models** | 🏛️ **[System Architecture & Design](./docs/system-architecture.md)** | High-level system topology, comprehensive Mermaid architecture diagram, and edge/cloud partitioning. |

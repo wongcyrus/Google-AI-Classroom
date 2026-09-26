@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isMobileDevice } from '../utils/browserDetection';
 import { playBingoChime, triggerBingoNotification } from '../utils/systemNotification';
+import QRCode from 'qrcode';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase-config';
+import PasskeyPairModal from './passkey/PasskeyPairModal';
 import './BingoModal.css';
 
 export { playBingoChime };
@@ -16,6 +20,10 @@ export default function BingoModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'passed' | 'wrong' | 'timeout', text: string }
   const [isClosed, setIsClosed] = useState(false);
+  const [passkeyQrUrl, setPasskeyQrUrl] = useState('');
+  const [showPairModal, setShowPairModal] = useState(false);
+  const [inPersonClaimSubmitted, setInPersonClaimSubmitted] = useState(Boolean(activeBingo?.inPersonClaim));
+  const [isClaimingInPerson, setIsClaimingInPerson] = useState(false);
 
   // Adaptive mobile bottom sheet / dialog detection
   const checkIsMobileViewport = () => {
@@ -99,7 +107,63 @@ export default function BingoModal({
     } else {
       setSecondsRemaining(totalSeconds);
     }
-  }, [activeBingo?.bingoId, expiresAt, totalSeconds]);
+    setInPersonClaimSubmitted(Boolean(activeBingo?.inPersonClaim));
+  }, [activeBingo?.bingoId, expiresAt, totalSeconds, activeBingo?.inPersonClaim]);
+
+  // Generate Attendance Passkey QR Code
+  useEffect(() => {
+    if (activeBingo?.questionSource === 'mobile_passkey' && activeBingo?.bingoId) {
+      const verifyUrl = `${window.location.origin}/verify-passkey?classId=${activeBingo.classId}&bingoId=${activeBingo.bingoId}`;
+      QRCode.toDataURL(verifyUrl, {
+        width: 240,
+        margin: 2,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff',
+        },
+      }).then((url) => {
+        setPasskeyQrUrl(url);
+      }).catch((err) => {
+        console.warn('[BingoModal] QR generation error:', err);
+      });
+    }
+  }, [activeBingo?.questionSource, activeBingo?.bingoId, activeBingo?.classId]);
+
+  // Real-time listener for Passkey / In-Person attendance confirmation
+  useEffect(() => {
+    if ((activeBingo?.result === 'passed' || activeBingo?.status === 'completed') && !submissionResult) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      hasSubmittedRef.current = true;
+      setSubmissionResult({
+        result: 'passed',
+        isCorrect: true,
+        responseTimeSec: activeBingo.responseTimeSec || 2.0,
+        passkeyVerified: Boolean(activeBingo.passkeyVerified),
+        inPersonVerified: Boolean(activeBingo.inPersonVerified),
+        rank: activeBingo.rank || 1,
+        totalStudents: activeBingo.totalStudents || null,
+        pointsAwarded: activeBingo.pointsAwarded || 10,
+        leaderboard: activeBingo.leaderboard || [],
+      });
+    }
+  }, [activeBingo?.result, activeBingo?.status, activeBingo?.passkeyVerified, activeBingo?.inPersonVerified, activeBingo?.responseTimeSec, submissionResult]);
+
+  const handleClaimInPerson = async () => {
+    if (isClaimingInPerson || inPersonClaimSubmitted) return;
+    setIsClaimingInPerson(true);
+    try {
+      const claimFn = httpsCallable(functions, 'claimInPersonAttendance');
+      await claimFn({
+        classId: activeBingo.classId,
+        bingoId: activeBingo.bingoId,
+      });
+      setInPersonClaimSubmitted(true);
+    } catch (err) {
+      console.warn('[BingoModal] Failed to claim in-person attendance:', err);
+    } finally {
+      setIsClaimingInPerson(false);
+    }
+  };
 
   // If challenge is already expired before mount, trigger background submit/close and never render
   useEffect(() => {
@@ -309,16 +373,24 @@ export default function BingoModal({
                 {submissionResult.isCorrect ? '🎉' : (submissionResult.result === 'missed_timeout' ? '⏰' : '❌')}
               </div>
               <h3 className="bingo-result-title">
-                {submissionResult.isCorrect
-                  ? 'Correct!'
-                  : (submissionResult.result === 'missed_timeout' ? 'Time Expired!' : 'Incorrect')}
+                {submissionResult.passkeyVerified
+                  ? '📱 Passkey Verified!'
+                  : submissionResult.inPersonVerified
+                    ? '✅ In-Person Verified!'
+                    : submissionResult.isCorrect
+                      ? 'Correct!'
+                      : (submissionResult.result === 'missed_timeout' ? 'Time Expired!' : 'Incorrect')}
               </h3>
               <p className="bingo-result-subtitle">
-                {submissionResult.isCorrect
-                  ? 'Presence verified with speed and accuracy.'
-                  : (submissionResult.result === 'missed_timeout'
-                    ? 'No response recorded within the time limit.'
-                    : 'Recorded response. Keep up with the lecture!')}
+                {submissionResult.passkeyVerified
+                  ? 'Hardware passkey confirmed physical presence via Face ID / Fingerprint.'
+                  : submissionResult.inPersonVerified
+                    ? 'Your classroom attendance was manually confirmed by the teacher.'
+                    : submissionResult.isCorrect
+                      ? 'Presence verified with speed and accuracy.'
+                      : (submissionResult.result === 'missed_timeout'
+                        ? 'No response recorded within the time limit.'
+                        : 'Recorded response. Keep up with the lecture!')}
               </p>
             </div>
 
@@ -411,25 +483,91 @@ export default function BingoModal({
                 </p>
               </div>
 
-              {/* Options Grid */}
-              <div className="bingo-options-grid">
-                {(activeBingo.options || []).map((opt, idx) => {
-                  const isSelected = selectedIdx === idx;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={`bingo-option-btn ${isSelected ? 'selected' : ''}`}
-                      disabled={isSubmitting}
-                      onClick={() => handleSelectOption(idx)}
-                      data-testid={`bingo-option-${idx}`}
-                    >
-                      <span className="bingo-option-tag">{optionLabels[idx] || (idx + 1)}</span>
-                      <span className="bingo-option-label" style={{ color: '#0f172a' }}>{opt}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Options Grid OR Passkey QR Display */}
+              {activeBingo.questionSource === 'mobile_passkey' ? (
+                <div className="bingo-passkey-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', margin: '0.75rem 0' }}>
+                  <div style={{ background: '#f8fafc', border: '2px dashed #94a3b8', borderRadius: '1rem', padding: '0.875rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    {passkeyQrUrl ? (
+                      <img src={passkeyQrUrl} alt="Scan Attendance QR with Phone" data-testid="passkey-attendance-qr" style={{ width: '200px', height: '200px', display: 'block', borderRadius: '0.5rem' }} />
+                    ) : (
+                      <div style={{ width: '200px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                        Generating QR Code...
+                      </div>
+                    )}
+                  </div>
+
+                  <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#334155', fontWeight: 500, textAlign: 'center' }}>
+                    📱 Point your phone camera at this QR code to verify attendance via Face ID / Fingerprint.
+                  </p>
+
+                  {inPersonClaimSubmitted ? (
+                    <div data-testid="in-person-claim-alert" style={{ background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', padding: '0.75rem 1rem', borderRadius: '0.75rem', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box', textAlign: 'center', marginBottom: '0.5rem' }}>
+                      🙋 <strong>In-Person Claim Submitted.</strong> Please raise your hand or walk up to the instructor&apos;s podium to verify in person.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%', maxWidth: '320px' }}>
+                      <button
+                        type="button"
+                        onClick={handleClaimInPerson}
+                        disabled={isClaimingInPerson}
+                        data-testid="btn-claim-in-person"
+                        style={{
+                          background: '#f1f5f9',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '0.75rem',
+                          padding: '0.6rem 1rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        {isClaimingInPerson ? 'Submitting claim...' : "🙋 I don't have my phone today"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPairModal(true)}
+                        data-testid="btn-open-pair-modal"
+                        style={{
+                          background: 'transparent',
+                          color: '#4f46e5',
+                          border: 'none',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          padding: '0.25rem',
+                        }}
+                      >
+                        📲 Phone not paired yet? Click to pair phone
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bingo-options-grid">
+                  {(activeBingo.options || []).map((opt, idx) => {
+                    const isSelected = selectedIdx === idx;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`bingo-option-btn ${isSelected ? 'selected' : ''}`}
+                        disabled={isSubmitting}
+                        onClick={() => handleSelectOption(idx)}
+                        data-testid={`bingo-option-${idx}`}
+                      >
+                        <span className="bingo-option-tag">{optionLabels[idx] || (idx + 1)}</span>
+                        <span className="bingo-option-label" style={{ color: '#0f172a' }}>{opt}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Feedback Alert */}
@@ -445,6 +583,13 @@ export default function BingoModal({
           </>
         )}
       </div>
+
+      <PasskeyPairModal
+        show={showPairModal}
+        onClose={() => setShowPairModal(false)}
+        user={{ uid: activeBingo?.studentUid }}
+        classId={activeBingo?.classId}
+      />
     </div>
   );
 

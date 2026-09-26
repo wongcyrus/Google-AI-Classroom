@@ -127,11 +127,11 @@ export function aggregateAiCost(jobs = [], options = {}) {
     byModelMap[modelKey].outputTokens += outputTokens;
 
     // By Student
-    const sUid = job.studentUid || 'class_wide';
-    const sEmail = job.studentEmail || (sUid === 'class_wide' ? 'Class-Wide Task' : 'Unknown Student');
-    const sName = job.displayName || job.studentName || sEmail;
-    const sClass = job.studentClass || '';
-    const sProg = job.programme || '';
+    const sUid = job.studentUid || job.uid || job.userId || 'class_wide';
+    const sEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (sUid === 'class_wide' ? 'Class-Wide Task' : (sUid.includes('@') ? sUid : 'Unknown Student'));
+    const sName = job.displayName || job.studentName || job.name || (sEmail !== 'Unknown Student' ? sEmail : 'Unknown Student');
+    const sClass = job.studentClass || job.cohort || job.class || job.className || '';
+    const sProg = job.programme || job.program || '';
     if (!byStudentMap[sUid]) {
       byStudentMap[sUid] = {
         studentUid: sUid,

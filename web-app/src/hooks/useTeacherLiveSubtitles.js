@@ -2,27 +2,20 @@
  * useTeacherLiveSubtitles.js
  * 
  * Custom hook managing teacher lecture live speech recognition and translation.
- * Supports 3 selectable engines:
- * 1. 'client': On-device LiteRT Whisper + Chrome Gemini Nano (window.Translator)
- * 2. 'server': On-device LiteRT Whisper + Cloud Function Gemini 3.5 Flash-Lite (translateTeacherSpeech)
- * 3. 'firebase_live': Gemini Live bidirectional WebSocket audio streaming via Firebase AI Logic (firebase/ai)
+ * Supports 2 selectable engines:
+ * 1. 'server': On-device LiteRT Whisper + Cloud Function Gemini 3.5 Flash-Lite (translateTeacherSpeech) [Recommended]
+ * 2. 'client': On-device LiteRT Whisper + LiteRT.js Gemma 4 E2B (with cloud fallback)
  * 
  * Publishes live subtitles to classes/{classId}/liveSubtitles/current in Firestore.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase-config';
-import { downsamplePcmTo16k } from '../utils/audioDecoder';
-import { createLiveSubtitleSession, transcribeAudioWithFirebaseAI } from '../utils/aiLogic';
+import { transcribeAudioWithFirebaseAI } from '../utils/aiLogic';
 import { attachAudioProcessor } from '../utils/audioWorkletHelper';
 import { isTeacherEmail } from '../utils/domainConfig';
-import {
-  isChromeTranslatorSupported,
-  checkMultipleLanguagePairs,
-  translateMultipleWithChrome,
-} from '../utils/chromeTranslator';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 const DEFAULT_TARGET_LANGS = ['zh-Hans', 'en'];
@@ -38,10 +31,12 @@ export function useTeacherLiveSubtitles({
   subtitlePrompt = null,
   customPrompt = null,
 }) {
-  // Engine Mode: 'client' | 'server' | 'firebase_live'
+  // Engine Mode: 'server' (default & recommended) | 'client' (LiteRT.js Whisper + Gemma 4)
   const [engineMode, setEngineModeState] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('teacher_subtitle_engine_mode') || 'server';
+      const saved = localStorage.getItem('teacher_subtitle_engine_mode');
+      if (saved === 'client' || saved === 'server') return saved;
+      return 'server';
     }
     return 'server';
   });
@@ -67,18 +62,14 @@ export function useTeacherLiveSubtitles({
   const [latestTranscript, setLatestTranscript] = useState('');
   const [latestTranslations, setLatestTranslations] = useState({});
   const [error, setError] = useState(null);
-  const [isNanoAvailable, setIsNanoAvailable] = useState(false);
   const [isGemmaAvailable, setIsGemmaAvailable] = useState(false);
   const [gemmaProgress, setGemmaProgress] = useState(0);
-  const [languagePairStatuses, setLanguagePairStatuses] = useState({});
-  const [liveUsageStats, setLiveUsageStats] = useState(null);
 
   const seqCounterRef = useRef(0);
   const historyBufferRef = useRef([]);
   const workerRef = useRef(null);
   const gemmaWorkerRef = useRef(null);
   const isGemmaReadyRef = useRef(false);
-  const liveSessionRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
   const reqIdCounterRef = useRef(0);
   const isWhisperReadyRef = useRef(false);
@@ -90,9 +81,10 @@ export function useTeacherLiveSubtitles({
 
   // Setters with localStorage persistence
   const setEngineMode = useCallback((mode) => {
-    setEngineModeState(mode);
+    const validMode = mode === 'client' ? 'client' : 'server';
+    setEngineModeState(validMode);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('teacher_subtitle_engine_mode', mode);
+      localStorage.setItem('teacher_subtitle_engine_mode', validMode);
     }
   }, []);
 
@@ -110,53 +102,9 @@ export function useTeacherLiveSubtitles({
     }
   }, []);
 
-  // Check Chrome Built-in AI window.Translator availability for selected language pairs
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let isCancelled = false;
-
-    const checkAvailability = async () => {
-      try {
-        if (isChromeTranslatorSupported()) {
-          const statuses = await checkMultipleLanguagePairs(speechLanguage, targetLanguages);
-          if (!isCancelled) {
-            setLanguagePairStatuses(statuses);
-            const isAnySupported = Object.values(statuses).some(
-              (s) => s.baseSource !== s.baseTarget && s.status === 'readily'
-            );
-            setIsNanoAvailable(isAnySupported);
-          }
-        } else {
-          if (!isCancelled) {
-            setIsNanoAvailable(false);
-            setLanguagePairStatuses({});
-          }
-        }
-      } catch {
-        if (!isCancelled) {
-          setIsNanoAvailable(false);
-          setLanguagePairStatuses({});
-        }
-      }
-    };
-    checkAvailability();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [speechLanguage, targetLanguages]);
-
-  // Initialize LiteRT Whisper Web Worker for client and server modes
+  // Initialize LiteRT Whisper Web Worker for on-device STT
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Worker === 'undefined') return;
-    if (engineMode === 'firebase_live') {
-      // In Firebase Live mode, Whisper worker is not needed, saving CPU/GPU
-      if (workerRef.current) {
-        workerRef.current.terminate();
-        workerRef.current = null;
-      }
-      return;
-    }
 
     try {
       workerRef.current = new Worker(
@@ -209,9 +157,9 @@ export function useTeacherLiveSubtitles({
         workerRef.current = null;
       }
     };
-  }, [speechLanguage, engineMode]);
+  }, [speechLanguage]);
 
-  // Initialize on-device Gemma worker when in client engine mode (matching student AI stack)
+  // Initialize on-device LiteRT Gemma 4 worker when in client engine mode
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Worker === 'undefined') return;
     if (engineMode !== 'client' || !enabled) {
@@ -282,13 +230,13 @@ export function useTeacherLiveSubtitles({
     };
   }, [engineMode, enabled]);
 
-  // Translate clean transcript using selected model (Client vs Server)
+  // Translate clean transcript using selected model (Client LiteRT Gemma 4 vs Server Cloud Gemini)
   const translateTranscript = useCallback(async (text) => {
     const trimmed = (text || '').trim();
     if (!trimmed) return {};
 
     if (engineMode === 'client') {
-      // 1. Try On-Device LiteRT Gemma Worker first (replicated from student on-device AI stack)
+      // 1. Try On-Device LiteRT Gemma 4 Worker first
       if (gemmaWorkerRef.current && isGemmaReadyRef.current) {
         try {
           const reqId = ++reqIdCounterRef.current;
@@ -328,25 +276,12 @@ export function useTeacherLiveSubtitles({
           if (missingLangs.length === 0) {
             return gemmaTranslations;
           }
-        } catch (gemmaErr) {
-          console.warn('[useTeacherLiveSubtitles] On-device Gemma translation fallback:', gemmaErr);
-        }
-      }
 
-      // 2. Try Chrome Built-in Translator if supported
-      if (isChromeTranslatorSupported()) {
-        try {
-          const localTranslations = await translateMultipleWithChrome(trimmed, speechLanguage, targetLanguages);
-          const missingLangs = targetLanguages.filter((l) => !localTranslations[l]);
-          if (missingLangs.length === 0) {
-            return localTranslations;
-          }
-
-          // Partial fallback to Server Model for missing/unsupported pairs
+          // Fallback to Server Model for missing languages
           try {
             const recentHistoryStrings = (historyBufferRef.current || [])
               .slice(-4)
-              .map(entry => entry.originalText)
+              .map((entry) => entry.originalText)
               .filter(Boolean);
 
             const callTranslate = httpsCallable(functions, 'translateTeacherSpeech');
@@ -360,15 +295,15 @@ export function useTeacherLiveSubtitles({
               historyText: recentHistoryStrings,
             });
             const serverMissing = response.data?.translations || {};
-            return { ...localTranslations, ...serverMissing };
+            return { ...gemmaTranslations, ...serverMissing };
           } catch (serverFallbackErr) {
             console.warn('[useTeacherLiveSubtitles] Server fallback for missing languages failed:', serverFallbackErr);
-            const merged = { ...localTranslations };
+            const merged = { ...gemmaTranslations };
             missingLangs.forEach((l) => { merged[l] = trimmed; });
             return merged;
           }
-        } catch (clientErr) {
-          console.warn('[useTeacherLiveSubtitles] Client translation fallback:', clientErr);
+        } catch (gemmaErr) {
+          console.warn('[useTeacherLiveSubtitles] On-device Gemma translation fallback:', gemmaErr);
         }
       }
     }
@@ -377,7 +312,7 @@ export function useTeacherLiveSubtitles({
     try {
       const recentHistoryStrings = (historyBufferRef.current || [])
         .slice(-4)
-        .map(entry => entry.originalText)
+        .map((entry) => entry.originalText)
         .filter(Boolean);
 
       const callTranslate = httpsCallable(functions, 'translateTeacherSpeech');
@@ -395,7 +330,7 @@ export function useTeacherLiveSubtitles({
       console.error('[useTeacherLiveSubtitles] Server translation error:', serverErr);
       // Fallback: at least show original
       const fallback = {};
-      targetLanguages.forEach(l => { fallback[l] = trimmed; });
+      targetLanguages.forEach((l) => { fallback[l] = trimmed; });
       return fallback;
     }
   }, [engineMode, targetLanguages, speechLanguage, classId, courseContext, customPromptText]);
@@ -451,7 +386,7 @@ export function useTeacherLiveSubtitles({
     }
   }, [classId, translateTranscript, speechLanguage, engineMode, teacherUid, teacherEmail]);
 
-  // Audio Stream Processing (Whisper VAD or Firebase Gemini Live WebSocket)
+  // Audio Stream Processing (LiteRT Whisper VAD buffering & Web Speech recognition)
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
 
@@ -477,10 +412,24 @@ export function useTeacherLiveSubtitles({
     let pcmBuffer = [];
     let silenceTimeout = null;
     let hasSpeechActivity = false;
+    let isRecognitionActive = false;
+    let restartTimeout = null;
 
-    // Firebase Live streaming state
-    let streamingOriginal = '';
-    let streamingTranslation = '';
+    const safeStartRecognition = () => {
+      if (!isMounted || !recognition) return;
+      if (restartTimeout) {
+        clearTimeout(restartTimeout);
+        restartTimeout = null;
+      }
+      restartTimeout = setTimeout(() => {
+        if (!isMounted || !recognition || isRecognitionActive) return;
+        try {
+          recognition.start();
+        } catch (startErr) {
+          console.debug('[useTeacherLiveSubtitles] Recognition restart notice:', startErr);
+        }
+      }, 250);
+    };
 
     const flushBufferToWhisper = async () => {
       if (!isMounted || pcmBuffer.length === 0) return;
@@ -541,8 +490,24 @@ export function useTeacherLiveSubtitles({
           if (isMounted && text) {
             publishSubtitle(text);
           }
-        }).catch(err => {
+        }).catch(async (err) => {
           console.debug('[useTeacherLiveSubtitles] Whisper transcription error:', err);
+          if (!isMounted) return;
+          if (mergedPcm && mergedPcm.length >= 8000) {
+            try {
+              const aiTranscript = await transcribeAudioWithFirebaseAI(
+                mergedPcm,
+                16000,
+                speechLanguage,
+                { courseContext, customPrompt: customPromptText }
+              );
+              if (isMounted && aiTranscript && aiTranscript.trim()) {
+                publishSubtitle(aiTranscript.trim());
+              }
+            } catch (aiErr) {
+              console.debug('[useTeacherLiveSubtitles] Firebase AI Logic transcription fallback on rejection notice:', aiErr);
+            }
+          }
         });
       }
     };
@@ -593,82 +558,6 @@ export function useTeacherLiveSubtitles({
 
         source = audioCtx.createMediaStreamSource(localStream);
 
-        // If in Firebase Live mode, connect the live WebSocket session
-        if (engineMode === 'firebase_live') {
-          setStatus('loading');
-          try {
-            const primaryTarget = targetLanguages[0] || 'en';
-            let debouncePublishTimer = null;
-
-            liveSessionRef.current = createLiveSubtitleSession({
-              targetLanguage: primaryTarget,
-              currentUser: { email: teacherEmail },
-              courseContext,
-              customPrompt: customPromptText,
-              speechLanguage,
-              onUsageUpdate: (stats) => {
-                if (!isMounted) return;
-                setLiveUsageStats(stats);
-              },
-              onOriginalTranscript: (text) => {
-                if (!isMounted) return;
-                streamingOriginal = text;
-                setLatestTranscript(text);
-              },
-              onTranslatedChunk: (chunk) => {
-                if (!isMounted) return;
-                streamingTranslation += chunk;
-                const translations = { [primaryTarget]: streamingTranslation };
-                setLatestTranslations(translations);
-                if (!debouncePublishTimer) {
-                  debouncePublishTimer = setTimeout(() => {
-                    debouncePublishTimer = null;
-                    if (isMounted) {
-                      publishSubtitle(streamingOriginal || '...', translations, false);
-                    }
-                  }, 350);
-                }
-              },
-              onTurnComplete: () => {
-                if (!isMounted) return;
-                if (debouncePublishTimer) {
-                  clearTimeout(debouncePublishTimer);
-                  debouncePublishTimer = null;
-                }
-                if (streamingOriginal || streamingTranslation) {
-                  publishSubtitle(
-                    streamingOriginal || '...',
-                    { [primaryTarget]: streamingTranslation },
-                    true
-                  );
-                }
-                streamingOriginal = '';
-                streamingTranslation = '';
-              },
-              onError: (err) => {
-                console.warn('[useTeacherLiveSubtitles:FirebaseLive] Stream notice:', err);
-              }
-            });
-
-            await liveSessionRef.current.connect();
-            if (isMounted) setStatus('listening');
-          } catch (liveErr) {
-            console.error('[useTeacherLiveSubtitles] Firebase Live connection error:', liveErr);
-            const msg = liveErr?.message || '';
-            const isAppCheckOrDeactivated = msg.includes('handshake failed') || msg.includes('has not been used') || msg.includes('disabled') || msg.includes('setupComplete') || msg.includes('deactivated') || msg.includes('App Ch');
-            if (isAppCheckOrDeactivated) {
-              console.warn('[useTeacherLiveSubtitles] Firebase Live restricted by App Check or project policy. Falling back to Server Model.');
-              // Fallback at runtime without permanently overwriting user's persisted engine preference
-              setEngineModeState('server');
-              setError('Firebase Live is restricted by App Check in this browser. Automatically switched to the reliable Server Model (LiteRT Whisper + Cloud Functions).');
-            } else {
-              setError(msg || 'Firebase Live connection error');
-            }
-            if (isMounted) setStatus('idle');
-            return;
-          }
-        }
-
         processor = attachAudioProcessor(audioCtx, source, (pcm16k) => {
           if (!isMounted) return;
 
@@ -679,40 +568,33 @@ export function useTeacherLiveSubtitles({
           }
           const rms = Math.sqrt(sumSq / pcm16k.length);
 
-          if (engineMode === 'firebase_live') {
-            // Direct streaming to Gemini Live session over WebSocket
-            if (rms > 0.008 && liveSessionRef.current?.isConnected()) {
-              liveSessionRef.current.sendAudioChunk(pcm16k);
+          // On-Device LiteRT Whisper VAD buffering
+          if (rms > 0.015) {
+            // Voice active
+            hasSpeechActivity = true;
+            pcmBuffer.push(pcm16k);
+            if (silenceTimeout) {
+              clearTimeout(silenceTimeout);
+              silenceTimeout = null;
             }
-          } else {
-            // On-Device LiteRT Whisper VAD buffering
-            if (rms > 0.015) {
-              // Voice active
-              hasSpeechActivity = true;
-              pcmBuffer.push(pcm16k);
-              if (silenceTimeout) {
-                clearTimeout(silenceTimeout);
+          } else if (hasSpeechActivity) {
+            // Silence detected after speech; wait 700ms for natural pause boundary
+            pcmBuffer.push(pcm16k);
+            if (!silenceTimeout) {
+              silenceTimeout = setTimeout(() => {
                 silenceTimeout = null;
-              }
-            } else if (hasSpeechActivity) {
-              // Silence detected after speech; wait 700ms for natural pause boundary
-              pcmBuffer.push(pcm16k);
-              if (!silenceTimeout) {
-                silenceTimeout = setTimeout(() => {
-                  silenceTimeout = null;
-                  flushBufferToWhisper();
-                }, 700);
-              }
+                flushBufferToWhisper();
+              }, 700);
             }
           }
         });
 
-        if (engineMode !== 'firebase_live') {
+        if (isMounted) {
           setStatus('listening');
         }
 
-        // Web Speech recognition live fallback for teacher speech in client/server mode
-        if (typeof window !== 'undefined' && engineMode !== 'firebase_live') {
+        // Web Speech recognition live fallback for teacher speech (runs on Chrome / Edge / Windows / Mac)
+        if (typeof window !== 'undefined') {
           const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
           if (SpeechRec) {
             try {
@@ -720,6 +602,10 @@ export function useTeacherLiveSubtitles({
               recognition.continuous = true;
               recognition.interimResults = true;
               recognition.lang = speechLanguage || 'zh-HK';
+
+              recognition.onstart = () => {
+                isRecognitionActive = true;
+              };
 
               recognition.onresult = (event) => {
                 let interim = '';
@@ -744,11 +630,15 @@ export function useTeacherLiveSubtitles({
                 if (event.error !== 'no-speech' && event.error !== 'aborted') {
                   console.debug('[useTeacherLiveSubtitles] Recognition notice:', event.error);
                 }
+                if (event.error === 'no-speech' || event.error === 'network') {
+                  isRecognitionActive = false;
+                }
               };
 
               recognition.onend = () => {
-                if (isMounted && engineMode !== 'firebase_live') {
-                  try { recognition.start(); } catch {}
+                isRecognitionActive = false;
+                if (isMounted) {
+                  safeStartRecognition();
                 }
               };
 
@@ -769,9 +659,13 @@ export function useTeacherLiveSubtitles({
     return () => {
       isMounted = false;
       if (silenceTimeout) clearTimeout(silenceTimeout);
+      if (restartTimeout) clearTimeout(restartTimeout);
       if (recognition) {
         try {
+          recognition.onstart = null;
           recognition.onend = null;
+          recognition.onerror = null;
+          recognition.onresult = null;
           recognition.abort();
         } catch {}
       }
@@ -785,29 +679,7 @@ export function useTeacherLiveSubtitles({
         try { audioCtx.close(); } catch {}
       }
       if (ownStreamCreated && localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-      }
-      if (liveSessionRef.current) {
-        const finalUsage = liveSessionRef.current.getSessionUsage?.();
-        if (finalUsage && (finalUsage.totalTokens > 0 || finalUsage.durationSeconds > 5) && classId) {
-          addDoc(collection(db, 'aiJobs'), {
-            jobType: 'liveSubtitleStream',
-            classId,
-            teacherUid: teacherUid || 'unknown',
-            modelUsed: finalUsage.modelUsed || 'gemini-3.1-flash-live-preview',
-            durationSeconds: finalUsage.durationSeconds,
-            usage: {
-              inputTokens: finalUsage.audioTokens,
-              outputTokens: finalUsage.outputTokens,
-              totalTokens: finalUsage.totalTokens,
-            },
-            cost: finalUsage.estimatedCostUsd,
-            status: 'completed',
-            timestamp: serverTimestamp(),
-          }).catch((e) => console.warn('[useTeacherLiveSubtitles] Error logging aiJob:', e));
-        }
-        liveSessionRef.current.close().catch(() => {});
-        liveSessionRef.current = null;
+        localStream.getTracks().forEach((t) => t.stop());
       }
     };
   }, [enabled, audioStream, deviceId, speechLanguage, engineMode, targetLanguages, publishSubtitle, classId, teacherUid]);
@@ -854,11 +726,8 @@ export function useTeacherLiveSubtitles({
     latestTranscript,
     latestTranslations,
     error,
-    isNanoAvailable,
     isGemmaAvailable,
     gemmaProgress,
-    languagePairStatuses,
-    liveUsageStats,
     publishSubtitle, // exposed for manual trigger or test injection
   };
 }

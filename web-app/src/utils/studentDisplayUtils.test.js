@@ -83,6 +83,38 @@ describe('studentDisplayUtils Utility', () => {
       expect(emptyIdentity.displayName).toBe('empty@school.edu');
       expect(emptyIdentity.hasCustomProfile).toBe(false);
     });
+
+    it('resolves profile by UID string or object with studentUid/cohort/programme aliases', () => {
+      const uidProfileMap = {
+        'uid_12345': {
+          email: 'uid.user@vtc.edu.hk',
+          studentName: 'UID Student',
+          nickname: 'Uiddy',
+          cohort: 'CLASS-4B',
+          program: 'Robotics',
+        },
+      };
+
+      const profFromUid = getStudentProfile('uid_12345', uidProfileMap);
+      expect(profFromUid.studentName).toBe('UID Student');
+      expect(profFromUid.email).toBe('uid.user@vtc.edu.hk');
+      expect(profFromUid.studentClass).toBe('CLASS-4B');
+      expect(profFromUid.programme).toBe('Robotics');
+
+      const profFromObj = getStudentProfile({ studentUid: 'uid_12345' }, uidProfileMap);
+      expect(profFromObj.studentName).toBe('UID Student');
+
+      const profFromAliases = getStudentProfile({
+        userEmail: 'ALIAS@VTC.EDU.HK',
+        fullname: 'Alias Master',
+        cohort: 'IT101',
+        program: 'AI & Data',
+      });
+      expect(profFromAliases.email).toBe('alias@vtc.edu.hk');
+      expect(profFromAliases.studentName).toBe('Alias Master');
+      expect(profFromAliases.studentClass).toBe('IT101');
+      expect(profFromAliases.programme).toBe('AI & Data');
+    });
   });
 
   describe('getStudentDisplayName - Multi-Tier Fallback Hierarchy', () => {

@@ -23,6 +23,7 @@ import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import BingoResultsView from './BingoResultsView';
 
 
 import { useAnalysis } from '../hooks/useAnalysis';
@@ -40,6 +41,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const audioPrompts = useAudioPrompts(user);
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
+  const [showBingoModal, setShowBingoModal] = useState(false);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
   const [screenshots, setScreenshots] = useState({});
@@ -150,7 +152,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     classId,
     teacherUid,
     teacherEmail,
-    enabled: isSubtitleBroadcastEnabled && (isScreenBroadcasting || showSubtitleModal),
+    enabled: isSubtitleBroadcastEnabled,
     audioStream: synchronizedAudioStream,
     deviceId: selectedMicDeviceId,
     courseContext: classSubjectDomain || `Class ${classId}`,
@@ -1188,10 +1190,13 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
     ];
 
     const rows = classList.map(uid => {
-      const email = uidToEmailMap.get(uid) || '';
-      const prof = getStudentProfile(email, studentProfiles);
-      const displayName = getStudentDisplayName(email, studentProfiles);
       const status = uidToStatusMap.get(uid);
+      const isEmailUid = typeof uid === 'string' && uid.includes('@');
+      const email = uidToEmailMap.get(uid) || status?.email || status?.studentEmail || status?.userEmail || (isEmailUid ? uid : '');
+      const prof = getStudentProfile(email || uid, studentProfiles);
+      const displayName = status?.displayName || status?.studentName || prof.studentName || getStudentDisplayName(email || uid, studentProfiles);
+      const studentClass = prof.studentClass || status?.studentClass || status?.cohort || '';
+      const programme = prof.programme || status?.programme || '';
 
       const isSharing = status ? Boolean(status.isSharing) : false;
       const isWebcamSharing = status ? Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))) : false;
@@ -1210,9 +1215,9 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
 
       return [
         displayName,
-        email,
-        prof.studentClass || '',
-        prof.programme || '',
+        email || prof.email || (isEmailUid ? uid : ''),
+        studentClass,
+        programme,
         uid,
         isSharing ? 'Yes' : 'No',
         isWebcamSharing ? 'Yes' : 'No',
@@ -1593,6 +1598,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAnalysis={handleRunAnalysis}
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
+        onOpenBingoModal={() => setShowBingoModal(true)}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -2089,15 +2095,12 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                 : [...prev, langCode]
             );
           }}
-          isNanoAvailable={teacherSubtitles.isNanoAvailable}
           isGemmaAvailable={teacherSubtitles.isGemmaAvailable}
           gemmaProgress={teacherSubtitles.gemmaProgress}
           latestTranscript={teacherSubtitles.latestTranscript}
           latestTranslations={teacherSubtitles.latestTranslations}
           status={teacherSubtitles.status}
           error={teacherSubtitles.error}
-          liveUsageStats={teacherSubtitles.liveUsageStats}
-          languagePairStatuses={teacherSubtitles.languagePairStatuses}
           selectedMicDeviceId={selectedMicDeviceId}
           onSelectMicDeviceId={handleSelectMicDeviceId}
           courseContext={classSubjectDomain}
@@ -2106,6 +2109,25 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
           onSelectSubtitlePrompt={handleSelectSubtitlePrompt}
           onSelectCourseContext={handleSelectCourseContext}
         />
+      )}
+
+      {/* Live Bingo Presence Verification Modal */}
+      {showBingoModal && (
+        <Modal
+          show={showBingoModal}
+          onClose={() => setShowBingoModal(false)}
+          title="🎯 Live Bingo Presence Verification & Results"
+        >
+          <BingoResultsView
+            classId={classId}
+            timezone={timezone}
+            isModal={true}
+            studentStatuses={studentStatuses}
+            classList={classList}
+            uidToEmailMap={uidToEmailMap}
+            externalProfiles={studentProfiles}
+          />
+        </Modal>
       )}
     </div>
   );

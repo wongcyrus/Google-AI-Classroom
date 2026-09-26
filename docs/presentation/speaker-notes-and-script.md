@@ -325,7 +325,26 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 38:00 – 39:30 | Slide 20: 06 | Real-Time Classroom Media Pipelines
+### 38:00 – 40:00 | Slide 20: Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
+*Visual: `slide_edge_vision_gaze.png`*
+
+> **Cyrus Wong:**  
+> "Now, what happens in a real university computer lab where PCs **do NOT have webcams**, and students share account passwords with friends who sit next to them?
+>
+> Standard browser fingerprinting like Canvas or WebGL hashes fails completely because two identical iPhone 15s in the lab produce identical browser fingerprints.
+>
+> We solved this through **Cryptographic 1-to-1 Device Hardware Locking via WebAuthn / FIDO2 Passkeys**:
+> - **Apple Secure Enclave & Android Titan Hardware Keys:** The student's physical phone generates a cryptographically unique asymmetric ECDSA key pair that cannot be duplicated or exported.
+> - **Zero Passwords on Mobile:** The student logs into their Lab PC as usual. They click '📲 Pair Phone' to generate a 10-minute temporary token QR code. Scanning it with their mobile camera pairs their phone instantly with zero passwords typed.
+> - **Strict 1-Phone = 1-Student Hardware Lock:** Our Cloud Functions backend verifies that each physical device credential ID is globally unique. If a student tries to scan attendance for an absent friend using their already-paired phone, the system instantly blocks the attempt with a hardware collision alert!
+> - **Routine Attendance in <2 Seconds:** During class, the PC displays the dynamic Bingo Passkey QR code. The student scans it and authenticates in **~1.8 seconds via native Face ID or Fingerprint**.
+> - **In-Person Podium Override & Phone Replacement Reset:**
+>   - If a student's phone battery is dead, they tap `'🙋 I don't have my phone today'`, immediately queuing up on the teacher's podium dashboard for manual one-click verification.
+>   - If a student gets a new phone, the teacher clicks `'🔄 Reset Passkey'` from the podium table or class roster. This securely unlinks the old device credential, writes an immutable audit record to `passkeyAuditLogs`, and allows the student to pair their new device immediately."
+
+---
+
+### 40:00 – 41:30 | Slide 21: 06 | Real-Time Classroom Media Pipelines
 *Visual: `slide_realtime_media_pipelines.png`*
 
 > **Cyrus Wong:**  

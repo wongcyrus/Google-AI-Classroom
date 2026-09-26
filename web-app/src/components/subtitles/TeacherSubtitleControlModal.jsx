@@ -273,42 +273,14 @@ export default function TeacherSubtitleControlModal({
             </div>
           </div>
 
-          {/* Model Selection (Client vs Server vs Gemini Live) */}
+          {/* Model Selection (Server vs Client LiteRT.js) */}
           <div className="teacher-subtitle-section">
             <span className="section-title">🤖 Translation Model Architecture</span>
             <span className="section-desc">
-              Speech-to-Text (STT) uses local on-device LiteRT Whisper to recognize spoken Cantonese and English technical terms.
+              Speech-to-Text (STT) uses local on-device LiteRT Whisper with high-accuracy multilingual translation.
             </span>
 
             <div className="engine-card-group">
-              <label
-                className={`engine-card ${engineMode === 'client' ? 'selected' : ''}`}
-              >
-                <div className="engine-card-header">
-                  <input
-                    type="radio"
-                    name="engineMode"
-                    value="client"
-                    checked={engineMode === 'client'}
-                    onChange={() => onSelectEngineMode('client')}
-                  />
-                  <span className="engine-badge client-badge">⚪ Client Model (On-Device · Experimental)</span>
-                </div>
-                <div className="engine-card-body">
-                  <strong>LiteRT Gemma & Chrome Built-in AI</strong>
-                  <p>100% on-device STT (LiteRT Whisper) + on-device translation (LiteRT Gemma 4 E2B / Chrome Nano). Ultra-low latency, $0 cloud cost, full privacy.</p>
-                  <span className="nano-status">
-                    {isGemmaAvailable
-                      ? '✅ On-Device Gemma Ready'
-                      : isNanoAvailable
-                      ? '✅ Local Gemini Nano Ready'
-                      : gemmaProgress > 0 && gemmaProgress < 100
-                      ? `⏳ Downloading Gemma Model (${gemmaProgress}%)...`
-                      : '⚡ On-Device AI Active (automatic cloud fallback)'}
-                  </span>
-                </div>
-              </label>
-
               <label
                 className={`engine-card ${engineMode === 'server' ? 'selected' : ''}`}
               >
@@ -325,91 +297,37 @@ export default function TeacherSubtitleControlModal({
                 <div className="engine-card-body">
                   <strong>Cloud Functions (Gemini 3.5 Flash-Lite / 3.8 Flash)</strong>
                   <p>High-accuracy multilingual output, preserving code syntax and technical terminology.</p>
-                  <span className="server-status">⚡ 100% cross-browser support · ~$0.01 per lecture</span>
+                  <span className="server-status">⚡ 100% cross-platform support (Windows, macOS, Linux, Chrome & Edge) · ~$0.01 per lecture</span>
                 </div>
               </label>
 
               <label
-                className={`engine-card ${engineMode === 'firebase_live' ? 'selected' : ''}`}
+                className={`engine-card ${engineMode === 'client' ? 'selected' : ''}`}
               >
                 <div className="engine-card-header">
                   <input
                     type="radio"
                     name="engineMode"
-                    value="firebase_live"
-                    checked={engineMode === 'firebase_live'}
-                    onChange={() => onSelectEngineMode('firebase_live')}
+                    value="client"
+                    checked={engineMode === 'client'}
+                    onChange={() => onSelectEngineMode('client')}
                   />
-                  <span className="engine-badge live-badge">🔴 Gemini Live (Recommended · Bidirectional Streaming)</span>
+                  <span className="engine-badge client-badge">⚪ Client Model (LiteRT.js + Gemma 4 · On-Device)</span>
                 </div>
                 <div className="engine-card-body">
-                  <strong>Firebase AI Logic (Gemini Live)</strong>
-                  <p>Bidirectional audio WebSocket streaming, ultra-low latency real-time transcription and translation.</p>
-                  <span className="live-status">⚡ WebSocket · No local GPU required · Free Tier eligible</span>
+                  <strong>LiteRT.js (Whisper STT + Gemma 4 E2B)</strong>
+                  <p>100% on-device STT (LiteRT Whisper) + on-device translation (LiteRT.js Gemma 4 E2B). Ultra-low latency, $0 cloud cost, full privacy with automatic server fallback.</p>
+                  <span className="nano-status">
+                    {isGemmaAvailable
+                      ? '✅ On-Device Gemma 4 Ready'
+                      : gemmaProgress > 0 && gemmaProgress < 100
+                      ? `⏳ Downloading Gemma 4 Model (${gemmaProgress}%)...`
+                      : '⚡ LiteRT.js Active (automatic cloud fallback)'}
+                  </span>
                 </div>
               </label>
             </div>
-
-            {engineMode === 'client' && !isNanoAvailable && (
-              <div className="engine-warning-banner" data-testid="nano-warning-banner">
-                <span>⚠️ Chrome Built-in AI (Gemini Nano) is unavailable or disabled in your browser. Automatic cloud fallback is active, or switch directly to <strong>🟣 Server Model</strong> (100% reliable, ~$0.01/lecture) or <strong>🔴 Gemini Live</strong>.</span>
-                <button
-                  type="button"
-                  className="switch-recommended-btn"
-                  onClick={() => onSelectEngineMode('server')}
-                >
-                  Switch to Recommended Server Model
-                </button>
-              </div>
-            )}
           </div>
-
-          {/* Gemini Live Telemetry & AI Costing Strip */}
-          {engineMode === 'firebase_live' && (
-            <div className="teacher-subtitle-section live-telemetry-section" data-testid="live-telemetry-section">
-              <span className="section-title">📊 Live Stream Costing & Usage Telemetry</span>
-              <div className="live-telemetry-card">
-                <div className="telemetry-grid">
-                  <div className="telemetry-item">
-                    <span className="telemetry-label">⏱️ Duration</span>
-                    <span className="telemetry-value">
-                      {liveUsageStats?.durationSeconds
-                        ? `${Math.floor(liveUsageStats.durationSeconds / 60)}m ${liveUsageStats.durationSeconds % 60}s`
-                        : enabled ? '0m 0s (Connecting)' : '0m 0s'}
-                    </span>
-                  </div>
-                  <div className="telemetry-item">
-                    <span className="telemetry-label">🎙️ Audio In Tokens</span>
-                    <span className="telemetry-value">
-                      {liveUsageStats?.audioTokens
-                        ? `${liveUsageStats.audioTokens.toLocaleString()} tokens`
-                        : '0 tokens'}
-                    </span>
-                  </div>
-                  <div className="telemetry-item">
-                    <span className="telemetry-label">📝 Subtitle Out Tokens</span>
-                    <span className="telemetry-value">
-                      {liveUsageStats?.outputTokens
-                        ? `${liveUsageStats.outputTokens.toLocaleString()} tokens`
-                        : '0 tokens'}
-                    </span>
-                  </div>
-                  <div className="telemetry-item highlight-cost">
-                    <span className="telemetry-label">💰 Est. Cost (USD)</span>
-                    <span className="telemetry-value">
-                      {liveUsageStats?.estimatedCostUsd
-                        ? `$${liveUsageStats.estimatedCostUsd.toFixed(4)}`
-                        : '$0.0000'}
-                    </span>
-                    <span className="telemetry-badge">Free Tier Eligible</span>
-                  </div>
-                </div>
-                <div className="telemetry-note">
-                  💡 Pricing rates: Audio in ~$0.60/1M tokens (~28 tokens/sec), text out ~$2.50/1M tokens. Audio synthesis disabled. Est. 60-min lecture cost ~$0.06 - $0.10 USD.
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Spoken Language */}
           <div className="teacher-subtitle-section">

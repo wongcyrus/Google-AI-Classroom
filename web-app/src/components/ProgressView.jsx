@@ -165,15 +165,19 @@ const ProgressView = ({ classId, startTime, endTime }) => {
     }
     const headers = ['Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Latest Progress', 'Last Updated'];
     const rows = latestProgress.map(p => {
-      const email = p.studentEmail || (students.find(s => s.uid === p.studentUid))?.email || '';
-      const prof = getStudentProfile(email, studentProfiles);
-      const displayName = p.displayName || getStudentDisplayName(email, studentProfiles);
+      const studentObj = students.find(s => s.uid === p.studentUid || s.email === p.studentEmail || s.email === p.email);
+      const email = p.studentEmail || p.email || p.userEmail || studentObj?.email || (p.studentUid?.includes('@') ? p.studentUid : '');
+      const prof = getStudentProfile(p, studentProfiles);
+      const displayName = p.displayName || p.studentName || studentObj?.displayName || getStudentDisplayName(p, studentProfiles);
+      const studentClass = prof.studentClass || p.studentClass || p.cohort || studentObj?.studentClass || '';
+      const programme = prof.programme || p.programme || studentObj?.programme || '';
+      const studentUid = p.studentUid || p.uid || studentObj?.uid || 'N/A';
       return [
         displayName,
-        email || 'N/A',
-        prof.studentClass || '',
-        prof.programme || '',
-        p.studentUid || 'N/A',
+        email || prof.email || 'N/A',
+        studentClass,
+        programme,
+        studentUid,
         p.progress || 'No progress recorded',
         p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
       ];
@@ -188,15 +192,18 @@ const ProgressView = ({ classId, startTime, endTime }) => {
       alert("No progress timeline entries to export.");
       return;
     }
-    const prof = getStudentProfile(studentEmail, studentProfiles);
-    const displayName = getStudentDisplayName(studentEmail, studentProfiles);
+    const studentObj = students.find(s => s.email === studentEmail || s.uid === selectedStudentUid);
+    const prof = getStudentProfile(studentEmail || selectedStudentUid, studentProfiles);
+    const displayName = studentObj?.displayName || getStudentDisplayName(studentEmail || selectedStudentUid, studentProfiles);
+    const studentClass = prof.studentClass || studentObj?.studentClass || '';
+    const programme = prof.programme || studentObj?.programme || '';
     const headers = ['Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Progress Description', 'Timestamp'];
     const rows = detailProgress.map(p => [
       displayName,
-      studentEmail,
-      prof.studentClass || '',
-      prof.programme || '',
-      selectedStudentUid,
+      studentEmail || prof.email || selectedStudentUid || '',
+      studentClass,
+      programme,
+      selectedStudentUid || prof.uid || 'N/A',
       p.progress || '',
       p.timestamp?.toDate ? p.timestamp.toDate().toISOString() : (p.timestamp || 'N/A')
     ]);

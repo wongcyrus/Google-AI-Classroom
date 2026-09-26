@@ -194,11 +194,16 @@ export async function exportTaskGradingToExcel(task, submissions = [], filename)
         : stepRes.status || 'evaluated';
     });
 
+    const studentEmail = sub.email || sub.studentEmail || sub.userEmail || sub.studentMail || sub.profile?.email || sub.profile?.studentEmail || '';
+    const studentName = sub.displayName || sub.studentName || sub.name || sub.profile?.studentName || sub.profile?.displayName || sub.profile?.name || (studentEmail || 'Unknown');
+    const studentCohort = sub.cohort || sub.studentClass || sub.class || sub.className || sub.profile?.studentClass || sub.profile?.class || sub.profile?.cohort || '';
+    const programme = sub.programme || sub.program || sub.profile?.programme || sub.profile?.program || '';
+
     return [
-      sub.displayName || sub.studentName || sub.email || 'Unknown',
-      sub.email || sub.studentEmail || '',
-      sub.cohort || sub.studentClass || '',
-      sub.programme || '',
+      studentName,
+      studentEmail,
+      studentCohort,
+      programme,
       sub.status || 'not_started',
       sub.attemptsCount || 0,
       durationMins,

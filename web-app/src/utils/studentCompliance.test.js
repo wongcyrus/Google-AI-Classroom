@@ -186,7 +186,10 @@ describe('studentCompliance Utility', () => {
       const filtered = [
         {
           id: 's_101',
-          email: 'alice@school.edu',
+          studentEmail: 'alice@school.edu',
+          displayName: 'Alice Chan',
+          cohort: 'IT114115',
+          programme: 'Software Engineering',
           isSharing: false,
           isWebcamSharing: false,
           isAudioSharing: false,

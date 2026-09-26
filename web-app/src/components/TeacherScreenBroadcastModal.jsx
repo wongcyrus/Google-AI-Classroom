@@ -596,29 +596,7 @@ export default function TeacherScreenBroadcastModal({
                         style={{ display: 'none' }}
                       />
                       <strong style={{ fontSize: '0.82rem', color: '#1e293b', display: 'block' }}>⚪ Client Model</strong>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>On-device LiteRT Whisper + Chrome Nano ($0 cloud cost)</span>
-                    </label>
-
-                    <label
-                      className={`engine-card ${currentEngineMode === 'firebase_live' ? 'selected' : ''}`}
-                      style={{
-                        padding: '10px',
-                        border: currentEngineMode === 'firebase_live' ? '2px solid #4f46e5' : '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        background: currentEngineMode === 'firebase_live' ? '#eef2ff' : '#ffffff',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="engineMode"
-                        value="firebase_live"
-                        checked={currentEngineMode === 'firebase_live'}
-                        onChange={() => st.setEngineMode?.('firebase_live')}
-                        style={{ display: 'none' }}
-                      />
-                      <strong style={{ fontSize: '0.82rem', color: '#1e293b', display: 'block' }}>🔴 Gemini Live</strong>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Bidirectional WebSocket Streaming (Ultra-low latency)</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>LiteRT.js (Whisper STT + Gemma 4 E2B · $0 cloud cost)</span>
                     </label>
                   </div>
                 </div>

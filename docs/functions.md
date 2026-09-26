@@ -134,6 +134,36 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   Updates `classes/{classId}/lectureRecordings/{sessionId}`: sets `status = 'ready'`, `vttUrls`, `srtUrls`, and `youtubeMetadata` (including formatted title, description with chapters, and chapter array).
         -   Logs FinOps token consumption and dollar cost to `classes/{classId}/aiCosts` via `logJob` and `calculateCost`.
 
+#### WebAuthn (FIDO2) Mobile Passkey & Hardware Lock Callables
+
+-   **`requestPasskeyPairingToken`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/passkeyFlows.js`).
+    -   **Description**: Invoked on the logged-in student Lab PC to initiate passwordless mobile phone pairing. Issues an ephemeral 10-minute session document in `passkeyPairingTokens/{tokenId}` with UUID `tokenId`. Renders as a QR code on the student desktop for camera scanning.
+-   **`getPasskeyRegistrationOptions`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Invoked by the mobile phone upon scanning the pairing QR code. Validates token freshness and unexpired state. Generates WebAuthn platform registration options via `@simplewebauthn/server` (`generateRegistrationOptions`), targeting platform authenticators (Apple Secure Enclave, Android Titan/StrongBox) with `preferred` user verification. Stores cryptographic challenge on the token document.
+-   **`verifyPasskeyRegistration`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Verifies the attestation response from the phone's native biometric prompt. **Enforces 1-Phone = 1-Student Hardware Lock**: queries `studentPasskeys` to verify that `credentialID` is not already bound to another student UID. If a hardware collision is detected, registration throws `already-exists` to block human proxy attendance. On success, writes `studentPasskeys/{studentUid}` and consumes the pairing token (`used = true`).
+-   **`getPasskeyAuthOptions`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Generates WebAuthn assertion options (`generateAuthenticationOptions`) for routine in-class attendance verification when a student scans the dynamic Bingo passkey QR code.
+-   **`verifyPasskeyAuth`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Validates the cryptographic biometric signature from the student's phone. Verifies counter increment, calculates completion latency (typically ~1.8s), updates `classes/{classId}/bingoRecords/{bingoId}` with `result = 'passed'`, `passkeyVerified = true`, and awards full attendance points.
+-   **`claimInPersonAttendance`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Student fallback on Lab PC (`🙋 I don't have my phone today`) when phone battery is dead or device is broken. Marks `inPersonClaim = true` on the active Bingo challenge and alerts the instructor's podium view.
+-   **`verifyInPersonAttendanceOverride`**:
+    -   **Trigger**: Callable `onCall` (Teacher authorized).
+    -   **Description**: Instructor physically inspects the student standing at the podium and approves attendance with 1 click. Marks `inPersonVerified = true`, clears pending claim, and sets `verifiedByTeacherEmail`.
+-   **`getStudentPasskeyStatus`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Checks if a given student UID has an enrolled passkey hardware credential and returns device model and pairing timestamp.
+-   **`resetStudentPasskey`**:
+    -   **Trigger**: Callable `onCall` (Teacher authorized).
+    -   **Description**: Enables teachers to assist students with phone replacement, device loss, or hardware re-pairing. Unlinks `studentPasskeys/{studentUid}`, invalidates old hardware bindings, and logs an immutable audit entry in `passkeyAuditLogs` with teacher UID, student UID, timestamp, and previous device model.
+
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
 -   **`dispatchBingoRetryTask`**: An asynchronous Google Cloud Tasks worker (`onTaskDispatched`) that automatically triggers a Strike 2 follow-up verification challenge when a student fails to acknowledge Strike 1.
