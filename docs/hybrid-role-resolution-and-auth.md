@@ -294,6 +294,7 @@ sequenceDiagram
    - Google Cloud Audit Logs and Cloud Identity Platform (GCIP) track the authentication event.
 3. **Security Rules Transparency**: The resulting ID token includes `{ role: 'student' }`. `firestore.rules` and `storage.rules` validate `isStudent()` and `request.auth.uid` without any configuration changes.
 4. **Zero Shared Hardware Exposure**: Passwords are never typed or stored on the shared lab PC. Passkeys reside exclusively within the student's personal smartphone hardware authenticator (Apple Secure Enclave or Android Keystore).
+5. **Centralized Password Whitelist (`system_config/loginPolicy`)**: Admins and test accounts placed in the Firestore `passwordWhitelist` configuration array are exempt from the mandatory mobile passkey gate, allowing controlled username/password desktop sign-in for testing or emergency maintenance.
 
 For complete technical specifications, see [`docs/passkey-device-registration-guide.md`](./passkey-device-registration-guide.md).
 

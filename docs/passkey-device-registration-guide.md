@@ -166,7 +166,9 @@ sequenceDiagram
    - **On Desktop:** Desktop access is **strictly blocked**:
      - Scanning the desktop QR code halts with: *"No passkey registered on this device yet."*
      - Typing email/password on desktop triggers [`PasskeyEnforcementGate`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx), locking navigation, streaming, and attendance.
-     - The only desktop bypass is via **Teacher Manual Failsafe** (Podium 1-click or Emergency PIN).
+     - The only desktop bypasses are:
+       1. **Teacher Manual Failsafe** (Podium 1-click or Emergency PIN).
+       2. **Global Password Whitelist (`system_config/loginPolicy`)**: Admins and test accounts placed in the `passwordWhitelist` array are permitted to sign in on Desktop with their institutional email/password without passkey barrier blocking.
 
 ---
 

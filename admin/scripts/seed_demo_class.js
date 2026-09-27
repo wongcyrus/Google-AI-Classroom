@@ -78,7 +78,13 @@ async function seed() {
     }, { merge: true });
   }
 
-  console.log(`✅ Enrolled co-teachers and students into ${classId}.`);
+  await db.collection('system_config').doc('loginPolicy').set({
+    passwordWhitelist: studentEmails,
+    updatedAt: FieldValue.serverTimestamp(),
+    description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
+  }, { merge: true });
+
+  console.log(`✅ Enrolled co-teachers and students into ${classId} and initialized password whitelist.`);
 }
 
 seed().catch(console.error);

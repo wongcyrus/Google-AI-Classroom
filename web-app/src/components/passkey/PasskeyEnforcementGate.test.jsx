@@ -18,6 +18,7 @@ vi.mock('firebase/functions', () => ({
 const mockDoc = vi.fn((db, path) => ({ path }));
 let mockPasskeySnapshotCallback = null;
 let mockBypassSnapshotCallback = null;
+let mockWhitelistSnapshotCallback = null;
 
 vi.mock('firebase/firestore', () => ({
   doc: (...args) => mockDoc(...args),
@@ -26,6 +27,8 @@ vi.mock('firebase/firestore', () => ({
       mockPasskeySnapshotCallback = cb;
     } else if (docRef.path.includes('/studentProperties/')) {
       mockBypassSnapshotCallback = cb;
+    } else if (docRef.path.includes('system_config/loginPolicy')) {
+      mockWhitelistSnapshotCallback = cb;
     }
     return vi.fn(); // unsubscribe
   }),
@@ -252,5 +255,32 @@ describe('PasskeyEnforcementGate Component', () => {
     );
 
     expect(screen.getByText(/Emergency PIN verified/i)).toBeInTheDocument();
+  });
+
+  it('unlocks access and renders banner when student is on the global password whitelist', async () => {
+    render(
+      <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">
+        <div data-testid="protected-content">Classroom Content</div>
+      </PasskeyEnforcementGate>
+    );
+
+    act(() => {
+      if (mockPasskeySnapshotCallback) {
+        mockPasskeySnapshotCallback({ exists: () => false });
+      }
+      if (mockWhitelistSnapshotCallback) {
+        mockWhitelistSnapshotCallback({
+          exists: () => true,
+          data: () => ({
+            passwordWhitelist: ['alex@stu.vtc.edu.hk'],
+          }),
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('protected-content')).toBeInTheDocument();
+      expect(screen.getByText(/Password Whitelist Active/i)).toBeInTheDocument();
+    });
   });
 });
