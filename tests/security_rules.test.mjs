@@ -545,6 +545,89 @@ async function runSecurityRulesSuite() {
       'Teacher can write studentDirectory'
     );
 
+    // Passkey Security & Whitelist Verification
+    console.log(`\n🔑 Testing Passkey Security Rules & Whitelist Permissions...`);
+    const passkeyStudent1Id = student1Uid;
+    const loginSessionId = `test-session-${timestamp}`;
+    const pairingTokenId = `test-token-${timestamp}`;
+    const auditLogId = `test-audit-${timestamp}`;
+
+    // Admin seeds fixture docs
+    await adminDb.collection('studentPasskeys').doc(passkeyStudent1Id).set({ credentialID: 'cred-1', studentUid: student1Uid });
+    await adminDb.collection('loginSessions').doc(loginSessionId).set({ status: 'pending', expiresAtMillis: Date.now() + 90000 });
+    await adminDb.collection('passkeyPairingTokens').doc(pairingTokenId).set({ token: 'xyz', studentUid: student1Uid });
+    await adminDb.collection('passkeyAuditLogs').doc(auditLogId).set({ action: 'login', studentUid: student1Uid });
+    await adminDb.collection('system_config').doc('loginPolicy').set({ passwordWhitelist: [student1Email] });
+
+    // 1. Teacher permissions
+    await expectAllowed(
+      getDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id)),
+      'Teacher can read studentPasskeys'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id), { hacked: true }),
+      'Teacher client CANNOT write to studentPasskeys directly (backend only)'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'passkeyAuditLogs', auditLogId)),
+      'Teacher can read passkeyAuditLogs'
+    );
+
+    // 2. Student 1 permissions
+    await signInWithEmailAndPassword(clientAuth, student1Email, student1Pass);
+    await expectAllowed(
+      getDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id)),
+      'Student can read their OWN studentPasskey doc'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id), { hacked: true }),
+      'Student CANNOT write to studentPasskeys directly'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'passkeyAuditLogs', auditLogId)),
+      'Student CANNOT read passkeyAuditLogs'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'passkeyPairingTokens', pairingTokenId)),
+      'Student CANNOT read passkeyPairingTokens directly'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'system_config', 'loginPolicy')),
+      'Student can read system_config/loginPolicy'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'system_config', 'loginPolicy'), { passwordWhitelist: [] }),
+      'Student CANNOT write to system_config/loginPolicy'
+    );
+
+    // 3. Student 2 permissions on Student 1 passkey
+    await signInWithEmailAndPassword(clientAuth, student2Email, student2Pass);
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id)),
+      'Student 2 CANNOT read Student 1 passkey document'
+    );
+
+    // 4. Unauthenticated permissions (Lab PC QR Screen)
+    await signOut(clientAuth);
+    await expectAllowed(
+      getDoc(doc(clientDb, 'loginSessions', loginSessionId)),
+      'Unauthenticated desktop PC can read loginSessions doc for QR login'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'loginSessions', loginSessionId), { customToken: 'fake' }),
+      'Unauthenticated desktop PC CANNOT write to loginSessions directly'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'system_config', 'loginPolicy')),
+      'Unauthenticated user can read system_config/loginPolicy'
+    );
+
+    // Cleanup passkey test fixtures
+    await adminDb.collection('studentPasskeys').doc(passkeyStudent1Id).delete();
+    await adminDb.collection('loginSessions').doc(loginSessionId).delete();
+    await adminDb.collection('passkeyPairingTokens').doc(pairingTokenId).delete();
+    await adminDb.collection('passkeyAuditLogs').doc(auditLogId).delete();
+
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users
     // -------------------------------------------------------------
