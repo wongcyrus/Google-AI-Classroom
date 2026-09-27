@@ -12,18 +12,29 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function resolveApiKey() {
+const explicitProjectArg = process.argv.slice(2).find(arg => !arg.startsWith('-'));
+const projectId = (explicitProjectArg || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'it114115-dev-2026').trim();
+delete process.env.GCLOUD_PROJECT;
+delete process.env.GOOGLE_CLOUD_PROJECT;
+delete process.env.CLOUDSDK_CORE_PROJECT;
+process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
+
+function resolveApiKey(targetProject) {
   if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
   if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
   if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
 
-  const candidateEnvPaths = [
+  const candidateEnvPaths = targetProject === 'it114115-dev-2026' ? [
+    path.resolve(__dirname, '../web-app/.env.dev'),
+    path.resolve(__dirname, '../web-app/.env.local'),
+    path.resolve(__dirname, '../web-app/.env'),
+    path.resolve(__dirname, '../web-app/.env.prod'),
+  ] : [
     path.resolve(__dirname, '../web-app/.env.prod'),
     path.resolve(__dirname, '../web-app/.env.production'),
     path.resolve(__dirname, '../web-app/.env.dev'),
     path.resolve(__dirname, '../web-app/.env'),
     path.resolve(__dirname, '../web-app/.env.local'),
-    path.resolve(__dirname, '../.env'),
   ];
 
   for (const envPath of candidateEnvPaths) {
@@ -40,14 +51,7 @@ function resolveApiKey() {
   return 'test-api-key-placeholder';
 }
 
-const explicitProjectArg = process.argv.slice(2).find(arg => !arg.startsWith('-'));
-const projectId = (explicitProjectArg || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'it114115-dev-2026').trim();
-delete process.env.GCLOUD_PROJECT;
-delete process.env.GOOGLE_CLOUD_PROJECT;
-delete process.env.CLOUDSDK_CORE_PROJECT;
-process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
-
-const apiKey = resolveApiKey();
+const apiKey = resolveApiKey(projectId);
 
 console.log(`\n========================================================`);
 console.log(`🛡️  RUNNING REAL-TOKEN SECURITY RULES VERIFICATION (${projectId})`);
