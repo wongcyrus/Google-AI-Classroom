@@ -337,7 +337,7 @@ flowchart LR
 | **Password Sharing & Keyloggers on Lab PCs** | Students type passwords on public lab keyboards vulnerable to hardware/software keyloggers or shoulder surfing. | **Blocked**: Desktop QR Login (`/mobile-login`) allows complete passwordless authentication. Students authenticate solely on their personal mobile biometric sensor, minting an ephemeral custom token directly to the desktop session. |
 | **Lab PC Passkey Pollution & Re-imaging Wipes** | Passkeys stored on Windows Hello / macOS Keychain pollute shared PCs and are wiped by nightly Deep Freeze re-imaging. | **Blocked**: Desktop WebAuthn is strictly barred (`isMobileDevice()`). Authenticators reside exclusively in the student's mobile hardware security module (Secure Enclave / Android Keystore). |
 | **Multiple PC Logins (Proxy Sitting)** | One student logs into multiple PCs in the lab. | **Blocked**: Desktop single-session displacement (`sessionId`) immediately boots older tabs when a new login occurs. |
-| **Device Sharing (1 Phone for 2 Students)** | One present student brings 2 accounts on their phone. | **Blocked**: Server verifies public `credentialID`. If the phone's chip has already been registered to Student A, Student B's pairing request is rejected with `ALREADY_REGISTERED`. |
+| **Device Sharing (1 Phone for 2 Students)** | One present student brings their phone and attempts to register or proxy-login for absent friends. | **Blocked via Strict 1:1:1 Binding**: Each mobile browser stores a persistent `deviceFingerprint` (`mdev_<uuid>`). The server validates `where('deviceFingerprint', '==', deviceFingerprint)`. If the phone is already bound to Student A, Student B's registration or login attempt is immediately aborted with `Hardware Lock Violation`. |
 | **Attempting to Register Lab PC as Passkey** | Student tries to register the shared PC browser to automate passkey prompts. | **Blocked**: `isMobileDevice()` detects desktop environments on `/pair-phone` and halts execution with `status: 'desktop_blocked'`. |
 | **QR Code Forwarding / Screenshots** | Absent student asks present friend to take a photo of the QR code and message it. | **Blocked**: QR codes encode single-use nonces and 90s/300s TTLs. Biometric assertion requires the physical device containing the student's private key. |
 | **Teacher Bypass Abuse / Privilege Creep** | Unrestricted permanent bypasses granted for absent students. | **Blocked**: All teacher bypasses automatically expire after 180 minutes (current class duration). Every bypass decision (remote 1-click or PIN) writes an immutable record to `passkeyAuditLogs`. |
@@ -354,6 +354,7 @@ flowchart LR
   "studentEmail": "student1@stu.vtc.edu.hk",
   "credentialID": "base64url_encoded_public_id",
   "credentialPublicKey": "base64url_encoded_public_key",
+  "deviceFingerprint": "mdev_9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
   "counter": 14,
   "deviceModel": "Apple iPhone",
   "createdAt": "2026-09-26T06:00:00.000Z",

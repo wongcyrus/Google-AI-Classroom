@@ -132,7 +132,7 @@ export async function handleGetPasskeyRegistrationOptions({ pairingToken, client
  * 3. Verify Passkey Registration (Mobile Phone)
  * Enforces 1-PHONE = 1-STUDENT Hardware Lock!
  */
-export async function handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel }) {
+export async function handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint }) {
   if (!pairingToken || !attestationResponse) {
     throw new HttpsError('invalid-argument', 'Missing pairing token or attestation response.');
   }
@@ -183,8 +183,28 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
 
   // =========================================================================
   // CRITICAL SECURITY ENFORCEMENT: 1 Phone = 1 Student Hardware Lock
-  // Query studentPasskeys to ensure this physical credential is NOT bound to another student!
+  // 1. Check persistent deviceFingerprint: A phone cannot be shared across multiple students!
+  // 2. Check WebAuthn credentialID: Credential cannot be shared across multiple students!
   // =========================================================================
+  if (deviceFingerprint) {
+    const existingDeviceSnap = await db.collection('studentPasskeys')
+      .where('deviceFingerprint', '==', deviceFingerprint)
+      .get();
+
+    if (!existingDeviceSnap.empty) {
+      for (const doc of existingDeviceSnap.docs) {
+        if (doc.id !== tokenData.studentUid) {
+          const boundEmail = doc.data().studentEmail || doc.id;
+          console.warn(`[verifyPasskeyRegistration] Hardware collision! Phone ${deviceFingerprint} already registered to ${boundEmail}`);
+          throw new HttpsError(
+            'already-exists',
+            `Hardware Lock: This physical phone is already bound to student account (${boundEmail}). Each mobile phone can only be used by one student.`
+          );
+        }
+      }
+    }
+  }
+
   const existingSnap = await db.collection('studentPasskeys')
     .where('credentialID', '==', credentialID)
     .get();
@@ -204,12 +224,13 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
   const credentialPublicKey = Buffer.from(credential.publicKey).toString('base64');
   const transports = credential.transports || attestationResponse.response?.transports || ['internal'];
 
-  // Save the student passkey
+  // Save the student passkey with persistent hardware device fingerprint
   await db.doc(`studentPasskeys/${tokenData.studentUid}`).set({
     studentUid: tokenData.studentUid,
     studentEmail: tokenData.studentEmail,
     credentialID,
     credentialPublicKey,
+    deviceFingerprint: deviceFingerprint || null,
     counter: credential.counter || 0,
     deviceModel: deviceModel || 'Mobile Device',
     transports,
@@ -296,7 +317,7 @@ export async function handleGetPasskeyAuthOptions({ classId, bingoId, clientRpId
 /**
  * 5. Verify Passkey Authentication (Instant ~2s Attendance Verification)
  */
-export async function handleVerifyPasskeyAuth({ classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis }) {
+export async function handleVerifyPasskeyAuth({ classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis, deviceFingerprint }) {
   if (!classId || !bingoId || !assertionResponse) {
     throw new HttpsError('invalid-argument', 'Missing classId, bingoId, or assertion response.');
   }
@@ -322,6 +343,12 @@ export async function handleVerifyPasskeyAuth({ classId, bingoId, assertionRespo
   }
 
   const passkey = passkeyDoc.data();
+
+  // Verify device fingerprint if bound
+  if (passkey.deviceFingerprint && deviceFingerprint && passkey.deviceFingerprint !== deviceFingerprint) {
+    console.warn(`[verifyPasskeyAuth] Device mismatch! Registered: ${passkey.deviceFingerprint}, got: ${deviceFingerprint}`);
+    throw new HttpsError('permission-denied', 'Device Mismatch: Attendance must be verified using your registered mobile phone.');
+  }
 
   // Verify the assertion credential ID matches the student's registered credential
   if (assertionResponse.id !== passkey.credentialID) {
@@ -652,7 +679,7 @@ export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpI
  * Mobile device submits biometric assertion. If verified, mints Firebase Custom Auth Token
  * for the desktop session so the shared PC signs in automatically.
  */
-export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId }) {
+export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId, deviceFingerprint }) {
   if (!sessionId || !authenticationResponse) {
     throw new HttpsError('invalid-argument', 'Missing sessionId or authenticationResponse.');
   }
@@ -697,6 +724,12 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticatio
   const passkeyDoc = passkeySnap.docs[0];
   const passkeyData = passkeyDoc.data();
   const studentUid = passkeyDoc.id;
+
+  // Verify device fingerprint if bound
+  if (passkeyData.deviceFingerprint && deviceFingerprint && passkeyData.deviceFingerprint !== deviceFingerprint) {
+    console.warn(`[verifyDesktopLoginPasskey] Device mismatch! Registered: ${passkeyData.deviceFingerprint}, got: ${deviceFingerprint}`);
+    throw new HttpsError('permission-denied', 'Device Mismatch: This passkey was registered on a different physical smartphone.');
+  }
 
   const rpID = resolveRpId(clientRpId || sessionData.rpIdUsed);
 

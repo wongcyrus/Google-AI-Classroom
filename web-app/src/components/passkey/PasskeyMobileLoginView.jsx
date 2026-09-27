@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isMobileDevice } from '../../utils/browserDetection';
+import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
 
@@ -88,11 +89,13 @@ const PasskeyMobileLoginView = () => {
 
       // 3. Submit assertion to server to verify signature and mint custom auth token for desktop
       setStatus('submitting');
+      const deviceFingerprint = getOrCreateDeviceFingerprint();
       const verifyFn = httpsCallable(functions, 'verifyDesktopLoginPasskey');
       const verifyRes = await verifyFn({
         sessionId,
         authenticationResponse,
         clientRpId: window.location.hostname,
+        deviceFingerprint,
       });
 
       const data = verifyRes.data || {};
