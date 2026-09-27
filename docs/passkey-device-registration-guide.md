@@ -100,6 +100,76 @@ For daily lab sessions, students can sign into shared desktop PCs without typing
 
 ---
 
+### 🔄 Architectural Deep Dive: Native Firebase Auth Integration via Custom Tokens
+
+A common architectural question is: **"In the past, Firebase Auth was built-in (email/password). Since the QR code flow is our own custom UI, how does it match Firebase Auth logs, sessions, and security rules?"**
+
+The answer is that the QR code flow does **not** bypass or replace Firebase Auth. Instead, it utilizes Google's official **Firebase Auth Custom Token Minting** mechanism (`createCustomToken` on the backend and `signInWithCustomToken` on the client SDK).
+
+#### End-to-End Authentication Bridge:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student
+    participant Desktop as Lab PC Desktop (/login)
+    participant Cloud as Cloud Function (verifyDesktopLoginPasskey)
+    participant Auth as Google Cloud Firebase Auth Backend
+    participant Phone as Student Smartphone (Secure Enclave)
+
+    Note over Desktop,Phone: 1. Ephemeral QR Handshake (90s TTL)
+    Desktop->>Desktop: Renders 90s dynamic QR code with sessionId
+    Student->>Phone: Scans QR code with native Camera app
+    Phone->>Phone: Native biometric prompt (Face ID / Fingerprint)
+    Phone->>Cloud: Submits signed WebAuthn assertion
+
+    Note over Cloud,Auth: 2. Official Firebase Custom Token Minting
+    Cloud->>Cloud: Validates hardware signature against studentPasskeys/{uid}
+    Cloud->>Auth: admin.auth().createCustomToken(studentUid, { role: 'student' })
+    Auth-->>Cloud: Returns cryptographically signed Custom JWT Token
+    Cloud-->>Desktop: Delivers customToken via Firestore snapshot (loginSessions/{id})
+
+    Note over Desktop,Auth: 3. Native Firebase Auth Session Handshake
+    Desktop->>Auth: signInWithCustomToken(auth, customToken)
+    Auth->>Auth: Verifies IAM signature, issues Firebase ID Token & Refresh Token
+    Auth->>Auth: 📝 Updates lastSignInTime in Firebase Console & GCIP Audit Logs
+    Auth-->>Desktop: Official Firebase Auth User Session Established
+    Desktop->>Desktop: onAuthStateChanged(auth, user) fires normally!
+```
+
+#### Dual-Mode Comparison: Built-In Email/Password vs. QR Code Passkey Flow
+
+| Capability / Metric | Built-in Email/Password (Past) | QR Code Passkey Flow (New) |
+| :--- | :--- | :--- |
+| **Client Sign-In API** | `signInWithEmailAndPassword(auth, email, pass)` | `signInWithCustomToken(auth, customToken)` *(Standard Firebase SDK)* |
+| **Firebase Auth Console** | Updates user's `lastSignInTime` | Automatically updates user's `lastSignInTime` identically |
+| **`onAuthStateChanged()`** | Triggers reactive UI state | Triggers reactive UI state identically on desktop |
+| **Firestore Security Rules** | Verified via `request.auth.uid` | Verified via `request.auth.uid` identically |
+| **Custom Claims (`role`)** | Injected in JWT token | Injected directly via `createCustomToken(uid, { role: 'student' })` |
+| **GCIP / Cloud Audit Logs** | Records `signInWithPassword` | Records `createCustomToken` and `signInWithCustomToken` events |
+| **Dedicated Security Audit** | None | **`passkeyAuditLogs`** logs smartphone model, session ID, counter, and timestamp |
+| **Shared Lab PC Keystrokes** | ❌ Vulnerable to hardware/software keyloggers & shoulder surfing | ✅ **Zero keystrokes on lab PC keyboard** |
+
+#### Complete Student Device Lifecycle:
+
+1. **Desktop Lab PC (Zero Passwords):**
+   - Students **never** need to type their email or password on shared lab PC keyboards.
+   - The desktop displays an ephemeral QR code that unlocks via phone biometric scan.
+2. **First-Time Setup on Mobile Phone:**
+   - The student logs in on their personal smartphone using their institutional **Email & Password**.
+   - After signing in, they tap **`[ 📱 Enable Mobile Passkey ]`**.
+   - Their phone's hardware security chip (Apple Secure Enclave / Android Keystore) generates a FIDO2 key pair linked to their UID.
+3. **Subsequent Mobile Logins:**
+   - Future logins on the smartphone use the biometric passkey (instant Face ID or Fingerprint), eliminating password entry on mobile as well.
+4. **Enforcement Behavior If Passkey Is NOT Enabled:**
+   - **On Mobile:** The student **can still log in with Email & Password** on their personal smartphone. This ensures they are never locked out of their personal device and can proceed to enable their passkey.
+   - **On Desktop:** Desktop access is **strictly blocked**:
+     - Scanning the desktop QR code halts with: *"No passkey registered on this device yet."*
+     - Typing email/password on desktop triggers [`PasskeyEnforcementGate`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx), locking navigation, streaming, and attendance.
+     - The only desktop bypass is via **Teacher Manual Failsafe** (Podium 1-click or Emergency PIN).
+
+---
+
 ### Step 3: Daily Lab Attendance Verification (< 2 Seconds)
 
 Once your phone is paired, taking attendance during lectures or labs is fast and effortless:
