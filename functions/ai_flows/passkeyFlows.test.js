@@ -241,11 +241,11 @@ describe('WebAuthn Passkey Flows Backend', () => {
       );
     });
 
-    it('BLOCKS registration when phone hardware is already bound to another student', async () => {
+    it('BLOCKS registration when deviceFingerprint is already bound to another student', async () => {
       mockDocGet.mockResolvedValueOnce({
         exists: true,
         data: () => ({
-          studentUid: 'student_2', // Student 2 trying to use Student 1's phone
+          studentUid: 'student_2',
           studentEmail: 's2@stu.vtc.edu.hk',
           currentChallenge: 'mock-reg-challenge',
           expiresAtMillis: Date.now() + 600000,
@@ -253,19 +253,53 @@ describe('WebAuthn Passkey Flows Backend', () => {
         }),
       });
 
-      // Existing credential belongs to student_1!
+      // Existing deviceFingerprint query matches student_1
       mockCollectionGet.mockResolvedValueOnce({
         empty: false,
-        docs: [{ id: 'student_1', data: () => ({ credentialID: 'hardware-cred-abc' }) }],
+        docs: [{ id: 'student_1', data: () => ({ studentEmail: 's1@stu.vtc.edu.hk' }) }],
       });
 
       await expect(
         handleVerifyPasskeyRegistration({
           pairingToken: 'token-456',
-          attestationResponse: { id: 'hardware-cred-abc', response: {} },
+          attestationResponse: { id: 'hardware-cred-xyz', response: {} },
           deviceModel: 'iPhone 15 Pro',
+          deviceFingerprint: 'mdev_phone_student1',
         })
-      ).rejects.toThrow('already registered to another student');
+      ).rejects.toThrow('Hardware Lock: This physical phone is already bound to student account');
+    });
+
+    it('allows registration when deviceFingerprint belongs to the same student or is new', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'student_1',
+          studentEmail: 's1@stu.vtc.edu.hk',
+          currentChallenge: 'mock-reg-challenge',
+          expiresAtMillis: Date.now() + 600000,
+          used: false,
+        }),
+      });
+
+      // 1. deviceFingerprint query: empty (unbound)
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+      // 2. credentialID query: empty (unbound)
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+      const res = await handleVerifyPasskeyRegistration({
+        pairingToken: 'token-789',
+        attestationResponse: { id: 'hardware-cred-new', response: {} },
+        deviceModel: 'Pixel 9',
+        deviceFingerprint: 'mdev_phone_pixel',
+      });
+
+      expect(res.verified).toBe(true);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 'student_1',
+          deviceFingerprint: 'mdev_phone_pixel',
+        })
+      );
     });
   });
 
@@ -391,6 +425,34 @@ describe('WebAuthn Passkey Flows Backend', () => {
           assertionResponse: { id: 'different-impostor-cred', response: {} },
         })
       ).rejects.toThrow('Credential mismatch');
+    });
+
+    it('rejects assertion when deviceFingerprint does not match registered mobile phone', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'student_1',
+          result: 'pending',
+          passkeyChallenge: 'mock-auth-challenge',
+        }),
+      });
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          credentialID: 'hardware-cred-abc',
+          deviceFingerprint: 'mdev_phone_original',
+        }),
+      });
+
+      await expect(
+        handleVerifyPasskeyAuth({
+          classId: 'class_1',
+          bingoId: 'bingo_123',
+          assertionResponse: { id: 'hardware-cred-abc', response: {} },
+          deviceFingerprint: 'mdev_phone_imposter',
+        })
+      ).rejects.toThrow('Device Mismatch: Attendance must be verified using your registered mobile phone.');
     });
   });
 
@@ -726,6 +788,41 @@ describe('WebAuthn Passkey Flows Backend', () => {
           studentUid: 'student_alex',
         })
       );
+    });
+
+    it('throws error when deviceFingerprint does not match the bound passkey device', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          challenge: 'mock-login-challenge',
+          expiresAtMillis: Date.now() + 60000,
+        }),
+      });
+
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'student_1',
+            data: () => ({
+              credentialID: 'hardware-cred-abc',
+              credentialPublicKey: Buffer.from('mock-public-key').toString('base64'),
+              studentEmail: 's1@stu.vtc.edu.hk',
+              deviceModel: 'iPhone 15 Pro',
+              deviceFingerprint: 'mdev_phone_original',
+            }),
+          },
+        ],
+      });
+
+      await expect(
+        handleVerifyDesktopLoginPasskey({
+          sessionId: 'session_1',
+          authenticationResponse: { id: 'hardware-cred-abc' },
+          deviceFingerprint: 'mdev_phone_different',
+        })
+      ).rejects.toThrow('Device Mismatch: This passkey was registered on a different physical smartphone.');
     });
   });
 

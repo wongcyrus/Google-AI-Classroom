@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isMobileDevice } from '../../utils/browserDetection';
+import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
 
@@ -92,6 +93,7 @@ const PasskeyVerifyView = () => {
       const timeToCompleteMillis = Date.now() - startTime;
 
       // 3. Verify assertion cryptographically on Cloud Functions
+      const deviceFingerprint = getOrCreateDeviceFingerprint();
       const verifyFn = httpsCallable(functions, 'verifyPasskeyAuth');
       const verifyRes = await verifyFn({
         classId,
@@ -99,6 +101,7 @@ const PasskeyVerifyView = () => {
         assertionResponse,
         clientRpId: window.location.hostname,
         timeToCompleteMillis,
+        deviceFingerprint,
       });
 
       if (verifyRes.data?.verified) {

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isMobileDevice } from '../../utils/browserDetection';
+import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
 
@@ -73,12 +74,14 @@ const PasskeyPairView = () => {
       else if (/Android/i.test(userAgent)) detectedModel = 'Android Device';
 
       // 3. Verify attestation and enforce 1-phone = 1-student hardware lock on server
+      const deviceFingerprint = getOrCreateDeviceFingerprint();
       const verifyFn = httpsCallable(functions, 'verifyPasskeyRegistration');
       const verifyRes = await verifyFn({
         pairingToken: token,
         attestationResponse,
         clientRpId: window.location.hostname,
         deviceModel: detectedModel,
+        deviceFingerprint,
       });
 
       if (verifyRes.data?.verified) {
@@ -92,8 +95,8 @@ const PasskeyPairView = () => {
       setStatus('error');
       // Format friendly error messages
       const msg = err.message || '';
-      if (msg.includes('already registered to another student')) {
-        setErrorMessage('This physical phone is already registered to another student. Devices cannot be shared.');
+      if (msg.includes('Hardware Lock') || msg.includes('already registered to another student') || msg.includes('already bound to student')) {
+        setErrorMessage(msg.includes('Hardware Lock:') ? msg.replace(/^.*Hardware Lock:\s*/, '') : 'This physical mobile phone is already registered to another student. Devices cannot be shared.');
       } else if (msg.includes('already been used')) {
         setErrorMessage('This pairing token has already been used. Please refresh the QR code on your PC screen.');
       } else if (msg.includes('expired')) {
