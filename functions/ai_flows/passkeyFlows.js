@@ -1,5 +1,6 @@
 import './firebase.js';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -574,3 +575,402 @@ export async function handleResetStudentPasskey({ studentUid, studentEmail, clas
     message: 'Passkey reset successfully. Student can now pair their new mobile phone.',
   };
 }
+
+/**
+ * 10. Initiate Desktop Login Session
+ * Shared Lab PC calls this to generate an ephemeral login session and QR payload.
+ */
+export async function handleInitiateDesktopLoginSession({ clientRpId } = {}) {
+  const sessionId = crypto.randomUUID();
+  const expiresAtMillis = Date.now() + 90 * 1000; // 90 seconds
+  const rpId = resolveRpId(clientRpId);
+
+  await db.doc(`loginSessions/${sessionId}`).set({
+    sessionId,
+    status: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAtMillis,
+    rpId,
+    customToken: null,
+    studentUid: null,
+    studentEmail: null,
+  });
+
+  return {
+    sessionId,
+    expiresAtMillis,
+    qrUrl: `/mobile-login?session=${sessionId}`,
+  };
+}
+
+/**
+ * 11. Get Desktop Login Passkey Options
+ * Scanned from mobile camera: retrieves WebAuthn challenge for the desktop login session.
+ */
+export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpId }) {
+  if (!sessionId) {
+    throw new HttpsError('invalid-argument', 'Missing sessionId.');
+  }
+
+  const sessionRef = db.doc(`loginSessions/${sessionId}`);
+  const sessionDoc = await sessionRef.get();
+
+  if (!sessionDoc.exists) {
+    throw new HttpsError('not-found', 'Login session not found or expired.');
+  }
+
+  const sessionData = sessionDoc.data();
+  if (sessionData.status !== 'pending') {
+    throw new HttpsError('failed-precondition', `Session is ${sessionData.status}.`);
+  }
+
+  if (Date.now() > sessionData.expiresAtMillis) {
+    await sessionRef.update({ status: 'expired' });
+    throw new HttpsError('deadline-exceeded', 'Login session expired. Please refresh the QR code on the desktop.');
+  }
+
+  const rpID = resolveRpId(clientRpId || sessionData.rpId);
+  const options = await generateAuthenticationOptions({
+    rpID,
+    userVerification: 'preferred',
+  });
+
+  await sessionRef.update({
+    challenge: options.challenge,
+    rpIdUsed: rpID,
+  });
+
+  return {
+    options,
+    sessionId,
+    expiresAtMillis: sessionData.expiresAtMillis,
+  };
+}
+
+/**
+ * 12. Verify Desktop Login Passkey
+ * Mobile device submits biometric assertion. If verified, mints Firebase Custom Auth Token
+ * for the desktop session so the shared PC signs in automatically.
+ */
+export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId }) {
+  if (!sessionId || !authenticationResponse) {
+    throw new HttpsError('invalid-argument', 'Missing sessionId or authenticationResponse.');
+  }
+
+  const sessionRef = db.doc(`loginSessions/${sessionId}`);
+  const sessionDoc = await sessionRef.get();
+
+  if (!sessionDoc.exists) {
+    throw new HttpsError('not-found', 'Login session not found.');
+  }
+
+  const sessionData = sessionDoc.data();
+  if (sessionData.status !== 'pending') {
+    throw new HttpsError('failed-precondition', `Login session is already ${sessionData.status}.`);
+  }
+
+  if (Date.now() > sessionData.expiresAtMillis) {
+    await sessionRef.update({ status: 'expired' });
+    throw new HttpsError('deadline-exceeded', 'Login session expired.');
+  }
+
+  const expectedChallenge = sessionData.challenge;
+  if (!expectedChallenge) {
+    throw new HttpsError('failed-precondition', 'Missing challenge in login session.');
+  }
+
+  const credentialId = authenticationResponse.id;
+  if (!credentialId) {
+    throw new HttpsError('invalid-argument', 'Missing credential ID in authentication response.');
+  }
+
+  // Lookup student passkey by hardware credential ID
+  const passkeySnap = await db.collection('studentPasskeys')
+    .where('credentialID', '==', credentialId)
+    .limit(1)
+    .get();
+
+  if (passkeySnap.empty) {
+    throw new HttpsError('not-found', 'No student passkey found matching this mobile device. Please pair your phone first.');
+  }
+
+  const passkeyDoc = passkeySnap.docs[0];
+  const passkeyData = passkeyDoc.data();
+  const studentUid = passkeyDoc.id;
+
+  const rpID = resolveRpId(clientRpId || sessionData.rpIdUsed);
+
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: authenticationResponse,
+      expectedChallenge,
+      expectedOrigin: ALLOWED_ORIGINS,
+      expectedRPID: ALLOWED_RP_IDS,
+      credential: {
+        id: passkeyData.credentialID,
+        publicKey: new Uint8Array(Buffer.from(passkeyData.credentialPublicKey, 'base64')),
+        counter: passkeyData.counter || 0,
+        transports: passkeyData.transports,
+      },
+      requireUserVerification: false,
+    });
+  } catch (err) {
+    console.error('[verifyDesktopLoginPasskey] WebAuthn verification error:', err);
+    throw new HttpsError('invalid-argument', `Biometric authentication failed: ${err.message}`);
+  }
+
+  if (!verification.verified) {
+    throw new HttpsError('invalid-argument', 'Passkey biometric verification failed.');
+  }
+
+  // Update passkey counter & last login
+  await passkeyDoc.ref.update({
+    counter: verification.authenticationInfo.newCounter,
+    lastUsedAt: FieldValue.serverTimestamp(),
+    lastLoginType: 'desktop_qr',
+  });
+
+  // Mint Firebase Custom Token for desktop
+  const customToken = await getAuth().createCustomToken(studentUid, { role: 'student' });
+
+  // Update login session to authorized
+  await sessionRef.update({
+    status: 'authorized',
+    customToken,
+    studentUid,
+    studentEmail: passkeyData.studentEmail || null,
+    deviceModel: passkeyData.deviceModel || 'Mobile Device',
+    authorizedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Audit log
+  await db.collection('passkeyAuditLogs').add({
+    action: 'DESKTOP_LOGIN_VIA_MOBILE_QR',
+    studentUid,
+    studentEmail: passkeyData.studentEmail || null,
+    deviceModel: passkeyData.deviceModel || 'Mobile Device',
+    sessionId,
+    timestamp: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    verified: true,
+    studentUid,
+    studentEmail: passkeyData.studentEmail || null,
+    deviceModel: passkeyData.deviceModel || 'Mobile Device',
+    message: 'Mobile passkey verified. Desktop login authorized.',
+  };
+}
+
+/**
+ * 13. Request Teacher Passkey Bypass (Student on Lab PC)
+ * Creates a pending bypass claim for students with dead batteries, forgotten phones, or damaged cameras.
+ */
+export async function handleRequestTeacherPasskeyBypass({ studentUid, studentEmail, classId, deskNumber, reason }) {
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'Missing classId.');
+  }
+  if (!studentUid && !studentEmail) {
+    throw new HttpsError('invalid-argument', 'Missing studentUid or studentEmail.');
+  }
+
+  const requestId = crypto.randomUUID();
+  const normalizedEmail = (studentEmail || '').toLowerCase();
+
+  await db.doc(`classes/${classId}/passkeyBypassRequests/${requestId}`).set({
+    requestId,
+    studentUid: studentUid || null,
+    studentEmail: normalizedEmail,
+    classId,
+    deskNumber: deskNumber || 'Lab PC',
+    reason: reason || 'Phone unavailable',
+    status: 'pending',
+    requestedAt: FieldValue.serverTimestamp(),
+    expiresAtMillis: Date.now() + 15 * 60 * 1000, // 15 min TTL
+  });
+
+  // Also log the request
+  await db.collection('passkeyAuditLogs').add({
+    action: 'BYPASS_REQUEST_CREATED',
+    studentUid: studentUid || null,
+    studentEmail: normalizedEmail,
+    classId,
+    deskNumber: deskNumber || 'Lab PC',
+    reason: reason || 'Phone unavailable',
+    requestId,
+    timestamp: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    success: true,
+    requestId,
+    message: 'Bypass request submitted. Please notify your instructor.',
+  };
+}
+
+/**
+ * 14. Approve Teacher Passkey Bypass (Teacher Podium 1-Click Action)
+ * Grants a temporary lesson-scoped bypass for a student.
+ */
+export async function handleApproveTeacherPasskeyBypass({
+  requestId,
+  classId,
+  studentUid,
+  studentEmail,
+  teacherUid,
+  teacherEmail,
+  bypassDurationMinutes = 180,
+  approved = true,
+}) {
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'Missing classId.');
+  }
+
+  let targetUid = studentUid;
+  let targetEmail = (studentEmail || '').toLowerCase();
+  let requestData = null;
+
+  if (requestId) {
+    const reqRef = db.doc(`classes/${classId}/passkeyBypassRequests/${requestId}`);
+    const reqDoc = await reqRef.get();
+    if (reqDoc.exists) {
+      requestData = reqDoc.data();
+      if (!targetUid && requestData.studentUid) targetUid = requestData.studentUid;
+      if (!targetEmail && requestData.studentEmail) targetEmail = requestData.studentEmail;
+
+      await reqRef.update({
+        status: approved ? 'approved' : 'rejected',
+        resolvedAt: FieldValue.serverTimestamp(),
+        resolvedBy: teacherEmail || 'teacher',
+      });
+    }
+  }
+
+  if (!targetUid && targetEmail) {
+    const snap = await db.collection('studentPasskeys')
+      .where('studentEmail', '==', targetEmail)
+      .limit(1)
+      .get();
+    if (!snap.empty) {
+      targetUid = snap.docs[0].id;
+    }
+  }
+
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'Could not resolve studentUid for bypass.');
+  }
+
+  const durationMin = Number(bypassDurationMinutes) || 180;
+  const expiresAtMillis = Date.now() + durationMin * 60 * 1000;
+
+  if (approved) {
+    // Set bypass in studentProperties
+    await db.doc(`classes/${classId}/studentProperties/${targetUid}`).set({
+      passkeyBypass: {
+        active: true,
+        grantedAt: FieldValue.serverTimestamp(),
+        expiresAtMillis,
+        expiresAt: new Date(expiresAtMillis).toISOString(),
+        grantedBy: teacherEmail || 'teacher',
+        teacherUid: teacherUid || null,
+        reason: requestData?.reason || 'Teacher Podium Approval',
+        deskNumber: requestData?.deskNumber || null,
+        scope: 'current_lesson',
+      },
+    }, { merge: true });
+
+    // Record audit log
+    await db.collection('passkeyAuditLogs').add({
+      action: 'TEACHER_BYPASS_GRANTED',
+      studentUid: targetUid,
+      studentEmail: targetEmail || null,
+      classId,
+      teacherUid: teacherUid || null,
+      teacherEmail: teacherEmail || 'teacher',
+      reason: requestData?.reason || 'Teacher Podium Approval',
+      deskNumber: requestData?.deskNumber || null,
+      expiresAtMillis,
+      timestamp: FieldValue.serverTimestamp(),
+    });
+  } else {
+    // If rejected
+    await db.collection('passkeyAuditLogs').add({
+      action: 'TEACHER_BYPASS_REJECTED',
+      studentUid: targetUid,
+      studentEmail: targetEmail || null,
+      classId,
+      teacherUid: teacherUid || null,
+      teacherEmail: teacherEmail || 'teacher',
+      reason: requestData?.reason || 'Teacher Rejected',
+      timestamp: FieldValue.serverTimestamp(),
+    });
+  }
+
+  return {
+    success: true,
+    approved,
+    studentUid: targetUid,
+    expiresAtMillis: approved ? expiresAtMillis : null,
+    message: approved
+      ? `Bypass granted for ${durationMin} minutes.`
+      : 'Bypass request rejected.',
+  };
+}
+
+/**
+ * 15. Verify Teacher Emergency PIN (Aisle Walk-Around Direct PC Entry)
+ * Allows teacher to punch in daily/lesson 6-digit PIN on student screen.
+ */
+export async function handleVerifyTeacherPasskeyBypassPin({ classId, studentUid, pin, reason, deskNumber }) {
+  if (!classId || !studentUid || !pin) {
+    throw new HttpsError('invalid-argument', 'Missing classId, studentUid, or pin.');
+  }
+
+  const classRef = db.doc(`classes/${classId}`);
+  const classDoc = await classRef.get();
+
+  if (!classDoc.exists) {
+    throw new HttpsError('not-found', 'Class not found.');
+  }
+
+  const classData = classDoc.data();
+  const validPin = classData.teacherBypassPin || classData.emergencyPasskeyPin;
+
+  if (!validPin || String(pin).trim() !== String(validPin).trim()) {
+    throw new HttpsError('permission-denied', 'Invalid teacher emergency PIN.');
+  }
+
+  const expiresAtMillis = Date.now() + 180 * 60 * 1000; // 180 minutes
+
+  await db.doc(`classes/${classId}/studentProperties/${studentUid}`).set({
+    passkeyBypass: {
+      active: true,
+      grantedAt: FieldValue.serverTimestamp(),
+      expiresAtMillis,
+      expiresAt: new Date(expiresAtMillis).toISOString(),
+      grantedBy: 'Teacher Emergency PIN',
+      reason: reason || 'In-Person Teacher Emergency PIN',
+      deskNumber: deskNumber || null,
+      scope: 'current_lesson',
+    },
+  }, { merge: true });
+
+  await db.collection('passkeyAuditLogs').add({
+    action: 'TEACHER_BYPASS_PIN_VERIFIED',
+    studentUid,
+    classId,
+    deskNumber: deskNumber || null,
+    reason: reason || 'In-Person Teacher Emergency PIN',
+    expiresAtMillis,
+    timestamp: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    success: true,
+    studentUid,
+    expiresAtMillis,
+    message: 'Teacher emergency PIN verified. Bypass granted for current lesson.',
+  };
+}
+

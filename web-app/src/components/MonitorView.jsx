@@ -109,6 +109,8 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
   const [classSubjectDomain, setClassSubjectDomain] = useState('');
   const [classSubtitlePrompt, setClassSubtitlePrompt] = useState(null);
   const [classDefaultLectureRecording, setClassDefaultLectureRecording] = useState(true);
+  const [pendingBypassRequests, setPendingBypassRequests] = useState([]);
+  const [classEmergencyPin, setClassEmergencyPin] = useState('');
 
   const handleSelectMicDeviceId = (newId) => {
     setSelectedMicDeviceId(newId);
@@ -567,6 +569,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         const data = docSnap.data();
         const studentUids = data.students ? Object.keys(data.students) : [];
         setClassList(studentUids);
+        setClassEmergencyPin(data.teacherBypassPin || data.emergencyPasskeyPin || '');
 
         const newMap = new Map();
         if (data.students && typeof data.students === 'object' && !Array.isArray(data.students)) {
@@ -745,13 +748,53 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       });
     });
 
+    let unsubscribeBypass = () => {};
+    try {
+      const bypassQuery = query(
+        collection(db, 'classes', classId, 'passkeyBypassRequests'),
+        where('status', '==', 'pending')
+      );
+      unsubscribeBypass = onSnapshot(bypassQuery, (snapshot) => {
+        const requests = [];
+        if (snapshot && typeof snapshot.forEach === 'function') {
+          snapshot.forEach((docSnap) => {
+            requests.push({ id: docSnap.id, ...docSnap.data() });
+          });
+        }
+        setPendingBypassRequests(requests);
+      }, (err) => {
+        console.warn('[MonitorView] Bypass listener notice:', err);
+      });
+    } catch (e) {
+      console.warn('[MonitorView] Error setting up bypass listener:', e);
+    }
+
     return () => {
       unsubscribeClass();
       unsubscribeStorage();
       unsubscribeStatus();
       unsubscribeAiMeta();
-    }
+      if (typeof unsubscribeBypass === 'function') unsubscribeBypass();
+    };
   }, [classId]);
+
+  const handleResolveBypass = async (requestId, studentUid, studentEmail, approved) => {
+    if (!classId) return;
+    try {
+      const approveFn = httpsCallable(functions, 'approveTeacherPasskeyBypass');
+      await approveFn({
+        requestId,
+        classId,
+        studentUid,
+        studentEmail,
+        approved,
+        bypassDurationMinutes: 180,
+      });
+    } catch (err) {
+      console.error('[MonitorView] Error resolving bypass request:', err);
+      alert('Failed to resolve passkey bypass: ' + (err.message || 'Error'));
+    }
+  };
 
   useEffect(() => {
     if (!reviewTime || classList.length === 0) return;
@@ -1602,6 +1645,88 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
+        {pendingBypassRequests.length > 0 && (
+          <div className="passkey-bypass-podium-banner" role="alert" style={{
+            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
+            border: '1px solid #6366f1',
+            borderRadius: '10px',
+            padding: '12px 18px',
+            margin: '15px 20px 0 20px',
+            color: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                ⚠️ Passkey Bypass Claims ({pendingBypassRequests.length} Pending)
+              </span>
+              {classEmergencyPin && (
+                <span style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', color: '#c7d2fe' }}>
+                  🔑 Teacher Aisle PIN: <strong style={{ color: '#ffffff', letterSpacing: '1px' }}>{classEmergencyPin}</strong>
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {pendingBypassRequests.map((req) => (
+                <div key={req.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'rgba(15, 23, 42, 0.65)',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                }}>
+                  <div>
+                    <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>{req.studentEmail}</strong>
+                    <span style={{ color: '#94a3b8', fontSize: '0.82rem', marginLeft: '8px' }}>({req.deskNumber || 'Lab PC'})</span>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: '2px' }}>
+                      Reason: <em>{req.reason}</em>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, true)}
+                      style={{
+                        background: '#10b981',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✅ Grant 1-Class Session Bypass
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, false)}
+                      style={{
+                        background: '#ef4444',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ❌ Deny
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="timeline-controls" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', marginBottom: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>

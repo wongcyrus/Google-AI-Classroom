@@ -58,55 +58,49 @@ sequenceDiagram
 
 ---
 
-## 🧑‍🎓 Student Walkthrough: Device Registration & Daily Attendance
+## 🧑‍🎓 Student Walkthrough: Registration, QR Login & Attendance
 
-### Step 1: Initial Device Registration (One-Time Only)
+### Step 1: Enforced First-Time Registration Gate (Mandatory Lab Onboarding)
 
-When you first join a lab session or click **`📱 Link Phone`** on your Lab PC:
+When a student logs in to a computer lab desktop for the first time without having linked a smartphone:
 
-```
-  ╔══════════════════════════════════════════════════════════╗
-  ║  📱 Link Your Mobile Phone for Lab Attendance            ║
-  ║                                                          ║
-  ║  Scan this QR code with your phone camera to pair your   ║
-  ║  device for biometric passkey attendance.                ║
-  ║                                                          ║
-  ║                  ┌──────────────────┐                    ║
-  ║                  │  ██████  ██████  │                    ║
-  ║                  │  ██  ██  ██  ██  │                    ║
-  ║                  │      ██████      │                    ║
-  ║                  │  ██  ██  ██  ██  │                    ║
-  ║                  │  ██████  ██████  │                    ║
-  ║                  └──────────────────┘                    ║
-  ║                                                          ║
-  ║  ⏱️ Single-use token expires in 5:00                     ║
-  ║  🔒 No password required on mobile                       ║
-  ╚══════════════════════════════════════════════════════════╝
-```
-
-1. **On your Lab PC:**
-   - Log in to your student account on Google Chrome.
-   - Click **`📱 Link Mobile Phone`** (or open the attendance prompt).
-   - A single-use QR code is displayed on your monitor.
+1. **Mandatory Desktop Gate (`PasskeyEnforcementGate`)**:
+   - The desktop workspace immediately locks navigation to `/student`, `/student/records`, and screen/webcam streaming.
+   - The desktop displays an anti-desktop security advisory:
+     > ⚠️ **Shared Lab PC Detected — Desktop Passkeys Prohibited**  
+     > *To guarantee your identity and prevent account duplication, passkeys must reside exclusively in your personal smartphone's hardware Secure Enclave (Apple Face ID or Android Fingerprint). Do NOT register Windows Hello or local PINs on this shared PC.*
+   - A single-use 256x256 pairing QR code is generated (`/pair-phone?token=<tokenId>`).
 
 2. **On your Smartphone:**
-   - Open your smartphone's built-in **Camera app** (iOS Camera or Android Camera/Google Lens).
-   - Point your camera at the QR code on your PC monitor.
-   - Tap the link notification that appears (`/pair-phone?token=...`).
+   - Open your smartphone's built-in **Camera app** (iOS Safari or Android Chrome).
+   - Point your camera at the QR code on your PC monitor and tap the link notification.
+   - Tap **`[ 📱 Pair This Phone ]`** and confirm with **Face ID** or **Fingerprint**.
 
-3. **Complete Biometric Touch:**
-   - On the mobile screen, tap **`[ 📱 Pair This Phone ]`**.
-   - Your smartphone displays its native biometric security dialog:
-     - **Apple iOS**: *"Do you want to save a passkey for this account?"* ➔ Confirm with **Face ID** or **Touch ID**.
-     - **Android**: *"Create a passkey with screen lock"* ➔ Confirm with **Fingerprint** or **Biometrics**.
-   - The phone screen turns green: **"Device Paired Successfully!"** (e.g., *Linked: Apple iPhone*).
-
-4. **Instant PC Feedback:**
-   - Your Lab PC monitor automatically detects the completed registration via real-time Firestore sync and dismisses the pairing modal.
+3. **1-Phone = 1-Student Hardware Binding**:
+   - The server extracts the public `credentialID` and verifies it is not bound to another student account (`DUPLICATE_DEVICE_COLLISION` check).
+   - Once stored in `studentPasskeys/{uid}`, the desktop monitor detects the registration via Firestore snapshot and automatically dismisses the gate: *"🎉 Phone Paired! Entering classroom..."*
 
 ---
 
-### Step 2: Daily Lab Attendance Verification (< 2 Seconds)
+### Step 2: Desktop Login via Mobile Scan QR Code (Passwordless Cross-Device Auth)
+
+For daily lab sessions, students can sign into shared desktop PCs without typing passwords on public keyboards:
+
+1. **Select QR Login on Desktop**:
+   - On the desktop login screen (`/login`), click **`📱 Scan QR Code`**.
+   - An ephemeral 90-second dynamic QR code is displayed with live countdown.
+2. **Scan with Phone Camera**:
+   - Point your phone camera at the desktop monitor.
+   - Tap the banner to open `/mobile-login?session=<sessionId>`.
+3. **Biometric Authorization**:
+   - Tap **`[ 📱 Sign In with Biometrics ]`** (or let auto-prompt trigger Face ID / Fingerprint).
+   - Cloud Function `verifyDesktopLoginPasskey` validates the assertion and mints a Firebase Custom Auth Token for the desktop session.
+4. **Desktop Auto-Login**:
+   - The desktop PC detects `status: 'authorized'` in Firestore, calls `signInWithCustomToken(auth, customToken)`, and logs into the workspace without any keyboard entry.
+
+---
+
+### Step 3: Daily Lab Attendance Verification (< 2 Seconds)
 
 Once your phone is paired, taking attendance during lectures or labs is fast and effortless:
 
@@ -124,32 +118,61 @@ Once your phone is paired, taking attendance during lectures or labs is fast and
 
 ## 👨‍🏫 Teacher Administration & Edge-Case Management
 
-### 1. In-Person Teacher Podium Override (Dead / Broken Phone)
+In computer lab environments, edge cases such as dead phone batteries, forgotten phones, cracked camera lenses, or device replacements will occur. The platform provides a multi-tier teacher failsafe architecture:
 
-If a student's phone battery is depleted, their screen is damaged, or they forgot their device:
+### 1. Remote 1-Click Approval on Teacher Podium HUD (`MonitorView`)
+
+When a student arrives at a lab PC without a usable smartphone:
 
 ```
-  Student Clicks: [🙋 I don't have my phone today]
-                         │
-                         ▼
-  Teacher Podium Alert Banner:
-  ┌────────────────────────────────────────────────────────┐
-  │ ⚠️ In-Person Podium Claims (1 Pending)                 │
-  │ • student1@stu.vtc.edu.hk (Claimed 14:15)             │
-  │   [ ✅ Verify In-Person ]   [ 🔄 Reset Passkey ]      │
-  └────────────────────────────────────────────────────────┘
+  Desktop Lab PC (Student)                    Teacher Podium HUD (MonitorView)
+┌────────────────────────────┐              ┌─────────────────────────────────────────────────────────┐
+│ Passkey Enforcement Gate   │              │ ⚠️ Passkey Remote Bypass Requests (1 Pending)           │
+│ [🙋 Request Teacher Bypass]│──Firestore──►│ • Chan Tai Man (student1@stu.vtc.edu.hk)                │
+│ "Phone battery dead"       │              │   Reason: Phone battery depleted (14:02)                │
+│                            │              │   [ ✅ Grant 1-Class Session Bypass ]   [ ❌ Deny ]     │
+└────────────────────────────┘              └─────────────────────────────────────────────────────────┘
+              ▲                                                           │
+              │                                                Cloud Function onCall
+              │                                            handleApproveTeacherPasskeyBypass
+              │                                                           │
+              └────────────── Firestore Real-Time Unlock ─────────────────┘
+                         (studentProperties/{uid}.passkeyBypass)
 ```
 
-1. **Student Action:** Student clicks **`🙋 I don't have my phone today`** on their Lab PC screen.
-2. **Podium Alert:** The teacher's live monitor instantly surfaces an alert banner showing the student's name, seat, and timestamp.
-3. **Verification:** The student approaches the teacher's podium. The teacher confirms their physical presence and clicks **`[ ✅ Verify In-Person ]`**.
-4. **Result:** The student's attendance bitmask is immediately marked present with verification type `in_person_teacher_override`.
+1. **Student Request**: The student clicks **`🙋 Request Teacher Remote Bypass`** on the desktop gate, selects a reason (e.g., "Phone battery dead" or "Left phone at home"), and submits.
+2. **Instant Podium Notification**: A high-visibility alert banner appears in real time on the teacher's `MonitorView` HUD showing the student's name, email, and timestamp.
+3. **1-Click Authorization**: The teacher glances across the lab to verify the student's identity and clicks **`[ ✅ Grant 1-Class Session Bypass ]`**.
+4. **Cloud Execution**: `handleApproveTeacherPasskeyBypass` grants a 180-minute bypass window in `studentProperties/{studentUid}.passkeyBypass` and writes an immutable audit entry to `passkeyAuditLogs`.
+5. **Zero-Latency Gate Unlock**: The desktop PC detects the bypass flag via Firestore listener and transitions straight into the classroom workspace without requiring any page reload.
 
 ---
 
-### 2. Replacing or Upgrading a Smartphone (Passkey Reset)
+### 2. In-Person 6-Digit Class Emergency PIN Bypass
 
-Because each student account is locked 1-to-1 to a physical device, a student who buys a new phone or gets a replacement cannot simply pair a second phone without resetting the previous registration.
+If the teacher's podium browser is temporarily busy or network connectivity between the podium and the student is delayed:
+
+1. **Emergency PIN Display**: The teacher HUD displays a generated 6-digit emergency PIN for the class session (e.g., `🔑 Emergency Bypass PIN: 849201`).
+2. **Student Entry**: On the desktop gate modal, the student selects **`🔑 Enter Emergency Teacher PIN`** and inputs the 6-digit PIN.
+3. **Server Verification**: Cloud Function `handleVerifyTeacherPasskeyBypassPin` validates the PIN against `classes/{classId}.teacherBypassPin`.
+4. **Temporary Access**: Upon validation, a 180-minute bypass is provisioned, the gate unlocks immediately, and an audit log records the PIN bypass event.
+
+---
+
+### 3. In-Person Attendance Bingo Override (Live Attendance Failsafe)
+
+During interactive Mobile Passkey Bingo Attendance:
+
+1. **Student Action:** If a student cannot scan the attendance QR, they click **`🙋 I don't have my phone today`** on their Lab PC screen.
+2. **Podium Alert:** The teacher's live monitor instantly surfaces an alert banner showing the student's name, seat, and timestamp.
+3. **Verification:** The student approaches the teacher's podium. The teacher confirms physical presence and clicks **`[ ✅ Verify In-Person ]`**.
+4. **Result:** The student's attendance bitmask is marked present with verification type `in_person_teacher_override`.
+
+---
+
+### 4. Replacing or Upgrading a Smartphone (Passkey Reset)
+
+Because each student account is locked 1-to-1 to a physical device hardware authenticator, a student who buys a new phone or gets a replacement cannot simply pair a second phone without resetting the previous registration.
 
 #### Method A: Reset from Live Attendance / Podium View
 1. When the student approaches the podium, the teacher locates the student in the **Active Attendance Table**.
@@ -174,13 +197,14 @@ A core architectural principle of the Mobile Passkey subsystem is that **shared 
 
 ### Why Desktop Registration is Blocked:
 1. **Shared Public Hardware**: Lab PCs are used by hundreds of students across multiple classes. Registering a lab PC's browser or TPM would anchor attendance to the shared classroom desk rather than the student's personal physical possession.
-2. **Absence of Dedicated Personal Biometrics**: Desktop computers in university and school labs rarely feature individual Touch ID or Windows Hello face recognition for each student profile.
-3. **Hardware Anti-Proxy Guarantee**: Enforcing mobile-only registration ensures the cryptographic credential ID is generated inside the student's personal smartphone hardware security module (Apple Secure Enclave or Android Titan M2).
+2. **Deep Freeze & Nightly Re-imaging Disruption**: Most institutional computer labs run disk-protection software (e.g., Faronics Deep Freeze) that wipes local user profiles and credentials upon reboot. Any desktop-stored WebAuthn credentials would vanish nightly, causing repeated authentication lockouts.
+3. **Absence of Dedicated Personal Biometrics**: Desktop computers in university and school labs rarely feature individual Touch ID or Windows Hello face recognition for each student profile.
+4. **Hardware Anti-Proxy Guarantee**: Enforcing mobile-only registration ensures the cryptographic credential ID is generated inside the student's personal smartphone hardware security module (Apple Secure Enclave or Android Titan M2).
 
 ### UI Enforcement:
-- **Direct Desktop Route Access**: If a student opens `/pair-phone` or `/verify-passkey` on a desktop browser (Windows, macOS Chrome, or Linux), `isMobileDevice()` detects the desktop environment and immediately renders the **`🚫 Mobile Phone Required`** barrier:
+- **Direct Desktop Route Access**: If a student opens `/pair-phone`, `/verify-passkey`, or `/mobile-login` on a desktop browser (Windows, macOS Chrome, or Linux), `isMobileDevice()` detects the desktop environment and immediately renders the **`🚫 Mobile Phone Required`** barrier:
   > *"Passkey device registration is restricted to personal mobile phones. Shared desktop computers in the lab cannot be registered as mobile passkeys. Please scan the QR code displayed on your PC screen using your phone camera."*
-- **Desktop Modal (`PasskeyPairModal.jsx`)**: When viewed on a desktop monitor, the pairing dialog strictly renders the **QR Code** and instructions to open the native smartphone camera. Direct registration links are suppressed on desktop viewports.
+- **Desktop Modal (`PasskeyPairModal.jsx`) & Gate (`PasskeyEnforcementGate.jsx`)**: When viewed on a desktop monitor, the dialog strictly renders the **QR Code** and instructions to open the native smartphone camera. Direct registration links are suppressed on desktop viewports.
 
 ---
 
@@ -240,11 +264,13 @@ flowchart LR
 
 | Threat / Cheating Vector | Vulnerability in Standard Systems | Platform Passkey Defense |
 | :--- | :--- | :--- |
-| **Password Sharing** | Students give credentials to friends who log in on mobile or desktop off-campus. | **Blocked**: Passkeys require the physical hardware security chip (Secure Enclave / Android Keystore) and biometric presence. Passwords are not accepted on mobile. |
+| **Password Sharing & Keyloggers on Lab PCs** | Students type passwords on public lab keyboards vulnerable to hardware/software keyloggers or shoulder surfing. | **Blocked**: Desktop QR Login (`/mobile-login`) allows complete passwordless authentication. Students authenticate solely on their personal mobile biometric sensor, minting an ephemeral custom token directly to the desktop session. |
+| **Lab PC Passkey Pollution & Re-imaging Wipes** | Passkeys stored on Windows Hello / macOS Keychain pollute shared PCs and are wiped by nightly Deep Freeze re-imaging. | **Blocked**: Desktop WebAuthn is strictly barred (`isMobileDevice()`). Authenticators reside exclusively in the student's mobile hardware security module (Secure Enclave / Android Keystore). |
 | **Multiple PC Logins (Proxy Sitting)** | One student logs into multiple PCs in the lab. | **Blocked**: Desktop single-session displacement (`sessionId`) immediately boots older tabs when a new login occurs. |
 | **Device Sharing (1 Phone for 2 Students)** | One present student brings 2 accounts on their phone. | **Blocked**: Server verifies public `credentialID`. If the phone's chip has already been registered to Student A, Student B's pairing request is rejected with `ALREADY_REGISTERED`. |
 | **Attempting to Register Lab PC as Passkey** | Student tries to register the shared PC browser to automate passkey prompts. | **Blocked**: `isMobileDevice()` detects desktop environments on `/pair-phone` and halts execution with `status: 'desktop_blocked'`. |
-| **QR Code Forwarding / Screenshots** | Absent student asks present friend to take a photo of the QR code and message it. | **Blocked**: The QR code encodes a single-use nonce paired with the PC session origin and expires in short order. Furthermore, WebAuthn requires the physical biometric touch on the registered authenticator. |
+| **QR Code Forwarding / Screenshots** | Absent student asks present friend to take a photo of the QR code and message it. | **Blocked**: QR codes encode single-use nonces and 90s/300s TTLs. Biometric assertion requires the physical device containing the student's private key. |
+| **Teacher Bypass Abuse / Privilege Creep** | Unrestricted permanent bypasses granted for absent students. | **Blocked**: All teacher bypasses automatically expire after 180 minutes (current class duration). Every bypass decision (remote 1-click or PIN) writes an immutable record to `passkeyAuditLogs`. |
 | **Simulated WebAuthn Extensions** | Malicious desktop browser extensions spoofing passkeys. | **Blocked**: Registration mandates `authenticatorAttachment: 'platform'` and hardware-backed user verification (`userVerification: 'required'`). |
 
 ---
@@ -265,14 +291,58 @@ flowchart LR
 }
 ```
 
+### `loginSessions/{sessionId}`
+Dynamic 90-second session for Desktop Login via Mobile Scan QR Code:
+```json
+{
+  "sessionId": "uuid_v4_session_string",
+  "status": "pending | authorized | expired",
+  "customToken": "firebase_minted_custom_auth_token_jwt",
+  "studentUid": "student_uid_123",
+  "studentEmail": "student1@stu.vtc.edu.hk",
+  "createdAt": "2026-09-27T08:00:00.000Z",
+  "expiresAt": "2026-09-27T08:01:30.000Z"
+}
+```
+
+### `classes/{classId}/passkeyBypassRequests/{studentUid}`
+Pending remote bypass claims displayed on teacher podium:
+```json
+{
+  "studentUid": "student_uid_123",
+  "studentEmail": "student1@stu.vtc.edu.hk",
+  "studentName": "Chan Tai Man",
+  "reason": "phone_battery_dead | left_phone_at_home | camera_damaged | other",
+  "status": "pending | approved | denied",
+  "requestedAt": "2026-09-27T08:05:00.000Z",
+  "reviewedAt": "2026-09-27T08:05:30.000Z",
+  "reviewedBy": "teacher1@vtc.edu.hk"
+}
+```
+
+### `studentProperties/{studentUid}.passkeyBypass`
+Active lesson-level bypass status granted by teacher remote 1-click or emergency PIN:
+```json
+{
+  "passkeyBypass": {
+    "active": true,
+    "classId": "IT114115-Demo",
+    "grantedBy": "teacher1@vtc.edu.hk | pin_verified",
+    "grantedAt": "2026-09-27T08:05:30.000Z",
+    "expiresAt": "2026-09-27T11:05:30.000Z",
+    "method": "remote_approval | pin"
+  }
+}
+```
+
 ### `passkeyAuditLogs/{logId}`
 ```json
 {
   "studentUid": "student_uid_123",
   "studentEmail": "student1@stu.vtc.edu.hk",
-  "action": "passkey_reset",
-  "performedBy": "teacher1@vtc.edu.hk",
-  "reason": "phone_replacement",
-  "timestamp": "2026-09-26T06:15:00.000Z"
+  "action": "passkey_registered | passkey_authenticated | passkey_login | passkey_reset | teacher_bypass_remote | teacher_bypass_pin",
+  "performedBy": "teacher1@vtc.edu.hk | student_uid_123",
+  "reason": "phone_replacement | phone_dead | emergency_pin",
+  "timestamp": "2026-09-27T08:05:30.000Z"
 }
 ```

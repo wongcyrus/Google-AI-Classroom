@@ -66,7 +66,7 @@ graph TD
             F_processLectureSubtitles["processLectureSubtitles (onCall: Gemini 3.8 Flash)"]
             F_extractTaskDemoSteps["extractTaskDemoSteps (onCall: Practical Tasks AI)"]
             F_evaluateTaskSubmission["evaluateTaskSubmission (onCall & Task: AI Auto-Grading)"]
-            F_passkeyFlows["WebAuthn Passkey Callables (9 functions: pair, register, authenticate, reset)"]
+            F_passkeyFlows["WebAuthn Passkey Callables (15 functions: pair, register, auth, QR login, bypass, PIN, reset)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
             F_triggerAutomaticAnalysis["triggerAutomaticAnalysis (onUpdate videoJobs)"]

@@ -3,10 +3,14 @@ import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   signInWithEmailAndPassword,
+  signInWithCustomToken,
   sendPasswordResetEmail,
   signOut,
 } from 'firebase/auth';
-import { auth } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
+import { doc, onSnapshot } from 'firebase/firestore';
+import QRCode from 'qrcode';
+import { auth, functions, db } from '../firebase-config';
 import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
 import { isValidInstitutionalEmail, isStudentEmail, deriveRoleFromEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
 import './AuthComponent.css';
@@ -19,6 +23,15 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [cooldown, setCooldown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [localUnverifiedUser, setLocalUnverifiedUser] = useState(null);
+
+  // Cross-device Mobile Passkey QR Login state
+  const [activeTab, setActiveTab] = useState('password'); // 'password' | 'qr'
+  const [qrSessionId, setQrSessionId] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrTimeLeft, setQrTimeLeft] = useState(90);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrStatus, setQrStatus] = useState('idle'); // 'idle' | 'waiting' | 'authorized' | 'expired' | 'error'
+  const [qrError, setQrError] = useState('');
 
   const isChrome = isGoogleChrome();
   const detectedBrowser = getBrowserName();
@@ -181,6 +194,74 @@ const AuthComponent = ({ unverifiedUser }) => {
     }
   };
 
+  const initiateQrSession = async () => {
+    if (!functions) return;
+    setQrLoading(true);
+    setQrError('');
+    setQrStatus('waiting');
+    setQrTimeLeft(90);
+    try {
+      const initFn = httpsCallable(functions, 'initiateDesktopLoginSession');
+      const res = await initFn({ clientRpId: window.location.hostname });
+      const { sessionId, expiresAtMillis, qrUrl } = res.data || {};
+      if (!sessionId) throw new Error('Could not create desktop login session.');
+
+      setQrSessionId(sessionId);
+      const fullUrl = `${window.location.origin}${qrUrl}`;
+      const dataUrl = await QRCode.toDataURL(fullUrl, {
+        width: 240,
+        margin: 2,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      });
+      setQrDataUrl(dataUrl);
+      const remainingSec = Math.max(0, Math.round((expiresAtMillis - Date.now()) / 1000));
+      setQrTimeLeft(remainingSec || 90);
+    } catch (err) {
+      console.error('[AuthComponent] Error initiating QR session:', err);
+      setQrError(err.message || 'Failed to initialize QR code.');
+      setQrStatus('error');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!qrSessionId || activeTab !== 'qr' || !db) return;
+
+    const unsub = onSnapshot(doc(db, `loginSessions/${qrSessionId}`), async (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status === 'authorized' && data.customToken) {
+        setQrStatus('authorized');
+        setMessage('Mobile passkey verified! Signing in to lab PC...');
+        try {
+          await signInWithCustomToken(auth, data.customToken);
+        } catch (signInErr) {
+          console.error('[AuthComponent] Custom token sign-in error:', signInErr);
+          setError('Failed to authenticate with token. Please try again.');
+        }
+      } else if (data.status === 'expired') {
+        setQrStatus('expired');
+      }
+    });
+
+    return () => unsub();
+  }, [qrSessionId, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'qr' || qrStatus !== 'waiting' || qrTimeLeft <= 0) return;
+    const interval = setInterval(() => {
+      setQrTimeLeft((prev) => {
+        if (prev <= 1) {
+          setQrStatus('expired');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeTab, qrStatus, qrTimeLeft]);
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -189,6 +270,87 @@ const AuthComponent = ({ unverifiedUser }) => {
           <h2>Welcome Back</h2>
           <p className="auth-subtitle">Sign in to your classroom account or register</p>
         </div>
+
+        <div className="auth-tab-nav" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'password'}
+            className={`auth-tab-btn ${activeTab === 'password' ? 'active' : ''}`}
+            onClick={() => setActiveTab('password')}
+          >
+            ✉️ Email & Password
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'qr'}
+            className={`auth-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('qr');
+              if (!qrSessionId || qrStatus === 'expired') {
+                initiateQrSession();
+              }
+            }}
+          >
+            📱 Scan QR Code
+          </button>
+        </div>
+
+        {activeTab === 'qr' && (
+          <div className="auth-qr-section">
+            <div className="auth-qr-instructions">
+              <strong>Scan with your mobile phone camera</strong>
+              <p>Touch Face ID or Fingerprint on your phone to instantly sign in on this lab desktop.</p>
+            </div>
+
+            <div className="auth-qr-display-box">
+              {qrLoading ? (
+                <div className="auth-qr-placeholder">
+                  <div className="auth-spinner" />
+                  <p>Generating secure QR code...</p>
+                </div>
+              ) : qrStatus === 'expired' ? (
+                <div className="auth-qr-placeholder">
+                  <p style={{ color: '#ef4444', fontWeight: 600 }}>QR Code Expired</p>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Sessions expire after 90 seconds for your security.</p>
+                  <button type="button" className="auth-submit-btn" onClick={initiateQrSession}>
+                    🔄 Refresh QR Code
+                  </button>
+                </div>
+              ) : qrDataUrl ? (
+                <div className="auth-qr-img-wrapper">
+                  <img src={qrDataUrl} alt="Desktop Login QR Code" className="auth-qr-img" />
+                  <div className="auth-qr-timer">
+                    ⏱️ Expires in: <strong>{qrTimeLeft}s</strong>
+                  </div>
+                </div>
+              ) : qrError ? (
+                <div className="auth-qr-placeholder">
+                  <p style={{ color: '#ef4444' }}>{qrError}</p>
+                  <button type="button" className="auth-submit-btn" onClick={initiateQrSession}>
+                    🔄 Retry
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="auth-qr-shared-pc-note">
+              <span>🔒</span>
+              <div>
+                <strong>Shared Lab PC Security</strong>: Passkeys reside strictly within your personal phone hardware. No credentials are saved on this public desktop machine.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="auth-qr-switch-btn"
+              onClick={() => setActiveTab('password')}
+            >
+              Prefer Email & Password? Switch tab
+            </button>
+          </div>
+        )}
 
         {!isChrome && (
           <div className="auth-browser-warning" role="alert" style={{
@@ -211,7 +373,7 @@ const AuthComponent = ({ unverifiedUser }) => {
           </div>
         )}
         
-        <form className="auth-form" onSubmit={handleLogin}>
+        <form className="auth-form" onSubmit={handleLogin} style={{ display: activeTab === 'password' ? 'flex' : 'none' }}>
           <div className="auth-field">
             <label htmlFor="auth-email">Email Address</label>
             <input

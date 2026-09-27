@@ -18,6 +18,12 @@ import {
   handleVerifyInPersonAttendanceOverride,
   handleGetStudentPasskeyStatus,
   handleResetStudentPasskey,
+  handleInitiateDesktopLoginSession,
+  handleGetDesktopLoginPasskeyOptions,
+  handleVerifyDesktopLoginPasskey,
+  handleRequestTeacherPasskeyBypass,
+  handleApproveTeacherPasskeyBypass,
+  handleVerifyTeacherPasskeyBypassPin,
 } from './passkeyFlows.js';
 export {
   handleRequestPasskeyPairingToken,
@@ -29,6 +35,12 @@ export {
   handleVerifyInPersonAttendanceOverride,
   handleGetStudentPasskeyStatus,
   handleResetStudentPasskey,
+  handleInitiateDesktopLoginSession,
+  handleGetDesktopLoginPasskeyOptions,
+  handleVerifyDesktopLoginPasskey,
+  handleRequestTeacherPasskeyBypass,
+  handleApproveTeacherPasskeyBypass,
+  handleVerifyTeacherPasskeyBypassPin,
 };
 import {
   generateBingoChallenge,
@@ -341,6 +353,84 @@ export const resetStudentPasskey = onCall(callOptions, async (request) => {
     reason,
     teacherUid: request.auth.uid,
     teacherEmail: request.auth.token?.email || 'teacher',
+  });
+});
+
+export const initiateDesktopLoginSession = onCall(callOptions, async (request) => {
+  const { clientRpId } = request.data || {};
+  return await handleInitiateDesktopLoginSession({ clientRpId });
+});
+
+export const getDesktopLoginPasskeyOptions = onCall(callOptions, async (request) => {
+  const { sessionId, clientRpId } = request.data || {};
+  return await handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpId });
+});
+
+export const verifyDesktopLoginPasskey = onCall(callOptions, async (request) => {
+  const { sessionId, authenticationResponse, clientRpId } = request.data || {};
+  return await handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId });
+});
+
+export const requestTeacherPasskeyBypass = onCall(callOptions, async (request) => {
+  const { studentUid, studentEmail, classId, deskNumber, reason } = request.data || {};
+  const effectiveUid = studentUid || request.auth?.uid;
+  const effectiveEmail = studentEmail || request.auth?.token?.email || '';
+  return await handleRequestTeacherPasskeyBypass({
+    studentUid: effectiveUid,
+    studentEmail: effectiveEmail,
+    classId,
+    deskNumber,
+    reason,
+  });
+});
+
+export const approveTeacherPasskeyBypass = onCall(callOptions, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  let isTeacher = request.auth?.token?.role === 'teacher';
+  const { requestId, classId, studentUid, studentEmail, bypassDurationMinutes, approved } = request.data || {};
+
+  if (!isTeacher && classId) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher for passkey bypass approval:', e);
+    }
+  }
+
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers can approve passkey bypass requests.');
+  }
+
+  return await handleApproveTeacherPasskeyBypass({
+    requestId,
+    classId,
+    studentUid,
+    studentEmail,
+    teacherUid: request.auth.uid,
+    teacherEmail: request.auth.token?.email || 'teacher',
+    bypassDurationMinutes,
+    approved: approved !== false,
+  });
+});
+
+export const verifyTeacherPasskeyBypassPin = onCall(callOptions, async (request) => {
+  const { classId, studentUid, pin, reason, deskNumber } = request.data || {};
+  const effectiveUid = studentUid || request.auth?.uid;
+  return await handleVerifyTeacherPasskeyBypassPin({
+    classId,
+    studentUid: effectiveUid,
+    pin,
+    reason,
+    deskNumber,
   });
 });
 

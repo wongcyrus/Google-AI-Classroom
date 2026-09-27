@@ -58,6 +58,12 @@ vi.mock('firebase-admin/firestore', () => ({
   },
 }));
 
+vi.mock('firebase-admin/auth', () => ({
+  getAuth: vi.fn(() => ({
+    createCustomToken: vi.fn().mockResolvedValue('mock-custom-token-student-123'),
+  })),
+}));
+
 vi.mock('@simplewebauthn/server', () => ({
   generateRegistrationOptions: vi.fn().mockResolvedValue({
     challenge: 'mock-reg-challenge',
@@ -98,6 +104,12 @@ import {
   handleVerifyInPersonAttendanceOverride,
   handleGetStudentPasskeyStatus,
   handleResetStudentPasskey,
+  handleInitiateDesktopLoginSession,
+  handleGetDesktopLoginPasskeyOptions,
+  handleVerifyDesktopLoginPasskey,
+  handleRequestTeacherPasskeyBypass,
+  handleApproveTeacherPasskeyBypass,
+  handleVerifyTeacherPasskeyBypassPin,
   resolveRpId,
 } from './passkeyFlows.js';
 import {
@@ -577,5 +589,319 @@ describe('WebAuthn Passkey Flows Backend', () => {
       expect(res.previousDeviceModel).toBe('Samsung S24');
     });
   });
+
+  describe('handleInitiateDesktopLoginSession', () => {
+    it('creates an ephemeral 90s login session and returns QR URL', async () => {
+      const res = await handleInitiateDesktopLoginSession({ clientRpId: 'localhost' });
+
+      expect(res.sessionId).toBeDefined();
+      expect(res.expiresAtMillis).toBeGreaterThan(Date.now());
+      expect(res.qrUrl).toBe(`/mobile-login?session=${res.sessionId}`);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: res.sessionId,
+          status: 'pending',
+          rpId: 'localhost',
+        })
+      );
+    });
+  });
+
+  describe('handleGetDesktopLoginPasskeyOptions', () => {
+    it('throws error if sessionId is missing', async () => {
+      await expect(handleGetDesktopLoginPasskeyOptions({})).rejects.toThrow('Missing sessionId.');
+    });
+
+    it('throws error if session not found', async () => {
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(handleGetDesktopLoginPasskeyOptions({ sessionId: 'unknown_session' })).rejects.toThrow('Login session not found or expired.');
+    });
+
+    it('throws error if session is not pending', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'authorized', expiresAtMillis: Date.now() + 60000 }),
+      });
+      await expect(handleGetDesktopLoginPasskeyOptions({ sessionId: 'session_auth' })).rejects.toThrow('Session is authorized.');
+    });
+
+    it('throws error and marks session expired if TTL passed', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() - 5000 }),
+      });
+      await expect(handleGetDesktopLoginPasskeyOptions({ sessionId: 'expired_session' })).rejects.toThrow('Login session expired.');
+      expect(mockDocUpdate).toHaveBeenCalledWith({ status: 'expired' });
+    });
+
+    it('returns WebAuthn authentication options and saves challenge', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() + 60000, rpId: 'localhost' }),
+      });
+
+      const res = await handleGetDesktopLoginPasskeyOptions({ sessionId: 'valid_session' });
+      expect(res.options).toBeDefined();
+      expect(res.sessionId).toBe('valid_session');
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          challenge: 'mock-auth-challenge',
+        })
+      );
+    });
+  });
+
+  describe('handleVerifyDesktopLoginPasskey', () => {
+    it('throws error if sessionId or assertion is missing', async () => {
+      await expect(handleVerifyDesktopLoginPasskey({})).rejects.toThrow('Missing sessionId or authenticationResponse.');
+    });
+
+    it('throws error if no student passkey matches device credential ID', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          expiresAtMillis: Date.now() + 60000,
+          challenge: 'mock-auth-challenge',
+        }),
+      });
+
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+      await expect(
+        handleVerifyDesktopLoginPasskey({
+          sessionId: 'session_1',
+          authenticationResponse: { id: 'unregistered_cred' },
+        })
+      ).rejects.toThrow('No student passkey found matching this mobile device.');
+    });
+
+    it('authenticates, updates counter, mints custom token, and authorizes session', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          expiresAtMillis: Date.now() + 60000,
+          challenge: 'mock-auth-challenge',
+          rpIdUsed: 'it114115-2627.web.app',
+        }),
+      });
+
+      const mockPasskeyDocRef = { update: vi.fn().mockResolvedValue(true) };
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'student_alex',
+            ref: mockPasskeyDocRef,
+            data: () => ({
+              studentEmail: 'alex@vtc.edu.hk',
+              credentialID: 'hardware-cred-abc',
+              credentialPublicKey: Buffer.from([1, 2, 3, 4]).toString('base64'),
+              counter: 0,
+              deviceModel: 'iPhone 15 Pro',
+            }),
+          },
+        ],
+      });
+
+      const res = await handleVerifyDesktopLoginPasskey({
+        sessionId: 'session_1',
+        authenticationResponse: { id: 'hardware-cred-abc' },
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.studentUid).toBe('student_alex');
+      expect(res.studentEmail).toBe('alex@vtc.edu.hk');
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'authorized',
+          customToken: 'mock-custom-token-student-123',
+          studentUid: 'student_alex',
+        })
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'DESKTOP_LOGIN_VIA_MOBILE_QR',
+          studentUid: 'student_alex',
+        })
+      );
+    });
+  });
+
+  describe('handleRequestTeacherPasskeyBypass', () => {
+    it('throws error if classId is missing', async () => {
+      await expect(
+        handleRequestTeacherPasskeyBypass({ studentUid: 'alex', reason: 'dead battery' })
+      ).rejects.toThrow('Missing classId.');
+    });
+
+    it('creates a bypass request and audit log', async () => {
+      const res = await handleRequestTeacherPasskeyBypass({
+        classId: 'class_it101',
+        studentUid: 'alex',
+        studentEmail: 'alex@vtc.edu.hk',
+        deskNumber: 'Desk #14',
+        reason: 'Battery Depleted',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.requestId).toBeDefined();
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'class_it101',
+          studentUid: 'alex',
+          deskNumber: 'Desk #14',
+          reason: 'Battery Depleted',
+          status: 'pending',
+        })
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'BYPASS_REQUEST_CREATED',
+          studentUid: 'alex',
+        })
+      );
+    });
+  });
+
+  describe('handleApproveTeacherPasskeyBypass', () => {
+    it('throws error if classId is missing', async () => {
+      await expect(
+        handleApproveTeacherPasskeyBypass({ studentUid: 'alex' })
+      ).rejects.toThrow('Missing classId.');
+    });
+
+    it('approves bypass and writes lesson passkeyBypass property with audit log', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'alex',
+          studentEmail: 'alex@vtc.edu.hk',
+          reason: 'Battery Depleted',
+          deskNumber: 'Desk #14',
+        }),
+      });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        requestId: 'req_123',
+        classId: 'class_it101',
+        studentUid: 'alex',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        bypassDurationMinutes: 180,
+        approved: true,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.approved).toBe(true);
+      expect(res.expiresAtMillis).toBeGreaterThan(Date.now());
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          passkeyBypass: expect.objectContaining({
+            active: true,
+            grantedBy: 'teacher@vtc.edu.hk',
+            reason: 'Battery Depleted',
+            scope: 'current_lesson',
+          }),
+        }),
+        { merge: true }
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TEACHER_BYPASS_GRANTED',
+          studentUid: 'alex',
+        })
+      );
+    });
+
+    it('records rejection when approved is false', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'alex',
+          studentEmail: 'alex@vtc.edu.hk',
+          reason: 'Broken phone',
+        }),
+      });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        requestId: 'req_rej',
+        classId: 'class_it101',
+        studentUid: 'alex',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        approved: false,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.approved).toBe(false);
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TEACHER_BYPASS_REJECTED',
+          studentUid: 'alex',
+        })
+      );
+    });
+  });
+
+  describe('handleVerifyTeacherPasskeyBypassPin', () => {
+    it('throws error if required arguments are missing', async () => {
+      await expect(
+        handleVerifyTeacherPasskeyBypassPin({ classId: 'c1', studentUid: 's1' })
+      ).rejects.toThrow('Missing classId, studentUid, or pin.');
+    });
+
+    it('throws error if class is not found', async () => {
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleVerifyTeacherPasskeyBypassPin({ classId: 'c_none', studentUid: 's1', pin: '123456' })
+      ).rejects.toThrow('Class not found.');
+    });
+
+    it('throws error if pin does not match teacher emergency pin', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teacherBypassPin: '654321' }),
+      });
+      await expect(
+        handleVerifyTeacherPasskeyBypassPin({ classId: 'c1', studentUid: 's1', pin: '111111' })
+      ).rejects.toThrow('Invalid teacher emergency PIN.');
+    });
+
+    it('grants temporary lesson bypass when PIN matches', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teacherBypassPin: '889900' }),
+      });
+
+      const res = await handleVerifyTeacherPasskeyBypassPin({
+        classId: 'c1',
+        studentUid: 'alex',
+        pin: '889900',
+        reason: 'Aisle bypass',
+        deskNumber: 'Desk 12',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.expiresAtMillis).toBeGreaterThan(Date.now());
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          passkeyBypass: expect.objectContaining({
+            active: true,
+            grantedBy: 'Teacher Emergency PIN',
+            deskNumber: 'Desk 12',
+          }),
+        }),
+        { merge: true }
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TEACHER_BYPASS_PIN_VERIFIED',
+          studentUid: 'alex',
+        })
+      );
+    });
+  });
 });
+
 

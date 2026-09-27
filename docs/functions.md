@@ -53,7 +53,7 @@ flowchart TD
         T_Call -->|processLectureSubtitles| PLS[processLectureSubtitles: Whole-Class Audio & VTT/SRT]
         T_Call -->|extractTaskDemoSteps| ETD[extractTaskDemoSteps: Practical Task AI Rubric Extractor]
         T_Call -->|evaluateTaskSubmission| ETS[evaluateTaskSubmission: Practical Task AI Auto-Grading]
-        T_Call -->|passkeyFlows| PKF[WebAuthn Passkeys: 9 FIDO2 Callables]
+        T_Call -->|passkeyFlows| PKF[WebAuthn Passkeys: 15 FIDO2 Callables]
         T_Doc -->|videoAnalysisJobs created| PJA[processVideoAnalysisJob Flow]
     end
 
@@ -174,6 +174,24 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`resetStudentPasskey`**:
     -   **Trigger**: Callable `onCall` (Teacher authorized).
     -   **Description**: Enables teachers to assist students with phone replacement, device loss, or hardware re-pairing. Unlinks `studentPasskeys/{studentUid}`, invalidates old hardware bindings, and logs an immutable audit entry in `passkeyAuditLogs` with teacher UID, student UID, timestamp, and previous device model.
+-   **`initiateDesktopLoginSession`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/passkeyFlows.js`).
+    -   **Description**: Invoked on a shared Lab PC login screen (`/login`) to generate an ephemeral 90-second login session in `loginSessions/{sessionId}`. Returns the `sessionId`, `expiresAtMillis`, and the QR URL (`/mobile-login?session=...`) for the student's mobile phone camera scan.
+-   **`getDesktopLoginPasskeyOptions`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Invoked by the student's mobile smartphone upon scanning the desktop login QR code. Validates session status (`pending`) and TTL. Emits standard WebAuthn assertion challenge options (`generateAuthenticationOptions`) and stores the active cryptographic challenge on the session document.
+-   **`verifyDesktopLoginPasskey`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Validates the mobile biometric assertion against `studentPasskeys`. Updates the hardware counter and last login timestamp. Mints a Firebase Custom Auth Token (`createCustomToken`) for the student UID and updates `loginSessions/{sessionId}` to `authorized`. The desktop listener receives the custom token via Firestore snapshot and automatically signs in with `signInWithCustomToken`.
+-   **`requestTeacherPasskeyBypass`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Creates a pending teacher bypass claim in `classes/{classId}/passkeyBypassRequests/{requestId}` for students whose phone battery died, was forgotten at home, or suffered hardware damage. Broadcasts a real-time alert to the instructor's podium HUD (`MonitorView`).
+-   **`approveTeacherPasskeyBypass`**:
+    -   **Trigger**: Callable `onCall` (Teacher authorized).
+    -   **Description**: Allows an instructor to grant or reject a temporary lesson-scoped bypass (default 180 minutes) with 1 click from their podium HUD. Writes `passkeyBypass` directly into `classes/{classId}/studentProperties/{studentUid}` and records an immutable entry in `passkeyAuditLogs`.
+-   **`verifyTeacherPasskeyBypassPin`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Validates a 6-digit emergency class PIN punched directly into the student's PC screen by the instructor walking the computer lab aisles. On validation against `classes/{classId}.teacherBypassPin`, grants the 180-minute lesson bypass and logs the event in `passkeyAuditLogs`.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 

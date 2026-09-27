@@ -227,3 +227,206 @@
   height: 220px;
   border-radius: 0.5rem;
 }
+
+/* Enforcement Gate & Bypass Modal Styles */
+.passkey-gate-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #0b0f19 0%, #1e1b4b 100%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.passkey-gate-card {
+  width: 100%;
+  max-width: 520px;
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1.5rem;
+  padding: 2.25rem 2rem;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #f8fafc;
+}
+
+.passkey-lab-pc-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  margin: 1.25rem 0;
+  text-align: left;
+  color: #fef3c7;
+  font-size: 0.85rem;
+}
+
+.passkey-warning-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.passkey-warning-content strong {
+  display: block;
+  color: #fbbf24;
+  margin-bottom: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.passkey-warning-content p {
+  margin: 0;
+  line-height: 1.4;
+  color: #fde68a;
+}
+
+.passkey-qr-section {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin: 0.5rem 0 1.25rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.passkey-qr-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.passkey-qr-img {
+  width: 220px;
+  height: 220px;
+  display: block;
+}
+
+.passkey-qr-instructions {
+  margin: 0.75rem 0 0 0;
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.passkey-qr-placeholder {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.passkey-gate-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.passkey-bypass-link-btn {
+  background: none;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  color: #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.passkey-bypass-link-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.passkey-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.passkey-modal-close:hover {
+  color: #0f172a;
+}
+
+.passkey-tab-switcher {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+  margin-bottom: 1.25rem;
+  width: 100%;
+}
+
+.passkey-tab-btn {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.passkey-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.passkey-bypass-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.passkey-form-group label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.3rem;
+}
+
+.passkey-form-group input,
+.passkey-form-group select {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  font-size: 0.9rem;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
+.passkey-form-group input:focus,
+.passkey-form-group select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
