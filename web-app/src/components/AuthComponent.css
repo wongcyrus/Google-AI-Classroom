@@ -229,3 +229,129 @@
   border: 1px solid #c7d2fe;
   color: var(--color-primary, #4f46e5);
 }
+
+/* Dual Auth Tabs */
+.auth-tab-nav {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-tab-btn.active {
+  background: #ffffff;
+  color: var(--color-primary, #4f46e5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.auth-qr-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.25rem;
+}
+
+.auth-qr-instructions strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--color-text-main, #0f172a);
+  margin-bottom: 0.25rem;
+}
+
+.auth-qr-instructions p {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.auth-qr-display-box {
+  background: #ffffff;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 260px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.auth-qr-img-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-qr-img {
+  width: 200px;
+  height: 200px;
+  display: block;
+  border-radius: 8px;
+}
+
+.auth-qr-timer {
+  font-size: 0.85rem;
+  color: #64748b;
+  background: #f8fafc;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+}
+
+.auth-qr-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.auth-qr-shared-pc-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.78rem;
+  text-align: left;
+  color: #4338ca;
+  line-height: 1.4;
+}
+
+.auth-qr-switch-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary, #4f46e5);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.25rem;
+  text-decoration: underline;
+}
+
+.auth-qr-switch-btn:hover {
+  color: #3730a3;
+}
+

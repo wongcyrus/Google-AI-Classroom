@@ -81,6 +81,14 @@ vi.mock('./components/public/PublicLiveView', () => ({
   default: () => <div data-testid="public-live-view">Public Live View</div>,
 }));
 
+vi.mock('./components/passkey/PasskeyEnforcementGate', () => ({
+  default: ({ children }) => <>{children}</>,
+}));
+
+vi.mock('./components/passkey/PasskeyMobileLoginView', () => ({
+  default: () => <div data-testid="passkey-mobile-login-view">Passkey Mobile Login View</div>,
+}));
+
 vi.mock('./assets/HKIIT_logo_RGB_horizontal.jpg', () => ({
   default: 'logo.jpg',
 }));
