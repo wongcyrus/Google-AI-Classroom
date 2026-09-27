@@ -18,6 +18,8 @@ function resolveApiKey() {
   if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
 
   const candidateEnvPaths = [
+    path.resolve(__dirname, '../web-app/.env.prod'),
+    path.resolve(__dirname, '../web-app/.env.production'),
     path.resolve(__dirname, '../web-app/.env.dev'),
     path.resolve(__dirname, '../web-app/.env'),
     path.resolve(__dirname, '../web-app/.env.local'),
@@ -38,7 +40,13 @@ function resolveApiKey() {
   return 'test-api-key-placeholder';
 }
 
-const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.argv[2] || 'it114115-dev-2026';
+const explicitProjectArg = process.argv.slice(2).find(arg => !arg.startsWith('-'));
+const projectId = (explicitProjectArg || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'it114115-dev-2026').trim();
+delete process.env.GCLOUD_PROJECT;
+delete process.env.GOOGLE_CLOUD_PROJECT;
+delete process.env.CLOUDSDK_CORE_PROJECT;
+process.env.GOOGLE_CLOUD_QUOTA_PROJECT = projectId;
+
 const apiKey = resolveApiKey();
 
 console.log(`\n========================================================`);
@@ -574,7 +582,7 @@ async function runSecurityRulesSuite() {
     );
 
     // 2. Student 1 permissions
-    await signInWithEmailAndPassword(clientAuth, student1Email, student1Pass);
+    await signInWithEmailAndPassword(clientAuth, student1Email, defaultPassword);
     await expectAllowed(
       getDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id)),
       'Student can read their OWN studentPasskey doc'
@@ -601,7 +609,7 @@ async function runSecurityRulesSuite() {
     );
 
     // 3. Student 2 permissions on Student 1 passkey
-    await signInWithEmailAndPassword(clientAuth, student2Email, student2Pass);
+    await signInWithEmailAndPassword(clientAuth, student2Email, defaultPassword);
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'studentPasskeys', passkeyStudent1Id)),
       'Student 2 CANNOT read Student 1 passkey document'
