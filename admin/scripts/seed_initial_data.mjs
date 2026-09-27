@@ -226,6 +226,14 @@ async function main() {
   }
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5).`);
 
+  // Global Login Policy (Password Whitelist)
+  await db.collection('system_config').doc('loginPolicy').set({
+    passwordWhitelist: studentEmails,
+    updatedAt: FieldValue.serverTimestamp(),
+    description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
+  }, { merge: true });
+  console.log(`✅ Global Login Policy initialized with password whitelist for student1..5.`);
+
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
   console.log(`👨‍🏫 Teachers: teacher1@vtc.edu.hk, teacher2@vtc.edu.hk (Co-teaching)`);

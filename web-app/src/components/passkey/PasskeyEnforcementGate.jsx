@@ -34,11 +34,34 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   const [bypassSuccessMsg, setBypassSuccessMsg] = useState('');
   const [bypassErrorMsg, setBypassErrorMsg] = useState('');
   const [emergencyPin, setEmergencyPin] = useState('');
+  const [isWhitelisted, setIsWhitelisted] = useState(false);
 
   const isMobile = isMobileDevice();
 
   // If role is teacher, or no user, bypass gate entirely
   const isStudent = role === 'student' || (!role && user?.email?.includes('@stu.'));
+
+  // 1. Listen for system_config/loginPolicy password whitelist
+  useEffect(() => {
+    if (!user?.email || !isStudent) return;
+
+    const userEmail = user.email.toLowerCase().trim();
+    const unsubWhitelist = onSnapshot(doc(db, 'system_config/loginPolicy'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const list = Array.isArray(data.passwordWhitelist) ? data.passwordWhitelist : [];
+        const isListed = list.some((e) => e && e.toLowerCase().trim() === userEmail) || (data.passwordWhitelistUids && data.passwordWhitelistUids.includes(user.uid));
+        setIsWhitelisted(!!isListed);
+      } else {
+        setIsWhitelisted(false);
+      }
+    }, (err) => {
+      console.warn('[PasskeyEnforcementGate] loginPolicy listener warning:', err);
+      setIsWhitelisted(false);
+    });
+
+    return () => unsubWhitelist();
+  }, [user?.email, user?.uid, isStudent]);
 
   // 1. Listen for studentPasskeys/{uid}
   useEffect(() => {
@@ -212,9 +235,31 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     );
   }
 
-  // If passkey is registered or bypass active, unlock classroom
-  if (hasPasskey || hasBypass) {
-    return children;
+  // If passkey is registered, bypass active, or whitelisted, unlock classroom
+  if (hasPasskey || hasBypass || isWhitelisted) {
+    return (
+      <>
+        {isWhitelisted && !hasPasskey && !hasBypass && (
+          <div
+            className="passkey-whitelist-banner"
+            style={{
+              background: '#1e293b',
+              borderBottom: '1px solid #3b82f6',
+              color: '#93c5fd',
+              padding: '6px 16px',
+              fontSize: '0.8125rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              zIndex: 1000,
+            }}
+          >
+            <span>🛡️ <strong>Password Whitelist Active:</strong> Account permitted to sign in via password without mandatory mobile passkey.</span>
+          </div>
+        )}
+        {children}
+      </>
+    );
   }
 
   // Locked Gate UI (Desktop Browser without passkey)
