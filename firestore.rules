@@ -152,6 +152,11 @@ service cloud.firestore {
         allow write: if isTeacherInClass(classId);
       }
 
+      match /passkeyBypassRequests/{requestId} {
+        allow read: if isTeacherInClass(classId) || (request.auth != null && (request.auth.uid == resource.data.studentUid || resource.data.studentEmail == request.auth.token.email));
+        allow write: if isTeacherInClass(classId);
+      }
+
       match /attendanceAdjustments/{adjustmentId} {
         allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
         allow write: if isTeacherInClass(classId);
@@ -306,6 +311,21 @@ service cloud.firestore {
     }
     match /users/{userId} {
       allow read: if isTeacher() || (request.auth != null && request.auth.uid == userId);
+      allow write: if false; // Only backend functions / admin SDK can write
+    }
+    match /studentPasskeys/{studentUid} {
+      allow read: if isTeacher() || (request.auth != null && request.auth.uid == studentUid);
+      allow write: if false; // Only backend functions / admin SDK can write
+    }
+    match /loginSessions/{sessionId} {
+      allow read: if true; // Unauthenticated desktop PC listens during QR login
+      allow write: if false; // Only backend functions / admin SDK can write
+    }
+    match /passkeyPairingTokens/{tokenId} {
+      allow read, write: if false; // Managed exclusively by Cloud Functions backend
+    }
+    match /passkeyAuditLogs/{logId} {
+      allow read: if isTeacher();
       allow write: if false; // Only backend functions / admin SDK can write
     }
   }
