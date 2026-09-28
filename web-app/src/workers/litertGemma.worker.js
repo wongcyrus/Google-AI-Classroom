@@ -113,12 +113,14 @@ Translate the following spoken classroom transcript from ${sourceName} into the 
 ${targetList}
 
 CRITICAL RULES:
-1. Preserve discipline-specific terminology, proper nouns, formula/variable names, and standard technical abbreviations in their original language/form as appropriate for ${domainContext}.
-2. Return strictly a single valid JSON object mapping each target language code to its translated text.
-3. No explanation, markdown code blocks, or extra text.${customInstructions}
+1. FULL TRANSLATION MANDATORY: Translate the entire meaning into each requested target language. For English ("en"), translate all spoken Chinese/Cantonese phrases into fluent natural English (e.g. "hello你好嗎" -> "Hello, how are you?"). Never leave untranslated Chinese text in English translations.
+2. For Simplified Chinese ("zh-Hans" / "zh-CN"), translate into standard written Simplified Chinese (e.g. "你好，你好吗？"). For Traditional Chinese ("zh-Hant"), translate into standard written Traditional Chinese.
+3. Preserve discipline-specific terminology, proper nouns, formula/variable names, and standard technical abbreviations (e.g. "useEffect", "Docker", "Python") in their original technical form.
+4. Return strictly a single valid JSON object mapping each target language code to its translated text.
+5. No explanation, markdown code blocks, or extra text.${customInstructions}
 
 Format example:
-{"en":"Today we explore these concepts","ja":"本日はこれらの概念を探求します"}
+{"en":"Hello, how are you?","zh-Hans":"你好，你好吗？"}
 
 Spoken transcript:
 "${transcript}"
@@ -133,7 +135,23 @@ export function parseGemmaTranslationOutput(rawText, targetLangs = []) {
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (typeof parsed === 'object' && parsed !== null) {
-        return parsed;
+        const normalized = { ...parsed };
+        for (const lang of targetLangs) {
+          if (!normalized[lang]) {
+            const targetPrefix = lang.split('-')[0].toLowerCase();
+            const altKey = Object.keys(parsed).find(k => {
+              const lowerK = k.toLowerCase();
+              return lowerK === lang.toLowerCase() ||
+                lowerK.startsWith(targetPrefix) ||
+                (targetPrefix === 'en' && lowerK.includes('english')) ||
+                (targetPrefix === 'zh' && (lowerK.includes('chinese') || lowerK.includes('mandarin') || lowerK.includes('cantonese')));
+            });
+            if (altKey && parsed[altKey]) {
+              normalized[lang] = parsed[altKey];
+            }
+          }
+        }
+        return normalized;
       }
     }
   } catch (err) {
