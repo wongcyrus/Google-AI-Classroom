@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('qrcode', () => ({
@@ -395,7 +395,23 @@ describe('BingoModal Component', () => {
     expect(screen.getByText('1.8s')).toBeInTheDocument();
   });
 
-  it('renders direct verify button on mobile viewport for mobile_passkey mode', async () => {
+  it('does NOT render passkey modal when isMobile is true to prevent absent students from spoofing attendance', async () => {
+    const passkeyBingo = {
+      ...mockBingo,
+      questionSource: 'mobile_passkey',
+      classId: 'class_it101',
+      studentUid: 'student_1',
+    };
+
+    const { container } = render(
+      <BingoModal activeBingo={passkeyBingo} isMobile={true} onSubmit={vi.fn()} onClose={vi.fn()} />
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
+  });
+
+  it('renders passkey QR code on desktop without mobile bypass button so students must scan the physical screen', async () => {
     const passkeyBingo = {
       ...mockBingo,
       questionSource: 'mobile_passkey',
@@ -405,14 +421,13 @@ describe('BingoModal Component', () => {
 
     await act(async () => {
       render(
-        <BingoModal activeBingo={passkeyBingo} isMobile={true} onSubmit={vi.fn()} onClose={vi.fn()} />
+        <BingoModal activeBingo={passkeyBingo} onSubmit={vi.fn()} onClose={vi.fn()} />
       );
     });
 
-    const directBtn = screen.getByTestId('btn-verify-on-mobile-direct');
-    expect(directBtn).toBeInTheDocument();
-    expect(directBtn).toHaveAttribute('href', expect.stringContaining('/verify-passkey?classId=class_it101&bingoId=bingo_abc123'));
-    expect(screen.getByText(/Tap the button above to verify using Face ID or Fingerprint on this device/i)).toBeInTheDocument();
+    expect(screen.getByTestId('passkey-attendance-qr')).toBeInTheDocument();
+    expect(screen.queryByTestId('btn-verify-on-mobile-direct')).not.toBeInTheDocument();
+    expect(screen.getByText(/Point your phone camera at this QR code to verify attendance via Face ID \/ Fingerprint/i)).toBeInTheDocument();
   });
 });
 

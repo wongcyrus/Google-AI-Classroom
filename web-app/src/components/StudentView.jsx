@@ -44,7 +44,7 @@ import StudentMobileView from './student/StudentMobileView';
 
 import Sidebar from './student/Sidebar';
 
-const StudentDesktopView = ({ user, onSwitchToMobile }) => {
+const StudentDesktopView = ({ user }) => {
   // Browser validation guard for desktop proctored students
   const isChrome = isGoogleChrome();
   if (!isChrome) {
@@ -2346,27 +2346,6 @@ const StudentDesktopView = ({ user, onSwitchToMobile }) => {
                   >
                     🖥️ Quick Start (Screen Only)
                   </button>
-                  <button
-                    type="button"
-                    onClick={onSwitchToMobile}
-                    className="btn-switch-mobile-mode"
-                    title="Switch to Mobile Companion View (Teacher Screen, Subtitles, Bingo)"
-                    style={{
-                      background: '#10b981',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '8px 14px',
-                      fontSize: '0.86rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    📱 Mobile View (Screen, CC, Bingo)
-                  </button>
                 </div>
 
                 <div className="setup-system-summary">
@@ -3368,7 +3347,6 @@ const StudentView = ({ user, onViewModeChange }) => {
   return (
     <StudentDesktopView
       user={user}
-      onSwitchToMobile={() => updateViewMode('mobile')}
     />
   );
 };

@@ -179,6 +179,19 @@ export async function resolveBingoQuestion({
     };
   }
 
+  // Mode 0.5: Lecture Hall Dynamic Rotating QR Code Check
+  if (questionSource === 'lecture_passkey_qr') {
+    return {
+      question: 'Scan the live rotating QR code on the lecture projector screen with your paired phone.',
+      options: ['Lecture Hall QR Biometric Verification Active'],
+      correctIndex: 0,
+      observedEvidence: 'Lecture Dynamic Rotating QR Biometric Check',
+      questionSource: 'lecture_passkey_qr',
+      bankQuestionId: null,
+      screenshotUrl: null,
+    };
+  }
+
   // Mode 1: Predefined Question Bank (Zero AI cost, $0.00)
   if (questionSource === 'question_bank') {
     const classConfigDoc = await db.doc(`classes/${classId}/classProperties/config`).get();

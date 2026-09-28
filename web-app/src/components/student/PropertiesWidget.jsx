@@ -6,19 +6,40 @@ import React from 'react';
  */
 export const isInternalPropertyKey = (key) => {
   if (!key || typeof key !== 'string') return true;
+  const lower = key.toLowerCase();
   const internalPrefixes = [
-    'activeBingo',
-    'pendingRetry',
-    'priorMissed',
-    'retryBingo',
-    'retryDelay',
-    'lastRetry',
-    'lastBingo',
+    'activebingo',
+    'pendingretry',
+    'priormissed',
+    'retrybingo',
+    'retrydelay',
+    'lastretry',
+    'lastbingo',
+    'retrycancelled',
+    'passkey',
+    'lastinattentive',
+    'inattentive',
+    'attention',
+    'lastattention',
+    'lastactivity',
+    'lastseen',
+    'presence',
   ];
-  if (internalPrefixes.some((prefix) => key === prefix || key.startsWith(prefix))) {
+  if (internalPrefixes.some((prefix) => lower === prefix || lower.startsWith(prefix))) {
     return true;
   }
-  if (key === 'strikeNumber' || key === 'bingoStats' || key === 'examReadiness') {
+  const exactInternalKeys = new Set([
+    'strikenumber',
+    'bingostats',
+    'examreadiness',
+    'retrycancelledreason',
+    'passkeybypass',
+    'lastinattentiveat',
+    'status',
+    'updatedat',
+    'createdat',
+  ]);
+  if (exactInternalKeys.has(lower)) {
     return true;
   }
   return false;

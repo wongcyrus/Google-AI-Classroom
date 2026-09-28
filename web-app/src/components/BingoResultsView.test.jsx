@@ -26,12 +26,40 @@ vi.mock('firebase/functions', () => ({
 }));
 
 vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn(),
+  collection: vi.fn((db, ...pathSegments) => ({
+    path: pathSegments.join('/'),
+    id: pathSegments[pathSegments.length - 1],
+  })),
+  doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
   getDoc: vi.fn().mockResolvedValue({ exists: () => false }),
   getDocs: vi.fn().mockResolvedValue({ forEach: vi.fn() }),
   onSnapshot: vi.fn((ref, callback, errCallback) => {
-    mockSnapshotCallback = callback;
+    if (ref?.path?.includes('studentPasskeys')) {
+      callback({
+        forEach: (fn) => {
+          fn({
+            id: 'student_1',
+            data: () => ({
+              studentUid: 'student_1',
+              studentEmail: 'student1@stu.vtc.edu.hk',
+              registeredAt: '2026-09-20T00:00:00Z',
+            }),
+          });
+        },
+        docs: [
+          {
+            id: 'student_1',
+            data: () => ({
+              studentUid: 'student_1',
+              studentEmail: 'student1@stu.vtc.edu.hk',
+              registeredAt: '2026-09-20T00:00:00Z',
+            }),
+          },
+        ],
+      });
+    } else {
+      mockSnapshotCallback = callback;
+    }
     return () => {};
   }),
 }));
@@ -639,6 +667,42 @@ describe('BingoResultsView Component', () => {
 
     fireEvent.click(screen.getByTestId('btn-cancel-reset-passkey'));
     expect(screen.queryByTestId('modal-reset-passkey-confirm')).not.toBeInTheDocument();
+  });
+
+  it('defaults Filter Round to the latest challenge round and allows switching to all rounds', () => {
+    const multiRoundRecords = [
+      ...sampleRecords,
+      {
+        id: 'bingo_r2_1',
+        studentUid: 'student_1',
+        studentEmail: 'student1@stu.vtc.edu.hk',
+        question: 'What is the purpose of Docker Compose?',
+        options: ['Multi-container orchestration', 'Single VM boot', 'CSS styling', 'Audio recording'],
+        correctIndex: 0,
+        selectedIndex: 0,
+        selectedOptionText: 'Multi-container orchestration',
+        result: 'passed',
+        responseTimeSec: 2.1,
+        questionSource: 'question_bank',
+        strikeNumber: 1,
+        windowFocused: true,
+        issuedAtMillis: 1789640500000, // Newer timestamp
+      },
+    ];
+
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(multiRoundRecords);
+
+    // Filter round dropdown should be present and default to latest round
+    const roundSelect = screen.getByLabelText(/Filter Round:/i);
+    expect(roundSelect.value).not.toBe('all');
+
+    // Should display latest round question in summary
+    expect(screen.getByText(/What is the purpose of Docker Compose\?/i)).toBeInTheDocument();
+
+    // Teacher can explicitly switch to 'all'
+    fireEvent.change(roundSelect, { target: { value: 'all' } });
+    expect(roundSelect.value).toBe('all');
   });
 });
 

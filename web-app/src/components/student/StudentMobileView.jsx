@@ -316,6 +316,20 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
             };
           }
 
+          // Passkey attendance requires the student to be physically seated at their lab PC
+          // and scan the QR code displayed on the desktop screen using their phone camera.
+          // Never pop up mobile_passkey bingo in mobile view to prevent remote absent students from faking attendance.
+          if (bingo && bingo.questionSource === 'mobile_passkey') {
+            setEnrolledBingoChallenges(prev => {
+              if (!prev[cId]) return prev;
+              const next = { ...prev };
+              delete next[cId];
+              return next;
+            });
+            if (cId === activeClass) setActiveClassBingo(null);
+            return;
+          }
+
           // Must be unfinalized and pending/active
           if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
             const totalSeconds = bingo.timeLimitSeconds || 45;
@@ -372,16 +386,24 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
   }, [userClasses, user?.uid, activeClass]);
 
   const activeBingo = useMemo(() => {
+    let candidate = null;
     // 1. Check activeClass first
     if (activeClass && enrolledBingoChallenges[activeClass]) {
-      return enrolledBingoChallenges[activeClass];
+      candidate = enrolledBingoChallenges[activeClass];
+    } else {
+      // 2. Check any other enrolled class with active challenge
+      const otherId = Object.keys(enrolledBingoChallenges).find(id => enrolledBingoChallenges[id]);
+      if (otherId) {
+        candidate = enrolledBingoChallenges[otherId];
+      } else {
+        candidate = activeClassBingo;
+      }
     }
-    // 2. Check any other enrolled class with active challenge
-    const otherId = Object.keys(enrolledBingoChallenges).find(id => enrolledBingoChallenges[id]);
-    if (otherId) {
-      return enrolledBingoChallenges[otherId];
+    // Mobile passkey challenges are strictly prohibited from popping up in mobile view
+    if (candidate && candidate.questionSource === 'mobile_passkey') {
+      return null;
     }
-    return activeClassBingo;
+    return candidate;
   }, [enrolledBingoChallenges, activeClass, activeClassBingo]);
 
   const handleBingoSubmit = async ({ bingoId, selectedIndex, responseTimeSec, windowFocused }) => {

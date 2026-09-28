@@ -64,13 +64,14 @@ export default function BingoResultsView({
   const [error, setError] = useState(null);
 
   // Filters
-  const [selectedRoundId, setSelectedRoundId] = useState('all');
+  const [selectedRoundId, setSelectedRoundId] = useState('latest');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'ghost_absent' | 'passed' | 'failed_incorrect' | 'missed_timeout' | 'pending'
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxImg, setLightboxImg] = useState(null);
   const [overridingUids, setOverridingUids] = useState({});
   const [resettingUids, setResettingUids] = useState({});
   const [resetConfirmStudent, setResetConfirmStudent] = useState(null);
+  const [registeredPasskeysMap, setRegisteredPasskeysMap] = useState({});
   const [actionFeedback, setActionFeedback] = useState(null);
 
   const handleTeacherOverride = async (bingoId, studentUid) => {
@@ -207,6 +208,37 @@ export default function BingoResultsView({
     return () => unsubscribe();
   }, [classId]);
 
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'studentPasskeys'),
+      (snapshot) => {
+        const map = {};
+        if (snapshot && typeof snapshot.forEach === 'function') {
+          snapshot.forEach((d) => {
+            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+            const email = (data.studentEmail || data.email || '').toLowerCase();
+            const uid = data.studentUid || data.uid || d?.id;
+            if (email) map[email] = { id: d?.id, ...data };
+            if (uid) map[uid] = { id: d?.id, ...data };
+          });
+        } else if (Array.isArray(snapshot?.docs)) {
+          snapshot.docs.forEach((d) => {
+            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+            const email = (data.studentEmail || data.email || '').toLowerCase();
+            const uid = data.studentUid || data.uid || d?.id;
+            if (email) map[email] = { id: d?.id, ...data };
+            if (uid) map[uid] = { id: d?.id, ...data };
+          });
+        }
+        setRegisteredPasskeysMap(map);
+      },
+      (err) => {
+        console.warn('[BingoResultsView] Notice fetching studentPasskeys:', err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
   // Filter raw records by the active lesson time window (with 15 min grace padding for early/late checks)
   const lessonFilteredRecords = useMemo(() => {
     if (!records.length) return [];
@@ -264,7 +296,10 @@ export default function BingoResultsView({
 
   // Find active round object for display
   const activeRound = useMemo(() => {
-    if (selectedRoundId !== 'all') {
+    if (selectedRoundId === 'all') {
+      return rounds.length > 0 ? rounds[0] : null;
+    }
+    if (selectedRoundId && selectedRoundId !== 'latest') {
       const found = rounds.find((rd) => rd.id === selectedRoundId);
       if (found) return found;
     }
@@ -274,8 +309,11 @@ export default function BingoResultsView({
   // Filter records by selected round
   const recordsInScope = useMemo(() => {
     if (selectedRoundId === 'all') return lessonFilteredRecords;
+    if (selectedRoundId === 'latest' || !selectedRoundId) {
+      return rounds.length > 0 ? rounds[0].records : lessonFilteredRecords;
+    }
     const targetRound = rounds.find((rd) => rd.id === selectedRoundId);
-    return targetRound ? targetRound.records : lessonFilteredRecords;
+    return targetRound ? targetRound.records : (rounds.length > 0 ? rounds[0].records : lessonFilteredRecords);
   }, [selectedRoundId, rounds, lessonFilteredRecords]);
 
   // Helper to check live screen sharing for a student
@@ -869,6 +907,7 @@ export default function BingoResultsView({
                     {activeRound.questionSource === 'teacher_screen' ? '🖥️ Teacher Screen Vision' :
                      activeRound.questionSource === 'student_screen' ? '💻 Student Screen Vision' :
                      activeRound.questionSource === 'mobile_passkey' ? '📱 Mobile Passkey Biometric' :
+                     activeRound.questionSource === 'lecture_passkey_qr' ? '📽️ Lecture Hall Dynamic QR' :
                      '📚 Question Bank'}
                   </span>
                   <span className="bingo-qa-timestamp">
@@ -882,15 +921,19 @@ export default function BingoResultsView({
               </div>
 
               {/* Options Grid OR Biometric Passkey Info */}
-              {activeRound.questionSource === 'mobile_passkey' ? (
+              {activeRound.questionSource === 'mobile_passkey' || activeRound.questionSource === 'lecture_passkey_qr' ? (
                 <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '0.75rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.5rem 0' }}>
-                  <span style={{ fontSize: '1.75rem' }}>🔐</span>
+                  <span style={{ fontSize: '1.75rem' }}>{activeRound.questionSource === 'lecture_passkey_qr' ? '📽️' : '🔐'}</span>
                   <div>
                     <div style={{ fontWeight: 700, color: '#5b21b6', fontSize: '0.95rem' }}>
-                      Biometric WebAuthn Attendance Challenge
+                      {activeRound.questionSource === 'lecture_passkey_qr'
+                        ? 'Lecture Hall Dynamic Rotating QR Biometric Check-In'
+                        : 'Biometric WebAuthn Attendance Challenge'}
                     </div>
                     <div style={{ fontSize: '0.85rem', color: '#6d28d9', marginTop: '0.2rem' }}>
-                      Physical hardware biometric touch (Face ID, Touch ID, or Android Fingerprint) on student&apos;s paired smartphone. Students are ranked by reaction speed (fastest response latency).
+                      {activeRound.questionSource === 'lecture_passkey_qr'
+                        ? 'Students scanned the dynamic rotating QR code on the lecture screen using their paired smartphone with native Face ID / Fingerprint verification.'
+                        : 'Physical hardware biometric touch (Face ID, Touch ID, or Android Fingerprint) on student\'s paired smartphone. Students are ranked by reaction speed (fastest response latency).'}
                     </div>
                   </div>
                 </div>
@@ -969,15 +1012,15 @@ export default function BingoResultsView({
                     <select
                       id="bingo-round-select"
                       className="bingo-round-select"
-                      value={selectedRoundId}
+                      value={selectedRoundId === 'latest' && rounds.length > 0 ? rounds[0].id : selectedRoundId}
                       onChange={(e) => setSelectedRoundId(e.target.value)}
                     >
-                      <option value="all">🌐 All Challenges ({lessonFilteredRecords.length} records)</option>
                       {rounds.map((rd, i) => (
                         <option key={rd.id} value={rd.id}>
-                          #{rounds.length - i}: {rd.question.slice(0, 32)}... ({rd.records.length} students, {formatTime(rd.latestMillis, timezone)})
+                          {i === 0 ? '⚡ (Latest) ' : ''}#{rounds.length - i}: {rd.question.slice(0, 32)}... ({rd.records.length} students, {formatTime(rd.latestMillis, timezone)})
                         </option>
                       ))}
+                      <option value="all">🌐 All Challenges ({lessonFilteredRecords.length} records)</option>
                     </select>
                   </div>
 
@@ -1264,10 +1307,10 @@ export default function BingoResultsView({
 
                             {/* Chosen Answer */}
                             <td>
-                              {r.questionSource === 'mobile_passkey' ? (
+                              {r.questionSource === 'mobile_passkey' || r.questionSource === 'lecture_passkey_qr' ? (
                                 r.passkeyVerified ? (
                                   <span style={{ fontSize: '0.84rem', color: '#6d28d9', fontWeight: 600 }}>
-                                    📱 Biometric Passkey Verified
+                                    {r.questionSource === 'lecture_passkey_qr' ? '📽️ Lecture QR Biometric Verified' : '📱 Biometric Passkey Verified'}
                                   </span>
                                 ) : r.inPersonVerified ? (
                                   <span style={{ fontSize: '0.84rem', color: '#0369a1', fontWeight: 600 }}>
@@ -1404,24 +1447,48 @@ export default function BingoResultsView({
                                     {overridingUids[r.id] ? 'Verifying...' : (r.inPersonClaim ? '🙋 Verify In-Person' : 'Podium Override')}
                                   </button>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const studentEmail = r.studentEmail || '';
-                                    const studentName = getStudentDisplayName(studentEmail, studentProfiles);
-                                    setResetConfirmStudent({
-                                      studentUid: r.studentUid,
-                                      displayName: studentName || r.studentUid,
-                                      email: studentEmail,
-                                    });
-                                  }}
-                                  disabled={Boolean(resettingUids[r.studentUid])}
-                                  data-testid={`btn-reset-passkey-${r.studentUid}`}
-                                  className="btn-reset-passkey"
-                                  title="Unlink phone passkey if student replaced their device"
-                                >
-                                  {resettingUids[r.studentUid] ? 'Resetting...' : '🔄 Reset Passkey'}
-                                </button>
+                                {(() => {
+                                  const passkey = registeredPasskeysMap[r.studentUid] || registeredPasskeysMap[(r.studentEmail || '').toLowerCase()];
+                                  if (passkey) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const studentEmail = r.studentEmail || '';
+                                          const studentName = getStudentDisplayName(studentEmail, studentProfiles);
+                                          setResetConfirmStudent({
+                                            studentUid: r.studentUid,
+                                            displayName: studentName || r.studentUid,
+                                            email: studentEmail,
+                                          });
+                                        }}
+                                        disabled={Boolean(resettingUids[r.studentUid])}
+                                        data-testid={`btn-reset-passkey-${r.studentUid}`}
+                                        className="btn-reset-passkey"
+                                        title={`Registered on ${passkey.deviceModel || 'Mobile Device'}. Click to unlink.`}
+                                      >
+                                        {resettingUids[r.studentUid] ? 'Resetting...' : '🔄 Reset Passkey'}
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <span
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        color: '#b45309',
+                                        background: '#fef3c7',
+                                        border: '1px solid #fde68a',
+                                        padding: '1px 5px',
+                                        borderRadius: '4px',
+                                        fontWeight: 600,
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                      title="Student has not registered a passkey on their mobile device yet"
+                                    >
+                                      ⏳ No Passkey
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>

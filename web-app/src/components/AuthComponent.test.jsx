@@ -6,6 +6,23 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 
 vi.mock('../firebase-config', () => ({
   auth: { currentUser: null },
+  functions: {},
+  db: {},
+}));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: { sessionId: 'mock-session-123' } })),
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  onSnapshot: vi.fn((ref, cb) => () => {}),
+}));
+
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mockqr'),
+  },
 }));
 
 vi.mock('firebase/auth', () => ({
@@ -19,6 +36,7 @@ vi.mock('firebase/auth', () => ({
 describe('AuthComponent Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(browserDetection, 'isMobileDevice').mockReturnValue(true);
   });
 
   it('renders login form and inputs correctly', () => {
