@@ -191,7 +191,20 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Description**: Allows an instructor to grant or reject a temporary lesson-scoped bypass (default 180 minutes) with 1 click from their podium HUD. Writes `passkeyBypass` directly into `classes/{classId}/studentProperties/{studentUid}` and records an immutable entry in `passkeyAuditLogs`.
 -   **`verifyTeacherPasskeyBypassPin`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Validates a 6-digit emergency class PIN punched directly into the student's PC screen by the instructor walking the computer lab aisles. On validation against `classes/{classId}.teacherBypassPin`, grants the 180-minute lesson bypass and logs the event in `passkeyAuditLogs`.
+-   **`createLectureBingoSession`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
+    -   **Authentication & Authorization**: Authenticated teacher or class owner.
+    -   **Description**: Creates or activates a lecture-wide dynamic rotating QR code attendance session in `classes/{classId}/bingoRecords/{bingoId}` and updates `classes/{classId}/lectureQrSession/active`. Computes a cryptographically random session secret, initializes response tracking maps, and generates the initial HMAC-SHA256 rotating QR token with configurable rotation interval (default 15s).
+-   **`getLecturePasskeyAuthOptions`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
+    -   **Description**: Invoked when a student scans the dynamic rotating lecture QR code with their mobile device camera. Validates current token freshness against the session secret with window tolerance, creates a challenge record in `classes/{classId}/bingoRecords/{bingoId}/challenges/{challengeId}`, and returns WebAuthn authentication assertion options requiring biometric user verification.
+-   **`verifyLecturePasskeyAuth`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
+    -   **Description**: Cryptographically validates the mobile WebAuthn biometric assertion signature against `studentPasskeys`. Enforces device fingerprint consistency and 1-Phone = 1-Student hardware lock to eliminate proxy attendance. On successful verification, registers the student response in `bingoRecords/{bingoId}.responses.{studentUid}`, sets `verifiedStudentsCount`, and updates the student's `activeBingo` record to `passed`.
+-   **`reconcileLectureRecordings`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
+    -   **Authentication & Authorization**: Requires teacher authorization.
+    -   **Description**: Audits and reconciles physical Cloud Storage lecture recording media files (`recordings/{classId}/`) against Firestore `classes/{classId}/lectureRecordings` documents. Automatically discovers orphaned recordings, repairs missing metadata (e.g. durations, resolutions, file sizes), recovers interrupted sessions, and synchronizes status flags (`ready`, `processing`, `failed`).
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
