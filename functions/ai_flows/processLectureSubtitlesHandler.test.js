@@ -4,7 +4,12 @@ const {
   mockDocGet,
   mockDocUpdate,
   mockDocRef,
+  mockCollectionGet,
+  mockCollectionRef,
   mockSave,
+  mockSetMetadata,
+  mockGetMetadata,
+  mockExists,
   mockGetSignedUrl,
   mockFile,
   mockBucket,
@@ -17,10 +22,20 @@ const {
     get: mockDocGet,
     update: mockDocUpdate,
   }));
+  const mockCollectionGet = vi.fn();
+  const mockCollectionRef = vi.fn(() => ({
+    get: mockCollectionGet,
+  }));
   const mockSave = vi.fn().mockResolvedValue();
+  const mockSetMetadata = vi.fn().mockResolvedValue();
+  const mockGetMetadata = vi.fn().mockResolvedValue([{ size: 1048576, metadata: {} }]);
+  const mockExists = vi.fn().mockResolvedValue([true]);
   const mockGetSignedUrl = vi.fn().mockResolvedValue(['https://signed.url/file']);
   const mockFile = vi.fn(() => ({
     save: mockSave,
+    setMetadata: mockSetMetadata,
+    getMetadata: mockGetMetadata,
+    exists: mockExists,
     getSignedUrl: mockGetSignedUrl,
   }));
   const mockBucket = vi.fn(() => ({
@@ -34,7 +49,12 @@ const {
     mockDocGet,
     mockDocUpdate,
     mockDocRef,
+    mockCollectionGet,
+    mockCollectionRef,
     mockSave,
+    mockSetMetadata,
+    mockGetMetadata,
+    mockExists,
     mockGetSignedUrl,
     mockFile,
     mockBucket,
@@ -46,6 +66,7 @@ const {
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
     doc: mockDocRef,
+    collection: mockCollectionRef,
   }),
   FieldValue: {
     serverTimestamp: () => 'MOCK_TIMESTAMP',
@@ -80,7 +101,7 @@ vi.mock('./cost.js', () => ({
   calculateCost: vi.fn(() => 0.042),
 }));
 
-import { processLectureSubtitles } from './processLectureSubtitles.js';
+import { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
 
 describe('processLectureSubtitles Callable Cloud Function Handler', () => {
   beforeEach(() => {
@@ -285,3 +306,69 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     );
   });
 });
+
+describe('handleReconcileLectureRecordings Function Handler', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws invalid-argument if classId is missing', async () => {
+    await expect(handleReconcileLectureRecordings({})).rejects.toMatchObject({
+      code: 'invalid-argument',
+    });
+  });
+
+  it('scans candidate recordings and reconciles missing videoUrl from Cloud Storage', async () => {
+    const mockUpdate = vi.fn().mockResolvedValue();
+    mockCollectionGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'rec_candidate_1',
+          data: () => ({
+            status: 'recording',
+            startedAt: { toMillis: () => 1700000000000 },
+          }),
+          ref: {
+            update: mockUpdate,
+          },
+        },
+        {
+          id: 'rec_already_ready',
+          data: () => ({
+            status: 'ready',
+            videoUrl: 'https://video.url',
+            vttUrls: { original: 'https://vtt.url' },
+          }),
+          ref: {
+            update: vi.fn(),
+          },
+        },
+      ],
+    });
+
+    mockExists.mockResolvedValue([true]);
+    mockGetMetadata.mockResolvedValue([
+      {
+        size: 52428800,
+        metadata: {
+          durationSeconds: '120',
+          firebaseStorageDownloadTokens: 'token_abc',
+        },
+      },
+    ]);
+
+    const result = await handleReconcileLectureRecordings({ classId: 'c1' });
+
+    expect(result.success).toBe(true);
+    expect(result.reconciledCount).toBe(1);
+    expect(result.reconciledSessions[0].sessionId).toBe('rec_candidate_1');
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ready',
+        durationSeconds: 120,
+        fileSize: 52428800,
+      })
+    );
+  });
+});
+

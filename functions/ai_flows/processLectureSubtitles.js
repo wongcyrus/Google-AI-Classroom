@@ -394,3 +394,164 @@ Output MUST be valid JSON with this exact schema:
     }
   }
 );
+
+/**
+ * Automatically inspects and reconciles orphaned or interrupted lecture recordings
+ * where media files exist in Cloud Storage but the Firestore document was left incomplete.
+ */
+export async function handleReconcileLectureRecordings({ classId, triggerSubtitles = true }) {
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'classId is required.');
+  }
+
+  const recordingsRef = db.collection(`classes/${classId}/lectureRecordings`);
+  const snapshot = await recordingsRef.get();
+  const bucket = storage.bucket();
+  const reconciledSessions = [];
+
+  for (const docSnap of snapshot.docs) {
+    const data = docSnap.data();
+    const sessionId = docSnap.id;
+
+    // A recording is a candidate for reconciliation if it's missing videoUrl or stuck in recording/uploading/processing_subtitles
+    const isCandidate =
+      data.status === 'recording' ||
+      data.status === 'uploading' ||
+      data.status === 'processing_subtitles' ||
+      !data.videoUrl;
+
+    if (!isCandidate) continue;
+
+    // Check Cloud Storage for video file
+    const possibleVideoPaths = [
+      data.storagePath,
+      `recordings/${classId}/${sessionId}/lecture.webm`,
+      `recordings/${classId}/${sessionId}/lecture.mp4`,
+    ].filter(Boolean);
+
+    // Check Cloud Storage for audio file
+    const possibleAudioPaths = [
+      data.audioStoragePath,
+      `recordings/${classId}/${sessionId}/lecture_audio.webm`,
+      `recordings/${classId}/${sessionId}/lecture_audio.m4a`,
+    ].filter(Boolean);
+
+    let videoFile = null;
+    let videoPath = null;
+    let videoMetadata = null;
+
+    for (const p of possibleVideoPaths) {
+      const f = bucket.file(p);
+      const [exists] = await f.exists();
+      if (exists) {
+        videoFile = f;
+        videoPath = p;
+        try {
+          const [meta] = await f.getMetadata();
+          videoMetadata = meta;
+        } catch {}
+        break;
+      }
+    }
+
+    let audioFile = null;
+    let audioPath = null;
+    let audioMetadata = null;
+
+    for (const p of possibleAudioPaths) {
+      const f = bucket.file(p);
+      const [exists] = await f.exists();
+      if (exists) {
+        audioFile = f;
+        audioPath = p;
+        try {
+          const [meta] = await f.getMetadata();
+          audioMetadata = meta;
+        } catch {}
+        break;
+      }
+    }
+
+    if (videoFile || audioFile) {
+      let videoUrl = data.videoUrl;
+      let audioUrl = data.audioUrl;
+
+      if (videoFile && !videoUrl) {
+        let token = videoMetadata?.metadata?.firebaseStorageDownloadTokens;
+        if (!token) {
+          token = crypto.randomUUID();
+          try {
+            await videoFile.setMetadata({
+              contentType: videoMetadata?.contentType || 'video/webm',
+              metadata: {
+                ...(videoMetadata?.metadata || {}),
+                firebaseStorageDownloadTokens: token,
+              },
+            });
+          } catch {}
+        }
+        videoUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(videoPath)}?alt=media&token=${token}`;
+      }
+
+      if (audioFile && !audioUrl) {
+        let token = audioMetadata?.metadata?.firebaseStorageDownloadTokens;
+        if (!token) {
+          token = crypto.randomUUID();
+          try {
+            await audioFile.setMetadata({
+              contentType: audioMetadata?.contentType || 'audio/webm',
+              metadata: {
+                ...(audioMetadata?.metadata || {}),
+                firebaseStorageDownloadTokens: token,
+              },
+            });
+          } catch {}
+        }
+        audioUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(audioPath)}?alt=media&token=${token}`;
+      }
+
+      const durationSeconds =
+        data.durationSeconds ||
+        Number(videoMetadata?.metadata?.durationSeconds || audioMetadata?.metadata?.durationSeconds || 0) ||
+        null;
+
+      const updatePayload = {
+        status: data.vttUrls ? 'ready' : (data.status === 'recording' || data.status === 'uploading' ? 'ready' : data.status),
+        videoUrl: videoUrl || data.videoUrl || null,
+        storagePath: videoPath || data.storagePath || null,
+        audioUrl: audioUrl || data.audioUrl || null,
+        audioStoragePath: audioPath || data.audioStoragePath || null,
+      };
+
+      if (videoMetadata?.size) {
+        updatePayload.fileSize = Number(videoMetadata.size);
+      }
+      if (audioMetadata?.size) {
+        updatePayload.audioFileSize = Number(audioMetadata.size);
+      }
+      if (durationSeconds && !data.durationSeconds) {
+        updatePayload.durationSeconds = durationSeconds;
+      }
+      if (!data.endedAt && data.startedAt && durationSeconds) {
+        const startMillis = data.startedAt.toMillis ? data.startedAt.toMillis() : new Date(data.startedAt).getTime();
+        updatePayload.endedAt = new Date(startMillis + durationSeconds * 1000);
+      }
+
+      await docSnap.ref.update(updatePayload);
+      reconciledSessions.push({
+        sessionId,
+        videoUrl,
+        audioUrl,
+        durationSeconds,
+        hasSubtitles: Boolean(data.vttUrls),
+      });
+    }
+  }
+
+  return {
+    success: true,
+    reconciledCount: reconciledSessions.length,
+    reconciledSessions,
+  };
+}
+

@@ -422,6 +422,7 @@ const ClassView = ({ user }) => {
           <MonitorView 
             user={user} 
             classId={classId} 
+            className={classInfo?.name || classInfo?.className || ''}
             startTime={startTime} 
             endTime={endTime} 
             lessons={lessons} 
