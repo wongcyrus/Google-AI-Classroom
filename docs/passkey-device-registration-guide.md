@@ -279,6 +279,38 @@ A core architectural principle of the Mobile Passkey subsystem is that **shared 
 - **Desktop/Tablet Modal (`PasskeyPairModal.jsx`) & Gate (`PasskeyEnforcementGate.jsx`)**: When viewed on a desktop or tablet viewport, the interface strictly renders the **Pairing QR Code** for mobile camera scanning. Direct passkey registration is suppressed.
 - **Login Tab Navigation (`AuthComponent.jsx`)**: Tablets default to the desktop login interface with Scan QR Code and Email/Password tabs.
 
+### 📱 Flip Phones, Foldables & Comprehensive Device Matrix
+
+The platform deterministically distinguishes handheld smartphones (including modern flip phones and foldables) from tablets and desktops:
+
+1. **Clamshell Flip Smartphones (Samsung Galaxy Z Flip, Motorola Razr)**:
+   - **User-Agent**: Transmits standard `Android` + `Mobile` tokens.
+   - **Screen Dimensions**: Viewport width when unfolded is ~360–412 CSS px, matching standard smartphone geometry.
+   - **Biometrics**: Full WebAuthn support via side-mounted capacitive fingerprint sensor and Android Keystore (StrongBox/Titan).
+   - **Result**: `isHandheldPhone()` = `true` (✅ **100% Fully Supported**).
+
+2. **Book-Style Foldable Smartphones (Samsung Galaxy Z Fold, Google Pixel Fold, OnePlus Open)**:
+   - **Folded (Cover Screen)**: Operates as a slim phone (width ~380–400 CSS px, `Android` + `Mobile`).
+   - **Unfolded (Main Screen)**: Unfolds to a square ~700–800 CSS px inner display. Because the browser User-Agent contains the `Mobile` token, `isTabletDevice()` explicitly excludes it from tablet classification, ensuring it is recognized as a personal smartphone in both folded and unfolded states.
+   - **Result**: `isHandheldPhone()` = `true` (✅ **100% Fully Supported**).
+
+3. **Legacy / Feature Flip Phones (Nokia 2720 Flip, KaiOS / Non-Smart Dumb Phones)**:
+   - Feature phones lack the W3C WebAuthn API (`PublicKeyCredential`) and hardware biometric sensors.
+   - Gracefully detected by `browserSupportsWebAuthn() === false`, prompting the student to use their smartphone or request a **Teacher Remote 1-Click Bypass** / **6-Digit Emergency PIN**.
+
+#### Device Classification & Passkey Compatibility Matrix
+
+| Device Type & Form Factor | Hardware / User-Agent Profile | `isHandheldPhone()` | Passkey Registration | In-Class Attendance Flow |
+| :--- | :--- | :---: | :---: | :--- |
+| **iPhone (all models)** | `iPhone` / `iOS Safari` / `CriOS` | ✅ `true` | ✅ **Allowed** | Native Face ID / Touch ID Biometric Touch |
+| **Android Smartphone** | `Android` + `Mobile` token | ✅ `true` | ✅ **Allowed** | Under-Display / Side Fingerprint / Titan M2 |
+| **Flip Smartphone (Galaxy Z Flip, Razr)** | `Android` + `Mobile` | ✅ `true` | ✅ **Allowed** | Side Fingerprint Sensor Touch |
+| **Foldable (Galaxy Z Fold, Pixel Fold)** | `Android` + `Mobile` (Folded & Unfolded) | ✅ `true` | ✅ **Allowed** | Side Fingerprint / Power Button Biometrics |
+| **iPad / iPad Mini / iPad Pro** | `iPad` or `Macintosh` + `maxTouchPoints > 1` | ❌ `false` | 🚫 **Blocked** | Desktop Login / Scans Desktop QR via Phone |
+| **Android Tablet / Pad (Galaxy Tab)** | `Android` (without `Mobile` token) | ❌ `false` | 🚫 **Blocked** | Desktop Login / Scans Desktop QR via Phone |
+| **Lab PC / Mac / Windows Laptop** | Windows / macOS / Linux Desktop | ❌ `false` | 🚫 **Blocked** | Desktop Login / Scans Desktop QR via Phone |
+| **Legacy Feature Flip Phone (KaiOS)** | No WebAuthn `PublicKeyCredential` | N/A | 🚫 **Blocked** | Teacher Remote 1-Click Bypass or Emergency PIN |
+
 ---
 
 ## 🔒 Single-Session Integrity vs. Passwordless Mobile Passkey (No Dual Session Needed)
