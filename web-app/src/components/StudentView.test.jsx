@@ -1069,19 +1069,6 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(screen.getByText('student@school.edu')).toBeInTheDocument();
   });
 
-  it('allows student to switch from desktop view to mobile companion view', async () => {
-    render(<StudentView user={mockUser} />);
-    const mobileSwitchBtn = screen.getByRole('button', { name: /mobile view/i });
-    expect(mobileSwitchBtn).toBeInTheDocument();
-
-    fireEvent.click(mobileSwitchBtn);
-
-    // Now in mobile companion view
-    await waitFor(() => {
-      expect(screen.getByRole('banner')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /switch to desktop/i })).toBeInTheDocument();
-    });
-  });
 
   it('allows student to manually switch class even when currentActiveClassId is present, persisting override and showing Follow Schedule button', async () => {
     localStorage.clear();
@@ -1150,23 +1137,24 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(activeSwitcher.value).toBe('class2');
   });
 
-  it('allows switching between desktop mode and mobile companion view', async () => {
+  it('renders desktop proctored view by default without mobile view button, and allows mobile view when set', async () => {
     localStorage.clear();
     const onViewModeChange = vi.fn();
-    render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
+    const { unmount } = render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
 
     expect(onViewModeChange).toHaveBeenCalledWith('desktop');
+    expect(screen.queryByRole('button', { name: /Mobile View/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
 
-    // Switch to Mobile Companion Mode
-    const switchMobileBtn = screen.getByRole('button', { name: /Mobile View/i });
-    await act(async () => {
-      fireEvent.click(switchMobileBtn);
-    });
+    unmount();
 
+    // Render with mobile mode preference stored
+    localStorage.setItem('student_view_mode', 'mobile');
+    render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
     expect(document.body.classList.contains('in-student-mobile-view')).toBe(true);
     expect(onViewModeChange).toHaveBeenCalledWith('mobile');
 
-    // Switch back to Desktop mode
+    // Switch back to Desktop mode from mobile view
     const switchDesktopBtn = screen.getByRole('button', { name: /Switch to Desktop Invigilation/i });
     await act(async () => {
       fireEvent.click(switchDesktopBtn);

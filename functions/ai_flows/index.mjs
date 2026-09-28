@@ -6,6 +6,7 @@ import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyz
 import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
+import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import {
@@ -24,6 +25,9 @@ import {
   handleRequestTeacherPasskeyBypass,
   handleApproveTeacherPasskeyBypass,
   handleVerifyTeacherPasskeyBypassPin,
+  handleCreateLectureBingoSession,
+  handleGetLecturePasskeyAuthOptions,
+  handleVerifyLecturePasskeyAuth,
 } from './passkeyFlows.js';
 export {
   handleRequestPasskeyPairingToken,
@@ -41,6 +45,9 @@ export {
   handleRequestTeacherPasskeyBypass,
   handleApproveTeacherPasskeyBypass,
   handleVerifyTeacherPasskeyBypassPin,
+  handleCreateLectureBingoSession,
+  handleGetLecturePasskeyAuthOptions,
+  handleVerifyLecturePasskeyAuth,
 };
 import {
   generateBingoChallenge,
@@ -150,14 +157,21 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
-  let isTeacher = request.auth?.token?.role === 'teacher';
+  const email = (request.auth.token?.email || '').toLowerCase();
+  let isTeacher = request.auth?.token?.role === 'teacher' ||
+    (email.endsWith('@vtc.edu.hk') && !email.includes('@stu.'));
+
   const classId = request.data?.classId;
   if (!isTeacher && classId && request.auth?.uid) {
     try {
       const classDoc = await getFirestore().doc(`classes/${classId}`).get();
       if (classDoc.exists) {
         const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+        if ((cData.teacherEmails && cData.teacherEmails.includes(email)) ||
+            (cData.teacherEmail && cData.teacherEmail.toLowerCase() === email) ||
+            cData.teacherUid === request.auth.uid ||
+            cData.ownerUid === request.auth.uid ||
+            cData.createdBy === request.auth.uid ||
             (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
           isTeacher = true;
         }
@@ -434,6 +448,74 @@ export const verifyTeacherPasskeyBypassPin = onCall(callOptions, async (request)
   });
 });
 
-export { processLectureSubtitles } from './processLectureSubtitles.js';
+export const createLectureBingoSession = onCall(callOptions, async (request) => {
+  let isTeacher = request.auth?.token?.role === 'teacher';
+  const { classId, timeLimitSeconds } = request.data || {};
+  if (!isTeacher && classId && request.auth?.uid) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher for createLectureBingoSession:', e);
+    }
+  }
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only instructors can create a lecture QR attendance session.');
+  }
+  return await handleCreateLectureBingoSession({
+    classId,
+    timeLimitSeconds,
+    teacherUid: request.auth?.uid,
+  });
+});
+
+export const getLecturePasskeyAuthOptions = onCall(callOptions, async (request) => {
+  const { classId, bingoId, token, clientRpId } = request.data || {};
+  return await handleGetLecturePasskeyAuthOptions({
+    classId,
+    bingoId,
+    token,
+    clientRpId,
+  });
+});
+
+export const verifyLecturePasskeyAuth = onCall(callOptions, async (request) => {
+  const {
+    classId,
+    bingoId,
+    challengeId,
+    token,
+    assertionResponse,
+    clientRpId,
+    timeToCompleteMillis,
+    deviceFingerprint,
+  } = request.data || {};
+  return await handleVerifyLecturePasskeyAuth({
+    classId,
+    bingoId,
+    challengeId,
+    token,
+    assertionResponse,
+    clientRpId,
+    timeToCompleteMillis,
+    deviceFingerprint,
+  });
+});
+
+export const reconcileLectureRecordings = onCall(callOptions, async (request) => {
+  if (request.auth?.token?.role !== 'teacher') {
+    throw new HttpsError('permission-denied', 'Only teachers can reconcile lecture recordings.');
+  }
+  const { classId } = request.data || {};
+  return await handleReconcileLectureRecordings({ classId });
+});
+
+export { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
 export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';
 export { evaluateTaskSubmission, evaluateTaskSubmissionTask, enqueueTaskEvaluation } from './evaluateTaskSubmission.js';

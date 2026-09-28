@@ -323,6 +323,44 @@ describe('StudentMobileView Component', () => {
     });
   });
 
+  it('does NOT popup or activate mobile_passkey attendance challenges in mobile view so absent students cannot fake attendance', async () => {
+    mockScheduleReturn = {
+      userClasses: [{ id: 'class101', name: 'Cloud Computing 101' }],
+      currentActiveClassId: 'class101',
+      activeClassIds: ['class101'],
+    };
+
+    render(<StudentMobileView user={mockUser} onSwitchToDesktop={mockSwitchDesktop} />);
+
+    const class101PropsCb = mockSnapshotCallbacks.find(item =>
+      item.ref?.path?.includes('classes/class101/studentProperties/student1')
+    );
+    expect(class101PropsCb).toBeDefined();
+
+    await act(async () => {
+      class101PropsCb.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'passkey_bingo_999',
+            classId: 'class101',
+            questionSource: 'mobile_passkey',
+            question: 'Scan QR code on lab PC',
+            options: [],
+            timeLimitSeconds: 60,
+            status: 'pending',
+            expiresAtMillis: Date.now() + 60000,
+          },
+        }),
+      });
+    });
+
+    // Passkey bingo should be completely ignored in StudentMobileView
+    expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Class Bingo Check/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-attendance-qr')).not.toBeInTheDocument();
+  });
+
   it('supports switching between 3 mobile view modes: Screen & CC, Screen Only, and CC Only', () => {
     mockBroadcastReturn = {
       isBroadcastActive: true,

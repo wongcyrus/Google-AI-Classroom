@@ -79,6 +79,9 @@ describe('PropertiesWidget Component and Helpers', () => {
         retryBingoScheduledAtMillis: 1789349555,
         retryDelayMinutes: 3,
         lastRetryDispatchedAt: { seconds: 1789349560 },
+        retryCancelledReason: 'teacher_cancelled',
+        passkeyBypass: { expired: true, active: false },
+        lastInattentiveAt: { seconds: 1789349510 },
         examReadiness: { isReady: true },
       };
 
@@ -90,7 +93,7 @@ describe('PropertiesWidget Component and Helpers', () => {
       expect(screen.getByText('team')).toBeInTheDocument();
       expect(screen.getByText('Red Dragons')).toBeInTheDocument();
 
-      // Internal bingo keys and examReadiness must NOT be in the document
+      // Internal bingo keys, passkey bypass, retryCancelledReason, attention keys, and examReadiness must NOT be in the document
       expect(screen.queryByText('examReadiness')).not.toBeInTheDocument();
       expect(screen.queryByText('✅ Verified (Ready)')).not.toBeInTheDocument();
       expect(screen.queryByText('pendingRetryBingo')).not.toBeInTheDocument();
@@ -103,6 +106,9 @@ describe('PropertiesWidget Component and Helpers', () => {
       expect(screen.queryByText('retryBingoScheduledAtMillis')).not.toBeInTheDocument();
       expect(screen.queryByText('retryDelayMinutes')).not.toBeInTheDocument();
       expect(screen.queryByText('lastRetryDispatchedAt')).not.toBeInTheDocument();
+      expect(screen.queryByText('retryCancelledReason')).not.toBeInTheDocument();
+      expect(screen.queryByText('passkeyBypass')).not.toBeInTheDocument();
+      expect(screen.queryByText('lastInattentiveAt')).not.toBeInTheDocument();
     });
 
     it('does not render My Properties if only internal operational fields exist', () => {
@@ -110,6 +116,9 @@ describe('PropertiesWidget Component and Helpers', () => {
         pendingRetryBingo: false,
         strikeNumber: 0,
         activeBingo: { status: 'passed' },
+        retryCancelledReason: 'teacher_cancelled',
+        passkeyBypass: { expired: true, active: false },
+        lastInattentiveAt: { seconds: 1789349510 },
       };
 
       render(<PropertiesWidget classProperties={{}} myProperties={internalOnly} />);
