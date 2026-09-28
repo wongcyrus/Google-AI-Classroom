@@ -83,8 +83,36 @@ const mockGetDocs = vi.fn((colRef) =>
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
-  collection: vi.fn((db, col) => ({ path: col, id: col })),
+  collection: vi.fn((db, ...pathSegments) => ({
+    path: pathSegments.join('/'),
+    id: pathSegments[pathSegments.length - 1],
+  })),
   onSnapshot: vi.fn((refOrQuery, callback) => {
+    if (refOrQuery?.path?.includes('studentPasskeys')) {
+      callback({
+        forEach: (cb) => {
+          cb({
+            id: 'passkey_alice',
+            data: () => ({
+              studentEmail: 'alice@school.edu',
+              studentUid: 'alice_uid',
+              registeredAt: '2026-09-20T00:00:00Z',
+            }),
+          });
+        },
+        docs: [
+          {
+            id: 'passkey_alice',
+            data: () => ({
+              studentEmail: 'alice@school.edu',
+              studentUid: 'alice_uid',
+              registeredAt: '2026-09-20T00:00:00Z',
+            }),
+          },
+        ],
+      });
+      return () => {};
+    }
     callback({
       exists: () => true,
       data: () => ({

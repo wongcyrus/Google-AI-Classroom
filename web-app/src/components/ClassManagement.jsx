@@ -12,6 +12,7 @@ import ScheduleManager from './ScheduleManager';
 import ScheduleChangeModal from './ScheduleChangeModal';
 import { generateLessons } from '../hooks/useClassSchedule';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
+import EnrolledRosterModal from './EnrolledRosterModal';
 import StudentBadge from './common/StudentBadge';
 import {
   exportStudentRosterExcel,
@@ -30,7 +31,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [studentDirectory, setStudentDirectory] = useState({});
   const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
   const [showRosterPreview, setShowRosterPreview] = useState(true);
+  const [showEnlargedRosterModal, setShowEnlargedRosterModal] = useState(false);
+  const [inlineRosterSearch, setInlineRosterSearch] = useState('');
+  const [inlinePasskeyFilter, setInlinePasskeyFilter] = useState('all');
+  const [inlineCohortFilter, setInlineCohortFilter] = useState('all');
+  const [inlineSortColumn, setInlineSortColumn] = useState('displayName');
+  const [inlineSortDirection, setInlineSortDirection] = useState('asc');
   const [studentsMap, setStudentsMap] = useState({});
+  const [registeredPasskeysMap, setRegisteredPasskeysMap] = useState({});
   const [resettingPasskeys, setResettingPasskeys] = useState({});
   const [passkeyResetSuccess, setPasskeyResetSuccess] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
@@ -214,6 +222,38 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     return () => unsubscribe();
   }, [user, embeddedClassId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(
+      collection(db, 'studentPasskeys'),
+      (snapshot) => {
+        const map = {};
+        if (snapshot && typeof snapshot.forEach === 'function') {
+          snapshot.forEach((d) => {
+            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+            const email = (data.studentEmail || data.email || '').toLowerCase();
+            const uid = data.studentUid || data.uid || d?.id;
+            if (email) map[email] = { id: d?.id, ...data };
+            if (uid) map[uid] = { id: d?.id, ...data };
+          });
+        } else if (Array.isArray(snapshot?.docs)) {
+          snapshot.docs.forEach((d) => {
+            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+            const email = (data.studentEmail || data.email || '').toLowerCase();
+            const uid = data.studentUid || data.uid || d?.id;
+            if (email) map[email] = { id: d?.id, ...data };
+            if (uid) map[uid] = { id: d?.id, ...data };
+          });
+        }
+        setRegisteredPasskeysMap(map);
+      },
+      (err) => {
+        console.warn('[ClassManagement] Notice fetching studentPasskeys:', err);
+      }
+    );
+    return () => unsub();
+  }, [user]);
 
   useEffect(() => {
     const fetchClassDetails = async () => {
@@ -1549,6 +1589,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             const resolvedProfilesMap = {};
             let dirEnrichedCount = 0;
             let fullProfileCount = 0;
+            const cohortSet = new Set();
 
             emailList.forEach(email => {
               const explicitProf = studentProfiles[email] || {};
@@ -1560,6 +1601,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 nickname: explicitProf.nickname || dirProf.nickname || '',
                 programme: explicitProf.programme || dirProf.programme || '',
                 studentClass: explicitProf.studentClass || dirProf.studentClass || '',
+                uid: explicitProf.uid || dirProf.uid || '',
               };
               resolvedProfilesMap[email] = {
                 ...effectiveProf,
@@ -1571,7 +1613,95 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               if (isEnrichedFromDir) {
                 dirEnrichedCount++;
               }
+              if (effectiveProf.studentClass && effectiveProf.studentClass.trim()) {
+                cohortSet.add(effectiveProf.studentClass.trim());
+              }
             });
+
+            const uniqueCohortsList = Array.from(cohortSet).sort();
+
+            const registeredPasskeyCount = emailList.filter(email => {
+              const norm = (email || '').toLowerCase();
+              const prof = resolvedProfilesMap[email] || {};
+              return Boolean(registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]));
+            }).length;
+
+            // Compute inline filtered and sorted student list
+            const inlineFilteredList = emailList.filter(email => {
+              const norm = (email || '').toLowerCase();
+              const prof = resolvedProfilesMap[email] || {};
+              const studentName = (prof.studentName || '').toLowerCase();
+              const nickname = (prof.nickname || '').toLowerCase();
+              const studentClass = (prof.studentClass || '').toLowerCase();
+              const programme = (prof.programme || '').toLowerCase();
+              const isPasskeyLinked = Boolean(registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]));
+
+              if (inlineRosterSearch.trim()) {
+                const q = inlineRosterSearch.trim().toLowerCase();
+                const match = norm.includes(q) || studentName.includes(q) || nickname.includes(q) || studentClass.includes(q) || programme.includes(q);
+                if (!match) return false;
+              }
+
+              if (inlinePasskeyFilter === 'linked' && !isPasskeyLinked) return false;
+              if (inlinePasskeyFilter === 'unlinked' && isPasskeyLinked) return false;
+
+              if (inlineCohortFilter !== 'all' && (prof.studentClass || '').trim() !== inlineCohortFilter) return false;
+
+              return true;
+            });
+
+            inlineFilteredList.sort((a, b) => {
+              const profA = resolvedProfilesMap[a] || {};
+              const profB = resolvedProfilesMap[b] || {};
+              const normA = (a || '').toLowerCase();
+              const normB = (b || '').toLowerCase();
+
+              let valA = '';
+              let valB = '';
+
+              switch (inlineSortColumn) {
+                case 'email':
+                  valA = normA;
+                  valB = normB;
+                  break;
+                case 'studentName':
+                  valA = (profA.studentName || '').toLowerCase();
+                  valB = (profB.studentName || '').toLowerCase();
+                  break;
+                case 'studentClass':
+                  valA = (profA.studentClass || '').toLowerCase();
+                  valB = (profB.studentClass || '').toLowerCase();
+                  break;
+                case 'programme':
+                  valA = (profA.programme || '').toLowerCase();
+                  valB = (profB.programme || '').toLowerCase();
+                  break;
+                case 'passkey': {
+                  const passA = Boolean(registeredPasskeysMap[normA] || (profA.uid && registeredPasskeysMap[profA.uid])) ? 1 : 0;
+                  const passB = Boolean(registeredPasskeysMap[normB] || (profB.uid && registeredPasskeysMap[profB.uid])) ? 1 : 0;
+                  return inlineSortDirection === 'asc' ? passB - passA : passA - passB;
+                }
+                case 'displayName':
+                default:
+                  valA = (profA.nickname || profA.studentName || normA).toLowerCase();
+                  valB = (profB.nickname || profB.studentName || normB).toLowerCase();
+                  break;
+              }
+
+              const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+              return inlineSortDirection === 'asc' ? cmp : -cmp;
+            });
+
+            const handleInlineSort = (col) => {
+              if (inlineSortColumn === col) {
+                setInlineSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+              } else {
+                setInlineSortColumn(col);
+                setInlineSortDirection('asc');
+              }
+            };
+
+            const hasInlineFilterActive = Boolean(inlineRosterSearch.trim() || inlinePasskeyFilter !== 'all' || inlineCohortFilter !== 'all');
 
             return (
               <div style={{ marginTop: '0.9rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
@@ -1581,103 +1711,272 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.1rem 0.45rem', borderRadius: '9999px', backgroundColor: fullProfileCount > 0 ? '#dcfce7' : '#f1f5f9', color: fullProfileCount > 0 ? '#166534' : '#64748b' }}>
                       {fullProfileCount}/{emailList.length} with profile metadata
                     </span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.1rem 0.5rem', borderRadius: '9999px', backgroundColor: registeredPasskeyCount === emailList.length && emailList.length > 0 ? '#dcfce7' : '#fef3c7', color: registeredPasskeyCount === emailList.length && emailList.length > 0 ? '#166534' : '#92400e' }}>
+                      📱 {registeredPasskeyCount}/{emailList.length} Passkeys Linked
+                    </span>
                     {dirEnrichedCount > 0 && (
                       <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.1rem 0.5rem', borderRadius: '9999px', backgroundColor: '#e0e7ff', color: '#3730a3' }}>
                         ✨ {dirEnrichedCount} auto-filled from other classes
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                    onClick={() => setShowRosterPreview(prev => !prev)}
-                  >
-                    {showRosterPreview ? 'Hide Table ▲' : 'Show Table ▼'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      style={{ fontSize: '0.75rem', padding: '0.2rem 0.55rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', backgroundColor: '#eef2ff', borderColor: '#c7d2fe', color: '#4338ca', fontWeight: 600 }}
+                      onClick={() => setShowEnlargedRosterModal(true)}
+                      data-testid="btn-enlarge-roster"
+                      title="Open full-screen enlargeable roster view with advanced filters and sorting"
+                    >
+                      ⛶ Enlarge View
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                      onClick={() => setShowRosterPreview(prev => !prev)}
+                    >
+                      {showRosterPreview ? 'Hide Table ▲' : 'Show Table ▼'}
+                    </button>
+                  </div>
                 </div>
 
                 {showRosterPreview && (
-                  <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border, #cbd5e1)', borderRadius: '6px' }}>
+                  <div style={{ border: '1px solid var(--color-border, #cbd5e1)', borderRadius: '6px', overflow: 'hidden', backgroundColor: 'var(--color-surface, #ffffff)' }}>
+                    {/* Inline Filter Toolbar */}
+                    <div style={{ padding: '0.4rem 0.6rem', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.78rem' }}>
+                      <input
+                        type="text"
+                        placeholder="🔍 Filter name, email, cohort..."
+                        value={inlineRosterSearch}
+                        onChange={e => setInlineRosterSearch(e.target.value)}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', border: '1px solid #cbd5e1', borderRadius: '4px', minWidth: '160px', flex: '1 1 160px' }}
+                        data-testid="inline-roster-search"
+                      />
+                      <select
+                        value={inlinePasskeyFilter}
+                        onChange={e => setInlinePasskeyFilter(e.target.value)}
+                        style={{ padding: '0.25rem 0.45rem', fontSize: '0.78rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                        data-testid="inline-filter-passkey"
+                      >
+                        <option value="all">All Passkeys</option>
+                        <option value="linked">📱 Linked Only</option>
+                        <option value="unlinked">⏳ Not Registered</option>
+                      </select>
+                      {uniqueCohortsList.length > 0 && (
+                        <select
+                          value={inlineCohortFilter}
+                          onChange={e => setInlineCohortFilter(e.target.value)}
+                          style={{ padding: '0.25rem 0.45rem', fontSize: '0.78rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                          data-testid="inline-filter-cohort"
+                        >
+                          <option value="all">All Cohorts</option>
+                          {uniqueCohortsList.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      )}
+                      {hasInlineFilterActive && (
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() => {
+                            setInlineRosterSearch('');
+                            setInlinePasskeyFilter('all');
+                            setInlineCohortFilter('all');
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
+                        >
+                          ✕ Reset
+                        </button>
+                      )}
+                      <span style={{ marginLeft: 'auto', color: '#64748b', fontSize: '0.75rem' }}>
+                        Showing {inlineFilteredList.length}/{emailList.length}
+                      </span>
+                    </div>
+
                     {passkeyResetSuccess && (
                       <div style={{ backgroundColor: '#ecfdf5', color: '#065f46', borderBottom: '1px solid #a7f3d0', padding: '0.4rem 0.8rem', fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>✅ {passkeyResetSuccess}</span>
                         <button type="button" onClick={() => setPasskeyResetSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
                       </div>
                     )}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-                      <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)' }}>
-                        <tr>
-                          <th style={{ padding: '0.35rem 0.6rem' }}>Student Display Name</th>
-                          <th style={{ padding: '0.35rem 0.6rem' }}>Email</th>
-                          <th style={{ padding: '0.35rem 0.6rem' }}>Student Name</th>
-                          <th style={{ padding: '0.35rem 0.6rem' }}>Class / Cohort</th>
-                          <th style={{ padding: '0.35rem 0.6rem' }}>Programme</th>
-                          <th style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>Phone Passkey</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {emailList.map((email, idx) => {
-                          const prof = resolvedProfilesMap[email] || {};
-                          const resolvedStudentName = prof.studentName || '';
-                          return (
-                            <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
-                              <td style={{ padding: '0.35rem 0.6rem' }}>
-                                <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
-                              </td>
-                              <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
-                              <td style={{ padding: '0.35rem 0.6rem' }}>
-                                {resolvedStudentName ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                                    <span>{resolvedStudentName}</span>
-                                    {prof._fromDirectory && (
-                                      <span
-                                        title="Auto-filled from institutional student directory (provided by another class)"
-                                        style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.05rem 0.35rem', borderRadius: '4px', backgroundColor: '#e0e7ff', color: '#4338ca' }}
-                                      >
-                                        ✨ Directory
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
-                              </td>
-                              <td style={{ padding: '0.35rem 0.6rem' }}>
-                                {prof.studentClass ? (
-                                  <span style={{ display: 'inline-block', padding: '0.1rem 0.4rem', fontSize: '0.72rem', fontWeight: 700, borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
-                                    {prof.studentClass}
-                                  </span>
-                                ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
-                              </td>
-                              <td style={{ padding: '0.35rem 0.6rem', color: '#475569' }}>
-                                {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
-                              </td>
-                              <td style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  className="btn-secondary btn-sm"
-                                  style={{
-                                    fontSize: '0.72rem',
-                                    padding: '0.15rem 0.45rem',
-                                    color: '#b91c1c',
-                                    borderColor: '#fca5a5',
-                                    background: '#fff',
-                                    cursor: 'pointer',
-                                  }}
-                                  onClick={() => handleResetStudentPasskey(email, resolvedStudentName)}
-                                  disabled={Boolean(resettingPasskeys[email])}
-                                  data-testid={`btn-roster-reset-passkey-${email.replace(/[@.]/g, '_')}`}
-                                  title="Unlink phone passkey if student replaced their device"
-                                >
-                                  {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
-                                </button>
+                    <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                        <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)', zIndex: 2 }}>
+                          <tr>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('displayName')}
+                              title="Sort by Student Display Name"
+                            >
+                              <span>Student Display Name</span> {inlineSortColumn === 'displayName' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('email')}
+                              title="Sort by Email"
+                            >
+                              <span>Email</span> {inlineSortColumn === 'email' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('studentName')}
+                              title="Sort by Full Legal Name"
+                            >
+                              <span>Student Name</span> {inlineSortColumn === 'studentName' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('studentClass')}
+                              title="Sort by Class / Cohort"
+                            >
+                              <span>Class / Cohort</span> {inlineSortColumn === 'studentClass' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('programme')}
+                              title="Sort by Programme"
+                            >
+                              <span>Programme</span> {inlineSortColumn === 'programme' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                            <th
+                              style={{ padding: '0.4rem 0.6rem', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => handleInlineSort('passkey')}
+                              title="Sort by Phone Passkey"
+                            >
+                              <span>Phone Passkey</span> {inlineSortColumn === 'passkey' ? (inlineSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inlineFilteredList.length === 0 ? (
+                            <tr>
+                              <td colSpan="6" style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                                No students match your filter criteria.
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ) : (
+                            inlineFilteredList.map((email, idx) => {
+                              const prof = resolvedProfilesMap[email] || {};
+                              const resolvedStudentName = prof.studentName || '';
+                              const norm = (email || '').toLowerCase();
+                              const passkey = registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]);
+                              return (
+                                <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
+                                  <td style={{ padding: '0.35rem 0.6rem' }}>
+                                    <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
+                                  </td>
+                                  <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
+                                  <td style={{ padding: '0.35rem 0.6rem' }}>
+                                    {resolvedStudentName ? (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                        <span>{resolvedStudentName}</span>
+                                        {prof._fromDirectory && (
+                                          <span
+                                            title="Auto-filled from institutional student directory (provided by another class)"
+                                            style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.05rem 0.35rem', borderRadius: '4px', backgroundColor: '#e0e7ff', color: '#4338ca' }}
+                                          >
+                                            ✨ Directory
+                                          </span>
+                                        )}
+                                      </span>
+                                    ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '0.35rem 0.6rem' }}>
+                                    {prof.studentClass ? (
+                                      <span style={{ display: 'inline-block', padding: '0.1rem 0.4rem', fontSize: '0.72rem', fontWeight: 700, borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+                                        {prof.studentClass}
+                                      </span>
+                                    ) : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '0.35rem 0.6rem', color: '#475569' }}>
+                                    {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>
+                                    {passkey ? (
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                                        <span
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            padding: '0.12rem 0.45rem',
+                                            borderRadius: '9999px',
+                                            backgroundColor: '#dcfce7',
+                                            color: '#15803d',
+                                            border: '1px solid #bbf7d0',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                          title={`Registered on ${passkey.deviceModel || 'Mobile Device'}`}
+                                        >
+                                          📱 Linked
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="btn-secondary btn-sm"
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            padding: '0.15rem 0.45rem',
+                                            color: '#b91c1c',
+                                            borderColor: '#fca5a5',
+                                            background: '#fff',
+                                            cursor: 'pointer',
+                                          }}
+                                          onClick={() => handleResetStudentPasskey(email, resolvedStudentName)}
+                                          disabled={Boolean(resettingPasskeys[email])}
+                                          data-testid={`btn-roster-reset-passkey-${email.replace(/[@.]/g, '_')}`}
+                                          title="Unlink phone passkey if student replaced their device"
+                                        >
+                                          {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          fontWeight: 600,
+                                          padding: '0.12rem 0.45rem',
+                                          borderRadius: '9999px',
+                                          backgroundColor: '#fef3c7',
+                                          color: '#b45309',
+                                          border: '1px solid #fde68a',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                        }}
+                                        title="Student has not registered a passkey on their mobile device yet"
+                                      >
+                                        ⏳ Not Registered
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
+
+                {/* Enlargable Roster Modal Dialog */}
+                <EnrolledRosterModal
+                  show={showEnlargedRosterModal}
+                  onClose={() => setShowEnlargedRosterModal(false)}
+                  className={className}
+                  classId={selectedClass || classId || embeddedClassId}
+                  emailList={emailList}
+                  resolvedProfilesMap={resolvedProfilesMap}
+                  registeredPasskeysMap={registeredPasskeysMap}
+                  resettingPasskeys={resettingPasskeys}
+                  onResetPasskey={handleResetStudentPasskey}
+                  passkeyResetSuccess={passkeyResetSuccess}
+                  onClearPasskeyResetSuccess={() => setPasskeyResetSuccess('')}
+                />
               </div>
             );
           })()}
