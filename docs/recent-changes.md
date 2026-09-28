@@ -33,6 +33,11 @@
 ### 0.0.4 Speech Translation Quality & Code-Switching
 - **Cantonese & English Translation**: Improved prompts and normalized language key matching across Gemini 3.8 Flash Cloud Functions and LiteRT Gemma Web workers to ensure complete translation of colloquial Cantonese phrases and code-switching into natural English and Standard Chinese.
 
+### 0.0.5 Tablet & iPad Passkey Restriction (Handheld Smartphone Exclusivity)
+- **Handheld Smartphone Only**: Updated `browserDetection.js` with `isTabletDevice()` and `isHandheldPhone()` to distinguish iPads and Android tablets from handheld smartphones using multi-touch detection (`navigator.maxTouchPoints > 1` + Mac UA on iPadOS) and the Android `Mobile` token convention.
+- **Tablets Operate as Desktop Terminals**: iPads and Android pads are barred from registering passkeys directly on device (preventing shared tablet carts from being registered as personal biometric credentials). Tablets access the full desktop login interface (Email/Password or scanning desktop QR codes with a personal smartphone).
+- **Prohibition Guidance**: Routes (`/pair-phone`, `/verify-passkey`, `/verify-lecture-passkey`, `/mobile-login`) and modals (`PasskeyPairModal`, `PasskeyEnforcementGate`) provide clear guidance directing students to use their personal handheld smartphones.
+
 ---
 
 ## 0. WebAuthn (FIDO2) Mobile Passkeys: 1-Phone Hardware Lock & Teacher Reset

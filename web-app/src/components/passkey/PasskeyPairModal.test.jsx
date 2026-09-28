@@ -220,5 +220,48 @@ describe('PasskeyPairModal Component', () => {
       configurable: true,
     });
   });
+
+  it('renders QR code modal on iPad / tablet instead of direct registration button', async () => {
+    const originalUA = navigator.userAgent;
+    const originalTouch = navigator.maxTouchPoints;
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: 5,
+      configurable: true,
+    });
+
+    mockRequestToken.mockResolvedValueOnce({
+      data: { tokenId: 'token-ipad-123' },
+    });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_1' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    // Tablets must show the QR code to scan from a handheld smartphone
+    expect(screen.getByAltText('Pair Phone QR Code')).toBeInTheDocument();
+    expect(screen.queryByText(/Touch Face ID \/ Fingerprint to Register/i)).not.toBeInTheDocument();
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUA,
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: originalTouch,
+      configurable: true,
+    });
+  });
 });
+
 

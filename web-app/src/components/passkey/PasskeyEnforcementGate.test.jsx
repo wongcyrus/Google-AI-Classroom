@@ -46,10 +46,11 @@ vi.mock('qrcode', () => ({
 }));
 
 vi.mock('../../utils/browserDetection', () => ({
+  isHandheldPhone: vi.fn(() => false),
   isMobileDevice: vi.fn(() => false),
 }));
 
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import PasskeyEnforcementGate from './PasskeyEnforcementGate';
 
 describe('PasskeyEnforcementGate Component', () => {
@@ -286,8 +287,8 @@ describe('PasskeyEnforcementGate Component', () => {
   });
 
   it('bypasses gate immediately on mobile smartphones and renders protected children', () => {
-    const isMobileDeviceMock = vi.mocked(isMobileDevice);
-    isMobileDeviceMock.mockReturnValueOnce(true);
+    const isHandheldPhoneMock = vi.mocked(isHandheldPhone);
+    isHandheldPhoneMock.mockReturnValueOnce(true);
 
     render(
       <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">

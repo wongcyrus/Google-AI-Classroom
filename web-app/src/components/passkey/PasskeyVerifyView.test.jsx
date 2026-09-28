@@ -20,7 +20,7 @@ vi.mock('../../firebase-config', () => ({
 
 const mockStartAuthentication = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
-const mockIsMobileDevice = vi.fn(() => true);
+const mockIsHandheldPhone = vi.fn(() => true);
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: (...args) => mockStartAuthentication(...args),
@@ -28,7 +28,8 @@ vi.mock('@simplewebauthn/browser', () => ({
 }));
 
 vi.mock('../../utils/browserDetection', () => ({
-  isMobileDevice: () => mockIsMobileDevice(),
+  isHandheldPhone: () => mockIsHandheldPhone(),
+  isMobileDevice: () => mockIsHandheldPhone(),
 }));
 
 import PasskeyVerifyView from './PasskeyVerifyView';
@@ -37,11 +38,11 @@ describe('PasskeyVerifyView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
-    mockIsMobileDevice.mockReturnValue(true);
+    mockIsHandheldPhone.mockReturnValue(true);
   });
 
   it('blocks desktop verification with clear mobile required notice', async () => {
-    mockIsMobileDevice.mockReturnValue(false);
+    mockIsHandheldPhone.mockReturnValue(false);
 
     await act(async () => {
       render(

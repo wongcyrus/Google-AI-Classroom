@@ -3,14 +3,14 @@ import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { functions, db } from '../../firebase-config';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import './passkey.css';
 
 /**
  * PasskeyEnforcementGate
- * Wraps student workspace routes on Desktop.
+ * Wraps student workspace routes on Desktop and Tablets.
  * If the student has no registered mobile passkey and no active teacher bypass,
- * this gate blocks desktop access and displays a dynamic pairing QR code.
+ * this gate blocks desktop/tablet access and displays a dynamic pairing QR code.
  */
 const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   const [hasPasskey, setHasPasskey] = useState(null); // null = loading, true/false
@@ -36,7 +36,7 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   const [emergencyPin, setEmergencyPin] = useState('');
   const [isWhitelisted, setIsWhitelisted] = useState(false);
 
-  const isMobile = isMobileDevice();
+  const isMobile = isHandheldPhone();
 
   // If role is teacher, or no user, bypass gate entirely
   const isStudent = role === 'student' || (!role && user?.email?.includes('@stu.'));

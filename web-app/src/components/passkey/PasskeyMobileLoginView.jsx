@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -18,12 +18,12 @@ const PasskeyMobileLoginView = () => {
   const hasAutoStarted = useRef(false);
 
   useEffect(() => {
-    // 1. Strict anti-desktop enforcement: Mobile hardware only
-    if (!isMobileDevice()) {
+    // 1. Strict anti-desktop & anti-tablet enforcement: Handheld smartphone hardware only
+    if (!isHandheldPhone()) {
       setStatus('desktop_blocked');
       setErrorMessage(
-        'Desktop passkey logins are strictly prohibited on shared computer laboratory PCs. ' +
-        'Please point your personal smartphone camera (iOS Safari or Android Chrome) at the QR code displayed on the lab PC monitor.'
+        'Desktop and tablet passkey logins are strictly prohibited on shared computer laboratory devices. ' +
+        'Please point your personal smartphone camera (iOS Safari or Android Chrome) at the QR code displayed on the screen.'
       );
       return;
     }

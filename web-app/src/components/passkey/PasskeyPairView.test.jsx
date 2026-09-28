@@ -20,7 +20,7 @@ vi.mock('../../firebase-config', () => ({
 
 const mockStartRegistration = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
-const mockIsMobileDevice = vi.fn(() => true);
+const mockIsHandheldPhone = vi.fn(() => true);
 
 vi.mock('@simplewebauthn/browser', () => ({
   startRegistration: (...args) => mockStartRegistration(...args),
@@ -28,7 +28,8 @@ vi.mock('@simplewebauthn/browser', () => ({
 }));
 
 vi.mock('../../utils/browserDetection', () => ({
-  isMobileDevice: () => mockIsMobileDevice(),
+  isHandheldPhone: () => mockIsHandheldPhone(),
+  isMobileDevice: () => mockIsHandheldPhone(),
 }));
 
 import PasskeyPairView from './PasskeyPairView';
@@ -37,11 +38,11 @@ describe('PasskeyPairView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
-    mockIsMobileDevice.mockReturnValue(true);
+    mockIsHandheldPhone.mockReturnValue(true);
   });
 
   it('blocks desktop access with clear mobile required message', () => {
-    mockIsMobileDevice.mockReturnValue(false);
+    mockIsHandheldPhone.mockReturnValue(false);
 
     render(
       <MemoryRouter initialEntries={['/pair-phone?token=test-pair-token']}>
@@ -50,7 +51,7 @@ describe('PasskeyPairView Component', () => {
     );
 
     expect(screen.getByText('Mobile Phone Required')).toBeInTheDocument();
-    expect(screen.getByText(/Shared desktop computers in the lab cannot be registered/i)).toBeInTheDocument();
+    expect(screen.getByText(/Shared desktop computers and tablets\/iPads cannot be registered/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Pair This Phone/i })).not.toBeInTheDocument();
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isGoogleChrome, getBrowserName, isMobileDevice } from './browserDetection';
+import { isGoogleChrome, getBrowserName, isMobileDevice, isTabletDevice, isHandheldPhone } from './browserDetection';
 
 describe('browserDetection Utility', () => {
   it('identifies genuine Google Chrome desktop and Android as Chrome', () => {
@@ -74,13 +74,75 @@ describe('browserDetection Utility', () => {
     expect(getBrowserName(vivaldiUA, vendor)).toBe('Vivaldi');
   });
 
+  describe('isTabletDevice', () => {
+    const classicIpadUA = 'Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1';
+    const modernIpadOSUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+    const androidTabletUA = 'Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Safari/537.36';
+    const androidPhoneUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36';
+    const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+    const macDesktopUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+
+    it('identifies classic iPad as tablet', () => {
+      expect(isTabletDevice(classicIpadUA, 0)).toBe(true);
+    });
+
+    it('identifies modern iPadOS in desktop Safari mode (Macintosh UA + multi-touch > 1) as tablet', () => {
+      expect(isTabletDevice(modernIpadOSUA, 5)).toBe(true);
+    });
+
+    it('does not classify genuine Mac desktop without touch as tablet', () => {
+      expect(isTabletDevice(macDesktopUA, 0)).toBe(false);
+    });
+
+    it('identifies Android Tablet (Android without Mobile token) as tablet', () => {
+      expect(isTabletDevice(androidTabletUA, 5)).toBe(true);
+    });
+
+    it('does not classify Android phone (Android + Mobile token) as tablet', () => {
+      expect(isTabletDevice(androidPhoneUA, 5)).toBe(false);
+    });
+
+    it('does not classify iPhone as tablet', () => {
+      expect(isTabletDevice(iPhoneUA, 5)).toBe(false);
+    });
+  });
+
+  describe('isHandheldPhone', () => {
+    const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+    const androidPhoneUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36';
+    const classicIpadUA = 'Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1';
+    const modernIpadOSUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15';
+    const androidTabletUA = 'Mozilla/5.0 (Linux; Android 14; SM-X910) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Safari/537.36';
+    const desktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    it('allows iPhone and Android phones', () => {
+      expect(isHandheldPhone(iPhoneUA, 5)).toBe(true);
+      expect(isHandheldPhone(androidPhoneUA, 5)).toBe(true);
+    });
+
+    it('blocks iPads from being considered handheld phones', () => {
+      expect(isHandheldPhone(classicIpadUA, 5)).toBe(false);
+      expect(isHandheldPhone(modernIpadOSUA, 5)).toBe(false);
+    });
+
+    it('blocks Android tablets from being considered handheld phones', () => {
+      expect(isHandheldPhone(androidTabletUA, 5)).toBe(false);
+    });
+
+    it('blocks desktop PCs from being considered handheld phones', () => {
+      expect(isHandheldPhone(desktopUA, 0, 1920, 1080)).toBe(false);
+    });
+  });
+
   describe('isMobileDevice', () => {
-    it('detects iPhone and Android user agents as mobile', () => {
+    it('detects iPhone, Android phone, and tablets as mobile devices', () => {
       const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
       const androidUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36';
+      const classicIpadUA = 'Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1';
 
       expect(isMobileDevice(iPhoneUA, 1024)).toBe(true);
       expect(isMobileDevice(androidUA, 1024)).toBe(true);
+      expect(isMobileDevice(classicIpadUA, 1024)).toBe(true);
     });
 
     it('detects narrow viewports (<= 768px) as mobile even on generic user agent', () => {
@@ -105,3 +167,4 @@ describe('browserDetection Utility', () => {
     });
   });
 });
+

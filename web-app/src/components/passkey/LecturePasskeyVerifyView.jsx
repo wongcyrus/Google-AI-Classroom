@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -22,9 +22,9 @@ export default function LecturePasskeyVerifyView() {
   const hasAutoStarted = useRef(false);
 
   useEffect(() => {
-    if (!isMobileDevice()) {
+    if (!isHandheldPhone()) {
       setStatus('desktop_blocked');
-      setErrorMessage('Lecture hall attendance check-in must be performed from your personal smartphone. Please scan the QR code displayed on the lecture hall screen with your phone camera.');
+      setErrorMessage('Lecture hall attendance check-in must be performed from your personal handheld smartphone. Tablets and laptops cannot be registered as mobile passkeys. Please scan the QR code displayed on the lecture hall screen with your phone camera.');
       return;
     }
 

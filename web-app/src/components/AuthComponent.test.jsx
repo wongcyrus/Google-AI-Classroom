@@ -37,6 +37,7 @@ describe('AuthComponent Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(browserDetection, 'isMobileDevice').mockReturnValue(true);
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(true);
   });
 
   it('renders login form and inputs correctly', () => {
@@ -365,6 +366,17 @@ describe('AuthComponent Component', () => {
       expect(mockSignOut).toHaveBeenCalled();
     });
   });
+
+  it('renders Desktop / Tablet tab navigation (Scan QR Code and Password) when on an iPad / Tablet', () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'isTabletDevice').mockReturnValue(true);
+
+    render(<AuthComponent />);
+
+    expect(screen.getByRole('tab', { name: /Scan QR Code/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Email & Password/i })).toBeInTheDocument();
+  });
 });
+
 
 
