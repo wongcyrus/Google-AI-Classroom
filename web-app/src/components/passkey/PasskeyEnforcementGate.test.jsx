@@ -49,6 +49,7 @@ vi.mock('../../utils/browserDetection', () => ({
   isMobileDevice: vi.fn(() => false),
 }));
 
+import { isMobileDevice } from '../../utils/browserDetection';
 import PasskeyEnforcementGate from './PasskeyEnforcementGate';
 
 describe('PasskeyEnforcementGate Component', () => {
@@ -282,5 +283,19 @@ describe('PasskeyEnforcementGate Component', () => {
       expect(screen.getByTestId('protected-content')).toBeInTheDocument();
       expect(screen.getByText(/Password Whitelist Active/i)).toBeInTheDocument();
     });
+  });
+
+  it('bypasses gate immediately on mobile smartphones and renders protected children', () => {
+    const isMobileDeviceMock = vi.mocked(isMobileDevice);
+    isMobileDeviceMock.mockReturnValueOnce(true);
+
+    render(
+      <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">
+        <div data-testid="protected-content">Mobile Classroom Content</div>
+      </PasskeyEnforcementGate>
+    );
+
+    expect(screen.getByTestId('protected-content')).toBeInTheDocument();
+    expect(screen.queryByText('Personal Mobile Passkey Required')).not.toBeInTheDocument();
   });
 });

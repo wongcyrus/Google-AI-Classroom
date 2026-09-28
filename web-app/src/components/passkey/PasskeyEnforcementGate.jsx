@@ -218,8 +218,8 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     }
   };
 
-  // If teacher or non-student, allow immediately
-  if (!isStudent) {
+  // If teacher, non-student, or mobile smartphone, allow immediately
+  if (!isStudent || isMobile) {
     return children;
   }
 
