@@ -3,6 +3,13 @@ import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockRequestToken = vi.fn();
+const mockStartRegistration = vi.fn();
+const mockBrowserSupportsWebAuthn = vi.fn(() => true);
+
+vi.mock('@simplewebauthn/browser', () => ({
+  startRegistration: (...args) => mockStartRegistration(...args),
+  browserSupportsWebAuthn: () => mockBrowserSupportsWebAuthn(),
+}));
 
 vi.mock('firebase/functions', () => ({
   httpsCallable: vi.fn((functions, name) => {
@@ -118,4 +125,100 @@ describe('PasskeyPairModal Component', () => {
       configurable: true,
     });
   });
+
+  it('handles direct mobile registration execution', async () => {
+    const originalUA = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      configurable: true,
+    });
+
+    const mockGetOptions = vi.fn().mockResolvedValue({ data: { challenge: 'abc' } });
+    const mockVerify = vi.fn().mockResolvedValue({ data: { verified: true, deviceModel: 'Apple iPhone' } });
+
+    const { httpsCallable } = await import('firebase/functions');
+    httpsCallable.mockImplementation((functions, name) => {
+      if (name === 'requestPasskeyPairingToken') return mockRequestToken;
+      if (name === 'getPasskeyRegistrationOptions') return mockGetOptions;
+      if (name === 'verifyPasskeyRegistration') return mockVerify;
+      return vi.fn();
+    });
+
+    mockRequestToken.mockResolvedValueOnce({ data: { tokenId: 'token-123' } });
+    mockBrowserSupportsWebAuthn.mockReturnValue(true);
+    mockStartRegistration.mockResolvedValueOnce({ id: 'cred-1' });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_1' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    const registerBtn = screen.getByText(/Touch Face ID \/ Fingerprint to Register/i);
+    await act(async () => {
+      registerBtn.click();
+    });
+
+    expect(mockGetOptions).toHaveBeenCalled();
+    expect(mockVerify).toHaveBeenCalled();
+    expect(screen.getByText('Passkey Registered!')).toBeInTheDocument();
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUA,
+      configurable: true,
+    });
+  });
+
+  it('handles biometric cancellation error gracefully', async () => {
+    const originalUA = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      configurable: true,
+    });
+
+    const mockGetOptions = vi.fn().mockResolvedValue({ data: { challenge: 'abc' } });
+
+    const { httpsCallable } = await import('firebase/functions');
+    httpsCallable.mockImplementation((functions, name) => {
+      if (name === 'requestPasskeyPairingToken') return mockRequestToken;
+      if (name === 'getPasskeyRegistrationOptions') return mockGetOptions;
+      return vi.fn();
+    });
+
+    mockRequestToken.mockResolvedValueOnce({ data: { tokenId: 'token-123' } });
+    mockBrowserSupportsWebAuthn.mockReturnValue(true);
+
+    const cancelErr = new Error('User cancelled');
+    cancelErr.name = 'NotAllowedError';
+    mockStartRegistration.mockRejectedValueOnce(cancelErr);
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_1' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    const registerBtn = screen.getByText(/Touch Face ID \/ Fingerprint to Register/i);
+    await act(async () => {
+      registerBtn.click();
+    });
+
+    expect(screen.getByText(/Biometric registration was cancelled/i)).toBeInTheDocument();
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUA,
+      configurable: true,
+    });
+  });
 });
+

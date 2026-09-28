@@ -143,4 +143,22 @@ describe('aiCostCsvExporter utility', () => {
     expect(mockRemoveChild).toHaveBeenCalled();
     expect(window.URL.revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/mock-uuid');
   });
+
+  it('exports AI cost summary to Excel workbook', async () => {
+    const { exportAiCostToExcel } = await import('./aiCostCsvExporter');
+    const mockSummary = {
+      totalJobs: 1,
+      totalCost: 0.005,
+      classQuota: 10,
+      quotaPercentage: 0.05,
+      byModel: [{ model: 'gemini-3.5-flash-lite', count: 1, inputTokens: 100, outputTokens: 20, cost: 0.005, percentage: 100 }],
+      byJobType: [{ jobType: 'analyzeImage', count: 1, inputTokens: 100, outputTokens: 20, cost: 0.005, percentage: 100 }],
+      byStudent: [{ studentUid: 's1', studentEmail: 's1@school.edu', studentName: 'Student 1', studentClass: 'Class A', programme: 'IT', jobCount: 1, inputTokens: 100, outputTokens: 20, totalTokens: 120, cost: 0.005, percentageOfClass: 100 }],
+      filteredJobs: [{ id: 'job_1', timestamp: new Date(), studentEmail: 's1@school.edu', displayName: 'Student 1', jobType: 'analyzeImage', modelUsed: 'gemini-3.5-flash-lite', status: 'completed', usage: { inputTokens: 100, outputTokens: 20 }, cost: 0.005 }],
+    };
+
+    const res = await exportAiCostToExcel(mockSummary, { className: 'Cloud Lab', classId: 'c1' });
+    expect(res).toBeDefined();
+  });
 });
+
