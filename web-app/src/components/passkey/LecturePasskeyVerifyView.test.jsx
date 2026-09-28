@@ -1,0 +1,149 @@
+import React from 'react';
+import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+
+const mockGetOptions = vi.fn();
+const mockVerify = vi.fn();
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn((functions, name) => {
+    if (name === 'getLecturePasskeyAuthOptions') return mockGetOptions;
+    if (name === 'verifyLecturePasskeyAuth') return mockVerify;
+    return vi.fn();
+  }),
+}));
+
+vi.mock('../../firebase-config', () => ({
+  functions: {},
+}));
+
+const mockStartAuthentication = vi.fn();
+const mockBrowserSupportsWebAuthn = vi.fn(() => true);
+const mockIsMobileDevice = vi.fn(() => true);
+
+vi.mock('@simplewebauthn/browser', () => ({
+  startAuthentication: (...args) => mockStartAuthentication(...args),
+  browserSupportsWebAuthn: () => mockBrowserSupportsWebAuthn(),
+}));
+
+vi.mock('../../utils/browserDetection', () => ({
+  isMobileDevice: () => mockIsMobileDevice(),
+}));
+
+import LecturePasskeyVerifyView from './LecturePasskeyVerifyView';
+
+describe('LecturePasskeyVerifyView Component', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockBrowserSupportsWebAuthn.mockReturnValue(true);
+    mockIsMobileDevice.mockReturnValue(true);
+  });
+
+  it('blocks desktop verification with clear mobile required notice', async () => {
+    mockIsMobileDevice.mockReturnValue(false);
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText('Mobile Phone Required')).toBeInTheDocument();
+    expect(screen.getByText(/Lecture hall attendance check-in must be performed from your personal smartphone/i)).toBeInTheDocument();
+    expect(mockGetOptions).not.toHaveBeenCalled();
+  });
+
+  it('automatically triggers Face ID / Fingerprint on mount and shows success screen', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: {
+        options: { challenge: 'lecture-challenge-123' },
+        challengeId: 'chal_99',
+      },
+    });
+
+    mockStartAuthentication.mockResolvedValueOnce({
+      id: 'cred-hardware-123',
+      rawId: 'cred-hardware-123',
+      response: { authenticatorData: 'data' },
+      type: 'public-key',
+    });
+
+    mockVerify.mockResolvedValueOnce({
+      data: {
+        verified: true,
+        studentEmail: 'alex@vtc.edu.hk',
+        responseTimeSec: 2.1,
+        rank: 1,
+      },
+    });
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(mockGetOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ classId: 'c1', bingoId: 'b1', token: 'tok1234567890123' })
+    );
+    expect(mockStartAuthentication).toHaveBeenCalled();
+    expect(mockVerify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'c1',
+        bingoId: 'b1',
+        challengeId: 'chal_99',
+        token: 'tok1234567890123',
+      })
+    );
+
+    expect(screen.getByText('Verified Present!')).toBeInTheDocument();
+    expect(screen.getByText('alex@vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.getByText('🥇 1st in Hall')).toBeInTheDocument();
+    expect(screen.getByText('2.1s')).toBeInTheDocument();
+  });
+
+  it('renders expired token error and hides verify button when token expired', async () => {
+    mockGetOptions.mockRejectedValueOnce(new Error('The scanned QR token has expired. Please scan the current code on the screen.'));
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=old_token_123456']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText(/This QR token has expired/i)).toBeInTheDocument();
+    expect(screen.getByText(/QR Code Expired/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Verify Biometric Passkey/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps verify button visible when biometric check is cancelled by user', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: {
+        options: { challenge: 'lecture-challenge-123' },
+        challengeId: 'chal_99',
+      },
+    });
+
+    const notAllowedErr = new Error('User cancelled');
+    notAllowedErr.name = 'NotAllowedError';
+    mockStartAuthentication.mockRejectedValueOnce(notAllowedErr);
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=valid_token_1234']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText(/Biometric check was cancelled/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Verify Biometric Passkey/i })).toBeInTheDocument();
+  });
+});

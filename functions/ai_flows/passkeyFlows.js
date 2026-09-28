@@ -1007,3 +1007,394 @@ export async function handleVerifyTeacherPasskeyBypassPin({ classId, studentUid,
   };
 }
 
+// =========================================================================
+// 16. LECTURE HALL DYNAMIC ROTATING QR CODE PASSKEY BINGO FLOWS
+// =========================================================================
+
+export const DEFAULT_LECTURE_QR_ROTATION_INTERVAL_SEC = 15;
+export const DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS = DEFAULT_LECTURE_QR_ROTATION_INTERVAL_SEC * 1000; // 15-second default rotation
+export const LECTURE_QR_ROTATION_INTERVAL_MS = DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS; // Backwards compatible alias
+export const LECTURE_QR_GRACE_INTERVALS = 2; // Allow current + past 2 intervals (~30-45s window)
+
+/**
+ * Computes a dynamic rotating token for a lecture session given a session secret and interval.
+ */
+export function computeLectureQrToken(sessionSecret, timeInterval) {
+  if (!sessionSecret) return '';
+  return crypto
+    .createHmac('sha256', sessionSecret)
+    .update(`lecture_qr_bingo_${timeInterval}`)
+    .digest('hex')
+    .substring(0, 16);
+}
+
+/**
+ * Validates a dynamic rotating token against a session secret and timestamp with grace intervals.
+ */
+export function isValidLectureQrToken(sessionSecret, token, timestamp = Date.now(), rotationIntervalMs = DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS) {
+  if (!sessionSecret || !token || typeof token !== 'string' || token.length !== 16) {
+    return false;
+  }
+  const intervalMs = Number(rotationIntervalMs) > 0 ? Number(rotationIntervalMs) : DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS;
+  const currentInterval = Math.floor(timestamp / intervalMs);
+  for (let i = 0; i <= LECTURE_QR_GRACE_INTERVALS; i++) {
+    const expected = computeLectureQrToken(sessionSecret, currentInterval - i);
+    if (expected.length === token.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 16.1 Create Lecture Bingo Session (Teacher screen/projector modal)
+ */
+export async function handleCreateLectureBingoSession({ classId, timeLimitSeconds, rotationIntervalSeconds, teacherUid }) {
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'Missing classId.');
+  }
+
+  const classRef = db.doc(`classes/${classId}`);
+  const classDoc = await classRef.get();
+  if (!classDoc.exists) {
+    throw new HttpsError('not-found', 'Class not found.');
+  }
+
+  const effectiveTimeLimit = Number(timeLimitSeconds) || 90;
+  const effectiveRotationSec = Number(rotationIntervalSeconds) >= 5 ? Number(rotationIntervalSeconds) : DEFAULT_LECTURE_QR_ROTATION_INTERVAL_SEC;
+  const effectiveRotationMs = effectiveRotationSec * 1000;
+
+  const issuedAtMillis = Date.now();
+  const expiresAtMillis = issuedAtMillis + effectiveTimeLimit * 1000;
+  const sessionSecret = crypto.randomBytes(32).toString('hex');
+  const roundId = `round_lecture_${issuedAtMillis}`;
+
+  const bingoRef = db.collection(`classes/${classId}/bingoRecords`).doc();
+  const bingoRecord = {
+    id: bingoRef.id,
+    roundId,
+    classId,
+    teacherUid: teacherUid || null,
+    questionSource: 'lecture_passkey_qr',
+    triggerType: 'teacher_lecture_qr',
+    question: 'Lecture Hall Biometric Passkey Check-In',
+    options: ['Biometric QR Check-In Verified'],
+    correctIndex: 0,
+    timeLimitSeconds: effectiveTimeLimit,
+    rotationIntervalSeconds: effectiveRotationSec,
+    rotationIntervalMs: effectiveRotationMs,
+    issuedAt: FieldValue.serverTimestamp(),
+    issuedAtMillis,
+    expiresAtMillis,
+    sessionSecret,
+    status: 'active',
+    result: 'pending',
+    responses: {},
+    verifiedStudentsCount: 0,
+  };
+
+  await bingoRef.set(bingoRecord);
+
+  // Update active lecture session doc for quick real-time listeners
+  await db.doc(`classes/${classId}/lectureQrSession/active`).set({
+    bingoId: bingoRef.id,
+    roundId,
+    classId,
+    status: 'active',
+    issuedAtMillis,
+    expiresAtMillis,
+    timeLimitSeconds: effectiveTimeLimit,
+    rotationIntervalSeconds: effectiveRotationSec,
+    rotationIntervalMs: effectiveRotationMs,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  const initialInterval = Math.floor(issuedAtMillis / effectiveRotationMs);
+  const initialToken = computeLectureQrToken(sessionSecret, initialInterval);
+
+  return {
+    bingoId: bingoRef.id,
+    roundId,
+    sessionSecret,
+    rotationIntervalSeconds: effectiveRotationSec,
+    rotationIntervalMs: effectiveRotationMs,
+    issuedAtMillis,
+    expiresAtMillis,
+    timeLimitSeconds: effectiveTimeLimit,
+    initialToken,
+  };
+}
+
+/**
+ * 16.2 Get Lecture Passkey Auth Options (Mobile Phone Scanned QR)
+ */
+export async function handleGetLecturePasskeyAuthOptions({ classId, bingoId, token, clientRpId }) {
+  if (!classId || !bingoId || !token) {
+    throw new HttpsError('invalid-argument', 'Missing classId, bingoId, or rotating token.');
+  }
+
+  const bingoRef = db.doc(`classes/${classId}/bingoRecords/${bingoId}`);
+  const bingoDoc = await bingoRef.get();
+
+  if (!bingoDoc.exists) {
+    throw new HttpsError('not-found', 'Lecture attendance challenge not found.');
+  }
+
+  const bingoData = bingoDoc.data();
+  if (bingoData.status === 'completed' || bingoData.status === 'cancelled') {
+    throw new HttpsError('failed-precondition', 'This attendance check has ended.');
+  }
+
+  if (Date.now() > bingoData.expiresAtMillis + 15000) {
+    throw new HttpsError('deadline-exceeded', 'This lecture attendance challenge has expired.');
+  }
+
+  // Validate rotating QR token against session secret with configured rotation interval
+  const rotationIntervalMs = bingoData.rotationIntervalMs || (bingoData.rotationIntervalSeconds ? bingoData.rotationIntervalSeconds * 1000 : DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS);
+  if (!isValidLectureQrToken(bingoData.sessionSecret, token, Date.now(), rotationIntervalMs)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Expired or invalid QR code. Please scan the current live QR code displayed on the lecture screen.'
+    );
+  }
+
+  const rpID = resolveRpId(clientRpId);
+
+  // Generate WebAuthn authentication options with userVerification: 'required' (Face ID / Fingerprint)
+  const options = await generateAuthenticationOptions({
+    rpID,
+    allowCredentials: [], // Allows device to use its resident hardware passkey
+    userVerification: 'required',
+  });
+
+  const challengeId = crypto.randomUUID();
+  const challengeExpiresAtMillis = Date.now() + 2 * 60 * 1000; // 2 minutes
+
+  await db.doc(`classes/${classId}/bingoRecords/${bingoId}/challenges/${challengeId}`).set({
+    challengeId,
+    challenge: options.challenge,
+    token,
+    rpIdUsed: rpID,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAtMillis: challengeExpiresAtMillis,
+  });
+
+  return {
+    options,
+    challengeId,
+    bingoId,
+    classId,
+    expiresAtMillis: bingoData.expiresAtMillis,
+    timeLimitSeconds: bingoData.timeLimitSeconds,
+  };
+}
+
+/**
+ * 16.3 Verify Lecture Passkey Auth (Mobile Phone Assertion Submission)
+ */
+export async function handleVerifyLecturePasskeyAuth({
+  classId,
+  bingoId,
+  challengeId,
+  token,
+  assertionResponse,
+  clientRpId,
+  timeToCompleteMillis,
+  deviceFingerprint,
+}) {
+  if (!classId || !bingoId || !challengeId || !assertionResponse) {
+    throw new HttpsError('invalid-argument', 'Missing verification parameters.');
+  }
+
+  const bingoRef = db.doc(`classes/${classId}/bingoRecords/${bingoId}`);
+  const bingoDoc = await bingoRef.get();
+
+  if (!bingoDoc.exists) {
+    throw new HttpsError('not-found', 'Lecture attendance record not found.');
+  }
+
+  const bingoData = bingoDoc.data();
+  if (bingoData.status === 'cancelled') {
+    throw new HttpsError('failed-precondition', 'This attendance challenge was cancelled by the instructor.');
+  }
+
+  // Retrieve challenge doc
+  const challengeRef = db.doc(`classes/${classId}/bingoRecords/${bingoId}/challenges/${challengeId}`);
+  const challengeDoc = await challengeRef.get();
+
+  if (!challengeDoc.exists) {
+    throw new HttpsError('failed-precondition', 'Challenge expired or not found. Please scan the QR code again.');
+  }
+
+  const challengeData = challengeDoc.data();
+  if (Date.now() > challengeData.expiresAtMillis) {
+    throw new HttpsError('deadline-exceeded', 'Verification challenge expired.');
+  }
+
+  // Validate token if provided or stored in challenge
+  const tokenToVerify = token || challengeData.token;
+  const rotationIntervalMs = bingoData.rotationIntervalMs || (bingoData.rotationIntervalSeconds ? bingoData.rotationIntervalSeconds * 1000 : DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS);
+  if (!isValidLectureQrToken(bingoData.sessionSecret, tokenToVerify, Date.now(), rotationIntervalMs)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'The scanned QR token has expired. Please scan the current code on the screen.'
+    );
+  }
+
+  // Identify student passkey by assertion credential ID
+  const credentialID = assertionResponse.id;
+  const passkeySnap = await db.collection('studentPasskeys')
+    .where('credentialID', '==', credentialID)
+    .limit(1)
+    .get();
+
+  if (passkeySnap.empty) {
+    throw new HttpsError(
+      'not-found',
+      'This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.'
+    );
+  }
+
+  const studentPasskeyDoc = passkeySnap.docs[0];
+  const passkeyData = studentPasskeyDoc.data();
+  const studentUid = passkeyData.studentUid || studentPasskeyDoc.id;
+  const studentEmail = passkeyData.studentEmail || '';
+
+  // Check hardware device fingerprint if registered
+  if (passkeyData.deviceFingerprint && deviceFingerprint && passkeyData.deviceFingerprint !== deviceFingerprint) {
+    console.warn(`[verifyLecturePasskeyAuth] Device mismatch for student ${studentEmail}! Registered: ${passkeyData.deviceFingerprint}, scanned: ${deviceFingerprint}`);
+    throw new HttpsError('permission-denied', 'Device Mismatch: Attendance must be verified using your registered phone.');
+  }
+
+  const expectedChallenge = challengeData.challenge;
+  const rpID = resolveRpId(clientRpId || challengeData.rpIdUsed);
+
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: assertionResponse,
+      expectedChallenge,
+      expectedOrigin: ALLOWED_ORIGINS,
+      expectedRPID: ALLOWED_RP_IDS,
+      credential: {
+        id: passkeyData.credentialID,
+        publicKey: new Uint8Array(Buffer.from(passkeyData.credentialPublicKey, 'base64')),
+        counter: passkeyData.counter || 0,
+        transports: passkeyData.transports,
+      },
+      requireUserVerification: true,
+    });
+  } catch (err) {
+    console.error('[verifyLecturePasskeyAuth] WebAuthn assertion verification failed:', err);
+    throw new HttpsError('invalid-argument', `Biometric verification failed: ${err.message}`);
+  }
+
+  if (!verification.verified) {
+    throw new HttpsError('invalid-argument', 'Passkey biometric assertion was not valid.');
+  }
+
+  // Update passkey counter and last used timestamp
+  await studentPasskeyDoc.ref.update({
+    counter: verification.authenticationInfo.newCounter,
+    lastUsedAt: FieldValue.serverTimestamp(),
+  });
+
+  const responseTimeSec = timeToCompleteMillis
+    ? Math.max(0.1, Math.round(Number(timeToCompleteMillis) / 100) / 10)
+    : Math.max(0.1, Math.round((Date.now() - bingoData.issuedAtMillis) / 100) / 10);
+
+  // Check if student already checked in
+  const existingResponses = bingoData.responses || {};
+  if (existingResponses[studentUid]) {
+    return {
+      verified: true,
+      alreadyVerified: true,
+      studentUid,
+      studentEmail,
+      responseTimeSec: existingResponses[studentUid].responseTimeSec || responseTimeSec,
+      pointsAwarded: existingResponses[studentUid].pointsAwarded || 10,
+    };
+  }
+
+  // Compute live rank
+  const currentVerifiedCount = Object.keys(existingResponses).length + 1;
+
+  // Record response in lecture session document
+  const responseData = {
+    studentUid,
+    studentEmail,
+    verifiedAt: FieldValue.serverTimestamp(),
+    verifiedAtMillis: Date.now(),
+    responseTimeSec,
+    rank: currentVerifiedCount,
+    passkeyVerified: true,
+    pointsAwarded: 10,
+    deviceModel: passkeyData.deviceModel || 'Mobile Device',
+  };
+
+  await bingoRef.update({
+    [`responses.${studentUid}`]: responseData,
+    verifiedStudentsCount: FieldValue.increment(1),
+  });
+
+  // Create an individual student record in bingoRecords for reporting & student dashboard views
+  const individualDocRef = db.collection(`classes/${classId}/bingoRecords`).doc(`${bingoId}_${studentUid}`);
+  await individualDocRef.set({
+    id: individualDocRef.id,
+    parentBingoId: bingoId,
+    roundId: bingoData.roundId,
+    classId,
+    studentUid,
+    studentEmail,
+    question: bingoData.question,
+    options: bingoData.options,
+    correctIndex: 0,
+    selectedIndex: 0,
+    selectedOptionText: 'Biometric QR Check-In Verified',
+    result: 'passed',
+    status: 'completed',
+    passkeyVerified: true,
+    responseTimeSec,
+    rank: currentVerifiedCount,
+    pointsAwarded: 10,
+    questionSource: 'lecture_passkey_qr',
+    triggerType: 'teacher_lecture_qr',
+    strikeNumber: 1,
+    issuedAt: bingoData.issuedAt || FieldValue.serverTimestamp(),
+    issuedAtMillis: bingoData.issuedAtMillis,
+    answeredAt: FieldValue.serverTimestamp(),
+    timeLimitSeconds: bingoData.timeLimitSeconds,
+  });
+
+  // Update Student Active Bingo Realtime State
+  try {
+    await db.doc(`classes/${classId}/studentProperties/${studentUid}`).set({
+      activeBingo: {
+        bingoId,
+        roundId: bingoData.roundId,
+        classId,
+        question: bingoData.question,
+        options: bingoData.options,
+        status: 'completed',
+        result: 'passed',
+        passkeyVerified: true,
+        responseTimeSec,
+        rank: currentVerifiedCount,
+        pointsAwarded: 10,
+        questionSource: 'lecture_passkey_qr',
+      },
+    }, { merge: true });
+  } catch (propErr) {
+    console.warn('[verifyLecturePasskeyAuth] Failed to update student activeBingo:', propErr);
+  }
+
+  return {
+    verified: true,
+    studentUid,
+    studentEmail,
+    responseTimeSec,
+    rank: currentVerifiedCount,
+    pointsAwarded: 10,
+  };
+}
+

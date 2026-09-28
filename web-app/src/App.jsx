@@ -44,6 +44,7 @@ const StudentRecordsView = lazyWithRetry(() => import('./components/StudentRecor
 const PublicLiveView = lazyWithRetry(() => import('./components/public/PublicLiveView'));
 const PasskeyPairView = lazyWithRetry(() => import('./components/passkey/PasskeyPairView'));
 const PasskeyVerifyView = lazyWithRetry(() => import('./components/passkey/PasskeyVerifyView'));
+const LecturePasskeyVerifyView = lazyWithRetry(() => import('./components/passkey/LecturePasskeyVerifyView'));
 const PasskeyMobileLoginView = lazyWithRetry(() => import('./components/passkey/PasskeyMobileLoginView'));
 const PasskeyEnforcementGate = lazyWithRetry(() => import('./components/passkey/PasskeyEnforcementGate'));
 
@@ -169,6 +170,7 @@ const AppShell = ({
   const isPublicLiveActive = location.pathname.startsWith('/live/');
   const isPasskeyRoute = location.pathname.startsWith('/pair-phone') ||
     location.pathname.startsWith('/verify-passkey') ||
+    location.pathname.startsWith('/lecture-verify') ||
     location.pathname.startsWith('/mobile-login');
   const isMinimalView = isStudentMobileActive || isPublicLiveActive || isPasskeyRoute;
 
@@ -230,6 +232,7 @@ const AppShell = ({
             <Route path="/live/:classId" element={<PublicLiveView />} />
             <Route path="/pair-phone" element={<PasskeyPairView />} />
             <Route path="/verify-passkey" element={<PasskeyVerifyView />} />
+            <Route path="/lecture-verify" element={<LecturePasskeyVerifyView />} />
             <Route path="/mobile-login" element={<PasskeyMobileLoginView />} />
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>

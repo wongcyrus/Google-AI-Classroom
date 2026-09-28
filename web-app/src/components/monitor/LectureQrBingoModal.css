@@ -1,0 +1,379 @@
+.lecture-qr-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.lecture-qr-modal {
+  background: #ffffff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 960px;
+  max-height: 94vh;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.lecture-qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.75rem;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  color: #ffffff;
+}
+
+.lecture-qr-title-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lecture-qr-icon-badge {
+  font-size: 1.75rem;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.4rem 0.6rem;
+  border-radius: 12px;
+}
+
+.lecture-qr-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.lecture-qr-subtitle {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.82rem;
+  color: #c7d2fe;
+}
+
+.lecture-qr-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lecture-qr-close-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #ffffff;
+  font-size: 1.25rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.lecture-qr-close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.lecture-qr-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding: 1.75rem;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .lecture-qr-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* QR Code Section */
+.lecture-qr-code-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 1.5rem;
+  position: relative;
+}
+
+.lecture-qr-frame {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lecture-qr-image {
+  width: 260px;
+  height: 260px;
+  display: block;
+}
+
+/* Rotation Progress Bar */
+.lecture-qr-rotation-status {
+  width: 100%;
+  max-width: 280px;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lecture-qr-rotation-bar-track {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.lecture-qr-rotation-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f46e5, #06b6d4);
+  border-radius: 999px;
+  transition: width 0.1s linear;
+}
+
+.lecture-qr-rotation-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.lecture-qr-prompt-instruction {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #475569;
+  text-align: center;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+/* Live Stats & Attendees Section */
+.lecture-qr-stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.lecture-qr-counter-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid #86efac;
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lecture-qr-counter-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #166534;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lecture-qr-counter-number {
+  font-size: 2.25rem;
+  font-weight: 900;
+  color: #15803d;
+  line-height: 1;
+}
+
+.lecture-qr-counter-total {
+  font-size: 1.2rem;
+  color: #4ade80;
+  font-weight: 700;
+}
+
+.lecture-qr-progress-track {
+  height: 8px;
+  background: rgba(22, 101, 52, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.6rem;
+}
+
+.lecture-qr-progress-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 999px;
+  transition: width 0.3s ease-out;
+}
+
+/* Feed & Leaderboard */
+.lecture-qr-feed-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+}
+
+.lecture-qr-feed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.lecture-qr-feed-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lecture-qr-feed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  animation: slideIn 0.2s ease-out;
+}
+
+.lecture-qr-feed-student {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.lecture-qr-feed-rank {
+  font-size: 0.78rem;
+  font-weight: 800;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.lecture-qr-feed-rank.gold {
+  background: #fef08a;
+  color: #854d0e;
+}
+
+.lecture-qr-feed-rank.silver {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.lecture-qr-feed-rank.bronze {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.lecture-qr-feed-speed {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4f46e5;
+  background: #e0e7ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.lecture-qr-feed-empty {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  padding: 2rem 0;
+}
+
+/* Footer Actions */
+.lecture-qr-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.75rem;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.lecture-qr-footer-left {
+  font-size: 0.8rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lecture-qr-btn {
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.lecture-qr-btn-primary {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+}
+
+.lecture-qr-btn-primary:hover {
+  background: #4338ca;
+}
+
+.lecture-qr-btn-secondary {
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.lecture-qr-btn-secondary:hover {
+  background: #f1f5f9;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-6px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}

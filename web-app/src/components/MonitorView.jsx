@@ -24,6 +24,7 @@ import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 import BingoResultsView from './BingoResultsView';
+import LectureQrBingoModal from './monitor/LectureQrBingoModal';
 
 
 import { useAnalysis } from '../hooks/useAnalysis';
@@ -36,12 +37,13 @@ import {
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
 
-const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone }) => {
+const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
   const audioPrompts = useAudioPrompts(user);
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [showBingoModal, setShowBingoModal] = useState(false);
+  const [showLectureQrModal, setShowLectureQrModal] = useState(false);
   const [classList, setClassList] = useState([]);
   const [studentStatuses, setStudentStatuses] = useState([]);
   const [screenshots, setScreenshots] = useState({});
@@ -1642,6 +1644,7 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
         onOpenBingoModal={() => setShowBingoModal(true)}
+        onOpenLectureQrModal={() => setShowLectureQrModal(true)}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
@@ -1873,6 +1876,25 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
                   title="Lecture recording is paused. Click to resume."
                 >
                   ⏸️ PAUSED ({lectureRecorder.durationFormatted})
+                </span>
+              )}
+              {lectureRecorder.isUploading && (
+                <span
+                  style={{
+                    background: '#dbeafe',
+                    color: '#1e40af',
+                    border: '1px solid #93c5fd',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                  title="Lecture recording is uploading to Cloud Storage. Please keep browser open."
+                >
+                  📦 Uploading {lectureRecorder.uploadProgress}% (Saving...)
                 </span>
               )}
             </div>
@@ -2253,6 +2275,18 @@ const MonitorView = ({ user, classId, lessons, selectedLesson, startTime, endTim
             externalProfiles={studentProfiles}
           />
         </Modal>
+      )}
+
+      {/* Lecture Hall Dynamic Rotating QR Code Bingo Modal */}
+      {showLectureQrModal && (
+        <LectureQrBingoModal
+          show={showLectureQrModal}
+          onClose={() => setShowLectureQrModal(false)}
+          classId={classId}
+          className={className || classId}
+          totalStudentsCount={classList?.length || 0}
+          onViewResults={() => setShowBingoModal(true)}
+        />
       )}
     </div>
   );

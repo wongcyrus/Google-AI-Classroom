@@ -57,6 +57,7 @@ const ControlsPanel = ({
     handleRunAllImagesAnalysis,
     isAnalyzing = false,
     onOpenBingoModal,
+    onOpenLectureQrModal,
 }) => {
     const [showGazeModal, setShowGazeModal] = useState(false);
     const [showAiCostModal, setShowAiCostModal] = useState(false);
@@ -201,6 +202,14 @@ const ControlsPanel = ({
 
     const handleTriggerClassBingo = async () => {
       if (!classId || isCallingBingo) return;
+
+      if (bingoMode === 'lecture_passkey_qr') {
+        if (onOpenLectureQrModal) {
+          onOpenLectureQrModal();
+        }
+        return;
+      }
+
       setIsCallingBingo(true);
       setBingoFeedback(null);
 
@@ -816,6 +825,16 @@ const ControlsPanel = ({
                   />
                   <span>📱 <strong>Mobile Passkey QR</strong> (1-Phone Lock / Biometrics)</span>
                 </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="bingoMode"
+                    value="lecture_passkey_qr"
+                    checked={bingoMode === 'lecture_passkey_qr'}
+                    onChange={(e) => handleModeChange(e.target.value)}
+                  />
+                  <span>📽️ <strong>Lecture Dynamic QR</strong> (Projector Biometric Check)</span>
+                </label>
               </div>
 
               <div style={{ marginTop: '0.25rem' }}>
@@ -824,7 +843,7 @@ const ControlsPanel = ({
                   className="action-btn"
                   style={{
                     width: '100%',
-                    background: '#2563eb',
+                    background: bingoMode === 'lecture_passkey_qr' ? '#4f46e5' : '#2563eb',
                     color: '#ffffff',
                     fontWeight: 600,
                     padding: '8px 12px',
@@ -839,8 +858,41 @@ const ControlsPanel = ({
                   disabled={isCallingBingo}
                   onClick={handleTriggerClassBingo}
                 >
-                  {isCallingBingo ? '⏳ Dispatching...' : '🎯 Call Bingo (All Students)'}
+                  {bingoMode === 'lecture_passkey_qr'
+                    ? '📽️ Project Lecture QR Code'
+                    : isCallingBingo
+                    ? '⏳ Dispatching...'
+                    : '🎯 Call Bingo (All Students)'}
                 </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem', paddingTop: '0.35rem', borderTop: '1px solid #f1f5f9' }}>
+                <label htmlFor="bingo-time-limit-select" style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                  ⏳ Answer Time Limit:
+                </label>
+                <select
+                  id="bingo-time-limit-select"
+                  aria-label="Student Bingo Answer Time Limit"
+                  value={bingoTimeLimitSeconds}
+                  onChange={(e) => handleUpdateTimeLimitSeconds(parseInt(e.target.value, 10))}
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#334155',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value={15}>15s (Rapid)</option>
+                  <option value={30}>30s (Default)</option>
+                  <option value={45}>45s (Extended)</option>
+                  <option value={60}>60s (1 min)</option>
+                  <option value={90}>90s (1.5 min)</option>
+                  <option value={120}>120s (2 min)</option>
+                </select>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem', paddingTop: '0.35rem', borderTop: '1px solid #f1f5f9' }}>
@@ -859,6 +911,8 @@ const ControlsPanel = ({
                     border: '1px solid #cbd5e1',
                     background: '#ffffff',
                     color: '#334155',
+                    fontWeight: 600,
+                    cursor: 'pointer',
                   }}
                 >
                   <option value={1}>⚡ 1 min</option>
@@ -924,26 +978,6 @@ const ControlsPanel = ({
                         <span>20m</span>
                         <span>30m</span>
                       </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.3rem', borderTop: '1px dashed #e2e8f0' }}>
-                      <label htmlFor="bingo-time-limit-select" style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
-                        ⏳ Answer Time Limit:
-                      </label>
-                      <select
-                        id="bingo-time-limit-select"
-                        value={bingoTimeLimitSeconds}
-                        onChange={(e) => handleUpdateTimeLimitSeconds(parseInt(e.target.value, 10))}
-                        style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#334155', fontWeight: 600, cursor: 'pointer' }}
-                        aria-label="Student Bingo Answer Time Limit"
-                      >
-                        <option value={15}>15s (Rapid)</option>
-                        <option value={30}>30s (Default)</option>
-                        <option value={45}>45s (Extended)</option>
-                        <option value={60}>60s (1 min)</option>
-                        <option value={90}>90s (1.5 min)</option>
-                        <option value={120}>120s (2 min)</option>
-                      </select>
                     </div>
                   </div>
                 )}
