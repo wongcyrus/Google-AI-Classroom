@@ -6,7 +6,7 @@
 [![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Functions_Gen_2_|_Firestore_|_Storage-FFA611?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![React 18](https://img.shields.io/badge/React_18-Vite_SPA-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Tests](https://img.shields.io/badge/Tests-1450+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
+[![Tests](https://img.shields.io/badge/Tests-1580+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform**, the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
@@ -18,13 +18,15 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 ## 🚀 Key Technical Highlights & Innovations
 
 * 🧠 **Edge AI Invigilation (Zero-Egress Privacy)**: Browser-native MediaPipe Face/Iris mesh, LiteRT Whisper STT, and LiteRT Gemma 4 running in isolated Web Workers at 15–30 FPS. Evaluates focus and intent locally with zero cloud streaming costs and zero raw biometrics leaving the student device.
+* 📱 **Dynamic QR Code Biometric Lecture Attendance & Hardware Passkeys**: Zero-password mobile WebAuthn passkey attendance powered by dynamic rotating HMAC-SHA256 encrypted QR codes on projector screens with anti-proxy 1-Student = 1-Device hardware locks and instant 1-tap phone biometric authentication.
+* 👥 **Enrolled Class Roster & Institutional Student Directory**: Unified central student repository (`studentDirectory`) and real-time enrolled student roster modal with instant student search, filtering, and passkey registration status inspection.
 * 🎙️ **Acoustic Invigilation & Rolling Diarization**: Dual-mode audio architecture featuring client-side silence suppression (>80% bandwidth saved) paired with cloud-side `gemini-3.5-transcribe-preview` multi-speaker diarization and word-level timestamps.
 * 🎬 **Two-Stage Map-Reduce-Map Lab Rubric Synthesis**: Discovers cohort-wide lab milestones and friction points using Gemini 3.7 Vision, automatically synthesizes structured rubrics with Gemini 3.8 Flash, and executes high-precision batch re-analysis.
 * 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement, and 1-click Microsoft Word (`.docx`) incident dossier exports complete with embedded side-by-side screen/webcam evidence.
 * 🎯 **"Bingo" Active Presence Verification**: Interactive challenge engine with 3 FinOps cost modes and a cheat-resistant Two-Strike attendance deduction system scheduled through serverless **Google Cloud Tasks**.
-* 👥 **Institutional Student Directory & Cross-Class Profile Propagation**: Unified single `Student Name` data model and central institutional repository (`studentDirectory`). Uploading or editing a student's profile in any class instantly propagates their name, nickname, academic programme, and cohort across all classes in the institution, with zero manual migration.
 * 🖥️ **Teacher Screen Broadcast & Anonymous Public Presentation Mode**: High-efficiency instructor screen sharing (`720p` @ `3.0s` default) with pure frame streaming avoiding WebRTC mesh CPU limits. Features an **Anonymous Public Presentation Mode** allowing conference and seminar audiences to view live screens and real-time multilingual subtitles on mobile devices by scanning a projected QR code with a 4-digit PIN—all while maintaining complete class privacy.
-* 🌐 **Multimodal Live Subtitles & Multilingual Translation**: 3 selectable translation modes (Mode 1: LiteRT Whisper + Chrome Nano; Mode 2: LiteRT Whisper + Cloud Function Gemini 3.8 Flash; Mode 3: Firebase AI Logic Gemini Live WebSocket) powered by modern `AudioWorkletNode` background resampling. Features class-configurable subject domain glossaries (Healthcare, Business, Design, Engineering, Hospitality, Humanities, IT, or custom) and custom translation AI prompts saved directly per class in Cloud Firestore, with full Prompt Library integration (dedicated "Translation Prompts" tab, Gemini AI optimization, and repository markdown presets), delivering real-time dual-line bilingual subtitles across 7 languages.
+* 🌐 **Multimodal Live Subtitles & Multilingual Translation**: Selectable translation modes powered by modern `AudioWorkletNode` background resampling with comprehensive Cantonese colloquialism and code-switching translation into English and Standard Chinese, subject domain glossaries, and custom prompt library templates.
+* 📹 **Automatic Lecture Recording Reconciler & Cloud Storage Sync**: Built-in cloud reconciliation function that scans and links un-finalized recordings with existing Cloud Storage media upon network reconnection or page refresh.
 * 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard.
 
 ---
@@ -147,7 +149,7 @@ The development sandbox ([`it114115-dev-2026.web.app`](https://it114115-dev-2026
 
 ## 🧪 Testing & Quality Assurance
 
-The repository enforces strict continuous integration standards with **>1,450 tests and assertions**, exceeding the **80% line and branch coverage benchmark** (achieving **81.66% line coverage** on frontend):
+The repository enforces strict continuous integration standards with **>1,580 tests and assertions**, exceeding the **80% line and branch coverage benchmark** (achieving **>82-88% line coverage** across frontend and backend):
 
 ```bash
 # Run all test suites across the entire repository
@@ -157,8 +159,8 @@ npm test
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest: 1,184 tests across 126 suites)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 146+ tests across 7 codebases)
+npm run test:frontend   # React component & utility unit tests (Vitest: 1,221 tests across 133 suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 245 tests in ai_flows + 6 other codebases)
 npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
 npm run test:security   # Real-token security rules verification (42 assertions)
 ```

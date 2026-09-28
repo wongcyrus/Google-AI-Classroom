@@ -408,6 +408,57 @@ Active lesson-level bypass status granted by teacher remote 1-click or emergency
 }
 ```
 
+### `classes/{classId}/lectureQrSession/active`
+Real-time active lecture hall dynamic rotating QR code session listener:
+```json
+{
+  "bingoId": "bingo_record_id_123",
+  "roundId": "round_lecture_1759080000000",
+  "classId": "IT114115-Demo",
+  "status": "active | completed | cancelled",
+  "issuedAtMillis": 1759080000000,
+  "expiresAtMillis": 1759080090000,
+  "timeLimitSeconds": 90,
+  "rotationIntervalSeconds": 15,
+  "rotationIntervalMs": 15000,
+  "updatedAt": "2026-09-28T08:00:00.000Z"
+}
+```
+
+### `classes/{classId}/bingoRecords/{bingoId}` (Lecture QR Mode)
+```json
+{
+  "id": "bingo_record_id_123",
+  "roundId": "round_lecture_1759080000000",
+  "classId": "IT114115-Demo",
+  "teacherUid": "teacher_uid_123",
+  "questionSource": "lecture_passkey_qr",
+  "triggerType": "teacher_lecture_qr",
+  "question": "Lecture Hall Biometric Passkey Check-In",
+  "options": ["Biometric QR Check-In Verified"],
+  "correctIndex": 0,
+  "timeLimitSeconds": 90,
+  "rotationIntervalSeconds": 15,
+  "rotationIntervalMs": 15000,
+  "issuedAt": "2026-09-28T08:00:00.000Z",
+  "sessionSecret": "32_byte_hex_cryptographic_secret",
+  "status": "active | completed | cancelled",
+  "result": "pending | passed | cancelled",
+  "responses": {
+    "student_uid_123": {
+      "selectedIndex": 0,
+      "submittedAt": 1759080015000,
+      "responseTimeSec": 1.8,
+      "isCorrect": true,
+      "passkeyVerified": true,
+      "deviceModel": "Apple iPhone",
+      "deviceFingerprint": "mdev_9b1deb4d..."
+    }
+  },
+  "verifiedStudentsCount": 1
+}
+```
+
 ### `passkeyAuditLogs/{logId}`
 ```json
 {
@@ -419,3 +470,4 @@ Active lesson-level bypass status granted by teacher remote 1-click or emergency
   "timestamp": "2026-09-27T08:05:30.000Z"
 }
 ```
+

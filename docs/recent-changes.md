@@ -4,6 +4,37 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0 Dynamic Rotating QR Code Biometric Attendance, Enrolled Rosters & Recording Reconciler
+
+**Date**: September 28, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1,580+ tests across frontend and backend), Deployed (Dev & Prod)  
+**Primary Files**:
+- Dynamic QR Crypto & Verification: [`lectureQrCrypto.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/lectureQrCrypto.js) & [`lectureQrCrypto.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/lectureQrCrypto.test.js)
+- Teacher Projector Modal: [`LectureQrBingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.jsx), [`LectureQrBingoModal.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.css), [`LectureQrBingoModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.test.jsx)
+- Mobile Attendance Verification: [`LecturePasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/LecturePasskeyVerifyView.jsx) & [`LecturePasskeyVerifyView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/LecturePasskeyVerifyView.test.jsx)
+- Backend Passkey Cloud Functions: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
+- Enrolled Class Roster: [`EnrolledRosterModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.jsx), [`EnrolledRosterModal.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.css), [`EnrolledRosterModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.test.jsx), [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx)
+- Recording Reconciler: [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js), [`functions/ai_flows/processLectureSubtitlesHandler.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitlesHandler.test.js), [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
+- Bilingual Subtitle Translation: [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js) & [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js)
+
+### 0.0.1 Dynamic Rotating QR Code Lecture Attendance
+- **Anti-Proxy Protection**: Generates HMAC-SHA256 encrypted time-rotating tokens every 5–10 seconds displayed on the classroom lecture projector. Prevent students from photographing or messaging static QR codes to absent peers outside the lecture hall.
+- **Instant Biometric Flow**: Students scan the live projector screen with their native smartphone camera, navigating to `/lecture-verify?classId=...&bingoId=...&token=...`, and touch Face ID/Fingerprint once. WebAuthn cryptographic assertion is submitted directly to `verifyLecturePasskeyAuth`.
+- **Live Ticker & Speed Ranking**: Displays real-time verified student count, response time ranking, and automatic audio chime celebration upon each student check-in.
+
+### 0.0.2 Enrolled Class Roster & Passkey Inspection
+- **Interactive Student Directory**: `EnrolledRosterModal` enables instructors to view the complete list of enrolled students for any class, filter by name/email/cohort, and view passkey registration status and hardware device model.
+- **Passkey Reset**: Instructors can unlink registered devices with 1 click if a student replaces or loses their smartphone.
+
+### 0.0.3 Automatic Lecture Recording Reconciler
+- **Cloud Storage Auto-Recovery**: `handleReconcileLectureRecordings` scans for un-finalized recording documents and checks for existing video files and VTT subtitles in Cloud Storage, automatically restoring and linking them without manual database editing.
+- **On-Demand & Automatic Triggers**: `LectureRecordingsView` automatically prompts auto-recovery when unfinalized recordings older than 2 minutes are detected, and provides a manual `🔄 Auto-Recover from Cloud Storage` action.
+
+### 0.0.4 Speech Translation Quality & Code-Switching
+- **Cantonese & English Translation**: Improved prompts and normalized language key matching across Gemini 3.8 Flash Cloud Functions and LiteRT Gemma Web workers to ensure complete translation of colloquial Cantonese phrases and code-switching into natural English and Standard Chinese.
+
+---
+
 ## 0. WebAuthn (FIDO2) Mobile Passkeys: 1-Phone Hardware Lock & Teacher Reset
 
 **Date**: September 26, 2026  

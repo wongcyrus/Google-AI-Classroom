@@ -735,6 +735,31 @@ Stores information about each class.
             *   `retryBingoScheduledAtMillis`: (number | null) Epoch timestamp in milliseconds indicating when the Strike 2 retry challenge is scheduled to fire.
             *   `retryDelayMinutes`: (number | null) Configured grace period delay applied for this retry schedule.
             *   `lastRetryDispatchedAt`: (timestamp | null) Server timestamp of when Strike 2 challenge was dispatched via Cloud Tasks.
+            *   `passkeyBypass`: (object | null) Active lesson-level bypass status (`{ active: true, classId, grantedBy, grantedAt, expiresAt, method }`).
+            *   `isRegistered`: (boolean | null) Cached boolean indicating whether the student has registered a hardware passkey.
+    *   **`classes/{classId}/lectureQrSession`**: Real-time broadcast coordination document for lecture-wide dynamic rotating QR code attendance check-ins.
+        *   **Document `active`** (`classes/{classId}/lectureQrSession/active`):
+            *   `bingoId`: (string) Active challenge ID referenced in `bingoRecords`.
+            *   `roundId`: (string) Round identifier (e.g. `round_lecture_1759080000000`).
+            *   `classId`: (string) Class identifier.
+            *   `status`: (string) Current state (`active`, `completed`, `cancelled`).
+            *   `issuedAtMillis`: (number) Epoch timestamp in milliseconds when the QR session was created.
+            *   `expiresAtMillis`: (number) Expiration timestamp in milliseconds.
+            *   `timeLimitSeconds`: (number) Duration of attendance window (default 90s).
+            *   `rotationIntervalSeconds`: (number) QR code rotation cadence (default 15s).
+            *   `rotationIntervalMs`: (number) Rotation cadence in milliseconds (15000ms).
+            *   `updatedAt`: (timestamp) Server timestamp of latest status change.
+    *   **`classes/{classId}/passkeyBypassRequests`**: Stores pending remote hardware bypass requests submitted by students experiencing phone failure or depleted battery.
+        *   **Document ID**: `studentUid` (string).
+        *   **Fields**:
+            *   `studentUid`: (string) Student UID requesting temporary bypass.
+            *   `studentEmail`: (string) Student email address.
+            *   `studentName`: (string) Full student name.
+            *   `reason`: (string) Justification category (`phone_battery_dead`, `left_phone_at_home`, `camera_damaged`, `other`).
+            *   `status`: (string) Request status (`pending`, `approved`, `denied`).
+            *   `requestedAt`: (timestamp) Server timestamp when requested.
+            *   `reviewedAt`: (timestamp | null) Server timestamp when teacher approved or denied.
+            *   `reviewedBy`: (string | null) Teacher email who reviewed the request.
     *   **`classes/{classId}/lectureRecordings`**: Stores metadata, video download URLs, multilingual subtitle track URLs, and YouTube upload metadata for teacher lecture recordings.
         *   **Document ID**: `sessionId` (string, e.g. `rec_1773910000000`).
         *   **Fields**:

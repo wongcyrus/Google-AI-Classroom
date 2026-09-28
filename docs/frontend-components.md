@@ -271,6 +271,17 @@ flowchart TD
 *   **`LiveSubtitleOverlay.jsx` / `.css`**: High-performance dual-line subtitle HUD component embedded in `StudentView.jsx` and `TeacherScreenViewerModal.jsx`. Displays the teacher's original spoken phrase on top (`#94a3b8`) and translated text below in crisp contrast (`#38bdf8` / `#ffffff`). Supports both **Docked Mode** (anchored beneath the video canvas) and **Floating HUD Mode** (draggable, resizable, glassmorphic overlay with opacity adjustment).
 *   **`aiLogic.js` (Utility)**: Firebase AI Logic SDK wrapper module (`firebase/ai`). Manages `GoogleAIBackend` singleton initialization, Float32-to-Int16 Linear PCM Little-Endian Base64 audio encoding (`pcmFloat32ToBase64`), and establishes bidirectional WebSocket sessions via `getLiveGenerativeModel` using official model `gemini-3.1-flash-live-preview`. Features real-time token tracking via server `usageMetadata` interception with deterministic sample counter fallbacks, and enforces defense-in-depth teacher domain authorization assertions before opening live WebSocket connections.
 
+## Mobile Passkeys & Hardware Biometric Components
+
+*   **`PasskeyPairModal.jsx`**: Modal rendered on student lab PC desktop displays pairing QR codes for mobile phone camera scanning, or presents direct passkey registration buttons when accessed on mobile devices.
+*   **`PasskeyPairView.jsx`**: Mobile smartphone page (`/pair-phone?token=...`) invoked upon scanning the pairing QR code. Triggers native platform biometric enrollment (Apple Touch ID / Face ID, Android Titan/StrongBox) with `userVerification: 'required'`.
+*   **`PasskeyVerifyView.jsx`**: Mobile smartphone verification page (`/verify-passkey?classId=...&bingoId=...`) for routine in-class presence checks.
+*   **`LecturePasskeyVerifyView.jsx`**: Mobile check-in page (`/verify-lecture-passkey?classId=...&bingoId=...&token=...`) invoked when scanning the rotating lecture hall QR code. Submits biometric assertions validating against the rotating session token.
+*   **`PasskeyMobileLoginView.jsx`**: Mobile login page (`/mobile-login?session=...`) for scanning desktop login QR codes. Validates mobile passkey and mints a custom token to sign in the lab PC.
+*   **`PasskeyEnforcementGate.jsx`**: Security gate protecting student routes. If a student is unlinked on a desktop PC, prevents unauthorized navigation and displays the pairing QR code and teacher remote bypass request interface.
+*   **`LectureQrBingoModal.jsx`**: Teacher podium HUD modal projecting dynamic rotating QR codes (rotating every 15s) with live countdown timers, verified student counter, and full-screen presentation mode.
+*   **`EnrolledRosterModal.jsx`**: Teacher roster modal displaying all enrolled students in the class, their official names, cohorts, and real-time passkey enrollment status pills (`📱 Paired` vs `⚪ Not Paired`).
+
 ## Communication
 
 *   **`MailboxView.jsx`**: A simple email client interface for viewing messages sent to the user from the system (e.g., download links for ZIP archives).
