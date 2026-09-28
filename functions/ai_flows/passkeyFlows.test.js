@@ -17,12 +17,12 @@ const {
   const mockCollectionAdd = vi.fn().mockResolvedValue({ id: 'audit_log_1' });
 
   const mockCollection = {
-    doc: vi.fn((id) => ({
-      id,
+    doc: vi.fn((id = 'generated_doc_id') => ({
+      id: id || 'generated_doc_id',
       set: mockDocSet,
       update: mockDocUpdate,
       delete: mockDocDelete,
-      get: () => mockDocGet(id),
+      get: () => mockDocGet(id || 'generated_doc_id'),
     })),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
@@ -55,6 +55,7 @@ vi.mock('firebase-admin/firestore', () => ({
   getFirestore: vi.fn(() => mockFirestore),
   FieldValue: {
     serverTimestamp: vi.fn(() => 'SERVER_TIMESTAMP'),
+    increment: vi.fn((n) => n),
   },
 }));
 
@@ -110,6 +111,12 @@ import {
   handleRequestTeacherPasskeyBypass,
   handleApproveTeacherPasskeyBypass,
   handleVerifyTeacherPasskeyBypassPin,
+  handleCreateLectureBingoSession,
+  handleGetLecturePasskeyAuthOptions,
+  handleVerifyLecturePasskeyAuth,
+  computeLectureQrToken,
+  isValidLectureQrToken,
+  LECTURE_QR_ROTATION_INTERVAL_MS,
   resolveRpId,
 } from './passkeyFlows.js';
 import {
@@ -997,6 +1004,213 @@ describe('WebAuthn Passkey Flows Backend', () => {
           studentUid: 'alex',
         })
       );
+    });
+  });
+
+  describe('Lecture Dynamic Rotating QR Code Passkey Bingo', () => {
+    describe('computeLectureQrToken & isValidLectureQrToken', () => {
+      it('generates consistent 16-char hex tokens for same interval', () => {
+        const secret = 'test-secret-1234567890';
+        const token1 = computeLectureQrToken(secret, 100);
+        const token2 = computeLectureQrToken(secret, 100);
+        const tokenDiff = computeLectureQrToken(secret, 101);
+
+        expect(token1).toBe(token2);
+        expect(token1.length).toBe(16);
+        expect(token1).not.toBe(tokenDiff);
+      });
+
+      it('validates current and grace interval tokens', () => {
+        const secret = 'test-secret-abcdef';
+        const now = 1000000;
+        const currentInterval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+
+        const currentToken = computeLectureQrToken(secret, currentInterval);
+        const graceToken1 = computeLectureQrToken(secret, currentInterval - 1);
+        const graceToken2 = computeLectureQrToken(secret, currentInterval - 2);
+        const expiredToken = computeLectureQrToken(secret, currentInterval - 3);
+
+        expect(isValidLectureQrToken(secret, currentToken, now)).toBe(true);
+        expect(isValidLectureQrToken(secret, graceToken1, now)).toBe(true);
+        expect(isValidLectureQrToken(secret, graceToken2, now)).toBe(true);
+        expect(isValidLectureQrToken(secret, expiredToken, now)).toBe(false);
+      });
+
+      it('returns false for invalid arguments', () => {
+        expect(isValidLectureQrToken('', 'abcdef1234567890')).toBe(false);
+        expect(isValidLectureQrToken('secret', '')).toBe(false);
+        expect(isValidLectureQrToken('secret', 'too-short')).toBe(false);
+      });
+    });
+
+    describe('handleCreateLectureBingoSession', () => {
+      it('creates an active lecture bingo session document', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: true, data: () => ({ name: 'Cloud Computing' }) });
+
+        const res = await handleCreateLectureBingoSession({
+          classId: 'class_it101',
+          timeLimitSeconds: 90,
+          teacherUid: 'teacher_t1',
+        });
+
+        expect(res.bingoId).toBeDefined();
+        expect(res.sessionSecret).toBeDefined();
+        expect(res.initialToken).toBeDefined();
+        expect(res.timeLimitSeconds).toBe(90);
+        expect(res.expiresAtMillis).toBeGreaterThan(Date.now());
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            questionSource: 'lecture_passkey_qr',
+            triggerType: 'teacher_lecture_qr',
+            status: 'active',
+            timeLimitSeconds: 90,
+          })
+        );
+      });
+
+      it('throws error if class is not found', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        await expect(
+          handleCreateLectureBingoSession({ classId: 'c_none' })
+        ).rejects.toThrow('Class not found.');
+      });
+    });
+
+    describe('handleGetLecturePasskeyAuthOptions', () => {
+      it('returns authentication options for a valid token and active session', async () => {
+        const secret = 'secret_abc';
+        const now = Date.now();
+        const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+        const token = computeLectureQrToken(secret, interval);
+
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            status: 'active',
+            sessionSecret: secret,
+            expiresAtMillis: now + 60000,
+            timeLimitSeconds: 60,
+          }),
+        });
+
+        const res = await handleGetLecturePasskeyAuthOptions({
+          classId: 'class_it101',
+          bingoId: 'bingo_lecture_1',
+          token,
+          clientRpId: 'it114115-2627.web.app',
+        });
+
+        expect(res.options).toBeDefined();
+        expect(res.challengeId).toBeDefined();
+        expect(res.bingoId).toBe('bingo_lecture_1');
+        expect(mockDocSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            challenge: 'mock-auth-challenge',
+            token,
+          })
+        );
+      });
+
+      it('rejects expired or invalid rotating token', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            status: 'active',
+            sessionSecret: 'secret_abc',
+            expiresAtMillis: Date.now() + 60000,
+          }),
+        });
+
+        await expect(
+          handleGetLecturePasskeyAuthOptions({
+            classId: 'class_it101',
+            bingoId: 'bingo_lecture_1',
+            token: 'invalid_token_1234',
+          })
+        ).rejects.toThrow('Expired or invalid QR code.');
+      });
+    });
+
+    describe('handleVerifyLecturePasskeyAuth', () => {
+      it('verifies student WebAuthn assertion and updates lecture records', async () => {
+        const secret = 'secret_abc';
+        const now = Date.now();
+        const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+        const token = computeLectureQrToken(secret, interval);
+
+        // 1. Session doc
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            id: 'bingo_lecture_1',
+            roundId: 'round_lecture_1',
+            sessionSecret: secret,
+            issuedAtMillis: now - 3000,
+            expiresAtMillis: now + 60000,
+            question: 'Lecture Hall Biometric Passkey Check-In',
+            options: ['Biometric QR Check-In Verified'],
+            responses: {},
+          }),
+        });
+
+        // 2. Challenge doc
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            challenge: 'mock-auth-challenge',
+            token,
+            expiresAtMillis: now + 60000,
+            rpIdUsed: 'it114115-2627.web.app',
+          }),
+        });
+
+        // 3. studentPasskeys lookup
+        mockCollectionGet.mockResolvedValueOnce({
+          empty: false,
+          docs: [
+            {
+              id: 'student_alex',
+              data: () => ({
+                studentUid: 'student_alex',
+                studentEmail: 'alex@vtc.edu.hk',
+                credentialID: 'hardware-cred-abc',
+                credentialPublicKey: Buffer.from([1, 2, 3, 4]).toString('base64'),
+                counter: 0,
+                deviceFingerprint: 'fp_123',
+              }),
+              ref: {
+                update: mockDocUpdate,
+              },
+            },
+          ],
+        });
+
+        const res = await handleVerifyLecturePasskeyAuth({
+          classId: 'class_it101',
+          bingoId: 'bingo_lecture_1',
+          challengeId: 'chal_123',
+          token,
+          assertionResponse: { id: 'hardware-cred-abc' },
+          clientRpId: 'it114115-2627.web.app',
+          deviceFingerprint: 'fp_123',
+        });
+
+        expect(res.verified).toBe(true);
+        expect(res.studentUid).toBe('student_alex');
+        expect(res.studentEmail).toBe('alex@vtc.edu.hk');
+        expect(res.rank).toBe(1);
+        expect(res.pointsAwarded).toBe(10);
+        expect(mockDocUpdate).toHaveBeenCalled();
+        expect(mockDocSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            result: 'passed',
+            status: 'completed',
+            passkeyVerified: true,
+            questionSource: 'lecture_passkey_qr',
+          })
+        );
+      });
     });
   });
 });
