@@ -43,6 +43,9 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   const [mergeFeedback, setMergeFeedback] = useState('');
   const [selectedIdsToMerge, setSelectedIdsToMerge] = useState([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [reconcileFeedback, setReconcileFeedback] = useState('');
+  const hasAutoReconciledRef = useRef(false);
 
   // Phase 1 YouTube & Dual Player state
   const [activePlayerMode, setActivePlayerMode] = useState('cloud'); // 'youtube' | 'drive' | 'cloud'
@@ -130,6 +133,27 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
     }
   };
 
+  // Automatically inspect and restore recordings whose uploads or status updates were interrupted
+  const handleAutoReconcile = async () => {
+    if (!classId) return;
+    setIsReconciling(true);
+    setReconcileFeedback('');
+    try {
+      const reconcileFn = httpsCallable(functions, 'reconcileLectureRecordings');
+      const res = await reconcileFn({ classId });
+      if (res.data?.reconciledCount > 0) {
+        setReconcileFeedback(`Successfully restored ${res.data.reconciledCount} recording(s) from Cloud Storage!`);
+      } else {
+        setReconcileFeedback('Cloud Storage check complete. No unlinked media found.');
+      }
+    } catch (err) {
+      console.warn('[LectureRecordingsView] Auto-reconcile notice:', err);
+      setReconcileFeedback(`Recovery notice: ${err.message}`);
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
   // Subscribe to lectureRecordings subcollection in real time
   useEffect(() => {
     if (!classId) {
@@ -154,6 +178,21 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
         // Select the newest recording by default if none selected
         if (!selectedRecordingId && validDocs.length > 0) {
           setSelectedRecordingId(validDocs[0].id);
+        }
+
+        // Auto-reconcile once if any recording is older than 2 mins and unfinalized
+        const hasOrphaned = validDocs.some((d) => {
+          const startMs = d.startedAt?.toDate?.()?.getTime() || (d.startedAt ? new Date(d.startedAt).getTime() : 0);
+          return (
+            (d.status === 'recording' || d.status === 'uploading' || !d.videoUrl) &&
+            startMs > 0 &&
+            Date.now() - startMs > 2 * 60 * 1000
+          );
+        });
+
+        if (hasOrphaned && !hasAutoReconciledRef.current) {
+          hasAutoReconciledRef.current = true;
+          handleAutoReconcile();
         }
       },
       (err) => {
@@ -833,24 +872,36 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                 </div>
               ) : (
                 <div className="empty-state" style={{ padding: '2rem 1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  {selectedRecording.status === 'recording' && (!selectedRecording.startedAt || Date.now() - (selectedRecording.startedAt.toDate?.()?.getTime() || new Date(selectedRecording.startedAt).getTime()) > 2 * 3600 * 1000) ? (
+                  {selectedRecording.status === 'recording' || !selectedRecording.videoUrl ? (
                     <div>
                       <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>⚠️</div>
-                      <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: '1.05rem' }}>Incomplete Recording Session</h4>
+                      <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: '1.05rem' }}>Unfinalized / Processing Recording Session</h4>
                       <p style={{ color: '#64748b', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto 16px', lineHeight: 1.5 }}>
-                        This recording was initiated earlier, but the browser window was closed or disconnected before the local video stream finished uploading to Cloud Storage.
+                        This recording is waiting for final video synchronization or was interrupted while uploading. If media files exist in Cloud Storage, click below to automatically recover them.
                       </p>
-                      <p style={{ color: '#475569', fontSize: '0.84rem', margin: '0 0 16px' }}>
-                        You can link a YouTube or Google Drive URL below if recorded externally, or remove this incomplete entry.
-                      </p>
-                      <button
-                        className="btn-delete-recording"
-                        onClick={() => handleDeleteRecording(selectedRecording.id)}
-                        disabled={isDeleting}
-                        style={{ margin: '0 auto' }}
-                      >
-                        {isDeleting ? '🗑️ Removing...' : '🗑️ Remove Incomplete Entry'}
-                      </button>
+                      {reconcileFeedback && (
+                        <div style={{ color: '#15803d', fontWeight: 600, fontSize: '0.88rem', marginBottom: '14px' }}>
+                          ✅ {reconcileFeedback}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn-secondary"
+                          onClick={handleAutoReconcile}
+                          disabled={isReconciling}
+                          style={{ margin: '0', background: '#e0e7ff', color: '#3730a3', borderColor: '#c7d2fe', fontWeight: 600 }}
+                        >
+                          {isReconciling ? '⏳ Checking Cloud Storage...' : '🔄 Auto-Recover from Cloud Storage'}
+                        </button>
+                        <button
+                          className="btn-delete-recording"
+                          onClick={() => handleDeleteRecording(selectedRecording.id)}
+                          disabled={isDeleting}
+                          style={{ margin: '0' }}
+                        >
+                          {isDeleting ? '🗑️ Removing...' : '🗑️ Remove Incomplete Entry'}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div>Video upload in progress or unavailable.</div>
