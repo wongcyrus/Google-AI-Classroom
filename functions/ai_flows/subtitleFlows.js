@@ -83,18 +83,20 @@ export async function translateTeacherSpeech({
 
   const prompt = `You are a real-time lecture subtitle translator for higher education.
 Context / Subject Matter: ${domainContext}
-Spoken Source Language: ${sourceLang} (May include colloquial speech and code-switching)
+Spoken Source Language: ${sourceLang} (May include colloquial Cantonese and English code-switching)
 Target Language(s) to produce: ${targetDesc}
 ${historyBlock}
 Current Speech to Translate:
 "${trimmedText}"
 
 Guidelines:
-1. Translate accurately, naturally, and concisely for live classroom subtitles.
-2. CRITICAL: Preserve discipline-specific terminology, proper nouns, formulas, domain keywords, and standard technical abbreviations in their original language/form without unnatural literal translations appropriate for ${domainContext}.
-3. If source speech is spoken Cantonese (e.g. "今日我哋用..."), translate into clean formal written Traditional Chinese (e.g. "今天我們使用...") or the requested target language.
-4. Translate ONLY the "Current Speech to Translate", using the Preceding Speech History solely to infer context, resolve pronouns (e.g. "it", "they", "this"), and maintain technical consistency.
-5. Provide the translated text for every requested target language code in the structured output.${customInstructions}`;
+1. FULL TRANSLATION MANDATORY: Translate the complete sentence and meaning accurately and naturally into each requested target language.
+2. For English ("en"): Translate all spoken Chinese/Cantonese phrases into natural fluent English (e.g. "hello你好嗎" -> "Hello, how are you?", "今日我哋學..." -> "Today we will learn..."). NEVER leave untranslated Chinese characters or colloquialisms in the English translation.
+3. For Simplified Chinese ("zh-Hans"): Translate Cantonese colloquialisms into standard written Simplified Chinese (e.g. "hello你好嗎" -> "你好，你好吗？").
+4. For Traditional Chinese ("zh-Hant"): Translate into standard written Traditional Chinese (e.g. "今天我們學習...").
+5. Technical Terms: Preserve domain-specific technical keywords, programming syntax, standard formula names, and brand names (e.g. "useEffect", "Firestore", "Docker", "Python", "Kubernetes") in their original technical spelling without unnatural literal translations.
+6. Translate ONLY the "Current Speech to Translate", using the Preceding Speech History solely to infer context, resolve pronouns (e.g. "it", "they", "this"), and maintain terminology continuity.
+7. Return a JSON mapping with the exact target language codes as keys (e.g. {"en":"...","zh-Hans":"..."}).${customInstructions}`;
 
   // Estimate cost & check quota
   const estimatedCost = estimateCost(prompt, [], AI_MODEL) + 0.00005;
@@ -124,7 +126,7 @@ Guidelines:
     output: {
       schema: z.object({
         detectedSourceLang: z.string().optional().describe('Detected source language code'),
-        translations: translationsSchema.describe('Map of target language codes to translated subtitle strings'),
+        translations: translationsSchema.describe('Map of exact target language codes to translated subtitle strings'),
       }),
     },
   }, AI_MODEL);
@@ -138,8 +140,15 @@ Guidelines:
     if (rawTranslations[lang]) {
       normalizedTranslations[lang] = rawTranslations[lang];
     } else {
-      // Check alternative keys (e.g. 'zh' vs 'zh-Hans' or 'zh-Hant')
-      const altKey = Object.keys(rawTranslations).find(k => k.toLowerCase().startsWith(lang.split('-')[0]));
+      // Check alternative keys (e.g. 'zh' vs 'zh-Hans' or 'zh-Hant', 'en' vs 'English', 'zh-Hans' vs 'Simplified Chinese')
+      const targetPrefix = lang.split('-')[0].toLowerCase();
+      const altKey = Object.keys(rawTranslations).find(k => {
+        const lowerK = k.toLowerCase();
+        return lowerK === lang.toLowerCase() ||
+          lowerK.startsWith(targetPrefix) ||
+          (targetPrefix === 'en' && lowerK.includes('english')) ||
+          (targetPrefix === 'zh' && (lowerK.includes('chinese') || lowerK.includes('mandarin') || lowerK.includes('cantonese')));
+      });
       normalizedTranslations[lang] = altKey ? rawTranslations[altKey] : trimmedText;
     }
   }
