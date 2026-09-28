@@ -14,6 +14,20 @@ import './StudentMobileView.css';
 export default function StudentMobileView({ user, onSwitchToDesktop }) {
   const navigate = useNavigate();
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+  const [hasRegisteredPasskey, setHasRegisteredPasskey] = useState(null); // null = checking, true/false
+
+  // Real-time listener for student's registered mobile passkey
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snap) => {
+      setHasRegisteredPasskey(snap.exists());
+    }, (err) => {
+      console.warn('[StudentMobileView] passkey status listener warning:', err);
+      setHasRegisteredPasskey(false);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
   // Mobile View Mode: 'overlay' (Screen & Overlap CC), 'screen' (Screen Only), 'cc' (CC Only)
   const [mobileViewMode, setMobileViewMode] = useState(() => {
     try {
@@ -506,6 +520,54 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
           </button>
         </div>
       </header>
+
+      {/* Prominent Action Banner for First-Time Passkey Registration on Mobile */}
+      {hasRegisteredPasskey === false && (
+        <div
+          className="mobile-passkey-alert-banner"
+          role="alert"
+          style={{
+            background: 'linear-gradient(135deg, #312e81, #1e1b4b)',
+            border: '1px solid #6366f1',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            margin: '8px 12px 12px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.75rem' }}>📱</span>
+            <div>
+              <strong style={{ color: '#ffffff', fontSize: '0.9rem', display: 'block' }}>Register Mobile Passkey</strong>
+              <span style={{ color: '#c7d2fe', fontSize: '0.78rem', lineHeight: '1.3', display: 'block' }}>
+                Enable Face ID / Fingerprint on this phone to log into Lab PCs and claim attendance.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPasskeyModal(true)}
+            style={{
+              background: '#4f46e5',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 14px',
+              fontSize: '0.825rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
+            Register
+          </button>
+        </div>
+      )}
 
       {/* Main View Area: Rendered based on mobileViewMode */}
       <main className="mobile-main-viewport">

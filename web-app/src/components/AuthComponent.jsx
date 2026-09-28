@@ -11,11 +11,12 @@ import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import QRCode from 'qrcode';
 import { auth, functions, db } from '../firebase-config';
-import { isGoogleChrome, getBrowserName } from '../utils/browserDetection';
+import { isGoogleChrome, getBrowserName, isMobileDevice } from '../utils/browserDetection';
 import { isValidInstitutionalEmail, isStudentEmail, deriveRoleFromEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
 import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser }) => {
+  const isMobile = isMobileDevice();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,8 +25,8 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [localUnverifiedUser, setLocalUnverifiedUser] = useState(null);
 
-  // Cross-device Mobile Passkey QR Login state
-  const [activeTab, setActiveTab] = useState('password'); // 'password' | 'qr'
+  // Cross-device Mobile Passkey QR Login state (Default to QR on Desktop, Password on Mobile)
+  const [activeTab, setActiveTab] = useState(() => (isMobileDevice() ? 'password' : 'qr'));
   const [qrSessionId, setQrSessionId] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrTimeLeft, setQrTimeLeft] = useState(90);
@@ -262,6 +263,13 @@ const AuthComponent = ({ unverifiedUser }) => {
     return () => clearInterval(interval);
   }, [activeTab, qrStatus, qrTimeLeft]);
 
+  // Auto-initiate QR session on Desktop when activeTab is 'qr'
+  useEffect(() => {
+    if (!isMobile && activeTab === 'qr' && !qrSessionId && !qrLoading) {
+      initiateQrSession();
+    }
+  }, [isMobile, activeTab, qrSessionId, qrLoading]);
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -271,33 +279,35 @@ const AuthComponent = ({ unverifiedUser }) => {
           <p className="auth-subtitle">Sign in to your classroom account or register</p>
         </div>
 
-        <div className="auth-tab-nav" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'password'}
-            className={`auth-tab-btn ${activeTab === 'password' ? 'active' : ''}`}
-            onClick={() => setActiveTab('password')}
-          >
-            ✉️ Email & Password
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'qr'}
-            className={`auth-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('qr');
-              if (!qrSessionId || qrStatus === 'expired') {
-                initiateQrSession();
-              }
-            }}
-          >
-            📱 Scan QR Code
-          </button>
-        </div>
+        {!isMobile && (
+          <div className="auth-tab-nav" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'qr'}
+              className={`auth-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('qr');
+                if (!qrSessionId || qrStatus === 'expired') {
+                  initiateQrSession();
+                }
+              }}
+            >
+              📱 Scan QR Code (Lab PC)
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'password'}
+              className={`auth-tab-btn ${activeTab === 'password' ? 'active' : ''}`}
+              onClick={() => setActiveTab('password')}
+            >
+              ✉️ Email & Password
+            </button>
+          </div>
+        )}
 
-        {activeTab === 'qr' && (
+        {!isMobile && activeTab === 'qr' && (
           <div className="auth-qr-section">
             <div className="auth-qr-instructions">
               <strong>Scan with your mobile phone camera</strong>

@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isMobileDevice } from '../../utils/browserDetection';
+import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions, db } from '../../firebase-config';
 import './passkey.css';
 
@@ -10,71 +12,72 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [pairingToken, setPairingToken] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [error, setError] = useState('');
   const [isPaired, setIsPaired] = useState(false);
   const [pairedDevice, setPairedDevice] = useState('');
   const isMobile = isMobileDevice();
 
-  // 1. Generate pairing token and QR code when modal opens
+  // 1. Check existing passkey status & generate pairing token if on desktop
   useEffect(() => {
     if (!show || !user?.uid) return;
 
     let isMounted = true;
     setIsPaired(false);
+    setError('');
 
-    const initPairing = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
-        const res = await reqTokenFn({ classId: classId || null });
-        const tokenId = res.data?.tokenId;
+    // If on Desktop, generate pairing QR code for phone to scan
+    if (!isMobile) {
+      const initPairing = async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
+          const res = await reqTokenFn({ classId: classId || null });
+          const tokenId = res.data?.tokenId;
 
-        if (!tokenId) {
-          throw new Error('Could not generate pairing token.');
+          if (!tokenId) {
+            throw new Error('Could not generate pairing token.');
+          }
+
+          if (isMounted) {
+            setPairingToken(tokenId);
+          }
+
+          const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
+          const dataUrl = await QRCode.toDataURL(pairingUrl, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#0f172a',
+              light: '#ffffff',
+            },
+          });
+
+          if (isMounted) {
+            setQrDataUrl(dataUrl);
+          }
+        } catch (err) {
+          console.error('[PasskeyPairModal] Error generating QR:', err);
+          if (isMounted) {
+            setError(err.message || 'Failed to initialize phone pairing.');
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
         }
+      };
 
-        if (isMounted) {
-          setPairingToken(tokenId);
-        }
+      initPairing();
+    }
 
-        const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
-        const dataUrl = await QRCode.toDataURL(pairingUrl, {
-          width: 256,
-          margin: 2,
-          color: {
-            dark: '#0f172a',
-            light: '#ffffff',
-          },
-        });
-
-        if (isMounted) {
-          setQrDataUrl(dataUrl);
-        }
-      } catch (err) {
-        console.error('[PasskeyPairModal] Error generating QR:', err);
-        if (isMounted) {
-          setError(err.message || 'Failed to initialize phone pairing.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    initPairing();
-
-    // 2. Real-time listener for pairing completion
+    // 2. Real-time listener for pairing status
     const unsubscribe = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setIsPaired(true);
         setPairedDevice(data.deviceModel || 'Mobile Device');
-        // Auto-close after 2.5s
-        setTimeout(() => {
-          if (onClose) onClose();
-        }, 2500);
       }
     });
 
@@ -82,7 +85,88 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
       isMounted = false;
       unsubscribe();
     };
-  }, [show, user?.uid, classId, onClose]);
+  }, [show, user?.uid, classId, isMobile]);
+
+  // Direct In-Place Registration on Mobile Phone
+  const handleRegisterDirectly = async () => {
+    if (!browserSupportsWebAuthn()) {
+      setError('Your browser does not support biometric passkeys. Please use Safari (iOS) or Chrome (Android).');
+      return;
+    }
+
+    setRegistering(true);
+    setError('');
+
+    try {
+      // Step A: Request single-use pairing token
+      let tokenToUse = pairingToken;
+      if (!tokenToUse) {
+        const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
+        const tokenRes = await reqTokenFn({ classId: classId || null });
+        tokenToUse = tokenRes.data?.tokenId;
+        setPairingToken(tokenToUse);
+      }
+
+      if (!tokenToUse) throw new Error('Could not generate registration token.');
+
+      // Step B: Fetch WebAuthn registration challenge
+      const getOptionsFn = httpsCallable(functions, 'getPasskeyRegistrationOptions');
+      const optionsRes = await getOptionsFn({
+        pairingToken: tokenToUse,
+        clientRpId: window.location.hostname,
+      });
+
+      // Step C: Trigger native biometric prompt (Face ID / Fingerprint)
+      let attestationResponse;
+      try {
+        attestationResponse = await startRegistration({ optionsJSON: optionsRes.data });
+      } catch (biometricErr) {
+        if (biometricErr.name === 'NotAllowedError') {
+          setError('Biometric registration was cancelled. Tap the button to try again.');
+          return;
+        }
+        throw biometricErr;
+      }
+
+      // Step D: Detect device model
+      const userAgent = navigator.userAgent || '';
+      let detectedModel = 'Mobile Phone';
+      if (/iPhone/i.test(userAgent)) detectedModel = 'Apple iPhone';
+      else if (/iPad/i.test(userAgent)) detectedModel = 'Apple iPad';
+      else if (/Android/i.test(userAgent)) detectedModel = 'Android Device';
+
+      // Step E: Verify & enforce 1-Student = 1-Device hardware lock
+      const deviceFingerprint = getOrCreateDeviceFingerprint();
+      const verifyFn = httpsCallable(functions, 'verifyPasskeyRegistration');
+      const verifyRes = await verifyFn({
+        pairingToken: tokenToUse,
+        attestationResponse,
+        clientRpId: window.location.hostname,
+        deviceModel: detectedModel,
+        deviceFingerprint,
+      });
+
+      if (verifyRes.data?.verified) {
+        setIsPaired(true);
+        setPairedDevice(verifyRes.data?.deviceModel || detectedModel);
+        setTimeout(() => {
+          if (onClose) onClose();
+        }, 2200);
+      } else {
+        throw new Error('Registration could not be verified by server.');
+      }
+    } catch (err) {
+      console.error('[PasskeyPairModal] Direct registration error:', err);
+      const msg = err.message || '';
+      if (msg.includes('Hardware Lock') || msg.includes('already registered to another student') || msg.includes('already bound to student')) {
+        setError(msg.includes('Hardware Lock:') ? msg.replace(/^.*Hardware Lock:\s*/, '') : 'This physical mobile phone is already registered to another student. Devices cannot be shared.');
+      } else {
+        setError(msg || 'Failed to register biometric passkey.');
+      }
+    } finally {
+      setRegistering(false);
+    }
+  };
 
   if (!show) return null;
 
@@ -108,18 +192,78 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
         </button>
 
         {isPaired ? (
-          <div>
-            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎉</div>
-            <h2 style={{ margin: '0 0 0.5rem 0', color: '#10b981' }}>Phone Paired!</h2>
+          <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+            <div style={{ fontSize: '3.5rem', marginBottom: '0.5rem' }}>🎉</div>
+            <h2 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1.4rem' }}>Passkey Registered!</h2>
             <p style={{ color: '#475569', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>
-              Your <strong>{pairedDevice}</strong> is now securely linked to your account.
+              Your <strong>{pairedDevice}</strong> is securely linked. You can now use your phone camera to scan and log into desktop lab PCs and complete attendance checks.
             </p>
-            <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
-              Closing this dialog...
-            </div>
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-primary"
+              onClick={onClose}
+              style={{ background: '#10b981', color: '#ffffff' }}
+            >
+              Done
+            </button>
+          </div>
+        ) : isMobile ? (
+          /* Mobile Direct Registration Screen (Zero QR Codes) */
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>📱</div>
+            <h2 style={{ margin: '0 0 0.5rem 0', color: '#1e293b', fontSize: '1.3rem' }}>Register Mobile Passkey</h2>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1.25rem 0', lineHeight: '1.4' }}>
+              Enable Face ID, Touch ID, or Android Fingerprint on this device. This links your smartphone as your physical identity key for lab PC logins and attendance.
+            </p>
+
+            {error && (
+              <div style={{ color: '#ef4444', background: '#fee2e2', padding: '0.75rem', borderRadius: '0.5rem', marginBottom: '1.25rem', fontSize: '0.875rem', textAlign: 'left' }}>
+                ⚠️ {error}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-primary"
+              onClick={handleRegisterDirectly}
+              disabled={registering}
+              style={{
+                width: '100%',
+                padding: '0.85rem 1rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                borderRadius: '0.5rem',
+                background: '#4f46e5',
+                color: '#ffffff',
+                marginBottom: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              {registering ? (
+                <>
+                  <div style={{ width: '18px', height: '18px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                  Touching Biometric...
+                </>
+              ) : (
+                '🔑 Touch Face ID / Fingerprint to Register'
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-secondary"
+              onClick={onClose}
+              style={{ width: '100%', color: '#64748b', background: '#f1f5f9' }}
+            >
+              Later
+            </button>
           </div>
         ) : (
-          <div>
+          /* Desktop Screen: Shows QR Code for Phone Camera to Scan */
+          <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.25rem' }}>📱</div>
             <h2 style={{ margin: '0 0 0.25rem 0', color: '#1e293b' }}>Pair Your Smartphone</h2>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
@@ -142,39 +286,13 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
                 <div className="passkey-qr-frame">
                   <img src={qrDataUrl} alt="Pair Phone QR Code" className="passkey-qr-image" />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '1rem' }}>
                   <span>1. Open Camera</span>
                   <span>•</span>
                   <span>2. Scan QR</span>
                   <span>•</span>
                   <span>3. Face ID / Fingerprint</span>
                 </div>
-
-                {isMobile && pairingToken && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <a
-                      href={`/pair-phone?token=${pairingToken}`}
-                      className="passkey-btn passkey-btn-primary"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.5rem',
-                        textDecoration: 'none',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '0.65rem 1rem',
-                        fontSize: '0.9rem',
-                        fontWeight: '600',
-                        borderRadius: '0.5rem',
-                        background: '#4f46e5',
-                        color: '#ffffff',
-                      }}
-                    >
-                      📱 Pair This Phone Directly
-                    </a>
-                  </div>
-                )}
               </div>
             ) : null}
 
@@ -194,3 +312,4 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
 };
 
 export default PasskeyPairModal;
+
