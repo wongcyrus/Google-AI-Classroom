@@ -33,9 +33,10 @@
 ### 0.0.4 Speech Translation Quality & Code-Switching
 - **Cantonese & English Translation**: Improved prompts and normalized language key matching across Gemini 3.8 Flash Cloud Functions and LiteRT Gemma Web workers to ensure complete translation of colloquial Cantonese phrases and code-switching into natural English and Standard Chinese.
 
-### 0.0.5 Tablet & iPad Passkey Restriction (Handheld Smartphone Exclusivity)
-- **Handheld Smartphone Only**: Updated `browserDetection.js` with `isTabletDevice()` and `isHandheldPhone()` to distinguish iPads and Android tablets from handheld smartphones using multi-touch detection (`navigator.maxTouchPoints > 1` + Mac UA on iPadOS) and the Android `Mobile` token convention.
+### 0.0.5 Tablet & iPad Passkey Restriction & Flip/Foldable Phone Support
+- **Handheld Smartphone Exclusivity**: Updated `browserDetection.js` with `isTabletDevice()` and `isHandheldPhone()` to distinguish iPads and Android tablets from handheld smartphones using multi-touch detection (`navigator.maxTouchPoints > 1` + Mac UA on iPadOS) and the Android `Mobile` token convention.
 - **Tablets Operate as Desktop Terminals**: iPads and Android pads are barred from registering passkeys directly on device (preventing shared tablet carts from being registered as personal biometric credentials). Tablets access the full desktop login interface (Email/Password or scanning desktop QR codes with a personal smartphone).
+- **Flip Phones & Foldables Support**: Modern clamshell flip phones (e.g. Galaxy Z Flip, Razr) and book-style foldables (Galaxy Z Fold, Pixel Fold) are recognized as handheld phones (`Android` + `Mobile`) in both folded and unfolded states, providing full biometric passkey hardware support.
 - **Prohibition Guidance**: Routes (`/pair-phone`, `/verify-passkey`, `/verify-lecture-passkey`, `/mobile-login`) and modals (`PasskeyPairModal`, `PasskeyEnforcementGate`) provide clear guidance directing students to use their personal handheld smartphones.
 
 ---
