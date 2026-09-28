@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -20,9 +20,9 @@ const PasskeyVerifyView = () => {
   const hasAutoStarted = useRef(false);
 
   useEffect(() => {
-    if (!isMobileDevice()) {
+    if (!isHandheldPhone()) {
       setStatus('desktop_blocked');
-      setErrorMessage('Mobile passkey attendance verification must be performed from your personal smartphone. Please scan the QR code displayed on your lab PC monitor using your phone camera.');
+      setErrorMessage('Mobile passkey attendance verification must be performed from your personal handheld smartphone. Shared desktop computers and tablets/iPads cannot be registered as mobile passkeys. Please scan the QR code displayed on your screen using your phone camera.');
       return;
     }
 

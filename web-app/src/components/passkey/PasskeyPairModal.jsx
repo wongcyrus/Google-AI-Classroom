@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions, db } from '../../firebase-config';
 import './passkey.css';
@@ -16,7 +16,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [error, setError] = useState('');
   const [isPaired, setIsPaired] = useState(false);
   const [pairedDevice, setPairedDevice] = useState('');
-  const isMobile = isMobileDevice();
+  const isMobile = isHandheldPhone();
 
   // 1. Check existing passkey status & generate pairing token if on desktop
   useEffect(() => {

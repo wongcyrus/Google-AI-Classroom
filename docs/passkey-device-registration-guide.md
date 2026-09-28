@@ -263,20 +263,21 @@ Because each student account is locked 1-to-1 to a physical device hardware auth
 
 ---
 
-## 💻 Desktop Registration & Verification Block Policy
+## 💻 Desktop & Tablet Registration Block Policy (Smartphones Only)
 
-A core architectural principle of the Mobile Passkey subsystem is that **shared desktop computers must never be registered as passkey hardware authenticators**.
+A core architectural principle of the Mobile Passkey subsystem is that **shared desktop computers and tablets (iPads, Android pads) must never be registered as passkey hardware authenticators**. They operate as desktop classroom terminals and must log in via password or by scanning desktop QR codes with a personal smartphone.
 
-### Why Desktop Registration is Blocked:
-1. **Shared Public Hardware**: Lab PCs are used by hundreds of students across multiple classes. Registering a lab PC's browser or TPM would anchor attendance to the shared classroom desk rather than the student's personal physical possession.
-2. **Deep Freeze & Nightly Re-imaging Disruption**: Most institutional computer labs run disk-protection software (e.g., Faronics Deep Freeze) that wipes local user profiles and credentials upon reboot. Any desktop-stored WebAuthn credentials would vanish nightly, causing repeated authentication lockouts.
-3. **Absence of Dedicated Personal Biometrics**: Desktop computers in university and school labs rarely feature individual Touch ID or Windows Hello face recognition for each student profile.
-4. **Hardware Anti-Proxy Guarantee**: Enforcing mobile-only registration ensures the cryptographic credential ID is generated inside the student's personal smartphone hardware security module (Apple Secure Enclave or Android Titan M2).
+### Why Desktop & Tablet Registration is Blocked:
+1. **Shared Public & Lab Hardware**: Lab PCs and institutional tablets are frequently shared across multiple student cohorts. Registering a tablet's browser or TPM would anchor attendance to the classroom device rather than the student's personal physical possession.
+2. **Deep Freeze & Nightly Re-imaging Disruption**: Institutional computer labs and managed tablet carts run profile wipes and MDM resets upon reboot. Any device-stored credentials would vanish, causing repeated authentication lockouts.
+3. **Hardware Anti-Proxy Guarantee**: Enforcing handheld smartphone-only registration (`isHandheldPhone()`) guarantees that cryptographic credential IDs reside strictly inside the student's personal smartphone hardware security module (Apple Secure Enclave or Android Titan/StrongBox).
+4. **Desktop Login Parity for Tablets**: iPads and Android tablets access the full desktop login interface (Email & Password or desktop QR session code to be scanned by a handheld phone).
 
 ### UI Enforcement:
-- **Direct Desktop Route Access**: If a student opens `/pair-phone`, `/verify-passkey`, or `/mobile-login` on a desktop browser (Windows, macOS Chrome, or Linux), `isMobileDevice()` detects the desktop environment and immediately renders the **`🚫 Mobile Phone Required`** barrier:
-  > *"Passkey device registration is restricted to personal mobile phones. Shared desktop computers in the lab cannot be registered as mobile passkeys. Please scan the QR code displayed on your PC screen using your phone camera."*
-- **Desktop Modal (`PasskeyPairModal.jsx`) & Gate (`PasskeyEnforcementGate.jsx`)**: When viewed on a desktop monitor, the dialog strictly renders the **QR Code** and instructions to open the native smartphone camera. Direct registration links are suppressed on desktop viewports.
+- **Direct Route Access**: If a student accesses `/pair-phone`, `/verify-passkey`, `/verify-lecture-passkey`, or `/mobile-login` on a desktop or tablet browser (iPadOS Safari, Android Tablet Chrome, Windows, macOS, or Linux), `isHandheldPhone()` detects the non-smartphone environment and renders the **`🚫 Mobile Phone Required`** barrier:
+  > *"Mobile Passkeys must be registered on your personal handheld smartphone (iOS or Android) to enable biometric attendance. Shared desktop computers and tablets/iPads cannot be registered as mobile passkeys. Please scan the QR code displayed on your screen using your smartphone camera."*
+- **Desktop/Tablet Modal (`PasskeyPairModal.jsx`) & Gate (`PasskeyEnforcementGate.jsx`)**: When viewed on a desktop or tablet viewport, the interface strictly renders the **Pairing QR Code** for mobile camera scanning. Direct passkey registration is suppressed.
+- **Login Tab Navigation (`AuthComponent.jsx`)**: Tablets default to the desktop login interface with Scan QR Code and Email/Password tabs.
 
 ---
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isMobileDevice } from '../../utils/browserDetection';
+import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -17,10 +17,10 @@ const PasskeyPairView = () => {
   const [isSupported, setIsSupported] = useState(true);
 
   useEffect(() => {
-    if (!isMobileDevice()) {
+    if (!isHandheldPhone()) {
       setIsSupported(false);
       setStatus('desktop_blocked');
-      setErrorMessage('Mobile Passkeys must be registered on your personal smartphone (iOS or Android) to enable biometric attendance. Shared desktop computers in the lab cannot be registered as mobile passkeys. Please scan the QR code displayed on your PC screen using your smartphone camera.');
+      setErrorMessage('Mobile Passkeys must be registered on your personal handheld smartphone (iOS or Android) to enable biometric attendance. Shared desktop computers and tablets/iPads cannot be registered as mobile passkeys. Please scan the QR code displayed on your screen using your smartphone camera.');
       return;
     }
 

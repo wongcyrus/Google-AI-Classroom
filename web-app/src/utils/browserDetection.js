@@ -90,26 +90,31 @@ export const getBrowserName = (customUserAgent, customVendor, isBraveFlag) => {
 };
 
 /**
- * Detects whether the current client is a mobile device (phone or tablet)
- * by examining the User Agent, touch capability, or viewport dimensions (including landscape).
+ * Detects whether the current device is a tablet (iPad or Android tablet/pad).
  * 
  * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {number} [customTouchPoints] - Optional maxTouchPoints for testing
  * @param {number} [customWidth] - Optional viewport width for testing
  * @param {number} [customHeight] - Optional viewport height for testing
- * @returns {boolean} True if mobile device, false otherwise.
+ * @returns {boolean} True if tablet, false otherwise.
  */
-export const isMobileDevice = (customUserAgent, customWidth, customHeight) => {
+export const isTabletDevice = (customUserAgent, customTouchPoints, customWidth, customHeight) => {
   const userAgent = customUserAgent !== undefined
     ? customUserAgent
     : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
 
-  // In standard jsdom test environment without custom UA, return false (desktop)
   if (customUserAgent === undefined && /jsdom/i.test(userAgent)) {
     return false;
   }
 
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(userAgent);
-  if (isMobileUA) return true;
+  // Explicitly reject handheld phones (iPhone or Android Mobile) from tablet detection
+  if (/iPhone|iPod/i.test(userAgent) || (/Android/i.test(userAgent) && /Mobile/i.test(userAgent))) {
+    return false;
+  }
+
+  const touchPoints = customTouchPoints !== undefined
+    ? customTouchPoints
+    : (typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0) || 0;
 
   const width = customWidth !== undefined
     ? customWidth
@@ -119,16 +124,100 @@ export const isMobileDevice = (customUserAgent, customWidth, customHeight) => {
     ? customHeight
     : (typeof window !== 'undefined' ? window.innerHeight : 800);
 
-  // Portrait phone/tablet or small screen
-  if (width <= 768) return true;
+  const minDim = Math.min(width, height);
+  const maxDim = Math.max(width, height);
 
-  // Landscape phone (e.g. iPhone in landscape: 844x390, 852x393, 932x430)
-  if (height <= 550 && width <= 1024) return true;
+  // 1. Explicit iPad UA or iPadOS 13+ desktop Mac UA with multi-touch
+  const isIPad = /iPad/i.test(userAgent) || (/Macintosh/i.test(userAgent) && touchPoints > 1);
+  if (isIPad) return true;
 
-  // Touch device with smaller dimension <= 768
-  if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1) {
-    if (Math.min(width, height) <= 768) return true;
+  // 2. Android Tablet: 'Android' WITHOUT 'Mobile'
+  const isAndroidTablet = /Android/i.test(userAgent) && !/Mobile/i.test(userAgent);
+  if (isAndroidTablet) return true;
+
+  // 3. Touch device with tablet screen geometry (short dimension >= 600px and max dimension >= 900px, e.g. 768x1024, 800x1280)
+  if (touchPoints > 1 && minDim >= 600 && maxDim >= 900 && !/Windows NT|Macintosh/i.test(userAgent)) {
+    return true;
   }
 
   return false;
 };
+
+/**
+ * Detects whether the current client is strictly a handheld smartphone (iPhone or Android phone).
+ * Excludes tablets (iPads, Android pads) and desktop computers.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {number} [customTouchPoints] - Optional maxTouchPoints for testing
+ * @param {number} [customWidth] - Optional viewport width for testing
+ * @param {number} [customHeight] - Optional viewport height for testing
+ * @returns {boolean} True if handheld smartphone, false otherwise.
+ */
+export const isHandheldPhone = (customUserAgent, customTouchPoints, customWidth, customHeight) => {
+  if (isTabletDevice(customUserAgent, customTouchPoints, customWidth, customHeight)) {
+    return false;
+  }
+
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+
+  if (customUserAgent === undefined && /jsdom/i.test(userAgent)) {
+    return false;
+  }
+
+  // iPhone or iPod
+  if (/iPhone|iPod/i.test(userAgent)) return true;
+
+  // Android Phone ('Android' AND 'Mobile')
+  if (/Android/i.test(userAgent) && /Mobile/i.test(userAgent)) return true;
+
+  // Other handheld phone UA
+  if (/webOS|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)) return true;
+
+  const width = customWidth !== undefined
+    ? customWidth
+    : (typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+  const height = customHeight !== undefined
+    ? customHeight
+    : (typeof window !== 'undefined' ? window.innerHeight : 800);
+
+  // Small viewport characteristic of phones (short dimension < 600px)
+  if (Math.min(width, height) < 600) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Detects whether the current client is any mobile device (handheld phone or tablet)
+ * by examining device type, touch capability, or responsive viewport dimensions.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {number} [customWidth] - Optional viewport width for testing
+ * @param {number} [customHeight] - Optional viewport height for testing
+ * @returns {boolean} True if mobile device, false otherwise.
+ */
+export const isMobileDevice = (customUserAgent, customWidth, customHeight) => {
+  const width = customWidth !== undefined
+    ? customWidth
+    : (typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+  const height = customHeight !== undefined
+    ? customHeight
+    : (typeof window !== 'undefined' ? window.innerHeight : 800);
+
+  // Portrait phone/tablet or small responsive screen
+  if (width <= 768) return true;
+
+  // Landscape phone
+  if (height <= 550 && width <= 1024) return true;
+
+  return isHandheldPhone(customUserAgent, undefined, customWidth, customHeight) ||
+    isTabletDevice(customUserAgent, undefined, customWidth, customHeight);
+};
+
+
+

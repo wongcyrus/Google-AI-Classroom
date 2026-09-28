@@ -20,7 +20,7 @@ vi.mock('../../firebase-config', () => ({
 
 const mockStartAuthentication = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
-const mockIsMobileDevice = vi.fn(() => true);
+const mockIsHandheldPhone = vi.fn(() => true);
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: (...args) => mockStartAuthentication(...args),
@@ -28,7 +28,8 @@ vi.mock('@simplewebauthn/browser', () => ({
 }));
 
 vi.mock('../../utils/browserDetection', () => ({
-  isMobileDevice: () => mockIsMobileDevice(),
+  isHandheldPhone: () => mockIsHandheldPhone(),
+  isMobileDevice: () => mockIsHandheldPhone(),
 }));
 
 import PasskeyMobileLoginView from './PasskeyMobileLoginView';
@@ -37,11 +38,11 @@ describe('PasskeyMobileLoginView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
-    mockIsMobileDevice.mockReturnValue(true);
+    mockIsHandheldPhone.mockReturnValue(true);
   });
 
   it('blocks desktop access with strict prohibition notice', () => {
-    mockIsMobileDevice.mockReturnValue(false);
+    mockIsHandheldPhone.mockReturnValue(false);
 
     render(
       <MemoryRouter initialEntries={['/mobile-login?session=test-session-123']}>
@@ -51,7 +52,7 @@ describe('PasskeyMobileLoginView Component', () => {
 
     expect(screen.getByText('Shared PC Detected')).toBeInTheDocument();
     expect(screen.getByText(/Desktop Passkeys Strictly Prohibited/i)).toBeInTheDocument();
-    expect(screen.getByText(/Desktop passkey logins are strictly prohibited on shared computer laboratory PCs/i)).toBeInTheDocument();
+    expect(screen.getByText(/Desktop and tablet passkey logins are strictly prohibited/i)).toBeInTheDocument();
   });
 
   it('displays error if mobile browser lacks WebAuthn support', () => {
