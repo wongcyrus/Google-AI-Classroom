@@ -234,4 +234,188 @@ describe('triggerAutomaticAnalysis Cloud Function', () => {
 
     expect(mockDocSet).toHaveBeenCalled();
   });
+
+  it('exits early when status is not transitioning to terminal state or already terminal', async () => {
+    const event1 = {
+      params: { jobId: 'job_1' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: { data: () => ({ status: 'processing' }) },
+      },
+    };
+    await triggerAutomaticAnalysis(event1);
+    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('did not transition to a terminal state'));
+
+    const event2 = {
+      params: { jobId: 'job_2' },
+      data: {
+        before: { data: () => ({ status: 'completed' }) },
+        after: { data: () => ({ status: 'completed' }) },
+      },
+    };
+    await triggerAutomaticAnalysis(event2);
+    expect(mockDocSet).not.toHaveBeenCalled();
+  });
+
+  it('handles practical task submission video completion and enqueues evaluation', async () => {
+    const event = {
+      params: { jobId: 'taskJob_1' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            isTaskSubmission: true,
+            taskId: 'task_abc',
+            studentUid: 'student_123',
+            classId: 'class_1',
+            status: 'completed',
+            videoPath: 'submissions/video.mp4',
+            attemptNumber: 2,
+          }),
+        },
+      },
+    };
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockEnqueueTaskEvaluation).toHaveBeenCalledWith({
+      classId: 'class_1',
+      taskId: 'task_abc',
+      studentUid: 'student_123',
+      attemptNumber: 2,
+      compiledVideoPath: 'submissions/video.mp4',
+    });
+  });
+
+  it('handles practical task compilation failure', async () => {
+    const event = {
+      params: { jobId: 'taskJob_2' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            isTaskSubmission: true,
+            taskId: 'task_abc',
+            studentUid: 'student_123',
+            classId: 'class_1',
+            status: 'failed',
+          }),
+        },
+      },
+    };
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('failed compilation'));
+    expect(mockEnqueueTaskEvaluation).not.toHaveBeenCalled();
+  });
+
+  it('handles missing classId, startTime, or endTime', async () => {
+    const event = {
+      params: { jobId: 'videoJob_incomplete' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: null,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('is missing classId, startTime, or endTime'));
+  });
+
+  it('handles non-existent class document', async () => {
+    const event = {
+      params: { jobId: 'videoJob_123' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'class_missing',
+            startTime: timestampObj,
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    mockDocGet.mockImplementationOnce(() => Promise.resolve({
+      exists: false,
+    }));
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('not found'));
+  });
+
+  it('handles class with 0 configured students', async () => {
+    const event = {
+      params: { jobId: 'videoJob_123' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'class_empty',
+            startTime: timestampObj,
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    mockDocGet.mockImplementationOnce(() => Promise.resolve({
+      exists: true,
+      data: () => ({
+        automaticCombine: true,
+        afterClassVideoPrompt: { promptText: 'Check focus' },
+        students: {},
+        studentEmails: [],
+      }),
+    }));
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('has no students configured'));
+  });
+
+  it('skips creating analysis job if deterministic analysis job already exists', async () => {
+    const event = {
+      params: { jobId: 'videoJob_123' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'it3101-ab',
+            startTime: timestampObj,
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    mockDocGet.mockImplementationOnce(() => Promise.resolve({
+      exists: true,
+      data: () => ({
+        automaticCombine: true,
+        afterClassVideoPrompt: { promptText: 'Check focus' },
+        students: { s1: 's1@test.com' },
+      }),
+    }));
+
+    mockCollectionGet.mockResolvedValueOnce({
+      size: 1,
+    });
+
+    // Job doc exists!
+    mockDocGet.mockImplementationOnce(() => Promise.resolve({
+      exists: true,
+    }));
+
+    await triggerAutomaticAnalysis(event);
+    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('already exists. Skipping creation.'));
+  });
 });
+

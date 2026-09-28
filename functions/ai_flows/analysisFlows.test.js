@@ -316,6 +316,208 @@ describe('Analysis Flows End-to-End Orchestration', () => {
     generateSpy.mockRestore();
     logJobSpy.mockRestore();
   });
+
+  it('handles analyzeFaceFallbackFlow lifecycle (class missing, disabled, quota, success JSON/text fallback, error)', async () => {
+    const { analyzeFaceFallbackFlow } = await import('./analysisFlows.js');
+    const { ai } = await import('./ai.js');
+    const quotaModule = await import('./quotaManagement.js');
+    const loggerModule = await import('./jobLogger.js');
+    const { getFirestore } = await import('firebase-admin/firestore');
+
+    const db = getFirestore();
+    const logJobSpy = vi.spyOn(loggerModule, 'logJob').mockResolvedValue('face-job-1');
+
+    // 1. Class does not exist
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({ exists: false }),
+      }),
+    });
+    const missingRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_NON_EXISTENT',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(missingRes.faceStatus).toBe('error');
+    expect(missingRes.error).toContain('does not exist');
+
+    // 2. Cloud Fallback disabled
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ enableCloudFallback: false }),
+        }),
+      }),
+    });
+    const disabledRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(disabledRes.faceStatus).toBe('disabled');
+
+    // 3. Quota exceeded
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ enableCloudFallback: true }),
+        }),
+      }),
+    });
+    const quotaSpy = vi.spyOn(quotaModule, 'checkQuota').mockResolvedValueOnce(false);
+    const quotaRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(quotaRes.faceStatus).toBe('quota_exceeded');
+
+    // 4. Success with clean JSON
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            enableCloudFallback: true,
+            liveImagePrompt: { promptText: 'Check {{studentEmail}} in {{classId}}' },
+          }),
+        }),
+      }),
+    });
+    quotaSpy.mockResolvedValueOnce(true);
+    const generateSpy = vi.spyOn(ai, 'generate').mockResolvedValueOnce({
+      text: '{"faceStatus":"looking_away","confidence":0.95,"reason":"Student turned left"}',
+      usage: { promptTokens: 100, completionTokens: 25 },
+    });
+    const successRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(successRes.faceStatus).toBe('looking_away');
+    expect(successRes.confidence).toBe(0.95);
+
+    // 5. Fallback text parser when JSON fails
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ enableCloudFallback: true }),
+        }),
+      }),
+    });
+    quotaSpy.mockResolvedValueOnce(true);
+    generateSpy.mockResolvedValueOnce({
+      text: 'Student has no face detected in camera',
+      usage: { promptTokens: 100, completionTokens: 25 },
+    });
+    const textFallbackRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(textFallbackRes.faceStatus).toBe('no_face');
+
+    // 6. Error during generation
+    vi.spyOn(db, 'collection').mockReturnValueOnce({
+      doc: () => ({
+        get: vi.fn().mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ enableCloudFallback: true }),
+        }),
+      }),
+    });
+    quotaSpy.mockResolvedValueOnce(true);
+    generateSpy.mockRejectedValueOnce(new Error('Vertex AI error'));
+    const errorRes = await analyzeFaceFallbackFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      webcamUrl: 'https://storage/face.jpg',
+    });
+    expect(errorRes.faceStatus).toBe('error');
+    expect(errorRes.error).toBe('Vertex AI error');
+
+    quotaSpy.mockRestore();
+    generateSpy.mockRestore();
+    logJobSpy.mockRestore();
+  });
+
+  it('handles analyzeAudioFlow full lifecycle with audioUrl, transcript, quota, and errors', async () => {
+    const { analyzeAudioFlow } = await import('./analysisFlows.js');
+    const { ai } = await import('./ai.js');
+    const quotaModule = await import('./quotaManagement.js');
+    const loggerModule = await import('./jobLogger.js');
+
+    const logJobSpy = vi.spyOn(loggerModule, 'logJob').mockResolvedValue('audio-job-1');
+
+    // 1. Quota blocked
+    const quotaSpy = vi.spyOn(quotaModule, 'checkQuota').mockResolvedValueOnce(false);
+    const blocked = await analyzeAudioFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      audioUrl: 'https://storage/test.webm',
+    });
+    expect(blocked.error).toContain('Insufficient quota');
+
+    // 2. Audio URL transcription and reasoning
+    quotaSpy.mockResolvedValueOnce(true);
+    const generateSpy = vi.spyOn(ai, 'generate')
+      .mockResolvedValueOnce({
+        text: 'What is the answer to question 2?',
+        usage: { promptTokens: 50, completionTokens: 15 },
+      })
+      .mockResolvedValueOnce({
+        text: 'Detected student asking for answer.',
+        usage: { promptTokens: 80, completionTokens: 20 },
+      });
+
+    const res = await analyzeAudioFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      audioUrl: 'https://storage/test.webm',
+    });
+    expect(res.transcript).toBe('What is the answer to question 2?');
+    expect(res.summary).toBe('Detected student asking for answer.');
+
+    // 3. Supplied transcript path with template interpolation
+    quotaSpy.mockResolvedValueOnce(true);
+    generateSpy.mockResolvedValueOnce({
+      text: 'Verified clean exam audio.',
+      usage: { promptTokens: 40, completionTokens: 10 },
+    });
+    const directTranscriptRes = await analyzeAudioFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      studentEmail: 's1@school.edu',
+      transcript: 'I am reading quietly',
+      prompt: 'Check {{transcript}} for student {{studentEmail}} in {{classId}}',
+    });
+    expect(directTranscriptRes.transcript).toBe('I am reading quietly');
+    expect(directTranscriptRes.summary).toBe('Verified clean exam audio.');
+
+    // 4. Exception handling
+    quotaSpy.mockResolvedValueOnce(true);
+    generateSpy.mockRejectedValueOnce(new Error('Audio decoding failed'));
+    const errorRes = await analyzeAudioFlow({
+      classId: 'CLASS_1',
+      studentUid: 's1',
+      transcript: 'Some audio transcript',
+    });
+    expect(errorRes.error).toBe('Audio decoding failed');
+
+    quotaSpy.mockRestore();
+    generateSpy.mockRestore();
+    logJobSpy.mockRestore();
+  });
 });
 
 
