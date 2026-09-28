@@ -86,7 +86,36 @@ describe('PasskeyPairModal Component', () => {
       }
     });
 
-    expect(screen.getByText('Phone Paired!')).toBeInTheDocument();
+    expect(screen.getByText('Passkey Registered!')).toBeInTheDocument();
     expect(screen.getByText(/Apple iPhone 15 Pro/i)).toBeInTheDocument();
+  });
+
+  it('renders direct mobile registration UI without QR code when on mobile device', async () => {
+    // Mock userAgent for mobile
+    const originalUA = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+      configurable: true,
+    });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_1' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    expect(screen.getByText('Register Mobile Passkey')).toBeInTheDocument();
+    expect(screen.getByText(/Touch Face ID \/ Fingerprint to Register/i)).toBeInTheDocument();
+    expect(screen.queryByAltText('Pair Phone QR Code')).not.toBeInTheDocument();
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUA,
+      configurable: true,
+    });
   });
 });
