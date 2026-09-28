@@ -226,13 +226,13 @@ async function main() {
   }
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5).`);
 
-  // Global Login Policy (Password Whitelist)
+  // Global Login Policy (Strict Mode by Default - Empty Whitelist)
   await db.collection('system_config').doc('loginPolicy').set({
-    passwordWhitelist: studentEmails,
+    passwordWhitelist: [],
     updatedAt: FieldValue.serverTimestamp(),
     description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
   }, { merge: true });
-  console.log(`✅ Global Login Policy initialized with password whitelist for student1..5.`);
+  console.log(`✅ Global Login Policy initialized in strict mode (passwordWhitelist: []).`);
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
