@@ -1564,7 +1564,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   };
 
   return (
-    <div className="monitor-view" style={{ display: 'flex', flexDirection: 'row' }}>
+    <div className="monitor-view">
       {showControls && <ControlsPanel
         message={message}
         setMessage={setMessage}
