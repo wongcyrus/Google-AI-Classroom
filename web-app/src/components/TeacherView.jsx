@@ -83,15 +83,52 @@ const TeacherView = ({ user }) => {
 
   // Aggregate stats calculations
   const stats = useMemo(() => {
-    let totalStudents = 0;
     let totalStorageUsed = 0;
     let totalStorageQuota = 0;
     let totalAiUsed = 0;
     let totalAiQuota = 0;
+    let totalEnrollments = 0;
+    const uniqueStudents = new Set();
 
     classes.forEach(c => {
-      const studentCount = c.students ? Object.keys(c.students).length : (c.studentEmails?.length || 0);
-      totalStudents += studentCount;
+      const classStudents = new Set();
+
+      // Collect from studentEmails array
+      if (Array.isArray(c.studentEmails)) {
+        c.studentEmails.forEach(email => {
+          if (email && typeof email === 'string') {
+            const clean = email.trim().toLowerCase();
+            if (clean) {
+              classStudents.add(clean);
+              uniqueStudents.add(clean);
+            }
+          }
+        });
+      }
+
+      // Collect from students object map
+      if (c.students && typeof c.students === 'object') {
+        Object.entries(c.students).forEach(([uid, val]) => {
+          let identifier = null;
+          if (typeof val === 'string' && val.includes('@')) {
+            identifier = val.trim().toLowerCase();
+          } else if (val && typeof val === 'object' && val.email) {
+            identifier = val.email.trim().toLowerCase();
+          } else if (uid) {
+            identifier = uid;
+          }
+          if (identifier) {
+            classStudents.add(identifier);
+            uniqueStudents.add(identifier);
+          }
+        });
+      }
+
+      const count = classStudents.size > 0
+        ? classStudents.size
+        : (c.students ? Object.keys(c.students).length : (c.studentEmails?.length || 0));
+
+      totalEnrollments += count;
       totalStorageUsed += (c.storageUsage || 0);
       totalStorageQuota += (c.storageQuota || 0);
       totalAiUsed += (c.aiUsedQuota || 0);
@@ -100,7 +137,8 @@ const TeacherView = ({ user }) => {
 
     return {
       totalClasses: classes.length,
-      totalStudents,
+      totalStudents: uniqueStudents.size,
+      totalEnrollments,
       totalStorageUsed,
       totalStorageQuota,
       totalAiUsed,
@@ -205,16 +243,25 @@ const TeacherView = ({ user }) => {
           <div className="kpi-content">
             <span className="kpi-label">Active Classes</span>
             <span className="kpi-value">{stats.totalClasses}</span>
-            <span className="kpi-subtext">Total courses enrolled</span>
+            <span className="kpi-subtext">Total courses managed</span>
           </div>
         </div>
 
-        <div className="kpi-card">
+        <div
+          className="kpi-card"
+          title={`${stats.totalStudents} unique student${stats.totalStudents === 1 ? '' : 's'} (${stats.totalEnrollments} total course enrollments)`}
+        >
           <div className="kpi-icon emerald">👥</div>
           <div className="kpi-content">
             <span className="kpi-label">Total Students</span>
             <span className="kpi-value">{stats.totalStudents}</span>
-            <span className="kpi-subtext">Enrolled across all classes</span>
+            <span className="kpi-subtext">
+              {stats.totalStudents === 0
+                ? 'No students enrolled'
+                : stats.totalEnrollments !== stats.totalStudents
+                  ? `${stats.totalEnrollments} enrollments across ${stats.totalClasses} classes`
+                  : 'Enrolled across all classes'}
+            </span>
           </div>
         </div>
 

@@ -216,4 +216,70 @@ describe('TeacherView Component', () => {
 
     expect(screen.queryByRole('button', { name: /Pair Phone/i })).not.toBeInTheDocument();
   });
+
+  it('accurately deduplicates unique students across multiple classes and shows enrollment subtext', async () => {
+    const { onSnapshot, getDoc } = await import('firebase/firestore');
+
+    onSnapshot.mockImplementation((ref, cb) => {
+      if (ref?.path?.includes('studentPasskeys')) {
+        cb({ exists: () => false, data: () => ({}) });
+        return vi.fn();
+      }
+      cb({
+        exists: () => true,
+        data: () => ({ classes: ['class-1', 'class-2'] }),
+      });
+      return vi.fn();
+    });
+
+    getDoc.mockImplementation(async (ref) => {
+      if (ref?.path === 'classes/class-1') {
+        return {
+          id: 'class-1',
+          exists: () => true,
+          data: () => ({
+            name: 'Class 1',
+            studentEmails: ['alice@school.edu', 'bob@school.edu'],
+            students: {
+              'uid-alice': 'alice@school.edu',
+              'uid-bob': 'bob@school.edu',
+            },
+          }),
+        };
+      }
+      if (ref?.path === 'classes/class-2') {
+        return {
+          id: 'class-2',
+          exists: () => true,
+          data: () => ({
+            name: 'Class 2',
+            // Alice is in both classes, Charlie is only in class 2
+            studentEmails: ['alice@school.edu', 'charlie@school.edu'],
+            students: {
+              'uid-alice': 'alice@school.edu',
+              'uid-charlie': 'charlie@school.edu',
+            },
+          }),
+        };
+      }
+      return {
+        exists: () => false,
+        data: () => ({}),
+      };
+    });
+
+    render(
+      <BrowserRouter>
+        <TeacherView user={mockUser} />
+      </BrowserRouter>
+    );
+
+    // Should display 3 unique students (Alice, Bob, Charlie) despite 4 total enrollments
+    await waitFor(() => {
+      expect(screen.getByText('Total courses managed')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('4 enrollments across 2 classes')).toBeInTheDocument();
+    });
+  });
 });
+
