@@ -35,7 +35,6 @@ const AuthComponent = ({ unverifiedUser }) => {
   const [qrSessionSecret, setQrSessionSecret] = useState('');
   const [qrExpiresAtMillis, setQrExpiresAtMillis] = useState(0);
   const [qrDataUrl, setQrDataUrl] = useState('');
-  const [qrTimeLeft, setQrTimeLeft] = useState(90);
   const [qrRotationSecsLeft, setQrRotationSecsLeft] = useState(DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC);
   const [qrRotationProgress, setQrRotationProgress] = useState(100);
   const [qrLoading, setQrLoading] = useState(false);
@@ -212,7 +211,6 @@ const AuthComponent = ({ unverifiedUser }) => {
     setQrLoading(true);
     setQrError('');
     setQrStatus('waiting');
-    setQrTimeLeft(90);
     setQrRotationSecsLeft(DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC);
     setQrRotationProgress(100);
     try {
@@ -244,8 +242,6 @@ const AuthComponent = ({ unverifiedUser }) => {
         color: { dark: '#0f172a', light: '#ffffff' },
       });
       setQrDataUrl(dataUrl);
-      const remainingSec = Math.max(0, Math.round((expMillis - Date.now()) / 1000));
-      setQrTimeLeft(remainingSec || 90);
     } catch (err) {
       console.error('[AuthComponent] Error initiating QR session:', err);
       setQrError(err.message || 'Failed to initialize QR code.');
@@ -298,10 +294,6 @@ const AuthComponent = ({ unverifiedUser }) => {
       if (qrExpiresAtMillis && now >= qrExpiresAtMillis) {
         initiateQrSession();
         return;
-      }
-
-      if (qrExpiresAtMillis) {
-        setQrTimeLeft(Math.max(0, Math.ceil((qrExpiresAtMillis - now) / 1000)));
       }
 
       // Check if interval rotated
@@ -402,9 +394,6 @@ const AuthComponent = ({ unverifiedUser }) => {
                     />
                   </div>
                   <img src={qrDataUrl} alt="Desktop Login QR Code" className="auth-qr-img" />
-                  <div className="auth-qr-timer">
-                    ⏱️ Session active: <strong>{Math.floor(qrTimeLeft / 60)}m {String(qrTimeLeft % 60).padStart(2, '0')}s</strong>
-                  </div>
                 </div>
               ) : qrError ? (
                 <div className="auth-qr-placeholder">
