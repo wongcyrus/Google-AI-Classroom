@@ -1731,8 +1731,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           </div>
         )}
 
-        <div className="timeline-controls monitor-toolbar-card">
-          <div className="monitor-toolbar-main-row">
+        <div className={`timeline-controls monitor-toolbar-card ${showControls ? 'has-sidebar' : ''}`}>
+          <div className={`monitor-toolbar-main-row ${showControls ? 'has-sidebar' : ''}`}>
             {/* Left Segment: Controls Drawer Toggle, Lesson Picker, Compact Live / Review Status */}
             <div className="monitor-toolbar-group monitor-toolbar-left">
               {!showControls && (
@@ -1794,9 +1794,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                     onClick={() => setShowBroadcastModal(true)}
                     className="monitor-btn monitor-btn-primary"
                     title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
+                    aria-label="Broadcast Screen & Voice"
                   >
                     <span>🎙️🖥️</span>
-                    <span>Broadcast Screen & Voice</span>
+                    <span>Broadcast</span>
                   </button>
                   <button
                     type="button"
