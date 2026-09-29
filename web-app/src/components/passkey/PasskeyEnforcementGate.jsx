@@ -24,6 +24,8 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   const [pairingToken, setPairingToken] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
   const [qrError, setQrError] = useState('');
+  const [qrExpiresAtMillis, setQrExpiresAtMillis] = useState(0);
+  const [qrTimeLeftSec, setQrTimeLeftSec] = useState(0);
 
   // Bypass modal state
   const [showBypassModal, setShowBypassModal] = useState(false);
@@ -122,13 +124,17 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     try {
       const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
       const res = await reqTokenFn({ classId: classId || null });
-      const tokenId = res.data?.tokenId;
+      const { tokenId, expiresAtMillis } = res.data || {};
 
       if (!tokenId) {
         throw new Error('Failed to generate pairing token.');
       }
 
       setPairingToken(tokenId);
+      const expMillis = expiresAtMillis || (Date.now() + 5 * 60 * 1000);
+      setQrExpiresAtMillis(expMillis);
+      setQrTimeLeftSec(Math.max(0, Math.round((expMillis - Date.now()) / 1000)));
+
       const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
       const dataUrl = await QRCode.toDataURL(pairingUrl, {
         width: 256,
@@ -152,6 +158,24 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
       generatePairingQR();
     }
   }, [hasPasskey, hasBypass, user?.uid]);
+
+  // Pairing QR countdown and auto-refresh interval
+  useEffect(() => {
+    if (!qrExpiresAtMillis || hasPasskey !== false || hasBypass) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((qrExpiresAtMillis - now) / 1000));
+      setQrTimeLeftSec(remaining);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        generatePairingQR();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [qrExpiresAtMillis, hasPasskey, hasBypass]);
 
   // Handle teacher bypass request submission
   const handleSubmitBypassRequest = async (e) => {
@@ -298,6 +322,18 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
             </div>
           ) : qrDataUrl ? (
             <div className="passkey-qr-wrapper">
+              <div className="passkey-qr-timer" style={{
+                fontSize: '0.825rem',
+                color: '#64748b',
+                background: '#f8fafc',
+                padding: '0.35rem 0.85rem',
+                borderRadius: '9999px',
+                border: '1px solid #e2e8f0',
+                marginBottom: '0.75rem',
+                display: 'inline-block'
+              }}>
+                ⏱️ Token expires in: <strong>{Math.floor(qrTimeLeftSec / 60)}:{String(qrTimeLeftSec % 60).padStart(2, '0')}</strong> (Auto-refreshes)
+              </div>
               <img src={qrDataUrl} alt="Pairing QR Code" className="passkey-qr-img" />
               <p className="passkey-qr-instructions">
                 Point your phone camera at this QR code to pair your phone.
