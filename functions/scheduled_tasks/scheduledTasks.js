@@ -302,9 +302,10 @@ export const syncGeminiPricing = onSchedule({
   memory: '256MB',
   region: FUNCTION_REGION,
 }, async () => {
-  logger.info('Starting daily sync of Gemini model pricing...');
+  logger.info('Starting daily sync of Gemini model pricing and Cloud Storage rates...');
   try {
     const VERTEX_SERVICE_ID = 'C7E2-9256-1C43';
+    const STORAGE_SERVICE_ID = '95FF-2EF5-5EA1';
     const pricingData = {
       'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
       'gemini-3.7-flash': { input: 0.75, output: 3.75 },
@@ -312,6 +313,13 @@ export const syncGeminiPricing = onSchedule({
       'gemini-3.7-pro': { input: 3.00, output: 15.00 },
       'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
       'gemini-3.5-transcribe-live': { input: 0.60, output: 3.00 },
+      'cloud-storage': {
+        unit: 'GiB/month',
+        ratePerGibMonth: 0.023,
+        region: 'asia-east2',
+        currency: 'USD',
+        description: 'Standard Storage Hong Kong (Baseline)',
+      },
       lastSyncedAt: new Date().toISOString(),
       source: 'catalog_sync_or_baseline',
     };
@@ -327,6 +335,34 @@ export const syncGeminiPricing = onSchedule({
         }
       } catch (fetchErr) {
         logger.warn('Could not query Billing Catalog API directly, using verified baseline rates:', fetchErr.message);
+      }
+
+      try {
+        const resStorage = await fetch(`https://cloudbilling.googleapis.com/v1/services/${STORAGE_SERVICE_ID}/skus?key=${apiKey}`);
+        if (resStorage.ok) {
+          const dataStorage = await resStorage.json();
+          const hkSku = dataStorage.skus?.find(s =>
+            (s.serviceRegions?.includes('asia-east2') || s.description?.toLowerCase().includes('hong kong')) &&
+            s.description?.toLowerCase().includes('standard storage')
+          );
+          if (hkSku?.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice) {
+            const up = hkSku.pricingInfo[0].pricingExpression.tieredRates[0].unitPrice;
+            const rate = Number(up.units || 0) + Number(up.nanos || 0) / 1e9;
+            if (rate > 0) {
+              pricingData['cloud-storage'] = {
+                unit: 'GiB/month',
+                ratePerGibMonth: rate,
+                region: 'asia-east2',
+                currency: up.currencyCode || 'USD',
+                skuId: hkSku.skuId,
+                description: hkSku.description,
+              };
+              logger.info(`Successfully fetched live Cloud Storage rate from Cloud Billing Catalog API: $${rate}/GiB-month (${hkSku.description})`);
+            }
+          }
+        }
+      } catch (storageErr) {
+        logger.warn('Could not query Storage Billing Catalog API directly, using verified baseline rates:', storageErr.message);
       }
     }
 

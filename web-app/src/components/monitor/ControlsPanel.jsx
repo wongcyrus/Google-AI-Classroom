@@ -5,7 +5,7 @@ import BingoQuestionBankModal from '../BingoQuestionBankModal';
 import { auth, functions, db } from '../../firebase-config';
 import { httpsCallable } from 'firebase/functions';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { formatBytes, formatAiCost } from '../../utils/formatters';
+import { formatBytes, formatAiCost, formatStorageCost } from '../../utils/formatters';
 import './ControlsPanel.css';
 
 const ControlsPanel = ({ 
@@ -1070,7 +1070,9 @@ const ControlsPanel = ({
                     ></div>
                 </div>
                 <p className="storage-text">
-                    {storageQuota > 0 ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)}` : `${formatBytes(storageUsage)} used`}
+                    {storageQuota > 0 
+                      ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(storageUsage)}/mo)` 
+                      : `${formatBytes(storageUsage)} used (~${formatStorageCost(storageUsage)}/mo)`}
                 </p>
                 <div className="storage-breakdown">
                     <span>Screenshots: {formatBytes(storageUsageScreenShots)}</span>

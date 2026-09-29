@@ -22,8 +22,11 @@ import {
   readTextFileWithEncoding,
 } from '../utils/studentDisplayUtils';
 import { exportToExcel } from '../utils/exportUtils';
+import useCloudPricing from '../hooks/useCloudPricing';
+import { formatStorageCost } from '../utils/formatters';
 
 const ClassManagement = ({ user, embeddedClassId }) => {
+  const { storageRatePerGibMonth } = useCloudPricing();
   const [classId, setClassId] = useState(embeddedClassId || '');
   const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
@@ -1569,9 +1572,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <div className="form-group">
             <label>Storage Limit Allotment</label>
             <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
-              <option value="5">5 GB (Standard)</option>
-              <option value="10">10 GB (Extended)</option>
-              <option value="20">20 GB (Large Course)</option>
+              <option value="5">5 GB (Standard - ~{formatStorageCost(5 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
+              <option value="10">10 GB (Extended - ~{formatStorageCost(10 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
+              <option value="20">20 GB (Large Course - ~{formatStorageCost(20 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
             </select>
             <p className="input-hint">Maximum storage cap for this class.</p>
           </div>

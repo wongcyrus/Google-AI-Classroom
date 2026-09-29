@@ -3,7 +3,7 @@ import { onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
-import { formatBytes, formatAiCost } from '../utils/formatters';
+import { formatBytes, formatAiCost, formatStorageCost } from '../utils/formatters';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
 
 const TeacherView = ({ user }) => {
@@ -207,13 +207,13 @@ const TeacherView = ({ user }) => {
           </div>
         </div>
 
-        <div className="kpi-card">
+        <div className="kpi-card" title={`Estimated Monthly Storage Cost: ~${formatStorageCost(stats.totalStorageUsed)}`}>
           <div className="kpi-icon amber">💾</div>
           <div className="kpi-content">
             <span className="kpi-label">Storage Usage</span>
             <span className="kpi-value">{formatBytes(stats.totalStorageUsed)}</span>
             <span className="kpi-subtext">
-              {stats.totalStorageQuota > 0 ? `of ${formatBytes(stats.totalStorageQuota)} allotted` : 'Total used'}
+              {stats.totalStorageQuota > 0 ? `of ${formatBytes(stats.totalStorageQuota)} (~${formatStorageCost(stats.totalStorageUsed)}/mo)` : `Total used (~${formatStorageCost(stats.totalStorageUsed)}/mo)`}
             </span>
           </div>
         </div>
@@ -281,7 +281,7 @@ const TeacherView = ({ user }) => {
                   <div>
                     <div className="meter-header">
                       <span>Storage Quota</span>
-                      <span>{formatBytes(usage)} / {formatBytes(quota)}</span>
+                      <span>{formatBytes(usage)} / {formatBytes(quota)} <small style={{ color: '#64748b' }}>(~{formatStorageCost(usage)}/mo)</small></span>
                     </div>
                     <div className="meter-track">
                       <div className="meter-fill storage" style={{ width: `${storagePercent}%` }} />

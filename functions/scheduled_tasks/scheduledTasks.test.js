@@ -207,6 +207,11 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
         expect.objectContaining({
           'gemini-3.5-flash-lite': expect.any(Object),
           'gemini-3.7-flash': expect.any(Object),
+          'cloud-storage': expect.objectContaining({
+            unit: 'GiB/month',
+            ratePerGibMonth: 0.023,
+            region: 'asia-east2',
+          }),
           source: 'catalog_sync_or_baseline',
         }),
         { merge: true }
@@ -216,16 +221,42 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     it('queries billing catalog API if API key is present and updates pricingData', async () => {
       process.env.GOOGLE_CLOUD_API_KEY = 'test-api-key';
       const originalFetch = global.fetch;
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ skus: [{ name: 'sku1' }, { name: 'sku2' }] }),
-      });
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ skus: [{ name: 'sku1' }, { name: 'sku2' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            skus: [{
+              skuId: '01C0-1EAA-23AD',
+              description: 'Standard Storage Hong Kong',
+              serviceRegions: ['asia-east2'],
+              pricingInfo: [{
+                pricingExpression: {
+                  tieredRates: [{
+                    unitPrice: {
+                      currencyCode: 'USD',
+                      units: '0',
+                      nanos: 23000000,
+                    },
+                  }],
+                },
+              }],
+            }],
+          }),
+        });
 
       await syncGeminiPricing();
 
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
           source: 'cloud_billing_catalog_api',
+          'cloud-storage': expect.objectContaining({
+            ratePerGibMonth: 0.023,
+            skuId: '01C0-1EAA-23AD',
+          }),
         }),
         { merge: true }
       );

@@ -6,6 +6,8 @@ import './SharedViews.css';
 
 import { httpsCallable } from 'firebase/functions';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
+import useCloudPricing from '../hooks/useCloudPricing';
+import { formatStorageCost } from '../utils/formatters';
 
 const formatBytes = (bytes = 0) => {
   if (bytes === 0 || isNaN(bytes)) return '0 B';
@@ -39,6 +41,7 @@ const DataManagementView = ({
   const [classQuotaBytes, setClassQuotaBytes] = useState(5 * 1024 * 1024 * 1024); // 5GB default
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [recalculateMessage, setRecalculateMessage] = useState('');
+  const { storageRatePerGibMonth, storageRegion, storageDescription } = useCloudPricing();
 
   // Granular deletion targets
   const [targets, setTargets] = useState({
@@ -283,46 +286,59 @@ const DataManagementView = ({
           </button>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#475569', marginBottom: '4px' }}>
-          <span><strong>Total Allocated:</strong> {formatBytes(totalUsage)} / {formatBytes(classQuotaBytes)} ({quotaPercent}%)</span>
-          <span>{formatBytes(Math.max(0, classQuotaBytes - totalUsage))} remaining</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.9rem', color: '#475569', marginBottom: '6px' }}>
+          <div>
+            <span><strong>Total Allocated:</strong> {formatBytes(totalUsage)} / {formatBytes(classQuotaBytes)} ({quotaPercent}%)</span>
+            <span style={{ marginLeft: '8px', color: '#0284c7', fontWeight: 600 }}>
+              • Est. Cost: ~{formatStorageCost(totalUsage, storageRatePerGibMonth)}/mo
+            </span>
+            <span style={{ marginLeft: '4px', color: '#64748b', fontSize: '0.82rem' }}>
+              (Quota Cap: ~{formatStorageCost(classQuotaBytes, storageRatePerGibMonth)}/mo)
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#475569', border: '1px solid #e2e8f0' }} title={`Synced from Cloud Billing Catalog API (${storageDescription})`}>
+              🏷️ Rate: ${storageRatePerGibMonth}/GB-mo ({storageRegion})
+            </span>
+            <span>{formatBytes(Math.max(0, classQuotaBytes - totalUsage))} remaining</span>
+          </div>
         </div>
 
         {/* Visual Stacked Progress Bar */}
         <div className="storage-progress-container" role="progressbar" aria-valuenow={quotaPercent} aria-valuemin="0" aria-valuemax="100">
-          <div className="storage-segment screenshots" style={{ width: `${pShots}%` }} title={`Screenshots: ${formatBytes(usageShots)}`} />
-          <div className="storage-segment audio" style={{ width: `${pAudio}%` }} title={`Audio: ${formatBytes(usageAudio)}`} />
-          <div className="storage-segment videos" style={{ width: `${pVideos}%` }} title={`Student Videos: ${formatBytes(usageVideos)}`} />
-          <div className="storage-segment recordings" style={{ width: `${pRecordings}%` }} title={`Lecture Recordings: ${formatBytes(usageRecordings)}`} />
-          <div className="storage-segment zips" style={{ width: `${pZips}%` }} title={`ZIP Archives: ${formatBytes(usageZips)}`} />
-          <div className="storage-segment irregularities" style={{ width: `${pIrregularities}%` }} title={`Irregularities: ${formatBytes(usageIrregularities)}`} />
+          <div className="storage-segment screenshots" style={{ width: `${pShots}%` }} title={`Screenshots: ${formatBytes(usageShots)} (~${formatStorageCost(usageShots, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment audio" style={{ width: `${pAudio}%` }} title={`Audio: ${formatBytes(usageAudio)} (~${formatStorageCost(usageAudio, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment videos" style={{ width: `${pVideos}%` }} title={`Student Videos: ${formatBytes(usageVideos)} (~${formatStorageCost(usageVideos, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment recordings" style={{ width: `${pRecordings}%` }} title={`Lecture Recordings: ${formatBytes(usageRecordings)} (~${formatStorageCost(usageRecordings, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment zips" style={{ width: `${pZips}%` }} title={`ZIP Archives: ${formatBytes(usageZips)} (~${formatStorageCost(usageZips, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment irregularities" style={{ width: `${pIrregularities}%` }} title={`Irregularities: ${formatBytes(usageIrregularities)} (~${formatStorageCost(usageIrregularities, storageRatePerGibMonth)}/mo)`} />
         </div>
 
         {/* Legend Grid */}
         <div className="storage-legend-grid">
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#3b82f6' }}></span>
-            <span>📸 Screenshots: <strong>{formatBytes(usageShots)}</strong></span>
+            <span>📸 Screenshots: <strong>{formatBytes(usageShots)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageShots, storageRatePerGibMonth)}/mo)</small></span>
           </div>
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#10b981' }}></span>
-            <span>🎙️ Audio: <strong>{formatBytes(usageAudio)}</strong></span>
+            <span>🎙️ Audio: <strong>{formatBytes(usageAudio)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageAudio, storageRatePerGibMonth)}/mo)</small></span>
           </div>
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#8b5cf6' }}></span>
-            <span>🎥 Videos: <strong>{formatBytes(usageVideos)}</strong></span>
+            <span>🎥 Videos: <strong>{formatBytes(usageVideos)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageVideos, storageRatePerGibMonth)}/mo)</small></span>
           </div>
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#f59e0b' }}></span>
-            <span>🎬 Recordings: <strong>{formatBytes(usageRecordings)}</strong></span>
+            <span>🎬 Recordings: <strong>{formatBytes(usageRecordings)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageRecordings, storageRatePerGibMonth)}/mo)</small></span>
           </div>
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#06b6d4' }}></span>
-            <span>📦 ZIPs: <strong>{formatBytes(usageZips)}</strong></span>
+            <span>📦 ZIPs: <strong>{formatBytes(usageZips)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageZips, storageRatePerGibMonth)}/mo)</small></span>
           </div>
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#ef4444' }}></span>
-            <span>⚠️ Irregularities: <strong>{formatBytes(usageIrregularities)}</strong></span>
+            <span>⚠️ Irregularities: <strong>{formatBytes(usageIrregularities)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageIrregularities, storageRatePerGibMonth)}/mo)</small></span>
           </div>
         </div>
 

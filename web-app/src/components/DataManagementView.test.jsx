@@ -295,6 +295,8 @@ describe('DataManagementView Component', () => {
     );
 
     expect(screen.getByText(/Cloud Storage Quota & Usage/i)).toBeInTheDocument();
+    expect(screen.getByText(/Est\. Cost:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Rate:.*GB-mo/i)).toBeInTheDocument();
     expect(screen.getByText(/Screenshots:/i)).toBeInTheDocument();
     expect(screen.getByText(/Audio:/i)).toBeInTheDocument();
 
