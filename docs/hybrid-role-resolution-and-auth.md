@@ -257,44 +257,46 @@ As the user types into the registration email field, `deriveRoleFromEmail(email)
 
 ---
 
-## 7. Passwordless Lab PC QR Sign-In via FIDO2 WebAuthn & Custom Token Minting
+## 7. Passwordless Lab PC QR Sign-In via FIDO2 WebAuthn & Dynamic Role Token Minting
 
-In academic computer labs, workstations are shared by hundreds of students across rotating classes. Entering institutional passwords on shared lab keyboards presents severe security risks (hardware keyloggers, shoulder surfing, and credential caching).
+In academic computer labs, workstations are shared by hundreds of students and faculty across rotating classes. Entering institutional passwords on shared lab keyboards presents severe security risks (hardware keyloggers, shoulder surfing, and credential caching).
 
-To solve this without breaking Firebase Auth governance, the platform introduces **Cross-Device Passwordless Desktop Authentication**:
+To solve this without breaking Firebase Auth governance, the platform introduces **Cross-Device Passwordless Desktop Authentication** for both **Students** and **Teachers**:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Student
+    actor User as User (Student or Teacher)
     participant Desktop as Lab PC Desktop (Vite / React)
     participant Cloud as Cloud Function (Gen 2 Backend)
     participant Auth as Firebase Auth Backend (Google Cloud)
-    participant Phone as Student Smartphone (Secure Enclave)
+    participant Phone as Smartphone (Secure Enclave)
 
     Desktop->>Cloud: initiateDesktopLoginSession() -> sessionId (90s TTL)
     Desktop->>Desktop: Displays dynamic pairing QR code
-    Student->>Phone: Scans QR code with native Camera app
+    User->>Phone: Scans QR code with native Camera app
     Phone->>Phone: Native biometric prompt (Face ID / Fingerprint)
     Phone->>Cloud: verifyDesktopLoginPasskey(authenticationResponse)
-    Cloud->>Cloud: Validates FIDO2 cryptographic assertion
-    Cloud->>Auth: admin.auth().createCustomToken(studentUid, { role: 'student' })
+    Cloud->>Cloud: Validates FIDO2 assertion & derives detectedRole ('teacher' | 'student')
+    Cloud->>Auth: admin.auth().createCustomToken(uid, { role: detectedRole })
     Auth-->>Cloud: Cryptographically signed Firebase Custom JWT Token
     Cloud-->>Desktop: Writes token to loginSessions/{sessionId} via Firestore snapshot
     Desktop->>Auth: signInWithCustomToken(auth, customToken)
     Auth->>Auth: Validates IAM signature & updates user's lastSignInTime
-    Auth-->>Desktop: Issues native ID Token & Refresh Token
-    Desktop->>Desktop: onAuthStateChanged() triggers -> Enters student workspace! 🚀
+    Auth-->>Desktop: Issues native ID Token with { role: detectedRole }
+    Desktop->>Desktop: onAuthStateChanged() triggers -> Enters student or teacher workspace! 🚀
 ```
 
 ### Native Firebase Auth Parity Guarantees:
-1. **Official Custom Token Mechanism**: Rather than inventing an out-of-band session, the backend calls `admin.auth().createCustomToken(studentUid, { role: 'student' })`.
+1. **Dynamic Role Minting**: The backend inspects `studentPasskeys/{uid}.role` or derives the user's role from their email (`deriveUserRole(email)`), minting `admin.auth().createCustomToken(uid, { role: detectedRole })`. Teachers are signed directly into the Teacher Command Center, and students into the Student Workspace.
 2. **Identical Firebase Console & GCIP Logs**: When the desktop invokes `signInWithCustomToken()`, Google's Firebase Auth backend treats the sign-in identically to password authentication:
    - `lastSignInTime` in the Firebase Console and user directory updates immediately.
    - Google Cloud Audit Logs and Cloud Identity Platform (GCIP) track the authentication event.
-3. **Security Rules Transparency**: The resulting ID token includes `{ role: 'student' }`. `firestore.rules` and `storage.rules` validate `isStudent()` and `request.auth.uid` without any configuration changes.
-4. **Zero Shared Hardware Exposure**: Passwords are never typed or stored on the shared lab PC. Passkeys reside exclusively within the student's personal smartphone hardware authenticator (Apple Secure Enclave or Android Keystore).
+   - Dedicated `passkeyAuditLogs` commit an immutable audit record (including role and phone hardware model).
+3. **Security Rules Transparency**: The resulting ID token includes `{ role: detectedRole }`. `firestore.rules` and `storage.rules` validate `isTeacher()`, `isStudent()`, and `request.auth.uid` without any configuration changes.
+4. **Zero Shared Hardware Exposure**: Passwords are never typed or stored on the shared lab PC. Passkeys reside exclusively within the user's personal smartphone hardware authenticator (Apple Secure Enclave or Android Keystore).
 5. **Centralized Password Whitelist (`system_config/loginPolicy`)**: Admins and test accounts placed in the Firestore `passwordWhitelist` configuration array are exempt from the mandatory mobile passkey gate, allowing controlled username/password desktop sign-in for testing or emergency maintenance.
+6. **Multi-Role Device Sharing Whitelist (`PASSKEY_DEVICE_SHARING_WHITELIST`)**: Instructors and testers can share a single physical phone between a testing student account (e.g. `t-cywong@stu.vtc.edu.hk`) and a faculty account (`cywong@vtc.edu.hk`) without triggering anti-proxy hardware locks.
 
 For complete technical specifications, see [`docs/passkey-device-registration-guide.md`](./passkey-device-registration-guide.md).
 
