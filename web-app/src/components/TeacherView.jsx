@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { onSnapshot, getDoc, doc, setDoc } from 'firebase/firestore';
+import { onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
-import Modal from './Modal';
+import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
 import { formatBytes, formatAiCost } from '../utils/formatters';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
@@ -12,12 +11,6 @@ const TeacherView = ({ user }) => {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newClassId, setNewClassId] = useState('');
-  const [newClassName, setNewClassName] = useState('');
-  const [createError, setCreateError] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const checkRole = async () => {
@@ -156,58 +149,7 @@ const TeacherView = ({ user }) => {
     );
   }, [classes, searchTerm]);
 
-  const handleCreateClass = async (e) => {
-    e.preventDefault();
-    const cleanId = newClassId.trim().toLowerCase();
-    if (!cleanId) {
-      setCreateError('Class ID is required.');
-      return;
-    }
-    if (cleanId.length < 3) {
-      setCreateError('Class ID must be at least 3 characters.');
-      return;
-    }
-    if (cleanId.includes('/')) {
-      setCreateError('Class ID cannot contain slashes.');
-      return;
-    }
 
-    setIsCreating(true);
-    setCreateError('');
-
-    try {
-      const classRef = doc(db, 'classes', cleanId);
-      const existingSnap = await getDoc(classRef);
-      if (existingSnap.exists()) {
-        setCreateError(`Class with ID "${cleanId}" already exists.`);
-        setIsCreating(false);
-        return;
-      }
-
-      const defaultQuotaBytes = 5 * 1024 * 1024 * 1024; // 5 GB
-      await setDoc(classRef, {
-        name: newClassName.trim() || cleanId,
-        teacherEmails: [user.email.toLowerCase()],
-        studentEmails: [],
-        storageQuota: defaultQuotaBytes,
-        storageUsage: 0,
-        aiQuota: 10,
-        aiUsedQuota: 0,
-        automaticCapture: true,
-        automaticCombine: true,
-      });
-
-      setShowCreateModal(false);
-      setNewClassId('');
-      setNewClassName('');
-      navigate(`/class/${cleanId}?tab=settings`);
-    } catch (err) {
-      console.error('Error creating class:', err);
-      setCreateError(err.message || 'Failed to create class.');
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   if (role && role !== 'teacher') {
     return <Navigate to="/login" />;
@@ -230,9 +172,9 @@ const TeacherView = ({ user }) => {
           <p>Welcome back, {user?.email}. Manage your live sessions, analytics, and classroom resources.</p>
         </div>
         <div className="dashboard-hero-actions">
-          <button className="create-class-btn" onClick={() => setShowCreateModal(true)}>
+          <Link to="/class-management" className="create-class-btn">
             <span>+ Create New Class</span>
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -399,60 +341,12 @@ const TeacherView = ({ user }) => {
           {searchTerm ? (
             <button className="secondary-btn" onClick={() => setSearchTerm('')}>Clear Search</button>
           ) : (
-            <button className="create-class-btn" onClick={() => setShowCreateModal(true)}>
+            <Link to="/class-management" className="create-class-btn">
               + Create Your First Class
-            </button>
+            </Link>
           )}
         </div>
       )}
-
-      {/* Quick Create Class Modal */}
-      <Modal show={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create New Class">
-        <form onSubmit={handleCreateClass} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem 0' }}>
-          <div>
-            <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.9rem' }}>
-              Class ID / Course Code <span style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. it114115-2026-s1"
-              value={newClassId}
-              onChange={(e) => setNewClassId(e.target.value.toLowerCase())}
-              style={{ width: '100%' }}
-              required
-            />
-            <small style={{ color: '#64748b', fontSize: '0.75rem' }}>Letters, numbers, and hyphens only. Lowercase.</small>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.4rem', fontSize: '0.9rem' }}>
-              Class Display Name
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Cloud Architecture Practical Lab"
-              value={newClassName}
-              onChange={(e) => setNewClassName(e.target.value)}
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          {createError && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', fontSize: '0.85rem' }}>
-              {createError}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-            <button type="button" className="secondary-btn" onClick={() => setShowCreateModal(false)}>
-              Cancel
-            </button>
-            <button type="submit" disabled={isCreating}>
-              {isCreating ? 'Creating...' : 'Create & Configure'}
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 };

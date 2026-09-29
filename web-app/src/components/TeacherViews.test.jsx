@@ -89,84 +89,16 @@ describe('TeacherView Component', () => {
     });
   });
 
-  it('opens and closes the create class modal', async () => {
+  it('renders + Create New Class button linking directly to /class-management', async () => {
     render(
       <BrowserRouter>
         <TeacherView user={mockUser} />
       </BrowserRouter>
     );
 
-    await waitFor(() => {
-      expect(screen.getByText(/\+ Create New Class/i)).toBeInTheDocument();
-    });
-
-    const createBtn = screen.getByText(/\+ Create New Class/i);
-    fireEvent.click(createBtn);
-
-    expect(screen.getByPlaceholderText(/e.g. it114115/i)).toBeInTheDocument();
-
-    const cancelBtn = screen.getByText(/Cancel/i);
-    fireEvent.click(cancelBtn);
-
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText(/e.g. it114115/i)).not.toBeInTheDocument();
-    });
-  });
-
-  it('validates class ID format and prevents creating invalid classes', async () => {
-    render(
-      <BrowserRouter>
-        <TeacherView user={mockUser} />
-      </BrowserRouter>
-    );
-
-    const createBtn = await screen.findByText(/\+ Create New Class/i);
-    fireEvent.click(createBtn);
-
-    const idInput = screen.getByPlaceholderText(/e.g. it114115/i);
-    const submitBtn = screen.getByText(/Create & Configure/i);
-
-    // Too short ID
-    fireEvent.change(idInput, { target: { value: 'ab' } });
-    fireEvent.click(submitBtn);
-    expect(await screen.findByText(/Class ID must be at least 3 characters/i)).toBeInTheDocument();
-
-    // Slashes in ID
-    fireEvent.change(idInput, { target: { value: 'class/invalid' } });
-    fireEvent.click(submitBtn);
-    expect(await screen.findByText(/Class ID cannot contain slashes/i)).toBeInTheDocument();
-  });
-
-  it('handles successful class creation and navigates', async () => {
-    render(
-      <BrowserRouter>
-        <TeacherView user={mockUser} />
-      </BrowserRouter>
-    );
-
-    const createBtn = await screen.findByText(/\+ Create New Class/i);
-    fireEvent.click(createBtn);
-
-    const idInput = screen.getByPlaceholderText(/e.g. it114115/i);
-    const nameInput = screen.getByPlaceholderText(/e.g. Cloud Architecture Practical Lab/i);
-    const submitBtn = screen.getByText(/Create & Configure/i);
-
-    fireEvent.change(idInput, { target: { value: 'cs102-new' } });
-    fireEvent.change(nameInput, { target: { value: 'Advanced Algorithms' } });
-    fireEvent.click(submitBtn);
-
-    await waitFor(() => {
-      expect(screen.queryByPlaceholderText(/e.g. it114115/i)).not.toBeInTheDocument();
-    });
-
-    const { setDoc } = await import('firebase/firestore');
-    expect(setDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        automaticCapture: true,
-        automaticCombine: true,
-      })
-    );
+    const createBtn = await screen.findByRole('link', { name: /\+ Create New Class/i });
+    expect(createBtn).toBeInTheDocument();
+    expect(createBtn).toHaveAttribute('href', '/class-management');
   });
 
   it('allows clearing search when no classes match', async () => {
@@ -185,7 +117,7 @@ describe('TeacherView Component', () => {
     expect(await screen.findByText(/IT114115 Demo Class/i)).toBeInTheDocument();
   });
 
-  it('shows empty state and triggers create first class modal', async () => {
+  it('shows empty state with link to /class-management when no classes exist', async () => {
     const { onSnapshot } = await import('firebase/firestore');
     onSnapshot.mockImplementation((ref, cb) => {
       if (ref?.path?.includes('studentPasskeys')) {
@@ -202,9 +134,9 @@ describe('TeacherView Component', () => {
       </BrowserRouter>
     );
 
-    const createFirstBtn = await screen.findByRole('button', { name: /\+ Create Your First Class/i });
-    fireEvent.click(createFirstBtn);
-    expect(screen.getAllByText(/Create New Class/i).length).toBeGreaterThan(0);
+    const createFirstLink = await screen.findByRole('link', { name: /\+ Create Your First Class/i });
+    expect(createFirstLink).toBeInTheDocument();
+    expect(createFirstLink).toHaveAttribute('href', '/class-management');
   });
 
   it('does not display redundant pair phone button in dashboard hero to save space', async () => {

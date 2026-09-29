@@ -40,6 +40,10 @@
   font-weight: 600;
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .create-class-btn:hover {

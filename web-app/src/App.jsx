@@ -339,9 +339,6 @@ const MainHeader = ({ onLogout, user, role }) => {
             <NavLink to="/teacher" end>
               <span>📊 Dashboard</span>
             </NavLink>
-            <NavLink to="/class-management">
-              <span>⚙️ Class Manager</span>
-            </NavLink>
             <NavLink to="/manage-prompts">
               <span>💡 AI Prompts</span>
             </NavLink>
