@@ -79,18 +79,6 @@
     ],
     "rewrites": [
       {
-        "source": "/api/analyzeImage",
-        "function": "analyzeImage"
-      },
-      {
-        "source": "/api/analyzeAllImages",
-        "function": "analyzeAllImages"
-      },
-      {
-        "source": "/api/analyzeAudio",
-        "function": "analyzeAudio"
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }

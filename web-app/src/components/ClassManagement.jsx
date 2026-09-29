@@ -1499,24 +1499,38 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
       {!embeddedClassId && (
         <div className="class-management-header">
-          <h2>Class Management & Configuration</h2>
+          <div>
+            <h2>Class Management & Configuration</h2>
+            <p style={{ margin: '0.25rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
+              {selectedClass ? `Configure Class: ${selectedClass}` : 'Create a New Class'}
+            </p>
+          </div>
         </div>
       )}
 
       {/* Class Selector for standalone mode */}
       {!embeddedClassId && (
         <div className="class-selector-card">
-          <label htmlFor="select-class-to-manage">Select a Class to Edit or Configure:</label>
-          <select
-            id="select-class-to-manage"
-            onChange={(e) => setSelectedClass(e.target.value)}
-            value={selectedClass || ''}
-          >
-            <option value="">-- Create a New Class --</option>
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>{c.id}</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <label htmlFor="select-class-to-manage" style={{ fontWeight: 600 }}>Select a Class to Edit or Configure:</label>
+              <select
+                id="select-class-to-manage"
+                onChange={(e) => setSelectedClass(e.target.value)}
+                value={selectedClass || ''}
+              >
+                <option value="">-- Create a New Class --</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.id}>{c.id}</option>
+                ))}
+              </select>
+            </div>
+            {selectedClass && (
+              <a href={`/class/${selectedClass}`} className="open-workspace-btn" style={{ textDecoration: 'none' }}>
+                Open Class Workspace →
+              </a>
+            )}
+          </div>
         </div>
       )}
 

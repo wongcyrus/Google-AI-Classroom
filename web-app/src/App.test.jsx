@@ -144,7 +144,7 @@ describe('App & MainHeader Components', () => {
     expect(await screen.findByTestId('teacher-view')).toBeInTheDocument();
     expect(screen.getByText('Google AI Classroom')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('⚙️ Class Manager')).toBeInTheDocument();
+    expect(screen.queryByText('⚙️ Class Manager')).not.toBeInTheDocument();
     expect(screen.queryByText('📬 Mailbox')).not.toBeInTheDocument();
 
     // Footer promotion check
