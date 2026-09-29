@@ -12,13 +12,44 @@ async function seed() {
   console.log(`Seeding demo class on ${projectId}...`);
 
   const teacherEmails = ['teacher1@vtc.edu.hk', 'teacher2@vtc.edu.hk', 'cywong@vtc.edu.hk'];
-  const studentEmails = [
-    'student1@stu.vtc.edu.hk',
-    'student2@stu.vtc.edu.hk',
-    'student3@stu.vtc.edu.hk',
-    'student4@stu.vtc.edu.hk',
-    'student5@stu.vtc.edu.hk'
+  const demoStudents = [
+    {
+      email: 'student1@stu.vtc.edu.hk',
+      studentName: 'Chan Tai Man (陳大文)',
+      nickname: 'David',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1A'
+    },
+    {
+      email: 'student2@stu.vtc.edu.hk',
+      studentName: 'Wong Siu Ming (黃小明)',
+      nickname: 'Sammy',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1A'
+    },
+    {
+      email: 'student3@stu.vtc.edu.hk',
+      studentName: 'Lee Ka Yan (李嘉欣)',
+      nickname: 'Karen',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1B'
+    },
+    {
+      email: 'student4@stu.vtc.edu.hk',
+      studentName: 'Cheung Wai Kin (張偉健)',
+      nickname: 'Ken',
+      programme: 'HD in Software Engineering',
+      studentClass: 'IT114115/1B'
+    },
+    {
+      email: 'student5@stu.vtc.edu.hk',
+      studentName: 'Au Yeung Tsz Lok (歐陽梓樂)',
+      nickname: 'Lok',
+      programme: 'HD in Software Engineering',
+      studentClass: 'IT114115/1B'
+    }
   ];
+  const studentEmails = demoStudents.map(s => s.email);
 
   const teacherUsers = await Promise.all(teacherEmails.map(email => auth.getUserByEmail(email)));
   const studentUsers = await Promise.all(studentEmails.map(email => auth.getUserByEmail(email)));
@@ -28,6 +59,16 @@ async function seed() {
 
   const studentMap = {};
   studentUsers.forEach(u => { studentMap[u.uid] = u.email; });
+
+  const studentProfilesMap = {};
+  demoStudents.forEach(s => {
+    studentProfilesMap[s.email.toLowerCase()] = {
+      studentName: s.studentName,
+      nickname: s.nickname,
+      programme: s.programme,
+      studentClass: s.studentClass
+    };
+  });
 
   const classId = 'IT114115-Demo';
   const startDate = '2026-01-01';
@@ -39,6 +80,7 @@ async function seed() {
     studentEmails,
     teachers: teacherMap,
     students: studentMap,
+    studentProfiles: studentProfilesMap,
     retentionDays: 30,
     videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024, // 5 GB
@@ -63,7 +105,7 @@ async function seed() {
   };
 
   await db.collection('classes').doc(classId).set(classData, { merge: true });
-  console.log(`✅ Class ${classId} created.`);
+  console.log(`✅ Class ${classId} created with student profiles & nicknames.`);
 
   // Update teacher and student profiles
   for (const tUser of teacherUsers) {
@@ -72,9 +114,28 @@ async function seed() {
     }, { merge: true });
   }
 
-  for (const sUser of studentUsers) {
+  for (let i = 0; i < studentUsers.length; i++) {
+    const sUser = studentUsers[i];
+    const sMeta = demoStudents[i];
     await db.collection('studentProfiles').doc(sUser.uid).set({
-      classes: FieldValue.arrayUnion(classId)
+      classes: FieldValue.arrayUnion(classId),
+      email: sUser.email,
+      studentName: sMeta.studentName,
+      nickname: sMeta.nickname,
+      programme: sMeta.programme,
+      studentClass: sMeta.studentClass,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    await db.collection('studentDirectory').doc(sMeta.email.toLowerCase()).set({
+      studentEmail: sMeta.email.toLowerCase(),
+      email: sMeta.email.toLowerCase(),
+      studentName: sMeta.studentName,
+      nickname: sMeta.nickname,
+      programme: sMeta.programme,
+      studentClass: sMeta.studentClass,
+      lastUpdatedByClass: classId,
+      updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
   }
 
@@ -84,7 +145,7 @@ async function seed() {
     description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
   }, { merge: true });
 
-  console.log(`✅ Enrolled co-teachers and students into ${classId} and initialized password whitelist.`);
+  console.log(`✅ Enrolled co-teachers and students into ${classId} with full profiles (nicknames) and initialized password whitelist.`);
 }
 
 seed().catch(console.error);

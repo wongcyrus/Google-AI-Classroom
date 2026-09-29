@@ -41,21 +41,21 @@ teacher1@vtc.edu.hk
 
 ### 🧑‍🎓 Demo Student Accounts
 ```text
-student1@stu.vtc.edu.hk
+student1@stu.vtc.edu.hk  (David | Chan Tai Man 陳大文 | IT114115/1A)
 ```
 ```text
-student2@stu.vtc.edu.hk
+student2@stu.vtc.edu.hk  (Sammy | Wong Siu Ming 黃小明 | IT114115/1A)
 ```
 ```text
-student3@stu.vtc.edu.hk
+student3@stu.vtc.edu.hk  (Karen | Lee Ka Yan 李嘉欣 | IT114115/1B)
 ```
 ```text
-student4@stu.vtc.edu.hk
+student4@stu.vtc.edu.hk  (Ken | Cheung Wai Kin 張偉健 | IT114115/1B)
 ```
 ```text
-student5@stu.vtc.edu.hk
+student5@stu.vtc.edu.hk  (Lok | Au Yeung Tsz Lok 歐陽梓樂 | IT114115/1B)
 ```
-* **Role**: Enrolled Students (`student` custom claim, `studentProfiles` document).
+* **Role**: Enrolled Students (`student` custom claim, `studentProfiles` document, `studentDirectory` entry).
 * **Permissions**: Pre-flight readiness wizard, dual-channel screen & webcam streaming, interactive Bingo challenges, and self-service learning records portal.
 
 ### 🔑 Demo Account Password Configuration
@@ -66,16 +66,16 @@ Demo account passwords are set during environment seeding and can be customized 
 
 ### 📑 Complete Sandbox Accounts Directory
 
-| Role | Email Address | Password Configuration | Enrolled / Assigned Class | Verification Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **👨‍🏫 Lead Teacher** | `teacher1@vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Lead Instructor) | ✅ Verified (`emailVerified: true`) |
-| **👨‍🏫 Co-Teacher** | `teacher2@vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Co-Instructor) | ✅ Verified (`emailVerified: true`) |
-| **👨‍🏫 Co-Teacher** | `cywong@vtc.edu.hk` | *(Personal account)* | `IT114115-Demo` (Co-Instructor) | ✅ Verified (`emailVerified: true`) |
-| **🧑‍🎓 Student 1** | `student1@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Student) | ✅ Verified (`emailVerified: true`) |
-| **🧑‍🎓 Student 2** | `student2@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Student) | ✅ Verified (`emailVerified: true`) |
-| **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Student) | ✅ Verified (`emailVerified: true`) |
-| **🧑‍🎓 Student 4** | `student4@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Student) | ✅ Verified (`emailVerified: true`) |
-| **🧑‍🎓 Student 5** | `student5@stu.vtc.edu.hk` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` (Student) | ✅ Verified (`emailVerified: true`) |
+| Role | Email Address | Display Name / Nickname | Programme / Cohort | Password Configuration | Enrolled Class | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **👨‍🏫 Lead Teacher** | `teacher1@vtc.edu.hk` | Teacher 1 (Lead Instructor) | Dept. of Information Technology | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **👨‍🏫 Co-Teacher** | `teacher2@vtc.edu.hk` | Teacher 2 (Co-Instructor) | Dept. of Information Technology | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **👨‍🏫 Co-Teacher** | `cywong@vtc.edu.hk` | CY Wong | Dept. of Information Technology | *(Personal account)* | `IT114115-Demo` | ✅ Verified |
+| **🧑‍🎓 Student 1** | `student1@stu.vtc.edu.hk` | Chan Tai Man 陳大文 (`David`) | HD in ICT / `IT114115/1A` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **🧑‍🎓 Student 2** | `student2@stu.vtc.edu.hk` | Wong Siu Ming 黃小明 (`Sammy`) | HD in ICT / `IT114115/1A` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **🧑‍🎓 Student 3** | `student3@stu.vtc.edu.hk` | Lee Ka Yan 李嘉欣 (`Karen`) | HD in ICT / `IT114115/1B` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **🧑‍🎓 Student 4** | `student4@stu.vtc.edu.hk` | Cheung Wai Kin 張偉健 (`Ken`) | HD in Software Eng / `IT114115/1B` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
+| **🧑‍🎓 Student 5** | `student5@stu.vtc.edu.hk` | Au Yeung Tsz Lok 歐陽梓樂 (`Lok`) | HD in Software Eng / `IT114115/1B` | Set via seeding (`DEMO_PASSWORD`) | `IT114115-Demo` | ✅ Verified |
 
 ---
 
