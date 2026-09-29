@@ -16,59 +16,56 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [error, setError] = useState('');
   const [isPaired, setIsPaired] = useState(false);
   const [pairedDevice, setPairedDevice] = useState('');
+  const [qrExpiresAtMillis, setQrExpiresAtMillis] = useState(0);
+  const [qrTimeLeftSec, setQrTimeLeftSec] = useState(0);
   const isMobile = isHandheldPhone();
+
+  const initPairing = async () => {
+    if (!user?.uid || isMobile) return;
+    setLoading(true);
+    setError('');
+    try {
+      const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
+      const res = await reqTokenFn({ classId: classId || null });
+      const { tokenId, expiresAtMillis } = res.data || {};
+
+      if (!tokenId) {
+        throw new Error('Could not generate pairing token.');
+      }
+
+      setPairingToken(tokenId);
+      const expMillis = expiresAtMillis || (Date.now() + 5 * 60 * 1000);
+      setQrExpiresAtMillis(expMillis);
+      setQrTimeLeftSec(Math.max(0, Math.round((expMillis - Date.now()) / 1000)));
+
+      const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
+      const dataUrl = await QRCode.toDataURL(pairingUrl, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff',
+        },
+      });
+
+      setQrDataUrl(dataUrl);
+    } catch (err) {
+      console.error('[PasskeyPairModal] Error generating QR:', err);
+      setError(err.message || 'Failed to initialize phone pairing.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 1. Check existing passkey status & generate pairing token if on desktop
   useEffect(() => {
     if (!show || !user?.uid) return;
 
-    let isMounted = true;
     setIsPaired(false);
     setError('');
 
     // If on Desktop, generate pairing QR code for phone to scan
     if (!isMobile) {
-      const initPairing = async () => {
-        setLoading(true);
-        setError('');
-        try {
-          const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
-          const res = await reqTokenFn({ classId: classId || null });
-          const tokenId = res.data?.tokenId;
-
-          if (!tokenId) {
-            throw new Error('Could not generate pairing token.');
-          }
-
-          if (isMounted) {
-            setPairingToken(tokenId);
-          }
-
-          const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
-          const dataUrl = await QRCode.toDataURL(pairingUrl, {
-            width: 256,
-            margin: 2,
-            color: {
-              dark: '#0f172a',
-              light: '#ffffff',
-            },
-          });
-
-          if (isMounted) {
-            setQrDataUrl(dataUrl);
-          }
-        } catch (err) {
-          console.error('[PasskeyPairModal] Error generating QR:', err);
-          if (isMounted) {
-            setError(err.message || 'Failed to initialize phone pairing.');
-          }
-        } finally {
-          if (isMounted) {
-            setLoading(false);
-          }
-        }
-      };
-
       initPairing();
     }
 
@@ -82,10 +79,27 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
     });
 
     return () => {
-      isMounted = false;
       unsubscribe();
     };
   }, [show, user?.uid, classId, isMobile]);
+
+  // Pairing QR countdown and auto-refresh interval
+  useEffect(() => {
+    if (!show || !qrExpiresAtMillis || isMobile || isPaired) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((qrExpiresAtMillis - now) / 1000));
+      setQrTimeLeftSec(remaining);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        initPairing();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [show, qrExpiresAtMillis, isMobile, isPaired]);
 
   // Direct In-Place Registration on Mobile Phone
   const handleRegisterDirectly = async () => {
@@ -283,6 +297,18 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
               </div>
             ) : qrDataUrl ? (
               <div>
+                <div style={{
+                  fontSize: '0.825rem',
+                  color: '#64748b',
+                  background: '#f8fafc',
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '9999px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '0.75rem',
+                  display: 'inline-block'
+                }}>
+                  ⏱️ Token expires in: <strong>{Math.floor(qrTimeLeftSec / 60)}:{String(qrTimeLeftSec % 60).padStart(2, '0')}</strong> (Auto-refreshes)
+                </div>
                 <div className="passkey-qr-frame">
                   <img src={qrDataUrl} alt="Pair Phone QR Code" className="passkey-qr-image" />
                 </div>
