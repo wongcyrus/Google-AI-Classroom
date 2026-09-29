@@ -9,6 +9,7 @@ import {
 } from '@simplewebauthn/server';
 import { HttpsError } from 'firebase-functions/v2/https';
 import crypto from 'crypto';
+import { deriveUserRole } from './config.js';
 
 const db = getFirestore();
 
@@ -54,7 +55,7 @@ export function resolveRpId(clientRpId) {
 }
 
 /**
- * 1. Request Passkey Pairing Token (Student on Lab PC)
+ * 1. Request Passkey Pairing Token (Student / Teacher on Lab PC)
  * Generates a temporary 10-minute token for mobile phone pairing without typing password
  */
 export async function handleRequestPasskeyPairingToken({ studentUid, studentEmail, classId }) {
@@ -62,6 +63,7 @@ export async function handleRequestPasskeyPairingToken({ studentUid, studentEmai
     throw new HttpsError('unauthenticated', 'User must be authenticated to request pairing token.');
   }
 
+  const role = deriveUserRole(studentEmail) || 'student';
   const tokenId = crypto.randomUUID();
   const expiresAtMillis = Date.now() + 10 * 60 * 1000; // 10 minutes
 
@@ -69,13 +71,14 @@ export async function handleRequestPasskeyPairingToken({ studentUid, studentEmai
     tokenId,
     studentUid,
     studentEmail: (studentEmail || '').toLowerCase(),
+    role,
     classId: classId || null,
     createdAt: FieldValue.serverTimestamp(),
     expiresAtMillis,
     used: false,
   });
 
-  return { tokenId, expiresAtMillis };
+  return { tokenId, expiresAtMillis, role };
 }
 
 /**
@@ -103,6 +106,11 @@ export async function handleGetPasskeyRegistrationOptions({ pairingToken, client
   }
 
   const rpID = resolveRpId(clientRpId);
+  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
+  const roleLabel = userRole === 'teacher' ? 'Teacher' : 'Student';
+  const userDisplayName = tokenData.studentEmail
+    ? `${tokenData.studentEmail.split('@')[0]} (${roleLabel})`
+    : roleLabel;
 
   // Generate WebAuthn options for registering biometric passkey
   const options = await generateRegistrationOptions({
@@ -110,7 +118,7 @@ export async function handleGetPasskeyRegistrationOptions({ pairingToken, client
     rpID,
     userID: new Uint8Array(Buffer.from(tokenData.studentUid)),
     userName: tokenData.studentEmail || tokenData.studentUid,
-    userDisplayName: tokenData.studentEmail ? tokenData.studentEmail.split('@')[0] : 'Student',
+    userDisplayName,
     attestationType: 'none',
     authenticatorSelection: {
       residentKey: 'preferred',
@@ -223,11 +231,13 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
 
   const credentialPublicKey = Buffer.from(credential.publicKey).toString('base64');
   const transports = credential.transports || attestationResponse.response?.transports || ['internal'];
+  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
 
-  // Save the student passkey with persistent hardware device fingerprint
+  // Save the passkey with persistent hardware device fingerprint and role
   await db.doc(`studentPasskeys/${tokenData.studentUid}`).set({
     studentUid: tokenData.studentUid,
     studentEmail: tokenData.studentEmail,
+    role: userRole,
     credentialID,
     credentialPublicKey,
     deviceFingerprint: deviceFingerprint || null,
@@ -247,6 +257,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
   return {
     verified: true,
     studentUid: tokenData.studentUid,
+    role: userRole,
     deviceModel: deviceModel || 'Mobile Device',
   };
 }
@@ -774,19 +785,36 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, token, authen
     throw new HttpsError('invalid-argument', 'Missing credential ID in authentication response.');
   }
 
-  // Lookup student passkey by hardware credential ID
+  // Lookup passkey by hardware credential ID
   const passkeySnap = await db.collection('studentPasskeys')
     .where('credentialID', '==', credentialId)
     .limit(1)
     .get();
 
   if (passkeySnap.empty) {
-    throw new HttpsError('not-found', 'No student passkey found matching this mobile device. Please pair your phone first.');
+    throw new HttpsError('not-found', 'No passkey found matching this mobile device. Please pair your phone first.');
   }
 
   const passkeyDoc = passkeySnap.docs[0];
   const passkeyData = passkeyDoc.data();
   const studentUid = passkeyDoc.id;
+
+  // Resolve role: prioritize stored passkeyData.role, then derive from email, then custom claims
+  let detectedRole = passkeyData.role;
+  if (!detectedRole && passkeyData.studentEmail) {
+    detectedRole = deriveUserRole(passkeyData.studentEmail);
+  }
+  if (!detectedRole) {
+    try {
+      const userRecord = await getAuth().getUser(studentUid);
+      if (userRecord.customClaims?.role) {
+        detectedRole = userRecord.customClaims.role;
+      }
+    } catch (e) {
+      console.warn(`[verifyDesktopLoginPasskey] Could not fetch userRecord for ${studentUid}:`, e.message);
+    }
+  }
+  detectedRole = detectedRole || 'student';
 
   // Verify device fingerprint if bound
   if (passkeyData.deviceFingerprint && deviceFingerprint && passkeyData.deviceFingerprint !== deviceFingerprint) {
@@ -827,8 +855,8 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, token, authen
     lastLoginType: 'desktop_qr',
   });
 
-  // Mint Firebase Custom Token for desktop
-  const customToken = await getAuth().createCustomToken(studentUid, { role: 'student' });
+  // Mint Firebase Custom Token for desktop with dynamic detected role
+  const customToken = await getAuth().createCustomToken(studentUid, { role: detectedRole });
 
   // Update login session to authorized
   await sessionRef.update({
@@ -836,13 +864,16 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, token, authen
     customToken,
     studentUid,
     studentEmail: passkeyData.studentEmail || null,
+    role: detectedRole,
     deviceModel: passkeyData.deviceModel || 'Mobile Device',
     authorizedAt: FieldValue.serverTimestamp(),
   });
 
   // Audit log
+  const auditAction = detectedRole === 'teacher' ? 'TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR' : 'DESKTOP_LOGIN_VIA_MOBILE_QR';
   await db.collection('passkeyAuditLogs').add({
-    action: 'DESKTOP_LOGIN_VIA_MOBILE_QR',
+    action: auditAction,
+    role: detectedRole,
     studentUid,
     studentEmail: passkeyData.studentEmail || null,
     deviceModel: passkeyData.deviceModel || 'Mobile Device',
@@ -854,8 +885,11 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, token, authen
     verified: true,
     studentUid,
     studentEmail: passkeyData.studentEmail || null,
+    role: detectedRole,
     deviceModel: passkeyData.deviceModel || 'Mobile Device',
-    message: 'Mobile passkey verified. Desktop login authorized.',
+    message: detectedRole === 'teacher'
+      ? 'Teacher passkey verified. Desktop login authorized.'
+      : 'Mobile passkey verified. Desktop login authorized.',
   };
 }
 

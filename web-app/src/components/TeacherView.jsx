@@ -3,6 +3,7 @@ import { onSnapshot, getDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import Modal from './Modal';
+import PasskeyPairModal from './passkey/PasskeyPairModal';
 import './TeacherView.css';
 import { formatBytes, formatAiCost } from '../utils/formatters';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
@@ -13,11 +14,30 @@ const TeacherView = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showPairModal, setShowPairModal] = useState(false);
+  const [pairedDevice, setPairedDevice] = useState(null);
   const [newClassId, setNewClassId] = useState('');
   const [newClassName, setNewClassName] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, 'studentPasskeys', user.uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data?.credentialID || data?.deviceModel) {
+          setPairedDevice(data.deviceModel || 'Mobile Device');
+        } else {
+          setPairedDevice(null);
+        }
+      } else {
+        setPairedDevice(null);
+      }
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -192,6 +212,29 @@ const TeacherView = ({ user }) => {
           <p>Welcome back, {user?.email}. Manage your live sessions, analytics, and classroom resources.</p>
         </div>
         <div className="dashboard-hero-actions">
+          <button
+            type="button"
+            className="pair-phone-btn"
+            onClick={() => setShowPairModal(true)}
+            title="Pair your personal smartphone for passwordless QR login on shared lab PCs"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.65rem 1rem',
+              borderRadius: '0.5rem',
+              border: pairedDevice ? '1px solid #10b981' : '1px solid #cbd5e1',
+              background: pairedDevice ? '#ecfdf5' : '#ffffff',
+              color: pairedDevice ? '#065f46' : '#334155',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+            }}
+          >
+            <span>📱</span>
+            <span>{pairedDevice ? `Phone Paired: ${pairedDevice}` : 'Pair Phone for Lab PC'}</span>
+          </button>
           <button className="create-class-btn" onClick={() => setShowCreateModal(true)}>
             <span>+ Create New Class</span>
           </button>
@@ -406,6 +449,14 @@ const TeacherView = ({ user }) => {
           </div>
         </form>
       </Modal>
+
+      {showPairModal && (
+        <PasskeyPairModal
+          show={showPairModal}
+          onClose={() => setShowPairModal(false)}
+          user={user}
+        />
+      )}
     </div>
   );
 };
