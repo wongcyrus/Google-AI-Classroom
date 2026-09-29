@@ -790,11 +790,26 @@ The platform decouples **Authority/Origin** (`isSystem` and `owner`) from **Visi
 ---
 
 
-## 18. Data Management, Bulk ZIP Archives & Retention Deletion
+## 18. Data Management, Storage Quota Audit & Selective Telemetry Purge
 **Primary Source:** [`DataManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/DataManagementView.jsx)
 
-### Selective Retention Deletion
-- **Date Range Deletion Action (`Delete Screenshots in Range`):** Calls `deleteScreenshotsByDateRange` Cloud Function to purge raw screenshot assets within selected dates while preserving compiled attendance and milestone records.
+### Cloud Storage Quota & Breakdown Dashboard
+- **Usage vs Quota Meter:** Real-time multi-color stacked progress bar displaying percentage and byte totals across all 5 class media types: Screenshots, Student Audio, Compiled Videos, Lecture Recordings, and ZIP Archives.
+- **Storage Legend Badges:** Itemized category pills with exact formatted sizes (`MB` / `GB`).
+- **Recalculate Storage Action (`🔄 Recalculate Storage`):** Triggers `recalculateStorageUsage` Cloud Function to scan physical Cloud Storage blobs and heal any metric drift in `classes/{classId}/metadata/storage`.
+
+### Granular Selective Telemetry Purge
+- **Target Category Checkboxes:**
+  - `📸 Screenshots`: Raw telemetry frame images.
+  - `🎙️ Audio`: Student speech chunks and transcription records.
+  - `🎥 Student Videos`: Compiled MP4 session videos.
+  - `🎬 Lecture Recordings`: Teacher lecture video, audio, and multilingual subtitles.
+- **Scope & Date Presets:**
+  - `Current Lesson`: Automatically scopes deletion to active schedule bounds.
+  - `Older than 14 Days / 30 Days / 90 Days`: One-click retention sweeps.
+  - `Custom Range`: Granular date/time pickers.
+- **Data Integrity Guarantee Note:** Informs teachers that attendance records, milestones, task submissions, grades, and irregularity reports are preserved permanently.
+- **Selective Purge Action:** Executes `purgeClassTelemetryData` with composite index resilience and safe batching.
 
 ### Video Archives (ZIP Export Jobs)
 - **Select All Checkbox:** Toggles selection of all archive jobs on page.

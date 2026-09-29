@@ -24,6 +24,22 @@ vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   deleteDoc: (...args) => mockDeleteDoc(...args),
   getDoc: (...args) => mockGetDoc(...args),
+  onSnapshot: vi.fn((ref, callback) => {
+    if (typeof callback === 'function') {
+      callback({
+        exists: () => true,
+        data: () => ({
+          storageUsage: 250000000,
+          storageUsageScreenShots: 200000000,
+          storageUsageAudio: 20000000,
+          storageUsageVideos: 30000000,
+          storageUsageRecordings: 0,
+          storageUsageZips: 0,
+        }),
+      });
+    }
+    return vi.fn();
+  }),
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -148,12 +164,14 @@ describe('DataManagementView Component', () => {
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
-      expect(mockDeleteScreenshotsByDateRange).toHaveBeenCalledWith({
-        classId: 'CLASS_101',
-        startDate: '2026-08-30T00:00',
-        endDate: '2026-08-30T23:59',
-        timezone: 'UTC',
-      });
+      expect(mockDeleteScreenshotsByDateRange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'CLASS_101',
+          startDate: '2026-08-30T00:00',
+          endDate: '2026-08-30T23:59',
+          timezone: 'UTC',
+        })
+      );
     });
   });
 
@@ -254,4 +272,60 @@ describe('DataManagementView Component', () => {
       expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to get download link: Access denied to storage object'));
     });
   });
+
+  it('renders storage quota breakdown and handles recalculate storage action', async () => {
+    const mockRecalculate = vi.fn().mockResolvedValue({
+      data: { message: 'Storage recalculated successfully. Total usage: 238.42 MB.' },
+    });
+    mockDeleteScreenshotsByDateRange.mockImplementation((params) => {
+      if (params?.classId && !params.startDate) {
+        return mockRecalculate(params);
+      }
+      return Promise.resolve({ data: { message: 'OK' } });
+    });
+
+    render(
+      <DataManagementView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    expect(screen.getByText(/Cloud Storage Quota & Usage/i)).toBeInTheDocument();
+    expect(screen.getByText(/Screenshots:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Audio:/i)).toBeInTheDocument();
+
+    const recalcBtn = screen.getByRole('button', { name: /Recalculate Storage/i });
+    fireEvent.click(recalcBtn);
+
+    await waitFor(() => {
+      expect(mockDeleteScreenshotsByDateRange).toHaveBeenCalled();
+    });
+  });
+
+  it('allows toggling targets and switching scope presets', () => {
+    render(
+      <DataManagementView
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    // Switch preset to 30 days
+    const preset30Days = screen.getByRole('button', { name: /Older than 30 Days/i });
+    fireEvent.click(preset30Days);
+    expect(preset30Days).toHaveClass('active');
+
+    // Switch to Custom Range
+    const customPreset = screen.getByRole('button', { name: /Custom Range/i });
+    fireEvent.click(customPreset);
+    expect(screen.getByText(/Start Date\/Time:/i)).toBeInTheDocument();
+  });
 });
+

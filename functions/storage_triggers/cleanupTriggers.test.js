@@ -259,12 +259,18 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
         data: () => ({ timestamp: expiredTimestamp }),
       };
 
-      // Query returns 2 docs
-      mockCollection.get.mockResolvedValueOnce({
-        empty: false,
-        size: 2,
-        docs: [docRecent, docExpired],
-      });
+      // Query returns 2 screenshot docs, then 1 audio doc
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 2,
+          docs: [docRecent, docExpired],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [docRecent],
+        });
 
       const event = {
         data: {

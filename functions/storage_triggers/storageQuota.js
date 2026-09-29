@@ -1,8 +1,9 @@
 import { onObjectFinalized, onObjectDeleted } from 'firebase-functions/v2/storage';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import './firebase.js'; // Ensure firebase is initialized
-import { FUNCTION_REGION } from './config.js';
+import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
 
 const db = getFirestore();
 const adminStorage = getStorage();
@@ -172,3 +173,97 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
     console.error(`Failed to decrease storage usage for class ${classId}:`, error);
   }
 });
+
+/**
+ * Callable function to audit and synchronize Cloud Storage usage for a class.
+ * Scans physical blobs across all class directories and updates metadata/storage.
+ */
+export const recalculateStorageUsage = onCall({
+  region: FUNCTION_REGION,
+  cors: CORS_ORIGINS,
+  memory: '512MiB',
+  timeoutSeconds: 300,
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  }
+
+  const { classId } = request.data || {};
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'Missing classId.');
+  }
+
+  // Teacher authorization check
+  let isAuthorizedTeacher = request.auth.token?.role === 'teacher';
+  if (!isAuthorizedTeacher && request.auth.uid) {
+    try {
+      const classDoc = await db.collection('classes').doc(classId).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if (
+          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
+        ) {
+          isAuthorizedTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher authorization:', e);
+    }
+  }
+
+  if (!isAuthorizedTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers assigned to this class can recalculate storage.');
+  }
+
+  const bucket = adminStorage.bucket();
+  const categories = [
+    { prefix: `screenshots/${classId}/`, field: 'storageUsageScreenShots' },
+    { prefix: `videos/${classId}/`, field: 'storageUsageVideos' },
+    { prefix: `zips/${classId}/`, field: 'storageUsageZips' },
+    { prefix: `audio/${classId}/`, field: 'storageUsageAudio' },
+    { prefix: `recordings/${classId}/`, field: 'storageUsageRecordings' },
+  ];
+
+  const results = {
+    storageUsageScreenShots: 0,
+    storageUsageVideos: 0,
+    storageUsageZips: 0,
+    storageUsageAudio: 0,
+    storageUsageRecordings: 0,
+    storageUsage: 0,
+  };
+
+  for (const cat of categories) {
+    try {
+      const [files] = await bucket.getFiles({ prefix: cat.prefix });
+      let catTotal = 0;
+      for (const file of files) {
+        const metadata = file.metadata || {};
+        const sz = parseInt(metadata.size, 10);
+        if (!isNaN(sz) && sz > 0) {
+          catTotal += sz;
+        }
+      }
+      results[cat.field] = catTotal;
+      results.storageUsage += catTotal;
+    } catch (err) {
+      console.warn(`Error scanning prefix ${cat.prefix}:`, err);
+    }
+  }
+
+  const storageRef = db.collection('classes').doc(classId).collection('metadata').doc('storage');
+  await storageRef.set({
+    ...results,
+    lastAuditedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  console.log(`Audited and synchronized storage usage for class ${classId}:`, results);
+
+  return {
+    status: 'success',
+    message: `Storage recalculated successfully. Total usage: ${(results.storageUsage / (1024 * 1024)).toFixed(2)} MB.`,
+    ...results,
+  };
+});
+
