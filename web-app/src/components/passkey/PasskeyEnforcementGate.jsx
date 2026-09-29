@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
+import { signOut } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { functions, db } from '../../firebase-config';
+import { functions, db, auth } from '../../firebase-config';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { isTeacherEmail, isStudentEmail } from '../../utils/domainConfig';
 import './passkey.css';
@@ -360,6 +361,21 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
             onClick={() => setShowBypassModal(true)}
           >
             🙋 Phone Unavailable? (Dead Battery / Left at Home)
+          </button>
+
+          <button
+            type="button"
+            className="passkey-btn secondary"
+            style={{ marginTop: '0.75rem', width: '100%', color: '#ef4444', borderColor: '#fca5a5' }}
+            onClick={async () => {
+              try {
+                await signOut(auth);
+              } catch (err) {
+                console.error('Sign out error:', err);
+              }
+            }}
+          >
+            🚪 Sign Out / Switch Account ({user?.email})
           </button>
         </div>
       </div>
