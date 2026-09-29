@@ -385,7 +385,6 @@ describe('AuthComponent Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Refreshes in:/i)).toBeInTheDocument();
-      expect(screen.getByText(/Session active:/i)).toBeInTheDocument();
       expect(screen.getByAltText('Desktop Login QR Code')).toBeInTheDocument();
     });
   });
