@@ -95,6 +95,69 @@ describe('PasskeyPairModal Component', () => {
 
     expect(screen.getByText('Passkey Registered!')).toBeInTheDocument();
     expect(screen.getByText(/Apple iPhone 15 Pro/i)).toBeInTheDocument();
+    // Regular students must not see the unlink button
+    expect(screen.queryByText(/🔄 Unlink \/ Switch Phone/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Please ask your course instructor to reset your passkey registration/i)).toBeInTheDocument();
+  });
+
+  it('renders unlink button for teacher accounts', async () => {
+    mockRequestToken.mockResolvedValueOnce({
+      data: { tokenId: 'token-teacher-123' },
+    });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'teacher_1', email: 'instructor@vtc.edu.hk' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    act(() => {
+      if (mockSnapshotCb) {
+        mockSnapshotCb({
+          exists: () => true,
+          data: () => ({ deviceModel: 'Google Pixel 8' }),
+        });
+      }
+    });
+
+    expect(screen.getByText('Passkey Registered!')).toBeInTheDocument();
+    expect(screen.getByText(/🔄 Unlink \/ Switch Phone/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Please ask your course instructor/i)).not.toBeInTheDocument();
+  });
+
+  it('renders unlink button for whitelisted testing accounts', async () => {
+    mockRequestToken.mockResolvedValueOnce({
+      data: { tokenId: 'token-white-123' },
+    });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_tester', email: 't-cywong@stu.vtc.edu.hk' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    act(() => {
+      if (mockSnapshotCb) {
+        mockSnapshotCb({
+          exists: () => true,
+          data: () => ({ deviceModel: 'Samsung Galaxy S24' }),
+        });
+      }
+    });
+
+    expect(screen.getByText('Passkey Registered!')).toBeInTheDocument();
+    expect(screen.getByText(/🔄 Unlink \/ Switch Phone/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Please ask your course instructor/i)).not.toBeInTheDocument();
   });
 
   it('renders direct mobile registration UI without QR code when on mobile device', async () => {

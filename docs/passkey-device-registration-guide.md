@@ -15,7 +15,7 @@ To eliminate proxy attendance without requiring expensive lab hardware upgrades 
 - **1-Phone = 1-Student Hardware Lock**: The platform authenticator's public credential ID is bound directly to the student's UID. The server cryptographically rejects attempts to register the same physical smartphone to multiple student accounts (with controlled multi-role exemptions for faculty/testing).
 - **Fast Attendance (< 2 Seconds)**: Routine in-class attendance requires only pointing the phone camera at the PC screen and touching the biometric sensor (Face ID, Touch ID, or Android Fingerprint).
 - **Teacher Mobile Passkey Login**: Instructors can scan the desktop login QR code on shared lab PCs to log in with zero keyboard password entry, avoiding keylogger risks while retaining 100% password login capability.
-- **Self-Service & Teacher-Assisted Failsafes**: Built-in self-service unlinking ("🔄 Unlink / Switch Phone"), 1-click podium in-person verification for dead/broken phones, and roster passkey resets with full immutable audit logging.
+- **Strict Anti-Proxy Device Locking & Instructor Resets**: Regular students cannot self-unlink or rotate phones at will, ensuring that a present student cannot bounce phones between absent peers. When a student replaces their phone, their course instructor performs a 1-click reset via the Live Attendance Podium or Class Management Roster. Instructors and whitelisted testing accounts retain self-unlinking capabilities.
 
 ---
 
@@ -262,12 +262,18 @@ Because each student account is locked 1-to-1 to a physical device hardware auth
    - If unlinked: Displays `⚪ Not Paired`.
 4. Click **`[ 🔄 Reset ]`** and confirm.
 
-#### Method C: Self-Service Device Unlinking & Replacement (Zero Intervention)
-1. In the global navigation bar, click your account avatar/email badge in the upper right to open the **Account Menu**.
-2. Click **`📱 Passkey Phone ([Device Model])`** to open the passkey status modal.
-3. On the paired device confirmation card, click **`[ 🔄 Unlink / Switch Phone ]`**.
-4. Confirm the prompt: *"Are you sure you want to unlink this phone? You can immediately pair another phone afterwards."*
-5. The Cloud Function `resetStudentPasskey` validates self-ownership (`request.auth.uid === studentUid || email === studentEmail`), removes the hardware registration from `studentPasskeys/{uid}`, and immediately renders a fresh pairing QR code for the new smartphone.
+#### Method C: Device Unlinking Policy & Self-Service for Instructors / Testers
+1. **Regular Students (Anti-Proxy Enforcement)**:
+   - Regular students **cannot** self-unlink or switch paired smartphones on demand. Allowing students to arbitrarily unlink and re-pair phones would create attendance proxy vulnerabilities (e.g., swapping phones to clock in absent peers).
+   - In `PasskeyPairModal`, students with an existing paired phone see:
+     > ℹ️ **Need to replace or switch your phone?** Please ask your course instructor to reset your passkey registration.
+   - The backend Cloud Function `resetStudentPasskey` rejects unauthorized student self-reset requests with `permission-denied`.
+   - Students who replace or lose their phone must ask their course instructor to perform a reset via **Method A (Live Podium)** or **Method B (Class Management Roster)**.
+2. **Teachers & Whitelisted Accounts**:
+   - Instructors and whitelisted dual-role testing accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`, e.g. `cywong@vtc.edu.hk`, `t-cywong@stu.vtc.edu.hk`) can self-service unlink:
+     1. Open **Account Menu** ➔ **`📱 Passkey Phone ([Device Model])`**.
+     2. Click **`[ 🔄 Unlink / Switch Phone ]`** and confirm.
+     3. The server clears the credential and renders a fresh pairing QR code.
 
 ---
 

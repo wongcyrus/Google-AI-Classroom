@@ -28,9 +28,11 @@
 - **Exemption Mechanics**: In `handleVerifyPasskeyRegistration`, if either the incoming registrant or the existing device owner is a teacher or whitelisted account, the single-device hardware collision lock is exempted and multi-role pairing is allowed with logging.
 - **Student Anti-Proxy Integrity**: Non-whitelisted student-to-student collisions (`s1` and `s2`) remain strictly blocked by the 1-phone = 1-student hardware collision lock (`already-exists`).
 
-### 0.0.0.3 Self-Service Device Unlinking & Phone Replacement
-- **User Self-Service Reset**: Updated `resetStudentPasskey` callable permission rules to permit account owners themselves (`request.auth.uid === studentUid || email === studentEmail`), removing dependency on teacher or admin manual resets.
-- **Unlink UI Button**: Added `[ 🔄 Unlink / Switch Phone ]` on the paired device confirmation card in `PasskeyPairModal.jsx`.
+### 0.0.0.3 Device Unlinking Security Hardening (Anti-Proxy Enforcement)
+- **Restricted Self-Service Reset**: Hardened `resetStudentPasskey` backend callable permission rules to prevent regular students from arbitrarily unlinking their phones at will. Allowing arbitrary student unlinking would undermine the 1-student = 1-phone anti-proxy guarantee (e.g. swapping devices to check in absent peers).
+- **Instructors & Whitelisted Accounts**: Instructors (`isTeacher`) and whitelisted testing accounts (`isPasskeySharingWhitelisted`, e.g. `cywong@vtc.edu.hk`, `t-cywong@stu.vtc.edu.hk`) retain self-service phone unlinking (`[ 🔄 Unlink / Switch Phone ]`) in `PasskeyPairModal.jsx`.
+- **Student Guidance**: For regular students, the self-unlink button is hidden and replaced with clear guidance (*"Need to replace or switch your phone? Please ask your course instructor to reset your passkey registration."*). If an unauthorized student attempts to invoke `resetStudentPasskey`, Cloud Functions rejects the request with `permission-denied`.
+- **Teacher Assisted Resets**: When a regular student legitimately replaces or loses their phone, instructors can reset the passkey with 1 click from the Live Attendance Podium or Class Management Roster.
 
 ### 0.0.0.4 Clean Account Settings Integration (Zero Dashboard Clutter)
 - **Relocated from Hero**: Removed the permanent `📱 Phone Paired: [Device Model]` button from the Teacher Dashboard hero section to prevent visual clutter and screen space waste.

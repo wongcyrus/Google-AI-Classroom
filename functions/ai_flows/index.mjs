@@ -5,7 +5,7 @@ import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyzeAudioFlow } from "./analysisFlows.js";
 import { onAiJobCreated } from './quotaTriggers.js';
 export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';  
-import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
+import { CORS_ORIGINS, FUNCTION_REGION, isPasskeySharingWhitelisted } from './config.js';
 import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
@@ -356,9 +356,17 @@ export const resetStudentPasskey = onCall(callOptions, async (request) => {
     }
   }
 
-  const isSelf = Boolean(request.auth?.uid && (request.auth.uid === studentUid || request.auth.token?.email?.toLowerCase() === studentEmail?.toLowerCase()));
-  if (!isTeacher && !isSelf) {
-    throw new HttpsError('permission-denied', 'Only teachers or the account owner can reset passkeys.');
+  const callerEmail = request.auth.token?.email || '';
+  const isCallerWhitelisted = isPasskeySharingWhitelisted(callerEmail);
+  const isSelf = Boolean(
+    request.auth?.uid && (
+      request.auth.uid === studentUid ||
+      (callerEmail && studentEmail && callerEmail.toLowerCase() === studentEmail.toLowerCase())
+    )
+  );
+
+  if (!isTeacher && !(isSelf && isCallerWhitelisted)) {
+    throw new HttpsError('permission-denied', 'Students cannot self-unlink passkey authenticators. Please contact your instructor to request a passkey reset.');
   }
 
   return await handleResetStudentPasskey({
