@@ -64,11 +64,14 @@ function parseCSV(content) {
     const email = row.email || row.studentemail || row.teacheremail || row['student email'] || row['user email'] || rawCols[0];
     const role = row.role || row.userrole || '';
     const displayName = row.displayname || row.name || row['display name'] || row.studentname || '';
+    const nickname = row.nickname || row.nick || row['nick name'] || row.preferredname || row['preferred name'] || '';
+    const programme = row.programme || row.program || row.major || '';
+    const studentClass = row.studentclass || row.cohort || row.classname || row.class_name || '';
     const password = row.password || '';
     const classId = row.classid || row.class || row['class id'] || '';
 
     if (email && email.includes('@')) {
-      rows.push({ email: email.toLowerCase(), role, displayName, password, classId });
+      rows.push({ email: email.toLowerCase(), role, displayName, nickname, programme, studentClass, password, classId });
     }
   }
   return rows;
@@ -76,10 +79,19 @@ function parseCSV(content) {
 
 const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
-async function importSingleUser({ email, role = 'student', displayName = '', password = defaultPasswordEnv, classId = '' }) {
+async function importSingleUser({
+  email,
+  role = 'student',
+  displayName = '',
+  nickname = '',
+  programme = '',
+  studentClass = '',
+  password = defaultPasswordEnv,
+  classId = ''
+}) {
   const finalRole = (role || 'student').toLowerCase();
   const finalPassword = password || defaultPasswordEnv;
-  const finalName = displayName || email.split('@')[0];
+  const finalName = displayName || (nickname ? `${nickname} (${email.split('@')[0]})` : email.split('@')[0]);
 
   let userRecord;
   let isNew = false;
@@ -122,15 +134,40 @@ async function importSingleUser({ email, role = 'student', displayName = '', pas
     existingClasses.push(classId);
   }
 
-  await profileRef.set({
+  const profileData = {
     email,
     name: finalName,
     role: finalRole,
     classes: existingClasses,
     lastUpdated: FieldValue.serverTimestamp()
-  }, { merge: true });
+  };
 
-  // If classId specified, ensure enrollment on class document
+  if (finalRole === 'student') {
+    if (displayName) profileData.studentName = displayName;
+    if (nickname) profileData.nickname = nickname;
+    if (programme) profileData.programme = programme;
+    if (studentClass) profileData.studentClass = studentClass;
+  }
+
+  await profileRef.set(profileData, { merge: true });
+
+  // If student, also sync to institutional studentDirectory
+  if (finalRole === 'student') {
+    const dirData = {
+      studentEmail: email.toLowerCase(),
+      email: email.toLowerCase(),
+      lastUpdatedByClass: classId || 'batch_import',
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    if (displayName) dirData.studentName = displayName;
+    if (nickname) dirData.nickname = nickname;
+    if (programme) dirData.programme = programme;
+    if (studentClass) dirData.studentClass = studentClass;
+
+    await db.collection('studentDirectory').doc(email.toLowerCase()).set(dirData, { merge: true });
+  }
+
+  // If classId specified, ensure enrollment and profile map on class document
   if (classId) {
     const classRef = db.collection('classes').doc(classId);
     const classSnap = await classRef.get();
@@ -142,10 +179,19 @@ async function importSingleUser({ email, role = 'student', displayName = '', pas
           teachers: FieldValue.arrayUnion(userRecord.uid)
         });
       } else {
-        await classRef.update({
+        const updatePayload = {
           studentEmails: FieldValue.arrayUnion(email),
           students: FieldValue.arrayUnion(userRecord.uid)
-        });
+        };
+        if (displayName || nickname || programme || studentClass) {
+          updatePayload[`studentProfiles.${email.toLowerCase()}`] = {
+            studentName: displayName || '',
+            nickname: nickname || '',
+            programme: programme || '',
+            studentClass: studentClass || ''
+          };
+        }
+        await classRef.update(updatePayload);
       }
       console.log(`    ↳ Enrolled in class: ${classId}`);
     } else {

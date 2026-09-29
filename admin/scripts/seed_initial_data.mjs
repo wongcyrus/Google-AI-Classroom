@@ -137,39 +137,80 @@ async function main() {
   console.log(`==========================================================`);
 
   const isDev = projectId.includes('dev');
-  const demoTeacherEmails = [
-    'teacher1@vtc.edu.hk',
-    'teacher2@vtc.edu.hk',
-    'cywong@vtc.edu.hk',
-    'kcheung@vtc.edu.hk',
-    'rontam@vtc.edu.hk',
-    'hli852@vtc.edu.hk',
-    'kakaleung@vtc.edu.hk',
-    'james.chan@vtc.edu.hk',
-    'ngmanyiu@vtc.edu.hk',
-    'alanpo@vtc.edu.hk'
+  const demoTeachers = [
+    { email: 'teacher1@vtc.edu.hk', displayName: 'Teacher 1 (Lead Instructor)' },
+    { email: 'teacher2@vtc.edu.hk', displayName: 'Teacher 2 (Co-Instructor)' },
+    { email: 'cywong@vtc.edu.hk', displayName: 'CY Wong' },
+    { email: 'kcheung@vtc.edu.hk', displayName: 'K Cheung' },
+    { email: 'rontam@vtc.edu.hk', displayName: 'Ron Tam' },
+    { email: 'hli852@vtc.edu.hk', displayName: 'H Li' },
+    { email: 'kakaleung@vtc.edu.hk', displayName: 'Kaka Leung' },
+    { email: 'james.chan@vtc.edu.hk', displayName: 'James Chan' },
+    { email: 'ngmanyiu@vtc.edu.hk', displayName: 'Man Yiu Ng' },
+    { email: 'alanpo@vtc.edu.hk', displayName: 'Alan Po' }
   ];
 
-  const demoStudentEmails = [
-    'student1@stu.vtc.edu.hk',
-    'student2@stu.vtc.edu.hk',
-    'student3@stu.vtc.edu.hk',
-    'student4@stu.vtc.edu.hk',
-    'student5@stu.vtc.edu.hk'
+  const demoStudents = [
+    {
+      email: 'student1@stu.vtc.edu.hk',
+      studentName: 'Chan Tai Man (陳大文)',
+      nickname: 'David',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1A'
+    },
+    {
+      email: 'student2@stu.vtc.edu.hk',
+      studentName: 'Wong Siu Ming (黃小明)',
+      nickname: 'Sammy',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1A'
+    },
+    {
+      email: 'student3@stu.vtc.edu.hk',
+      studentName: 'Lee Ka Yan (李嘉欣)',
+      nickname: 'Karen',
+      programme: 'HD in Information & Communications Technology',
+      studentClass: 'IT114115/1B'
+    },
+    {
+      email: 'student4@stu.vtc.edu.hk',
+      studentName: 'Cheung Wai Kin (張偉健)',
+      nickname: 'Ken',
+      programme: 'HD in Software Engineering',
+      studentClass: 'IT114115/1B'
+    },
+    {
+      email: 'student5@stu.vtc.edu.hk',
+      studentName: 'Au Yeung Tsz Lok (歐陽梓樂)',
+      nickname: 'Lok',
+      programme: 'HD in Software Engineering',
+      studentClass: 'IT114115/1B'
+    }
   ];
+
+  const demoTeacherEmails = demoTeachers.map(t => t.email);
+  const demoStudentEmails = demoStudents.map(s => s.email);
 
   const teacherMap = {};
-  for (const tEmail of demoTeacherEmails) {
-    const tUser = await getOrCreateUser(tEmail, 'teacher', tEmail.split('@')[0]);
-    teacherMap[tUser.uid] = tEmail;
+  for (const t of demoTeachers) {
+    const tUser = await getOrCreateUser(t.email, 'teacher', t.displayName || t.email.split('@')[0]);
+    teacherMap[tUser.uid] = t.email;
   }
 
   const studentMap = {};
+  const studentProfilesMap = {};
   const studentUsers = [];
-  for (const sEmail of demoStudentEmails) {
-    const sUser = await getOrCreateUser(sEmail, 'student', sEmail.split('@')[0]);
-    studentMap[sUser.uid] = sEmail;
-    studentUsers.push(sUser);
+  for (const s of demoStudents) {
+    const displayName = s.studentName || s.nickname || s.email.split('@')[0];
+    const sUser = await getOrCreateUser(s.email, 'student', displayName);
+    studentMap[sUser.uid] = s.email;
+    studentProfilesMap[s.email.toLowerCase()] = {
+      studentName: s.studentName,
+      nickname: s.nickname,
+      programme: s.programme,
+      studentClass: s.studentClass
+    };
+    studentUsers.push({ ...sUser, ...s });
   }
 
   const seededPrompts = await seedPrompts();
@@ -181,6 +222,7 @@ async function main() {
     studentEmails: demoStudentEmails,
     teachers: teacherMap,
     students: studentMap,
+    studentProfiles: studentProfilesMap,
     retentionDays: 30,
     videoRetentionDays: 90,
     storageQuota: 5 * 1024 * 1024 * 1024,
@@ -221,10 +263,30 @@ async function main() {
   for (const tUid of Object.keys(teacherMap)) {
     await db.collection('teacherProfiles').doc(tUid).set({ classes: FieldValue.arrayUnion(classId), email: teacherMap[tUid] }, { merge: true });
   }
-  for (const sUser of studentUsers) {
-    await db.collection('studentProfiles').doc(sUser.uid).set({ classes: FieldValue.arrayUnion(classId), email: sUser.email }, { merge: true });
+  for (const s of studentUsers) {
+    await db.collection('studentProfiles').doc(s.uid).set({
+      classes: FieldValue.arrayUnion(classId),
+      email: s.email,
+      studentName: s.studentName,
+      nickname: s.nickname,
+      programme: s.programme,
+      studentClass: s.studentClass,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    // Also populate institutional studentDirectory
+    await db.collection('studentDirectory').doc(s.email.toLowerCase()).set({
+      studentEmail: s.email.toLowerCase(),
+      email: s.email.toLowerCase(),
+      studentName: s.studentName,
+      nickname: s.nickname,
+      programme: s.programme,
+      studentClass: s.studentClass,
+      lastUpdatedByClass: classId,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
   }
-  console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5).`);
+  console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5 with nicknames & profiles).`);
 
   // Global Login Policy (Strict Mode by Default - Empty Whitelist)
   await db.collection('system_config').doc('loginPolicy').set({
@@ -237,7 +299,10 @@ async function main() {
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
   console.log(`👨‍🏫 Teachers: teacher1@vtc.edu.hk, teacher2@vtc.edu.hk (Co-teaching)`);
-  console.log(`🧑‍🎓 Students: student1@stu.vtc.edu.hk .. student5@stu.vtc.edu.hk`);
+  console.log(`🧑‍🎓 Students:`);
+  for (const s of demoStudents) {
+    console.log(`   • ${s.email} | Nickname: "${s.nickname}" | Name: "${s.studentName}" | Cohort: ${s.studentClass}`);
+  }
   console.log(`🔑 Default Password: ${defaultPasswordEnv}`);
   console.log(`==========================================================\n`);
 }
