@@ -1799,21 +1799,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                     <span>🎙️🖥️</span>
                     <span>Broadcast</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.open(
-                        `/preview/student/${classId}`,
-                        `StudentPreview_${classId}`,
-                        'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
-                      );
-                    }}
-                    className="monitor-btn monitor-btn-preview"
-                    title="Preview student interface and settings in a separate window"
-                  >
-                    <span>🧪</span>
-                    <span>Student Preview ↗</span>
-                  </button>
                 </div>
               ) : (
                 <div className="monitor-btn-cluster">
@@ -1833,20 +1818,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                     title="View live broadcast screen preview and viewers"
                   >
                     👁️ Studio
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.open(
-                        `/preview/student/${classId}`,
-                        `StudentPreview_${classId}`,
-                        'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
-                      );
-                    }}
-                    className="monitor-btn monitor-btn-preview"
-                    title="Preview live broadcast as a student in a separate window"
-                  >
-                    🧪 Preview ↗
                   </button>
                   <button
                     type="button"

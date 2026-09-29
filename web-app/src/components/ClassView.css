@@ -303,3 +303,23 @@
   padding: 0;
 }
 
+/* Standardize all sub-tab content panels to 100% width matching DateRangeFilter and Bingo views */
+.class-view .other-tab-content .view-container,
+.class-view .other-tab-content .lecture-recordings-container,
+.class-view .other-tab-content .perf-analytics-container,
+.class-view .other-tab-content .bingo-results-container,
+.class-view .other-tab-content .class-management-container {
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.class-view .other-tab-content .lecture-recordings-container,
+.class-view .other-tab-content .perf-analytics-container,
+.class-view .other-tab-content .bingo-results-container {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+

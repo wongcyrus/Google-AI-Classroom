@@ -183,16 +183,7 @@
   box-shadow: 0 2px 4px rgba(79, 70, 229, 0.35);
 }
 
-.monitor-btn-preview {
-  background: #ede9fe;
-  color: #4338ca;
-  border: 1px solid #c7d2fe;
-}
 
-.monitor-btn-preview:hover {
-  background: #e0e7ff;
-  border-color: #a5b4fc;
-}
 
 .monitor-btn-secondary {
   background: #f8fafc;
