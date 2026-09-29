@@ -294,10 +294,9 @@ const AuthComponent = ({ unverifiedUser }) => {
       setQrRotationProgress(progressPercent);
       setQrRotationSecsLeft(rotationSecs);
 
-      // Check overall session expiry
+      // Check overall session expiry: seamlessly re-initiate session so desktop QR never stops rotating
       if (qrExpiresAtMillis && now >= qrExpiresAtMillis) {
-        setQrStatus('expired');
-        setQrTimeLeft(0);
+        initiateQrSession();
         return;
       }
 
@@ -386,7 +385,7 @@ const AuthComponent = ({ unverifiedUser }) => {
               ) : qrStatus === 'expired' ? (
                 <div className="auth-qr-placeholder">
                   <p style={{ color: '#ef4444', fontWeight: 600 }}>QR Code Expired</p>
-                  <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Sessions expire after 90 seconds for your security.</p>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Sessions automatically refresh for your security.</p>
                   <button type="button" className="auth-submit-btn" onClick={initiateQrSession}>
                     🔄 Refresh QR Code
                   </button>
@@ -404,7 +403,7 @@ const AuthComponent = ({ unverifiedUser }) => {
                   </div>
                   <img src={qrDataUrl} alt="Desktop Login QR Code" className="auth-qr-img" />
                   <div className="auth-qr-timer">
-                    ⏱️ Session expires in: <strong>{qrTimeLeft}s</strong>
+                    ⏱️ Session active: <strong>{Math.floor(qrTimeLeft / 60)}m {String(qrTimeLeft % 60).padStart(2, '0')}s</strong>
                   </div>
                 </div>
               ) : qrError ? (

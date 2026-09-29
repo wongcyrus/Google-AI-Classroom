@@ -644,7 +644,7 @@ export function isValidDesktopQrToken(sessionSecret, token, timestamp = Date.now
 export async function handleInitiateDesktopLoginSession({ clientRpId } = {}) {
   const sessionId = crypto.randomUUID();
   const sessionSecret = crypto.randomBytes(32).toString('hex');
-  const expiresAtMillis = Date.now() + 90 * 1000; // 90 seconds
+  const expiresAtMillis = Date.now() + 5 * 60 * 1000; // 5 minutes
   const rpId = resolveRpId(clientRpId);
 
   await db.doc(`loginSessions/${sessionId}`).set({
