@@ -136,7 +136,7 @@ const PasskeyPairView = () => {
             <div className="passkey-icon-badge success">🎉</div>
             <h1 className="passkey-title">Phone Paired!</h1>
             <p className="passkey-subtitle">
-              Your device is now securely bound to your student account.
+              Your device is now securely bound to your classroom account.
             </p>
             <div className="passkey-info-box">
               <div className="passkey-info-row">
@@ -153,7 +153,7 @@ const PasskeyPairView = () => {
               </div>
             </div>
             <div className="passkey-alert passkey-alert-success">
-              ✅ You can now close this tab. When attendance Bingo is called, point your camera at the screen for instant verification!
+              ✅ You can now close this tab. You can scan the Desktop Login QR code on any lab PC to sign in without typing your password!
             </div>
           </>
         ) : (

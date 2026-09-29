@@ -7,6 +7,13 @@ import TeacherView from './TeacherView';
 // Mock firebase/firestore
 vi.mock('firebase/firestore', () => ({
   onSnapshot: vi.fn((ref, callback) => {
+    if (ref?.path?.includes('studentPasskeys')) {
+      callback({
+        exists: () => false,
+        data: () => ({}),
+      });
+      return vi.fn();
+    }
     callback({
       exists: () => true,
       data: () => ({ classes: ['IT114115-Demo'] }),
@@ -31,8 +38,15 @@ vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(),
 }));
 
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({
+    data: { tokenId: 'token-teacher-123', expiresAtMillis: Date.now() + 600000 }
+  })),
+}));
+
 vi.mock('../firebase-config', () => ({
   db: {},
+  functions: {},
 }));
 
 describe('TeacherView Component', () => {
@@ -173,7 +187,11 @@ describe('TeacherView Component', () => {
 
   it('shows empty state and triggers create first class modal', async () => {
     const { onSnapshot } = await import('firebase/firestore');
-    onSnapshot.mockImplementationOnce((ref, cb) => {
+    onSnapshot.mockImplementation((ref, cb) => {
+      if (ref?.path?.includes('studentPasskeys')) {
+        cb({ exists: () => false, data: () => ({}) });
+        return vi.fn();
+      }
       cb({ exists: () => true, data: () => ({ classes: [] }) });
       return vi.fn();
     });
@@ -187,5 +205,20 @@ describe('TeacherView Component', () => {
     const createFirstBtn = await screen.findByRole('button', { name: /\+ Create Your First Class/i });
     fireEvent.click(createFirstBtn);
     expect(screen.getAllByText(/Create New Class/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders Pair Phone for Lab PC button and opens PasskeyPairModal', async () => {
+    render(
+      <BrowserRouter>
+        <TeacherView user={mockUser} />
+      </BrowserRouter>
+    );
+
+    const pairBtn = await screen.findByRole('button', { name: /Pair Phone for Lab PC/i });
+    expect(pairBtn).toBeInTheDocument();
+
+    fireEvent.click(pairBtn);
+
+    expect(await screen.findByText(/Pair Your Smartphone/i)).toBeInTheDocument();
   });
 });

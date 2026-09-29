@@ -5,10 +5,12 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
+import { isTeacherEmail } from '../../utils/domainConfig';
 import { functions, db } from '../../firebase-config';
 import './passkey.css';
 
 const PasskeyPairModal = ({ show, onClose, user, classId }) => {
+  const isTeacher = Boolean(user?.email && isTeacherEmail(user.email));
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [pairingToken, setPairingToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,8 +75,10 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
     const unsubscribe = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setIsPaired(true);
-        setPairedDevice(data.deviceModel || 'Mobile Device');
+        if (data?.credentialID || data?.deviceModel) {
+          setIsPaired(true);
+          setPairedDevice(data.deviceModel || 'Mobile Device');
+        }
       }
     });
 
@@ -210,7 +214,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
             <div style={{ fontSize: '3.5rem', marginBottom: '0.5rem' }}>🎉</div>
             <h2 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1.4rem' }}>Passkey Registered!</h2>
             <p style={{ color: '#475569', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>
-              Your <strong>{pairedDevice}</strong> is securely linked. You can now use your phone camera to scan and log into desktop lab PCs and complete attendance checks.
+              Your <strong>{pairedDevice}</strong> is securely linked. You can now use your phone camera to scan and log into desktop lab PCs{isTeacher ? ' with zero passwords.' : ' and complete attendance checks.'}
             </p>
             <button
               type="button"
@@ -227,7 +231,9 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
             <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>📱</div>
             <h2 style={{ margin: '0 0 0.5rem 0', color: '#1e293b', fontSize: '1.3rem' }}>Register Mobile Passkey</h2>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1.25rem 0', lineHeight: '1.4' }}>
-              Enable Face ID, Touch ID, or Android Fingerprint on this device. This links your smartphone as your physical identity key for lab PC logins and attendance.
+              {isTeacher
+                ? 'Enable Face ID, Touch ID, or Android Fingerprint on this device. This links your smartphone as your physical key to sign in on shared lab PCs without typing your password.'
+                : 'Enable Face ID, Touch ID, or Android Fingerprint on this device. This links your smartphone as your physical identity key for lab PC logins and attendance.'}
             </p>
 
             {error && (
@@ -281,7 +287,9 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
             <div style={{ fontSize: '2.5rem', marginBottom: '0.25rem' }}>📱</div>
             <h2 style={{ margin: '0 0 0.25rem 0', color: '#1e293b' }}>Pair Your Smartphone</h2>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
-              Point your smartphone camera at this screen to enable 2-second biometric attendance. Zero passwords required on your phone!
+              {isTeacher
+                ? 'Point your smartphone camera at this screen to pair your personal phone. Log into shared lab desktop PCs in 2 seconds without typing your password!'
+                : 'Point your smartphone camera at this screen to enable 2-second biometric attendance. Zero passwords required on your phone!'}
             </p>
 
             {error && (

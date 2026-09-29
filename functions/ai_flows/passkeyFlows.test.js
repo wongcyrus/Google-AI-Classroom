@@ -8,6 +8,7 @@ const {
   mockCollectionGet,
   mockCollectionAdd,
   mockFirestore,
+  mockCreateCustomToken,
 } = vi.hoisted(() => {
   const mockDocSet = vi.fn().mockResolvedValue(true);
   const mockDocUpdate = vi.fn().mockResolvedValue(true);
@@ -15,6 +16,7 @@ const {
   const mockDocGet = vi.fn();
   const mockCollectionGet = vi.fn();
   const mockCollectionAdd = vi.fn().mockResolvedValue({ id: 'audit_log_1' });
+  const mockCreateCustomToken = vi.fn().mockResolvedValue('mock-custom-token-student-123');
 
   const mockCollection = {
     doc: vi.fn((id = 'generated_doc_id') => ({
@@ -48,6 +50,7 @@ const {
     mockCollectionGet,
     mockCollectionAdd,
     mockFirestore,
+    mockCreateCustomToken,
   };
 });
 
@@ -61,7 +64,8 @@ vi.mock('firebase-admin/firestore', () => ({
 
 vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(() => ({
-    createCustomToken: vi.fn().mockResolvedValue('mock-custom-token-student-123'),
+    createCustomToken: mockCreateCustomToken,
+    getUser: vi.fn().mockResolvedValue({ customClaims: { role: 'teacher' } }),
   })),
 }));
 
@@ -161,6 +165,25 @@ describe('WebAuthn Passkey Flows Backend', () => {
           studentUid: 'student_1',
           studentEmail: 's1@stu.vtc.edu.hk',
           classId: 'class_101',
+          used: false,
+        })
+      );
+    });
+
+    it('creates temporary pairing token with teacher role for teacher account', async () => {
+      const res = await handleRequestPasskeyPairingToken({
+        studentUid: 'teacher_1',
+        studentEmail: 'cywong@vtc.edu.hk',
+        classId: null,
+      });
+
+      expect(res.tokenId).toBeDefined();
+      expect(res.role).toBe('teacher');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 'teacher_1',
+          studentEmail: 'cywong@vtc.edu.hk',
+          role: 'teacher',
           used: false,
         })
       );
@@ -836,10 +859,10 @@ describe('WebAuthn Passkey Flows Backend', () => {
           sessionId: 'session_1',
           authenticationResponse: { id: 'unregistered_cred' },
         })
-      ).rejects.toThrow('No student passkey found matching this mobile device.');
+      ).rejects.toThrow('No passkey found matching this mobile device.');
     });
 
-    it('authenticates, updates counter, mints custom token, and authorizes session', async () => {
+    it('authenticates student, updates counter, mints custom token with student role, and authorizes session', async () => {
       const secret = 'desktop-secret-abc';
       const now = Date.now();
       const currentInterval = Math.floor(now / (15 * 1000));
@@ -866,7 +889,8 @@ describe('WebAuthn Passkey Flows Backend', () => {
             id: 'student_alex',
             ref: mockPasskeyDocRef,
             data: () => ({
-              studentEmail: 'alex@vtc.edu.hk',
+              role: 'student',
+              studentEmail: 'alex@stu.vtc.edu.hk',
               credentialID: 'hardware-cred-abc',
               credentialPublicKey: Buffer.from([1, 2, 3, 4]).toString('base64'),
               counter: 0,
@@ -884,18 +908,88 @@ describe('WebAuthn Passkey Flows Backend', () => {
 
       expect(res.verified).toBe(true);
       expect(res.studentUid).toBe('student_alex');
-      expect(res.studentEmail).toBe('alex@vtc.edu.hk');
+      expect(res.studentEmail).toBe('alex@stu.vtc.edu.hk');
+      expect(res.role).toBe('student');
+      expect(mockCreateCustomToken).toHaveBeenCalledWith('student_alex', { role: 'student' });
       expect(mockDocUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'authorized',
           customToken: 'mock-custom-token-student-123',
           studentUid: 'student_alex',
+          role: 'student',
         })
       );
       expect(mockCollectionAdd).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'DESKTOP_LOGIN_VIA_MOBILE_QR',
+          role: 'student',
           studentUid: 'student_alex',
+        })
+      );
+    });
+
+    it('authenticates teacher passkey, mints custom token with teacher role, and authorizes session', async () => {
+      const secret = 'desktop-secret-teacher';
+      const now = Date.now();
+      const currentInterval = Math.floor(now / (15 * 1000));
+      const validToken = computeDesktopQrToken(secret, currentInterval);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          sessionSecret: secret,
+          rotationIntervalSeconds: 15,
+          expiresAtMillis: now + 60000,
+          challenge: 'mock-auth-challenge',
+          tokenUsed: validToken,
+          rpIdUsed: 'it114115-2627.web.app',
+        }),
+      });
+
+      const mockPasskeyDocRef = { update: vi.fn().mockResolvedValue(true) };
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'teacher_1',
+            ref: mockPasskeyDocRef,
+            data: () => ({
+              studentEmail: 'teacher@vtc.edu.hk',
+              role: 'teacher',
+              credentialID: 'hardware-cred-teacher',
+              credentialPublicKey: Buffer.from([1, 2, 3, 4]).toString('base64'),
+              counter: 2,
+              deviceModel: 'iPhone 16 Pro',
+            }),
+          },
+        ],
+      });
+
+      const res = await handleVerifyDesktopLoginPasskey({
+        sessionId: 'session_teacher',
+        token: validToken,
+        authenticationResponse: { id: 'hardware-cred-teacher' },
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.studentUid).toBe('teacher_1');
+      expect(res.studentEmail).toBe('teacher@vtc.edu.hk');
+      expect(res.role).toBe('teacher');
+      expect(mockCreateCustomToken).toHaveBeenCalledWith('teacher_1', { role: 'teacher' });
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'authorized',
+          customToken: 'mock-custom-token-student-123',
+          studentUid: 'teacher_1',
+          role: 'teacher',
+        })
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR',
+          role: 'teacher',
+          studentUid: 'teacher_1',
         })
       );
     });
