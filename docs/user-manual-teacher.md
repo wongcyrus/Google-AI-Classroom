@@ -37,13 +37,32 @@ Welcome to the **Google AI Classroom** Instructor Guide. This manual details eve
 2. Click **Sign in with Google** or enter your assigned institutional email and password.
 3. Your account must end in an approved instructor domain (e.g., `@vtc.edu.hk`). Upon login, the system automatically routes you to the **Teacher Command Center** (`/`).
 
+### 📱 Passwordless Shared Lab PC Login via Mobile Passkey (Optional)
+When teaching in academic computer laboratories with shared student/podium PCs, typing faculty passwords on shared keyboards risks keylogging and shoulder surfing. You can pair your personal smartphone to enable instant passwordless QR login:
+
+1. **Pairing Your Phone (One-Time Setup)**:
+   - In the top-right header, click your account badge to open the **Account Menu**.
+   - Click **`📱 Pair Phone (Passkey)`**.
+   - Scan the single-use pairing QR code with your iPhone or Android camera app and touch your biometric sensor (Face ID, Touch ID, or Fingerprint).
+   - Once paired, your linked device appears in the Account Menu as **`📱 Passkey Phone: [Device Model]`** (e.g., `Apple iPhone` or `Android Device`).
+2. **Signing into a Lab PC via QR Code**:
+   - On the desktop login screen (`/login`), click **`📱 Scan QR Code`**.
+   - Point your phone camera at the 90-second rotating desktop QR code.
+   - Tap the link notification and authenticate with your phone biometrics.
+   - The lab PC automatically detects authorization, mints an official Firebase Custom Auth Token with `{ role: 'teacher' }`, and signs directly into the Teacher Command Center.
+   - Zero credentials or passkeys remain on the shared lab PC upon sign-out.
+3. **Unlinking / Switching Phones**:
+   - To replace or unlink your phone, open the **Account Menu** ➔ **`📱 Passkey Phone`** ➔ click **`[ 🔄 Unlink / Switch Phone ]`**.
+4. **Password Login Parity**:
+   - Unlike desktop students (who must pair a phone to bypass the security gate), instructors **always retain 100% password and Google sign-in access** on any machine. Mobile passkey login is entirely optional.
+
 ### Global Header Navigation
 - **Class Switcher (`<select>`):** Located in the top header; allows you to jump directly between courses you teach without navigating back to the home dashboard.
 - **Top Navigation Links:**
   - `Classes`: Returns to the main teacher dashboard listing all your classrooms.
   - `Prompts`: Opens the AI Prompt Studio to draft, optimize, and share rubric prompts.
   - `Mailbox`: Displays system notices, asynchronous export downloads, and background job alerts (badged with unread count).
-- **Profile Menu & Role Switcher:** Click your avatar in the upper right corner to view your account details, trigger password changes, or sign out. On administrative accounts, you can toggle between **Teacher** and **Student** view simulations.
+- **Profile Menu & Account Settings:** Click your avatar in the upper right corner to view your account details, access **`📱 Passkey Phone Settings`**, trigger password changes, or sign out. On administrative accounts, you can toggle between **Teacher** and **Student** view simulations.
 
 ### 🔄 End-to-End Instructor Lesson Lifecycle Flow
 

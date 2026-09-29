@@ -4,6 +4,40 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0 Teacher Mobile Passkey Login, Multi-Role Device Whitelist & Self-Service Unlinking
+
+**Date**: September 29, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1,580+ tests across frontend and backend), Deployed (Dev & Prod)  
+**Primary Files**:
+- Backend Passkey Flows: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js)
+- Cloud Functions Registry: [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
+- Central Configuration: [`functions/config.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/config.js) & [`switch-env.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/switch-env.sh)
+- Config Unit Tests: [`functions/ai_flows/config.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/config.test.js)
+- Global Navigation & Account Settings: [`web-app/src/App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx), [`web-app/src/App.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.test.jsx)
+- Passkey Pairing Modal: [`web-app/src/components/passkey/PasskeyPairModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyPairModal.jsx)
+- Teacher Command Center: [`web-app/src/components/TeacherView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherView.jsx), [`web-app/src/components/TeacherViews.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherViews.test.jsx)
+
+### 0.0.0.1 Teacher Mobile Passkey Login on Shared Lab PCs
+- **Passwordless Lab PC Access**: Instructors can pair their personal smartphone to log into shared classroom and podium PCs by scanning the 90-second rotating desktop login QR code (`/mobile-login`) using their phone camera and confirming biometrics.
+- **Dynamic Role Token Minting**: `handleVerifyDesktopLoginPasskey` automatically derives `role: 'teacher'` and mints a Firebase Custom Auth Token with `{ role: 'teacher' }`, signing the lab PC into the Teacher Command Center with zero keyboard interaction.
+- **Audit Logging**: Every teacher desktop login via phone QR records `TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR` in `passkeyAuditLogs` alongside device hardware model and session ID.
+- **100% Password Parity**: Instructors always retain the ability to sign in via institutional email and password on any device; mobile passkeys are completely optional for instructors.
+
+### 0.0.0.2 Multi-Role Device Sharing Whitelist
+- **Dual-Role Phone Sharing**: Added `PASSKEY_DEVICE_SHARING_WHITELIST` (defaulting to `cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk`) and `isPasskeySharingWhitelisted(email)`.
+- **Exemption Mechanics**: In `handleVerifyPasskeyRegistration`, if either the incoming registrant or the existing device owner is a teacher or whitelisted account, the single-device hardware collision lock is exempted and multi-role pairing is allowed with logging.
+- **Student Anti-Proxy Integrity**: Non-whitelisted student-to-student collisions (`s1` and `s2`) remain strictly blocked by the 1-phone = 1-student hardware collision lock (`already-exists`).
+
+### 0.0.0.3 Self-Service Device Unlinking & Phone Replacement
+- **User Self-Service Reset**: Updated `resetStudentPasskey` callable permission rules to permit account owners themselves (`request.auth.uid === studentUid || email === studentEmail`), removing dependency on teacher or admin manual resets.
+- **Unlink UI Button**: Added `[ 🔄 Unlink / Switch Phone ]` on the paired device confirmation card in `PasskeyPairModal.jsx`.
+
+### 0.0.0.4 Clean Account Settings Integration (Zero Dashboard Clutter)
+- **Relocated from Hero**: Removed the permanent `📱 Phone Paired: [Device Model]` button from the Teacher Dashboard hero section to prevent visual clutter and screen space waste.
+- **Housed in User Profile Menu**: Relocated passkey management to the top-right user account menu in `MainHeader` (`📱 Passkey Phone: [Device Model]` / `📱 Pair Phone (Passkey)`), accessible from any page.
+
+---
+
 ## 0.0 Dynamic Rotating QR Code Biometric Attendance, Enrolled Rosters & Recording Reconciler
 
 **Date**: September 28, 2026  

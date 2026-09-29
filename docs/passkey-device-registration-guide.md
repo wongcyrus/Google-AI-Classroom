@@ -12,9 +12,10 @@ To eliminate proxy attendance without requiring expensive lab hardware upgrades 
 
 ### Key Architectural Guarantees:
 - **Zero Passwords on Mobile**: Students never type emails or passwords on their smartphones. Pairing is authorized via an encrypted, single-use token on their already-authenticated lab PC.
-- **1-Phone = 1-Student Hardware Lock**: The platform authenticator's public credential ID is bound directly to the student's UID. The server cryptographically rejects attempts to register the same physical smartphone to multiple student accounts.
+- **1-Phone = 1-Student Hardware Lock**: The platform authenticator's public credential ID is bound directly to the student's UID. The server cryptographically rejects attempts to register the same physical smartphone to multiple student accounts (with controlled multi-role exemptions for faculty/testing).
 - **Fast Attendance (< 2 Seconds)**: Routine in-class attendance requires only pointing the phone camera at the PC screen and touching the biometric sensor (Face ID, Touch ID, or Android Fingerprint).
-- **Teacher-Assisted Failsafes**: Built-in 1-click in-person verification for dead/broken phones and instant passkey resets for student phone replacements with full immutable audit logging.
+- **Teacher Mobile Passkey Login**: Instructors can scan the desktop login QR code on shared lab PCs to log in with zero keyboard password entry, avoiding keylogger risks while retaining 100% password login capability.
+- **Self-Service & Teacher-Assisted Failsafes**: Built-in self-service unlinking ("🔄 Unlink / Switch Phone"), 1-click podium in-person verification for dead/broken phones, and roster passkey resets with full immutable audit logging.
 
 ---
 
@@ -260,6 +261,69 @@ Because each student account is locked 1-to-1 to a physical device hardware auth
    - If paired: Displays `📱 Apple iPhone` (or Android model) with a **`[ 🔄 Reset ]`** button.
    - If unlinked: Displays `⚪ Not Paired`.
 4. Click **`[ 🔄 Reset ]`** and confirm.
+
+#### Method C: Self-Service Device Unlinking & Replacement (Zero Intervention)
+1. In the global navigation bar, click your account avatar/email badge in the upper right to open the **Account Menu**.
+2. Click **`📱 Passkey Phone ([Device Model])`** to open the passkey status modal.
+3. On the paired device confirmation card, click **`[ 🔄 Unlink / Switch Phone ]`**.
+4. Confirm the prompt: *"Are you sure you want to unlink this phone? You can immediately pair another phone afterwards."*
+5. The Cloud Function `resetStudentPasskey` validates self-ownership (`request.auth.uid === studentUid || email === studentEmail`), removes the hardware registration from `studentPasskeys/{uid}`, and immediately renders a fresh pairing QR code for the new smartphone.
+
+---
+
+### 5. Teacher Mobile Passkey Login on Shared Lab PCs & Podium Workstations
+
+Instructors routinely rotate between classroom lab PCs, lecture hall podiums, and shared computers. Typing institutional passwords on shared hardware introduces significant risks of shoulder surfing, hardware keyloggers, or leftover browser sessions.
+
+To address this, instructors can use the exact same mobile passkey QR architecture to sign into desktop workstations:
+
+1. **One-Time Smartphone Pairing via Account Settings**:
+   - In the global header, click your account badge in the upper right to open the **Account Menu**.
+   - Click **`📱 Pair Phone (Passkey)`** to open the pairing modal.
+   - Scan the pairing QR code with your smartphone camera and confirm biometrics (Face ID, Touch ID, or Android Fingerprint).
+   - Once paired, your linked model displays as **`📱 Passkey Phone: Apple iPhone`** (or Android Device) in your Account Menu. (This is purposefully housed inside Account Settings to keep the dashboard hero toolbar clean and distraction-free).
+2. **Passwordless Lab PC Login**:
+   - On the shared lab PC login screen (`/login`), click **`📱 Scan QR Code`**.
+   - Point your personal smartphone camera at the 90-second rotating QR code.
+   - Tap the prompt and authenticate with your phone biometrics.
+   - Cloud Function `handleVerifyDesktopLoginPasskey` inspects the passkey document and caller role:
+     - Automatically derives `role: 'teacher'`.
+     - Mints an official Firebase Custom Auth Token with `{ role: 'teacher' }` via `admin.auth().createCustomToken(uid, { role: 'teacher' })`.
+     - Records an immutable audit log `TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR` in `passkeyAuditLogs`.
+   - The lab PC instantly signs in and loads the **Teacher Command Center** with zero keyboard interaction.
+3. **100% Password Fallback**:
+   - Unlike desktop students (who are barred by `PasskeyEnforcementGate` until a phone is paired), instructors are **always permitted to use institutional email and password** on any device. Mobile passkey login is completely optional for instructors.
+
+---
+
+### 6. Multi-Role Testing & Whitelisted Device Sharing
+
+A critical requirement in educational engineering is that instructors and IT administrators must test the student experience using secondary testing accounts (e.g. `t-cywong@stu.vtc.edu.hk`) while managing live classes with their faculty account (`cywong@vtc.edu.hk`) using their **single physical smartphone**.
+
+#### The Hardware Lock Collision Problem:
+Normally, the platform enforces a strict **1-Phone = 1-Student Hardware Lock** via `deviceFingerprint` (`mdev_<uuid>`) to prevent students from sharing one phone to proxy-attendance for absent peers. If an instructor paired their phone to their student test account, subsequent attempts to register their teacher account on that same phone would be rejected with:
+> `already-exists`: *Hardware Lock: This physical phone is already bound to student account...*
+
+#### The Multi-Role Whitelist Exemption:
+The backend introduces a cryptographic whitelist exemption in [`functions/config.js`](functions/config.js) and [`switch-env.sh`](switch-env.sh):
+```javascript
+export const PASSKEY_DEVICE_SHARING_WHITELIST = (process.env.PASSKEY_DEVICE_SHARING_WHITELIST || 'cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk')
+  .split(',')
+  .map(d => d.trim().toLowerCase())
+  .filter(Boolean);
+
+export function isPasskeySharingWhitelisted(email) {
+  if (!email || typeof email !== 'string') return false;
+  return PASSKEY_DEVICE_SHARING_WHITELIST.includes(email.trim().toLowerCase());
+}
+```
+
+In `handleVerifyPasskeyRegistration`:
+- The server checks whether either the incoming registrant or the existing device owner is a **teacher** (`userRole === 'teacher'`) or a **whitelisted account** (`isPasskeySharingWhitelisted(email)`).
+- If either account is a teacher or whitelisted, the hardware collision lock is exempted, and multi-role pairing is permitted:
+  - WebAuthn generates an independent public key pair and unique `credentialID` for each account on the phone.
+  - When scanning the Desktop QR on a shared lab PC, the phone's native OS displays an account selector (e.g. `cywong@vtc.edu.hk` vs `t-cywong@stu.vtc.edu.hk`). Selecting the desired account logs the lab PC into that specific role.
+- **Student Anti-Proxy Integrity**: For standard student-to-student collisions (`student1` and `student2`), neither account is whitelisted or a teacher, so the 1-phone = 1-student hardware lock remains **100% strictly enforced**.
 
 ---
 
