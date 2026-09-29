@@ -93,7 +93,7 @@ Every generated document is stamped with a deterministic UTC expiration timestam
 * **Timeout**: 300 seconds | **Memory**: 512MiB
 * **Behavior**:
   1. Detects changes when a teacher alters `retentionDays` or `videoRetentionDays`.
-  2. Queries existing `screenshots` and `videoJobs` for that class in **500-item chunks**.
+  2. Queries existing `screenshots`, `audio`, and `videoJobs` for that class in **500-item chunks**.
   3. Computes `newExpireAt = doc.timestamp + (newDays * 86.4M ms)`.
   4. If `newExpireAt <= now`: Deletes the document immediately (cascading to storage deletion).
   5. If `newExpireAt > now`: Updates the `expireAt` field with the new future timestamp.
@@ -180,6 +180,9 @@ To ensure Firestore automatically prunes expired documents natively, enable TTL 
 # Enable TTL on screenshots
 gcloud firestore fields ttls update expireAt --collection-group=screenshots --enable-ttl
 
+# Enable TTL on audio telemetry
+gcloud firestore fields ttls update expireAt --collection-group=audio --enable-ttl
+
 # Enable TTL on videoJobs
 gcloud firestore fields ttls update expireAt --collection-group=videoJobs --enable-ttl
 
@@ -200,12 +203,19 @@ Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) a
   - Teachers can delete any lecture recording directly from the **Lecture Recordings View** via the **"🗑️ Delete Recording"** button.
   - Deleting the `classes/{classId}/lectureRecordings/{sessionId}` Firestore document fires the `onLectureRecordingDeleted` Cloud Storage trigger, which automatically purges all files under `recordings/{classId}/{sessionId}/` from Google Cloud Storage (`force: true`).
   - Quota is decremented immediately in `classes/{classId}/metadata/storage` via `updateStorageUsageOnDelete`.
-- **Date Range Purge (Images & Voices)**:
-  - From the **Data Management View**, teachers can trigger **"Delete Session Data (Images & Audio) in Range"**.
-  - Calls `deleteScreenshotsByDateRange`, which queries both `screenshots` and `audio` collections across the given time window, deletes the underlying Cloud Storage blobs, and purges the Firestore documents in batches.
+- **Granular Selective Telemetry Purge (`purgeClassTelemetryData` / `deleteScreenshotsByDateRange`)**:
+  - From the **Data Management View**, teachers have granular control to selectively purge telemetry:
+    - Target toggles: Screenshots, Audio recordings, Compiled Student Videos, and Lecture Recordings.
+    - Scope presets: Current Lesson, Older than 14 Days, Older than 30 Days, Older than 90 Days, or Custom Range.
+    - Queries use composite indexes with automatic in-memory fallback to class-level queries if any index is rebuilding, preventing runtime precondition failures.
+    - Purges both physical Cloud Storage blobs and Firestore documents in safe 400-item chunks.
+    - **Data Integrity Guarantee**: Student attendance records, activity milestone progress, task submissions, grades, and irregularity reports are preserved permanently in Firestore.
+- **Autonomous Storage Quota Reconciliation (`recalculateStorageUsage`)**:
+  - Teachers can trigger on-demand storage audits from Data Management via **"🔄 Recalculate Storage"**.
+  - Directly scans physical GCS blobs across `screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, and `recordings/{classId}/` to heal any metric drift in `classes/{classId}/metadata/storage`.
 - **Cascading Removal on Class Deletion**:
-  - When an entire class is deleted via `onClassDocDeleted`, Cloud Storage prefixes (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`) are automatically wiped.
-  - Subcollections including `lectureRecordings`, `screenBroadcast`, and `liveSubtitles` are completely purged from Firestore.
+  - When an entire class is deleted via `onClassDocDeleted`, Cloud Storage prefixes (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, `taskDemos/{classId}/`) are automatically wiped.
+  - Subcollections including `lectureRecordings`, `tasks` (with `submissions`), `bingoSessions`, `status`, `screenBroadcast`, and `liveSubtitles` are completely purged from Firestore.
 
 ---
 

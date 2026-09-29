@@ -523,14 +523,18 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 
 #### Callable Functions
 
--   **`deleteScreenshotsByDateRange`**:
-    -   **Trigger**: `onCall` (callable function).
-    -   **Description**: This function provides a mechanism for authenticated users (typically teachers or admins) to delete screenshots in bulk. It requires a `classId`, `startDate`, and `endDate`. The function queries all screenshot documents within that range, deletes the corresponding image files from Cloud Storage, and then marks the Firestore documents as `deleted`. This is useful for data management and for freeing up storage space.
+-   **`purgeClassTelemetryData`** (aliased as **`deleteScreenshotsByDateRange`**):
+    -   **Trigger**: `onCall` (callable function, 300s timeout, 512MiB memory).
+    -   **Description**: Provides granular selective purge of telemetry data for authorized teachers and admins. Accepts `classId`, `startDate`, `endDate`, `timezone`, and target selection flags (`screenshots`, `audio`, `videos`, `lectureRecordings`). Features composite index queries with automatic fallback to class-level in-memory filtering if indexes are rebuilding, preventing precondition failures. Batches document deletions in 400-item chunks and awaits Cloud Storage blob removals with `ignoreNotFound: true`.
+-   **`recalculateStorageUsage`**:
+    -   **Trigger**: `onCall` (callable function, 300s timeout, 512MiB memory).
+    -   **Description**: Audits and synchronizes physical Cloud Storage usage for a class. Scans actual blob prefixes across `screenshots/`, `videos/`, `zips/`, `audio/`, and `recordings/` and atomically reconciles byte counts in `classes/{classId}/metadata/storage`, eliminating metric drift.
 
 ### Data Models
 
--   **`classes/{classId}/metadata/storage`**: A document that stores the aggregated storage usage for a class, broken down by file type (screenshots, videos, zips). This is the primary document read from and written to by the storage trigger functions.
+-   **`classes/{classId}/metadata/storage`**: A document that stores the aggregated storage usage for a class, broken down by file type (`storageUsageScreenShots`, `storageUsageAudio`, `storageUsageVideos`, `storageUsageRecordings`, `storageUsageZips`). This is the primary document read from and written to by the storage trigger functions and audit synchronizer.
 -   **`screenshots`**: This collection is monitored by `onScreenshotDocDeleted` and the daily sweeper to manage file lifecycles and physical blob deletion.
+-   **`audio`**: Stamped with `expireAt` and monitored by `onAudioDocDeleted` and `onClassRetentionUpdated` for automatic speech audio chunk lifecycle management.
 
 ---
 

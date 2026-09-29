@@ -525,6 +525,7 @@ export const reconcileLectureRecordings = onCall(callOptions, async (request) =>
   return await handleReconcileLectureRecordings({ classId });
 });
 
-export { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
+import { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
+export { processLectureSubtitles, handleReconcileLectureRecordings };
 export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';
 export { evaluateTaskSubmission, evaluateTaskSubmissionTask, enqueueTaskEvaluation } from './evaluateTaskSubmission.js';

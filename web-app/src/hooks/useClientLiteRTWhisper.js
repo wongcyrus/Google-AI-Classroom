@@ -23,6 +23,7 @@ export function useClientLiteRTWhisper({
   audioStream = null,
   deviceId = '',
   vadSensitivity = 15,
+  retentionDays = 30,
   onTranscript,
 }) {
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'transcribing' | 'error'
@@ -282,6 +283,8 @@ export function useClientLiteRTWhisper({
                 sttEngine: 'litert_whisper_tiny',
                 deviceId: deviceIdRef.current || 'default',
                 timestamp: serverTimestamp(),
+                expireAt: new Date(Date.now() + (retentionDays || 30) * 86400000),
+                deleted: false,
               });
             } catch (err) {
               console.error('[useClientLiteRTWhisper] Failed to save permanent transcript doc:', err);

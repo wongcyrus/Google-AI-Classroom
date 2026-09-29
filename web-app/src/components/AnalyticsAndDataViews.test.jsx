@@ -33,6 +33,7 @@ vi.mock('firebase/firestore', () => ({
   getDoc: vi.fn().mockResolvedValue({ exists: () => false }),
   setDoc: (...args) => mockSetDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
+  onSnapshot: vi.fn(() => vi.fn()),
   writeBatch: vi.fn(() => ({
     delete: vi.fn(),
     commit: vi.fn().mockResolvedValue({}),

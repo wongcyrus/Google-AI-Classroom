@@ -153,7 +153,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     `videos/${classId}/`,
     `zips/${classId}/`,
     `audio/${classId}/`,
-    `recordings/${classId}/`
+    `recordings/${classId}/`,
+    `taskDemos/${classId}/`
   ];
 
   for (const prefix of prefixes) {
@@ -203,6 +204,50 @@ export const onClassDocDeleted = onDocumentDeleted({
     }
   } catch (err) {
     logger.warn(`Could not delete lectureRecordings subcollection for class ${classId}:`, err);
+  }
+
+  // Purge tasks and their submissions
+  try {
+    const tasksSnap = await db.collection(`classes/${classId}/tasks`).get();
+    for (const taskDoc of tasksSnap.docs) {
+      const subSnap = await taskDoc.ref.collection('submissions').get();
+      if (!subSnap.empty) {
+        const subBatch = db.batch();
+        subSnap.docs.forEach(sDoc => subBatch.delete(sDoc.ref));
+        await subBatch.commit();
+      }
+      await taskDoc.ref.delete();
+    }
+    if (!tasksSnap.empty) {
+      logger.info(`Purged ${tasksSnap.size} tasks for class ${classId}.`);
+    }
+  } catch (err) {
+    logger.warn(`Could not delete tasks subcollection for class ${classId}:`, err);
+  }
+
+  // Purge bingoSessions
+  try {
+    const bingoSnap = await db.collection(`classes/${classId}/bingoSessions`).get();
+    if (!bingoSnap.empty) {
+      const bBatch = db.batch();
+      bingoSnap.docs.forEach(bDoc => bBatch.delete(bDoc.ref));
+      await bBatch.commit();
+      logger.info(`Purged ${bingoSnap.size} bingo sessions for class ${classId}.`);
+    }
+  } catch (err) {
+    logger.warn(`Could not delete bingoSessions subcollection for class ${classId}:`, err);
+  }
+
+  // Purge status
+  try {
+    const statusSnap = await db.collection(`classes/${classId}/status`).get();
+    if (!statusSnap.empty) {
+      const sBatch = db.batch();
+      statusSnap.docs.forEach(sDoc => sBatch.delete(sDoc.ref));
+      await sBatch.commit();
+    }
+  } catch (err) {
+    logger.warn(`Could not delete status subcollection for class ${classId}:`, err);
   }
 
   try {
@@ -299,6 +344,49 @@ export const onClassRetentionUpdated = onDocumentUpdated({
       }
     }
     logger.info(`Class ${classId} screenshot retention sync complete. Updated: ${updatedCount}, Pruned: ${deletedCount}`);
+
+    // Also sync audio documents for this class
+    let updatedAudioCount = 0;
+    let deletedAudioCount = 0;
+    let lastAudioDoc = null;
+    let hasMoreAudio = true;
+
+    while (hasMoreAudio) {
+      let query = db.collection('audio')
+        .where('classId', '==', classId)
+        .limit(BATCH_SIZE);
+
+      if (lastAudioDoc) {
+        query = query.startAfter(lastAudioDoc);
+      }
+
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
+
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const docDate = data.timestamp ? (data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp)) : new Date();
+        const newExpireAt = new Date(docDate.getTime() + retentionMs);
+
+        if (newExpireAt.getTime() <= now) {
+          batch.delete(doc.ref);
+          deletedAudioCount++;
+        } else {
+          batch.update(doc.ref, { expireAt: newExpireAt });
+          updatedAudioCount++;
+        }
+      });
+
+      await batch.commit();
+
+      if (snapshot.size < BATCH_SIZE) {
+        hasMoreAudio = false;
+      } else {
+        lastAudioDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
+    }
+    logger.info(`Class ${classId} audio retention sync complete. Updated: ${updatedAudioCount}, Pruned: ${deletedAudioCount}`);
   }
 
   // 2. Handle Video Retention Updates
