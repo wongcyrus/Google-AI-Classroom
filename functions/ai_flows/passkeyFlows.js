@@ -999,6 +999,37 @@ export async function handleApproveTeacherPasskeyBypass({
     }
   }
 
+  // Fallback: resolve targetUid from class roster in classes/${classId}
+  if (!targetUid && targetEmail && classId) {
+    try {
+      const classDoc = await db.doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const classData = classDoc.data() || {};
+        const students = classData.students || {};
+        const foundUid = Object.keys(students).find(
+          (uid) => (students[uid] || '').toLowerCase() === targetEmail.toLowerCase()
+        );
+        if (foundUid) {
+          targetUid = foundUid;
+        }
+      }
+    } catch (e) {
+      console.warn(`[handleApproveTeacherPasskeyBypass] Could not resolve studentUid from class doc ${classId}:`, e.message);
+    }
+  }
+
+  // Fallback: resolve targetUid from Firebase Auth
+  if (!targetUid && targetEmail) {
+    try {
+      const authUser = await getAuth().getUserByEmail(targetEmail);
+      if (authUser && authUser.uid) {
+        targetUid = authUser.uid;
+      }
+    } catch (e) {
+      console.warn(`[handleApproveTeacherPasskeyBypass] Could not resolve studentUid from Auth for ${targetEmail}:`, e.message);
+    }
+  }
+
   if (!targetUid) {
     throw new HttpsError('invalid-argument', 'Could not resolve studentUid for bypass.');
   }

@@ -22,6 +22,11 @@ const EnrolledRosterModal = ({
   onResetPasskey,
   passkeyResetSuccess = '',
   onClearPasskeyResetSuccess,
+  studentBypassesMap = {},
+  grantingBypass = {},
+  onGrantBypass,
+  bypassSuccessMsg = '',
+  onClearBypassSuccess,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [passkeyFilter, setPasskeyFilter] = useState('all'); // 'all' | 'linked' | 'unlinked'
@@ -48,6 +53,7 @@ const EnrolledRosterModal = ({
     let withProfile = 0;
     let linkedPasskeys = 0;
     let directoryEnriched = 0;
+    let activeBypassesCount = 0;
 
     emailList.forEach(email => {
       const norm = (email || '').toLowerCase();
@@ -61,6 +67,10 @@ const EnrolledRosterModal = ({
       if (registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid])) {
         linkedPasskeys++;
       }
+      const b = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]);
+      if (b && b.active && (b.expiresAtMillis > Date.now() || (b.expiresAt && new Date(b.expiresAt).getTime() > Date.now()))) {
+        activeBypassesCount++;
+      }
     });
 
     return {
@@ -69,8 +79,9 @@ const EnrolledRosterModal = ({
       linkedPasskeys,
       unlinkedPasskeys: emailList.length - linkedPasskeys,
       directoryEnriched,
+      activeBypassesCount,
     };
-  }, [emailList, resolvedProfilesMap, registeredPasskeysMap]);
+  }, [emailList, resolvedProfilesMap, registeredPasskeysMap, studentBypassesMap]);
 
   // Handle column sort toggle
   const handleSort = (column) => {
@@ -410,6 +421,22 @@ const EnrolledRosterModal = ({
           </div>
         )}
 
+        {/* Emergency Bypass Success Alert */}
+        {bypassSuccessMsg && (
+          <div className="roster-alert-bar" style={{ backgroundColor: '#eff6ff', color: '#1e40af', borderColor: '#bfdbfe' }}>
+            <span>⚡ {bypassSuccessMsg}</span>
+            {onClearBypassSuccess && (
+              <button
+                type="button"
+                onClick={onClearBypassSuccess}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#1e40af' }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Roster Table */}
         <div className="roster-modal-body">
           {filteredStudents.length === 0 ? (
@@ -500,6 +527,10 @@ const EnrolledRosterModal = ({
                   const resolvedStudentName = prof.studentName || '';
                   const norm = (email || '').toLowerCase();
                   const passkey = registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]);
+                  const activeBypass = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]);
+                  const isBypassActive = Boolean(
+                    activeBypass && activeBypass.active && (activeBypass.expiresAtMillis > Date.now() || (activeBypass.expiresAt && new Date(activeBypass.expiresAt).getTime() > Date.now()))
+                  );
 
                   return (
                     <tr key={`${email}-${idx}`}>
@@ -557,8 +588,8 @@ const EnrolledRosterModal = ({
                         {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        {passkey ? (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {passkey ? (
                             <span
                               style={{
                                 fontSize: '0.72rem',
@@ -576,46 +607,88 @@ const EnrolledRosterModal = ({
                             >
                               📱 Linked
                             </span>
-                            {onResetPasskey && (
-                              <button
-                                type="button"
-                                className="btn-secondary btn-sm"
-                                style={{
-                                  fontSize: '0.72rem',
-                                  padding: '0.15rem 0.45rem',
-                                  color: '#b91c1c',
-                                  borderColor: '#fca5a5',
-                                  background: '#fff',
-                                  cursor: 'pointer',
-                                }}
-                                onClick={() => onResetPasskey(email, resolvedStudentName)}
-                                disabled={Boolean(resettingPasskeys[email])}
-                                data-testid={`btn-modal-reset-passkey-${email.replace(/[@.]/g, '_')}`}
-                                title="Unlink phone passkey if student replaced their device"
-                              >
-                                {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: '0.72rem',
-                              fontWeight: 600,
-                              padding: '0.12rem 0.45rem',
-                              borderRadius: '9999px',
-                              backgroundColor: '#fef3c7',
-                              color: '#b45309',
-                              border: '1px solid #fde68a',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}
-                            title="Student has not registered a passkey on their mobile device yet"
-                          >
-                            ⏳ Not Registered
-                          </span>
-                        )}
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '0.12rem 0.45rem',
+                                borderRadius: '9999px',
+                                backgroundColor: '#fef3c7',
+                                color: '#b45309',
+                                border: '1px solid #fde68a',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Student has not registered a passkey on their mobile device yet"
+                            >
+                              ⏳ Not Registered
+                            </span>
+                          )}
+
+                          {isBypassActive && (
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '0.12rem 0.45rem',
+                                borderRadius: '9999px',
+                                backgroundColor: '#eff6ff',
+                                color: '#1d4ed8',
+                                border: '1px solid #bfdbfe',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title={`Emergency bypass active until ${new Date(activeBypass.expiresAtMillis || activeBypass.expiresAt).toLocaleTimeString()}`}
+                            >
+                              ⚡ Bypass Active
+                            </span>
+                          )}
+
+                          {passkey && onResetPasskey && (
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.45rem',
+                                color: '#b91c1c',
+                                borderColor: '#fca5a5',
+                                background: '#fff',
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => onResetPasskey(email, resolvedStudentName)}
+                              disabled={Boolean(resettingPasskeys[email])}
+                              data-testid={`btn-modal-reset-passkey-${email.replace(/[@.]/g, '_')}`}
+                              title="Unlink phone passkey if student replaced their device"
+                            >
+                              {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
+                            </button>
+                          )}
+
+                          {onGrantBypass && (
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.45rem',
+                                color: '#0369a1',
+                                borderColor: '#bae6fd',
+                                background: '#f0f9ff',
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => onGrantBypass(email, resolvedStudentName)}
+                              disabled={Boolean(grantingBypass[email])}
+                              data-testid={`btn-modal-bypass-${email.replace(/[@.]/g, '_')}`}
+                              title="Grant temporary emergency passkey bypass for this class"
+                            >
+                              {grantingBypass[email] ? 'Granting...' : '⚡ Temp Bypass'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -50,6 +50,17 @@ vi.mock('../../utils/browserDetection', () => ({
   isMobileDevice: vi.fn(() => false),
 }));
 
+let mockScheduleReturn = {
+  userClasses: ['class-1'],
+  currentActiveClassId: 'class-1',
+  activeClassIds: ['class-1'],
+  loading: false,
+};
+
+vi.mock('../../hooks/useStudentClassSchedule', () => ({
+  useStudentClassSchedule: () => mockScheduleReturn,
+}));
+
 import { isHandheldPhone } from '../../utils/browserDetection';
 import PasskeyEnforcementGate from './PasskeyEnforcementGate';
 
@@ -63,6 +74,14 @@ describe('PasskeyEnforcementGate Component', () => {
     vi.clearAllMocks();
     mockPasskeySnapshotCallback = null;
     mockBypassSnapshotCallback = null;
+    mockWhitelistSnapshotCallback = null;
+    vi.mocked(isHandheldPhone).mockReturnValue(false);
+    mockScheduleReturn = {
+      userClasses: ['class-1'],
+      currentActiveClassId: 'class-1',
+      activeClassIds: ['class-1'],
+      loading: false,
+    };
     mockRequestToken.mockResolvedValue({ data: { tokenId: 'token-xyz-789' } });
   });
 
@@ -287,8 +306,7 @@ describe('PasskeyEnforcementGate Component', () => {
   });
 
   it('bypasses gate immediately on mobile smartphones and renders protected children', () => {
-    const isHandheldPhoneMock = vi.mocked(isHandheldPhone);
-    isHandheldPhoneMock.mockReturnValueOnce(true);
+    vi.mocked(isHandheldPhone).mockReturnValue(true);
 
     render(
       <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">
@@ -298,5 +316,104 @@ describe('PasskeyEnforcementGate Component', () => {
 
     expect(screen.getByTestId('protected-content')).toBeInTheDocument();
     expect(screen.queryByText('Personal Mobile Passkey Required')).not.toBeInTheDocument();
+  });
+
+  it('auto-resolves classId from schedule hook when classId prop is omitted during bypass request', async () => {
+    mockScheduleReturn = {
+      userClasses: ['class-auto-scheduled'],
+      currentActiveClassId: 'class-auto-scheduled',
+      activeClassIds: ['class-auto-scheduled'],
+      loading: false,
+    };
+    mockRequestBypass.mockResolvedValueOnce({
+      data: { success: true, requestId: 'req-auto-1' },
+    });
+
+    render(
+      <PasskeyEnforcementGate user={mockUser} role="student">
+        <div data-testid="protected-content">Classroom Content</div>
+      </PasskeyEnforcementGate>
+    );
+
+    act(() => {
+      if (mockPasskeySnapshotCallback) {
+        mockPasskeySnapshotCallback({ exists: () => false });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Phone Unavailable/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Phone Unavailable/i));
+    expect(screen.getByText(/Classroom:/i)).toHaveTextContent('class-auto-scheduled');
+
+    fireEvent.change(screen.getByLabelText(/Your Desk \/ Seat Number/i), {
+      target: { value: 'Desk #99' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Send Request to Teacher Podium/i }));
+    });
+
+    expect(mockRequestBypass).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentUid: mockUser.uid,
+        classId: 'class-auto-scheduled',
+        deskNumber: 'Desk #99',
+      })
+    );
+  });
+
+  it('allows student enrolled in multiple classes to select target class for bypass', async () => {
+    mockScheduleReturn = {
+      userClasses: ['class-math', 'class-cs'],
+      currentActiveClassId: 'class-math',
+      activeClassIds: ['class-math'],
+      loading: false,
+    };
+    mockVerifyPin.mockResolvedValueOnce({
+      data: { success: true, message: 'Emergency PIN verified!' },
+    });
+
+    render(
+      <PasskeyEnforcementGate user={mockUser} role="student">
+        <div data-testid="protected-content">Classroom Content</div>
+      </PasskeyEnforcementGate>
+    );
+
+    act(() => {
+      if (mockPasskeySnapshotCallback) {
+        mockPasskeySnapshotCallback({ exists: () => false });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Phone Unavailable/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Phone Unavailable/i));
+
+    const select = screen.getByLabelText(/Select Classroom \/ Course/i);
+    expect(select).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: 'class-cs' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Teacher Emergency PIN/i }));
+    fireEvent.change(screen.getByLabelText(/Teacher 6-Digit Emergency PIN/i), {
+      target: { value: '112233' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Verify Emergency PIN/i }));
+    });
+
+    expect(mockVerifyPin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'class-cs',
+        studentUid: mockUser.uid,
+        pin: '112233',
+      })
+    );
   });
 });
