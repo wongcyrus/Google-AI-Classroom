@@ -57,14 +57,6 @@ vi.mock('./components/ClassManagement', () => ({
   default: () => <div data-testid="class-mgmt-view">Class Management View</div>,
 }));
 
-vi.mock('./components/MailboxView', () => ({
-  default: () => <div data-testid="mailbox-view">Mailbox View</div>,
-}));
-
-vi.mock('./components/EmailDetailView', () => ({
-  default: () => <div data-testid="email-detail-view">Email Detail View</div>,
-}));
-
 vi.mock('./components/PromptManagement', () => ({
   default: () => <div data-testid="prompt-mgmt-view">Prompt Management View</div>,
 }));
@@ -153,8 +145,7 @@ describe('App & MainHeader Components', () => {
     expect(screen.getByText('Google AI Classroom')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
     expect(screen.getByText('⚙️ Class Manager')).toBeInTheDocument();
-    expect(screen.getByText('📬 Mailbox')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument(); // Unread badge
+    expect(screen.queryByText('📬 Mailbox')).not.toBeInTheDocument();
 
     // Footer promotion check
     const footerLink = screen.getByRole('link', { name: /Higher Diploma in Cloud and Data Centre Administration/i });
@@ -330,7 +321,7 @@ describe('App & MainHeader Components', () => {
     window.history.pushState({}, 'Dashboard', '/teacher');
   });
 
-  it('resolves class name via getDoc and displays unread mail count in teacher navigation', async () => {
+  it('resolves class name via getDoc and displays in breadcrumb bar', async () => {
     window.history.pushState({}, 'Class Details', '/class/CLASS_DEV_999');
 
     getDoc.mockResolvedValueOnce({
@@ -340,7 +331,7 @@ describe('App & MainHeader Components', () => {
 
     onSnapshot.mockImplementation((q, onNext, onError) => {
       onNext({
-        size: 4,
+        size: 0,
         exists: () => false,
         data: () => ({}),
       });
@@ -364,8 +355,6 @@ describe('App & MainHeader Components', () => {
 
     expect(await screen.findByTestId('class-view')).toBeInTheDocument();
     expect(await screen.findByText(/Cloud Native Computing/i)).toBeInTheDocument();
-    // Unread mail badge
-    expect(screen.getByText('4')).toBeInTheDocument();
 
     window.history.pushState({}, 'Dashboard', '/teacher');
   });
