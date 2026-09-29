@@ -39,6 +39,13 @@
 - **Flip Phones & Foldables Support**: Modern clamshell flip phones (e.g. Galaxy Z Flip, Razr) and book-style foldables (Galaxy Z Fold, Pixel Fold) are recognized as handheld phones (`Android` + `Mobile`) in both folded and unfolded states, providing full biometric passkey hardware support.
 - **Prohibition Guidance**: Routes (`/pair-phone`, `/verify-passkey`, `/verify-lecture-passkey`, `/mobile-login`) and modals (`PasskeyPairModal`, `PasskeyEnforcementGate`) provide clear guidance directing students to use their personal handheld smartphones.
 
+### 0.0.6 Passkey Exportability & Dual-Factor Hardware Binding Security Architecture
+- **Threat Vector Analyzed**: Evaluated attack surfaces surrounding passkey exportability via Apple AirDrop, iCloud Keychain Shared Groups, Google Password Manager export, and third-party vault sharing (Bitwarden, 1Password).
+- **Dual-Factor Device Binding Model**: Documented how the platform actively mitigates exported credentials by enforcing both a valid WebAuthn cryptographic signature and a matching persistent hardware fingerprint (`mdev_<uuid>`) stored in `studentPasskeys/{studentUid}`.
+- **Multi-Account Phone Collision Lock**: Verified backend database querying (`where('deviceFingerprint', '==', deviceFingerprint)`) that blocks a single smartphone from registering or proxy-logging in for multiple student accounts.
+- **Fail-Closed Design**: Documented fail-closed behavior on browser data clears, ensuring compromised or reset storage cannot be exploited without verified teacher intervention.
+- **Comprehensive Matrix**: Updated [`docs/passkey-device-registration-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/passkey-device-registration-guide.md) with security explanations and updated threat matrices.
+
 ---
 
 ## 0. WebAuthn (FIDO2) Mobile Passkeys: 1-Phone Hardware Lock & Teacher Reset
