@@ -227,23 +227,41 @@ const ClassView = ({ user }) => {
           </div>
         </div>
 
-        {teacherClasses.length > 1 && (
-          <div className="class-switcher-wrapper">
-            <label htmlFor="class-switcher" className="class-switcher-label">Switch Class:</label>
-            <select
-              id="class-switcher"
-              value={classId}
-              onChange={handleClassSwitch}
-              className="class-switcher-select"
-            >
-              {teacherClasses.map((c, idx) => (
-                <option key={`${c.id}-${idx}`} value={c.id}>
-                  {c.name ? `${c.name} (${c.id})` : c.id}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="class-hub-right-actions">
+          <button
+            type="button"
+            className="student-preview-launcher-btn"
+            onClick={() => {
+              window.open(
+                `/preview/student/${classId}`,
+                `StudentPreview_${classId}`,
+                'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+              );
+            }}
+            title="Open student view in a separate window to check broadcast and student settings"
+          >
+            <span>🧪</span>
+            <span>Preview as Student ↗</span>
+          </button>
+
+          {teacherClasses.length > 1 && (
+            <div className="class-switcher-wrapper">
+              <label htmlFor="class-switcher" className="class-switcher-label">Switch Class:</label>
+              <select
+                id="class-switcher"
+                value={classId}
+                onChange={handleClassSwitch}
+                className="class-switcher-select"
+              >
+                {teacherClasses.map((c, idx) => (
+                  <option key={`${c.id}-${idx}`} value={c.id}>
+                    {c.name ? `${c.name} (${c.id})` : c.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Unified Compact Navigation Ribbon (Mode Switcher + Tabs in ONE Row) */}

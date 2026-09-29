@@ -440,4 +440,29 @@ describe('ClassView Component Full Suite', () => {
     const recordingsSubTabBtn = screen.getByRole('button', { name: /Teacher Lecture Recordings/i });
     expect(recordingsSubTabBtn).toHaveClass('active');
   });
+
+  it('renders Preview as Student launcher button and opens standalone popup window on click', () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const previewBtn = screen.getByRole('button', { name: /Preview as Student/i });
+    expect(previewBtn).toBeInTheDocument();
+
+    fireEvent.click(previewBtn);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      '/preview/student/CLASS-101',
+      'StudentPreview_CLASS-101',
+      expect.stringContaining('width=1280')
+    );
+
+    openSpy.mockRestore();
+  });
 });

@@ -11,7 +11,13 @@ import BingoModal from '../BingoModal';
 import PasskeyPairModal from '../passkey/PasskeyPairModal';
 import './StudentMobileView.css';
 
-export default function StudentMobileView({ user, onSwitchToDesktop }) {
+export default function StudentMobileView({
+  user,
+  onSwitchToDesktop,
+  previewClassId,
+  isPreviewMode,
+  onViewModeToggle,
+}) {
   const navigate = useNavigate();
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [hasRegisteredPasskey, setHasRegisteredPasskey] = useState(null); // null = checking, true/false
@@ -71,6 +77,7 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
   });
 
   const activeClass = useMemo(() => {
+    if (previewClassId) return previewClassId;
     if (isManualScheduleOverride && selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
     }
@@ -83,7 +90,7 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
       return typeof first === 'string' ? first : (first?.id || null);
     }
     return null;
-  }, [isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
+  }, [previewClassId, isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
 
   const activeClassName = useMemo(() => {
     if (!activeClass || !userClasses) return 'Google AI Classroom';
@@ -452,6 +459,39 @@ export default function StudentMobileView({ user, onSwitchToDesktop }) {
       ref={layoutContainerRef}
       className={`student-mobile-layout ${isLandscapeFullscreen ? 'landscape-fullscreen' : ''} ${isLandscape ? 'is-landscape' : ''} mode-${mobileViewMode}`}
     >
+      {/* Teacher Student Preview Mode Header Banner */}
+      {(isPreviewMode || previewClassId) && (
+        <div className="student-preview-header-banner" role="banner" aria-label="Student Preview Banner">
+          <div className="student-preview-banner-left">
+            <span className="preview-mode-badge">🧪 STUDENT PREVIEW (MOBILE)</span>
+            <span className="preview-class-tag">Class: <strong>{activeClass || previewClassId}</strong></span>
+            <span className="preview-status-pill">
+              {isBroadcastActive ? '● Broadcast Active' : '○ Broadcast Idle'}
+            </span>
+          </div>
+          <div className="student-preview-banner-actions">
+            {(onViewModeToggle || onSwitchToDesktop) && (
+              <button
+                type="button"
+                className="preview-action-btn preview-toggle-view-btn"
+                onClick={onViewModeToggle || onSwitchToDesktop}
+                title="Switch to Desktop View"
+              >
+                🖥️ Desktop View
+              </button>
+            )}
+            <button
+              type="button"
+              className="preview-action-btn preview-close-window-btn"
+              onClick={() => window.close()}
+              title="Close Preview Window"
+            >
+              ✕ Close Window
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Top Header */}
       <header className="mobile-header" role="banner">
         <div className="mobile-header-brand">

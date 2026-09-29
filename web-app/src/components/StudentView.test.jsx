@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import StudentView from './StudentView';
 
 const mockSignOut = vi.fn();
@@ -1568,7 +1568,52 @@ describe('StudentView Component Extended Test Suite', () => {
       expect(screen.queryByTestId('student-task-workspace-modal')).not.toBeInTheDocument();
     });
   });
+
+  it('renders student preview header banner when previewClassId is provided, forcing the class and providing close window action', async () => {
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
+
+    render(
+      <StudentView
+        user={mockUser}
+        previewClassId="PREVIEW_CLASS_404"
+        isPreviewMode={true}
+      />
+    );
+
+    // Verify preview banner is rendered
+    const banner = screen.getByRole('banner', { name: /Student Preview Banner/i });
+    expect(banner).toBeInTheDocument();
+    expect(within(banner).getByText(/PREVIEW_CLASS_404/i)).toBeInTheDocument();
+    expect(within(banner).getByText(/STUDENT PREVIEW/i)).toBeInTheDocument();
+
+    // Verify Close Window button triggers window.close
+    const closeWindowBtn = screen.getByRole('button', { name: /Close Window/i });
+    expect(closeWindowBtn).toBeInTheDocument();
+    fireEvent.click(closeWindowBtn);
+    expect(closeSpy).toHaveBeenCalled();
+
+    closeSpy.mockRestore();
+  });
+
+  it('allows switching between desktop and mobile preview modes via onViewModeToggle', async () => {
+    const mockToggle = vi.fn();
+
+    render(
+      <StudentView
+        user={mockUser}
+        previewClassId="PREVIEW_CLASS_404"
+        isPreviewMode={true}
+        onViewModeToggle={mockToggle}
+      />
+    );
+
+    const toggleBtn = screen.getByRole('button', { name: /Mobile View/i });
+    expect(toggleBtn).toBeInTheDocument();
+    fireEvent.click(toggleBtn);
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+  });
 });
+
 
 
 

@@ -1749,29 +1749,60 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
               {/* Unified Teacher Broadcast Studio (Screen & Voice) Action Button */}
               {!isScreenBroadcasting ? (
-                <button
-                  type="button"
-                  onClick={() => setShowBroadcastModal(true)}
-                  style={{
-                    background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
-                    color: '#ffffff',
-                    border: 'none',
-                    padding: '7px 16px',
-                    borderRadius: '8px',
-                    fontWeight: 700,
-                    fontSize: '0.86rem',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '7px',
-                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.35)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
-                >
-                  <span>🎙️🖥️</span>
-                  <span>Broadcast Screen & Voice</span>
-                </button>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowBroadcastModal(true)}
+                    style={{
+                      background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '7px 15px',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      fontSize: '0.86rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      boxShadow: '0 2px 4px rgba(79, 70, 229, 0.35)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
+                  >
+                    <span>🎙️🖥️</span>
+                    <span>Broadcast Screen & Voice</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.open(
+                        `/preview/student/${classId}`,
+                        `StudentPreview_${classId}`,
+                        'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+                      );
+                    }}
+                    style={{
+                      background: '#ede9fe',
+                      color: '#4338ca',
+                      border: '1px solid #c7d2fe',
+                      padding: '7px 12px',
+                      borderRadius: '8px',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 1px 2px rgba(67, 56, 202, 0.08)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Preview student interface and settings in a separate window"
+                  >
+                    <span>🧪</span>
+                    <span>Student Preview ↗</span>
+                  </button>
+                </div>
               ) : (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                   <span
@@ -1814,6 +1845,32 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                     title="View live broadcast screen preview and viewers"
                   >
                     👁️ Studio Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.open(
+                        `/preview/student/${classId}`,
+                        `StudentPreview_${classId}`,
+                        'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+                      );
+                    }}
+                    style={{
+                      background: '#ede9fe',
+                      color: '#4338ca',
+                      border: '1px solid #c7d2fe',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                    title="Preview live broadcast as a student in a separate window"
+                  >
+                    🧪 Preview as Student ↗
                   </button>
                   <button
                     type="button"

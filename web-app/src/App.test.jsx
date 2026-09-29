@@ -46,7 +46,16 @@ vi.mock('./components/TeacherView', () => ({
 }));
 
 vi.mock('./components/StudentView', () => ({
-  default: () => <div data-testid="student-view">Student Exam Room View</div>,
+  default: (props) => (
+    <div
+      data-testid="student-view"
+      data-preview-class={props.previewClassId}
+      data-is-preview={String(props.isPreviewMode)}
+      data-force-mode={props.forceViewMode}
+    >
+      Student Exam Room View
+    </div>
+  ),
 }));
 
 vi.mock('./components/StudentRecordsView', () => ({
@@ -399,5 +408,52 @@ describe('App & MainHeader Components', () => {
 
     window.history.pushState({}, 'Dashboard', '/');
   });
+
+  it('renders StudentPreviewPage on /preview/student/:classId for authenticated teacher without headers or passkey gate', async () => {
+    window.history.pushState({}, 'Student Preview', '/preview/student/DEMO_CLASS_99');
+
+    const mockTeacher = {
+      uid: 'teacher_1',
+      email: 'teacher@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'teacher' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockTeacher);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    const studentView = await screen.findByTestId('student-view');
+    expect(studentView).toBeInTheDocument();
+    expect(studentView).toHaveAttribute('data-preview-class', 'DEMO_CLASS_99');
+    expect(studentView).toHaveAttribute('data-is-preview', 'true');
+    expect(studentView).toHaveAttribute('data-force-mode', 'desktop');
+
+    // Header and footer should be suppressed in popup preview
+    expect(screen.queryByAltText(/HKIIT Logo/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/teacher');
+  });
+
+  it('redirects unauthenticated user trying to access /preview/student/:classId to login', async () => {
+    window.history.pushState({}, 'Student Preview', '/preview/student/DEMO_CLASS_99');
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(null);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('auth-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('student-view')).not.toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/');
+  });
 });
+
 

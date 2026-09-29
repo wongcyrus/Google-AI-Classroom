@@ -2024,5 +2024,115 @@
   color: #b45309;
 }
 
+/* ==========================================================================
+   Teacher Student Preview Mode Banner
+   ========================================================================== */
+.student-preview-header-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+  color: #ffffff;
+  padding: 8px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(49, 46, 129, 0.35);
+  border-bottom: 2px solid #818cf8;
+  font-family: inherit;
+  animation: slideDownBanner 0.25s ease-out;
+}
+
+@keyframes slideDownBanner {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.student-preview-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.preview-mode-badge {
+  background: #f59e0b;
+  color: #78350f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-class-tag {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e0e7ff;
+}
+
+.preview-class-tag strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.preview-status-pill {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.15);
+  color: #c7d2fe;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.student-preview-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-action-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+}
+
+.preview-toggle-view-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.preview-toggle-view-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.preview-close-window-btn {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.preview-close-window-btn:hover {
+  background: #dc2626;
+}
+
+
 
 

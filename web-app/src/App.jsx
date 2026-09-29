@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { auth, db, appCheck } from './firebase-config';
 import { onAuthStateChanged, onIdTokenChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
-import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation, useParams } from 'react-router-dom';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
 import PasskeyPairModal from './components/passkey/PasskeyPairModal';
@@ -142,6 +142,23 @@ const App = () => {
   );
 };
 
+const StudentPreviewPage = ({ user }) => {
+  const { classId } = useParams();
+  const [previewMode, setPreviewMode] = useState('desktop');
+
+  return (
+    <div className="student-preview-page-container" style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      <StudentView
+        user={user}
+        previewClassId={classId}
+        isPreviewMode={true}
+        forceViewMode={previewMode}
+        onViewModeToggle={() => setPreviewMode((m) => (m === 'desktop' ? 'mobile' : 'desktop'))}
+      />
+    </div>
+  );
+};
+
 const AppShell = ({
   user,
   role,
@@ -172,10 +189,11 @@ const AppShell = ({
     location.pathname.startsWith('/verify-passkey') ||
     location.pathname.startsWith('/lecture-verify') ||
     location.pathname.startsWith('/mobile-login');
-  const isMinimalView = isStudentMobileActive || isPublicLiveActive || isPasskeyRoute;
+  const isStudentPreviewRoute = location.pathname.startsWith('/preview/student/');
+  const isMinimalView = isStudentMobileActive || isPublicLiveActive || isPasskeyRoute || isStudentPreviewRoute;
 
   return (
-    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''} ${isPublicLiveActive ? 'in-public-live-view' : ''} ${isPasskeyRoute ? 'in-passkey-view' : ''}`}>
+    <div className={`app-container ${isStudentMobileActive ? 'in-student-mobile-view' : ''} ${isPublicLiveActive ? 'in-public-live-view' : ''} ${isPasskeyRoute ? 'in-passkey-view' : ''} ${isStudentPreviewRoute ? 'in-student-preview-view' : ''}`}>
       {user && !isMinimalView && <MainHeader onLogout={handleLogout} user={user} role={role} />}
       <main className="main-content">
         <Suspense fallback={
@@ -229,6 +247,7 @@ const AppShell = ({
             <Route path="/mailbox/*" element={<Navigate to="/teacher" replace />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
+            <Route path="/preview/student/:classId" element={user && role === 'teacher' ? <StudentPreviewPage user={user} /> : <Navigate to="/login" />} />
             <Route path="/live/:classId" element={<PublicLiveView />} />
             <Route path="/pair-phone" element={<PasskeyPairView />} />
             <Route path="/verify-passkey" element={<PasskeyVerifyView />} />
