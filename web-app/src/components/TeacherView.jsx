@@ -5,6 +5,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import './TeacherView.css';
 import { formatBytes, formatAiCost } from '../utils/formatters';
+import { deriveRoleFromEmail } from '../utils/domainConfig';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
@@ -25,7 +26,7 @@ const TeacherView = ({ user }) => {
         if (!idTokenResult.claims.role) {
           idTokenResult = await user.getIdTokenResult(true);
         }
-        setRole(idTokenResult.claims.role);
+        setRole(idTokenResult.claims.role || deriveRoleFromEmail(user.email));
       }
     };
     checkRole();
