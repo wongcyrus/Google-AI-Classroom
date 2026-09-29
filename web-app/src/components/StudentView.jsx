@@ -44,10 +44,10 @@ import StudentMobileView from './student/StudentMobileView';
 
 import Sidebar from './student/Sidebar';
 
-const StudentDesktopView = ({ user }) => {
-  // Browser validation guard for desktop proctored students
+const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeToggle }) => {
+  // Browser validation guard for desktop proctored students (bypassed in teacher preview mode)
   const isChrome = isGoogleChrome();
-  if (!isChrome) {
+  if (!isChrome && !isPreviewMode) {
     return (
       <UnsupportedBrowserNotice
         onBackToLogin={() => signOut(auth)}
@@ -123,6 +123,8 @@ const StudentDesktopView = ({ user }) => {
   });
 
   const activeClass = useMemo(() => {
+    // If running in Teacher Preview Mode, force previewClassId directly
+    if (previewClassId) return previewClassId;
     // If student explicitly chose a manual class override, honor it as highest priority
     if (isManualScheduleOverride && selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
@@ -139,7 +141,7 @@ const StudentDesktopView = ({ user }) => {
       return typeof first === 'string' ? first : (first?.id || null);
     }
     return null;
-  }, [isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
+  }, [previewClassId, isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
 
   // Target classes for multi-class background telemetry & screenshot ingestion during overlaps
   const targetClasses = useMemo(() => {
@@ -2049,7 +2051,7 @@ const StudentDesktopView = ({ user }) => {
     };
   }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
 
-  if (!activeClass && (!userClasses || userClasses.length === 0)) {
+  if (!previewClassId && !activeClass && (!userClasses || userClasses.length === 0)) {
     return (
       <UnenrolledStudentView
         user={user}
@@ -2061,6 +2063,38 @@ const StudentDesktopView = ({ user }) => {
 
   return (
     <div className="student-view-container">
+      {/* Teacher Student Preview Mode Header Banner */}
+      {(isPreviewMode || previewClassId) && (
+        <div className="student-preview-header-banner" role="banner" aria-label="Student Preview Banner">
+          <div className="student-preview-banner-left">
+            <span className="preview-mode-badge">🧪 STUDENT PREVIEW</span>
+            <span className="preview-class-tag">Class: <strong>{activeClass || previewClassId}</strong></span>
+            <span className="preview-status-pill">
+              {isTeacherBroadcastActive ? '● Broadcast Active' : '○ Broadcast Idle'}
+            </span>
+          </div>
+          <div className="student-preview-banner-actions">
+            {onViewModeToggle && (
+              <button
+                type="button"
+                className="preview-action-btn preview-toggle-view-btn"
+                onClick={onViewModeToggle}
+                title="Switch to Mobile View"
+              >
+                📱 Mobile View
+              </button>
+            )}
+            <button
+              type="button"
+              className="preview-action-btn preview-close-window-btn"
+              onClick={() => window.close()}
+              title="Close Preview Window"
+            >
+              ✕ Close Window
+            </button>
+          </div>
+        </div>
+      )}
       <Banner message={notification} onClose={handleCloseNotification} />
 
       {/* Notification Permission Prompt Banner */}
@@ -3301,14 +3335,24 @@ const StudentDesktopView = ({ user }) => {
   );
 };
 
-const StudentView = ({ user, onViewModeChange }) => {
+const StudentView = ({
+  user,
+  onViewModeChange,
+  previewClassId,
+  isPreviewMode,
+  forceViewMode,
+  onViewModeToggle,
+}) => {
   const [preferredViewMode, setPreferredViewMode] = useState(() => {
+    if (forceViewMode) return forceViewMode;
     try {
       const stored = localStorage.getItem('student_view_mode');
       if (stored === 'mobile' || stored === 'desktop') return stored;
     } catch {}
     return isMobileDevice() ? 'mobile' : 'desktop';
   });
+
+  const effectiveViewMode = forceViewMode || preferredViewMode;
 
   const updateViewMode = useCallback((mode) => {
     setPreferredViewMode(mode);
@@ -3320,7 +3364,7 @@ const StudentView = ({ user, onViewModeChange }) => {
 
   // Synchronize body class for instant CSS layout adaptation
   useEffect(() => {
-    if (preferredViewMode === 'mobile') {
+    if (effectiveViewMode === 'mobile') {
       document.body.classList.add('in-student-mobile-view');
     } else {
       document.body.classList.remove('in-student-mobile-view');
@@ -3328,18 +3372,27 @@ const StudentView = ({ user, onViewModeChange }) => {
     return () => {
       document.body.classList.remove('in-student-mobile-view');
     };
-  }, [preferredViewMode]);
+  }, [effectiveViewMode]);
 
   // Notify parent on initial mount
   useEffect(() => {
-    onViewModeChange?.(preferredViewMode);
-  }, [preferredViewMode, onViewModeChange]);
+    onViewModeChange?.(effectiveViewMode);
+  }, [effectiveViewMode, onViewModeChange]);
 
-  if (preferredViewMode === 'mobile') {
+  if (effectiveViewMode === 'mobile') {
     return (
       <StudentMobileView
         user={user}
-        onSwitchToDesktop={() => updateViewMode('desktop')}
+        onSwitchToDesktop={() => {
+          if (onViewModeToggle) {
+            onViewModeToggle();
+          } else {
+            updateViewMode('desktop');
+          }
+        }}
+        previewClassId={previewClassId}
+        isPreviewMode={isPreviewMode}
+        onViewModeToggle={onViewModeToggle}
       />
     );
   }
@@ -3347,6 +3400,9 @@ const StudentView = ({ user, onViewModeChange }) => {
   return (
     <StudentDesktopView
       user={user}
+      previewClassId={previewClassId}
+      isPreviewMode={isPreviewMode}
+      onViewModeToggle={onViewModeToggle}
     />
   );
 };

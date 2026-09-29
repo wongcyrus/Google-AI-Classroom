@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import StudentMobileView from './StudentMobileView';
 
 // Mock dependencies
@@ -720,5 +720,35 @@ describe('StudentMobileView Component', () => {
     fireEvent.click(logoutBtn);
     expect(mockSignOut).toHaveBeenCalled();
   });
+
+  it('renders preview banner in mobile view when previewClassId is provided and handles desktop switch and close window', () => {
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
+    const mockToggle = vi.fn();
+
+    render(
+      <StudentMobileView
+        user={mockUser}
+        previewClassId="MOBILE_PREVIEW_101"
+        isPreviewMode={true}
+        onViewModeToggle={mockToggle}
+      />
+    );
+
+    const banner = screen.getByRole('banner', { name: /Student Preview Banner/i });
+    expect(banner).toBeInTheDocument();
+    expect(within(banner).getByText(/MOBILE_PREVIEW_101/i)).toBeInTheDocument();
+    expect(within(banner).getByText(/STUDENT PREVIEW \(MOBILE\)/i)).toBeInTheDocument();
+
+    const switchDesktopBtn = within(banner).getByRole('button', { name: /Desktop View/i });
+    fireEvent.click(switchDesktopBtn);
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+
+    const closeBtn = within(banner).getByRole('button', { name: /Close Window/i });
+    fireEvent.click(closeBtn);
+    expect(closeSpy).toHaveBeenCalled();
+
+    closeSpy.mockRestore();
+  });
 });
+
 
