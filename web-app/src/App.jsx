@@ -5,6 +5,7 @@ import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/fire
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
+import PasskeyPairModal from './components/passkey/PasskeyPairModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
 import { isGoogleChrome, getBrowserName, isMobileDevice } from './utils/browserDetection';
 import { deriveRoleFromEmail } from './utils/domainConfig';
@@ -264,8 +265,31 @@ const MainHeader = ({ onLogout, user, role }) => {
   const [unreadMailCount, setUnreadMailCount] = useState(0);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showChangePwdModal, setShowChangePwdModal] = useState(false);
+  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+  const [pairedDevice, setPairedDevice] = useState(null);
   const menuRef = useRef(null);
   const isClassPage = location.pathname.startsWith('/class/');
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, 'studentPasskeys', user.uid), (snap) => {
+      try {
+        if (snap && typeof snap.exists === 'function' && snap.exists()) {
+          const data = typeof snap.data === 'function' ? snap.data() : snap;
+          if (data?.credentialID || data?.deviceModel) {
+            setPairedDevice(data.deviceModel || 'Mobile Device');
+          } else {
+            setPairedDevice(null);
+          }
+        } else {
+          setPairedDevice(null);
+        }
+      } catch {
+        setPairedDevice(null);
+      }
+    }, (err) => console.error('[MainHeader] Passkey listener error:', err));
+    return () => unsub();
+  }, [user?.uid]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -407,6 +431,18 @@ const MainHeader = ({ onLogout, user, role }) => {
                 className="profile-menu-item"
                 onClick={() => {
                   setShowProfileMenu(false);
+                  setShowPasskeyModal(true);
+                }}
+              >
+                <span className="menu-item-icon">📱</span>
+                <span>{pairedDevice ? `Passkey Phone (${pairedDevice})` : 'Pair Phone (Passkey)'}</span>
+              </button>
+              <div className="profile-menu-divider" />
+              <button 
+                type="button"
+                className="profile-menu-item"
+                onClick={() => {
+                  setShowProfileMenu(false);
                   setShowChangePwdModal(true);
                 }}
               >
@@ -434,6 +470,14 @@ const MainHeader = ({ onLogout, user, role }) => {
         show={showChangePwdModal} 
         onClose={() => setShowChangePwdModal(false)} 
       />
+
+      {showPasskeyModal && (
+        <PasskeyPairModal 
+          show={showPasskeyModal} 
+          onClose={() => setShowPasskeyModal(false)} 
+          user={user} 
+        />
+      )}
 
       {/* Dynamic Context Breadcrumb for subpages */}
       {role === 'teacher' && location.pathname !== '/teacher' && (

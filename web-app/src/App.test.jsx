@@ -77,6 +77,10 @@ vi.mock('./components/ChangePasswordModal', () => ({
   default: ({ show, onClose }) => (show ? <div data-testid="change-pwd-modal"><button onClick={onClose}>Close Pwd Modal</button></div> : null),
 }));
 
+vi.mock('./components/passkey/PasskeyPairModal', () => ({
+  default: ({ show, onClose }) => (show ? <div data-testid="passkey-pair-modal"><button onClick={onClose}>Close Passkey Modal</button></div> : null),
+}));
+
 vi.mock('./components/public/PublicLiveView', () => ({
   default: () => <div data-testid="public-live-view">Public Live View</div>,
 }));
@@ -135,7 +139,11 @@ describe('App & MainHeader Components', () => {
     });
 
     onSnapshot.mockImplementation((q, cb) => {
-      cb({ size: 3 }); // 3 unread emails
+      cb({
+        size: 3,
+        exists: () => true,
+        data: () => ({ deviceModel: 'Android Device' }),
+      });
       return vi.fn();
     });
 
@@ -161,7 +169,16 @@ describe('App & MainHeader Components', () => {
 
     expect(screen.getByText('👨‍🏫 Teacher')).toBeInTheDocument();
 
-    // Open Change Password Modal
+    // Open Passkey Phone Modal from Account Settings Menu
+    const passkeyBtn = screen.getByText(/Passkey Phone/i);
+    expect(passkeyBtn).toBeInTheDocument();
+    fireEvent.click(passkeyBtn);
+    expect(screen.getByTestId('passkey-pair-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Close Passkey Modal'));
+    expect(screen.queryByTestId('passkey-pair-modal')).not.toBeInTheDocument();
+
+    // Reopen menu for Change Password Modal
+    fireEvent.click(userTrigger);
     const changePwdBtn = screen.getByText('Change Password');
     fireEvent.click(changePwdBtn);
     expect(screen.getByTestId('change-pwd-modal')).toBeInTheDocument();
@@ -318,8 +335,12 @@ describe('App & MainHeader Components', () => {
       data: () => ({ name: 'Cloud Native Computing' }),
     });
 
-    onSnapshot.mockImplementationOnce((q, onNext, onError) => {
-      onNext({ size: 4 });
+    onSnapshot.mockImplementation((q, onNext, onError) => {
+      onNext({
+        size: 4,
+        exists: () => false,
+        data: () => ({}),
+      });
       if (onError) onError(new Error('Sample listener notice'));
       return vi.fn();
     });

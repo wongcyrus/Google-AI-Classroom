@@ -207,18 +207,13 @@ describe('TeacherView Component', () => {
     expect(screen.getAllByText(/Create New Class/i).length).toBeGreaterThan(0);
   });
 
-  it('renders Pair Phone for Lab PC button and opens PasskeyPairModal', async () => {
+  it('does not display redundant pair phone button in dashboard hero to save space', async () => {
     render(
       <BrowserRouter>
         <TeacherView user={mockUser} />
       </BrowserRouter>
     );
 
-    const pairBtn = await screen.findByRole('button', { name: /Pair Phone for Lab PC/i });
-    expect(pairBtn).toBeInTheDocument();
-
-    fireEvent.click(pairBtn);
-
-    expect(await screen.findByText(/Pair Your Smartphone/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pair Phone/i })).not.toBeInTheDocument();
   });
 });
