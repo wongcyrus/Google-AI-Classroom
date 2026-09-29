@@ -21,6 +21,22 @@ export const TEACHER_USERNAME_REGEX = import.meta.env.VITE_TEACHER_USERNAME_REGE
 
 export const DEFAULT_TO_STUDENT = import.meta.env.VITE_DEFAULT_TO_STUDENT !== 'false';
 
+// Whitelist of accounts permitted to share physical smartphone passkeys across roles or self-unlink for testing
+export const PASSKEY_DEVICE_SHARING_WHITELIST = (import.meta.env.VITE_PASSKEY_DEVICE_SHARING_WHITELIST || 'cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk')
+  .split(',')
+  .map(d => d.trim().toLowerCase())
+  .filter(Boolean);
+
+/**
+ * Checks if an email is whitelisted for passkey sharing or self-service unlinking.
+ * @param {string} email
+ * @returns {boolean}
+ */
+export function isPasskeySharingWhitelisted(email) {
+  if (!email || typeof email !== 'string') return false;
+  return PASSKEY_DEVICE_SHARING_WHITELIST.includes(email.trim().toLowerCase());
+}
+
 /**
  * Extracts username from email address.
  * @param {string} email

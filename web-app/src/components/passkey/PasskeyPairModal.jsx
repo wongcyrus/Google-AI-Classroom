@@ -5,12 +5,14 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
-import { isTeacherEmail } from '../../utils/domainConfig';
+import { isTeacherEmail, isPasskeySharingWhitelisted } from '../../utils/domainConfig';
 import { functions, db } from '../../firebase-config';
 import './passkey.css';
 
 const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const isTeacher = Boolean(user?.email && isTeacherEmail(user.email));
+  const isWhitelisted = Boolean(user?.email && isPasskeySharingWhitelisted(user.email));
+  const canUnlink = isTeacher || isWhitelisted;
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [pairingToken, setPairingToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -188,7 +190,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   };
 
   const handleUnlinkDevice = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || !canUnlink) return;
     if (!window.confirm('Are you sure you want to unlink this phone? You can immediately pair another phone afterwards.')) return;
     setUnlinking(true);
     setError('');
@@ -256,15 +258,31 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
               >
                 Done
               </button>
-              <button
-                type="button"
-                className="passkey-btn passkey-btn-secondary"
-                disabled={unlinking}
-                onClick={handleUnlinkDevice}
-                style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', fontSize: '0.85rem', padding: '0.5rem' }}
-              >
-                {unlinking ? 'Unlinking...' : '🔄 Unlink / Switch Phone'}
-              </button>
+              {canUnlink ? (
+                <button
+                  type="button"
+                  className="passkey-btn passkey-btn-secondary"
+                  disabled={unlinking}
+                  onClick={handleUnlinkDevice}
+                  style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', fontSize: '0.85rem', padding: '0.5rem' }}
+                >
+                  {unlinking ? 'Unlinking...' : '🔄 Unlink / Switch Phone'}
+                </button>
+              ) : (
+                <div style={{
+                  marginTop: '0.5rem',
+                  padding: '0.65rem 0.85rem',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '0.5rem',
+                  color: '#64748b',
+                  fontSize: '0.825rem',
+                  lineHeight: '1.4',
+                  textAlign: 'left'
+                }}>
+                  ℹ️ <strong>Need to replace or switch your phone?</strong> Please ask your course instructor to reset your passkey registration.
+                </div>
+              )}
             </div>
           </div>
         ) : isMobile ? (

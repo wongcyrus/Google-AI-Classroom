@@ -8,7 +8,9 @@ import {
   isValidInstitutionalEmail,
   getAllowedDomainsDescription,
   STUDENT_DOMAINS,
-  TEACHER_DOMAINS
+  TEACHER_DOMAINS,
+  isPasskeySharingWhitelisted,
+  PASSKEY_DEVICE_SHARING_WHITELIST,
 } from './domainConfig';
 
 describe('domainConfig Utility', () => {
@@ -133,6 +135,16 @@ describe('domainConfig Utility', () => {
     expect(devDomainConfig.getAllowedDomainsDescription()).toBe('@gmail.com or @vtc.edu.hk');
 
     vi.unstubAllEnvs();
+  });
+
+  it('correctly identifies passkey sharing whitelisted emails', () => {
+    expect(isPasskeySharingWhitelisted('cywong@vtc.edu.hk')).toBe(true);
+    expect(isPasskeySharingWhitelisted('t-cywong@stu.vtc.edu.hk')).toBe(true);
+    expect(isPasskeySharingWhitelisted('CYWONG@VTC.EDU.HK')).toBe(true);
+    expect(isPasskeySharingWhitelisted('student123@stu.vtc.edu.hk')).toBe(false);
+    expect(isPasskeySharingWhitelisted('')).toBe(false);
+    expect(isPasskeySharingWhitelisted(null)).toBe(false);
+    expect(PASSKEY_DEVICE_SHARING_WHITELIST).toContain('cywong@vtc.edu.hk');
   });
 });
 
