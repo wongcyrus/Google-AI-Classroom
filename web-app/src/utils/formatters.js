@@ -22,3 +22,25 @@ export const formatAiCost = (amount) => {
     }
     return `$${num.toFixed(2)}`;
 };
+
+export const calculateStorageCost = (bytes, ratePerGibMonth = 0.023) => {
+    if (!bytes || bytes <= 0 || isNaN(bytes)) return 0;
+    const gib = Number(bytes) / (1024 * 1024 * 1024);
+    return gib * Number(ratePerGibMonth || 0.023);
+};
+
+export const formatStorageCost = (bytes, ratePerGibMonth = 0.023, customDecimals = null) => {
+    const cost = calculateStorageCost(bytes, ratePerGibMonth);
+    if (cost === 0) return '$0.00';
+    if (customDecimals !== null) {
+        return `$${cost.toFixed(customDecimals)}`;
+    }
+    if (cost < 0.01) {
+        return `$${cost.toFixed(4)}`;
+    }
+    if (cost < 1) {
+        const str3 = cost.toFixed(3);
+        return str3.endsWith('0') ? `$${cost.toFixed(2)}` : `$${str3}`;
+    }
+    return `$${cost.toFixed(2)}`;
+};
