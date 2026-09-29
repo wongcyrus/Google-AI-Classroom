@@ -118,6 +118,18 @@ const ClassView = ({ user }) => {
     }).catch(err => console.error('Error fetching teacher classes:', err));
   }, [user]);
 
+  // Sync body class for monitor tab to prevent outer viewport double scrolling
+  useEffect(() => {
+    if (mainTab === 'monitor') {
+      document.body.classList.add('is-monitor-active');
+      return () => {
+        document.body.classList.remove('is-monitor-active');
+      };
+    } else {
+      document.body.classList.remove('is-monitor-active');
+    }
+  }, [mainTab]);
+
   // Tab change handlers
   const setTab = (newMainTab, defaultSub = '') => {
     const params = { tab: newMainTab };
@@ -211,7 +223,7 @@ const ClassView = ({ user }) => {
   const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab) && !isRecordingsTab;
 
   return (
-    <div className="class-view">
+    <div className={`class-view ${mainTab === 'monitor' ? 'is-monitor-tab' : ''}`}>
       {/* Class Hub Context Banner (Compact) */}
       <div className="class-hub-header">
         <div className="class-hub-title-area">
@@ -448,7 +460,10 @@ const ClassView = ({ user }) => {
 
       <div className="tab-content">
         {/* Keep MonitorView mounted so live AI vision loops & WebRTC connections stay active when navigating between tabs */}
-        <div style={{ display: mainTab === 'monitor' ? 'block' : 'none' }}>
+        <div 
+          className="monitor-tab-wrapper"
+          style={{ display: mainTab === 'monitor' ? 'flex' : 'none' }}
+        >
           <MonitorView 
             user={user} 
             classId={classId} 

@@ -1,9 +1,13 @@
 .monitor-view {
   display: flex;
   flex-direction: row;
-  height: calc(100vh - 90px); /* Adjust based on global header height */
+  flex: 1;
+  min-height: 0;
+  height: 100%;
   background-color: #f9fafb;
   position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .show-controls-btn {
@@ -32,10 +36,13 @@
 
 .monitor-main-content {
   flex-grow: 1;
+  height: 100%;
   padding: 0.5rem 0.85rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   position: relative;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 /* Compact Grid View Channel Selector */

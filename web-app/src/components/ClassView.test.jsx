@@ -465,4 +465,36 @@ describe('ClassView Component Full Suite', () => {
 
     openSpy.mockRestore();
   });
+
+  it('sets is-monitor-tab and body is-monitor-active class when on monitor tab and cleans up on unmount or tab switch', () => {
+    const { container, unmount } = render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const classViewDiv = container.querySelector('.class-view');
+    expect(classViewDiv).toHaveClass('is-monitor-tab');
+    expect(document.body.classList.contains('is-monitor-active')).toBe(true);
+
+    unmount();
+    expect(document.body.classList.contains('is-monitor-active')).toBe(false);
+  });
+
+  it('does not set is-monitor-tab or is-monitor-active when on non-monitor tab', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=tasks']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const classViewDiv = container.querySelector('.class-view');
+    expect(classViewDiv).not.toHaveClass('is-monitor-tab');
+    expect(document.body.classList.contains('is-monitor-active')).toBe(false);
+  });
 });
+
