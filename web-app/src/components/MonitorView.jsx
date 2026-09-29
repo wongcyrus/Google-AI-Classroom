@@ -1730,44 +1730,68 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           </div>
         )}
 
-        <div className="timeline-controls" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {!showControls && <button onClick={() => setShowControls(true)} className="show-controls-btn">Show Controls</button>}
-              <select value={selectedLesson} onChange={handleLessonChange}>
-                {lessons.map(lesson => (
-                  <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
-                    {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => setReviewTime(null)} disabled={!reviewTime}>Go Live</button>
-              {timezone && timezone !== 'UTC' && <span style={{ fontStyle: 'italic', color: '#555' }}>Timezone: {timezone.replace(/_/g, ' ')}</span>}
-              <span>
-                {reviewTime ? `Review: ${new Date(reviewTime).toLocaleString()}` : `Live: ${now.toLocaleString()}`}
-              </span>
+        <div className="timeline-controls monitor-toolbar-card">
+          <div className="monitor-toolbar-main-row">
+            {/* Left Segment: Controls Drawer Toggle, Lesson Picker, Compact Live / Review Status */}
+            <div className="monitor-toolbar-group monitor-toolbar-left">
+              {!showControls && (
+                <button
+                  type="button"
+                  onClick={() => setShowControls(true)}
+                  className="show-controls-btn"
+                  title="Open controls drawer"
+                  aria-label="Show Controls"
+                >
+                  <span>⚙️</span>
+                  <span>Show Controls</span>
+                </button>
+              )}
+              {lessons.length > 0 && (
+                <select
+                  value={selectedLesson}
+                  onChange={handleLessonChange}
+                  className="monitor-select monitor-lesson-select"
+                  title="Select Lesson Schedule"
+                >
+                  {lessons.map(lesson => (
+                    <option key={lesson.start.toISOString()} value={lesson.start.toISOString()}>
+                      {`${lesson.start.toLocaleDateString()} (${lesson.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${lesson.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                    </option>
+                  ))}
+                </select>
+              )}
 
-              {/* Unified Teacher Broadcast Studio (Screen & Voice) Action Button */}
+              {/* Compact Live Status Box & Return-to-Live Action */}
+              <div
+                className="monitor-live-status-box"
+                title={`Timezone: ${timezone ? timezone.replace(/_/g, ' ') : 'Local'} • ${reviewTime ? `Review Time: ${new Date(reviewTime).toLocaleString()}` : `Current Time: ${now.toLocaleString()}`}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setReviewTime(null)}
+                  disabled={!reviewTime}
+                  className={`monitor-go-live-btn ${reviewTime ? 'is-reviewing' : 'is-live'}`}
+                  title={reviewTime ? 'Click to return to real-time live mode' : 'Currently in real-time live mode'}
+                >
+                  <span className={`live-dot ${reviewTime ? 'review' : 'pulse'}`}>●</span>
+                  <span>{reviewTime ? 'Return Live' : 'Live'}</span>
+                </button>
+                <span className="monitor-live-clock">
+                  {reviewTime
+                    ? new Date(reviewTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
+            </div>
+
+            {/* Center Segment: Broadcast Studio, Student Preview, & Recording Badges */}
+            <div className="monitor-toolbar-group monitor-toolbar-center">
               {!isScreenBroadcasting ? (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <div className="monitor-btn-cluster">
                   <button
                     type="button"
                     onClick={() => setShowBroadcastModal(true)}
-                    style={{
-                      background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '7px 15px',
-                      borderRadius: '8px',
-                      fontWeight: 700,
-                      fontSize: '0.86rem',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '7px',
-                      boxShadow: '0 2px 4px rgba(79, 70, 229, 0.35)',
-                      transition: 'all 0.15s ease',
-                    }}
+                    className="monitor-btn monitor-btn-primary"
                     title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
                   >
                     <span>🎙️🖥️</span>
@@ -1782,21 +1806,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                         'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
                       );
                     }}
-                    style={{
-                      background: '#ede9fe',
-                      color: '#4338ca',
-                      border: '1px solid #c7d2fe',
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      fontWeight: 600,
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      boxShadow: '0 1px 2px rgba(67, 56, 202, 0.08)',
-                      transition: 'all 0.15s ease',
-                    }}
+                    className="monitor-btn monitor-btn-preview"
                     title="Preview student interface and settings in a separate window"
                   >
                     <span>🧪</span>
@@ -1804,47 +1814,23 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <div className="monitor-btn-cluster">
                   <span
                     onClick={() => setShowBroadcastModal(true)}
-                    style={{
-                      background: '#fee2e2',
-                      color: '#b91c1c',
-                      border: '1px solid #fca5a5',
-                      padding: '5px 12px',
-                      borderRadius: '6px',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                    }}
+                    className="monitor-broadcasting-pill"
                     title="Live Broadcast Active (Click to open studio controls)"
                   >
                     <span className="live-pulse-dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626' }} />
-                    <span>Live ({broadcastViewers.length} watching)</span>
-                    {isSubtitleBroadcastEnabled && <span style={{ color: '#047857', fontWeight: 600 }}>• 🎙️ Subtitles</span>}
+                    <span>Live ({broadcastViewers.length})</span>
+                    {isSubtitleBroadcastEnabled && <span className="bcast-sub-tag">• 🎙️ CC</span>}
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowBroadcastModal(true)}
-                    style={{
-                      background: '#f1f5f9',
-                      color: '#334155',
-                      border: '1px solid #cbd5e1',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      fontWeight: 600,
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
+                    className="monitor-btn monitor-btn-secondary"
                     title="View live broadcast screen preview and viewers"
                   >
-                    👁️ Studio Dashboard
+                    👁️ Studio
                   </button>
                   <button
                     type="button"
@@ -1855,60 +1841,27 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                         'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
                       );
                     }}
-                    style={{
-                      background: '#ede9fe',
-                      color: '#4338ca',
-                      border: '1px solid #c7d2fe',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      fontWeight: 600,
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
+                    className="monitor-btn monitor-btn-preview"
                     title="Preview live broadcast as a student in a separate window"
                   >
-                    🧪 Preview as Student ↗
+                    🧪 Preview ↗
                   </button>
                   <button
                     type="button"
                     onClick={handleStopSynchronizedBroadcast}
-                    style={{
-                      background: '#dc2626',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '5px 12px',
-                      borderRadius: '6px',
-                      fontWeight: 700,
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                    }}
+                    className="monitor-btn monitor-btn-danger"
                     title="Stop Screen and Voice Broadcast"
                   >
-                    ⏹ Stop Broadcast
+                    ⏹ Stop
                   </button>
                 </div>
               )}
 
-              {/* Teacher Sovereign Lecture Recording Status & YouTube CC Button */}
+              {/* Teacher Sovereign Lecture Recording Status Badges */}
               {lectureRecorder.isRecording && (
                 <span
                   onClick={() => setShowBroadcastModal(true)}
-                  style={{
-                    background: '#fee2e2',
-                    color: '#991b1b',
-                    border: '1px solid #f87171',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontWeight: 700,
-                    fontSize: '0.82rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    cursor: 'pointer',
-                  }}
+                  className="monitor-record-pill recording"
                   title="Lecture is actively recording. Click to manage."
                 >
                   🔴 REC ({lectureRecorder.durationFormatted})
@@ -1917,19 +1870,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
               {lectureRecorder.isPaused && (
                 <span
                   onClick={() => setShowBroadcastModal(true)}
-                  style={{
-                    background: '#fef3c7',
-                    color: '#92400e',
-                    border: '1px solid #fcd34d',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontWeight: 700,
-                    fontSize: '0.82rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    cursor: 'pointer',
-                  }}
+                  className="monitor-record-pill paused"
                   title="Lecture recording is paused. Click to resume."
                 >
                   ⏸️ PAUSED ({lectureRecorder.durationFormatted})
@@ -1937,27 +1878,16 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
               )}
               {lectureRecorder.isUploading && (
                 <span
-                  style={{
-                    background: '#dbeafe',
-                    color: '#1e40af',
-                    border: '1px solid #93c5fd',
-                    padding: '5px 10px',
-                    borderRadius: '6px',
-                    fontWeight: 700,
-                    fontSize: '0.82rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}
+                  className="monitor-record-pill uploading"
                   title="Lecture recording is uploading to Cloud Storage. Please keep browser open."
                 >
-                  📦 Uploading {lectureRecorder.uploadProgress}% (Saving...)
+                  📦 Saving {lectureRecorder.uploadProgress}%
                 </span>
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {/* Compact Grid View Channel Selector */}
+            {/* Right Segment: Channel Selector, Student Filter, Nudge, Export */}
+            <div className="monitor-toolbar-group monitor-toolbar-right">
               <select
                 aria-label="Grid view channel"
                 className="channel-select-compact"
@@ -1970,7 +1900,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 <option value="webcam">📷 Webcam</option>
               </select>
 
-              {/* Ultra-Compact Problem Students Filter Dropdown */}
               <select
                 aria-label="Filter students by status"
                 className={`channel-select-compact problem-filter-select ${complianceSummary.problems > 0 && problemFilter !== 'all' ? 'has-active-filter' : ''}`}
@@ -1986,7 +1915,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 <option value="ai_alert">🚨 AI Alerts ({complianceSummary.aiAlert})</option>
               </select>
 
-              {/* Inline Zero-Space Targeted Nudge Button */}
               {problemFilter !== 'all' && filteredStudents.length > 0 && (
                 <button
                   type="button"
@@ -1998,12 +1926,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 </button>
               )}
 
-              {/* Quick Export Filter Results to Excel */}
               {filteredStudents.length > 0 && (
                 <button
                   type="button"
-                  className="compact-nudge-btn"
-                  style={{ background: 'var(--color-bg-subtle, #f8fafc)', color: 'var(--color-text-main, #0f172a)', border: '1px solid var(--color-border, #cbd5e1)' }}
+                  className="monitor-btn monitor-btn-secondary"
                   onClick={handleExportFilteredCsv}
                   title={`Export current ${filteredStudents.length} filtered results to Excel`}
                   aria-label="Export filter results to Excel"
@@ -2013,14 +1939,17 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
               )}
             </div>
           </div>
+
           {startTime && endTime && (
-            <TimelineSlider
-              min={new Date(startTime).getTime()}
-              max={new Date(endTime).getTime()}
-              value={displayTime}
-              onChange={handleTimelineChange}
-              bufferedRanges={[]}
-            />
+            <div className="monitor-slider-row">
+              <TimelineSlider
+                min={new Date(startTime).getTime()}
+                max={new Date(endTime).getTime()}
+                value={displayTime}
+                onChange={handleTimelineChange}
+                bufferedRanges={[]}
+              />
+            </div>
           )}
         </div>
         {isExamActive && (
