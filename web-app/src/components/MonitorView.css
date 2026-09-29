@@ -133,6 +133,13 @@
   scrollbar-width: thin;
 }
 
+/* When controls panel drawer is open, allow wrapping into 2 rows to eliminate horizontal scrolling */
+.monitor-toolbar-main-row.has-sidebar {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  row-gap: 6px;
+}
+
 .monitor-toolbar-group {
   display: flex;
   align-items: center;
