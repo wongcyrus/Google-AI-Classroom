@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLoc
 import ChangePasswordModal from './components/ChangePasswordModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
 import { isGoogleChrome, getBrowserName, isMobileDevice } from './utils/browserDetection';
+import { deriveRoleFromEmail } from './utils/domainConfig';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -71,7 +72,7 @@ const App = () => {
         if (!idTokenResult.claims.role) {
           idTokenResult = await currentUser.getIdTokenResult(true);
         }
-        const resolvedRole = idTokenResult.claims.role || 'student';
+        const resolvedRole = idTokenResult.claims.role || deriveRoleFromEmail(currentUser.email) || 'student';
 
         // Enforce Google Chrome strictly for desktop students; allow standard mobile browsers for mobile student companion
         if (resolvedRole === 'student' && !isGoogleChrome() && !isMobileDevice()) {

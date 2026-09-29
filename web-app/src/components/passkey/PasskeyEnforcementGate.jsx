@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { functions, db } from '../../firebase-config';
 import { isHandheldPhone } from '../../utils/browserDetection';
+import { isTeacherEmail, isStudentEmail } from '../../utils/domainConfig';
 import './passkey.css';
 
 /**
@@ -40,8 +41,9 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
 
   const isMobile = isHandheldPhone();
 
-  // If role is teacher, or no user, bypass gate entirely
-  const isStudent = role === 'student' || (!role && user?.email?.includes('@stu.'));
+  // If role is teacher, or teacher email, bypass gate entirely
+  const isTeacher = role === 'teacher' || isTeacherEmail(user?.email);
+  const isStudent = !isTeacher && (role === 'student' || isStudentEmail(user?.email));
 
   // 1. Listen for system_config/loginPolicy password whitelist
   useEffect(() => {
