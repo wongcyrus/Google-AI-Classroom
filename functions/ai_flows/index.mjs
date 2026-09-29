@@ -356,8 +356,9 @@ export const resetStudentPasskey = onCall(callOptions, async (request) => {
     }
   }
 
-  if (!isTeacher) {
-    throw new HttpsError('permission-denied', 'Only teachers can reset student passkeys.');
+  const isSelf = Boolean(request.auth?.uid && (request.auth.uid === studentUid || request.auth.token?.email?.toLowerCase() === studentEmail?.toLowerCase()));
+  if (!isTeacher && !isSelf) {
+    throw new HttpsError('permission-denied', 'Only teachers or the account owner can reset passkeys.');
   }
 
   return await handleResetStudentPasskey({

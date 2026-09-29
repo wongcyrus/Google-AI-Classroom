@@ -302,6 +302,48 @@ describe('WebAuthn Passkey Flows Backend', () => {
       ).rejects.toThrow('Hardware Lock: This physical phone is already bound to student account');
     });
 
+    it('ALLOWS multi-role device sharing when incoming user is a teacher or whitelisted', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'teacher_cywong',
+          studentEmail: 'cywong@vtc.edu.hk',
+          role: 'teacher',
+          currentChallenge: 'mock-reg-challenge',
+          expiresAtMillis: Date.now() + 600000,
+          used: false,
+        }),
+      });
+
+      // 1. Existing deviceFingerprint query matches student account t-cywong@stu.vtc.edu.hk
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{ id: 'student_cywong', data: () => ({ studentEmail: 't-cywong@stu.vtc.edu.hk', role: 'student' }) }],
+      });
+
+      // 2. credentialID query: empty (unique new credential)
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+      const res = await handleVerifyPasskeyRegistration({
+        pairingToken: 'token-teacher-multi',
+        attestationResponse: { id: 'hardware-cred-teacher-new', response: {} },
+        deviceModel: 'iPhone 16 Pro',
+        deviceFingerprint: 'mdev_phone_shared_cywong',
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.studentUid).toBe('teacher_cywong');
+      expect(res.role).toBe('teacher');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 'teacher_cywong',
+          studentEmail: 'cywong@vtc.edu.hk',
+          role: 'teacher',
+          deviceFingerprint: 'mdev_phone_shared_cywong',
+        })
+      );
+    });
+
     it('allows registration when deviceFingerprint belongs to the same student or is new', async () => {
       mockDocGet.mockResolvedValueOnce({
         exists: true,

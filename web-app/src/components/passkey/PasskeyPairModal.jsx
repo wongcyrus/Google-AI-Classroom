@@ -18,6 +18,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [error, setError] = useState('');
   const [isPaired, setIsPaired] = useState(false);
   const [pairedDevice, setPairedDevice] = useState('');
+  const [unlinking, setUnlinking] = useState(false);
   const [qrExpiresAtMillis, setQrExpiresAtMillis] = useState(0);
   const [qrTimeLeftSec, setQrTimeLeftSec] = useState(0);
   const isMobile = isHandheldPhone();
@@ -186,6 +187,31 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
     }
   };
 
+  const handleUnlinkDevice = async () => {
+    if (!user?.uid) return;
+    if (!window.confirm('Are you sure you want to unlink this phone? You can immediately pair another phone afterwards.')) return;
+    setUnlinking(true);
+    setError('');
+    try {
+      const resetFn = httpsCallable(functions, 'resetStudentPasskey');
+      await resetFn({
+        studentUid: user.uid,
+        studentEmail: user.email,
+        reason: 'User self-service phone unlinking/replacement',
+      });
+      setIsPaired(false);
+      setPairedDevice('');
+      if (!isMobile) {
+        initPairing();
+      }
+    } catch (err) {
+      console.error('[PasskeyPairModal] Error unlinking phone:', err);
+      setError(err.message || 'Failed to unlink device.');
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
   if (!show) return null;
 
   return (
@@ -216,14 +242,30 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
             <p style={{ color: '#475569', fontSize: '0.95rem', margin: '0 0 1rem 0' }}>
               Your <strong>{pairedDevice}</strong> is securely linked. You can now use your phone camera to scan and log into desktop lab PCs{isTeacher ? ' with zero passwords.' : ' and complete attendance checks.'}
             </p>
-            <button
-              type="button"
-              className="passkey-btn passkey-btn-primary"
-              onClick={onClose}
-              style={{ background: '#10b981', color: '#ffffff' }}
-            >
-              Done
-            </button>
+            {error && (
+              <div style={{ color: '#ef4444', background: '#fee2e2', padding: '0.65rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+                ⚠️ {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="passkey-btn passkey-btn-primary"
+                onClick={onClose}
+                style={{ background: '#10b981', color: '#ffffff' }}
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                className="passkey-btn passkey-btn-secondary"
+                disabled={unlinking}
+                onClick={handleUnlinkDevice}
+                style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', fontSize: '0.85rem', padding: '0.5rem' }}
+              >
+                {unlinking ? 'Unlinking...' : '🔄 Unlink / Switch Phone'}
+              </button>
+            </div>
           </div>
         ) : isMobile ? (
           /* Mobile Direct Registration Screen (Zero QR Codes) */

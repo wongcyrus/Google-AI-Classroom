@@ -9,7 +9,7 @@ import {
 } from '@simplewebauthn/server';
 import { HttpsError } from 'firebase-functions/v2/https';
 import crypto from 'crypto';
-import { deriveUserRole } from './config.js';
+import { deriveUserRole, isPasskeySharingWhitelisted } from './config.js';
 
 const db = getFirestore();
 
@@ -192,8 +192,12 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
   // =========================================================================
   // CRITICAL SECURITY ENFORCEMENT: 1 Phone = 1 Student Hardware Lock
   // 1. Check persistent deviceFingerprint: A phone cannot be shared across multiple students!
+  //    EXCEPTION: Teachers and whitelisted testing accounts can share devices across roles.
   // 2. Check WebAuthn credentialID: Credential cannot be shared across multiple students!
   // =========================================================================
+  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
+  const isIncomingWhitelisted = userRole === 'teacher' || isPasskeySharingWhitelisted(tokenData.studentEmail);
+
   if (deviceFingerprint) {
     const existingDeviceSnap = await db.collection('studentPasskeys')
       .where('deviceFingerprint', '==', deviceFingerprint)
@@ -202,12 +206,21 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
     if (!existingDeviceSnap.empty) {
       for (const doc of existingDeviceSnap.docs) {
         if (doc.id !== tokenData.studentUid) {
-          const boundEmail = doc.data().studentEmail || doc.id;
-          console.warn(`[verifyPasskeyRegistration] Hardware collision! Phone ${deviceFingerprint} already registered to ${boundEmail}`);
-          throw new HttpsError(
-            'already-exists',
-            `Hardware Lock: This physical phone is already bound to student account (${boundEmail}). Each mobile phone can only be used by one student.`
-          );
+          const existingData = doc.data() || {};
+          const boundEmail = existingData.studentEmail || doc.id;
+          const existingRole = existingData.role || deriveUserRole(boundEmail) || 'student';
+          const isExistingWhitelisted = existingRole === 'teacher' || isPasskeySharingWhitelisted(boundEmail);
+
+          // Enforce 1 Phone = 1 Student lock if neither account is a teacher or whitelisted
+          if (!isIncomingWhitelisted && !isExistingWhitelisted) {
+            console.warn(`[verifyPasskeyRegistration] Hardware collision! Phone ${deviceFingerprint} already registered to student ${boundEmail}`);
+            throw new HttpsError(
+              'already-exists',
+              `Hardware Lock: This physical phone is already bound to student account (${boundEmail}). Each mobile phone can only be used by one student.`
+            );
+          } else {
+            console.info(`[verifyPasskeyRegistration] Multi-role device sharing permitted for phone ${deviceFingerprint} between ${boundEmail} and ${tokenData.studentEmail}`);
+          }
         }
       }
     }
@@ -223,7 +236,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
         console.warn(`[verifyPasskeyRegistration] Hardware collision detected! Phone credential ${credentialID} already registered to student ${doc.id}`);
         throw new HttpsError(
           'already-exists',
-          'This physical mobile device is already registered to another student. Each phone can only be paired with one student account.'
+          'This physical mobile device is already registered to another user. Each phone can only be paired with one user account.'
         );
       }
     }
@@ -231,7 +244,6 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
 
   const credentialPublicKey = Buffer.from(credential.publicKey).toString('base64');
   const transports = credential.transports || attestationResponse.response?.transports || ['internal'];
-  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
 
   // Save the passkey with persistent hardware device fingerprint and role
   await db.doc(`studentPasskeys/${tokenData.studentUid}`).set({
