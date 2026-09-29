@@ -376,13 +376,13 @@ export const initiateDesktopLoginSession = onCall(callOptions, async (request) =
 });
 
 export const getDesktopLoginPasskeyOptions = onCall(callOptions, async (request) => {
-  const { sessionId, clientRpId } = request.data || {};
-  return await handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpId });
+  const { sessionId, token, clientRpId } = request.data || {};
+  return await handleGetDesktopLoginPasskeyOptions({ sessionId, token, clientRpId });
 });
 
 export const verifyDesktopLoginPasskey = onCall(callOptions, async (request) => {
-  const { sessionId, authenticationResponse, clientRpId, deviceFingerprint } = request.data || {};
-  return await handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId, deviceFingerprint });
+  const { sessionId, token, authenticationResponse, clientRpId, deviceFingerprint } = request.data || {};
+  return await handleVerifyDesktopLoginPasskey({ sessionId, token, authenticationResponse, clientRpId, deviceFingerprint });
 });
 
 export const requestTeacherPasskeyBypass = onCall(callOptions, async (request) => {

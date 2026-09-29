@@ -603,17 +603,54 @@ export async function handleResetStudentPasskey({ studentUid, studentEmail, clas
   };
 }
 
+export const DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC = 15;
+export const DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_MS = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC * 1000;
+export const DESKTOP_QR_GRACE_INTERVALS = 1; // Allows current + 1 previous interval (~15-30s window)
+
+/**
+ * Computes a dynamic rotating token for a desktop login session given sessionSecret and timeInterval.
+ */
+export function computeDesktopQrToken(sessionSecret, timeInterval) {
+  if (!sessionSecret) return '';
+  return crypto
+    .createHmac('sha256', sessionSecret)
+    .update(`desktop_login_qr_${timeInterval}`)
+    .digest('hex')
+    .substring(0, 16);
+}
+
+/**
+ * Validates a dynamic rotating token against a desktop session secret and timestamp with grace intervals.
+ */
+export function isValidDesktopQrToken(sessionSecret, token, timestamp = Date.now(), rotationIntervalMs = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_MS) {
+  if (!sessionSecret || !token || typeof token !== 'string' || token.length !== 16) {
+    return false;
+  }
+  const intervalMs = Number(rotationIntervalMs) > 0 ? Number(rotationIntervalMs) : DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_MS;
+  const currentInterval = Math.floor(timestamp / intervalMs);
+  for (let i = 0; i <= DESKTOP_QR_GRACE_INTERVALS; i++) {
+    const expected = computeDesktopQrToken(sessionSecret, currentInterval - i);
+    if (expected.length === token.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * 10. Initiate Desktop Login Session
- * Shared Lab PC calls this to generate an ephemeral login session and QR payload.
+ * Shared Lab PC calls this to generate an ephemeral login session and rotating QR payload.
  */
 export async function handleInitiateDesktopLoginSession({ clientRpId } = {}) {
   const sessionId = crypto.randomUUID();
+  const sessionSecret = crypto.randomBytes(32).toString('hex');
   const expiresAtMillis = Date.now() + 90 * 1000; // 90 seconds
   const rpId = resolveRpId(clientRpId);
 
   await db.doc(`loginSessions/${sessionId}`).set({
     sessionId,
+    sessionSecret,
+    rotationIntervalSeconds: DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC,
     status: 'pending',
     createdAt: FieldValue.serverTimestamp(),
     expiresAtMillis,
@@ -625,6 +662,8 @@ export async function handleInitiateDesktopLoginSession({ clientRpId } = {}) {
 
   return {
     sessionId,
+    sessionSecret,
+    rotationIntervalSeconds: DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC,
     expiresAtMillis,
     qrUrl: `/mobile-login?session=${sessionId}`,
   };
@@ -634,7 +673,7 @@ export async function handleInitiateDesktopLoginSession({ clientRpId } = {}) {
  * 11. Get Desktop Login Passkey Options
  * Scanned from mobile camera: retrieves WebAuthn challenge for the desktop login session.
  */
-export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpId }) {
+export async function handleGetDesktopLoginPasskeyOptions({ sessionId, token, clientRpId }) {
   if (!sessionId) {
     throw new HttpsError('invalid-argument', 'Missing sessionId.');
   }
@@ -656,6 +695,17 @@ export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpI
     throw new HttpsError('deadline-exceeded', 'Login session expired. Please refresh the QR code on the desktop.');
   }
 
+  // Validate dynamic rotating token if session has a secret
+  if (sessionData.sessionSecret) {
+    const rotationIntervalMs = (sessionData.rotationIntervalSeconds || DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC) * 1000;
+    if (!isValidDesktopQrToken(sessionData.sessionSecret, token, Date.now(), rotationIntervalMs)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Expired or invalid QR code. Please scan the current live QR code displayed on the lab desktop screen.'
+      );
+    }
+  }
+
   const rpID = resolveRpId(clientRpId || sessionData.rpId);
   const options = await generateAuthenticationOptions({
     rpID,
@@ -664,6 +714,7 @@ export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpI
 
   await sessionRef.update({
     challenge: options.challenge,
+    tokenUsed: token || null,
     rpIdUsed: rpID,
   });
 
@@ -679,7 +730,7 @@ export async function handleGetDesktopLoginPasskeyOptions({ sessionId, clientRpI
  * Mobile device submits biometric assertion. If verified, mints Firebase Custom Auth Token
  * for the desktop session so the shared PC signs in automatically.
  */
-export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId, deviceFingerprint }) {
+export async function handleVerifyDesktopLoginPasskey({ sessionId, token, authenticationResponse, clientRpId, deviceFingerprint }) {
   if (!sessionId || !authenticationResponse) {
     throw new HttpsError('invalid-argument', 'Missing sessionId or authenticationResponse.');
   }
@@ -699,6 +750,18 @@ export async function handleVerifyDesktopLoginPasskey({ sessionId, authenticatio
   if (Date.now() > sessionData.expiresAtMillis) {
     await sessionRef.update({ status: 'expired' });
     throw new HttpsError('deadline-exceeded', 'Login session expired.');
+  }
+
+  // Validate dynamic rotating token if session has a secret
+  if (sessionData.sessionSecret) {
+    const tokenToVerify = token || sessionData.tokenUsed;
+    const rotationIntervalMs = (sessionData.rotationIntervalSeconds || DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC) * 1000;
+    if (!isValidDesktopQrToken(sessionData.sessionSecret, tokenToVerify, Date.now(), rotationIntervalMs)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'The scanned login QR token has expired. Please scan the live QR code on the desktop.'
+      );
+    }
   }
 
   const expectedChallenge = sessionData.challenge;

@@ -10,6 +10,7 @@ import './passkey.css';
 const PasskeyMobileLoginView = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session') || searchParams.get('sessionId');
+  const token = searchParams.get('token') || '';
 
   const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked'
   const [errorMessage, setErrorMessage] = useState('');
@@ -53,7 +54,7 @@ const PasskeyMobileLoginView = () => {
       hasAutoStarted.current = true;
       executePasskeyLogin();
     }
-  }, [sessionId]);
+  }, [sessionId, token]);
 
   const executePasskeyLogin = async () => {
     if (!sessionId) return;
@@ -65,6 +66,7 @@ const PasskeyMobileLoginView = () => {
       const getOptionsFn = httpsCallable(functions, 'getDesktopLoginPasskeyOptions');
       const optionsRes = await getOptionsFn({
         sessionId,
+        token,
         clientRpId: window.location.hostname,
       });
 
@@ -93,6 +95,7 @@ const PasskeyMobileLoginView = () => {
       const verifyFn = httpsCallable(functions, 'verifyDesktopLoginPasskey');
       const verifyRes = await verifyFn({
         sessionId,
+        token,
         authenticationResponse,
         clientRpId: window.location.hostname,
         deviceFingerprint,

@@ -376,6 +376,19 @@ describe('AuthComponent Component', () => {
     expect(screen.getByRole('tab', { name: /Scan QR Code/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Email & Password/i })).toBeInTheDocument();
   });
+
+  it('initiates QR session and renders rotating countdown in desktop mode', async () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'isTabletDevice').mockReturnValue(false);
+
+    render(<AuthComponent />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Refreshes in:/i)).toBeInTheDocument();
+      expect(screen.getByText(/Session expires in:/i)).toBeInTheDocument();
+      expect(screen.getByAltText('Desktop Login QR Code')).toBeInTheDocument();
+    });
+  });
 });
 
 

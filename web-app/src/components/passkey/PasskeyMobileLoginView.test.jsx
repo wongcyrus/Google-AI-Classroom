@@ -140,4 +140,48 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getByText(/Biometric scan was cancelled/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sign In with Biometrics/i })).toBeInTheDocument();
   });
+
+  it('forwards dynamic rotating token parameter to cloud functions', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: {
+        options: { challenge: 'test-challenge', rpId: 'localhost' },
+      },
+    });
+
+    mockStartAuthentication.mockResolvedValueOnce({
+      id: 'cred-123',
+      rawId: 'cred-123',
+      response: { clientDataJSON: 'xyz', authenticatorData: 'abc' },
+      type: 'public-key',
+    });
+
+    mockVerify.mockResolvedValueOnce({
+      data: {
+        verified: true,
+        studentEmail: 'bob@vtc.edu.hk',
+        deviceModel: 'Pixel 9',
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/mobile-login?session=sess-dynamic&token=tok1234567890abc']}>
+        <PasskeyMobileLoginView />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(mockGetOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-dynamic',
+          token: 'tok1234567890abc',
+        })
+      );
+      expect(mockVerify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-dynamic',
+          token: 'tok1234567890abc',
+        })
+      );
+    });
+  });
 });
