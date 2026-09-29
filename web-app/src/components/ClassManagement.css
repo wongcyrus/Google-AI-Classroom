@@ -1,9 +1,11 @@
 /* Class Management Card Container */
 .class-management-container {
-  max-width: 960px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0.75rem 1.25rem 2rem 1.25rem;
+  width: 100%;
   background-color: transparent;
+  box-sizing: border-box;
 }
 
 .class-management-header {
