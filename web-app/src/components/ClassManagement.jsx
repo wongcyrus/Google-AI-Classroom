@@ -41,6 +41,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [registeredPasskeysMap, setRegisteredPasskeysMap] = useState({});
   const [resettingPasskeys, setResettingPasskeys] = useState({});
   const [passkeyResetSuccess, setPasskeyResetSuccess] = useState('');
+  const [studentBypassesMap, setStudentBypassesMap] = useState({});
+  const [grantingBypass, setGrantingBypass] = useState({});
+  const [bypassSuccessMsg, setBypassSuccessMsg] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -254,6 +257,47 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     );
     return () => unsub();
   }, [user]);
+
+  // Real-time listener for classes/{activeId}/studentProperties (Passkey emergency bypasses)
+  useEffect(() => {
+    const activeId = embeddedClassId || selectedClass;
+    if (!activeId) {
+      setStudentBypassesMap({});
+      return;
+    }
+
+    const unsub = onSnapshot(
+      collection(db, 'classes', activeId, 'studentProperties'),
+      (snapshot) => {
+        const map = {};
+        if (snapshot && snapshot.docs) {
+          snapshot.docs.forEach((d) => {
+            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+            const bypass = data.passkeyBypass;
+            if (bypass && bypass.active) {
+              const now = Date.now();
+              const expires = bypass.expiresAtMillis || (bypass.expiresAt ? new Date(bypass.expiresAt).getTime() : 0);
+              if (now < expires) {
+                map[d.id] = bypass;
+                if (data.studentEmail) {
+                  map[data.studentEmail.toLowerCase()] = bypass;
+                }
+                if (data.email) {
+                  map[data.email.toLowerCase()] = bypass;
+                }
+              }
+            }
+          });
+        }
+        setStudentBypassesMap(map);
+      },
+      (err) => {
+        console.warn('[ClassManagement] Notice fetching studentProperties bypasses:', err);
+      }
+    );
+
+    return () => unsub();
+  }, [embeddedClassId, selectedClass]);
 
   useEffect(() => {
     const fetchClassDetails = async () => {
@@ -738,6 +782,51 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       alert(`Failed to reset passkey: ${err.message || 'Unknown error'}`);
     } finally {
       setResettingPasskeys(prev => ({ ...prev, [email]: false }));
+    }
+  };
+
+  const handleGrantStudentBypass = async (email, studentName) => {
+    const studentUid = Object.keys(studentsMap).find(u => (studentsMap[u] || '').toLowerCase() === email.toLowerCase());
+    const targetLabel = studentName ? `${studentName} (${email})` : email;
+    const targetClass = selectedClass || embeddedClassId || classId;
+
+    if (!targetClass) {
+      alert('Please select a class before granting emergency bypass.');
+      return;
+    }
+
+    const durationInput = window.prompt(
+      `Grant Emergency Passkey Bypass for ${targetLabel}?\n\nEnter bypass duration in minutes (default 180 = 3 hours):`,
+      '180'
+    );
+
+    if (durationInput === null) return; // User cancelled prompt
+    const durationMin = parseInt(durationInput, 10);
+    if (isNaN(durationMin) || durationMin <= 0) {
+      alert('Please enter a valid positive number of minutes.');
+      return;
+    }
+
+    setGrantingBypass(prev => ({ ...prev, [email]: true }));
+    try {
+      const approveFn = httpsCallable(functions, 'approveTeacherPasskeyBypass');
+      await approveFn({
+        classId: targetClass,
+        studentUid: studentUid || null,
+        studentEmail: email,
+        teacherUid: auth.currentUser?.uid || null,
+        teacherEmail: auth.currentUser?.email || 'teacher',
+        bypassDurationMinutes: durationMin,
+        approved: true,
+      });
+
+      setBypassSuccessMsg(`Emergency bypass granted for ${targetLabel} (${durationMin} min).`);
+      setTimeout(() => setBypassSuccessMsg(''), 6000);
+    } catch (err) {
+      console.error('Failed to grant emergency bypass:', err);
+      alert(`Failed to grant bypass: ${err.message || 'Unknown error'}`);
+    } finally {
+      setGrantingBypass(prev => ({ ...prev, [email]: false }));
     }
   };
 
@@ -1802,6 +1891,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                         <button type="button" onClick={() => setPasskeyResetSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
                       </div>
                     )}
+                    {bypassSuccessMsg && (
+                      <div style={{ backgroundColor: '#eff6ff', color: '#1e40af', borderBottom: '1px solid #bfdbfe', padding: '0.4rem 0.8rem', fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>⚡ {bypassSuccessMsg}</span>
+                        <button type="button" onClick={() => setBypassSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#1e40af' }}>✕</button>
+                      </div>
+                    )}
                     <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                         <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)', zIndex: 2 }}>
@@ -1863,6 +1958,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                               const resolvedStudentName = prof.studentName || '';
                               const norm = (email || '').toLowerCase();
                               const passkey = registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]);
+                              const studentUid = Object.keys(studentsMap).find(u => (studentsMap[u] || '').toLowerCase() === norm);
+                              const activeBypass = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]) || (studentUid && studentBypassesMap[studentUid]);
+                              const isBypassActive = Boolean(
+                                activeBypass && activeBypass.active && (activeBypass.expiresAtMillis > Date.now() || (activeBypass.expiresAt && new Date(activeBypass.expiresAt).getTime() > Date.now()))
+                              );
+
                               return (
                                 <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
                                   <td style={{ padding: '0.35rem 0.6rem' }}>
@@ -1895,8 +1996,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                     {prof.programme || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>—</span>}
                                   </td>
                                   <td style={{ padding: '0.35rem 0.6rem', textAlign: 'center' }}>
-                                    {passkey ? (
-                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                      {passkey ? (
                                         <span
                                           style={{
                                             fontSize: '0.72rem',
@@ -1914,6 +2015,47 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                         >
                                           📱 Linked
                                         </span>
+                                      ) : (
+                                        <span
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            padding: '0.12rem 0.45rem',
+                                            borderRadius: '9999px',
+                                            backgroundColor: '#fef3c7',
+                                            color: '#b45309',
+                                            border: '1px solid #fde68a',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                          title="Student has not registered a passkey on their mobile device yet"
+                                        >
+                                          ⏳ Not Registered
+                                        </span>
+                                      )}
+
+                                      {isBypassActive && (
+                                        <span
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            padding: '0.12rem 0.45rem',
+                                            borderRadius: '9999px',
+                                            backgroundColor: '#eff6ff',
+                                            color: '#1d4ed8',
+                                            border: '1px solid #bfdbfe',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                          title={`Emergency bypass active until ${new Date(activeBypass.expiresAtMillis || activeBypass.expiresAt).toLocaleTimeString()}`}
+                                        >
+                                          ⚡ Bypass Active
+                                        </span>
+                                      )}
+
+                                      {passkey && (
                                         <button
                                           type="button"
                                           className="btn-secondary btn-sm"
@@ -1932,26 +2074,27 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                         >
                                           {resettingPasskeys[email] ? 'Resetting...' : '🔄 Reset'}
                                         </button>
-                                      </div>
-                                    ) : (
-                                      <span
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        className="btn-secondary btn-sm"
                                         style={{
                                           fontSize: '0.72rem',
-                                          fontWeight: 600,
-                                          padding: '0.12rem 0.45rem',
-                                          borderRadius: '9999px',
-                                          backgroundColor: '#fef3c7',
-                                          color: '#b45309',
-                                          border: '1px solid #fde68a',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '3px',
+                                          padding: '0.15rem 0.45rem',
+                                          color: '#0369a1',
+                                          borderColor: '#bae6fd',
+                                          background: '#f0f9ff',
+                                          cursor: 'pointer',
                                         }}
-                                        title="Student has not registered a passkey on their mobile device yet"
+                                        onClick={() => handleGrantStudentBypass(email, resolvedStudentName)}
+                                        disabled={Boolean(grantingBypass[email])}
+                                        data-testid={`btn-roster-bypass-${email.replace(/[@.]/g, '_')}`}
+                                        title="Grant temporary emergency passkey bypass for this class"
                                       >
-                                        ⏳ Not Registered
-                                      </span>
-                                    )}
+                                        {grantingBypass[email] ? 'Granting...' : '⚡ Temp Bypass'}
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1976,6 +2119,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                   onResetPasskey={handleResetStudentPasskey}
                   passkeyResetSuccess={passkeyResetSuccess}
                   onClearPasskeyResetSuccess={() => setPasskeyResetSuccess('')}
+                  studentBypassesMap={studentBypassesMap}
+                  grantingBypass={grantingBypass}
+                  onGrantBypass={handleGrantStudentBypass}
+                  bypassSuccessMsg={bypassSuccessMsg}
+                  onClearBypassSuccess={() => setBypassSuccessMsg('')}
                 />
               </div>
             );

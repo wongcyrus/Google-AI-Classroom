@@ -38,6 +38,15 @@
 - **Relocated from Hero**: Removed the permanent `📱 Phone Paired: [Device Model]` button from the Teacher Dashboard hero section to prevent visual clutter and screen space waste.
 - **Housed in User Profile Menu**: Relocated passkey management to the top-right user account menu in `MainHeader` (`📱 Passkey Phone: [Device Model]` / `📱 Pair Phone (Passkey)`), accessible from any page.
 
+### 0.0.0.5 Emergency Passkey Bypass Resilience & Roster Pre-Granting
+- **Schedule Auto-Resolution for Dead/Unavailable Phones**: When students arrive with a dead, forgotten, or broken smartphone, `PasskeyEnforcementGate` automatically derives the target `classId` using `useStudentClassSchedule(user)` based on enrolled classes and current timetable. If enrolled in multiple classes, a classroom session selector allows students to explicitly select their session. This eliminates "Class ID is required" errors during emergency pin requests.
+- **Multi-Class Real-Time Bypass Listener**: `PasskeyEnforcementGate` listens simultaneously across all student-enrolled class properties (`classes/${cid}/studentProperties/${user.uid}`). When an instructor grants a bypass in any class, the gate automatically unlocks immediately without requiring student re-entry.
+- **Roster Pre-Granting & Live Indicators**:
+  - Instructors can pre-grant emergency bypasses directly from the **Class Management Roster** table and **Enrolled Roster Modal** with a single click (`[ ⚡ Temp Bypass ]`), specifying custom validity (default 90 mins).
+  - Displays real-time active bypass status (`⚡ Bypass Active`) and expiry time across roster tables.
+  - Students both with and without paired phones can receive emergency bypasses, guaranteeing immediate lab access.
+- **Backend Fallback UID Resolution**: In `handleApproveTeacherPasskeyBypass` (`functions/ai_flows/passkeyFlows.js`), if `targetUid` is omitted (direct roster pre-granting), the system seamlessly resolves the student UID from class roster mappings (`classes/${classId}.data().students`) or Firebase Auth.
+
 ---
 
 ## 0.0 Dynamic Rotating QR Code Biometric Attendance, Enrolled Rosters & Recording Reconciler

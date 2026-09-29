@@ -213,26 +213,46 @@ When a student arrives at a lab PC without a usable smartphone:
                          (studentProperties/{uid}.passkeyBypass)
 ```
 
-1. **Student Request**: The student clicks **`🙋 Request Teacher Remote Bypass`** on the desktop gate, selects a reason (e.g., "Phone battery dead" or "Left phone at home"), and submits.
+1. **Student Request & Schedule Auto-Resolution**: 
+   - The student clicks **`🙋 Request Teacher Remote Bypass`** on the desktop gate.
+   - **Automatic Schedule Detection**: `PasskeyEnforcementGate` automatically detects the current class session using `useStudentClassSchedule(user)`. If the student is enrolled in multiple classes, an intuitive classroom session selector allows them to choose the intended session, eliminating "Class ID is required" errors.
+   - The student selects a reason (e.g., "Phone battery dead" or "Left phone at home") and submits.
 2. **Instant Podium Notification**: A high-visibility alert banner appears in real time on the teacher's `MonitorView` HUD showing the student's name, email, and timestamp.
 3. **1-Click Authorization**: The teacher glances across the lab to verify the student's identity and clicks **`[ ✅ Grant 1-Class Session Bypass ]`**.
-4. **Cloud Execution**: `handleApproveTeacherPasskeyBypass` grants a 180-minute bypass window in `studentProperties/{studentUid}.passkeyBypass` and writes an immutable audit entry to `passkeyAuditLogs`.
-5. **Zero-Latency Gate Unlock**: The desktop PC detects the bypass flag via Firestore listener and transitions straight into the classroom workspace without requiring any page reload.
+4. **Cloud Execution**: `handleApproveTeacherPasskeyBypass` grants a bypass window (default 90–180 minutes) in `classes/{classId}/studentProperties/{studentUid}.passkeyBypass` and writes an immutable audit entry to `passkeyAuditLogs`.
+5. **Zero-Latency Multi-Class Gate Unlock**: `PasskeyEnforcementGate` listens simultaneously across all student-enrolled class properties (`classes/${cid}/studentProperties/${uid}`). When the bypass flag is detected in any class, the desktop PC unlocks instantly and transitions straight into the classroom workspace without requiring a page reload.
 
 ---
 
-### 2. In-Person 6-Digit Class Emergency PIN Bypass
+### 2. Proactive Emergency Passkey Bypass Pre-Granting (Class Management & Enrolled Roster)
+
+Teachers can proactively grant emergency bypasses before students even encounter the desktop gate or request assistance:
+
+1. **Class Management Roster & Enrolled Roster Modal**:
+   - In **Class Management** (`/classes`), the roster table and the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`) list every enrolled student along with their passkey registration status (`📱 Linked` or `⏳ Not Registered`).
+   - Each student row features a dedicated **`[ ⚡ Temp Bypass ]`** action button.
+2. **Pre-Granting Bypass**:
+   - The instructor clicks **`[ ⚡ Temp Bypass ]`** for any student who reported a dead/forgotten phone upon arrival.
+   - The instructor can accept the default duration (90 minutes) or specify a custom duration in minutes.
+   - `handleApproveTeacherPasskeyBypass` handles UID resolution automatically from the class roster map or Firebase Auth if `targetUid` is omitted.
+3. **Real-Time Indicators**:
+   - Once granted, the student row displays a prominent **`⚡ Bypass Active (XXm left)`** badge with real-time remaining minutes.
+   - The student can immediately sit down at any lab PC and access the classroom desktop without being blocked by the passkey gate.
+
+---
+
+### 3. In-Person 6-Digit Class Emergency PIN Bypass
 
 If the teacher's podium browser is temporarily busy or network connectivity between the podium and the student is delayed:
 
 1. **Emergency PIN Display**: The teacher HUD displays a generated 6-digit emergency PIN for the class session (e.g., `🔑 Emergency Bypass PIN: 849201`).
 2. **Student Entry**: On the desktop gate modal, the student selects **`🔑 Enter Emergency Teacher PIN`** and inputs the 6-digit PIN.
 3. **Server Verification**: Cloud Function `handleVerifyTeacherPasskeyBypassPin` validates the PIN against `classes/{classId}.teacherBypassPin`.
-4. **Temporary Access**: Upon validation, a 180-minute bypass is provisioned, the gate unlocks immediately, and an audit log records the PIN bypass event.
+4. **Temporary Access**: Upon validation, a bypass is provisioned, the gate unlocks immediately, and an audit log records the PIN bypass event.
 
 ---
 
-### 3. In-Person Attendance Bingo Override (Live Attendance Failsafe)
+### 4. In-Person Attendance Bingo Override (Live Attendance Failsafe)
 
 During interactive Mobile Passkey Bingo Attendance:
 
@@ -243,7 +263,7 @@ During interactive Mobile Passkey Bingo Attendance:
 
 ---
 
-### 4. Replacing or Upgrading a Smartphone (Passkey Reset)
+### 5. Replacing or Upgrading a Smartphone (Passkey Reset)
 
 Because each student account is locked 1-to-1 to a physical device hardware authenticator, a student who buys a new phone or gets a replacement cannot simply pair a second phone without resetting the previous registration.
 

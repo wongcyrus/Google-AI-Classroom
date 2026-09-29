@@ -9,6 +9,7 @@ const {
   mockCollectionAdd,
   mockFirestore,
   mockCreateCustomToken,
+  mockGetUserByEmail,
 } = vi.hoisted(() => {
   const mockDocSet = vi.fn().mockResolvedValue(true);
   const mockDocUpdate = vi.fn().mockResolvedValue(true);
@@ -17,6 +18,7 @@ const {
   const mockCollectionGet = vi.fn();
   const mockCollectionAdd = vi.fn().mockResolvedValue({ id: 'audit_log_1' });
   const mockCreateCustomToken = vi.fn().mockResolvedValue('mock-custom-token-student-123');
+  const mockGetUserByEmail = vi.fn().mockResolvedValue({ uid: 'auth-user-id' });
 
   const mockCollection = {
     doc: vi.fn((id = 'generated_doc_id') => ({
@@ -51,6 +53,7 @@ const {
     mockCollectionAdd,
     mockFirestore,
     mockCreateCustomToken,
+    mockGetUserByEmail,
   };
 });
 
@@ -66,6 +69,7 @@ vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(() => ({
     createCustomToken: mockCreateCustomToken,
     getUser: vi.fn().mockResolvedValue({ customClaims: { role: 'teacher' } }),
+    getUserByEmail: mockGetUserByEmail,
   })),
 }));
 
@@ -1184,6 +1188,70 @@ describe('WebAuthn Passkey Flows Backend', () => {
           studentUid: 'alex',
         })
       );
+    });
+
+    it('resolves studentUid from class doc students map when student has no passkey doc', async () => {
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_it101') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              students: {
+                student_from_class_roster: 'deadphone@vtc.edu.hk',
+              },
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        classId: 'class_it101',
+        studentEmail: 'deadphone@vtc.edu.hk',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        bypassDurationMinutes: 120,
+        approved: true,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.approved).toBe(true);
+      expect(res.studentUid).toBe('student_from_class_roster');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          passkeyBypass: expect.objectContaining({
+            active: true,
+            grantedBy: 'teacher@vtc.edu.hk',
+          }),
+        }),
+        { merge: true }
+      );
+    });
+
+    it('resolves studentUid from Firebase Auth when neither passkey nor class doc has it', async () => {
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_it101') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ students: {} }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockGetUserByEmail.mockResolvedValueOnce({ uid: 'student_from_auth_uid' });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        classId: 'class_it101',
+        studentEmail: 'authonly@vtc.edu.hk',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        bypassDurationMinutes: 60,
+        approved: true,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.approved).toBe(true);
+      expect(res.studentUid).toBe('student_from_auth_uid');
     });
   });
 

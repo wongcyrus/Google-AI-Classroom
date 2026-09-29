@@ -239,6 +239,40 @@ describe('EnrolledRosterModal Component', () => {
     expect(onResetPasskey).toHaveBeenCalledWith('alice@stu.vtc.edu.hk', 'Alice Wong');
   });
 
+  it('triggers onGrantBypass callback when Temp Bypass button is clicked and displays active bypass badge', () => {
+    const onGrantBypass = vi.fn();
+    const studentBypassesMap = {
+      'bob@stu.vtc.edu.hk': {
+        active: true,
+        expiresAtMillis: Date.now() + 7200000,
+        grantedBy: 'teacher@vtc.edu.hk',
+      },
+    };
+
+    render(
+      <EnrolledRosterModal
+        show={true}
+        onClose={vi.fn()}
+        className="Cloud Lab"
+        classId="IT114115_SE"
+        emailList={emailList}
+        resolvedProfilesMap={resolvedProfilesMap}
+        registeredPasskeysMap={registeredPasskeysMap}
+        studentBypassesMap={studentBypassesMap}
+        onGrantBypass={onGrantBypass}
+        bypassSuccessMsg="Bypass granted for Bob Chan"
+      />
+    );
+
+    // Verify active bypass badge for Bob
+    expect(screen.getByText(/⚡ Bypass Active/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bypass granted for Bob Chan/i)).toBeInTheDocument();
+
+    const bypassBtn = screen.getByTestId('btn-modal-bypass-alice_stu_vtc_edu_hk');
+    fireEvent.click(bypassBtn);
+    expect(onGrantBypass).toHaveBeenCalledWith('alice@stu.vtc.edu.hk', 'Alice Wong');
+  });
+
   it('handles copying emails and exporting Excel', async () => {
     render(
       <EnrolledRosterModal

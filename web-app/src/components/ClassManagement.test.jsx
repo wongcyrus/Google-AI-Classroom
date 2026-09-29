@@ -1172,6 +1172,37 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(await screen.findByText(/has been reset successfully/i)).toBeInTheDocument();
   });
 
+  it('renders Temp Bypass button and grants emergency passkey bypass when clicked', async () => {
+    const mockApproveCallable = vi.fn().mockResolvedValue({ data: { success: true } });
+    const { httpsCallable } = await import('firebase/functions');
+    vi.mocked(httpsCallable).mockReturnValue(mockApproveCallable);
+
+    vi.spyOn(window, 'prompt').mockReturnValue('120');
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('alice@school.edu').length).toBeGreaterThanOrEqual(1);
+    });
+
+    const bypassBtn = screen.getByTestId('btn-roster-bypass-alice_school_edu');
+    expect(bypassBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(bypassBtn);
+    });
+
+    expect(mockApproveCallable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentEmail: 'alice@school.edu',
+        classId: 'CLASS_101',
+        bypassDurationMinutes: 120,
+        approved: true,
+      })
+    );
+    expect(await screen.findByText(/Emergency bypass granted for/i)).toBeInTheDocument();
+  });
+
   it('configures and saves classroom IP restrictions', async () => {
     let capturedUpdateData = null;
     mockUpdateDoc.mockImplementationOnce((ref, data) => {

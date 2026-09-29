@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
@@ -6,6 +6,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { functions, db, auth } from '../../firebase-config';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { isTeacherEmail, isStudentEmail } from '../../utils/domainConfig';
+import { useStudentClassSchedule } from '../../hooks/useStudentClassSchedule';
 import './passkey.css';
 
 /**
@@ -14,7 +15,7 @@ import './passkey.css';
  * If the student has no registered mobile passkey and no active teacher bypass,
  * this gate blocks desktop/tablet access and displays a dynamic pairing QR code.
  */
-const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
+const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) => {
   const [hasPasskey, setHasPasskey] = useState(null); // null = loading, true/false
   const [hasBypass, setHasBypass] = useState(false);
   const [bypassData, setBypassData] = useState(null);
@@ -40,11 +41,31 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   const [emergencyPin, setEmergencyPin] = useState('');
   const [isWhitelisted, setIsWhitelisted] = useState(false);
 
+  // Classroom selection & schedule resolution
+  const [selectedClassId, setSelectedClassId] = useState('');
   const isMobile = isHandheldPhone();
 
   // If role is teacher, or teacher email, bypass gate entirely
   const isTeacher = role === 'teacher' || isTeacherEmail(user?.email);
   const isStudent = !isTeacher && (role === 'student' || isStudentEmail(user?.email));
+
+  const { userClasses = [], currentActiveClassId } = useStudentClassSchedule(isStudent ? user : null);
+
+  const normalizedUserClasses = useMemo(() => {
+    return (userClasses || [])
+      .map((cls) => (cls && typeof cls === 'object' ? cls.id : cls))
+      .filter(Boolean);
+  }, [userClasses]);
+
+  const autoResolvedClassId = currentActiveClassId || (normalizedUserClasses.length > 0 ? normalizedUserClasses[0] : '');
+  const effectiveClassId = propClassId || selectedClassId || autoResolvedClassId;
+
+  // Auto-populate selectedClassId when schedule resolves and nothing selected yet
+  useEffect(() => {
+    if (autoResolvedClassId && !selectedClassId) {
+      setSelectedClassId(autoResolvedClassId);
+    }
+  }, [autoResolvedClassId, selectedClassId]);
 
   // 1. Listen for system_config/loginPolicy password whitelist
   useEffect(() => {
@@ -93,31 +114,61 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
   }, [user?.uid, isStudent]);
 
   // 2. Listen for classes/{classId}/studentProperties/{uid}.passkeyBypass
+  const classesKey = normalizedUserClasses.join(',');
   useEffect(() => {
-    if (!user?.uid || !classId || !isStudent) return;
+    if (!user?.uid || !isStudent) return;
 
-    const unsubBypass = onSnapshot(doc(db, `classes/${classId}/studentProperties/${user.uid}`), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const bypass = data.passkeyBypass;
-        if (bypass && bypass.active) {
-          const now = Date.now();
-          const expires = bypass.expiresAtMillis || (bypass.expiresAt ? new Date(bypass.expiresAt).getTime() : 0);
-          if (now < expires) {
-            setHasBypass(true);
-            setBypassData(bypass);
-            return;
-          }
-        }
-      }
+    const classesToListen = propClassId
+      ? [propClassId]
+      : (normalizedUserClasses.length > 0
+          ? normalizedUserClasses
+          : (effectiveClassId ? [effectiveClassId] : []));
+
+    if (classesToListen.length === 0) {
       setHasBypass(false);
       setBypassData(null);
-    }, (err) => {
-      console.warn('[PasskeyEnforcementGate] bypass listener error:', err);
+      return;
+    }
+
+    const activeBypasses = new Map();
+
+    const unsubscribers = classesToListen.map((cid) => {
+      return onSnapshot(doc(db, `classes/${cid}/studentProperties/${user.uid}`), (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const bypass = data.passkeyBypass;
+          if (bypass && bypass.active) {
+            const now = Date.now();
+            const expires = bypass.expiresAtMillis || (bypass.expiresAt ? new Date(bypass.expiresAt).getTime() : 0);
+            if (now < expires) {
+              activeBypasses.set(cid, bypass);
+            } else {
+              activeBypasses.delete(cid);
+            }
+          } else {
+            activeBypasses.delete(cid);
+          }
+        } else {
+          activeBypasses.delete(cid);
+        }
+
+        if (activeBypasses.size > 0) {
+          const firstBypass = activeBypasses.values().next().value;
+          setHasBypass(true);
+          setBypassData(firstBypass);
+        } else {
+          setHasBypass(false);
+          setBypassData(null);
+        }
+      }, (err) => {
+        console.warn(`[PasskeyEnforcementGate] bypass listener error for class ${cid}:`, err);
+      });
     });
 
-    return () => unsubBypass();
-  }, [user?.uid, classId, isStudent]);
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [user?.uid, propClassId, classesKey, effectiveClassId, isStudent]);
 
   // 3. Generate single-use pairing QR code when passkey is missing
   const generatePairingQR = async () => {
@@ -126,7 +177,7 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     setQrError('');
     try {
       const reqTokenFn = httpsCallable(functions, 'requestPasskeyPairingToken');
-      const res = await reqTokenFn({ classId: classId || null });
+      const res = await reqTokenFn({ classId: effectiveClassId || null });
       const { tokenId, expiresAtMillis } = res.data || {};
 
       if (!tokenId) {
@@ -190,7 +241,8 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     setBypassSuccessMsg('');
 
     try {
-      if (!classId) {
+      const targetClassId = effectiveClassId;
+      if (!targetClassId) {
         throw new Error('Class ID is required to request bypass.');
       }
 
@@ -198,7 +250,7 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
       await reqBypassFn({
         studentUid: user.uid,
         studentEmail: user.email,
-        classId,
+        classId: targetClassId,
         deskNumber: deskNumber.trim() || 'Unknown Desk',
         reason: bypassReason,
       });
@@ -221,13 +273,14 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
     setBypassSuccessMsg('');
 
     try {
-      if (!classId) {
+      const targetClassId = effectiveClassId;
+      if (!targetClassId) {
         throw new Error('Class ID is required.');
       }
 
       const verifyPinFn = httpsCallable(functions, 'verifyTeacherPasskeyBypassPin');
       const res = await verifyPinFn({
-        classId,
+        classId: targetClassId,
         studentUid: user.uid,
         pin: emergencyPin.trim(),
         deskNumber: deskNumber.trim() || null,
@@ -396,6 +449,42 @@ const PasskeyEnforcementGate = ({ user, classId, role, children }) => {
             <p className="passkey-subtitle" style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>
               If your phone is dead, left at home, or broken, request your teacher to authorize your session.
             </p>
+
+            {/* Classroom Session Selector (when not strictly bound to route prop) */}
+            {!propClassId && normalizedUserClasses.length > 1 && (
+              <div className="passkey-form-group" style={{ marginBottom: '1rem' }}>
+                <label htmlFor="bypass-class-select">Select Classroom / Course</label>
+                <select
+                  id="bypass-class-select"
+                  value={effectiveClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                >
+                  {normalizedUserClasses.map((cid) => (
+                    <option key={cid} value={cid}>
+                      {cid} {cid === currentActiveClassId ? '⚡ (Scheduled Now)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!propClassId && !effectiveClassId && (
+              <div className="passkey-form-group" style={{ marginBottom: '1rem' }}>
+                <label htmlFor="bypass-class-input">Class ID / Course Code</label>
+                <input
+                  id="bypass-class-input"
+                  type="text"
+                  placeholder="e.g. IT114115-2627"
+                  value={selectedClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+            {effectiveClassId && (normalizedUserClasses.length === 1 || propClassId) && (
+              <div style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '1rem', background: '#f8fafc', padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                🏫 Classroom: <strong>{effectiveClassId}</strong>
+              </div>
+            )}
 
             <div className="passkey-tab-switcher">
               <button
