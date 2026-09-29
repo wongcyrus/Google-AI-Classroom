@@ -735,7 +735,7 @@ Stores information about each class.
             *   `retryBingoScheduledAtMillis`: (number | null) Epoch timestamp in milliseconds indicating when the Strike 2 retry challenge is scheduled to fire.
             *   `retryDelayMinutes`: (number | null) Configured grace period delay applied for this retry schedule.
             *   `lastRetryDispatchedAt`: (timestamp | null) Server timestamp of when Strike 2 challenge was dispatched via Cloud Tasks.
-            *   `passkeyBypass`: (object | null) Active lesson-level bypass status (`{ active: true, classId, grantedBy, grantedAt, expiresAt, method }`).
+            *   `passkeyBypass`: (object | null) Active lesson-level bypass status (`{ active: true, classId, grantedBy, grantedAt, expiresAt, expiresAtMillis, durationMinutes, method: 'teacher_monitor_approval' | 'roster_pregrant' | 'emergency_pin' }`).
             *   `isRegistered`: (boolean | null) Cached boolean indicating whether the student has registered a hardware passkey.
     *   **`classes/{classId}/lectureQrSession`**: Real-time broadcast coordination document for lecture-wide dynamic rotating QR code attendance check-ins.
         *   **Document `active`** (`classes/{classId}/lectureQrSession/active`):
@@ -897,19 +897,20 @@ Stores notifications for users.
 
 ### `passkeyAuditLogs`
 
-Stores immutable security audit records whenever a teacher performs a passkey reset or device unlinking for a student (e.g. upon phone replacement).
+Stores immutable security audit records whenever a teacher performs a passkey reset, approves a temporary emergency bypass, verifies an emergency PIN, or logs into a shared lab PC via phone QR scan.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
-    *   `studentUid`: (string) The UID of the student whose passkey was reset.
-    *   `studentEmail`: (string) Email of the student.
-    *   `action`: (string) Action type (e.g., `'RESET_PASSKEY_PHONE_REPLACEMENT'`).
-    *   `reason`: (string) Stated reason for reset (e.g., `'Phone replacement'`).
-    *   `teacherUid`: (string) UID of the authenticated teacher who authorized and performed the reset.
-    *   `teacherEmail`: (string) Email of the teacher.
-    *   `previousCredentialID`: (string) Base64 WebAuthn credential ID of the unlinked device.
-    *   `previousDeviceModel`: (string) Hardware model name of the unlinked device (e.g., `'iPhone 15 Pro'`).
-    *   `timestamp`: (timestamp) Server timestamp when the reset occurred.
+    *   `studentUid`: (string, optional) The UID of the student affected by the passkey operation.
+    *   `studentEmail`: (string, optional) Email of the student.
+    *   `action`: (string) Action type (`'RESET_PASSKEY_PHONE_REPLACEMENT'`, `'TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR'`, `'APPROVE_TEACHER_PASSKEY_BYPASS'`, `'VERIFY_TEACHER_PASSKEY_BYPASS_PIN'`).
+    *   `reason`: (string, optional) Stated reason for reset or bypass (e.g., `'Phone replacement'`, `'Phone battery dead'`).
+    *   `teacherUid`: (string, optional) UID of the authenticated teacher who authorized the action.
+    *   `teacherEmail`: (string, optional) Email of the teacher.
+    *   `previousCredentialID`: (string, optional) Base64 WebAuthn credential ID of the unlinked device.
+    *   `previousDeviceModel`: (string, optional) Hardware model name of the unlinked device (e.g., `'iPhone 15 Pro'`).
+    *   `deviceModel`: (string, optional) Hardware model name of the authenticated device (e.g., `'Pixel 8 Pro'`).
+    *   `timestamp`: (timestamp) Server timestamp when the security action occurred.
 
 ### `passkeyPairingTokens`
 

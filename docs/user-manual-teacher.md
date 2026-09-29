@@ -47,7 +47,7 @@ When teaching in academic computer laboratories with shared student/podium PCs, 
    - Once paired, your linked device appears in the Account Menu as **`📱 Passkey Phone: [Device Model]`** (e.g., `Apple iPhone` or `Android Device`).
 2. **Signing into a Lab PC via QR Code**:
    - On the desktop login screen (`/login`), click **`📱 Scan QR Code`**.
-   - Point your phone camera at the 90-second rotating desktop QR code.
+   - Point your phone camera at the 15-second dynamic rotating desktop QR code (featuring a live countdown ring and seamless background auto-renewal).
    - Tap the link notification and authenticate with your phone biometrics.
    - The lab PC automatically detects authorization, mints an official Firebase Custom Auth Token with `{ role: 'teacher' }`, and signs directly into the Teacher Command Center.
    - Zero credentials or passkeys remain on the shared lab PC upon sign-out.
@@ -175,6 +175,21 @@ Students often take multiple modular classes across semesters and teaching teams
    - Preview changes and apply them directly to the roster.
 4. **Export Roster (`📤 Export Excel`):**
    - Click **`📤 Export Excel`** to download current roster records as an OpenXML spreadsheet (`Class_{id}_Roster.xlsx`). The exported Excel file includes all auto-enriched names, nicknames, programmes, and cohort classes merged from institutional memory.
+
+### Passkey Status, Phone Resets & Proactive Emergency Bypasses
+To enforce anti-proxy attendance, student accounts are bound 1-to-1 to physical smartphones via WebAuthn passkeys. Course instructors manage device status directly from the **Class Management Roster** table and the enlarged **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`):
+
+1. **Passkey Status Indicators**:
+   - `📱 Linked`: Student has successfully paired a physical smartphone platform authenticator (iOS Face ID/Touch ID or Android Fingerprint).
+   - `⏳ Not Registered`: Student has not yet linked a smartphone.
+2. **Proactive Emergency Passkey Bypass (`[ ⚡ Temp Bypass ]`)**:
+   - If a student arrives at a computer lab with a dead, broken, or forgotten smartphone, instructors can immediately click **`[ ⚡ Temp Bypass ]`** in the student row.
+   - A prompt requests the bypass duration in minutes (defaults to `90` minutes; customizable as needed).
+   - Once approved, the student row displays a real-time badge: **`⚡ Bypass Active (XXm left)`**.
+   - The student can immediately access their lab desktop without being blocked by the passkey gate. Both registered and unregistered students can receive emergency bypasses.
+3. **Instructor Device Reset for Phone Replacement (`[ 🔄 Reset ]`)**:
+   - Because regular students cannot self-unlink or switch phones at will (anti-proxy protection), instructors perform resets when a student legitimately replaces or loses their phone.
+   - Clicking **`[ 🔄 Reset ]`** unlinks the previous hardware credential, writes an immutable record to `passkeyAuditLogs`, and allows the student to pair their new smartphone on their next login.
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:
@@ -587,26 +602,32 @@ The Bingo Presence Report is deeply integrated with the class schedule:
 6. **Student Search & Status Filtering:** Search by email prefix or student UID, and filter by status tabs (`All`, `Passed`, `Incorrect`, `Timed Out`, `Pending`).
 7. **Excel Export (`📥 Export Excel`):** Click **`📥 Export Excel`** to download an OpenXML `.xlsx` spreadsheet with student names, nicknames, cohorts, programmes, timestamps, lesson periods, questions, options, correct answers, student choices, latency, focus states, verification methods (`Mobile Passkey`, `In-Person Podium`, `Predefined Question Bank`), and strikes. The generated filename dynamically incorporates the active lesson date (e.g., `Bingo_Results_CLASS101_2026_09_17.xlsx`).
 
-#### 4. 📱 Mobile Passkey Mode, In-Person Podium Claims & Phone Replacement Reset
+#### 4. 📱 Mobile Passkey Mode, In-Person Podium Claims, Emergency Bypasses & Phone Replacement
 
 In computer labs lacking webcams where students may share login credentials, teachers can activate **`📱 Mobile Passkey QR (1-Phone Lock / Biometrics)`** in `ControlsPanel.jsx`:
 
 > 📖 **Comprehensive Guide**: For complete step-by-step UI instructions and diagrams, see **[📱 Mobile Passkey Device Registration & Attendance Guide](./passkey-device-registration-guide.md)**.
 
-1. **Anti-Proxy 1-Phone Hardware Lock**:
+1. **Anti-Proxy 1-Phone Hardware Lock & Restricted Student Unlinking**:
    - Each student account is cryptographically bound to one physical phone via WebAuthn platform authenticators (Apple Secure Enclave, Android Titan).
    - If a student tries to pair a friend's phone to answer on their behalf, registration is blocked with a hardware collision error.
-2. **In-Person Podium Claims Alert Banner**:
-   - Students whose phones are dead, forgotten, or unconfigured can click `🙋 I don't have my phone today` on their Lab PC.
+   - Regular students cannot self-unlink or rotate phones at will. This eliminates student phone-bouncing and proxy attendance. Only course instructors and whitelisted faculty testing accounts can unlink devices.
+2. **Emergency Passkey Bypasses for Dead / Forgotten Phones**:
+   - **Podium Remote Approval**: When a student encounters the desktop gate with a dead phone, they click `🙋 Request Teacher Bypass`. An amber alert banner surfaces on the teacher's `MonitorView` HUD showing the student's name, seat, and timestamp. The teacher clicks **`[ ✅ Grant Session Bypass ]`** (default 90–180 minutes) to unlock the desktop immediately.
+   - **Emergency 6-Digit Class PIN**: If the teacher is assisting other students, the student can select `🔑 Enter Emergency Teacher PIN` on their desktop and type the 6-digit PIN displayed on the teacher's live monitor (`classes/{classId}.teacherBypassPin`).
+   - **Proactive Roster Pre-Granting**: Teachers can pre-grant emergency bypasses in advance from the Class Management Roster or Enrolled Roster Modal (`[ ⚡ Temp Bypass ]`), specifying custom validity (e.g. 90 minutes). The gate unlocks instantly across all enrolled classes.
+   - **Automatic Schedule Detection**: The student desktop gate automatically derives the current classroom session from the student's timetable schedule, eliminating "Class ID is required" errors.
+3. **In-Person Podium Claims Alert Banner (During Bingo)**:
+   - Students whose phones are dead, forgotten, or unconfigured can click `🙋 I don't have my phone today` on their Lab PC during active Bingo.
    - A bright amber alert card appears at the top of the teacher's Bingo view: **`Pending In-Person Podium Claims`**.
    - The teacher physically verifies the student standing at the podium and clicks **`[✅ Verify In-Person]`** with 1 click to mark them present.
-3. **Teacher Passkey Reset for Phone Replacement (`[🔄 Reset Passkey]`)**:
+4. **Teacher Passkey Reset for Phone Replacement (`[🔄 Reset Passkey]` / `[🔄 Reset]`)**:
    - When a student buys a new phone, loses their phone, or resets their hardware, the previous device lock must be unlinked.
-   - Teachers can click **`[🔄 Reset Passkey]`** in either the **Podium Action** column in `BingoResultsView.jsx` or the **Enrolled Roster Details** table in `ClassManagement.jsx`.
+   - Teachers can click **`[🔄 Reset Passkey]`** in either the **Podium Action** column in `BingoResultsView.jsx` or **`[ 🔄 Reset ]`** in the **Enrolled Roster** in `ClassManagement.jsx`.
    - Confirming unlinks the old phone's credential in `studentPasskeys/{studentUid}`, logs an immutable record in `passkeyAuditLogs`, and allows the student to immediately scan the pairing QR code on their Lab PC to bind their new device.
-4. **Desktop Registration Block Guarantee**:
+5. **Desktop Registration Block Guarantee**:
    - Shared lab computers are strictly prohibited from registering or executing passkey challenges. If accessed on desktop, `/pair-phone` and `/verify-passkey` display a blocked alert requiring a mobile phone.
-5. **Zero Session Displacement Conflicts (No Dual Login Needed)**:
+6. **Zero Session Displacement Conflicts (No Dual Login Needed)**:
    - Mobile passkey verification operates completely sessionless and passwordless on mobile. The student's active Desktop streaming session (`status.sessionId`) is never touched or disconnected, while the single-session anti-cheating barrier prevents multiple simultaneous PC logins.
 
 ---

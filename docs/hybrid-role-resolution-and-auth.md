@@ -313,11 +313,13 @@ All environment variables used by the hybrid system:
 | `VITE_STUDENT_USERNAME_REGEX` | Frontend | String | `""` | Regex pattern matching student usernames. |
 | `VITE_TEACHER_USERNAME_REGEX` | Frontend | String | `""` | Regex pattern matching teacher usernames. |
 | `VITE_DEFAULT_TO_STUDENT` | Frontend | Boolean | `"true"` | When true, ambiguous domains/usernames default to student. |
+| `VITE_PASSKEY_DEVICE_SHARING_WHITELIST` | Frontend | String | `cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk` | Whitelist allowed to share devices & self-unlink. |
 | `STUDENT_EMAIL_DOMAINS` | Functions | Array/CSV | `stu.vtc.edu.hk` | Backend list of student domains. |
 | `TEACHER_EMAIL_DOMAINS` | Functions | Array/CSV | `vtc.edu.hk` | Backend list of teacher domains. |
 | `STUDENT_USERNAME_REGEX` | Functions | String | `""` | Backend regex for student usernames. |
 | `TEACHER_USERNAME_REGEX` | Functions | String | `""` | Backend regex for teacher usernames. |
 | `DEFAULT_TO_STUDENT` | Functions | Boolean | `true` | Backend zero-trust fallback flag. |
+| `PASSKEY_DEVICE_SHARING_WHITELIST` | Functions | Array/CSV | `cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk` | Whitelisted accounts exempt from 1-device collision & allowed self-unlinking. |
 
 ---
 

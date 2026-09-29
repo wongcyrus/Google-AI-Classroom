@@ -34,8 +34,8 @@ flowchart TD
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 42 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 245+ Tests in ai_flows + 6 Other Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,221 Tests across 133 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 267 Tests in ai_flows + 6 Other Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,246 Tests across 133 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -67,13 +67,15 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (133 Test Files / 1,221 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (133 Test Files / 1,246 Tests).
 * **Covered Modules**:
-  * `web-app/src/components/EnrolledRosterModal.test.jsx`: Validates enrolled student roster modal rendering, search query filtering by student email and name, passkey registration status badges, unlinked phone resetting, and empty state rendering.
+  * `web-app/src/components/passkey/PasskeyEnforcementGate.test.jsx`: Validates automatic classId resolution from schedule hook when classId prop is omitted, multi-class session selector dropdown rendering, teacher bypass request submission, emergency PIN verification, multi-class real-time bypass listening, and immediate sign-out.
+  * `web-app/src/components/passkey/PasskeyPairModal.test.jsx`: Validates restricted self-service phone unlinking (regular students see instructor guidance; teachers and whitelisted testing accounts render unlink button), countdown timer, and auto-refresh.
+  * `web-app/src/components/EnrolledRosterModal.test.jsx`: Validates enrolled student roster modal rendering, search query filtering by student email and name, passkey registration status badges, temporary emergency passkey bypass button (`[ ⚡ Temp Bypass ]`), custom duration prompt, real-time active bypass badges (`⚡ Bypass Active`), and unlinked phone resetting.
+  * `web-app/src/components/ClassManagement.test.jsx`: Validates class creation, settings persistence, exam period definitions, roster Excel (`.xlsx`) exports/imports with Unicode Chinese character preservation, custom gaze thresholds, configurable **Bingo Active Presence Retry Grace Delay** dropdown, and `[ ⚡ Temp Bypass ]` invocation of `approveTeacherPasskeyBypass`.
   * `web-app/src/components/monitor/LectureQrBingoModal.test.jsx`: Tests teacher projector modal displaying rotating dynamic QR codes, remaining countdown timers, real-time ticker of verified students, audio chime triggers, and challenge lifecycle.
   * `web-app/src/components/passkey/LecturePasskeyVerifyView.test.jsx`: Validates student mobile camera QR code verification, 1-tap biometric assertion submission, response time calculation, and feedback screens.
   * `web-app/src/utils/lectureQrCrypto.test.js`: Validates HMAC-SHA256 time-rotating QR token generation, window drift tolerance, and expired token rejection.
-  * `web-app/src/components/ClassManagement.test.jsx`: Validates class creation, settings persistence, exam period definitions, roster Excel (`.xlsx`) exports/imports with Unicode Chinese character preservation, custom gaze thresholds, and configurable **Bingo Active Presence Retry Grace Delay** dropdown (`bingoRetryDelayMinutes`: 1m, 2m, 3m default, 5m, 10m).
   * `web-app/src/components/StudentRecordsView.test.jsx`: Validates the complete student self-service records portal across all 5 tabbed views (`videos`, `attendance`, `tasks`, `irregularities`, `audio`), KPI metrics summary card calculations, class switcher filtering, missing profile fallback resolution, signed video playback modal triggers, exam audio confidentiality shielding, irregularity evidence suppression during tests, and immediate abortion of direct GCS fallback upon backend callable permission denial.
   * `web-app/src/components/MonitorView.test.jsx`: Tests problem student filter dropdown, grid channel switching, zero-space targeted nudge broadcast, teacher preload AI trigger, high-concurrency image resolution, in-flight deduplication, 1-click Excel audit export with student names and cohorts, live Exam Mode toggle button rendering, top-level `PROCTORED EXAM MODE ACTIVE` alert banner display, and Firestore atomic toggle triggers.
   * `web-app/src/components/monitor/ControlsPanel.test.jsx`: Tests session controls, broadcast message templates, AI monitoring mode configurations, the `⚡ Preload AI for All Students` class broadcast trigger, the live `🔒 Exam Mode: ACTIVE` / `📝 Exam Mode: OFF` toggle button, and the **Strike 2 Grace Delay** selector with instant Firestore update.
@@ -117,9 +119,10 @@ flowchart TD
   * `web-app/src/components/BingoQuestionBankModal.test.jsx`: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing questions, and 1-click addition to class pool; tests Aiken format parser and JSON array batch importer with syntax validation; tests Question Pool tab displaying questions, answers, explanations, and delete actions.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (16 Test Files / 245 Tests in `functions/ai_flows` + 6 Other Codebases).
+* **Framework**: `vitest` with Node.js 22 runtime (17 Test Files / 267 Tests in `functions/ai_flows` + 6 Other Codebases).
 * **Covered Modules**:
-  * `functions/ai_flows/passkeyFlows.test.js`: Validates all 15 WebAuthn FIDO2 passkey callables, including `handleCreateLectureBingoSession`, `handleGetLecturePasskeyAuthOptions`, and `handleVerifyLecturePasskeyAuth`, token challenge caching, device fingerprint hardware lock, counter increments, and response ranking.
+  * `functions/ai_flows/passkeyFlows.test.js`: Validates all 15 WebAuthn FIDO2 passkey callables, including `handleCreateLectureBingoSession`, `handleGetLecturePasskeyAuthOptions`, `handleVerifyLecturePasskeyAuth`, fallback UID resolution from class enrolled students map and Firebase Auth for teacher roster pre-granting, token challenge caching, device fingerprint hardware lock, counter increments, and response ranking.
+  * `functions/ai_flows/resetStudentPasskey.test.js`: Validates security authorization restricting passkey resets to teachers and whitelisted testing accounts while strictly blocking unauthorized student self-unlinking.
   * `functions/ai_flows/processLectureSubtitlesHandler.test.js`: Validates subtitle synthesis, video processing, and `handleReconcileLectureRecordings` Cloud Storage synchronization and recovery.
   * `functions/ai_flows/config.test.js`: Tests `deriveUserRole`, domain matching, regex hierarchies, and allowed email domain descriptions.
   * `functions/ai_flows/analysisFlows.test.js`: Tests `analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, and `analyzeAudioFlow` with Gemini resilient fallback logic and quota checking.
