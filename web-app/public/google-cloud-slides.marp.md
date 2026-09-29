@@ -415,6 +415,28 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Dynamic Rotating QR Attendance, Shared Lab PC Passkeys & Roster Pre-Granting
+### Dynamic Projector QRs, Passwordless Lab PC Login & Desktop Gate Resilience
+
+![bg right:60% 95%](images/slide_hybrid_role_resolution.png)
+
+- **Dynamic Rotating HMAC-SHA256 Lecture Projector Attendance:**
+  - Dynamic 15s rotating encrypted QR codes projected in lecture halls prevent photo forwarding proxy cheating.
+  - 1-tap mobile camera scan triggers WebAuthn assertion $\to$ `verifyLecturePasskeyAuth` (<2s attendance check-in).
+- **Passwordless Shared Lab PC Login for Teachers & Students:**
+  - Dynamic 15-second rotating desktop login QR code with live countdown ring and seamless background auto-renewal.
+  - Scanning with paired phone authenticates biometrics; Cloud Function mints a Firebase Custom Auth Token with role claims.
+  - Zero password keystrokes on public shared lab keyboards—eliminates keylogger risks for students and faculty!
+- **Desktop Gate Resilience & Timetable Auto-Resolution (`PasskeyEnforcementGate`):**
+  - Unlinked desktop arrivals automatically resolve active `classId` from timetable schedule (`useStudentClassSchedule`).
+  - Multi-class session selector for multi-enrolled students; gate unlocks instantly via real-time multi-class listener.
+- **Proactive Roster Emergency Pre-Granting & Anti-Proxy Unlink Restriction:**
+  - Instructors pre-grant temporary bypasses (`[ ⚡ Temp Bypass ]`) directly from Class Management rosters & Enrolled Roster Modals.
+  - Regular students cannot self-unlink devices (blocks proxy device hopping); teachers perform 1-click resets upon phone replacement.
+  - Faculty/testing whitelist (`PASSKEY_DEVICE_SHARING_WHITELIST`) permits multi-role phone sharing.
+
+---
+
 ## 06 | Real-Time Classroom Media Pipelines
 ### 1-to-1 WebRTC Live Peek & Pure Frame Classroom Broadcaster
 
@@ -718,13 +740,13 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## 09 | DevSecOps & Production Reliability Engineering
-### Multi-Tier Automated Testing Pyramid (>1,450 Tests) & 100% Gemini 3 Standard
+### Multi-Tier Automated Testing Pyramid (>1,580 Tests) & 100% Gemini 3 Standard
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **1,450+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 1,184 unit tests across 126 suites in Vitest (81.66% line coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 146+ tests across 7 isolated codebases (ai_flows, attendance, auth, media, scheduled, storage).
+- **1,580+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 1,246 unit tests across 133 suites in Vitest (81.66% line coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 267+ tests in `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 - **100% Gemini 3 Family Standardization:**

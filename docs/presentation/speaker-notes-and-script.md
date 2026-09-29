@@ -344,6 +344,29 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
+### 40:00 – 41:30 | Slide 21: Dynamic Rotating QR Attendance, Shared Lab PC Passkeys & Roster Pre-Granting
+*Visual: `slide_hybrid_role_resolution.png`*
+
+> **Cyrus Wong:**  
+> "Building upon our 1-phone hardware lock, we pushed physical lab security even further:
+>
+> 1. **Dynamic Rotating Projector QR Attendance:**
+>    - In large lecture halls, static QR codes can be photographed and forwarded to absent friends outside the room.
+>    - We generate **HMAC-SHA256 time-rotating encrypted QR tokens** refreshing every 15 seconds on the lecture projector.
+>    - Students point their native mobile cameras at the live screen and tap Face ID/Fingerprint once. WebAuthn assertion validates in <2 seconds.
+> 2. **Passwordless Shared Lab PC Login for Faculty & Students:**
+>    - Typing institutional passwords on shared lab keyboards invites hardware keyloggers and shoulder surfing.
+>    - Lab PCs display a dynamic 15-second rotating desktop login QR code. Scanning with your phone authenticates biometrics, triggering Cloud Function `verifyDesktopLoginPasskey` to mint an official Firebase Custom Auth Token with role claims (`teacher` or `student`).
+>    - Zero passwords ever touched on public lab keyboards!
+> 3. **Desktop Gate Resilience & Timetable Auto-Resolution:**
+>    - If a student's phone battery is dead upon arriving at class, `PasskeyEnforcementGate` automatically detects their active classroom session from their timetable schedule (`useStudentClassSchedule`).
+>    - They can request an instant remote bypass or type the teacher's emergency 6-digit PIN.
+> 4. **Proactive Roster Emergency Pre-Granting & Anti-Proxy Unlink Restriction:**
+>    - Instructors can pre-grant temporary bypasses (`[ ⚡ Temp Bypass ]`) directly from Class Management rosters and Enrolled Roster Modals before class begins.
+>    - To eliminate proxy device bouncing, regular students cannot self-unlink their phones. Only instructors and whitelisted faculty testing accounts can unlink devices."
+
+---
+
 ### 40:00 – 41:30 | Slide 21: 06 | Real-Time Classroom Media Pipelines
 *Visual: `slide_realtime_media_pipelines.png`*
 
@@ -648,9 +671,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **1,450+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 1,184 tests across 126 suites achieving **81.66% line coverage** in Vitest.
->   - **Level 2 (Backend Cloud Functions):** 146+ tests across 7 isolated codebases (ai_flows, attendance, auth, media, scheduled, storage).
+> - **1,580+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 1,246 tests across 133 suites achieving **81.66% line coverage** in Vitest.
+>   - **Level 2 (Backend Cloud Functions):** 267+ tests in `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
 >   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 > - **100% Gemini 3 Family Standardization:** Standardized entirely on the Gemini 3 family in compliance with Google Cloud 2026 platform standards.
