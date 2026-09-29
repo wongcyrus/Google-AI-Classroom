@@ -317,7 +317,8 @@
 
 .class-view .other-tab-content .lecture-recordings-container,
 .class-view .other-tab-content .perf-analytics-container,
-.class-view .other-tab-content .bingo-results-container {
+.class-view .other-tab-content .bingo-results-container,
+.class-view .other-tab-content .class-management-container {
   padding-left: 0;
   padding-right: 0;
 }
