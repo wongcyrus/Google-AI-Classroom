@@ -222,10 +222,13 @@ describe('App & MainHeader Components', () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByText('🧑‍🎓 Student')).not.toBeInTheDocument();
 
-    // Reopen and click My Records inside menu
+    // Reopen menu
     fireEvent.click(userTrigger);
-    const menuRecordsItems = screen.getAllByText('My Records');
-    fireEvent.click(menuRecordsItems[menuRecordsItems.length - 1]);
+    // "My Records" is present only in the top navigation tab, not duplicated in the settings menu
+    expect(screen.getAllByText(/My Records/i)).toHaveLength(1);
+    // Click Change Password inside menu
+    const changePwdBtn = screen.getByText('Change Password');
+    fireEvent.click(changePwdBtn);
     expect(screen.queryByText('🧑‍🎓 Student')).not.toBeInTheDocument();
   });
 

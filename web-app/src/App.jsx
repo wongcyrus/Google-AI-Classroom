@@ -412,20 +412,6 @@ const MainHeader = ({ onLogout, user, role }) => {
                 <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
               </div>
               <div className="profile-menu-divider" />
-              {role === 'student' && (
-                <>
-                  <Link
-                    to="/student/records"
-                    className="profile-menu-item"
-                    onClick={() => setShowProfileMenu(false)}
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <span className="menu-item-icon">📋</span>
-                    <span>My Records</span>
-                  </Link>
-                  <div className="profile-menu-divider" />
-                </>
-              )}
               <button 
                 type="button"
                 className="profile-menu-item"
