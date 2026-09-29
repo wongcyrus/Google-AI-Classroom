@@ -109,10 +109,27 @@ flowchart TD
   - `Classes`: Navigates to `/` (Teacher Class Overview).
   - `Prompts`: Navigates to `/prompts` (AI Prompt Studio).
   - `Mailbox`: Navigates to `/mailbox` (Displays badge with unread system notification count).
+  - `📋 My Records`: Direct top-bar navigation link for students to access attendance history, video recordings, and lab grades.
 - **Role Simulation Switcher (`role-switcher`):** Allows administrative accounts to toggle between `Teacher` and `Student` modes for end-to-end verification.
-- **User Profile Pill & Logout Button:** Shows active Google Account avatar and email with a one-click `Sign Out` button.
+- **User Profile Pill & Account Dropdown Menu:**
+  - Shows active Google/Institutional Account avatar, display name, and role badge.
+  - **`📱 Passkey Phone: [Device Model]` / `📱 Pair Phone (Passkey)`**: Opens `PasskeyPairModal.jsx` to pair a physical smartphone platform authenticator (Apple Face ID/Touch ID or Android Fingerprint) for passwordless logins. For teachers and whitelisted testing accounts, includes `[ 🔄 Unlink / Switch Phone ]`. For regular students, displays anti-proxy security guidance instructing them to contact course instructors for phone replacements.
+  - **`Change Password`**: Launches `ChangePasswordModal.jsx` for secure in-app password updates.
+  - **`Sign Out`**: Ends the session cleanly with zero credential residue.
+  - *Note*: Redundant `My Records` link removed from student dropdown menu to prevent duplicate navigation paths.
 
-### System Gatekeeping & Hardware Policies
+### System Gatekeeping, Passkey Policies & Hardware Enforcement
+- **Dynamic 15-Second Desktop Login QR Code (`AuthComponent.jsx` at `/login`):**
+  - Displays a high-contrast dynamic QR code rotating every 15 seconds with a live SVG countdown ring and seamless background auto-renewal.
+  - Allows students and instructors to scan with their paired mobile camera to sign into shared lab PCs with zero password keystrokes.
+- **Mandatory Desktop Passkey Enforcement Gate (`PasskeyEnforcementGate.jsx`):**
+  - Strictly enforces the anti-proxy 1-Student = 1-Phone hardware lock on desktop browsers. If a student attempts desktop access without an enrolled passkey, the gate locks classroom navigation and video streaming.
+  - **Timetable-Driven Class Auto-Resolution**: Integrates `useStudentClassSchedule(user)` to derive the active `classId` automatically from timetable data and enrolled courses, preventing "Class ID is required" errors.
+  - **Multi-Class Classroom Selector**: If a student is enrolled in multiple courses and no session is active according to the timetable, provides a clean dropdown to select the target session.
+  - **Remote Teacher Bypass Request (`[ 🙋 Request Teacher Bypass ]`)**: Submits an immediate assistance request to the instructor's podium monitor.
+  - **Emergency Teacher PIN (`[ 🔑 Enter Emergency Teacher PIN ]`)**: Validates the 6-digit session PIN displayed on the teacher's podium HUD.
+  - **Multi-Class Real-Time Listener**: Listens simultaneously across all enrolled class student properties (`classes/${cid}/studentProperties/${uid}`); automatically unlocks the gate the instant an instructor grants a bypass anywhere.
+  - **Sign Out Button**: Allows students who mistakenly signed in under an incorrect account to log out immediately from the gate screen.
 - **Google Chrome Enforcer (`UnsupportedBrowserNotice.jsx`):** Strictly verifies Chromium architecture (`isGoogleChrome()`). If a student accesses the platform on Safari, Firefox, or Edge, interactive streaming is blocked, and an instructional card explaining WebRTC/MediaPipe hardware requirements is presented.
 - **Desktop Notification Requester:** Requests browser notification privileges on initial load to allow background OS notifications when incidents occur or students ask questions.
 
@@ -376,10 +393,15 @@ flowchart TD
   - Collision Detection: Prevents overlapping or adjacent conflicting slots.
   - `+ Add Schedule` and `✕ Remove` buttons.
 
-### Section 3: Student Roster & Custom Properties
+### Section 3: Student Roster, Passkeys & Custom Properties
 - **Student Email Textarea:** Comma/newline separated roster input with instant cross-class profile auto-fill.
 - **`📥 Batch Import Students` Modal:** Structured dialog with downloadable Excel template (`student_roster_template.xlsx`) and support for `.xlsx`/`.xls` uploads with full Chinese character preservation.
 - **`📤 Export Excel` Button:** Downloads active roster as OpenXML spreadsheet (`Class_{id}_Roster.xlsx`) containing merged names, nicknames, programmes, and cohorts.
+- **`[ 👥 Enrolled Roster ]` Modal & Preview Table Passkey Controls:**
+  - **Passkey Status Indicators:** Displays real-time device registration status: `📱 Linked` (with device model) or `⏳ Not Registered`.
+  - **`[ ⚡ Temp Bypass ]` Action Button:** Available on every student row; prompts teacher for custom bypass duration in minutes (default `90`). Grants emergency gate bypass for students with dead or forgotten phones.
+  - **`⚡ Bypass Active (XXm left)` Status Badge:** Real-time badge showing active bypass and countdown.
+  - **`[ 🔄 Reset ]` Passkey Button:** Securely unlinks a student's paired phone upon legitimate hardware loss/replacement and logs to `passkeyAuditLogs`.
 - **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
 - **Student-Specific Custom Properties Excel Tool:**
   - `📥 Export / Download Existing Excel`: Generates `.xlsx` spreadsheet with `StudentEmail` and existing custom property columns.

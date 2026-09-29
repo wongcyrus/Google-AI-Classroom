@@ -281,24 +281,33 @@ In computer labs without webcams, your instructor may use **Mobile Passkey Verif
 > **No Session Displacement & Desktop Block Policy**:
 > - Scanning the pairing or attendance QR code with your phone camera does **not** create a separate login session on mobile. Your proctored Lab PC session remains 100% uninterrupted and will never be displaced.
 > - Passkeys must be registered on your personal mobile phone (iOS Safari or Android Chrome). Attempting to register on a shared desktop PC is blocked.
+> - **Anti-Proxy Protection**: Regular students cannot self-unlink or switch phones at will. Once paired, your phone is locked to your account. If you lose or replace your phone, your instructor can reset it with 1 click.
 
-1. **Initial Pairing (No Password Required)**:
-   - On your logged-in Lab PC, click the **`📲 Pair Phone`** button.
-   - A 10-minute temporary pairing QR code appears on your screen.
-   - Scan the QR code using your smartphone's camera.
-   - Tap **"Save Passkey"** on your phone to register your Face ID / Touch ID / Fingerprint via your phone's hardware security chip.
-   - Your phone is now paired! **Note:** Each physical phone can only be paired to one student account.
-2. **Routine In-Class Attendance (<2 Seconds)**:
+1. **Mandatory Desktop Gate & Initial Pairing (Zero Password on Mobile)**:
+   - When logging into a lab PC without a paired phone, the **Passkey Enforcement Gate** (`PasskeyEnforcementGate`) locks the desktop.
+   - A dynamic pairing QR code appears on the screen with a live countdown timer and auto-refresh.
+   - Open your smartphone's built-in **Camera app** (iOS Safari or Android Chrome) and scan the QR code.
+   - Tap **"Save Passkey"** / **"Pair This Phone"** on your phone to register your Face ID / Touch ID / Fingerprint via your phone's hardware security chip.
+   - The desktop detects registration in real time and automatically unlocks! Each physical phone can only be paired to one student account.
+   - *Wrong account?* Click the **`Sign Out`** button on the bottom of the gate to switch accounts.
+2. **Emergency Bypass for Dead / Forgotten Phones (`🙋 Request Teacher Bypass`)**:
+   - If your phone battery is dead, forgotten at home, or broken when you arrive at class, you can still access your lab PC:
+   - Click **`🙋 Request Teacher Bypass`** on the desktop gate.
+   - **Automatic Schedule Matching**: The gate automatically detects your active classroom session based on your timetable schedule. If you are enrolled in multiple classes, select your current class from the session dropdown.
+   - Select your reason (e.g. *Phone battery dead*) and submit. Your instructor receives an instant alert on their podium monitor and approves your temporary bypass with 1 click.
+   - Alternatively, click **`🔑 Enter Emergency Teacher PIN`** and enter the 6-digit PIN displayed on your teacher's monitor.
+   - If your teacher pre-granted your bypass from the class roster before you arrived, the gate unlocks immediately in real time!
+3. **Routine In-Class Attendance (<2 Seconds)**:
    - When the teacher triggers a Passkey Bingo check, a dynamic QR code appears on your Lab PC.
-   - Scan the QR code with your paired phone.
-   - Confirm via native Face ID or Fingerprint on your phone.
+   - Scan the QR code with your paired phone and confirm biometrics.
    - Your Lab PC instantly turns green with **"📱 Passkey Verified!"** and records your attendance.
-3. **If Your Phone Battery Dies or Phone is Broken (`🙋 I don't have my phone today`)**:
-   - On the Lab PC Bingo dialog, click **`🙋 I don't have my phone today`**.
-   - Walk up to the teacher's podium. The teacher will verify you in person and click **`[✅ Verify In-Person]`** with 1 click.
 4. **If You Replaced Your Phone**:
-   - Ask your teacher to click **`[🔄 Reset Passkey]`** next to your name in their podium view or class roster.
-   - Once reset, click **`📲 Pair Phone`** on your Lab PC to pair your new smartphone.
+   - Ask your teacher to click **`[ 🔄 Reset ]`** next to your name in their podium view or class roster.
+   - Once reset, scan the pairing QR code on your Lab PC to bind your new smartphone.
+5. **Signing into Shared Lab PCs via Mobile QR Code**:
+   - On the desktop login screen (`/login`), click **`📱 Scan QR Code`**.
+   - Point your phone camera at the 15-second dynamic rotating QR code with live countdown.
+   - Confirm with Face ID or Fingerprint on your phone to log into the desktop workspace without typing passwords on public keyboards.
 
 ### 🎯 Bingo Challenge Response & Attendance State Machine
 

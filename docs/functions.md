@@ -155,7 +155,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Description**: Invoked by the mobile phone upon scanning the pairing QR code. Validates token freshness and unexpired state. Generates WebAuthn platform registration options via `@simplewebauthn/server` (`generateRegistrationOptions`), targeting platform authenticators (Apple Secure Enclave, Android Titan/StrongBox) with `preferred` user verification. Stores cryptographic challenge on the token document.
 -   **`verifyPasskeyRegistration`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Verifies the attestation response from the phone's native biometric prompt. **Enforces 1-Phone = 1-Student Hardware Lock**: queries `studentPasskeys` to verify that `credentialID` is not already bound to another student UID. If a hardware collision is detected, registration throws `already-exists` to block human proxy attendance. On success, writes `studentPasskeys/{studentUid}` and consumes the pairing token (`used = true`).
+    -   **Description**: Verifies the attestation response from the phone's native biometric prompt. **Enforces 1-Phone = 1-Student Hardware Lock**: queries `studentPasskeys` to verify that `credentialID` is not already bound to another student UID. If a hardware collision is detected, registration throws `already-exists` to block human proxy attendance. Whitelisted accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`) and instructors are exempted to support dual-role device testing. On success, writes `studentPasskeys/{studentUid}` and consumes the pairing token (`used = true`).
 -   **`getPasskeyAuthOptions`**:
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Generates WebAuthn assertion options (`generateAuthenticationOptions`) for routine in-class attendance verification when a student scans the dynamic Bingo passkey QR code.
@@ -172,25 +172,26 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Checks if a given student UID has an enrolled passkey hardware credential and returns device model and pairing timestamp.
 -   **`resetStudentPasskey`**:
-    -   **Trigger**: Callable `onCall` (Teacher authorized).
-    -   **Description**: Enables teachers to assist students with phone replacement, device loss, or hardware re-pairing. Unlinks `studentPasskeys/{studentUid}`, invalidates old hardware bindings, and logs an immutable audit entry in `passkeyAuditLogs` with teacher UID, student UID, timestamp, and previous device model.
+    -   **Trigger**: Callable `onCall` (Teacher or whitelisted testing account authorized).
+    -   **Description**: Enables teachers to assist students with phone replacement, device loss, or hardware re-pairing. **Anti-Proxy Protection**: Regular students cannot call this function to self-unlink; unauthorized requests are rejected with `permission-denied`. Whitelisted test accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`) and teachers can unlink their own devices. Unlinks `studentPasskeys/{studentUid}`, invalidates old hardware bindings, and logs an immutable audit entry in `passkeyAuditLogs` with caller UID, student UID, timestamp, and previous device model.
 -   **`initiateDesktopLoginSession`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/passkeyFlows.js`).
-    -   **Description**: Invoked on a shared Lab PC login screen (`/login`) to generate an ephemeral 90-second login session in `loginSessions/{sessionId}`. Returns the `sessionId`, `expiresAtMillis`, and the QR URL (`/mobile-login?session=...`) for the student's mobile phone camera scan.
+    -   **Description**: Invoked on a shared Lab PC login screen (`/login`) to generate an ephemeral login session in `loginSessions/{sessionId}` rotating every 15 seconds. Returns the `sessionId`, `expiresAtMillis`, and the QR URL (`/mobile-login?session=...`) for the mobile phone camera scan.
 -   **`getDesktopLoginPasskeyOptions`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Invoked by the student's mobile smartphone upon scanning the desktop login QR code. Validates session status (`pending`) and TTL. Emits standard WebAuthn assertion challenge options (`generateAuthenticationOptions`) and stores the active cryptographic challenge on the session document.
+    -   **Description**: Invoked by the mobile smartphone upon scanning the desktop login QR code. Validates session status (`pending`) and TTL. Emits standard WebAuthn assertion challenge options (`generateAuthenticationOptions`) and stores the active cryptographic challenge on the session document.
 -   **`verifyDesktopLoginPasskey`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Validates the mobile biometric assertion against `studentPasskeys`. Updates the hardware counter and last login timestamp. Mints a Firebase Custom Auth Token (`createCustomToken`) for the student UID and updates `loginSessions/{sessionId}` to `authorized`. The desktop listener receives the custom token via Firestore snapshot and automatically signs in with `signInWithCustomToken`.
+    -   **Description**: Validates the mobile biometric assertion against `studentPasskeys`. Updates hardware counter and last login timestamp. Dynamically resolves user role (`teacher` or `student`) via `deriveUserRole(email)` or stored passkey role, and mints an official Firebase Custom Auth Token (`createCustomToken(uid, { role })`). Signs the shared lab PC directly into the Teacher Command Center or Student Workspace. Logs `TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR` in `passkeyAuditLogs` for faculty logins.
 -   **`requestTeacherPasskeyBypass`**:
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Creates a pending teacher bypass claim in `classes/{classId}/passkeyBypassRequests/{requestId}` for students whose phone battery died, was forgotten at home, or suffered hardware damage. Broadcasts a real-time alert to the instructor's podium HUD (`MonitorView`).
 -   **`approveTeacherPasskeyBypass`**:
     -   **Trigger**: Callable `onCall` (Teacher authorized).
-    -   **Description**: Allows an instructor to grant or reject a temporary lesson-scoped bypass (default 180 minutes) with 1 click from their podium HUD. Writes `passkeyBypass` directly into `classes/{classId}/studentProperties/{studentUid}` and records an immutable entry in `passkeyAuditLogs`.
+    -   **Description**: Allows an instructor to grant or reject a temporary lesson-scoped bypass (default 90–180 minutes) via podium 1-click or proactive Class Management Roster pre-granting (`[ ⚡ Temp Bypass ]`). If `targetUid` is omitted (direct roster click), automatically resolves the UID from the class document's enrolled student map (`classes/{classId}.data().students`) or Firebase Auth (`getUserByEmail`). Writes `passkeyBypass` directly into `classes/{classId}/studentProperties/{studentUid}` and records an immutable entry in `passkeyAuditLogs`.
 -   **`verifyTeacherPasskeyBypassPin`**:
     -   **Trigger**: Callable `onCall`.
+    -   **Description**: Validates student-entered 6-digit emergency PIN against `classes/{classId}.teacherBypassPin`. Upon verification, grants a temporary bypass in `classes/{classId}/studentProperties/{studentUid}.passkeyBypass`, unlocks the desktop gate immediately, and records `VERIFY_TEACHER_PASSKEY_BYPASS_PIN` in `passkeyAuditLogs`.
 -   **`createLectureBingoSession`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Authenticated teacher or class owner.
