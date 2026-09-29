@@ -27,6 +27,8 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     usageField = 'storageUsageAudio';
   } else if (filePath.startsWith('recordings/')) {
     usageField = 'storageUsageRecordings';
+  } else if (filePath.startsWith('irregularities/')) {
+    usageField = 'storageUsageIrregularities';
   }
 
   if (!usageField) {
@@ -138,6 +140,8 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
     usageField = 'storageUsageAudio';
   } else if (filePath.startsWith('recordings/')) {
     usageField = 'storageUsageRecordings';
+  } else if (filePath.startsWith('irregularities/')) {
+    usageField = 'storageUsageIrregularities';
   }
 
   if (!usageField) {
@@ -216,6 +220,22 @@ export const recalculateStorageUsage = onCall({
     throw new HttpsError('permission-denied', 'Only teachers assigned to this class can recalculate storage.');
   }
 
+  const results = await recalculateStorageUsageInternal(classId);
+
+  return {
+    status: 'success',
+    message: `Storage recalculated successfully. Total usage: ${(results.storageUsage / (1024 * 1024)).toFixed(2)} MB.`,
+    ...results,
+  };
+});
+
+/**
+ * Internal helper to audit and reconcile class storage usage directly against GCS bucket prefixes.
+ * Can be called by storageQuota onCall or internally by purge routines.
+ * @param {string} classId
+ * @returns {Promise<Object>}
+ */
+export async function recalculateStorageUsageInternal(classId) {
   const bucket = adminStorage.bucket();
   const categories = [
     { prefix: `screenshots/${classId}/`, field: 'storageUsageScreenShots' },
@@ -223,6 +243,7 @@ export const recalculateStorageUsage = onCall({
     { prefix: `zips/${classId}/`, field: 'storageUsageZips' },
     { prefix: `audio/${classId}/`, field: 'storageUsageAudio' },
     { prefix: `recordings/${classId}/`, field: 'storageUsageRecordings' },
+    { prefix: `irregularities/${classId}/`, field: 'storageUsageIrregularities' },
   ];
 
   const results = {
@@ -231,6 +252,7 @@ export const recalculateStorageUsage = onCall({
     storageUsageZips: 0,
     storageUsageAudio: 0,
     storageUsageRecordings: 0,
+    storageUsageIrregularities: 0,
     storageUsage: 0,
   };
 
@@ -259,11 +281,6 @@ export const recalculateStorageUsage = onCall({
   }, { merge: true });
 
   console.log(`Audited and synchronized storage usage for class ${classId}:`, results);
-
-  return {
-    status: 'success',
-    message: `Storage recalculated successfully. Total usage: ${(results.storageUsage / (1024 * 1024)).toFixed(2)} MB.`,
-    ...results,
-  };
-});
+  return results;
+}
 

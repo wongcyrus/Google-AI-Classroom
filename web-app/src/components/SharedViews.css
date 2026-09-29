@@ -406,6 +406,7 @@ table tr:hover td {
 .storage-segment.videos { background: #8b5cf6; }
 .storage-segment.recordings { background: #f59e0b; }
 .storage-segment.zips { background: #06b6d4; }
+.storage-segment.irregularities { background: #ef4444; }
 
 .storage-legend-grid {
   display: grid;
