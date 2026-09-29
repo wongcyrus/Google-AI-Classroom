@@ -15,6 +15,8 @@ import {
   DEFAULT_CLASS_QUOTA_BYTES,
   STUDENT_EMAIL_DOMAINS,
   TEACHER_EMAIL_DOMAINS,
+  PASSKEY_DEVICE_SHARING_WHITELIST,
+  isPasskeySharingWhitelisted,
 } from './config.js';
 
 describe('functions/ai_flows/config.js Suite', () => {
@@ -69,4 +71,26 @@ describe('functions/ai_flows/config.js Suite', () => {
       expect(description).toContain('@');
     });
   });
+
+  describe('isPasskeySharingWhitelisted', () => {
+    it('returns false for invalid or empty emails', () => {
+      expect(isPasskeySharingWhitelisted(null)).toBe(false);
+      expect(isPasskeySharingWhitelisted(undefined)).toBe(false);
+      expect(isPasskeySharingWhitelisted('')).toBe(false);
+      expect(isPasskeySharingWhitelisted(12345)).toBe(false);
+    });
+
+    it('returns true for default whitelisted testing accounts', () => {
+      expect(isPasskeySharingWhitelisted('cywong@vtc.edu.hk')).toBe(true);
+      expect(isPasskeySharingWhitelisted('CYWONG@VTC.EDU.HK')).toBe(true);
+      expect(isPasskeySharingWhitelisted('  t-cywong@stu.vtc.edu.hk  ')).toBe(true);
+    });
+
+    it('returns false for non-whitelisted student accounts', () => {
+      expect(isPasskeySharingWhitelisted('random-student@stu.vtc.edu.hk')).toBe(false);
+      expect(isPasskeySharingWhitelisted('attacker@gmail.com')).toBe(false);
+    });
+  });
 });
+
+

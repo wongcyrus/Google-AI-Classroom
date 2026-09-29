@@ -126,6 +126,22 @@ export const TEACHER_USERNAME_REGEX = process.env.TEACHER_USERNAME_REGEX ? new R
 // Default fallback to student for ambiguous / same-domain signups
 export const DEFAULT_TO_STUDENT = process.env.DEFAULT_TO_STUDENT !== 'false';
 
+// Whitelist of accounts permitted to share physical smartphone passkeys across roles (e.g. testing dual student/teacher on one device)
+export const PASSKEY_DEVICE_SHARING_WHITELIST = (process.env.PASSKEY_DEVICE_SHARING_WHITELIST || 'cywong@vtc.edu.hk,t-cywong@stu.vtc.edu.hk')
+  .split(',')
+  .map(d => d.trim().toLowerCase())
+  .filter(Boolean);
+
+/**
+ * Checks if an email is whitelisted for multi-role / shared-device passkey pairing.
+ * @param {string} email
+ * @returns {boolean}
+ */
+export function isPasskeySharingWhitelisted(email) {
+  if (!email || typeof email !== 'string') return false;
+  return PASSKEY_DEVICE_SHARING_WHITELIST.includes(email.trim().toLowerCase());
+}
+
 /**
  * Derives user role ('teacher' | 'student' | null) from an email address based on configured domains and username patterns.
  * @param {string} email
