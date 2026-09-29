@@ -367,14 +367,39 @@ flowchart LR
 
 ## 🛡️ Anti-Cheating & Security Analysis
 
+### Passkey Exportability & Dual-Factor Hardware Binding Model
+
+#### Can a Student Export a Passkey and Give It to Another Student?
+Modern operating systems and password managers support passkey synchronization and export features:
+* **Apple AirDrop & iCloud Shared Groups**: iOS and macOS allow users to securely share passkeys peer-to-peer with trusted contacts or family members via AirDrop.
+* **Google Password Manager & Account Sync**: Passkeys automatically synchronize between devices signed into the same Google Account and support standardized credential export.
+* **Third-Party Password Managers (Bitwarden, 1Password, Dashlane)**: Passkeys stored in third-party password vaults can be shared across shared vaults or exported via FIDO Alliance Credential Exchange (CXP) formats.
+
+#### Platform Defense: Dual-Layer Device Binding
+Even if a student exports, syncs, or AirDrops their WebAuthn passkey to a classmate's device, **proxy login and attendance check-in are completely blocked**.
+
+The platform does not rely solely on the WebAuthn cryptographic assertion. Instead, it enforces a **Dual-Layer Binding Architecture**:
+$$\text{Authentication Authorized} \iff \text{Valid WebAuthn Cryptographic Signature} \land \text{Matching Persistent Hardware Fingerprint } (\text{mdev\_}\langle\text{uuid}\rangle)$$
+
+1. **Registration Binding**: During initial phone pairing via `/pair-phone`, the student's mobile browser generates a hardware-anchored device fingerprint `deviceFingerprint` (`mdev_<uuid>`) and commits it alongside the WebAuthn `credentialID` and `credentialPublicKey` to `studentPasskeys/{studentUid}` in Firestore.
+2. **Hardware Lock Collision Query**: The Cloud Function [`handleVerifyPasskeyRegistration`](functions/ai_flows/passkeyFlows.js) executes `where('deviceFingerprint', '==', deviceFingerprint)`. If the physical phone is already paired with another student account, registration is immediately aborted with `already-exists` (`Hardware Lock Violation`).
+3. **Verification Assertion Lock**: During any passkey authentication flow ([`handleVerifyLecturePasskeyAuth`](functions/ai_flows/passkeyFlows.js), [`handleVerifyPasskeyAuth`](functions/ai_flows/passkeyFlows.js), or [`handleVerifyDesktopLoginPasskey`](functions/ai_flows/passkeyFlows.js)), the incoming assertion must supply the browser's current `deviceFingerprint`. If a student imported a classmate's passkey onto their own device, the device fingerprint sent by their browser will not match the registered fingerprint in `studentPasskeys/{studentUid}`, and the server immediately throws `permission-denied` (`Device mismatch detected`).
+4. **Fail-Closed Security Design**: If a student clears their browser cache or uses private browsing, a new fingerprint is generated that fails the mismatch check. The system fails closed (denying access), requiring the student to obtain an in-person passkey reset from the teacher.
+
+---
+
+### Comprehensive Anti-Cheating Matrix
+
 | Threat / Cheating Vector | Vulnerability in Standard Systems | Platform Passkey Defense |
 | :--- | :--- | :--- |
+| **Passkey Sharing / AirDrop Delegation** | Student exports or AirDrops their passkey to an absent friend's phone to check in remotely. | **Blocked via Dual-Layer Binding**: Friend's phone transmits their own `deviceFingerprint`. Server detects `passkey.deviceFingerprint !== request.deviceFingerprint` and aborts with `Device mismatch detected`. |
+| **Device Sharing (1 Phone for 2 Students)** | One present student brings their phone and attempts to register or proxy-login for absent friends. | **Blocked via Strict 1:1:1 Binding**: Mobile browser stores persistent `deviceFingerprint` (`mdev_<uuid>`). Server validates `where('deviceFingerprint', '==', deviceFingerprint)`. If the phone is already bound to Student A, Student B's attempt is aborted with `Hardware Lock Violation`. |
 | **Password Sharing & Keyloggers on Lab PCs** | Students type passwords on public lab keyboards vulnerable to hardware/software keyloggers or shoulder surfing. | **Blocked**: Desktop QR Login (`/mobile-login`) allows complete passwordless authentication. Students authenticate solely on their personal mobile biometric sensor, minting an ephemeral custom token directly to the desktop session. |
-| **Lab PC Passkey Pollution & Re-imaging Wipes** | Passkeys stored on Windows Hello / macOS Keychain pollute shared PCs and are wiped by nightly Deep Freeze re-imaging. | **Blocked**: Desktop WebAuthn is strictly barred (`isMobileDevice()`). Authenticators reside exclusively in the student's mobile hardware security module (Secure Enclave / Android Keystore). |
+| **Lab PC Passkey Pollution & Re-imaging Wipes** | Passkeys stored on Windows Hello / macOS Keychain pollute shared PCs and are wiped by nightly Deep Freeze re-imaging. | **Blocked**: Desktop WebAuthn is strictly barred (`isHandheldPhone()`). Authenticators reside exclusively in the student's mobile hardware security module (Secure Enclave / Android Keystore). |
+| **Tablet / iPad Device Spoofing** | Students use iPads or Android tablets with physical keyboards as mobile proxies. | **Blocked**: Tablet detection rules (`isTabletDevice()`) force all tablets into desktop terminal mode, barring mobile passkey enrollment and requiring pairing from a handheld smartphone. |
 | **Multiple PC Logins (Proxy Sitting)** | One student logs into multiple PCs in the lab. | **Blocked**: Desktop single-session displacement (`sessionId`) immediately boots older tabs when a new login occurs. |
-| **Device Sharing (1 Phone for 2 Students)** | One present student brings their phone and attempts to register or proxy-login for absent friends. | **Blocked via Strict 1:1:1 Binding**: Each mobile browser stores a persistent `deviceFingerprint` (`mdev_<uuid>`). The server validates `where('deviceFingerprint', '==', deviceFingerprint)`. If the phone is already bound to Student A, Student B's registration or login attempt is immediately aborted with `Hardware Lock Violation`. |
-| **Attempting to Register Lab PC as Passkey** | Student tries to register the shared PC browser to automate passkey prompts. | **Blocked**: `isMobileDevice()` detects desktop environments on `/pair-phone` and halts execution with `status: 'desktop_blocked'`. |
-| **QR Code Forwarding / Screenshots** | Absent student asks present friend to take a photo of the QR code and message it. | **Blocked**: QR codes encode single-use nonces and 90s/300s TTLs. Biometric assertion requires the physical device containing the student's private key. |
+| **Attempting to Register Lab PC as Passkey** | Student tries to register the shared PC browser to automate passkey prompts. | **Blocked**: `isHandheldPhone()` detects desktop environments on `/pair-phone` and halts execution with `status: 'desktop_blocked'`. |
+| **QR Code Forwarding / Screenshots** | Absent student asks present friend to take a photo of the QR code and message it. | **Blocked**: QR codes encode single-use nonces and 15s rotating intervals with 90s TTL. Biometric assertion requires the physical device containing the student's private key. |
 | **Teacher Bypass Abuse / Privilege Creep** | Unrestricted permanent bypasses granted for absent students. | **Blocked**: All teacher bypasses automatically expire after 180 minutes (current class duration). Every bypass decision (remote 1-click or PIN) writes an immutable record to `passkeyAuditLogs`. |
 | **Simulated WebAuthn Extensions** | Malicious desktop browser extensions spoofing passkeys. | **Blocked**: Registration mandates `authenticatorAttachment: 'platform'` and hardware-backed user verification (`userVerification: 'required'`). |
 
