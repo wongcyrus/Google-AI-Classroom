@@ -7,10 +7,27 @@
 }
 
 .show-controls-btn {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  z-index: 10;
+  position: static;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.show-controls-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
 }
 
 .monitor-main-content {
@@ -23,8 +40,9 @@
 
 /* Compact Grid View Channel Selector */
 .channel-select-compact {
-  padding: 5px 10px;
-  font-size: 0.82rem;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 0.78rem;
   font-weight: 600;
   border-radius: 6px;
   border: 1px solid var(--color-border, #cbd5e1);
@@ -32,6 +50,8 @@
   color: #334155;
   cursor: pointer;
   outline: none;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -45,6 +65,14 @@
 }
 
 /* Compact Problem Filter Dropdown */
+.problem-filter-select {
+  max-width: 175px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .problem-filter-select.has-active-filter {
   border-color: #f59e0b;
   background-color: #fffbeb;
@@ -54,8 +82,9 @@
 
 /* Inline Zero-Space Nudge Button */
 .compact-nudge-btn {
-  padding: 5px 10px;
-  font-size: 0.82rem;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   border-radius: 6px;
   border: 1px solid #f59e0b;
@@ -67,6 +96,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .compact-nudge-btn:hover {
@@ -86,8 +116,8 @@
   background: #ffffff;
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: 8px;
-  padding: 6px 10px !important;
-  margin-bottom: 0.6rem;
+  padding: 4px 8px !important;
+  margin-bottom: 0.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
@@ -96,15 +126,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
-  min-height: 32px;
+  flex-wrap: nowrap;
+  min-height: 30px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .monitor-toolbar-group {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .monitor-btn-cluster {
@@ -112,15 +146,17 @@
   align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .monitor-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 0.8rem;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   border-radius: 6px;
   border: 1px solid transparent;
@@ -128,6 +164,7 @@
   white-space: nowrap;
   transition: all 0.15s ease;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .monitor-btn:active {
@@ -176,32 +213,10 @@
   background: #dc2626;
 }
 
-.monitor-toolbar-card .show-controls-btn {
-  position: static;
-  height: 30px;
-  padding: 0 9px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  border-radius: 6px;
-  background: #f8fafc;
-  color: #334155;
-  border: 1px solid #cbd5e1;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.monitor-toolbar-card .show-controls-btn:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-}
-
 .monitor-select {
-  height: 30px;
-  padding: 0 8px;
-  font-size: 0.8rem;
+  height: 28px;
+  padding: 0 6px;
+  font-size: 0.78rem;
   font-weight: 500;
   border-radius: 6px;
   border: 1px solid var(--color-border, #cbd5e1);
@@ -209,10 +224,12 @@
   color: #334155;
   cursor: pointer;
   outline: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .monitor-lesson-select {
-  max-width: 210px;
+  max-width: 175px;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -225,24 +242,27 @@
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
-  padding: 2px 6px 2px 2px;
-  gap: 5px;
-  height: 30px;
+  padding: 1px 6px 1px 2px;
+  gap: 4px;
+  height: 28px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .monitor-go-live-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 7px;
-  font-size: 0.75rem;
+  gap: 3px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 0.72rem;
   font-weight: 700;
   border-radius: 4px;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .monitor-go-live-btn.is-live {
@@ -276,27 +296,29 @@
 }
 
 .monitor-live-clock {
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 600;
   color: #475569;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .monitor-broadcasting-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 30px;
-  padding: 0 9px;
+  height: 28px;
+  padding: 0 8px;
   background: #fee2e2;
   color: #b91c1c;
   border: 1px solid #fca5a5;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .bcast-sub-tag {
@@ -308,13 +330,14 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 30px;
-  padding: 0 9px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .monitor-record-pill.recording {
