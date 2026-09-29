@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
@@ -13,6 +13,10 @@ import QRCode from 'qrcode';
 import { auth, functions, db } from '../firebase-config';
 import { isGoogleChrome, getBrowserName, isHandheldPhone } from '../utils/browserDetection';
 import { isValidInstitutionalEmail, isStudentEmail, deriveRoleFromEmail, getAllowedDomainsDescription } from '../utils/domainConfig';
+import {
+  computeClientDesktopQrToken,
+  DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC,
+} from '../utils/desktopQrCrypto';
 import './AuthComponent.css';
 
 const AuthComponent = ({ unverifiedUser }) => {
@@ -28,11 +32,19 @@ const AuthComponent = ({ unverifiedUser }) => {
   // Cross-device Mobile Passkey QR Login state (Default to QR on Desktop/Tablet, Password on Handheld Phone)
   const [activeTab, setActiveTab] = useState(() => (isHandheldPhone() ? 'password' : 'qr'));
   const [qrSessionId, setQrSessionId] = useState('');
+  const [qrSessionSecret, setQrSessionSecret] = useState('');
+  const [qrExpiresAtMillis, setQrExpiresAtMillis] = useState(0);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [qrTimeLeft, setQrTimeLeft] = useState(90);
+  const [qrRotationSecsLeft, setQrRotationSecsLeft] = useState(DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC);
+  const [qrRotationProgress, setQrRotationProgress] = useState(100);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrStatus, setQrStatus] = useState('idle'); // 'idle' | 'waiting' | 'authorized' | 'expired' | 'error'
   const [qrError, setQrError] = useState('');
+
+  const sessionSecretRef = useRef('');
+  const sessionIdRef = useRef('');
+  const intervalIndexRef = useRef(0);
 
   const isChrome = isGoogleChrome();
   const detectedBrowser = getBrowserName();
@@ -201,21 +213,38 @@ const AuthComponent = ({ unverifiedUser }) => {
     setQrError('');
     setQrStatus('waiting');
     setQrTimeLeft(90);
+    setQrRotationSecsLeft(DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC);
+    setQrRotationProgress(100);
     try {
       const initFn = httpsCallable(functions, 'initiateDesktopLoginSession');
       const res = await initFn({ clientRpId: window.location.hostname });
-      const { sessionId, expiresAtMillis, qrUrl } = res.data || {};
+      const { sessionId, sessionSecret, expiresAtMillis } = res.data || {};
       if (!sessionId) throw new Error('Could not create desktop login session.');
 
       setQrSessionId(sessionId);
-      const fullUrl = `${window.location.origin}${qrUrl}`;
+      sessionIdRef.current = sessionId;
+      setQrSessionSecret(sessionSecret || '');
+      sessionSecretRef.current = sessionSecret || '';
+      const expMillis = expiresAtMillis || (Date.now() + 90000);
+      setQrExpiresAtMillis(expMillis);
+
+      const intervalMs = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC * 1000;
+      const initialInterval = Math.floor(Date.now() / intervalMs);
+      intervalIndexRef.current = initialInterval;
+
+      let initialToken = '';
+      if (sessionSecret) {
+        initialToken = await computeClientDesktopQrToken(sessionSecret, initialInterval);
+      }
+
+      const fullUrl = `${window.location.origin}/mobile-login?session=${sessionId}${initialToken ? `&token=${initialToken}` : ''}`;
       const dataUrl = await QRCode.toDataURL(fullUrl, {
         width: 240,
         margin: 2,
         color: { dark: '#0f172a', light: '#ffffff' },
       });
       setQrDataUrl(dataUrl);
-      const remainingSec = Math.max(0, Math.round((expiresAtMillis - Date.now()) / 1000));
+      const remainingSec = Math.max(0, Math.round((expMillis - Date.now()) / 1000));
       setQrTimeLeft(remainingSec || 90);
     } catch (err) {
       console.error('[AuthComponent] Error initiating QR session:', err);
@@ -249,19 +278,53 @@ const AuthComponent = ({ unverifiedUser }) => {
     return () => unsub();
   }, [qrSessionId, activeTab]);
 
+  // Dynamic 15-second QR Token Rotation & Countdown Loop (runs every 100ms)
   useEffect(() => {
-    if (activeTab !== 'qr' || qrStatus !== 'waiting' || qrTimeLeft <= 0) return;
-    const interval = setInterval(() => {
-      setQrTimeLeft((prev) => {
-        if (prev <= 1) {
-          setQrStatus('expired');
-          return 0;
+    if (activeTab !== 'qr' || qrStatus !== 'waiting' || !qrSessionId) return;
+
+    const intervalMs = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC * 1000;
+
+    const loop = setInterval(async () => {
+      const now = Date.now();
+      const currentInterval = Math.floor(now / intervalMs);
+      const elapsedInInterval = now % intervalMs;
+      const progressPercent = Math.max(0, Math.min(100, ((intervalMs - elapsedInInterval) / intervalMs) * 100));
+      const rotationSecs = Math.max(1, Math.ceil((intervalMs - elapsedInInterval) / 1000));
+
+      setQrRotationProgress(progressPercent);
+      setQrRotationSecsLeft(rotationSecs);
+
+      // Check overall session expiry
+      if (qrExpiresAtMillis && now >= qrExpiresAtMillis) {
+        setQrStatus('expired');
+        setQrTimeLeft(0);
+        return;
+      }
+
+      if (qrExpiresAtMillis) {
+        setQrTimeLeft(Math.max(0, Math.ceil((qrExpiresAtMillis - now) / 1000)));
+      }
+
+      // Check if interval rotated
+      if (currentInterval !== intervalIndexRef.current && sessionSecretRef.current && sessionIdRef.current) {
+        intervalIndexRef.current = currentInterval;
+        try {
+          const newToken = await computeClientDesktopQrToken(sessionSecretRef.current, currentInterval);
+          const fullUrl = `${window.location.origin}/mobile-login?session=${sessionIdRef.current}&token=${newToken}`;
+          const dataUrl = await QRCode.toDataURL(fullUrl, {
+            width: 240,
+            margin: 2,
+            color: { dark: '#0f172a', light: '#ffffff' },
+          });
+          setQrDataUrl(dataUrl);
+        } catch (qrErr) {
+          console.warn('[AuthComponent] Failed to rotate QR code token:', qrErr);
         }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeTab, qrStatus, qrTimeLeft]);
+      }
+    }, 100);
+
+    return () => clearInterval(loop);
+  }, [activeTab, qrStatus, qrSessionId, qrExpiresAtMillis]);
 
   // Auto-initiate QR session on Desktop when activeTab is 'qr'
   useEffect(() => {
@@ -330,9 +393,18 @@ const AuthComponent = ({ unverifiedUser }) => {
                 </div>
               ) : qrDataUrl ? (
                 <div className="auth-qr-img-wrapper">
+                  <div className="auth-qr-rotation-badge">
+                    <span>🔄</span> Refreshes in: <strong>{qrRotationSecsLeft}s</strong>
+                  </div>
+                  <div className="auth-qr-rotation-bar-container">
+                    <div
+                      className="auth-qr-rotation-bar-fill"
+                      style={{ width: `${qrRotationProgress}%` }}
+                    />
+                  </div>
                   <img src={qrDataUrl} alt="Desktop Login QR Code" className="auth-qr-img" />
                   <div className="auth-qr-timer">
-                    ⏱️ Expires in: <strong>{qrTimeLeft}s</strong>
+                    ⏱️ Session expires in: <strong>{qrTimeLeft}s</strong>
                   </div>
                 </div>
               ) : qrError ? (

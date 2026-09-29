@@ -108,6 +108,9 @@ import {
   handleInitiateDesktopLoginSession,
   handleGetDesktopLoginPasskeyOptions,
   handleVerifyDesktopLoginPasskey,
+  computeDesktopQrToken,
+  isValidDesktopQrToken,
+  DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_MS,
   handleRequestTeacherPasskeyBypass,
   handleApproveTeacherPasskeyBypass,
   handleVerifyTeacherPasskeyBypassPin,
@@ -659,16 +662,56 @@ describe('WebAuthn Passkey Flows Backend', () => {
     });
   });
 
+  describe('computeDesktopQrToken & isValidDesktopQrToken', () => {
+    const secret = 'test-desktop-secret-key-12345';
+    const intervalMs = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_MS;
+
+    it('generates consistent 16-character hex tokens for the same interval', () => {
+      const token1 = computeDesktopQrToken(secret, 100);
+      const token2 = computeDesktopQrToken(secret, 100);
+      expect(token1).toHaveLength(16);
+      expect(token1).toBe(token2);
+    });
+
+    it('generates different tokens for different intervals', () => {
+      const token1 = computeDesktopQrToken(secret, 100);
+      const token2 = computeDesktopQrToken(secret, 101);
+      expect(token1).not.toBe(token2);
+    });
+
+    it('validates current interval token and grace interval (1 interval back)', () => {
+      const now = 1700000000000;
+      const currentInterval = Math.floor(now / intervalMs);
+      const currentToken = computeDesktopQrToken(secret, currentInterval);
+      const graceToken1 = computeDesktopQrToken(secret, currentInterval - 1);
+      const expiredToken = computeDesktopQrToken(secret, currentInterval - 2);
+
+      expect(isValidDesktopQrToken(secret, currentToken, now)).toBe(true);
+      expect(isValidDesktopQrToken(secret, graceToken1, now)).toBe(true);
+      expect(isValidDesktopQrToken(secret, expiredToken, now)).toBe(false);
+    });
+
+    it('returns false for invalid arguments', () => {
+      expect(isValidDesktopQrToken('', 'abcdef1234567890')).toBe(false);
+      expect(isValidDesktopQrToken('secret', '')).toBe(false);
+      expect(isValidDesktopQrToken('secret', 'too-short')).toBe(false);
+    });
+  });
+
   describe('handleInitiateDesktopLoginSession', () => {
-    it('creates an ephemeral 90s login session and returns QR URL', async () => {
+    it('creates an ephemeral 90s login session with secret and returns QR URL', async () => {
       const res = await handleInitiateDesktopLoginSession({ clientRpId: 'localhost' });
 
       expect(res.sessionId).toBeDefined();
+      expect(res.sessionSecret).toBeDefined();
+      expect(res.rotationIntervalSeconds).toBe(15);
       expect(res.expiresAtMillis).toBeGreaterThan(Date.now());
       expect(res.qrUrl).toBe(`/mobile-login?session=${res.sessionId}`);
       expect(mockDocSet).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: res.sessionId,
+          sessionSecret: res.sessionSecret,
+          rotationIntervalSeconds: 15,
           status: 'pending',
           rpId: 'localhost',
         })
@@ -703,18 +746,47 @@ describe('WebAuthn Passkey Flows Backend', () => {
       expect(mockDocUpdate).toHaveBeenCalledWith({ status: 'expired' });
     });
 
-    it('returns WebAuthn authentication options and saves challenge', async () => {
+    it('throws error if rotating token is missing or invalid when session has sessionSecret', async () => {
+      const secret = 'desktop-secret-abc';
       mockDocGet.mockResolvedValueOnce({
         exists: true,
-        data: () => ({ status: 'pending', expiresAtMillis: Date.now() + 60000, rpId: 'localhost' }),
+        data: () => ({
+          status: 'pending',
+          sessionSecret: secret,
+          rotationIntervalSeconds: 15,
+          expiresAtMillis: Date.now() + 60000,
+        }),
       });
 
-      const res = await handleGetDesktopLoginPasskeyOptions({ sessionId: 'valid_session' });
+      await expect(
+        handleGetDesktopLoginPasskeyOptions({ sessionId: 'session_with_secret', token: 'invalid_token_12' })
+      ).rejects.toThrow('Expired or invalid QR code. Please scan the current live QR code displayed on the lab desktop screen.');
+    });
+
+    it('returns WebAuthn authentication options when rotating token is valid', async () => {
+      const secret = 'desktop-secret-abc';
+      const now = Date.now();
+      const currentInterval = Math.floor(now / (15 * 1000));
+      const validToken = computeDesktopQrToken(secret, currentInterval);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          sessionSecret: secret,
+          rotationIntervalSeconds: 15,
+          expiresAtMillis: now + 60000,
+          rpId: 'localhost',
+        }),
+      });
+
+      const res = await handleGetDesktopLoginPasskeyOptions({ sessionId: 'valid_session', token: validToken });
       expect(res.options).toBeDefined();
       expect(res.sessionId).toBe('valid_session');
       expect(mockDocUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           challenge: 'mock-auth-challenge',
+          tokenUsed: validToken,
         })
       );
     });
@@ -723,6 +795,28 @@ describe('WebAuthn Passkey Flows Backend', () => {
   describe('handleVerifyDesktopLoginPasskey', () => {
     it('throws error if sessionId or assertion is missing', async () => {
       await expect(handleVerifyDesktopLoginPasskey({})).rejects.toThrow('Missing sessionId or authenticationResponse.');
+    });
+
+    it('throws error if token is expired during verification', async () => {
+      const secret = 'desktop-secret-abc';
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          status: 'pending',
+          sessionSecret: secret,
+          rotationIntervalSeconds: 15,
+          expiresAtMillis: Date.now() + 60000,
+          challenge: 'mock-auth-challenge',
+          tokenUsed: 'expired_tok_1234',
+        }),
+      });
+
+      await expect(
+        handleVerifyDesktopLoginPasskey({
+          sessionId: 'session_1',
+          authenticationResponse: { id: 'some_cred' },
+        })
+      ).rejects.toThrow('The scanned login QR token has expired.');
     });
 
     it('throws error if no student passkey matches device credential ID', async () => {
@@ -746,12 +840,20 @@ describe('WebAuthn Passkey Flows Backend', () => {
     });
 
     it('authenticates, updates counter, mints custom token, and authorizes session', async () => {
+      const secret = 'desktop-secret-abc';
+      const now = Date.now();
+      const currentInterval = Math.floor(now / (15 * 1000));
+      const validToken = computeDesktopQrToken(secret, currentInterval);
+
       mockDocGet.mockResolvedValueOnce({
         exists: true,
         data: () => ({
           status: 'pending',
-          expiresAtMillis: Date.now() + 60000,
+          sessionSecret: secret,
+          rotationIntervalSeconds: 15,
+          expiresAtMillis: now + 60000,
           challenge: 'mock-auth-challenge',
+          tokenUsed: validToken,
           rpIdUsed: 'it114115-2627.web.app',
         }),
       });
@@ -776,6 +878,7 @@ describe('WebAuthn Passkey Flows Backend', () => {
 
       const res = await handleVerifyDesktopLoginPasskey({
         sessionId: 'session_1',
+        token: validToken,
         authenticationResponse: { id: 'hardware-cred-abc' },
       });
 
