@@ -7,6 +7,7 @@ const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage, mockBatch } = 
     update: vi.fn(),
     delete: vi.fn().mockResolvedValue(true),
     ref: { delete: vi.fn().mockResolvedValue(true) },
+    collection: vi.fn(),
     data: vi.fn(),
     exists: true,
   };
@@ -35,6 +36,7 @@ const { mockDoc, mockCollection, mockDb, mockBucket, mockStorage, mockBatch } = 
       delete: vi.fn().mockResolvedValue(true),
     })),
     deleteFiles: vi.fn().mockResolvedValue(true),
+    getFiles: vi.fn().mockResolvedValue([[]]),
   };
 
   const mockStorage = {
@@ -49,6 +51,7 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     increment: vi.fn((val) => val),
     arrayRemove: vi.fn((val) => val),
+    serverTimestamp: vi.fn(() => new Date()),
   },
 }));
 
@@ -66,11 +69,17 @@ vi.mock('firebase-functions/v2/https', () => ({
   },
 }));
 
+vi.mock('firebase-functions/v2/storage', () => ({
+  onObjectFinalized: vi.fn((opts, handler) => handler),
+  onObjectDeleted: vi.fn((opts, handler) => handler),
+}));
+
 import { purgeClassTelemetryData, deleteScreenshotsByDateRange } from './screenshotManagement.js';
 
 describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDoc.collection.mockReturnValue(mockCollection);
   });
 
   it('rejects unauthenticated requests', async () => {
@@ -269,6 +278,7 @@ describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
     mockDb.collection.mockReturnValue({
       where: vi.fn().mockReturnThis(),
       get: vi.fn().mockResolvedValue({ docs: [] }),
+      doc: vi.fn(() => mockDoc),
     });
 
     const result = await purgeClassTelemetryData({
@@ -283,5 +293,90 @@ describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
     expect(result.status).toBe('success');
     expect(result.totalPurged).toBe(0);
     expect(result.message).toContain('No session data found');
+  });
+
+  it('purges orphaned Cloud Storage files even when Firestore has zero documents', async () => {
+    // Firestore returns 0 documents for screenshots and audio
+    mockDb.collection.mockReturnValue({
+      where: vi.fn().mockReturnThis(),
+      get: vi.fn().mockResolvedValue({ docs: [] }),
+      doc: vi.fn(() => mockDoc),
+    });
+
+    // Cloud Storage has 2 orphaned screenshots and 1 orphaned audio file
+    const mockFile1 = {
+      name: 'screenshots/CLASS_1/s1/screen_1788926191797.jpg',
+      metadata: { timeCreated: '2026-08-01T10:00:00.000Z' },
+      delete: vi.fn().mockResolvedValue(true),
+    };
+    const mockFile2 = {
+      name: 'audio/CLASS_1/s1/audio_1789639569373.webm',
+      metadata: { timeCreated: '2026-08-01T11:00:00.000Z' },
+      delete: vi.fn().mockResolvedValue(true),
+    };
+
+    mockBucket.getFiles.mockImplementation(({ prefix }) => {
+      if (prefix === 'screenshots/CLASS_1/') return Promise.resolve([[mockFile1]]);
+      if (prefix === 'audio/CLASS_1/') return Promise.resolve([[mockFile2]]);
+      return Promise.resolve([[]]);
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: { screenshots: true, audio: true },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.screenshotsCount).toBe(1);
+    expect(result.audioCount).toBe(1);
+    expect(result.totalPurged).toBe(2);
+    expect(mockFile1.delete).toHaveBeenCalled();
+    expect(mockFile2.delete).toHaveBeenCalled();
+  });
+
+  it('purges irregularities documents and files when targets.irregularities is true', async () => {
+    const mockIrregDocs = [
+      {
+        id: 'irreg1',
+        data: () => ({ imagePath: 'irregularities/CLASS_1/img1.jpg', timestamp: new Date('2026-08-01T10:00:00Z') }),
+        ref: { delete: vi.fn() },
+      },
+    ];
+
+    mockDb.collection.mockImplementation((col) => {
+      if (col === 'classes/CLASS_1/irregularities') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({ docs: mockIrregDocs }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    mockBucket.getFiles.mockResolvedValue([[]]);
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: { screenshots: false, audio: false, irregularities: true },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.irregularitiesCount).toBe(1);
+    expect(result.totalPurged).toBe(1);
+    expect(mockBatch.delete).toHaveBeenCalled();
   });
 });

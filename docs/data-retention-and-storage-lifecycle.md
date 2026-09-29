@@ -205,14 +205,16 @@ Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) a
   - Quota is decremented immediately in `classes/{classId}/metadata/storage` via `updateStorageUsageOnDelete`.
 - **Granular Selective Telemetry Purge (`purgeClassTelemetryData` / `deleteScreenshotsByDateRange`)**:
   - From the **Data Management View**, teachers have granular control to selectively purge telemetry:
-    - Target toggles: Screenshots, Audio recordings, Compiled Student Videos, and Lecture Recordings.
-    - Scope presets: Current Lesson, Older than 14 Days, Older than 30 Days, Older than 90 Days, or Custom Range.
+    - Target toggles: Screenshots, Audio recordings, Compiled Student Videos, Lecture Recordings, Irregularities & Evidence Photos, and Activity/Bingo Audit Records.
+    - Scope presets: Current Lesson, Older than 14 Days, Older than 30 Days, Older than 90 Days, All Time (Entire History), or Custom Range.
+    - **Dual Storage & Document Sweeping**: Not only purges Firestore documents, but also actively sweeps physical Cloud Storage prefixes (`screenshots/{classId}/`, `audio/{classId}/`, `videos/{classId}/`, `recordings/{classId}/`, `irregularities/{classId}/`) for files created in range, permanently eliminating orphaned storage files.
     - Queries use composite indexes with automatic in-memory fallback to class-level queries if any index is rebuilding, preventing runtime precondition failures.
     - Purges both physical Cloud Storage blobs and Firestore documents in safe 400-item chunks.
-    - **Data Integrity Guarantee**: Student attendance records, activity milestone progress, task submissions, grades, and irregularity reports are preserved permanently in Firestore.
+    - **Automatic Quota Reconciliation**: Every purge operation concludes with an automated invocation of `recalculateStorageUsageInternal` to sync the storage quota bar immediately.
+    - **Data Integrity Guarantee**: Student attendance records, activity milestone progress, task submissions, and grades are preserved permanently in Firestore unless explicitly opting into Irregularity or Bingo record purges.
 - **Autonomous Storage Quota Reconciliation (`recalculateStorageUsage`)**:
   - Teachers can trigger on-demand storage audits from Data Management via **"🔄 Recalculate Storage"**.
-  - Directly scans physical GCS blobs across `screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, and `recordings/{classId}/` to heal any metric drift in `classes/{classId}/metadata/storage`.
+  - Directly scans physical GCS blobs across `screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, and `irregularities/{classId}/` to heal any metric drift in `classes/{classId}/metadata/storage`.
 - **Cascading Removal on Class Deletion**:
   - When an entire class is deleted via `onClassDocDeleted`, Cloud Storage prefixes (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, `taskDemos/{classId}/`) are automatically wiped.
   - Subcollections including `lectureRecordings`, `tasks` (with `submissions`), `bingoSessions`, `status`, `screenBroadcast`, and `liveSubtitles` are completely purged from Firestore.

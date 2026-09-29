@@ -226,7 +226,7 @@ describe('DataManagementView Component', () => {
 
     const deleteBtn = screen.getByRole('button', { name: /Delete (Session Data|Screenshots)/i });
     fireEvent.click(deleteBtn);
-    expect(window.alert).toHaveBeenCalledWith('Please select a start and end date.');
+    expect(window.alert).toHaveBeenCalledWith('Please select a start and end date using the date filter at the top of the page.');
 
     // User cancels confirmation
     vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
@@ -306,7 +306,10 @@ describe('DataManagementView Component', () => {
     });
   });
 
-  it('allows toggling targets and switching scope presets', () => {
+  it('allows toggling targets and setting top filter to all time', () => {
+    const mockOnStartTimeChange = vi.fn();
+    const mockOnEndTimeChange = vi.fn();
+
     render(
       <DataManagementView
         classId="CLASS_101"
@@ -314,18 +317,32 @@ describe('DataManagementView Component', () => {
         endTime="2026-08-30T23:59"
         filterField="createdAt"
         timezone="UTC"
+        onStartTimeChange={mockOnStartTimeChange}
+        onEndTimeChange={mockOnEndTimeChange}
       />
     );
 
-    // Switch preset to 30 days
-    const preset30Days = screen.getByRole('button', { name: /Older than 30 Days/i });
-    fireEvent.click(preset30Days);
-    expect(preset30Days).toHaveClass('active');
+    // Active range from top filter is displayed
+    expect(screen.getByText(/Active Purge Range:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Controlled by the common date range/i)).toBeInTheDocument();
 
-    // Switch to Custom Range
-    const customPreset = screen.getByRole('button', { name: /Custom Range/i });
-    fireEvent.click(customPreset);
-    expect(screen.getByText(/Start Date\/Time:/i)).toBeInTheDocument();
+    // Click "Set Top Filter to All Time"
+    const allTimeBtn = screen.getByRole('button', { name: /Set Top Filter to All Time/i });
+    fireEvent.click(allTimeBtn);
+    expect(mockOnStartTimeChange).toHaveBeenCalledWith('2020-01-01T00:00');
+    expect(mockOnEndTimeChange).toHaveBeenCalled();
+
+    // Toggle Irregularities target switch
+    const irregSwitch = screen.getByRole('switch', { name: /Irregularities/i });
+    expect(irregSwitch).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(irregSwitch);
+    expect(irregSwitch).toHaveAttribute('aria-checked', 'true');
+
+    // Toggle Bingo target switch
+    const bingoSwitch = screen.getByRole('switch', { name: /Activity & Bingo Logs/i });
+    expect(bingoSwitch).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(bingoSwitch);
+    expect(bingoSwitch).toHaveAttribute('aria-checked', 'true');
   });
 });
 

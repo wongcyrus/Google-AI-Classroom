@@ -141,7 +141,19 @@ const ClassView = ({ user }) => {
   };
 
   const renderOtherContent = () => {
-    const props = { user, classId, startTime, endTime, lessons, selectedLesson, timezone, handleLessonChange, filterField };
+    const props = { 
+      user, 
+      classId, 
+      startTime, 
+      endTime, 
+      lessons, 
+      selectedLesson, 
+      timezone, 
+      handleLessonChange, 
+      filterField,
+      onStartTimeChange: setStartTime,
+      onEndTimeChange: setEndTime,
+    };
     switch (mainTab) {
       case 'video':
         switch (subTab) {

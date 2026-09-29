@@ -25,7 +25,15 @@ const toLocalISOString = (date) => {
   return `${y}-${m}-${d}T${h}:${min}`;
 };
 
-const DataManagementView = ({ classId, startTime, endTime, filterField, timezone }) => {
+const DataManagementView = ({ 
+  classId, 
+  startTime, 
+  endTime, 
+  filterField, 
+  timezone,
+  onStartTimeChange,
+  onEndTimeChange,
+}) => {
   const [selectedZipJobs, setSelectedZipJobs] = useState(new Set());
   const [storageData, setStorageData] = useState(null);
   const [classQuotaBytes, setClassQuotaBytes] = useState(5 * 1024 * 1024 * 1024); // 5GB default
@@ -38,12 +46,10 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
     audio: true,
     videos: false,
     lectureRecordings: false,
+    irregularities: false,
+    bingoRecords: false,
   });
 
-  // Scope preset state: defaults to 'lesson' to respect parent lesson boundaries
-  const [scopePreset, setScopePreset] = useState('lesson');
-  const [customStart, setCustomStart] = useState(startTime || '');
-  const [customEnd, setCustomEnd] = useState(endTime || '');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletionStatus, setDeletionStatus] = useState(null);
 
@@ -75,12 +81,6 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
     return () => unsub();
   }, [classId]);
 
-  // Keep customStart/customEnd synced if parent props change
-  useEffect(() => {
-    if (startTime) setCustomStart(startTime);
-    if (endTime) setCustomEnd(endTime);
-  }, [startTime, endTime]);
-
   const { 
     data: zipJobs, 
     loading: loadingJobs, 
@@ -96,27 +96,6 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
     filterField: filterField,
     orderByField: filterField
   });
-
-  // Calculate effective date bounds based on selected scope preset
-  const getEffectiveDates = () => {
-    const now = new Date();
-    if (scopePreset === 'lesson') {
-      return { start: startTime || customStart, end: endTime || customEnd };
-    }
-    if (scopePreset === '14days') {
-      const past = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-      return { start: toLocalISOString(past), end: toLocalISOString(now) };
-    }
-    if (scopePreset === '30days') {
-      const past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return { start: toLocalISOString(past), end: toLocalISOString(now) };
-    }
-    if (scopePreset === '90days') {
-      const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      return { start: toLocalISOString(past), end: toLocalISOString(now) };
-    }
-    return { start: customStart, end: customEnd };
-  };
 
   const handleSelectZipJob = (jobId) => {
     setSelectedZipJobs(prev => {
@@ -197,14 +176,12 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
 
   // Main Deletion Handler
   const handleDeleteData = async () => {
-    const { start: activeStart, end: activeEnd } = getEffectiveDates();
-
-    if (!activeStart || !activeEnd) {
-      alert('Please select a start and end date.');
+    if (!startTime || !endTime) {
+      alert('Please select a start and end date using the date filter at the top of the page.');
       return;
     }
 
-    const anyTargetSelected = targets.screenshots || targets.audio || targets.videos || targets.lectureRecordings;
+    const anyTargetSelected = targets.screenshots || targets.audio || targets.videos || targets.lectureRecordings || targets.irregularities || targets.bingoRecords;
     if (!anyTargetSelected) {
       alert('Please select at least one data type to delete.');
       return;
@@ -215,6 +192,8 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
     if (targets.audio) targetNames.push('Audio');
     if (targets.videos) targetNames.push('Student Videos');
     if (targets.lectureRecordings) targetNames.push('Lecture Recordings');
+    if (targets.irregularities) targetNames.push('Irregularities & Evidences');
+    if (targets.bingoRecords) targetNames.push('Activity & Bingo Records');
 
     const confirmation = window.confirm(
       `Are you sure you want to delete student session telemetry (${targetNames.join(', ')}) in this date range?\n\nThis permanently purges media files from Cloud Storage to free up class quota and cannot be undone.`
@@ -230,8 +209,8 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
       alert("Starting the deletion process. This may take some time. You can close this window.");
       const result = await deleteFunction({
         classId,
-        startDate: activeStart,
-        endDate: activeEnd,
+        startDate: startTime,
+        endDate: endTime,
         timezone: timezone || 'UTC',
         targets,
       });
@@ -241,6 +220,8 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
         message: result.data?.message || 'Telemetry successfully purged.',
       });
       alert(result.data.message);
+      // Auto-recalculate storage to update UI immediately
+      handleRecalculateStorage();
     } catch (error) {
       console.error("Error calling delete function: ", error);
       setDeletionStatus({
@@ -271,6 +252,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
   const usageVideos = storageData?.storageUsageVideos || 0;
   const usageRecordings = storageData?.storageUsageRecordings || 0;
   const usageZips = storageData?.storageUsageZips || 0;
+  const usageIrregularities = storageData?.storageUsageIrregularities || 0;
 
   const quotaPercent = Math.min(100, (totalUsage / (classQuotaBytes || 1)) * 100).toFixed(1);
   const pShots = totalUsage > 0 ? ((usageShots / totalUsage) * 100).toFixed(1) : 0;
@@ -278,6 +260,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
   const pVideos = totalUsage > 0 ? ((usageVideos / totalUsage) * 100).toFixed(1) : 0;
   const pRecordings = totalUsage > 0 ? ((usageRecordings / totalUsage) * 100).toFixed(1) : 0;
   const pZips = totalUsage > 0 ? ((usageZips / totalUsage) * 100).toFixed(1) : 0;
+  const pIrregularities = totalUsage > 0 ? ((usageIrregularities / totalUsage) * 100).toFixed(1) : 0;
 
   return (
     <div className="view-container">
@@ -312,6 +295,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
           <div className="storage-segment videos" style={{ width: `${pVideos}%` }} title={`Student Videos: ${formatBytes(usageVideos)}`} />
           <div className="storage-segment recordings" style={{ width: `${pRecordings}%` }} title={`Lecture Recordings: ${formatBytes(usageRecordings)}`} />
           <div className="storage-segment zips" style={{ width: `${pZips}%` }} title={`ZIP Archives: ${formatBytes(usageZips)}`} />
+          <div className="storage-segment irregularities" style={{ width: `${pIrregularities}%` }} title={`Irregularities: ${formatBytes(usageIrregularities)}`} />
         </div>
 
         {/* Legend Grid */}
@@ -335,6 +319,10 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#06b6d4' }}></span>
             <span>📦 ZIPs: <strong>{formatBytes(usageZips)}</strong></span>
+          </div>
+          <div className="storage-legend-item">
+            <span className="legend-dot" style={{ background: '#ef4444' }}></span>
+            <span>⚠️ Irregularities: <strong>{formatBytes(usageIrregularities)}</strong></span>
           </div>
         </div>
 
@@ -398,70 +386,64 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
               >
                 🎬 Recordings {targets.lectureRecordings ? '✓' : '+'}
               </button>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={targets.irregularities}
+                className={`scope-preset-btn ${targets.irregularities ? 'active' : ''}`}
+                onClick={() => setTargets(prev => ({ ...prev, irregularities: !prev.irregularities }))}
+              >
+                ⚠️ Irregularities {targets.irregularities ? '✓' : '+'}
+              </button>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={targets.bingoRecords}
+                className={`scope-preset-btn ${targets.bingoRecords ? 'active' : ''}`}
+                onClick={() => setTargets(prev => ({ ...prev, bingoRecords: !prev.bingoRecords }))}
+              >
+                🎲 Activity & Bingo Logs {targets.bingoRecords ? '✓' : '+'}
+              </button>
             </div>
           </div>
 
-          {/* Date Range Scope Selector */}
+          {/* Active Date Range Indicator from Top Filter */}
           <div className="purge-options-box">
-            <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>2. Select Date Range / Scope:</strong>
-            <div className="scope-preset-buttons">
-              <button
-                type="button"
-                className={`scope-preset-btn ${scopePreset === 'lesson' ? 'active' : ''}`}
-                onClick={() => setScopePreset('lesson')}
-              >
-                Current Lesson
-              </button>
-              <button
-                type="button"
-                className={`scope-preset-btn ${scopePreset === '14days' ? 'active' : ''}`}
-                onClick={() => setScopePreset('14days')}
-              >
-                Older than 14 Days
-              </button>
-              <button
-                type="button"
-                className={`scope-preset-btn ${scopePreset === '30days' ? 'active' : ''}`}
-                onClick={() => setScopePreset('30days')}
-              >
-                Older than 30 Days
-              </button>
-              <button
-                type="button"
-                className={`scope-preset-btn ${scopePreset === '90days' ? 'active' : ''}`}
-                onClick={() => setScopePreset('90days')}
-              >
-                Older than 90 Days
-              </button>
-              <button
-                type="button"
-                className={`scope-preset-btn ${scopePreset === 'custom' ? 'active' : ''}`}
-                onClick={() => setScopePreset('custom')}
-              >
-                Custom Range
-              </button>
+            <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>2. Active Purge Range:</strong>
+            <p style={{ margin: '4px 0 8px 0', fontSize: '0.8rem', color: '#64748b' }}>
+              Controlled by the common date range & lesson filter at the top of the classroom hub.
+            </p>
+            <div style={{ marginTop: '8px', fontSize: '0.88rem', color: '#334155', lineHeight: 1.6 }}>
+              {startTime && endTime ? (
+                <div style={{ background: '#ffffff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                  <div>📅 <strong>From:</strong> {new Date(startTime).toLocaleString()}</div>
+                  <div>📅 <strong>To:</strong> &nbsp;&nbsp;&nbsp;&nbsp;{new Date(endTime).toLocaleString()}</div>
+                </div>
+              ) : (
+                <div style={{ color: '#dc2626', background: '#fef2f2', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                  ⚠️ No date range selected. Please pick a lesson or adjust the date filter at the top of the page.
+                </div>
+              )}
             </div>
 
-            {scopePreset === 'custom' && (
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '10px', flexWrap: 'wrap' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '2px' }}>Start Date/Time:</label>
-                  <input
-                    type="datetime-local"
-                    value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
-                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: '2px' }}>End Date/Time:</label>
-                  <input
-                    type="datetime-local"
-                    value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
-                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                  />
-                </div>
+            {onStartTimeChange && onEndTimeChange && (
+              <div style={{ marginTop: '12px' }}>
+                <button
+                  type="button"
+                  className="scope-preset-btn"
+                  onClick={() => {
+                    onStartTimeChange('2020-01-01T00:00');
+                    const now = new Date();
+                    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                    onEndTimeChange(toLocalISOString(tomorrow));
+                  }}
+                  title="Expands the top date filter to cover all historical records"
+                  style={{ fontSize: '0.82rem' }}
+                >
+                  ⚡ Set Top Filter to All Time (Entire History)
+                </button>
               </div>
             )}
           </div>
@@ -471,7 +453,7 @@ const DataManagementView = ({ classId, startTime, endTime, filterField, timezone
         <div className="data-callout-info">
           <span>🛡️</span>
           <div>
-            <strong>Data Integrity Guarantee:</strong> Purging session telemetry removes large storage blobs (.jpg, .webm, .mp4) to reclaim quota. Student attendance records, activity milestone progress, task submissions, grades, and irregularity reports are preserved permanently in Firestore.
+            <strong>Data Integrity & Audit Guarantee:</strong> Purging media permanently removes heavy binary files (.jpg, .webm, .mp4) from Cloud Storage to reclaim class quota. Student attendance records, activity milestone progress, task submissions, and grades are permanently preserved. Irregularities and Bingo logs are only removed if explicitly selected above.
           </div>
         </div>
 
