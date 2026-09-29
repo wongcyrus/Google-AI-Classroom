@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { auth, db, appCheck } from './firebase-config';
 import { onAuthStateChanged, onIdTokenChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation } from 'react-router-dom';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
@@ -38,8 +38,6 @@ const AuthComponent = lazyWithRetry(() => import('./components/AuthComponent'));
 const TeacherView = lazyWithRetry(() => import('./components/TeacherView'));
 const StudentView = lazyWithRetry(() => import('./components/StudentView'));
 const ClassManagement = lazyWithRetry(() => import('./components/ClassManagement'));
-const MailboxView = lazyWithRetry(() => import('./components/MailboxView'));
-const EmailDetailView = lazyWithRetry(() => import('./components/EmailDetailView'));
 const PromptManagement = lazyWithRetry(() => import('./components/PromptManagement'));
 const ClassView = lazyWithRetry(() => import('./components/ClassView'));
 const StudentRecordsView = lazyWithRetry(() => import('./components/StudentRecordsView'));
@@ -227,8 +225,8 @@ const AppShell = ({
               }
             />
             <Route path="/class-management" element={user && role === 'teacher' ? <ClassManagement user={user} /> : <Navigate to="/login" />} />
-            <Route path="/mailbox" element={user && role === 'teacher' ? <MailboxView /> : <Navigate to="/login" />} />
-            <Route path="/mailbox/:emailId" element={user && role === 'teacher' ? <EmailDetailView /> : <Navigate to="/login" />} />
+            <Route path="/mailbox" element={<Navigate to="/teacher" replace />} />
+            <Route path="/mailbox/*" element={<Navigate to="/teacher" replace />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
             <Route path="/live/:classId" element={<PublicLiveView />} />
@@ -262,7 +260,6 @@ const AppShell = ({
 const MainHeader = ({ onLogout, user, role }) => {
   const location = useLocation();
   const [className, setClassName] = useState('');
-  const [unreadMailCount, setUnreadMailCount] = useState(0);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showChangePwdModal, setShowChangePwdModal] = useState(false);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
@@ -322,19 +319,7 @@ const MainHeader = ({ onLogout, user, role }) => {
     }
   }, [location.pathname, isClassPage]);
 
-  // Listen for unread mails for teacher
-  useEffect(() => {
-    if (!user || role !== 'teacher') return;
-    const q = query(
-      collection(db, 'mails'),
-      where('to', '==', user.email),
-      where('read', '==', false)
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadMailCount(snapshot.size);
-    }, (err) => console.error("Mail listener error:", err));
-    return () => unsubscribe();
-  }, [user, role]);
+
 
   return (
     <>
@@ -356,22 +341,6 @@ const MainHeader = ({ onLogout, user, role }) => {
             </NavLink>
             <NavLink to="/class-management">
               <span>⚙️ Class Manager</span>
-            </NavLink>
-            <NavLink to="/mailbox">
-              <span>📬 Mailbox</span>
-              {unreadMailCount > 0 && (
-                <span style={{
-                  background: '#ef4444',
-                  color: 'white',
-                  borderRadius: '10px',
-                  padding: '1px 6px',
-                  fontSize: '0.7rem',
-                  fontWeight: 'bold',
-                  marginLeft: '2px'
-                }}>
-                  {unreadMailCount}
-                </span>
-              )}
             </NavLink>
             <NavLink to="/manage-prompts">
               <span>💡 AI Prompts</span>
@@ -476,8 +445,6 @@ const MainHeader = ({ onLogout, user, role }) => {
             </>
           ) : location.pathname.startsWith('/class-management') ? (
             <span className="breadcrumb-current">Class Management</span>
-          ) : location.pathname.startsWith('/mailbox') ? (
-            <span className="breadcrumb-current">Mailbox</span>
           ) : location.pathname.startsWith('/manage-prompts') ? (
             <span className="breadcrumb-current">Prompt Management</span>
           ) : null}
