@@ -272,8 +272,8 @@ export const getPasskeyRegistrationOptions = onCall(callOptions, async (request)
 });
 
 export const verifyPasskeyRegistration = onCall(callOptions, async (request) => {
-  const { pairingToken, attestationResponse, clientRpId, deviceModel } = request.data || {};
-  return await handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel });
+  const { pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint } = request.data || {};
+  return await handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint });
 });
 
 export const getPasskeyAuthOptions = onCall(callOptions, async (request) => {
@@ -282,8 +282,8 @@ export const getPasskeyAuthOptions = onCall(callOptions, async (request) => {
 });
 
 export const verifyPasskeyAuth = onCall(callOptions, async (request) => {
-  const { classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis } = request.data || {};
-  return await handleVerifyPasskeyAuth({ classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis });
+  const { classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis, deviceFingerprint } = request.data || {};
+  return await handleVerifyPasskeyAuth({ classId, bingoId, assertionResponse, clientRpId, timeToCompleteMillis, deviceFingerprint });
 });
 
 export const claimInPersonAttendance = onCall(callOptions, async (request) => {
@@ -381,8 +381,8 @@ export const getDesktopLoginPasskeyOptions = onCall(callOptions, async (request)
 });
 
 export const verifyDesktopLoginPasskey = onCall(callOptions, async (request) => {
-  const { sessionId, authenticationResponse, clientRpId } = request.data || {};
-  return await handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId });
+  const { sessionId, authenticationResponse, clientRpId, deviceFingerprint } = request.data || {};
+  return await handleVerifyDesktopLoginPasskey({ sessionId, authenticationResponse, clientRpId, deviceFingerprint });
 });
 
 export const requestTeacherPasskeyBypass = onCall(callOptions, async (request) => {
