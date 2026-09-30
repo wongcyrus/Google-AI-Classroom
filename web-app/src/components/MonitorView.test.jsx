@@ -665,5 +665,59 @@ describe('MonitorView Component Suite', () => {
     scrollToSpy.mockRestore();
     vi.useRealTimers();
   });
+
+  it('adapts auto-rolling columns and resets row alignment when controls are toggled or window resized', async () => {
+    const mock12Students = Array.from({ length: 12 }, (_, i) => ({
+      id: `s_${i + 1}`,
+      data: () => ({
+        email: `student${String(i + 1).padStart(2, '0')}@school.edu`,
+        isSharing: true,
+        timestamp: fixedDate,
+      }),
+    }));
+
+    mockOnSnapshot.mockImplementationOnce((ref, cb) => {
+      cb({
+        exists: () => true,
+        docs: mock12Students,
+        data: () => ({
+          students: Object.fromEntries(mock12Students.map(s => [s.id, s.data().email])),
+          settings: { captureMode: 'dual' },
+          isExamActive: false,
+        }),
+      });
+      return () => {};
+    });
+
+    render(<MonitorView {...defaultProps} />);
+
+    // Enable auto-roll
+    const autoRollSelect = screen.getByLabelText(/Auto-roll student rows/i);
+    await act(async () => {
+      fireEvent.change(autoRollSelect, { target: { value: '1row_5s' } });
+    });
+
+    // Hide controls panel
+    const hideControlsBtn = screen.getByRole('button', { name: /Hide Controls/i });
+    expect(hideControlsBtn).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(hideControlsBtn);
+    });
+
+    // Show controls button should now appear in the toolbar
+    const showControlsBtn = screen.getByRole('button', { name: /Show Controls/i });
+    expect(showControlsBtn).toBeInTheDocument();
+
+    // Trigger window resize event
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    // Re-show controls
+    await act(async () => {
+      fireEvent.click(showControlsBtn);
+    });
+    expect(screen.queryByRole('button', { name: /Show Controls/i })).not.toBeInTheDocument();
+  });
 });
 
