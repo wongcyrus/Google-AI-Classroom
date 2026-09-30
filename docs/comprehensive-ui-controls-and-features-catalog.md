@@ -158,8 +158,10 @@ flowchart TD
 - **Lesson Schedule Selector:** Dropdown listing past, current, and upcoming scheduled lesson blocks; selecting a block filters all timestamps across all tabs.
 - **Date & Time Range Picker:** Allows custom `From` and `To` datetime filtering with instant filter reset.
 - **Timezone Badge:** Shows canonical class timezone (e.g., `Asia/Hong_Kong`).
+- **Student Preview Launcher (`Preview as Student ↗`):** Opens student portal preview in a separate isolated popup window.
+- **Class Hub Broadcast Launcher (`🎙️🖥️ Broadcast`):** Primary instructor broadcasting trigger placed in the top header next to `Preview as Student ↗` with matching gradient pill styling. When live, transforms into a dynamic status pill (`● Live (N) • 🎙️ CC`), an `👁️ Studio` inspection button, and a `⏹ Stop` button.
 - **Main View Tabs:**
-  - `🖥️ Monitor`: Real-time student video/screen grid and broadcast controls (persistently mounted).
+  - `🖥️ Monitor`: Real-time student video/screen grid, sticky compact toolbar, and controls drawer (persistently mounted).
   - `🎥 Videos`: Subtabs for Video Library, Session Review, Video Analysis Jobs, and Lecture Recordings.
   - `📋 Tasks`: Practical Tasks management view (`TasksManagementView.jsx`), AI demo rubric extraction, student video submission attempt grading, and grading matrix.
   - `📊 Analytics`: Subtabs for Irregularities, Student Progress, Attendance Matrix, Performance Milestones, Bingo Verification Results (`BingoResultsView.jsx`), and AI Cost Report.
@@ -167,8 +169,21 @@ flowchart TD
   - `💾 Data Management`: Bulk archive generation, Google Drive backup, and retention deletion.
   - `⚙️ Settings`: Class configuration, roster, AI parameters, and exam periods.
 
+### Monitor Sticky Toolbar & Auto-Rolling Controls
+- **Sticky Docking (`.monitor-toolbar-card`):** Configured with `position: sticky; top: 64px; z-index: 20;`, keeping toolbar controls immediately accessible beneath the app header during page scroll.
+- **Channel Selector Dropdown (`channel-select-compact`):** Switch between `🔲 Dual View`, `🖥️ Screen`, and `📷 Webcam`.
+- **Problem Filter Dropdown (`problem-filter-select`):** Filters student streams by `👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, or `🚨 AI Alerts`.
+- **Auto-Roll Dropdown (`auto-roll-select`):**
+  - **Interval Presets:** `⏸️ Auto-Roll: Off` (default), `🔄 Roll 1 Row (5s, 10s, 15s, 20s, 30s)`, and `🔄 Roll 2 Rows (10s, 15s, 30s)`.
+  - **In-Place Cyclical Reordering:** Advances rows by rotating the array in-place without triggering window or page scrolling, keeping the top 2 rows on instructor podium monitors continuously refreshed with all student screens.
+  - **Responsive Dynamic Column Calculation (`ResizeObserver`):** Monitors the grid container to detect when the sidebar is hidden/shown or the window is resized, immediately realigning the rolling cycle to Row 0 so student cards never split mid-row.
+  - **Smart Pausing:** Pauses automatically when the mouse hovers over the grid or when any dialog/modal is open.
+  - **Persistence:** Selected auto-roll configuration persists to `localStorage ('monitor_auto_roll_speed')`.
+- **Inline Nudge Trigger (`📢 Nudge (N)`):** Broadcasts targeted reminder messages to all currently filtered students.
+- **Excel Audit Export (`📥 Export Excel`):** Exports filtered student records into an Excel workbook.
+
 ### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
-- **Teacher Screen Broadcast Switch (`🖥️ Broadcast Screen & Audio`):** Opens the 2-step broadcast wizard:
+- **Teacher Screen Broadcast Setup:** Launched from the Class Hub header `🎙️🖥️ Broadcast` button or Controls Panel:
   - **Step 1 (Audio & Subtitles):** Select microphone device, live volume VU meter test, recording checkboxes, and subtitle translation settings.
   - **Step 2 (Stream & Presentation Presets):**
     - **Broadcast Quality Selector:** Dropdown with `720p (Fast) [Recommended]`, `1080p (Standard)`, and `1440p (High-Res)`.
