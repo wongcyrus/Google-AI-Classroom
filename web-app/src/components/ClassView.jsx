@@ -39,6 +39,7 @@ const ClassView = ({ user }) => {
   const [classInfo, setClassInfo] = useState(null);
   const [teacherClasses, setTeacherClasses] = useState([]);
   const [filterField, setFilterField] = useState('startTime');
+  const [broadcastState, setBroadcastState] = useState(null);
 
   // Centralized schedule and date range management
   const {
@@ -141,6 +142,15 @@ const ClassView = ({ user }) => {
     setSearchParams(params);
   };
 
+  const handleOpenBroadcastStudio = () => {
+    if (mainTab !== 'monitor') {
+      setTab('monitor');
+    }
+    if (broadcastState?.openStudio) {
+      broadcastState.openStudio();
+    }
+  };
+
   const setSub = (newSubTab) => {
     setSearchParams({ tab: mainTab, sub: newSubTab });
   };
@@ -240,6 +250,41 @@ const ClassView = ({ user }) => {
         </div>
 
         <div className="class-hub-right-actions">
+          {broadcastState?.isBroadcasting ? (
+            <div className="broadcast-live-group">
+              <button
+                type="button"
+                className="broadcast-launcher-btn is-broadcasting"
+                onClick={handleOpenBroadcastStudio}
+                title="Live Broadcast Active - Click to open studio controls"
+                aria-label="Open Broadcast Studio"
+              >
+                <span className="live-dot-broadcast">●</span>
+                <span>Live ({broadcastState.viewersCount ?? 0})</span>
+              </button>
+              <button
+                type="button"
+                className="broadcast-stop-btn"
+                onClick={() => broadcastState?.stopBroadcast?.()}
+                title="Stop Live Broadcast"
+                aria-label="Stop Broadcast"
+              >
+                <span>⏹ Stop</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="broadcast-launcher-btn"
+              onClick={handleOpenBroadcastStudio}
+              title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
+              aria-label="Broadcast Screen & Voice"
+            >
+              <span>🎙️🖥️</span>
+              <span>Broadcast</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="student-preview-launcher-btn"
@@ -475,6 +520,7 @@ const ClassView = ({ user }) => {
             timezone={timezone} 
             handleLessonChange={handleLessonChange} 
             filterField={filterField} 
+            onBroadcastStateChange={setBroadcastState}
           />
         </div>
         {mainTab !== 'monitor' && (

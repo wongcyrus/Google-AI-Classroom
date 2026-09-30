@@ -38,7 +38,15 @@ import {
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
 
-const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField }) => {
+const parseAutoRollConfig = (value) => {
+  if (!value || value === 'off') return null;
+  const parts = value.split('_');
+  const stepRows = parts[0] === '2row' ? 2 : 1;
+  const intervalSeconds = parseInt(parts[1], 10) || 10;
+  return { stepRows, intervalMs: intervalSeconds * 1000 };
+};
+
+const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
   const audioPrompts = useAudioPrompts(user);
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
@@ -73,6 +81,26 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [showRecordingsModal, setShowRecordingsModal] = useState(false);
   const timelineDebounceTimer = useRef(null);
 
+  const [autoRollSpeed, setAutoRollSpeed] = useState(() => {
+    try {
+      return localStorage.getItem('monitor_auto_roll_speed') || 'off';
+    } catch {
+      return 'off';
+    }
+  });
+  const [isGridHovered, setIsGridHovered] = useState(false);
+  const currentRowIndexRef = useRef(0);
+  const studentsGridRef = useRef(null);
+
+  const handleAutoRollChange = (e) => {
+    const val = e.target.value;
+    setAutoRollSpeed(val);
+    currentRowIndexRef.current = 0;
+    try {
+      localStorage.setItem('monitor_auto_roll_speed', val);
+    } catch {}
+  };
+
   const teacherUid = user?.uid || auth?.currentUser?.uid || null;
   const teacherEmail = user?.email || auth?.currentUser?.email || null;
 
@@ -88,7 +116,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     frameStats,
     screenStream: broadcastScreenStream,
     lastFrameData: broadcastLastFrameData,
-    viewers: broadcastViewers,
+    viewers: broadcastViewers = [],
     broadcastResolution,
     broadcastInterval,
     isPublicBroadcast,
@@ -341,6 +369,89 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   };
 
+  // Sync broadcast state with ClassHub header launcher
+  useEffect(() => {
+    if (onBroadcastStateChange) {
+      onBroadcastStateChange({
+        isBroadcasting: isScreenBroadcasting,
+        viewersCount: broadcastViewers?.length || 0,
+        openStudio: () => setShowBroadcastModal(true),
+        stopBroadcast: handleStopSynchronizedBroadcast,
+      });
+    }
+  }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length]);
+
+  // Auto-rolling rows implementation for multi-row student monitor view
+  useEffect(() => {
+    const config = parseAutoRollConfig(autoRollSpeed);
+    if (!config) {
+      currentRowIndexRef.current = 0;
+      return;
+    }
+
+    const isModalOpen = Boolean(
+      selectedStudent ||
+      showBroadcastModal ||
+      showNotSharingModal ||
+      showPromptModal ||
+      showBingoModal ||
+      showLectureQrModal ||
+      showRecordingsModal ||
+      showAnalysisResultsModal
+    );
+
+    if (isGridHovered || isModalOpen) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (!studentsGridRef.current) return;
+      const container = studentsGridRef.current.querySelector('.students-container');
+      if (!container || !container.children || container.children.length === 0) return;
+
+      const cards = Array.from(container.children).filter(c => !c.classList.contains('empty-filter-state'));
+      if (cards.length === 0) return;
+
+      // Group cards by their offsetTop to calculate distinct rows
+      const rowTops = Array.from(new Set(cards.map(c => c.offsetTop))).sort((a, b) => a - b);
+      if (rowTops.length <= 2) {
+        return; // All rows already visible on screen without scrolling
+      }
+
+      let nextIndex = currentRowIndexRef.current + config.stepRows;
+      if (nextIndex >= rowTops.length) {
+        nextIndex = 0;
+      }
+      currentRowIndexRef.current = nextIndex;
+
+      const containerRect = container.getBoundingClientRect();
+      const containerTopAbs = containerRect.top + window.scrollY;
+      const stickyHeaderOffset = 115; // sticky MainHeader (64px) + sticky toolbar (~40px) + margin
+      const targetScrollY = Math.max(0, containerTopAbs + rowTops[nextIndex] - stickyHeaderOffset);
+
+      window.scrollTo({
+        top: targetScrollY,
+        behavior: 'smooth',
+      });
+    }, config.intervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [
+    autoRollSpeed,
+    isGridHovered,
+    selectedStudent,
+    showBroadcastModal,
+    showNotSharingModal,
+    showPromptModal,
+    showBingoModal,
+    showLectureQrModal,
+    showRecordingsModal,
+    showAnalysisResultsModal,
+  ]);
+
+  useEffect(() => {
+    currentRowIndexRef.current = 0;
+  }, [problemFilter, selectedLesson]);
 
   const handleLessonChange = (e) => {
     originalHandleLessonChange(e);
@@ -1785,51 +1896,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
               </div>
             </div>
 
-            {/* Center Segment: Broadcast Studio, Student Preview, & Recording Badges */}
+            {/* Center Segment: Recording Badges (Broadcast Studio launcher is in Class Hub header) */}
             <div className="monitor-toolbar-group monitor-toolbar-center">
-              {!isScreenBroadcasting ? (
-                <div className="monitor-btn-cluster">
-                  <button
-                    type="button"
-                    onClick={() => setShowBroadcastModal(true)}
-                    className="monitor-btn monitor-btn-primary"
-                    title="Open Broadcast Studio to configure and broadcast Screen and Voice (Live Subtitles) to class"
-                    aria-label="Broadcast Screen & Voice"
-                  >
-                    <span>🎙️🖥️</span>
-                    <span>Broadcast</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="monitor-btn-cluster">
-                  <span
-                    onClick={() => setShowBroadcastModal(true)}
-                    className="monitor-broadcasting-pill"
-                    title="Live Broadcast Active (Click to open studio controls)"
-                  >
-                    <span className="live-pulse-dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626' }} />
-                    <span>Live ({broadcastViewers.length})</span>
-                    {isSubtitleBroadcastEnabled && <span className="bcast-sub-tag">• 🎙️ CC</span>}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowBroadcastModal(true)}
-                    className="monitor-btn monitor-btn-secondary"
-                    title="View live broadcast screen preview and viewers"
-                  >
-                    👁️ Studio
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleStopSynchronizedBroadcast}
-                    className="monitor-btn monitor-btn-danger"
-                    title="Stop Screen and Voice Broadcast"
-                  >
-                    ⏹ Stop
-                  </button>
-                </div>
-              )}
-
               {/* Teacher Sovereign Lecture Recording Status Badges */}
               {lectureRecorder.isRecording && (
                 <span
@@ -1886,6 +1954,24 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 <option value="no_mic">🎙️ Missing Mic ({complianceSummary.noMic})</option>
                 <option value="no_screen">🖥️ Not Sharing ({complianceSummary.noScreen})</option>
                 <option value="ai_alert">🚨 AI Alerts ({complianceSummary.aiAlert})</option>
+              </select>
+
+              <select
+                aria-label="Auto-roll student rows"
+                className={`channel-select-compact auto-roll-select ${autoRollSpeed !== 'off' ? 'has-active-roll' : ''}`}
+                value={autoRollSpeed}
+                onChange={handleAutoRollChange}
+                title="Automatically roll rows when monitor view has multiple rows of students"
+              >
+                <option value="off">⏸️ Auto-Roll: Off</option>
+                <option value="1row_5s">🔄 Roll 1 Row (5s)</option>
+                <option value="1row_10s">🔄 Roll 1 Row (10s)</option>
+                <option value="1row_15s">🔄 Roll 1 Row (15s)</option>
+                <option value="1row_20s">🔄 Roll 1 Row (20s)</option>
+                <option value="1row_30s">🔄 Roll 1 Row (30s)</option>
+                <option value="2row_10s">🔄 Roll 2 Rows (10s)</option>
+                <option value="2row_15s">🔄 Roll 2 Rows (15s)</option>
+                <option value="2row_30s">🔄 Roll 2 Rows (30s)</option>
               </select>
 
               {problemFilter !== 'all' && filteredStudents.length > 0 && (
@@ -1950,21 +2036,28 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
             </div>
           </div>
         )}
-        <StudentsGrid
-          reviewTime={reviewTime}
-          classList={classList}
-          studentUidMap={studentUidMap}
-          uidToEmailMap={uidToEmailMap}
-          screenshots={screenshots}
-          frameRate={frameRate}
-          students={students}
-          displayStudents={reviewTime ? undefined : filteredStudents}
-          problemFilter={problemFilter}
-          now={now}
-          isPaused={isPaused}
-          selectedChannel={selectedChannel}
-          handleStudentClick={handleStudentClick}
-        />
+        <div
+          ref={studentsGridRef}
+          className="students-grid-wrapper"
+          onMouseEnter={() => setIsGridHovered(true)}
+          onMouseLeave={() => setIsGridHovered(false)}
+        >
+          <StudentsGrid
+            reviewTime={reviewTime}
+            classList={classList}
+            studentUidMap={studentUidMap}
+            uidToEmailMap={uidToEmailMap}
+            screenshots={screenshots}
+            frameRate={frameRate}
+            students={students}
+            displayStudents={reviewTime ? undefined : filteredStudents}
+            problemFilter={problemFilter}
+            now={now}
+            isPaused={isPaused}
+            selectedChannel={selectedChannel}
+            handleStudentClick={handleStudentClick}
+          />
+        </div>
       </div>
 
       <Modal 

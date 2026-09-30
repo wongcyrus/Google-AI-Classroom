@@ -303,14 +303,12 @@ describe('MonitorView Component Suite', () => {
   });
 
   it('triggers teacher screen broadcast start and stop', async () => {
-    render(<MonitorView {...defaultProps} />);
+    let broadcastController = null;
+    render(<MonitorView {...defaultProps} onBroadcastStateChange={(state) => { broadcastController = state; }} />);
 
-    // Find and click Screen & Voice Broadcast button in top bar next to Live
-    const broadcastBtn = screen.getByRole('button', { name: /Broadcast Screen & Voice|Share Screen to Class/i });
-    expect(broadcastBtn).toBeInTheDocument();
-
+    // Open studio via broadcast controller
     await act(async () => {
-      fireEvent.click(broadcastBtn);
+      broadcastController?.openStudio();
     });
 
     // In Step 1, click Next: Screen & Recording Setup
@@ -603,6 +601,25 @@ describe('MonitorView Component Suite', () => {
     });
 
     expect(screen.queryByTestId('mock-bingo-results-modal')).not.toBeInTheDocument();
+  });
+
+  it('renders auto-roll dropdown and persists selection to localStorage', async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    render(<MonitorView {...defaultProps} />);
+
+    const autoRollSelect = screen.getByLabelText(/Auto-roll student rows/i);
+    expect(autoRollSelect).toBeInTheDocument();
+    expect(autoRollSelect.value).toBe('off');
+
+    await act(async () => {
+      fireEvent.change(autoRollSelect, { target: { value: '1row_5s' } });
+    });
+
+    expect(autoRollSelect.value).toBe('1row_5s');
+    expect(setItemSpy).toHaveBeenCalledWith('monitor_auto_roll_speed', '1row_5s');
+    expect(autoRollSelect).toHaveClass('has-active-roll');
+
+    setItemSpy.mockRestore();
   });
 });
 

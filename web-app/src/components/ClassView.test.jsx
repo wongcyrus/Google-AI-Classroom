@@ -496,5 +496,23 @@ describe('ClassView Component Full Suite', () => {
     expect(classViewDiv).not.toHaveClass('is-monitor-tab');
     expect(document.body.classList.contains('is-monitor-active')).toBe(false);
   });
+
+  it('renders Broadcast launcher button next to Preview as Student in the Class Hub header', () => {
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const broadcastBtn = screen.getByRole('button', { name: /Broadcast Screen & Voice|Broadcast/i });
+    const previewBtn = screen.getByRole('button', { name: /Preview as Student/i });
+
+    expect(broadcastBtn).toBeInTheDocument();
+    expect(previewBtn).toBeInTheDocument();
+    expect(broadcastBtn).toHaveClass('broadcast-launcher-btn');
+    expect(previewBtn).toHaveClass('student-preview-launcher-btn');
+  });
 });
 
