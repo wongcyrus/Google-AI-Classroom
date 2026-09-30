@@ -89,6 +89,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   });
   const [rollRowIndex, setRollRowIndex] = useState(0);
+  const [gridColumns, setGridColumns] = useState(4);
   const [isGridHovered, setIsGridHovered] = useState(false);
   const studentsGridRef = useRef(null);
 
@@ -1495,12 +1496,39 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     return Math.max(1, Math.floor((width + 24) / 324));
   }, []);
 
+  // Dynamically update column count when window resizes or show/hide controls toggles
+  useEffect(() => {
+    const updateCols = () => {
+      const cols = getItemsPerRow();
+      setGridColumns(cols);
+    };
+
+    updateCols();
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== 'undefined' && studentsGridRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        updateCols();
+      });
+      resizeObserver.observe(studentsGridRef.current);
+    }
+
+    window.addEventListener('resize', updateCols);
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      window.removeEventListener('resize', updateCols);
+    };
+  }, [getItemsPerRow, showControls]);
+
   // Compute student list with auto-rolling rows (reordering student cards without window scrolling)
   const rolledStudents = useMemo(() => {
     if (!currentBaseStudents || currentBaseStudents.length === 0) return [];
     if (autoRollSpeed === 'off' || rollRowIndex === 0) return currentBaseStudents;
 
-    const cols = getItemsPerRow();
+    const cols = gridColumns || getItemsPerRow();
     const totalRows = Math.ceil(currentBaseStudents.length / cols);
     if (totalRows <= 2) return currentBaseStudents;
 
@@ -1512,7 +1540,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       ...currentBaseStudents.slice(startIndex),
       ...currentBaseStudents.slice(0, startIndex),
     ];
-  }, [currentBaseStudents, autoRollSpeed, rollRowIndex, getItemsPerRow]);
+  }, [currentBaseStudents, autoRollSpeed, rollRowIndex, gridColumns, getItemsPerRow]);
 
   // Auto-rolling rows timer: increments row offset by reordering cards without page scrolling
   useEffect(() => {
@@ -1538,7 +1566,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
 
     const intervalId = setInterval(() => {
-      const cols = getItemsPerRow();
+      const cols = gridColumns || getItemsPerRow();
       setRollRowIndex((prev) => {
         const totalCount = currentBaseStudents.length;
         if (totalCount === 0) return 0;
@@ -1563,12 +1591,13 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     showRecordingsModal,
     showAnalysisResultsModal,
     currentBaseStudents.length,
+    gridColumns,
     getItemsPerRow,
   ]);
 
   useEffect(() => {
     setRollRowIndex(0);
-  }, [problemFilter, selectedLesson, autoRollSpeed]);
+  }, [problemFilter, selectedLesson, autoRollSpeed, showControls, gridColumns]);
 
   const handleNudgeProblemStudents = async () => {
     const count = filteredStudents.length;
