@@ -319,8 +319,9 @@ The **Monitor View** ([`MonitorView.jsx`](file:///home/developer/Documents/Gemin
 - **Snapshot Upload Cadence Slider:** Adjust the student upload interval between **5 seconds** (high security) and **60 seconds** (bandwidth-conserving).
 - **Audio Master Listen / Mute Toggle:** Listen in on classroom ambient microphones or mute all incoming student audio.
 
-### Problem Student Quick Filters
-Use the zero-space filter buttons on top of the student grid to focus immediately on anomalies:
+### Problem Student Quick Filters & Toolbar Actions
+Use the compact toolbar controls docked below the main header:
+- `🔲 Dual View` / `🖥️ Screen` / `📷 Webcam`: Switch channel view across all student tiles simultaneously.
 - `👥 All Students`: Default view.
 - `⚠️ Problems`: Shows students with active flags (missing feeds, looking away, or unverified presence).
 - `📷 Missing Cam`: Isolates students who have not initialized or have muted their webcam.
@@ -328,6 +329,18 @@ Use the zero-space filter buttons on top of the student grid to focus immediatel
 - `🖥️ Not Sharing`: Displays students whose desktop screen stream has dropped.
 - `🚨 AI Alerts`: Filters students triggering active MediaPipe or LiteRT Gemma intent violations.
 - `📢 Targeted Nudge`: Sends an immediate visual alert to all filtered students with one click.
+- `📥 Export Excel`: Exports the filtered student audit report with names, emails, and violation timestamps.
+
+### 6.1 Auto-Rolling Student Rows via Cyclical In-Place Reordering
+When monitoring larger cohorts on podium displays or projectors that only fit the first 2 rows of students on screen:
+- **Auto-Roll Dropdown:** Select rolling speed and step size directly from the toolbar:
+  - `⏸️ Auto-Roll: Off` (default, standard alphabetical sort)
+  - `🔄 Roll 1 Row (5s, 10s, 15s, 20s, 30s)`
+  - `🔄 Roll 2 Rows (10s, 15s, 30s)`
+- **Zero Page Scrolling:** The browser window remains completely stationary. Student tiles cyclically rotate within the grid array so that subsequent rows rotate up to Rows 1 & 2 at the top of your display.
+- **Dynamic Layout Adaptation (Show/Hide Controls & Window Resize):** Built with an integrated `ResizeObserver`. If you click **`◀ Hide Controls`** to widen the grid, expand/contract the browser window, or toggle controls, the system immediately recalculates the number of columns and cleanly realigns the rolling sequence to Row 0 so student cards never split mid-row.
+- **Smart Hover & Modal Pausing:** Rolling pauses automatically whenever your mouse hovers over the student grid (allowing inspection without cards moving) or whenever any dialog/modal is open.
+- **Sticky Toolbar:** The monitor toolbar docks stickily (`top: 64px`) directly below the main navigation bar, ensuring controls and filters remain accessible at all times.
 
 ### Reading Student Card Telemetry
 Each card in the student grid provides real-time multi-sensor status:
@@ -349,7 +362,8 @@ Each card in the student grid provides real-time multi-sensor status:
 You can broadcast your instructor desktop and live speech subtitles directly to all 50+ students in real-time, or open an anonymous public presentation mode for conference audiences:
 
 ### 7.1 Standard In-Class Screen Broadcast
-1. In the **Controls Panel**, locate the **Teacher Screen Sharing** section.
+1. In the **Class Hub Header** (top-right, adjacent to **`Preview as Student ↗`**), click **`🎙️🖥️ Broadcast`** to open the setup wizard.
+   - When active, the header button transforms into a live status badge (`● Live (N) • 🎙️ CC`), an `👁️ Studio` inspection button, and a quick `⏹ Stop` button.
 2. Select **Broadcast Quality**:
    - `720p (Fast) [Recommended]`: Default high-efficiency mode (`1280x720`) balancing crystal-clear terminal text with minimal bandwidth consumption.
    - `1080p (Standard)`: Full HD quality (`1920x1080`).
@@ -358,12 +372,11 @@ You can broadcast your instructor desktop and live speech subtitles directly to 
    - `3.0s / 0.3 FPS (Default)`: Economy bandwidth mode ideal for slides, lectures, and terminal code.
    - `1.5s / 0.7 FPS`: Standard responsiveness.
    - `0.8s / 1.2 FPS` or `0.5s / 2.0 FPS`: High responsiveness for live UI interactions.
-4. Click **`🖥️ Broadcast Screen & Audio`** to open the setup modal.
-5. In **Step 1**, select your microphone device (for live subtitles) and audio recording preferences.
-6. In **Step 2**, confirm resolution and interval presets.
-7. Click **`Start Sharing & Subtitles`** and select the display or application window you wish to present.
-8. The broadcast transmits through lightweight diffed JPEG frames directly into the student client's floating presentation window.
-9. Click **`⏹️ Stop Sharing`** when your demonstration is finished.
+4. In **Step 1**, select your microphone device (for live subtitles) and audio recording preferences.
+5. In **Step 2**, confirm resolution and interval presets.
+6. Click **`Start Sharing & Subtitles`** and select the display or application window you wish to present.
+7. The broadcast transmits through lightweight diffed JPEG frames directly into the student client's floating presentation window.
+8. Click **`⏹️ Stop Sharing`** (or the header **`⏹ Stop`** button) when your demonstration is finished.
 
 ---
 

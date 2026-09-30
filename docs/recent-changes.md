@@ -4,6 +4,34 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0 Class Hub Broadcast Header Launcher, Cyclical Auto-Rolling Student Rows & Responsive ResizeObserver Column Adaptation
+
+**Date**: September 30, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (1,262 tests passed, 0 failed), Deployed (Dev & Prod)  
+**Primary Files**:
+- Class Hub Header & Layout: [`web-app/src/components/ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx), [`web-app/src/components/ClassView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.css), [`web-app/src/components/ClassView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.test.jsx)
+- Monitor View Toolbar & Cyclical Auto-Roll: [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`web-app/src/components/MonitorView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.css), [`web-app/src/components/MonitorView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.test.jsx)
+- Student Grid Ordering: [`web-app/src/components/monitor/StudentsGrid.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/StudentsGrid.jsx), [`web-app/src/components/monitor/StudentsGrid.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/StudentsGrid.test.jsx)
+
+### 0.0.0.0.1 Class Hub Header Broadcast Launcher
+- **Header Placement & Styling**: Relocated the primary teacher Broadcast studio trigger to the top-level Class Hub header (`.class-hub-right-actions`) directly adjacent to `Preview as Student ↗`, matching its gradient styling, height (34px), typography, and hover elevation.
+- **Synchronized Live Status Pill**: When broadcasting is active, the launcher transforms into a live status badge (`● Live (N) • 🎙️ CC`), an `👁️ Studio` inspection trigger, and an immediate `⏹ Stop` button.
+- **Toolbar De-Clutter**: Removed the redundant broadcast button cluster from the secondary monitor toolbar to prevent visual duplication.
+
+### 0.0.0.0.2 Auto-Rolling Student Rows via Cyclical In-Place Reordering
+- **Zero Page Scrolling**: Rather than scrolling the browser window vertically (which causes disruptive jumping and displaces controls on podium displays or projectors), student cards cycle in-place within the grid array.
+- **Continuous 2-Row Classroom Visibility**: On typical monitor or projector setups where only the first 2 rows of students fit above the fold, the auto-roll system continuously cycles subsequent rows into Rows 1 & 2 at selectable speeds (`5s`, `10s`, `15s`, `20s`, `30s` for 1 or 2 rows).
+- **Flicker-Free DOM Reordering**: Each student card retains a persistent `key={studentUid}`. React reorders existing DOM nodes without unmounting or remounting, preserving active WebRTC video elements and canvas feeds without interruption.
+- **Hover & Modal Pause**: Rolling pauses instantly when the teacher's cursor hovers over the grid or when any dialog/modal is open.
+- **Sticky Monitor Toolbar**: `.monitor-toolbar-card` is configured with `position: sticky; top: 64px; z-index: 20;` so filters, channel selectors, and roll settings remain docked under the app header.
+
+### 0.0.0.0.3 Responsive Show/Hide Controls & Window Resize Adaptation
+- **`ResizeObserver` & Event Listeners**: A native `ResizeObserver` monitors the grid container alongside window `resize` events to detect layout width shifts.
+- **Dynamic Column Recalculation**: When the teacher hides controls (`◀ Hide Controls` expanding the grid from 3 to 4 columns), shows controls, or resizes the browser window, column counts are immediately updated via CSS Grid computed style (`grid-template-columns`).
+- **Clean Alignment**: Realignment automatically resets the roll sequence to Row 0 so student cards never split mid-row across differing column counts.
+
+---
+
 ## 0.0.0 Teacher Mobile Passkey Login, Multi-Role Device Whitelist & Self-Service Unlinking
 
 **Date**: September 29, 2026  
