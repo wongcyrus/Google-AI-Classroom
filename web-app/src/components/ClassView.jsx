@@ -179,11 +179,11 @@ const ClassView = ({ user }) => {
     switch (mainTab) {
       case 'video':
         switch (subTab) {
-          case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} teacherClasses={teacherClasses} />;
+          case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
-          default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} teacherClasses={teacherClasses} />;
+          default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
         }
       case 'analytics':
         switch (subTab) {

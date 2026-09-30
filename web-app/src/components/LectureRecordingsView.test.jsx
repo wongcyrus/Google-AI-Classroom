@@ -3,8 +3,6 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import LectureRecordingsView, {
   extractYouTubeVideoId,
   formatFileSize,
-  extractModuleInfo,
-  getSiblingClasses,
 } from './LectureRecordingsView';
 
 let snapshotCallback;
@@ -772,155 +770,9 @@ describe('LectureRecordingsView Component', () => {
           driveEmbedUrl: null,
         })
       );
-
       confirmSpy.mockRestore();
     });
   });
-
-  describe('extractModuleInfo and getSiblingClasses helpers', () => {
-    it('extracts module info ignoring programme code 114115', () => {
-      expect(extractModuleInfo('it114115-ite3102-1a1b1c')).toEqual({ raw: 'ite3102', digits: '3102' });
-      expect(extractModuleInfo('ITE3102-Lecture')).toEqual({ raw: 'ite3102', digits: '3102' });
-      expect(extractModuleInfo('ite3102- 1c')).toEqual({ raw: 'ite3102', digits: '3102' });
-      expect(extractModuleInfo('itp4125')).toEqual({ raw: 'itp4125', digits: '4125' });
-      expect(extractModuleInfo('itp4125-l')).toEqual({ raw: 'itp4125', digits: '4125' });
-      expect(extractModuleInfo('it114115')).toBeNull();
-      expect(extractModuleInfo('')).toBeNull();
-      expect(extractModuleInfo(null)).toBeNull();
-    });
-
-    it('identifies sibling classes sharing the same module code', () => {
-      const teacherClasses = [
-        { id: 'it114115-ite3102-1a1b1c', name: 'ITE3102-Lecture' },
-        { id: 'it114115-ite3102-1a1b', name: 'ITE3102-Lab 1A, 1B' },
-        { id: 'ite3102- 1c', name: 'ITE3102-Lab 1C' },
-        { id: 'itp4125-l', name: 'ITP4125-Lecture' },
-      ];
-
-      const siblings = getSiblingClasses('it114115-ite3102-1a1b1c', 'ITE3102-Lecture', teacherClasses);
-      expect(siblings).toHaveLength(2);
-      expect(siblings.map((s) => s.id)).toEqual(['it114115-ite3102-1a1b', 'ite3102- 1c']);
-
-      expect(getSiblingClasses('it114115-ite3102-1a1b1c', 'ITE3102-Lecture', [])).toEqual([]);
-      expect(getSiblingClasses(null, null, teacherClasses)).toEqual([]);
-    });
-  });
-
-  describe('Cross-Cohort Sibling Recordings Discovery and 1-Click Copy', () => {
-    it('displays sibling recordings with origin badge and allows 1-click copy into current class', async () => {
-      const teacherClasses = [
-        { id: 'it114115-ite3102-1a1b1c', name: 'ITE3102-Lecture' },
-        { id: 'it114115-ite3102-1a1b', name: 'ITE3102-Lab 1A, 1B' },
-      ];
-
-      render(
-        <LectureRecordingsView
-          classId="it114115-ite3102-1a1b1c"
-          className="ITE3102-Lecture"
-          teacherClasses={teacherClasses}
-        />
-      );
-
-      const mainCallback = snapshotCallbacks.find((s) => s.path === 'classes/it114115-ite3102-1a1b1c/lectureRecordings')?.cb;
-      const sibCallback = snapshotCallbacks.find((s) => s.path === 'classes/it114115-ite3102-1a1b/lectureRecordings')?.cb;
-
-      expect(mainCallback).toBeDefined();
-      expect(sibCallback).toBeDefined();
-
-      await act(async () => {
-        mainCallback({ docs: [] });
-      });
-
-      const mockSiblingDoc = {
-        id: 'rec_sibling_1',
-        data: () => ({
-          title: 'Week 1 Full Lecture',
-          durationSeconds: 4684,
-          status: 'ready',
-          videoUrl: 'https://storage.googleapis.com/test/lecture.webm',
-          vttUrls: { en: 'https://storage.googleapis.com/test/en.vtt' },
-        }),
-      };
-
-      await act(async () => {
-        sibCallback({ docs: [mockSiblingDoc] });
-      });
-
-      await waitFor(() => {
-        expect(screen.getAllByText(/ITE3102-Lab 1A, 1B/i).length).toBeGreaterThan(0);
-      });
-
-      const copyBtn = screen.getByRole('button', { name: /copy to/i });
-      expect(copyBtn).toBeInTheDocument();
-
-      await act(async () => {
-        fireEvent.click(copyBtn);
-      });
-
-      expect(mockSetDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ path: 'classes/it114115-ite3102-1a1b1c/lectureRecordings/rec_sibling_1' }),
-        expect.objectContaining({
-          title: 'Week 1 Full Lecture',
-          classId: 'it114115-ite3102-1a1b1c',
-          copiedFromClassId: 'it114115-ite3102-1a1b',
-        })
-      );
-    });
-
-    it('toggles cohort filter between All Cohorts and This Class Only', async () => {
-      const teacherClasses = [
-        { id: 'it114115-ite3102-1a1b1c', name: 'ITE3102-Lecture' },
-        { id: 'it114115-ite3102-1a1b', name: 'ITE3102-Lab 1A, 1B' },
-      ];
-
-      render(
-        <LectureRecordingsView
-          classId="it114115-ite3102-1a1b1c"
-          className="ITE3102-Lecture"
-          teacherClasses={teacherClasses}
-        />
-      );
-
-      const mainCallback = snapshotCallbacks.find((s) => s.path === 'classes/it114115-ite3102-1a1b1c/lectureRecordings')?.cb;
-      const sibCallback = snapshotCallbacks.find((s) => s.path === 'classes/it114115-ite3102-1a1b/lectureRecordings')?.cb;
-
-      await act(async () => {
-        mainCallback({ docs: [] });
-        sibCallback({
-          docs: [
-            {
-              id: 'rec_sib_filter',
-              data: () => ({
-                title: 'Sibling Only Video',
-                durationSeconds: 100,
-                status: 'ready',
-                videoUrl: 'https://storage.googleapis.com/test/vid.webm',
-              }),
-            },
-          ],
-        });
-      });
-
-      expect(screen.getAllByText('Sibling Only Video').length).toBeGreaterThan(0);
-
-      // Click "This Class Only"
-      const thisClassBtn = screen.getByRole('button', { name: /this class/i });
-      await act(async () => {
-        fireEvent.click(thisClassBtn);
-      });
-
-      expect(screen.queryByText('Sibling Only Video')).not.toBeInTheDocument();
-      expect(screen.getByText(/no lecture recordings found for class/i)).toBeInTheDocument();
-      expect(screen.getByText(/there are 1 recording\(s\) available in related cohort classes/i)).toBeInTheDocument();
-
-      // Click "Switch to All Cohorts"
-      const switchBtn = screen.getByRole('button', { name: /switch to all cohorts/i });
-      await act(async () => {
-        fireEvent.click(switchBtn);
-      });
-
-      expect(screen.getAllByText('Sibling Only Video').length).toBeGreaterThan(0);
-    });
-  });
 });
+
 
