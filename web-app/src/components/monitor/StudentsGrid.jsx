@@ -56,12 +56,13 @@ const StudentsGrid = ({
     );
   }
 
+  const studentsToRender = displayStudents !== undefined
+    ? listToRender
+    : listToRender.slice().sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+
   return (
     <div className="students-container">
-      {listToRender
-        .slice()
-        .sort((a, b) => (a.email || '').localeCompare(b.email || ''))
-        .map((student) => {
+      {studentsToRender.map((student) => {
           const studentUid = student.id;
           const screenshotData = screenshots[studentUid];
           let isFresh = false;

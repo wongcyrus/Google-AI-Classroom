@@ -88,14 +88,14 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       return 'off';
     }
   });
+  const [rollRowIndex, setRollRowIndex] = useState(0);
   const [isGridHovered, setIsGridHovered] = useState(false);
-  const currentRowIndexRef = useRef(0);
   const studentsGridRef = useRef(null);
 
   const handleAutoRollChange = (e) => {
     const val = e.target.value;
     setAutoRollSpeed(val);
-    currentRowIndexRef.current = 0;
+    setRollRowIndex(0);
     try {
       localStorage.setItem('monitor_auto_roll_speed', val);
     } catch {}
@@ -381,77 +381,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length]);
 
-  // Auto-rolling rows implementation for multi-row student monitor view
-  useEffect(() => {
-    const config = parseAutoRollConfig(autoRollSpeed);
-    if (!config) {
-      currentRowIndexRef.current = 0;
-      return;
-    }
 
-    const isModalOpen = Boolean(
-      selectedStudent ||
-      showBroadcastModal ||
-      showNotSharingModal ||
-      showPromptModal ||
-      showBingoModal ||
-      showLectureQrModal ||
-      showRecordingsModal ||
-      showAnalysisResultsModal
-    );
-
-    if (isGridHovered || isModalOpen) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      if (!studentsGridRef.current) return;
-      const container = studentsGridRef.current.querySelector('.students-container');
-      if (!container || !container.children || container.children.length === 0) return;
-
-      const cards = Array.from(container.children).filter(c => !c.classList.contains('empty-filter-state'));
-      if (cards.length === 0) return;
-
-      // Group cards by their offsetTop to calculate distinct rows
-      const rowTops = Array.from(new Set(cards.map(c => c.offsetTop))).sort((a, b) => a - b);
-      if (rowTops.length <= 2) {
-        return; // All rows already visible on screen without scrolling
-      }
-
-      let nextIndex = currentRowIndexRef.current + config.stepRows;
-      if (nextIndex >= rowTops.length) {
-        nextIndex = 0;
-      }
-      currentRowIndexRef.current = nextIndex;
-
-      const containerRect = container.getBoundingClientRect();
-      const containerTopAbs = containerRect.top + window.scrollY;
-      const stickyHeaderOffset = 115; // sticky MainHeader (64px) + sticky toolbar (~40px) + margin
-      const targetScrollY = Math.max(0, containerTopAbs + rowTops[nextIndex] - stickyHeaderOffset);
-
-      window.scrollTo({
-        top: targetScrollY,
-        behavior: 'smooth',
-      });
-    }, config.intervalMs);
-
-    return () => clearInterval(intervalId);
-  }, [
-    autoRollSpeed,
-    isGridHovered,
-    selectedStudent,
-    showBroadcastModal,
-    showNotSharingModal,
-    showPromptModal,
-    showBingoModal,
-    showLectureQrModal,
-    showRecordingsModal,
-    showAnalysisResultsModal,
-  ]);
-
-  useEffect(() => {
-    currentRowIndexRef.current = 0;
-  }, [problemFilter, selectedLesson]);
 
   const handleLessonChange = (e) => {
     originalHandleLessonChange(e);
@@ -1524,6 +1454,122 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     return filterStudentsByCompliance(students, problemFilter, classComplianceSettings, screenshots);
   }, [students, problemFilter, classComplianceSettings, screenshots]);
 
+  // Base list of students sorted alphabetically for live monitoring
+  const sortedLiveStudents = useMemo(() => {
+    return filteredStudents.slice().sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+  }, [filteredStudents]);
+
+  // Base list of students for review mode
+  const reviewStudents = useMemo(() => {
+    if (!reviewTime) return [];
+    return classList.slice().sort((a, b) => a.localeCompare(b)).map((studentUid) => {
+      const email = uidToEmailMap.get(studentUid) || studentUid;
+      const existingStudent = students.find((s) => s.id === studentUid);
+      return existingStudent || { id: studentUid, email, isSharing: !!screenshots[studentUid] };
+    });
+  }, [reviewTime, classList, uidToEmailMap, students, screenshots]);
+
+  const currentBaseStudents = reviewTime ? reviewStudents : sortedLiveStudents;
+
+  const getItemsPerRow = useCallback(() => {
+    if (!studentsGridRef.current) return 4;
+    const container = studentsGridRef.current.querySelector('.students-container');
+    if (!container) return 4;
+
+    try {
+      const computed = window.getComputedStyle(container).getPropertyValue('grid-template-columns');
+      if (computed && computed !== 'none') {
+        const cols = computed.trim().split(/\s+/).length;
+        if (cols > 0) return cols;
+      }
+    } catch {}
+
+    const cards = Array.from(container.children).filter(c => !c.classList.contains('empty-filter-state'));
+    if (cards.length > 0) {
+      const firstTop = cards[0].offsetTop;
+      const count = cards.filter(c => c.offsetTop === firstTop).length;
+      if (count > 0) return count;
+    }
+
+    const width = container.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1200);
+    return Math.max(1, Math.floor((width + 24) / 324));
+  }, []);
+
+  // Compute student list with auto-rolling rows (reordering student cards without window scrolling)
+  const rolledStudents = useMemo(() => {
+    if (!currentBaseStudents || currentBaseStudents.length === 0) return [];
+    if (autoRollSpeed === 'off' || rollRowIndex === 0) return currentBaseStudents;
+
+    const cols = getItemsPerRow();
+    const totalRows = Math.ceil(currentBaseStudents.length / cols);
+    if (totalRows <= 2) return currentBaseStudents;
+
+    const validRowIndex = rollRowIndex % totalRows;
+    const startIndex = validRowIndex * cols;
+    if (startIndex >= currentBaseStudents.length) return currentBaseStudents;
+
+    return [
+      ...currentBaseStudents.slice(startIndex),
+      ...currentBaseStudents.slice(0, startIndex),
+    ];
+  }, [currentBaseStudents, autoRollSpeed, rollRowIndex, getItemsPerRow]);
+
+  // Auto-rolling rows timer: increments row offset by reordering cards without page scrolling
+  useEffect(() => {
+    const config = parseAutoRollConfig(autoRollSpeed);
+    if (!config) {
+      setRollRowIndex(0);
+      return;
+    }
+
+    const isModalOpen = Boolean(
+      selectedStudent ||
+      showBroadcastModal ||
+      showNotSharingModal ||
+      showPromptModal ||
+      showBingoModal ||
+      showLectureQrModal ||
+      showRecordingsModal ||
+      showAnalysisResultsModal
+    );
+
+    if (isGridHovered || isModalOpen) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const cols = getItemsPerRow();
+      setRollRowIndex((prev) => {
+        const totalCount = currentBaseStudents.length;
+        if (totalCount === 0) return 0;
+        const totalRows = Math.ceil(totalCount / cols);
+        if (totalRows <= 2) {
+          return 0; // All rows already visible on screen without rolling
+        }
+        return (prev + config.stepRows) % totalRows;
+      });
+    }, config.intervalMs);
+
+    return () => clearInterval(intervalId);
+  }, [
+    autoRollSpeed,
+    isGridHovered,
+    selectedStudent,
+    showBroadcastModal,
+    showNotSharingModal,
+    showPromptModal,
+    showBingoModal,
+    showLectureQrModal,
+    showRecordingsModal,
+    showAnalysisResultsModal,
+    currentBaseStudents.length,
+    getItemsPerRow,
+  ]);
+
+  useEffect(() => {
+    setRollRowIndex(0);
+  }, [problemFilter, selectedLesson, autoRollSpeed]);
+
   const handleNudgeProblemStudents = async () => {
     const count = filteredStudents.length;
     if (count === 0) return;
@@ -2050,7 +2096,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
             screenshots={screenshots}
             frameRate={frameRate}
             students={students}
-            displayStudents={reviewTime ? undefined : filteredStudents}
+            displayStudents={rolledStudents}
             problemFilter={problemFilter}
             now={now}
             isPaused={isPaused}

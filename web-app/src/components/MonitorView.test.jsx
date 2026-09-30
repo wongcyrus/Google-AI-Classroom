@@ -621,5 +621,49 @@ describe('MonitorView Component Suite', () => {
 
     setItemSpy.mockRestore();
   });
+
+  it('rolls student rows by reordering items without window scrolling', async () => {
+    const scrollToSpy = vi.spyOn(window, 'scrollTo');
+    const mock12Students = Array.from({ length: 12 }, (_, i) => ({
+      id: `s_${i + 1}`,
+      data: () => ({
+        email: `student${String(i + 1).padStart(2, '0')}@school.edu`,
+        isSharing: true,
+        timestamp: fixedDate,
+      }),
+    }));
+
+    mockOnSnapshot.mockImplementationOnce((ref, cb) => {
+      cb({
+        exists: () => true,
+        docs: mock12Students,
+        data: () => ({
+          students: Object.fromEntries(mock12Students.map(s => [s.id, s.data().email])),
+          settings: { captureMode: 'dual' },
+          isExamActive: false,
+        }),
+      });
+      return () => {};
+    });
+
+    vi.useFakeTimers();
+    render(<MonitorView {...defaultProps} />);
+
+    const autoRollSelect = screen.getByLabelText(/Auto-roll student rows/i);
+    await act(async () => {
+      fireEvent.change(autoRollSelect, { target: { value: '1row_5s' } });
+    });
+
+    // Advance 5 seconds to trigger 1-row roll
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    // Verify window.scrollTo was never called
+    expect(scrollToSpy).not.toHaveBeenCalled();
+
+    scrollToSpy.mockRestore();
+    vi.useRealTimers();
+  });
 });
 

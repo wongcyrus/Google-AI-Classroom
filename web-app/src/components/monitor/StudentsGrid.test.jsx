@@ -89,4 +89,24 @@ describe('StudentsGrid Component', () => {
 
     expect(screen.getByText(/All students are compliant with the selected filter/i)).toBeInTheDocument();
   });
+
+  it('preserves custom display order when displayStudents is provided', () => {
+    const customOrderedStudents = [
+      { id: 's_z', email: 'zeta@school.edu', isSharing: true },
+      { id: 's_a', email: 'alpha@school.edu', isSharing: true },
+    ];
+
+    render(
+      <StudentsGrid
+        displayStudents={customOrderedStudents}
+        now={baseNow}
+      />
+    );
+
+    const tiles = screen.getAllByTestId(/student-tile-/);
+    expect(tiles).toHaveLength(2);
+    expect(tiles[0]).toHaveAttribute('data-testid', 'student-tile-s_z');
+    expect(tiles[1]).toHaveAttribute('data-testid', 'student-tile-s_a');
+  });
 });
+
