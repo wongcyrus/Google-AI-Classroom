@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, functions } from '../firebase-config';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import JSZip from 'jszip';
 import { formatDuration } from '../hooks/useLectureRecorder';
@@ -30,8 +30,54 @@ export function extractYouTubeVideoId(input) {
   return match ? match[1] : null;
 }
 
-export default function LectureRecordingsView({ classId, user, onBack = null }) {
-  const [recordings, setRecordings] = useState([]);
+/**
+ * Extracts a normalized 4-digit module number and raw code from class ID or name.
+ * E.g. "it114115-ite3102-1a1b1c" -> { raw: "ite3102", digits: "3102" }
+ */
+export function extractModuleInfo(str) {
+  if (!str || typeof str !== 'string') return null;
+  const matches = [...str.toLowerCase().matchAll(/([a-z]{2,4})\s*[-_]?\s*(\d{4})(?!\d)/gi)];
+  for (const m of matches) {
+    const raw = (m[1] + m[2]).toLowerCase();
+    const digits = m[2];
+    if (digits !== '1141') {
+      return { raw, digits };
+    }
+  }
+  return null;
+}
+
+const EMPTY_ARRAY = [];
+
+/**
+ * Returns sibling classes from teacherClasses that belong to the same module.
+ */
+export function getSiblingClasses(currentClassId, currentClassName, teacherClasses = EMPTY_ARRAY) {
+  if (!currentClassId || !teacherClasses || teacherClasses.length === 0) return EMPTY_ARRAY;
+  const currentMod = extractModuleInfo(currentClassId) || extractModuleInfo(currentClassName);
+  if (!currentMod) return EMPTY_ARRAY;
+
+  const siblings = teacherClasses.filter((c) => {
+    if (!c || !c.id || c.id === currentClassId) return false;
+    const targetMod = extractModuleInfo(c.id) || extractModuleInfo(c.name);
+    if (!targetMod) return false;
+    return targetMod.raw === currentMod.raw || (targetMod.digits && targetMod.digits === currentMod.digits);
+  });
+  return siblings.length > 0 ? siblings : EMPTY_ARRAY;
+}
+
+export default function LectureRecordingsView({
+  classId,
+  user,
+  onBack = null,
+  className = '',
+  teacherClasses = EMPTY_ARRAY,
+}) {
+  const [recordings, setRecordings] = useState(EMPTY_ARRAY);
+  const [siblingRecordings, setSiblingRecordings] = useState(EMPTY_ARRAY);
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'this_class'
+  const [isCopyingSibling, setIsCopyingSibling] = useState(false);
+  const [siblingCopyFeedback, setSiblingCopyFeedback] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedRecordingId, setSelectedRecordingId] = useState(null);
   const [isExportingZip, setIsExportingZip] = useState(false);
@@ -110,7 +156,11 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   const handleDeleteRecording = async (recordingId) => {
     if (!classId || !recordingId) return;
 
-    const recToDelete = recordings.find((r) => r.id === recordingId);
+    const recToDelete = displayedRecordings.find((r) => r.id === recordingId);
+    if (recToDelete?.isSibling) {
+      alert(`This recording belongs to sibling class "${recToDelete.sourceClassName || recToDelete.sourceClassId}". To delete it, please open that class directly.`);
+      return;
+    }
     const recTitle = recToDelete?.title || 'this lecture recording';
 
     const confirmed = window.confirm(
@@ -122,7 +172,7 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
     try {
       await deleteDoc(doc(db, 'classes', classId, 'lectureRecordings', recordingId));
       if (selectedRecordingId === recordingId) {
-        const remaining = recordings.filter((r) => r.id !== recordingId);
+        const remaining = displayedRecordings.filter((r) => r.id !== recordingId);
         setSelectedRecordingId(remaining.length > 0 ? remaining[0].id : null);
       }
     } catch (err) {
@@ -203,6 +253,105 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
 
     return () => unsubscribe();
   }, [classId]);
+
+  // Identify sibling classes from teacher's classes that share the same module code
+  const teacherClassesKey = (teacherClasses || []).map((c) => c?.id || '').join(',');
+  const siblingClasses = useMemo(() => {
+    return getSiblingClasses(classId, className, teacherClasses);
+  }, [classId, className, teacherClassesKey]);
+
+  const siblingIdsKey = siblingClasses.map((s) => s.id).join(',');
+
+  // Subscribe to sibling classes lectureRecordings
+  useEffect(() => {
+    if (!classId || siblingClasses.length === 0) {
+      setSiblingRecordings((prev) => (prev.length === 0 ? prev : EMPTY_ARRAY));
+      return;
+    }
+
+    const unsubs = [];
+    siblingClasses.forEach((sibling) => {
+      try {
+        const sibRef = collection(db, 'classes', sibling.id, 'lectureRecordings');
+        const q = query(sibRef, orderBy('startedAt', 'desc'));
+        const unsub = onSnapshot(
+          q,
+          (snapshot) => {
+            const docs = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+              isSibling: true,
+              sourceClassId: sibling.id,
+              sourceClassName: sibling.name || sibling.id,
+            }));
+            const valid = docs.filter((d) => d.status !== 'discarded');
+            setSiblingRecordings((prev) => {
+              const withoutSibling = prev.filter((r) => r.sourceClassId !== sibling.id);
+              return [...withoutSibling, ...valid];
+            });
+          },
+          (err) => {
+            console.debug(`[LectureRecordingsView] Notice querying sibling class ${sibling.id}:`, err);
+          }
+        );
+        unsubs.push(unsub);
+      } catch (err) {
+        console.debug(`[LectureRecordingsView] Error querying sibling class ${sibling.id}:`, err);
+      }
+    });
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [classId, siblingIdsKey]);
+
+  // Merge current class recordings with sibling recordings for display
+  const displayedRecordings = useMemo(() => {
+    if (filterMode === 'this_class' || siblingRecordings.length === 0) {
+      return recordings;
+    }
+    const localIds = new Set(recordings.map((r) => r.id));
+    const uniqueSiblings = siblingRecordings.filter((r) => !localIds.has(r.id));
+    const combined = [...recordings, ...uniqueSiblings];
+    combined.sort((a, b) => {
+      const ta = a.startedAt?.toDate ? a.startedAt.toDate().getTime() : (a.startedAt ? new Date(a.startedAt).getTime() : 0);
+      const tb = b.startedAt?.toDate ? b.startedAt.toDate().getTime() : (b.startedAt ? new Date(b.startedAt).getTime() : 0);
+      return tb - ta;
+    });
+    return combined;
+  }, [recordings, siblingRecordings, filterMode]);
+
+  // Automatically select the newest recording if none selected or if selected was removed
+  useEffect(() => {
+    if ((!selectedRecordingId || !displayedRecordings.some((r) => r.id === selectedRecordingId)) && displayedRecordings.length > 0) {
+      setSelectedRecordingId(displayedRecordings[0].id);
+    }
+  }, [displayedRecordings, selectedRecordingId]);
+
+  // Copy a recording from a sibling cohort to the current class
+  const handleCopySiblingRecording = async (rec) => {
+    if (!classId || !rec) return;
+    setIsCopyingSibling(true);
+    setSiblingCopyFeedback('Copying lecture recording to this class...');
+    try {
+      const targetDocRef = doc(db, 'classes', classId, 'lectureRecordings', rec.id);
+      const { id, isSibling, sourceClassId, sourceClassName, ...recData } = rec;
+      await setDoc(targetDocRef, {
+        ...recData,
+        classId,
+        copiedFromClassId: sourceClassId || rec.classId,
+        copiedAt: new Date().toISOString(),
+      });
+      setSiblingCopyFeedback(`Successfully copied to ${classId}! All students in this class now have full access.`);
+      setTimeout(() => setSiblingCopyFeedback(''), 4000);
+    } catch (err) {
+      console.error('[LectureRecordingsView] Failed to copy recording:', err);
+      alert(`Failed to copy recording: ${err.message}`);
+      setSiblingCopyFeedback('');
+    } finally {
+      setIsCopyingSibling(false);
+    }
+  };
 
   // Group unmerged recordings by sessionGroupId or calendar date
   const unmergedGroups = useMemo(() => {
@@ -305,8 +454,8 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   };
 
   const selectedRecording = useMemo(() => {
-    return recordings.find((r) => r.id === selectedRecordingId) || null;
-  }, [recordings, selectedRecordingId]);
+    return displayedRecordings.find((r) => r.id === selectedRecordingId) || null;
+  }, [displayedRecordings, selectedRecordingId]);
 
   // Sync YouTube and Google Drive inputs and player mode when selected recording changes
   useEffect(() => {
@@ -346,7 +495,8 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
 
     setIsSavingYouTube(true);
     try {
-      const recDocRef = doc(db, 'classes', classId, 'lectureRecordings', selectedRecording.id);
+      const targetClassId = selectedRecording.isSibling ? selectedRecording.sourceClassId : classId;
+      const recDocRef = doc(db, 'classes', targetClassId, 'lectureRecordings', selectedRecording.id);
       const standardUrl = `https://www.youtube.com/watch?v=${videoId}`;
       await updateDoc(recDocRef, {
         youtubeUrl: standardUrl,
@@ -371,7 +521,8 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
 
     setIsSavingYouTube(true);
     try {
-      const recDocRef = doc(db, 'classes', classId, 'lectureRecordings', selectedRecording.id);
+      const targetClassId = selectedRecording.isSibling ? selectedRecording.sourceClassId : classId;
+      const recDocRef = doc(db, 'classes', targetClassId, 'lectureRecordings', selectedRecording.id);
       await updateDoc(recDocRef, {
         youtubeUrl: null,
         youtubeVideoId: null,
@@ -434,10 +585,11 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
   const handleTriggerSubtitles = async () => {
     if (!selectedRecording) return;
     setIsRetryingSubtitles(true);
+    const targetClassId = selectedRecording.isSibling ? selectedRecording.sourceClassId : classId;
     try {
       const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
       await callSubtitles({
-        classId,
+        classId: targetClassId,
         sessionId: selectedRecording.id,
         storagePath: selectedRecording.storagePath,
         title: selectedRecording.title,
@@ -590,24 +742,45 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
         </div>
       )}
 
+      {siblingCopyFeedback && (
+        <div className="sibling-copy-feedback-banner">
+          <span>✅ {siblingCopyFeedback}</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="empty-state">
           <p>Loading lecture recordings...</p>
         </div>
-      ) : recordings.length === 0 ? (
+      ) : displayedRecordings.length === 0 ? (
         <div className="empty-state">
           <p>No lecture recordings found for class <strong>{classId}</strong>.</p>
-          <p style={{ fontSize: '0.9rem', color: '#718096' }}>
-            Start screen sharing and turn on <strong>"Record Lecture for YouTube"</strong> to create a recording.
-          </p>
+          {filterMode === 'this_class' && siblingRecordings.length > 0 ? (
+            <div className="sibling-empty-notice">
+              <p style={{ fontSize: '0.9rem', color: '#718096' }}>
+                There are {siblingRecordings.length} recording(s) available in related cohort classes.
+              </p>
+              <button
+                type="button"
+                className="btn-switch-cohorts"
+                onClick={() => setFilterMode('all')}
+              >
+                📚 Switch to All Cohorts
+              </button>
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.9rem', color: '#718096' }}>
+              Start screen sharing and turn on <strong>"Record Lecture for YouTube"</strong> to create a recording.
+            </p>
+          )}
         </div>
       ) : (
         <div className="lecture-recordings-grid">
           {/* Recordings List */}
           <div className="recordings-list-panel">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
               <h3 style={{ margin: 0, fontSize: '1rem', color: '#4a5568' }}>
-                Past Lectures ({recordings.length})
+                Past Lectures ({displayedRecordings.length})
               </h3>
               <button
                 className="btn-toggle-merge"
@@ -619,6 +792,38 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                 {isSelectionMode ? 'Cancel Selection' : '🔗 Custom Merge'}
               </button>
             </div>
+
+            {siblingRecordings.length > 0 && (
+              <div className="recordings-cohort-toggle">
+                <button
+                  type="button"
+                  className={`cohort-pill-btn ${filterMode === 'all' ? 'active' : ''}`}
+                  onClick={() => setFilterMode('all')}
+                >
+                  📚 All Cohorts ({displayedRecordings.length})
+                </button>
+                <button
+                  type="button"
+                  className={`cohort-pill-btn ${filterMode === 'this_class' ? 'active' : ''}`}
+                  onClick={() => setFilterMode('this_class')}
+                >
+                  🏫 This Class ({recordings.length})
+                </button>
+              </div>
+            )}
+
+            {recordings.length === 0 && siblingRecordings.length > 0 && filterMode === 'this_class' && (
+              <div className="sibling-empty-notice">
+                <p>💡 No recordings stored directly in <strong>{classId}</strong>, but <strong>{siblingRecordings.length}</strong> recording(s) exist in related cohorts.</p>
+                <button
+                  type="button"
+                  className="btn-switch-cohorts"
+                  onClick={() => setFilterMode('all')}
+                >
+                  View All Cohorts →
+                </button>
+              </div>
+            )}
 
             {isSelectionMode && (
               <div className="merge-selection-bar">
@@ -633,7 +838,7 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
               </div>
             )}
 
-            {recordings.map((rec) => {
+            {displayedRecordings.map((rec) => {
               const isSelected = rec.id === selectedRecordingId;
               const dateStr = rec.startedAt?.toDate
                 ? rec.startedAt.toDate().toLocaleString()
@@ -691,6 +896,11 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
                           {rec.driveFileId && (
                             <span className="badge-pill-drive">📁 Drive</span>
                           )}
+                          {rec.isSibling && (
+                            <span className="badge-pill-sibling">
+                              🔗 From: {rec.sourceClassName || rec.sourceClassId}
+                            </span>
+                          )}
                         </span>
                         {rec.topic && <span>📌 Topic: {rec.topic}</span>}
                         {rec.isFragment && rec.mergedIntoSessionId && (
@@ -710,6 +920,22 @@ export default function LectureRecordingsView({ classId, user, onBack = null }) 
           {/* Detailed Player & YouTube Studio Export Panel */}
           {selectedRecording && (
             <div className="recording-detail-panel">
+              {selectedRecording.isSibling && (
+                <div className="sibling-detail-banner">
+                  <div className="sibling-detail-text">
+                    <div>🔗 This recording was recorded in related cohort <strong>{selectedRecording.sourceClassName || selectedRecording.sourceClassId}</strong>.</div>
+                    <div className="sibling-detail-hint">You can play it now, or copy it directly into <strong>{classId}</strong> so all students in this class have access.</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-copy-sibling"
+                    disabled={isCopyingSibling}
+                    onClick={() => handleCopySiblingRecording(selectedRecording)}
+                  >
+                    {isCopyingSibling ? '⏳ Copying to Class...' : `📥 Copy to ${classId}`}
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#2d3748' }}>
                   {selectedRecording.title || 'Lecture Recording'}

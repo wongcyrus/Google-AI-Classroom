@@ -1025,5 +1025,131 @@
   background: #fed7d7;
 }
 
+/* Sibling Cohort Discovery & 1-Click Copy Styles */
+.sibling-copy-feedback-banner {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #bee3f8;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recordings-cohort-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: #edf2f7;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.cohort-pill-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cohort-pill-btn:hover {
+  color: #2d3748;
+}
+
+.cohort-pill-btn.active {
+  background: #ffffff;
+  color: #2b6cb0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.sibling-empty-notice {
+  margin-top: 10px;
+}
+
+.btn-switch-cohorts {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #bee3f8;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.2s;
+}
+
+.btn-switch-cohorts:hover {
+  background: #bee3f8;
+}
+
+.badge-pill-sibling {
+  background: #fefcbf;
+  color: #744210;
+  border: 1px solid #faf089;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sibling-detail-banner {
+  background: #fffaf0;
+  border: 1px solid #feebc8;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sibling-detail-text {
+  font-size: 0.9rem;
+  color: #744210;
+}
+
+.sibling-detail-hint {
+  font-size: 0.8rem;
+  color: #975a16;
+  margin-top: 3px;
+}
+
+.btn-copy-sibling {
+  background: #dd6b20;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-copy-sibling:hover:not(:disabled) {
+  background: #c05621;
+}
+
+.btn-copy-sibling:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 
