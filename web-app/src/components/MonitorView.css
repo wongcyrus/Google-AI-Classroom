@@ -84,6 +84,22 @@
   font-weight: 700;
 }
 
+/* Compact Auto-Roll Dropdown */
+.auto-roll-select {
+  max-width: 175px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.auto-roll-select.has-active-roll {
+  border-color: #6366f1;
+  background-color: #eef2ff;
+  color: #4338ca;
+  font-weight: 700;
+}
+
 /* Inline Zero-Space Nudge Button */
 .compact-nudge-btn {
   height: 28px;
@@ -117,6 +133,9 @@
    Monitor Unified Space-Efficient Toolbar
    ========================================================================== */
 .monitor-toolbar-card {
+  position: sticky;
+  top: 64px;
+  z-index: 20;
   container-type: inline-size;
   container-name: toolbar;
   background: #ffffff;
@@ -370,6 +389,9 @@
   .problem-filter-select {
     max-width: 140px;
   }
+  .auto-roll-select {
+    max-width: 140px;
+  }
 }
 
 @container toolbar (max-width: 650px) {
@@ -379,6 +401,9 @@
   .problem-filter-select {
     max-width: 115px;
   }
+  .auto-roll-select {
+    max-width: 115px;
+  }
 }
 
 @media (max-width: 1050px) {
@@ -386,6 +411,9 @@
     max-width: 140px;
   }
   .problem-filter-select {
+    max-width: 140px;
+  }
+  .auto-roll-select {
     max-width: 140px;
   }
 }
