@@ -1,13 +1,13 @@
 .monitor-view {
   display: flex;
   flex-direction: row;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
+  width: 100%;
+  min-height: 500px;
   background-color: #f9fafb;
   position: relative;
-  overflow: hidden;
   box-sizing: border-box;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
 }
 
 .show-controls-btn {
@@ -36,10 +36,7 @@
 
 .monitor-main-content {
   flex-grow: 1;
-  height: 100%;
   padding: 0.5rem 0.85rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   position: relative;
   min-width: 0;
   box-sizing: border-box;
