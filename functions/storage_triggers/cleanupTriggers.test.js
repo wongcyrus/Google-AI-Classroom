@@ -169,6 +169,19 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
         force: true,
       });
     });
+
+    it('skips storage purge when lecture recording was copied from another class', async () => {
+      const event = {
+        params: { classId: 'CLASS_TARGET', sessionId: 'REC_COPIED_1' },
+        data: {
+          data: () => ({ copiedFromClassId: 'CLASS_SOURCE' }),
+        },
+      };
+
+      await onLectureRecordingDeleted(event);
+
+      expect(mockBucket.deleteFiles).not.toHaveBeenCalled();
+    });
   });
 
   describe('Class deletion cascading purge', () => {

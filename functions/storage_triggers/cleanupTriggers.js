@@ -118,6 +118,12 @@ export const onLectureRecordingDeleted = onDocumentDeleted({
   const { classId, sessionId } = event.params;
   if (!classId || !sessionId) return;
 
+  const docData = event.data?.data();
+  if (docData?.copiedFromClassId) {
+    logger.info(`Skipping physical Storage assets purge for lecture recording ${sessionId} as it was copied from class ${docData.copiedFromClassId}`);
+    return;
+  }
+
   const prefix = `recordings/${classId}/${sessionId}/`;
   try {
     logger.info(`Deleting physical Storage assets for lecture recording under: ${prefix}`);
