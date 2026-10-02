@@ -421,6 +421,14 @@ flowchart TD
     - Clicking `[ 🛡️ Exempt ]` triggers a double-confirmation alert dialog (`window.confirm`) warning of the uncommon exception.
     - Upon confirmation, adds student to `system_config/loginPolicy.passwordWhitelist`, displays the green **`🛡️ Passkey Exempt`** badge, and changes the button to **`🛡️ Exempt (Perm)`**.
     - **Clicking again cancels / revokes exemption**: Clicking `[ 🛡️ Exempt (Perm) ]` displays a revocation prompt and, upon confirmation, immediately removes the student from the whitelist, dismisses the badge, and restores the passkey requirement.
+  - **Passkey Status Filter Dropdown (`roster-filter-passkey`):**
+    - `All Passkey Statuses`: Shows all enrolled students.
+    - `📱 Linked Only`: Filters students who have a registered mobile passkey authenticator.
+    - `⏳ Not Registered`: Filters students without a registered passkey.
+    - `🛡️ Passkey Exempt`: Filters students with permanent passkey exemption.
+    - `⚡ Temp Bypass Active`: Filters students who have an active temporary emergency bypass.
+    - `⚠️ Unregistered & Not Exempt`: Filters students who are unlinked and not exempt (action required).
+  - **Header Status Chips:** Real-time summary chips displaying total roster count, profile metadata, linked passkeys, directory auto-fills, and dynamic chips for `🛡️ N Exempt` and `⚡ N Temp Bypass`.
   - **`[ 🔄 Reset ]` Passkey Button:** Securely unlinks a student's paired phone upon legitimate hardware loss/replacement and logs to `passkeyAuditLogs`.
 - **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
 - **Student-Specific Custom Properties Excel Tool:**

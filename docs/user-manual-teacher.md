@@ -202,6 +202,15 @@ To enforce anti-proxy attendance, student accounts are bound 1-to-1 to physical 
        > *Revoke permanent passkey exemption for <student>? The student will once again be required to authenticate with a personal mobile passkey on desktop computers.*
      - Once confirmed, the student is removed from the password whitelist, the exempt badge disappears, the button reverts back to **`[ 🛡️ Exempt ]`**, and passkey enforcement is immediately reinstated.
      - All grant and revocation actions are permanently logged in `passkeyAuditLogs`.
+5. **Roster Passkey Filtering & Real-Time Status Chips**:
+   - In the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`), instructors can filter students using the **Passkey Status** dropdown:
+     - `All Passkey Statuses`: Shows the complete cohort roster.
+     - `📱 Linked Only`: Filters for students with a successfully registered mobile passkey.
+     - `⏳ Not Registered`: Filters for students without a registered passkey.
+     - `🛡️ Passkey Exempt`: Filters for students with permanent hardware exemptions.
+     - `⚡ Temp Bypass Active`: Filters for students currently enjoying an active temporary emergency bypass.
+     - `⚠️ Unregistered & Not Exempt`: Surfaces students who need attention (unregistered on phone and not granted exemption).
+   - High-visibility chips in the modal header display live totals for `🛡️ N Exempt` and `⚡ N Temp Bypass`.
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:

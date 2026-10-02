@@ -59,6 +59,8 @@ const EnrolledRosterModal = ({
     let linkedPasskeys = 0;
     let directoryEnriched = 0;
     let activeBypassesCount = 0;
+    let exemptPasskeys = 0;
+    let unlinkedUnexempt = 0;
 
     emailList.forEach(email => {
       const norm = (email || '').toLowerCase();
@@ -69,12 +71,20 @@ const EnrolledRosterModal = ({
       if (prof._fromDirectory) {
         directoryEnriched++;
       }
-      if (registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid])) {
+      const isLinked = Boolean(registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]));
+      if (isLinked) {
         linkedPasskeys++;
       }
       const b = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]);
       if (b && b.active && (b.expiresAtMillis > Date.now() || (b.expiresAt && new Date(b.expiresAt).getTime() > Date.now()))) {
         activeBypassesCount++;
+      }
+      const isExempt = Boolean(passwordWhitelistSet && (passwordWhitelistSet.has(norm) || (prof.uid && passwordWhitelistSet.has(prof.uid.toLowerCase()))));
+      if (isExempt) {
+        exemptPasskeys++;
+      }
+      if (!isLinked && !isExempt) {
+        unlinkedUnexempt++;
       }
     });
 
@@ -85,8 +95,10 @@ const EnrolledRosterModal = ({
       unlinkedPasskeys: emailList.length - linkedPasskeys,
       directoryEnriched,
       activeBypassesCount,
+      exemptPasskeys,
+      unlinkedUnexempt,
     };
-  }, [emailList, resolvedProfilesMap, registeredPasskeysMap, studentBypassesMap]);
+  }, [emailList, resolvedProfilesMap, registeredPasskeysMap, studentBypassesMap, passwordWhitelistSet]);
 
   // Handle column sort toggle
   const handleSort = (column) => {
@@ -110,6 +122,9 @@ const EnrolledRosterModal = ({
       const studentClass = (prof.studentClass || '').toLowerCase();
       const programme = (prof.programme || '').toLowerCase();
       const isPasskeyLinked = Boolean(registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid]));
+      const isExempt = Boolean(passwordWhitelistSet && (passwordWhitelistSet.has(norm) || (prof.uid && passwordWhitelistSet.has(prof.uid.toLowerCase()))));
+      const b = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]);
+      const isBypassActive = Boolean(b && b.active && (b.expiresAtMillis > Date.now() || (b.expiresAt && new Date(b.expiresAt).getTime() > Date.now())));
       const hasProfileMeta = Boolean(prof.studentName || prof.nickname);
 
       // Search query filter
@@ -126,6 +141,9 @@ const EnrolledRosterModal = ({
       // Passkey filter
       if (passkeyFilter === 'linked' && !isPasskeyLinked) return false;
       if (passkeyFilter === 'unlinked' && isPasskeyLinked) return false;
+      if (passkeyFilter === 'exempt' && !isExempt) return false;
+      if (passkeyFilter === 'bypass' && !isBypassActive) return false;
+      if (passkeyFilter === 'unlinked_unexempt' && (isPasskeyLinked || isExempt)) return false;
 
       // Profile filter
       if (profileFilter === 'has_profile' && !hasProfileMeta) return false;
@@ -168,8 +186,15 @@ const EnrolledRosterModal = ({
           valB = (profB.programme || '').toLowerCase();
           break;
         case 'passkey': {
-          const passA = Boolean(registeredPasskeysMap[normA] || (profA.uid && registeredPasskeysMap[profA.uid])) ? 1 : 0;
-          const passB = Boolean(registeredPasskeysMap[normB] || (profB.uid && registeredPasskeysMap[profB.uid])) ? 1 : 0;
+          const getPasskeyScore = (norm, prof) => {
+            if (registeredPasskeysMap[norm] || (prof.uid && registeredPasskeysMap[prof.uid])) return 3;
+            if (passwordWhitelistSet && (passwordWhitelistSet.has(norm) || (prof.uid && passwordWhitelistSet.has(prof.uid.toLowerCase())))) return 2;
+            const b = studentBypassesMap[norm] || (prof.uid && studentBypassesMap[prof.uid]);
+            if (b && b.active && (b.expiresAtMillis > Date.now() || (b.expiresAt && new Date(b.expiresAt).getTime() > Date.now()))) return 1;
+            return 0;
+          };
+          const passA = getPasskeyScore(normA, profA);
+          const passB = getPasskeyScore(normB, profB);
           return sortDirection === 'asc' ? passB - passA : passA - passB;
         }
         case 'displayName':
@@ -188,6 +213,8 @@ const EnrolledRosterModal = ({
     emailList,
     resolvedProfilesMap,
     registeredPasskeysMap,
+    studentBypassesMap,
+    passwordWhitelistSet,
     searchTerm,
     passkeyFilter,
     profileFilter,
@@ -264,6 +291,36 @@ const EnrolledRosterModal = ({
               <span className="roster-chip roster-chip-warning" title="Students with mobile passkeys registered on hardware">
                 📱 {stats.linkedPasskeys}/{stats.total} Passkeys Linked
               </span>
+              {stats.exemptPasskeys > 0 && (
+                <span
+                  className="roster-chip"
+                  style={{
+                    backgroundColor: '#f0fdf4',
+                    color: '#166534',
+                    border: '1px solid #bbf7d0',
+                    fontWeight: 700,
+                  }}
+                  title="Students permanently exempted from passkey requirement (uncommon hardware cases)"
+                  data-testid="roster-chip-exempt-count"
+                >
+                  🛡️ {stats.exemptPasskeys} Exempt
+                </span>
+              )}
+              {stats.activeBypassesCount > 0 && (
+                <span
+                  className="roster-chip"
+                  style={{
+                    backgroundColor: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #bfdbfe',
+                    fontWeight: 700,
+                  }}
+                  title="Students with active temporary emergency passkey bypass"
+                  data-testid="roster-chip-bypass-count"
+                >
+                  ⚡ {stats.activeBypassesCount} Temp Bypass
+                </span>
+              )}
               {stats.directoryEnriched > 0 && (
                 <span className="roster-chip roster-chip-purple" title="Students whose names were automatically retrieved from institutional directory">
                   ✨ {stats.directoryEnriched} Auto-filled Directory
@@ -319,6 +376,9 @@ const EnrolledRosterModal = ({
               <option value="all">All Passkey Statuses</option>
               <option value="linked">📱 Linked Only ({stats.linkedPasskeys})</option>
               <option value="unlinked">⏳ Not Registered ({stats.unlinkedPasskeys})</option>
+              <option value="exempt">🛡️ Passkey Exempt ({stats.exemptPasskeys})</option>
+              <option value="bypass">⚡ Temp Bypass Active ({stats.activeBypassesCount})</option>
+              <option value="unlinked_unexempt">⚠️ Unregistered & Not Exempt ({stats.unlinkedUnexempt})</option>
             </select>
 
             {/* Profile Filter */}
