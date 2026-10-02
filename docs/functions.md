@@ -192,6 +192,10 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`verifyTeacherPasskeyBypassPin`**:
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Validates student-entered 6-digit emergency PIN against `classes/{classId}.teacherBypassPin`. Upon verification, grants a temporary bypass in `classes/{classId}/studentProperties/{studentUid}.passkeyBypass`, unlocks the desktop gate immediately, and records `VERIFY_TEACHER_PASSKEY_BYPASS_PIN` in `passkeyAuditLogs`.
+-   **`toggleStudentPasskeyExemption`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
+    -   **Authentication & Authorization**: Authenticated teacher or school domain.
+    -   **Description**: Toggles permanent passkey exemption for students whose smartphones lack Credential Manager support (e.g. Huawei or non-GMS Android devices). Accepts `studentEmail`, `studentUid`, `classId`, `exempt` (boolean), and `reason`. When granting (`exempt = true`), atomically adds the student's email and UID to `system_config/loginPolicy`'s `passwordWhitelist` and `passwordWhitelistUids`, updates `classes/{classId}/studentProperties/{studentUid}.passkeyPermanentExempt`, and logs `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`. When revoking (`exempt = false`), atomically removes the student from the whitelist via `arrayRemove`, updates `passkeyPermanentExempt.exempt = false`, and logs `REVOKE_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
 -   **`createLectureBingoSession`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Authenticated teacher or class owner.

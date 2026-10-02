@@ -190,6 +190,18 @@ To enforce anti-proxy attendance, student accounts are bound 1-to-1 to physical 
 3. **Instructor Device Reset for Phone Replacement (`[ 🔄 Reset ]`)**:
    - Because regular students cannot self-unlink or switch phones at will (anti-proxy protection), instructors perform resets when a student legitimately replaces or loses their phone.
    - Clicking **`[ 🔄 Reset ]`** unlinks the previous hardware credential, writes an immutable record to `passkeyAuditLogs`, and allows the student to pair their new smartphone on their next login.
+4. **Permanent Passkey Exemption for Incompatible Hardware (`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]`)**:
+   - **Target Audience**: A rare subset of students whose mobile devices physically cannot use Credential Manager (e.g. Huawei phones without Google Play Services or non-GMS Android).
+   - **Granting Exemption with Double Confirmation**:
+     - Clicking **`[ 🛡️ Exempt ]`** in the main Roster or **Enrolled Roster Modal** displays an explicit confirmation alert:
+       > ⚠️ **UNCOMMON CASE CONFIRMATION** ⚠️  
+       > *Permanently exempt <student> from mobile passkey authentication? This permits the student to sign in on Desktop computers using only their password, completely bypassing mobile phone hardware passkey verification. Are you sure you want to grant permanent passkey exemption?*
+     - Upon confirmation, the student is granted permanent desktop password access via `system_config/loginPolicy` (`passwordWhitelist`), the student row displays a green **`🛡️ Passkey Exempt`** badge, and the button changes to **`🛡️ Exempt (Perm)`**.
+   - **Click Again to Cancel / Revoke Exemption**:
+     - The exemption is fully revocable at any time. Clicking the green **`[ 🛡️ Exempt (Perm) ]`** button again triggers a revocation prompt:
+       > *Revoke permanent passkey exemption for <student>? The student will once again be required to authenticate with a personal mobile passkey on desktop computers.*
+     - Once confirmed, the student is removed from the password whitelist, the exempt badge disappears, the button reverts back to **`[ 🛡️ Exempt ]`**, and passkey enforcement is immediately reinstated.
+     - All grant and revocation actions are permanently logged in `passkeyAuditLogs`.
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:
@@ -638,9 +650,14 @@ In computer labs lacking webcams where students may share login credentials, tea
    - When a student buys a new phone, loses their phone, or resets their hardware, the previous device lock must be unlinked.
    - Teachers can click **`[🔄 Reset Passkey]`** in either the **Podium Action** column in `BingoResultsView.jsx` or **`[ 🔄 Reset ]`** in the **Enrolled Roster** in `ClassManagement.jsx`.
    - Confirming unlinks the old phone's credential in `studentPasskeys/{studentUid}`, logs an immutable record in `passkeyAuditLogs`, and allows the student to immediately scan the pairing QR code on their Lab PC to bind their new device.
-5. **Desktop Registration Block Guarantee**:
+5. **Permanent Passkey Exemption with Confirmation & Cancellation Toggle (`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]`)**:
+   - For students with phones lacking Credential Manager support (Huawei / non-GMS), teachers can click **`[ 🛡️ Exempt ]`** in the roster.
+   - Requires explicit double-confirmation via alert dialog (`window.confirm`).
+   - When confirmed, sets exemption in `system_config/loginPolicy` and displays the **`🛡️ Passkey Exempt`** badge.
+   - **Clicking again cancels/revokes exemption**: Prompts with *"Revoke permanent passkey exemption for <student>?"* and immediately restores mandatory mobile passkey verification upon confirmation.
+6. **Desktop Registration Block Guarantee**:
    - Shared lab computers are strictly prohibited from registering or executing passkey challenges. If accessed on desktop, `/pair-phone` and `/verify-passkey` display a blocked alert requiring a mobile phone.
-6. **Zero Session Displacement Conflicts (No Dual Login Needed)**:
+7. **Zero Session Displacement Conflicts (No Dual Login Needed)**:
    - Mobile passkey verification operates completely sessionless and passwordless on mobile. The student's active Desktop streaming session (`status.sessionId`) is never touched or disconnected, while the single-session anti-cheating barrier prevents multiple simultaneous PC logins.
 
 ---

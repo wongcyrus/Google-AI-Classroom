@@ -29,6 +29,7 @@ This document outlines the Firestore database schema for the AI Invigilator appl
    - [`studentPasskeys`](#studentpasskeys)
    - [`studentProfiles`](#studentprofiles)
    - [`students`](#students)
+   - [`system_config/loginPolicy`](#system_configloginpolicy)
    - [`teacherProfiles`](#teacherprofiles)
    - [`teachers`](#teachers)
    - [`users`](#users)
@@ -318,6 +319,14 @@ erDiagram
         string id PK
         map rates "Live Google Cloud Gemini SKU rates"
         timestamp lastSyncedAt "Daily sync timestamp"
+    }
+
+    system_config_loginPolicy "system_config/loginPolicy" {
+        string id PK
+        array passwordWhitelist "Whitelisted student emails"
+        array passwordWhitelistUids "Whitelisted student UIDs"
+        string lastModifiedBy "Teacher email"
+        timestamp updatedAt
     }
 
     bingoRecords "classes/{classId}/bingoRecords" {
@@ -736,6 +745,7 @@ Stores information about each class.
             *   `retryDelayMinutes`: (number | null) Configured grace period delay applied for this retry schedule.
             *   `lastRetryDispatchedAt`: (timestamp | null) Server timestamp of when Strike 2 challenge was dispatched via Cloud Tasks.
             *   `passkeyBypass`: (object | null) Active lesson-level bypass status (`{ active: true, classId, grantedBy, grantedAt, expiresAt, expiresAtMillis, durationMinutes, method: 'teacher_monitor_approval' | 'roster_pregrant' | 'emergency_pin' }`).
+            *   `passkeyPermanentExempt`: (object | null) Permanent passkey exemption status for incompatible hardware (`{ exempt: true | false, updatedAt: timestamp, updatedBy: string, reason: string }`).
             *   `isRegistered`: (boolean | null) Cached boolean indicating whether the student has registered a hardware passkey.
     *   **`classes/{classId}/lectureQrSession`**: Real-time broadcast coordination document for lecture-wide dynamic rotating QR code attendance check-ins.
         *   **Document `active`** (`classes/{classId}/lectureQrSession/active`):
@@ -897,14 +907,14 @@ Stores notifications for users.
 
 ### `passkeyAuditLogs`
 
-Stores immutable security audit records whenever a teacher performs a passkey reset, approves a temporary emergency bypass, verifies an emergency PIN, or logs into a shared lab PC via phone QR scan.
+Stores immutable security audit records whenever a teacher performs a passkey reset, approves a temporary emergency bypass, verifies an emergency PIN, toggles permanent passkey exemptions, or logs into a shared lab PC via phone QR scan.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
     *   `studentUid`: (string, optional) The UID of the student affected by the passkey operation.
     *   `studentEmail`: (string, optional) Email of the student.
-    *   `action`: (string) Action type (`'RESET_PASSKEY_PHONE_REPLACEMENT'`, `'TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR'`, `'APPROVE_TEACHER_PASSKEY_BYPASS'`, `'VERIFY_TEACHER_PASSKEY_BYPASS_PIN'`).
-    *   `reason`: (string, optional) Stated reason for reset or bypass (e.g., `'Phone replacement'`, `'Phone battery dead'`).
+    *   `action`: (string) Action type (`'RESET_PASSKEY_PHONE_REPLACEMENT'`, `'TEACHER_DESKTOP_LOGIN_VIA_MOBILE_QR'`, `'APPROVE_TEACHER_PASSKEY_BYPASS'`, `'VERIFY_TEACHER_PASSKEY_BYPASS_PIN'`, `'GRANT_PERMANENT_PASSKEY_EXEMPTION'`, `'REVOKE_PERMANENT_PASSKEY_EXEMPTION'`).
+    *   `reason`: (string, optional) Stated reason for reset, bypass, or exemption (e.g., `'Phone replacement'`, `'Phone battery dead'`, `'Phone incompatible with Credential Manager (Teacher Exception)'`, `'Revoked by Teacher'`).
     *   `teacherUid`: (string, optional) UID of the authenticated teacher who authorized the action.
     *   `teacherEmail`: (string, optional) Email of the teacher.
     *   `previousCredentialID`: (string, optional) Base64 WebAuthn credential ID of the unlinked device.
@@ -925,9 +935,22 @@ Stores temporary (10-minute) cryptographic pairing session tokens generated on t
     *   `currentChallenge`: (string) WebAuthn registration challenge generated for the platform authenticator.
     *   `rpIdUsed`: (string) Relying party domain identifier used for signing.
     *   `createdAt`: (timestamp) Server timestamp when the pairing token was issued.
+    *   `expiresAt`: (timestamp) Expiration timestamp (10 minutes from creation).
     *   `expiresAtMillis`: (number) Epoch milliseconds when the token expires (10 minutes from creation).
     *   `used`: (boolean) Flag set to `true` immediately after successful WebAuthn credential registration to prevent replay attacks.
     *   `completedAt`: (timestamp, optional) Timestamp when passkey registration completed.
+
+### `system_config/loginPolicy`
+
+System-level login policy document managing global password whitelist bypasses for desktop access and permanent passkey exemptions.
+
+*   **Document ID**: `loginPolicy` (inside `system_config` collection).
+*   **Security**: Read access granted to authenticated users; direct client write access is strictly forbidden (`allow write: if false`). Mutations must be performed by authenticated teachers via backend Cloud Functions (e.g., `toggleStudentPasskeyExemption`).
+*   **Fields**:
+    *   `passwordWhitelist`: (array of strings) Institutional email addresses of students permanently exempted from mandatory passkey verification (e.g., students with incompatible smartphone hardware lacking Credential Manager).
+    *   `passwordWhitelistUids`: (array of strings) Corresponding Firebase Auth UIDs of whitelisted students.
+    *   `lastModifiedBy`: (string) Email of the teacher or administrator who last updated the policy.
+    *   `updatedAt`: (timestamp) Server timestamp of the latest policy change.
 
 ### `progress`
 

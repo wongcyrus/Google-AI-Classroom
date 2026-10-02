@@ -263,7 +263,55 @@ During interactive Mobile Passkey Bingo Attendance:
 
 ---
 
-### 5. Replacing or Upgrading a Smartphone (Passkey Reset)
+### 5. Permanent Passkey Exemption for Incompatible Hardware (Huawei / Non-GMS Phones) & Toggle Cancellation
+
+A small subset of students use smartphones that physically lack Google Play Services or support for the Android Credential Manager (e.g. Huawei HarmonyOS devices, older AOSP-only handsets, or specialized hardware). Because these devices cannot generate standard W3C WebAuthn credentials, the students would otherwise be permanently blocked from desktop lab login.
+
+To resolve this edge case safely without compromising whole-class security:
+
+#### 1. Teacher One-Click Exemption with Double Confirmation Alert
+- In both the **Class Management Roster** table and the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`), each student row features a dedicated **`[ 🛡️ Exempt ]`** button.
+- **Double-Confirmation Modal Alert (`window.confirm`)**:
+  Because permanent exemptions remove mandatory passkey enforcement, clicking **`[ 🛡️ Exempt ]`** triggers an explicit warning dialog:
+  ```text
+  ⚠️ UNCOMMON CASE CONFIRMATION ⚠️
+
+  Permanently exempt Chan Tai Man (student1@stu.vtc.edu.hk) from mobile passkey authentication?
+
+  This permits the student to sign in on Desktop computers using only their password, completely bypassing mobile phone hardware passkey verification.
+
+  ⚠️ Caution: This should ONLY be used for uncommon cases where a student's phone hardware physically cannot use Credential Manager (e.g. Huawei phones without Google Play Services or incompatible devices).
+
+  Are you sure you want to grant permanent passkey exemption?
+  ```
+- If the teacher confirms, backend Cloud Function `toggleStudentPasskeyExemption` executes:
+  - Adds the student email and UID to `system_config/loginPolicy.passwordWhitelist` and `passwordWhitelistUids`.
+  - Sets `classes/{classId}/studentProperties/{uid}.passkeyPermanentExempt = { exempt: true, updatedAt, updatedBy }`.
+  - Appends an audit log `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
+- **UI Indicators**:
+  - The student row immediately displays a green **`🛡️ Passkey Exempt`** badge.
+  - The button changes to green **`🛡️ Exempt (Perm)`**.
+  - On the desktop lab PC, [`PasskeyEnforcementGate`](file:///web-app/src/components/PasskeyEnforcementGate.jsx) detects the whitelist in real time and automatically unlocks desktop password login.
+
+#### 2. Click Again to Cancel / Revoke Exemption
+Instructors can revoke the permanent exemption at any time by simply clicking the button again:
+- When the student is currently exempt, the button displays as **`🛡️ Exempt (Perm)`** with the tooltip *"Student is permanently exempt from passkey. Click to revoke exemption."*
+- **Revocation Confirmation Prompt**:
+  Clicking the button displays:
+  ```text
+  Revoke permanent passkey exemption for Chan Tai Man (student1@stu.vtc.edu.hk)?
+
+  The student will once again be required to authenticate with a personal mobile passkey on desktop computers.
+  ```
+- Upon confirmation:
+  - The student's email and UID are atomically removed from `system_config/loginPolicy`'s `passwordWhitelist` via `FieldValue.arrayRemove`.
+  - The green **`🛡️ Passkey Exempt`** badge is removed and the button reverts back to standard **`🛡️ Exempt`**.
+  - A `REVOKE_PERMANENT_PASSKEY_EXEMPTION` event is recorded in `passkeyAuditLogs`.
+  - The desktop gate immediately reinstates mandatory mobile passkey authentication for the student.
+
+---
+
+### 6. Replacing or Upgrading a Smartphone (Passkey Reset)
 
 Because each student account is locked 1-to-1 to a physical device hardware authenticator, a student who buys a new phone or gets a replacement cannot simply pair a second phone without resetting the previous registration.
 
@@ -297,7 +345,7 @@ Because each student account is locked 1-to-1 to a physical device hardware auth
 
 ---
 
-### 5. Teacher Mobile Passkey Login on Shared Lab PCs & Podium Workstations
+### 7. Teacher Mobile Passkey Login on Shared Lab PCs & Podium Workstations
 
 Instructors routinely rotate between classroom lab PCs, lecture hall podiums, and shared computers. Typing institutional passwords on shared hardware introduces significant risks of shoulder surfing, hardware keyloggers, or leftover browser sessions.
 
@@ -322,7 +370,7 @@ To address this, instructors can use the exact same mobile passkey QR architectu
 
 ---
 
-### 6. Multi-Role Testing & Whitelisted Device Sharing
+### 8. Multi-Role Testing & Whitelisted Device Sharing
 
 A critical requirement in educational engineering is that instructors and IT administrators must test the student experience using secondary testing accounts (e.g. `t-cywong@stu.vtc.edu.hk`) while managing live classes with their faculty account (`cywong@vtc.edu.hk`) using their **single physical smartphone**.
 
@@ -607,15 +655,33 @@ Real-time active lecture hall dynamic rotating QR code session listener:
 }
 ```
 
+### `system_config/loginPolicy`
+Global password whitelist and permanent passkey exemption configuration:
+```json
+{
+  "passwordWhitelist": [
+    "student1@stu.vtc.edu.hk",
+    "teststudent@stu.vtc.edu.hk"
+  ],
+  "passwordWhitelistUids": [
+    "student_uid_123"
+  ],
+  "updatedAt": "2026-10-02T04:45:00.000Z",
+  "lastModifiedBy": "teacher1@vtc.edu.hk"
+}
+```
+
 ### `passkeyAuditLogs/{logId}`
 ```json
 {
   "studentUid": "student_uid_123",
   "studentEmail": "student1@stu.vtc.edu.hk",
-  "action": "passkey_registered | passkey_authenticated | passkey_login | passkey_reset | teacher_bypass_remote | teacher_bypass_pin",
+  "action": "passkey_registered | passkey_authenticated | passkey_login | passkey_reset | teacher_bypass_remote | teacher_bypass_pin | GRANT_PERMANENT_PASSKEY_EXEMPTION | REVOKE_PERMANENT_PASSKEY_EXEMPTION",
   "performedBy": "teacher1@vtc.edu.hk | student_uid_123",
-  "reason": "phone_replacement | phone_dead | emergency_pin",
-  "timestamp": "2026-09-27T08:05:30.000Z"
+  "teacherUid": "teacher_uid_123",
+  "teacherEmail": "teacher1@vtc.edu.hk",
+  "reason": "phone_replacement | phone_dead | emergency_pin | Phone incompatible with Credential Manager (Teacher Exception) | Revoked by Teacher",
+  "timestamp": "2026-10-02T04:45:00.000Z"
 }
 ```
 
