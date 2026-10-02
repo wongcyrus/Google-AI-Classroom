@@ -312,4 +312,41 @@ describe('EnrolledRosterModal Component', () => {
     );
     expect(container.firstChild).toBeNull();
   });
+
+  it('renders passkey exempt badge and triggers onToggleExemption when button is clicked', async () => {
+    const onToggleExemption = vi.fn();
+    const whitelist = new Set(['alice@stu.vtc.edu.hk']);
+
+    render(
+      <EnrolledRosterModal
+        show={true}
+        onClose={vi.fn()}
+        className="Cloud Lab"
+        classId="IT114115_SE"
+        emailList={emailList}
+        resolvedProfilesMap={resolvedProfilesMap}
+        registeredPasskeysMap={registeredPasskeysMap}
+        passwordWhitelistSet={whitelist}
+        onToggleExemption={onToggleExemption}
+      />
+    );
+
+    // Alice is exempt
+    expect(screen.getByTestId('badge-modal-exempt-alice_stu_vtc_edu_hk')).toBeInTheDocument();
+    const exemptBtnAlice = screen.getByTestId('btn-modal-exempt-alice_stu_vtc_edu_hk');
+    expect(exemptBtnAlice).toHaveTextContent('🛡️ Exempt (Perm)');
+
+    // Bob is not exempt
+    expect(screen.queryByTestId('badge-modal-exempt-bob_stu_vtc_edu_hk')).not.toBeInTheDocument();
+    const exemptBtnBob = screen.getByTestId('btn-modal-exempt-bob_stu_vtc_edu_hk');
+    expect(exemptBtnBob).toHaveTextContent('🛡️ Exempt');
+
+    // Click Bob's exemption button
+    fireEvent.click(exemptBtnBob);
+    expect(onToggleExemption).toHaveBeenCalledWith('bob@stu.vtc.edu.hk', 'Bob Chan', false);
+
+    // Click Alice's exemption button (to revoke)
+    fireEvent.click(exemptBtnAlice);
+    expect(onToggleExemption).toHaveBeenCalledWith('alice@stu.vtc.edu.hk', 'Alice Wong', true);
+  });
 });

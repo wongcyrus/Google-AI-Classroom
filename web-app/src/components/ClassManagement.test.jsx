@@ -1203,6 +1203,49 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(await screen.findByText(/Emergency bypass granted for/i)).toBeInTheDocument();
   });
 
+  it('renders Permanent Passkey Exemption button and requires double-confirmation alert before granting exemption', async () => {
+    const mockToggleExemption = vi.fn().mockResolvedValue({ data: { success: true } });
+    const { httpsCallable } = await import('firebase/functions');
+    vi.mocked(httpsCallable).mockReturnValue(mockToggleExemption);
+
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('alice@school.edu').length).toBeGreaterThanOrEqual(1);
+    });
+
+    const exemptBtn = screen.getByTestId('btn-roster-exempt-alice_school_edu');
+    expect(exemptBtn).toBeInTheDocument();
+    expect(exemptBtn).toHaveTextContent('🛡️ Exempt');
+
+    // 1. Cancel on double confirmation alert
+    confirmSpy.mockReturnValueOnce(false);
+    await act(async () => {
+      fireEvent.click(exemptBtn);
+    });
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('⚠️ UNCOMMON CASE CONFIRMATION ⚠️')
+    );
+    expect(mockToggleExemption).not.toHaveBeenCalled();
+
+    // 2. Confirm the uncommon case alert
+    confirmSpy.mockReturnValueOnce(true);
+    await act(async () => {
+      fireEvent.click(exemptBtn);
+    });
+
+    expect(mockToggleExemption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentEmail: 'alice@school.edu',
+        classId: 'CLASS_101',
+        exempt: true,
+      })
+    );
+    expect(await screen.findByText(/Permanent passkey exemption granted for/i)).toBeInTheDocument();
+  });
+
   it('configures and saves classroom IP restrictions', async () => {
     let capturedUpdateData = null;
     mockUpdateDoc.mockImplementationOnce((ref, data) => {

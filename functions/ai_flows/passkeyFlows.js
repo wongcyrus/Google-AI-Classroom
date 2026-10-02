@@ -1538,3 +1538,95 @@ export async function handleVerifyLecturePasskeyAuth({
   };
 }
 
+/**
+ * 18. Toggle Student Passkey Permanent Exemption (Uncommon Case)
+ * Exempts a student whose phone cannot use Credential Manager (WebAuthn)
+ * by managing system_config/loginPolicy passwordWhitelist and recording audit log.
+ */
+export async function handleToggleStudentPasskeyExemption({
+  studentEmail,
+  studentUid,
+  classId,
+  exempt = true,
+  teacherUid,
+  teacherEmail,
+  reason,
+}) {
+  const cleanEmail = (studentEmail || '').toLowerCase().trim();
+  if (!cleanEmail) {
+    throw new HttpsError('invalid-argument', 'Missing studentEmail.');
+  }
+
+  let resolvedUid = studentUid;
+  if (!resolvedUid) {
+    try {
+      const authUser = await getAuth().getUserByEmail(cleanEmail);
+      if (authUser && authUser.uid) {
+        resolvedUid = authUser.uid;
+      }
+    } catch (e) {
+      console.warn(`[handleToggleStudentPasskeyExemption] Could not resolve UID for ${cleanEmail}:`, e.message);
+    }
+  }
+
+  const loginPolicyRef = db.doc('system_config/loginPolicy');
+
+  if (exempt) {
+    const updatePayload = {
+      passwordWhitelist: FieldValue.arrayUnion(cleanEmail),
+      updatedAt: FieldValue.serverTimestamp(),
+      lastModifiedBy: teacherEmail || 'teacher',
+    };
+    if (resolvedUid) {
+      updatePayload.passwordWhitelistUids = FieldValue.arrayUnion(resolvedUid);
+    }
+    await loginPolicyRef.set(updatePayload, { merge: true });
+  } else {
+    const updatePayload = {
+      passwordWhitelist: FieldValue.arrayRemove(cleanEmail),
+      updatedAt: FieldValue.serverTimestamp(),
+      lastModifiedBy: teacherEmail || 'teacher',
+    };
+    if (resolvedUid) {
+      updatePayload.passwordWhitelistUids = FieldValue.arrayRemove(resolvedUid);
+    }
+    await loginPolicyRef.set(updatePayload, { merge: true });
+  }
+
+  // Record audit log
+  await db.collection('passkeyAuditLogs').add({
+    studentUid: resolvedUid || 'unknown',
+    studentEmail: cleanEmail,
+    action: exempt ? 'GRANT_PERMANENT_PASSKEY_EXEMPTION' : 'REVOKE_PERMANENT_PASSKEY_EXEMPTION',
+    reason: reason || (exempt ? 'Phone incompatible with Credential Manager' : 'Revoked by teacher'),
+    teacherUid: teacherUid || null,
+    teacherEmail: teacherEmail || 'teacher',
+    timestamp: FieldValue.serverTimestamp(),
+  });
+
+  if (classId && resolvedUid) {
+    try {
+      await db.doc(`classes/${classId}/studentProperties/${resolvedUid}`).set({
+        passkeyPermanentExempt: {
+          exempt: !!exempt,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: teacherEmail || 'teacher',
+          reason: reason || (exempt ? 'Phone incompatible with Credential Manager' : 'Revoked by teacher'),
+        },
+      }, { merge: true });
+    } catch (e) {
+      console.warn(`[handleToggleStudentPasskeyExemption] Could not update studentProperties for ${resolvedUid}:`, e);
+    }
+  }
+
+  return {
+    success: true,
+    exempt: !!exempt,
+    studentEmail: cleanEmail,
+    studentUid: resolvedUid || null,
+    message: exempt
+      ? `Permanent passkey exemption granted for ${cleanEmail}.`
+      : `Permanent passkey exemption revoked for ${cleanEmail}.`,
+  };
+}
+

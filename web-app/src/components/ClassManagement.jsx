@@ -47,6 +47,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [studentBypassesMap, setStudentBypassesMap] = useState({});
   const [grantingBypass, setGrantingBypass] = useState({});
   const [bypassSuccessMsg, setBypassSuccessMsg] = useState('');
+  const [passwordWhitelistSet, setPasswordWhitelistSet] = useState(new Set());
+  const [togglingExemption, setTogglingExemption] = useState({});
+  const [exemptionSuccessMsg, setExemptionSuccessMsg] = useState('');
   const [teacherEmails, setTeacherEmails] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -256,6 +259,28 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       },
       (err) => {
         console.warn('[ClassManagement] Notice fetching studentPasskeys:', err);
+      }
+    );
+    return () => unsub();
+  }, [user]);
+
+  // Real-time listener for system_config/loginPolicy (Password Whitelist / Passkey Exemption)
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(
+      doc(db, 'system_config', 'loginPolicy'),
+      (snapshot) => {
+        if (snapshot && typeof snapshot.exists === 'function' && snapshot.exists()) {
+          const data = snapshot.data() || {};
+          const list = Array.isArray(data.passwordWhitelist) ? data.passwordWhitelist : [];
+          const normalized = list.map((e) => (typeof e === 'string' ? e.trim().toLowerCase() : '')).filter(Boolean);
+          setPasswordWhitelistSet(new Set(normalized));
+        } else {
+          setPasswordWhitelistSet(new Set());
+        }
+      },
+      (err) => {
+        console.warn('[ClassManagement] Notice fetching loginPolicy:', err);
       }
     );
     return () => unsub();
@@ -830,6 +855,52 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       alert(`Failed to grant bypass: ${err.message || 'Unknown error'}`);
     } finally {
       setGrantingBypass(prev => ({ ...prev, [email]: false }));
+    }
+  };
+
+  const handleToggleStudentExemption = async (email, studentName, isCurrentlyExempt) => {
+    const studentUid = Object.keys(studentsMap).find(u => (studentsMap[u] || '').toLowerCase() === email.toLowerCase());
+    const targetLabel = studentName ? `${studentName} (${email})` : email;
+
+    let confirmMsg = '';
+    if (!isCurrentlyExempt) {
+      confirmMsg =
+        `⚠️ UNCOMMON CASE CONFIRMATION ⚠️\n\n` +
+        `Permanently exempt ${targetLabel} from mobile passkey authentication?\n\n` +
+        `This permits the student to sign in on Desktop computers using only their password, completely bypassing mobile phone hardware passkey verification.\n\n` +
+        `⚠️ Caution: This should ONLY be used for uncommon cases where a student's phone hardware physically cannot use Credential Manager (e.g. Huawei phones without Google Play Services or incompatible devices).\n\n` +
+        `Are you sure you want to grant permanent passkey exemption?`;
+    } else {
+      confirmMsg =
+        `Revoke permanent passkey exemption for ${targetLabel}?\n\n` +
+        `The student will once again be required to authenticate with a personal mobile passkey on desktop computers.`;
+    }
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setTogglingExemption(prev => ({ ...prev, [email]: true }));
+    try {
+      const toggleFn = httpsCallable(functions, 'toggleStudentPasskeyExemption');
+      await toggleFn({
+        studentEmail: email,
+        studentUid: studentUid || null,
+        classId: selectedClass || embeddedClassId || null,
+        exempt: !isCurrentlyExempt,
+        reason: !isCurrentlyExempt
+          ? 'Phone incompatible with Credential Manager (Teacher Exception)'
+          : 'Revoked by Teacher',
+      });
+
+      const actionText = !isCurrentlyExempt ? 'Permanent passkey exemption granted' : 'Permanent passkey exemption revoked';
+      setExemptionSuccessMsg(`${actionText} for ${targetLabel}.`);
+      setTimeout(() => setExemptionSuccessMsg(''), 6000);
+    } catch (err) {
+      console.error('Failed to toggle student passkey exemption:', err);
+      alert(`Failed to update passkey exemption: ${err.message || 'Unknown error'}`);
+    } finally {
+      setTogglingExemption(prev => ({ ...prev, [email]: false }));
     }
   };
 
@@ -1914,6 +1985,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                         <button type="button" onClick={() => setBypassSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#1e40af' }}>✕</button>
                       </div>
                     )}
+                    {exemptionSuccessMsg && (
+                      <div style={{ backgroundColor: '#f0fdf4', color: '#166534', borderBottom: '1px solid #bbf7d0', padding: '0.4rem 0.8rem', fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🛡️ {exemptionSuccessMsg}</span>
+                        <button type="button" onClick={() => setExemptionSuccessMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#166534' }}>✕</button>
+                      </div>
+                    )}
                     <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                         <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface, #ffffff)', borderBottom: '1px solid var(--color-border, #cbd5e1)', zIndex: 2 }}>
@@ -1980,6 +2057,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                               const isBypassActive = Boolean(
                                 activeBypass && activeBypass.active && (activeBypass.expiresAtMillis > Date.now() || (activeBypass.expiresAt && new Date(activeBypass.expiresAt).getTime() > Date.now()))
                               );
+                              const isExempt = passwordWhitelistSet.has(norm) || (prof.uid && passwordWhitelistSet.has(prof.uid)) || (studentUid && passwordWhitelistSet.has(studentUid));
 
                               return (
                                 <tr key={`${email}-${idx}`} style={{ borderBottom: '1px solid var(--color-border, #f1f5f9)' }}>
@@ -2072,6 +2150,27 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                         </span>
                                       )}
 
+                                      {isExempt && (
+                                        <span
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            padding: '0.12rem 0.45rem',
+                                            borderRadius: '9999px',
+                                            backgroundColor: '#dcfce7',
+                                            color: '#166534',
+                                            border: '1px solid #bbf7d0',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                          title="Student is permanently exempt from mandatory passkey (system_config/loginPolicy)"
+                                          data-testid={`badge-roster-exempt-${email.replace(/[@.]/g, '_')}`}
+                                        >
+                                          🛡️ Passkey Exempt
+                                        </span>
+                                      )}
+
                                       {passkey && (
                                         <button
                                           type="button"
@@ -2111,6 +2210,33 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                       >
                                         {grantingBypass[email] ? 'Granting...' : '⚡ Temp Bypass'}
                                       </button>
+
+                                      <button
+                                        type="button"
+                                        className="btn-secondary btn-sm"
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          padding: '0.15rem 0.45rem',
+                                          color: isExempt ? '#15803d' : '#854d0e',
+                                          borderColor: isExempt ? '#86efac' : '#fde047',
+                                          background: isExempt ? '#f0fdf4' : '#fefce8',
+                                          cursor: 'pointer',
+                                        }}
+                                        onClick={() => handleToggleStudentExemption(email, resolvedStudentName, isExempt)}
+                                        disabled={Boolean(togglingExemption[email])}
+                                        data-testid={`btn-roster-exempt-${email.replace(/[@.]/g, '_')}`}
+                                        title={
+                                          isExempt
+                                            ? 'Student is permanently exempt from passkey. Click to revoke exemption.'
+                                            : 'Permanently exempt student from passkey requirement (uncommon case for incompatible phones)'
+                                        }
+                                      >
+                                        {togglingExemption[email]
+                                          ? 'Saving...'
+                                          : isExempt
+                                          ? '🛡️ Exempt (Perm)'
+                                          : '🛡️ Exempt'}
+                                      </button>
                                     </div>
                                   </td>
                                 </tr>
@@ -2141,6 +2267,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                   onGrantBypass={handleGrantStudentBypass}
                   bypassSuccessMsg={bypassSuccessMsg}
                   onClearBypassSuccess={() => setBypassSuccessMsg('')}
+                  passwordWhitelistSet={passwordWhitelistSet}
+                  togglingExemption={togglingExemption}
+                  onToggleExemption={handleToggleStudentExemption}
+                  exemptionSuccessMsg={exemptionSuccessMsg}
+                  onClearExemptionSuccess={() => setExemptionSuccessMsg('')}
                 />
               </div>
             );
