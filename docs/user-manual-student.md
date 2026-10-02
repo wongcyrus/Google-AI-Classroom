@@ -282,6 +282,7 @@ In computer labs without webcams, your instructor may use **Mobile Passkey Verif
 > - Scanning the pairing or attendance QR code with your phone camera does **not** create a separate login session on mobile. Your proctored Lab PC session remains 100% uninterrupted and will never be displaced.
 > - Passkeys must be registered on your personal mobile phone (iOS Safari or Android Chrome). Attempting to register on a shared desktop PC is blocked.
 > - **Anti-Proxy Protection**: Regular students cannot self-unlink or switch phones at will. Once paired, your phone is locked to your account. If you lose or replace your phone, your instructor can reset it with 1 click.
+> - **Incompatible Phones (Huawei / Non-GMS Devices)**: If your smartphone hardware cannot use Android Credential Manager or lacks Google Play Services, notify your course instructor. Your instructor can grant an explicit permanent passkey exemption from the course roster, allowing you to log in on desktop lab PCs using your institutional password without passkey barrier blocking.
 
 1. **Mandatory Desktop Gate & Initial Pairing (Zero Password on Mobile)**:
    - When logging into a lab PC without a paired phone, the **Passkey Enforcement Gate** (`PasskeyEnforcementGate`) locks the desktop.

@@ -416,6 +416,11 @@ flowchart TD
   - **Passkey Status Indicators:** Displays real-time device registration status: `📱 Linked` (with device model) or `⏳ Not Registered`.
   - **`[ ⚡ Temp Bypass ]` Action Button:** Available on every student row; prompts teacher for custom bypass duration in minutes (default `90`). Grants emergency gate bypass for students with dead or forgotten phones.
   - **`⚡ Bypass Active (XXm left)` Status Badge:** Real-time badge showing active bypass and countdown.
+  - **`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]` Permanent Exemption Button & Cancellation Toggle:**
+    - Intended for uncommon cases where a student's phone hardware physically lacks Credential Manager support (e.g., Huawei or non-GMS Android devices).
+    - Clicking `[ 🛡️ Exempt ]` triggers a double-confirmation alert dialog (`window.confirm`) warning of the uncommon exception.
+    - Upon confirmation, adds student to `system_config/loginPolicy.passwordWhitelist`, displays the green **`🛡️ Passkey Exempt`** badge, and changes the button to **`🛡️ Exempt (Perm)`**.
+    - **Clicking again cancels / revokes exemption**: Clicking `[ 🛡️ Exempt (Perm) ]` displays a revocation prompt and, upon confirmation, immediately removes the student from the whitelist, dismisses the badge, and restores the passkey requirement.
   - **`[ 🔄 Reset ]` Passkey Button:** Securely unlinks a student's paired phone upon legitimate hardware loss/replacement and logs to `passkeyAuditLogs`.
 - **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
 - **Student-Specific Custom Properties Excel Tool:**

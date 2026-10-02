@@ -1,8 +1,46 @@
 # Recent Changes & Architectural Enhancements
 
-**Date**: September 2026  
+**Date**: October 2026  
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
+
+## 0.0.0.0.0 Permanent Passkey Exemption with Double Confirmation Alert & One-Click Revocation Toggle
+
+**Date**: October 2, 2026  
+**Status**: Implemented, Verified, Full Test Suite Passed (functions: 271/271, frontend: 45/45), Deployed (Dev & Prod)  
+**Primary Files**:
+- Cloud Functions Backend: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
+- Roster & Exemption UI: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/ClassManagement.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.test.jsx)
+- Enrolled Roster Modal: [`web-app/src/components/EnrolledRosterModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.jsx), [`web-app/src/components/EnrolledRosterModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.test.jsx)
+- Desktop Enforcement Gate: [`web-app/src/components/PasskeyEnforcementGate.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PasskeyEnforcementGate.jsx)
+
+### 0.0.0.0.0.1 Permanent Passkey Exemption for Incompatible Smartphones (Huawei / Non-GMS Devices)
+- **Problem Solved**: A rare subset of students own phones that physically lack Android Credential Manager or Google Play Services (e.g. Huawei HarmonyOS or older non-GMS devices). These students were previously blocked from desktop lab login because they could not register WebAuthn hardware passkeys.
+- **Teacher Exemption Action**: Added `[ 🛡️ Exempt ]` action button directly to both the **Class Management Roster** table and the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`).
+- **Double-Confirmation Modal Alert (`window.confirm`)**:
+  - Clicking `[ 🛡️ Exempt ]` triggers an explicit warning modal:
+    > ⚠️ **UNCOMMON CASE CONFIRMATION** ⚠️  
+    > *Permanently exempt <student> from mobile passkey authentication? This permits the student to sign in on Desktop computers using only their password, completely bypassing mobile phone hardware passkey verification. Are you sure you want to grant permanent passkey exemption?*
+  - Requires active confirmation to prevent accidental exemptions.
+- **Cloud Function Execution (`toggleStudentPasskeyExemption`)**:
+  - Validates teacher role and permissions.
+  - Atomically modifies `system_config/loginPolicy` using `FieldValue.arrayUnion(cleanEmail)` and `FieldValue.arrayUnion(resolvedUid)`.
+  - Sets `classes/{classId}/studentProperties/{resolvedUid}.passkeyPermanentExempt`.
+  - Logs `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs` with teacher UID, email, timestamp, and audit trail.
+- **Immediate Desktop Gate Bypass**:
+  - `PasskeyEnforcementGate` listens in real time to `system_config/loginPolicy`. As soon as a student is whitelisted, the desktop login gate automatically grants access (`allowPasskeyBypass = true`), allowing password-only desktop login.
+
+### 0.0.0.0.0.2 One-Click Revocation Toggle (Click Again to Cancel)
+- **Toggle Cancellation**: The button functions as an on/off toggle. For an already-exempted student, the button displays as green **`[ 🛡️ Exempt (Perm) ]`** alongside a **`🛡️ Passkey Exempt`** badge.
+- **Revocation Confirmation**: Clicking `[ 🛡️ Exempt (Perm) ]` triggers:
+  > *Revoke permanent passkey exemption for <student>? The student will once again be required to authenticate with a personal mobile passkey on desktop computers.*
+- **Reinstatement Execution**:
+  - Removes the student's email and UID from `system_config/loginPolicy.passwordWhitelist` via `FieldValue.arrayRemove`.
+  - Clears `passkeyPermanentExempt.exempt` in `studentProperties`.
+  - Logs `REVOKE_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
+  - The badge is removed, the button switches back to `[ 🛡️ Exempt ]`, and the desktop gate immediately reinstates mandatory mobile passkey authentication.
+
+---
 
 ## 0.0.0.0 Class Hub Broadcast Header Launcher, Cyclical Auto-Rolling Student Rows & Responsive ResizeObserver Column Adaptation
 
