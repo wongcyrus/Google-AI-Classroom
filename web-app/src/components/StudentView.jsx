@@ -31,7 +31,7 @@ import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
-import { isGoogleChrome, isMobileDevice } from '../utils/browserDetection';
+import { isGoogleChrome, isMobileDevice, isHandheldPhone } from '../utils/browserDetection';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
@@ -44,7 +44,7 @@ import StudentMobileView from './student/StudentMobileView';
 
 import Sidebar from './student/Sidebar';
 
-const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeToggle }) => {
+const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeToggle, onSwitchToMobile }) => {
   // Browser validation guard for desktop proctored students (bypassed in teacher preview mode)
   const isChrome = isGoogleChrome();
   if (!isChrome && !isPreviewMode) {
@@ -2095,6 +2095,43 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           </div>
         </div>
       )}
+      {/* Quick Switch to Mobile View button for students on mobile devices or tablets */}
+      {!isPreviewMode && onSwitchToMobile && (
+        <div className="student-mobile-mode-switch-bar" style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          padding: '8px 16px',
+          background: '#eff6ff',
+          borderBottom: '1px solid #bfdbfe',
+          fontSize: '0.85rem'
+        }}>
+          <span style={{ color: '#1e40af', marginRight: '10px' }}>
+            📱 On a smartphone or tablet?
+          </span>
+          <button
+            type="button"
+            className="btn-switch-to-mobile"
+            onClick={onSwitchToMobile}
+            style={{
+              background: '#3b82f6',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="Switch to Mobile Student Companion View"
+          >
+            📱 Switch to Mobile View
+          </button>
+        </div>
+      )}
       <Banner message={notification} onClose={handleCloseNotification} />
 
       {/* Notification Permission Prompt Banner */}
@@ -3345,6 +3382,8 @@ const StudentView = ({
 }) => {
   const [preferredViewMode, setPreferredViewMode] = useState(() => {
     if (forceViewMode) return forceViewMode;
+    // Physical handheld phones must always use the mobile student companion
+    if (isHandheldPhone()) return 'mobile';
     try {
       const stored = localStorage.getItem('student_view_mode');
       if (stored === 'mobile' || stored === 'desktop') return stored;
@@ -3403,6 +3442,13 @@ const StudentView = ({
       previewClassId={previewClassId}
       isPreviewMode={isPreviewMode}
       onViewModeToggle={onViewModeToggle}
+      onSwitchToMobile={() => {
+        if (onViewModeToggle) {
+          onViewModeToggle();
+        } else {
+          updateViewMode('mobile');
+        }
+      }}
     />
   );
 };

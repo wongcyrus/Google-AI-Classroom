@@ -388,6 +388,29 @@ describe('AuthComponent Component', () => {
       expect(screen.getByAltText('Desktop Login QR Code')).toBeInTheDocument();
     });
   });
+
+  it('renders Clear Cache & Reset App button and clears storage on click', async () => {
+    const originalLocation = window.location;
+    const reloadMock = vi.fn();
+    delete window.location;
+    window.location = { ...originalLocation, reload: reloadMock };
+
+    localStorage.setItem('student_view_mode', 'desktop');
+    sessionStorage.setItem('test_session', 'val');
+
+    render(<AuthComponent />);
+
+    const clearBtn = screen.getByRole('button', { name: /Clear Cache & Reset App/i });
+    expect(clearBtn).toBeInTheDocument();
+
+    fireEvent.click(clearBtn);
+
+    expect(localStorage.getItem('student_view_mode')).toBeNull();
+    expect(sessionStorage.getItem('test_session')).toBeNull();
+    expect(reloadMock).toHaveBeenCalled();
+
+    window.location = originalLocation;
+  });
 });
 
 

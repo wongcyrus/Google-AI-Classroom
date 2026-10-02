@@ -127,8 +127,13 @@ export const isTabletDevice = (customUserAgent, customTouchPoints, customWidth, 
   const minDim = Math.min(width, height);
   const maxDim = Math.max(width, height);
 
-  // 1. Explicit iPad UA or iPadOS 13+ desktop Mac UA with multi-touch
-  const isIPad = /iPad/i.test(userAgent) || (/Macintosh/i.test(userAgent) && touchPoints > 1);
+  const screenMin = typeof window !== 'undefined' && window.screen
+    ? Math.min(window.screen.width || 1024, window.screen.height || 800)
+    : 1024;
+
+  // 1. Explicit iPad UA or iPadOS 13+ desktop Mac UA with multi-touch and tablet-sized display
+  const isIPad = /iPad/i.test(userAgent) ||
+    (/Macintosh/i.test(userAgent) && touchPoints > 1 && (minDim >= 600 || screenMin >= 600));
   if (isIPad) return true;
 
   // 2. Android Tablet: 'Android' WITHOUT 'Mobile'
@@ -136,7 +141,8 @@ export const isTabletDevice = (customUserAgent, customTouchPoints, customWidth, 
   if (isAndroidTablet) return true;
 
   // 3. Touch device with tablet screen geometry (short dimension >= 600px and max dimension >= 900px, e.g. 768x1024, 800x1280)
-  if (touchPoints > 1 && minDim >= 600 && maxDim >= 900 && !/Windows NT|Macintosh/i.test(userAgent)) {
+  // Ensure physical screen is not a smartphone emulating desktop viewport (screenMin must also be >= 600)
+  if (touchPoints > 1 && minDim >= 600 && maxDim >= 900 && screenMin >= 600 && !/Windows NT|Macintosh/i.test(userAgent)) {
     return true;
   }
 
@@ -186,6 +192,20 @@ export const isHandheldPhone = (customUserAgent, customTouchPoints, customWidth,
   // Small viewport characteristic of phones (short dimension < 600px)
   if (Math.min(width, height) < 600) {
     return true;
+  }
+
+  // Physical screen size fallback with touch (e.g. mobile browser with "Desktop site" requested)
+  // When Desktop site is enabled in mobile Chrome/Safari, innerWidth is emulated as 980px+,
+  // but physical screen dimensions (screen.width/height) remain < 600px with touch capabilities.
+  const touchPoints = customTouchPoints !== undefined
+    ? customTouchPoints
+    : (typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0);
+
+  if (touchPoints > 0 && typeof window !== 'undefined' && window.screen) {
+    const physScreenMin = Math.min(window.screen.width || 1024, window.screen.height || 800);
+    if (physScreenMin > 0 && physScreenMin < 600) {
+      return true;
+    }
   }
 
   return false;
