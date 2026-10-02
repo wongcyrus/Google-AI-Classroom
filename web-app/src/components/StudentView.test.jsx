@@ -1137,14 +1137,22 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(activeSwitcher.value).toBe('class2');
   });
 
-  it('renders desktop proctored view by default without mobile view button, and allows mobile view when set', async () => {
+  it('renders desktop proctored view by default with mobile switch button, and allows toggling between views', async () => {
     localStorage.clear();
     const onViewModeChange = vi.fn();
     const { unmount } = render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
 
     expect(onViewModeChange).toHaveBeenCalledWith('desktop');
-    expect(screen.queryByRole('button', { name: /Mobile View/i })).not.toBeInTheDocument();
+    const switchMobileBtn = screen.getByRole('button', { name: /Switch to Mobile View/i });
+    expect(switchMobileBtn).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
+
+    // Click switch to mobile
+    await act(async () => {
+      fireEvent.click(switchMobileBtn);
+    });
+    expect(document.body.classList.contains('in-student-mobile-view')).toBe(true);
+    expect(onViewModeChange).toHaveBeenCalledWith('mobile');
 
     unmount();
 
@@ -1162,6 +1170,22 @@ describe('StudentView Component Extended Test Suite', () => {
 
     expect(document.body.classList.contains('in-student-mobile-view')).toBe(false);
     expect(onViewModeChange).toHaveBeenCalledWith('desktop');
+  });
+
+  it('strictly prioritizes isHandheldPhone over cached desktop mode in localStorage', async () => {
+    localStorage.clear();
+    localStorage.setItem('student_view_mode', 'desktop');
+
+    const browserDetection = await import('../utils/browserDetection');
+    const phoneSpy = vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(true);
+
+    const onViewModeChange = vi.fn();
+    render(<StudentView user={mockUser} onViewModeChange={onViewModeChange} />);
+
+    expect(onViewModeChange).toHaveBeenCalledWith('mobile');
+    expect(document.body.classList.contains('in-student-mobile-view')).toBe(true);
+
+    phoneSpy.mockRestore();
   });
 
   it('renders YouTube-style player bottom bar and supports toggling screen modes (max, smallest, standard)', async () => {

@@ -35,6 +35,7 @@ vi.mock('./utils/browserDetection', () => ({
   isGoogleChrome: vi.fn(() => true),
   getBrowserName: vi.fn(() => 'Chrome'),
   isMobileDevice: vi.fn(() => false),
+  isHandheldPhone: vi.fn(() => false),
 }));
 
 vi.mock('./components/AuthComponent', () => ({
@@ -297,6 +298,31 @@ describe('App & MainHeader Components', () => {
     // Desktop MainHeader elements and footer should NOT be rendered
     expect(screen.queryByTitle('Account Menu')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Higher Diploma in Cloud and Data Centre Administration/i })).not.toBeInTheDocument();
+  });
+
+  it('omits desktop MainHeader on handheld phone even if student_view_mode is desktop in localStorage', async () => {
+    localStorage.setItem('student_view_mode', 'desktop');
+    browserDetection.isHandheldPhone.mockReturnValue(true);
+
+    const mockMobileStudent = {
+      uid: 'student_phone',
+      email: 'student_phone@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'student' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockMobileStudent);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('student-view')).toBeInTheDocument();
+    // Desktop MainHeader elements should NOT be rendered because handheld phone forced mobile
+    expect(screen.queryByTitle('Account Menu')).not.toBeInTheDocument();
+
+    browserDetection.isHandheldPhone.mockReturnValue(false);
   });
 
   it('renders breadcrumb bar when teacher navigates to subpages', async () => {

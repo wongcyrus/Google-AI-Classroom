@@ -132,6 +132,18 @@ describe('browserDetection Utility', () => {
     it('blocks desktop PCs from being considered handheld phones', () => {
       expect(isHandheldPhone(desktopUA, 0, 1920, 1080)).toBe(false);
     });
+
+    it('detects handheld phone even when Desktop site is requested with emulated 980px viewport', () => {
+      const origScreen = window.screen;
+      try {
+        window.screen = { width: 393, height: 852 };
+        const desktopSiteAndroidUA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+        // With touchPoints > 0 and physical screen < 600px, it should detect handheld phone
+        expect(isHandheldPhone(desktopSiteAndroidUA, 5, 980, 1200)).toBe(true);
+      } finally {
+        window.screen = origScreen;
+      }
+    });
   });
 
   describe('isMobileDevice', () => {

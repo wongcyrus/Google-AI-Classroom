@@ -7,7 +7,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLoc
 import ChangePasswordModal from './components/ChangePasswordModal';
 import PasskeyPairModal from './components/passkey/PasskeyPairModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
-import { isGoogleChrome, getBrowserName, isMobileDevice } from './utils/browserDetection';
+import { isGoogleChrome, getBrowserName, isMobileDevice, isHandheldPhone } from './utils/browserDetection';
 import { deriveRoleFromEmail } from './utils/domainConfig';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
@@ -170,6 +170,8 @@ const AppShell = ({
 }) => {
   const location = useLocation();
   const [studentViewMode, setStudentViewMode] = useState(() => {
+    // Physical handheld phones must always use the mobile student companion
+    if (isHandheldPhone()) return 'mobile';
     try {
       const stored = localStorage.getItem('student_view_mode');
       if (stored === 'mobile' || stored === 'desktop') return stored;
