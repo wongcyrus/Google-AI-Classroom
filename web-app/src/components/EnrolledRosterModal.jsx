@@ -27,6 +27,11 @@ const EnrolledRosterModal = ({
   onGrantBypass,
   bypassSuccessMsg = '',
   onClearBypassSuccess,
+  passwordWhitelistSet = new Set(),
+  togglingExemption = {},
+  onToggleExemption,
+  exemptionSuccessMsg = '',
+  onClearExemptionSuccess,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [passkeyFilter, setPasskeyFilter] = useState('all'); // 'all' | 'linked' | 'unlinked'
@@ -437,6 +442,22 @@ const EnrolledRosterModal = ({
           </div>
         )}
 
+        {/* Passkey Exemption Success Alert */}
+        {exemptionSuccessMsg && (
+          <div className="roster-alert-bar" style={{ backgroundColor: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
+            <span>🛡️ {exemptionSuccessMsg}</span>
+            {onClearExemptionSuccess && (
+              <button
+                type="button"
+                onClick={onClearExemptionSuccess}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: '#166534' }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Roster Table */}
         <div className="roster-modal-body">
           {filteredStudents.length === 0 ? (
@@ -531,6 +552,7 @@ const EnrolledRosterModal = ({
                   const isBypassActive = Boolean(
                     activeBypass && activeBypass.active && (activeBypass.expiresAtMillis > Date.now() || (activeBypass.expiresAt && new Date(activeBypass.expiresAt).getTime() > Date.now()))
                   );
+                  const isExempt = Boolean(passwordWhitelistSet && (passwordWhitelistSet.has(norm) || (prof.uid && passwordWhitelistSet.has(prof.uid))));
 
                   return (
                     <tr key={`${email}-${idx}`}>
@@ -647,6 +669,27 @@ const EnrolledRosterModal = ({
                             </span>
                           )}
 
+                          {isExempt && (
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '0.12rem 0.45rem',
+                                borderRadius: '9999px',
+                                backgroundColor: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #bbf7d0',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Student is permanently exempt from mandatory passkey (system_config/loginPolicy)"
+                              data-testid={`badge-modal-exempt-${email.replace(/[@.]/g, '_')}`}
+                            >
+                              🛡️ Passkey Exempt
+                            </span>
+                          )}
+
                           {passkey && onResetPasskey && (
                             <button
                               type="button"
@@ -686,6 +729,35 @@ const EnrolledRosterModal = ({
                               title="Grant temporary emergency passkey bypass for this class"
                             >
                               {grantingBypass[email] ? 'Granting...' : '⚡ Temp Bypass'}
+                            </button>
+                          )}
+
+                          {onToggleExemption && (
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.45rem',
+                                color: isExempt ? '#15803d' : '#854d0e',
+                                borderColor: isExempt ? '#86efac' : '#fde047',
+                                background: isExempt ? '#f0fdf4' : '#fefce8',
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => onToggleExemption(email, resolvedStudentName, isExempt)}
+                              disabled={Boolean(togglingExemption && togglingExemption[email])}
+                              data-testid={`btn-modal-exempt-${email.replace(/[@.]/g, '_')}`}
+                              title={
+                                isExempt
+                                  ? 'Student is permanently exempt from passkey. Click to revoke exemption.'
+                                  : 'Permanently exempt student from passkey requirement (uncommon case for incompatible phones)'
+                              }
+                            >
+                              {togglingExemption && togglingExemption[email]
+                                ? 'Saving...'
+                                : isExempt
+                                ? '🛡️ Exempt (Perm)'
+                                : '🛡️ Exempt'}
                             </button>
                           )}
                         </div>

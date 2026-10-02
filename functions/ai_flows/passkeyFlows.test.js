@@ -62,6 +62,8 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     serverTimestamp: vi.fn(() => 'SERVER_TIMESTAMP'),
     increment: vi.fn((n) => n),
+    arrayUnion: vi.fn((...args) => ({ _method: 'arrayUnion', elements: args })),
+    arrayRemove: vi.fn((...args) => ({ _method: 'arrayRemove', elements: args })),
   },
 }));
 
@@ -129,6 +131,7 @@ import {
   isValidLectureQrToken,
   LECTURE_QR_ROTATION_INTERVAL_MS,
   resolveRpId,
+  handleToggleStudentPasskeyExemption,
 } from './passkeyFlows.js';
 import {
   generateRegistrationOptions,
@@ -1518,6 +1521,91 @@ describe('WebAuthn Passkey Flows Backend', () => {
           })
         );
       });
+    });
+  });
+
+  describe('handleToggleStudentPasskeyExemption', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('throws error if studentEmail is missing', async () => {
+      await expect(
+        handleToggleStudentPasskeyExemption({
+          studentEmail: '',
+          exempt: true,
+        })
+      ).rejects.toThrow('Missing studentEmail.');
+    });
+
+    it('successfully grants permanent exemption and updates loginPolicy and audit log', async () => {
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'HUAWEI_STUDENT@STU.VTC.EDU.HK',
+        studentUid: 'student_huawei_123',
+        exempt: true,
+        teacherUid: 'teacher_001',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        reason: 'Huawei device without Google Play Services Credential Manager',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.exempt).toBe(true);
+      expect(res.studentEmail).toBe('huawei_student@stu.vtc.edu.hk');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lastModifiedBy: 'teacher@vtc.edu.hk',
+        }),
+        { merge: true }
+      );
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'GRANT_PERMANENT_PASSKEY_EXEMPTION',
+          studentEmail: 'huawei_student@stu.vtc.edu.hk',
+          teacherEmail: 'teacher@vtc.edu.hk',
+        })
+      );
+    });
+
+    it('successfully revokes permanent exemption', async () => {
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'student@stu.vtc.edu.hk',
+        studentUid: 'student_123',
+        exempt: false,
+        teacherUid: 'teacher_001',
+        teacherEmail: 'teacher@vtc.edu.hk',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.exempt).toBe(false);
+      expect(res.studentEmail).toBe('student@stu.vtc.edu.hk');
+      expect(mockDocSet).toHaveBeenCalled();
+      expect(mockCollectionAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'REVOKE_PERMANENT_PASSKEY_EXEMPTION',
+        })
+      );
+    });
+
+    it('updates studentProperties when classId is supplied', async () => {
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'student@stu.vtc.edu.hk',
+        studentUid: 'student_123',
+        classId: 'class_it101',
+        exempt: true,
+        teacherUid: 'teacher_001',
+        teacherEmail: 'teacher@vtc.edu.hk',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          passkeyPermanentExempt: expect.objectContaining({
+            exempt: true,
+            updatedBy: 'teacher@vtc.edu.hk',
+          }),
+        }),
+        { merge: true }
+      );
     });
   });
 });

@@ -28,6 +28,7 @@ import {
   handleCreateLectureBingoSession,
   handleGetLecturePasskeyAuthOptions,
   handleVerifyLecturePasskeyAuth,
+  handleToggleStudentPasskeyExemption,
 } from './passkeyFlows.js';
 export {
   handleRequestPasskeyPairingToken,
@@ -48,7 +49,8 @@ export {
   handleCreateLectureBingoSession,
   handleGetLecturePasskeyAuthOptions,
   handleVerifyLecturePasskeyAuth,
-};
+  handleToggleStudentPasskeyExemption,
+} from './passkeyFlows.js';
 import {
   generateBingoChallenge,
   submitBingoResponse,
@@ -454,6 +456,51 @@ export const verifyTeacherPasskeyBypassPin = onCall(callOptions, async (request)
     pin,
     reason,
     deskNumber,
+  });
+});
+
+export const toggleStudentPasskeyExemption = onCall(callOptions, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const { studentEmail, studentUid, classId, exempt, reason } = request.data || {};
+  let isTeacher = request.auth.token?.role === 'teacher';
+
+  if (!isTeacher && request.auth.token?.email) {
+    const email = request.auth.token.email.toLowerCase();
+    isTeacher = email.endsWith('@vtc.edu.hk') && !email.includes('@stu.vtc.edu.hk');
+  }
+
+  if (!isTeacher && classId) {
+    try {
+      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if (
+          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
+        ) {
+          isTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('[toggleStudentPasskeyExemption] Teacher check failed:', e);
+    }
+  }
+
+  if (!isTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers can grant or revoke permanent passkey exemptions.');
+  }
+
+  return await handleToggleStudentPasskeyExemption({
+    studentEmail,
+    studentUid,
+    classId,
+    exempt: exempt !== false,
+    teacherUid: request.auth.uid,
+    teacherEmail: request.auth.token?.email || 'teacher',
+    reason,
   });
 });
 
