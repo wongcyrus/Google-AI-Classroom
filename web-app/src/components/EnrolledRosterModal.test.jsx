@@ -130,7 +130,15 @@ describe('EnrolledRosterModal Component', () => {
     expect(screen.getAllByRole('row').length).toBeGreaterThan(3);
   });
 
-  it('filters students by passkey status dropdown', () => {
+  it('filters students by passkey status dropdown including exempt and bypass cases', () => {
+    const passwordWhitelistSet = new Set(['charlie@stu.vtc.edu.hk']);
+    const studentBypassesMap = {
+      'david@stu.vtc.edu.hk': {
+        active: true,
+        expiresAtMillis: Date.now() + 3600000,
+      },
+    };
+
     render(
       <EnrolledRosterModal
         show={true}
@@ -140,8 +148,14 @@ describe('EnrolledRosterModal Component', () => {
         emailList={emailList}
         resolvedProfilesMap={resolvedProfilesMap}
         registeredPasskeysMap={registeredPasskeysMap}
+        passwordWhitelistSet={passwordWhitelistSet}
+        studentBypassesMap={studentBypassesMap}
       />
     );
+
+    // Verify chips render
+    expect(screen.getByTestId('roster-chip-exempt-count')).toHaveTextContent('🛡️ 1 Exempt');
+    expect(screen.getByTestId('roster-chip-bypass-count')).toHaveTextContent('⚡ 1 Temp Bypass');
 
     const passkeyFilter = screen.getByTestId('roster-filter-passkey');
 
@@ -157,6 +171,25 @@ describe('EnrolledRosterModal Component', () => {
     expect(screen.queryByText('alice@stu.vtc.edu.hk')).not.toBeInTheDocument();
     expect(screen.getByText('charlie@stu.vtc.edu.hk')).toBeInTheDocument();
     expect(screen.getAllByText('david@stu.vtc.edu.hk').length).toBeGreaterThanOrEqual(1);
+
+    // Filter Exempt Only
+    fireEvent.change(passkeyFilter, { target: { value: 'exempt' } });
+    expect(screen.queryByText('alice@stu.vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.queryByText('bob@stu.vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.getByText('charlie@stu.vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.queryByText('david@stu.vtc.edu.hk')).not.toBeInTheDocument();
+
+    // Filter Temp Bypass Active Only
+    fireEvent.change(passkeyFilter, { target: { value: 'bypass' } });
+    expect(screen.queryByText('alice@stu.vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.queryByText('charlie@stu.vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.getAllByText('david@stu.vtc.edu.hk').length).toBeGreaterThanOrEqual(1);
+
+    // Filter Unlinked & Not Exempt Only (Action Needed)
+    fireEvent.change(passkeyFilter, { target: { value: 'unlinked_unexempt' } });
+    expect(screen.queryByText('alice@stu.vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.queryByText('charlie@stu.vtc.edu.hk')).not.toBeInTheDocument(); // charlie is exempt
+    expect(screen.getAllByText('david@stu.vtc.edu.hk').length).toBeGreaterThanOrEqual(1); // david is unlinked & not exempt
   });
 
   it('filters students by profile metadata status and cohort dropdown', () => {

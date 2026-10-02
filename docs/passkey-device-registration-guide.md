@@ -229,8 +229,9 @@ When a student arrives at a lab PC without a usable smartphone:
 Teachers can proactively grant emergency bypasses before students even encounter the desktop gate or request assistance:
 
 1. **Class Management Roster & Enrolled Roster Modal**:
-   - In **Class Management** (`/classes`), the roster table and the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`) list every enrolled student along with their passkey registration status (`📱 Linked` or `⏳ Not Registered`).
-   - Each student row features a dedicated **`[ ⚡ Temp Bypass ]`** action button.
+   - In **Class Management** (`/classes`), the roster table and the **Enrolled Roster Modal** (`[ 👥 Enrolled Roster ]`) list every enrolled student along with their passkey registration status (`📱 Linked`, `⏳ Not Registered`, `🛡️ Passkey Exempt`, or `⚡ Bypass Active`).
+   - The Enrolled Roster Modal provides a dedicated **Passkey Status Filter** dropdown (`All`, `📱 Linked`, `⏳ Not Registered`, `🛡️ Passkey Exempt`, `⚡ Temp Bypass Active`, and `⚠️ Unregistered & Not Exempt`) with real-time summary count chips in the header.
+   - Each student row features a dedicated **`[ ⚡ Temp Bypass ]`** action button and **`[ 🛡️ Exempt ]`** permanent toggle button.
 2. **Pre-Granting Bypass**:
    - The instructor clicks **`[ ⚡ Temp Bypass ]`** for any student who reported a dead/forgotten phone upon arrival.
    - The instructor can accept the default duration (90 minutes) or specify a custom duration in minutes.
