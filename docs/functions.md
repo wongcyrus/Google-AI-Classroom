@@ -129,21 +129,32 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   `region`: `asia-east2` (Hong Kong).
         -   `memory`: `2GiB`.
         -   `timeoutSeconds`: `540` (9 minutes).
-    -   **Parameters**: `classId` (string), `sessionId` (string), `storagePath` (optional string fallback), `title` (optional string), `topic` (optional string), `targetLanguages` (array of strings, default `['en', 'zh-Hant', 'zh-Hans', 'ja']`), `preferredModel` (optional string).
-    -   **Audio Prioritization & Ingestion**:
-        -   Invokes `resolveEffectiveStoragePath(sessionData, storagePath)`.
-        -   Automatically prioritizes the parallel pure audio stream (`audioStoragePath`: `recordings/{classId}/{sessionId}/lecture_audio.webm`, ~25 MB Opus) over the full composite video (`storagePath`: ~1.2 GB VP9).
-        -   Records `transcriptionSource: 'audio_only'` (or `'video'` fallback) into Firestore.
-        -   Constructs `gs://${bucket.name}/${effectiveStoragePath}` and passes it directly to Gemini via `generateWithResilience` using `gemini-3.8-flash` (or `gemini-3.5-flash-lite`).
-    -   **Generation & Formatting**:
-        -   Extracts verbatim speech transcript preserving technical keywords and Cantonese-English code-switching.
-        -   Translates into requested target languages (`en`, `zh-Hant`, `zh-Hans`, `ja`).
-        -   Extracts timestamped YouTube chapter markers (`00:00 - Introduction`).
-        -   Generates WebVTT (`.vtt`, period millisecond delimiter) and SubRip (`.srt`, comma millisecond delimiter) files via integer millisecond arithmetic, preventing floating-point drift.
-        -   Uploads all `.vtt` and `.srt` files to Cloud Storage at `recordings/{classId}/{sessionId}/subtitles_{lang}.vtt` and `.srt`.
-    -   **Output & State Persistence**:
-        -   Updates `classes/{classId}/lectureRecordings/{sessionId}`: sets `status = 'ready'`, `vttUrls`, `srtUrls`, and `youtubeMetadata` (including formatted title, description with chapters, and chapter array).
-        -   Logs FinOps token consumption and dollar cost to `classes/{classId}/aiCosts` via `logJob` and `calculateCost`.
+    -   **Parameters**: `classId` (string), `sessionId` (string), `storagePath` (optional string fallback), `title` (optional string), `topic` (optional string), `targetLanguages` (array of strings, default `['en', 'zh-Hant', 'zh-Hans']`), `preferredModel` (optional string).
+    -   **Audio-Only Guarantee & Ingestion**:
+        -   Resolves pure audio track (`recordings/{classId}/{sessionId}/lecture_audio.webm`, ~25 MB Opus).
+        -   **Strict Audio-Only Ingestion**: Video frames are **never** sent into Gemini for captions, eliminating up to 90% token waste and preventing context exhaustion. If a legacy recording only has a video file, the backend automatically demuxes the audio track using FFmpeg (`-vn -c:a copy`) into `lecture_audio.webm`.
+        -   Records `transcriptionSource: 'audio_only'` into Firestore.
+        -   Constructs `gs://${bucket.name}/${audioStoragePath}` and passes it to Gemini via `generateWithResilience` with `{ media: { url: gsUri, contentType: 'audio/webm' } }` and `config: { maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } }`.
+    -   **Unified Single-Pass Architecture (`gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`)**:
+        -   **Configurable Model Selection**: Teachers can configure `lectureAiModel` at the class level via **Class Management -> Settings**:
+            1. **`gemini-3.8-flash` (Recommended)**: Google's flagship Flash model. Provides the highest accuracy for mixed Cantonese/English CS jargon (DynamoDB, Partition Keys, AZ, Consistency) and long-horizon audio attention without repetition loops.
+            2. **`gemini-3.6-flash` (Balanced)**: High token efficiency and strong multimodal grounding.
+            3. **`gemini-3.5-flash-lite` (Economical)**: Minimal token cost for short recordings.
+        -   **Why `gemini-3.5-transcribe-preview` Was Removed**: During empirical evaluation on real Hong Kong lectures (e.g. 37-minute test recording `rec_1790924043417_ausm5my`), the transcribe preview model failed due to:
+            1. **45,000 Audio Token Ceiling**: Unary limit of 45k tokens (~30m) rejects whole-lecture audio with `400 Bad Request`.
+            2. **Turn-Based VAD Premature Cutoff**: Mistook natural 5-15s classroom teacher pauses (writing code or board drawing) as end-of-speech, halting early (`finishReason: STOP`) and losing 75%+ of the lecture.
+            3. **429 RESOURCE_EXHAUSTED Errors**: High rate-limiting on preview quotas when attempting chunked execution.
+            4. **Audio Slicing Artifacts**: Splitting Opus streams on WebM containers created PTS boundary jitter.
+        -   **The Production Engine**:
+            -   Ingests up to 9 hours of pure audio in a single pass via Cloud Storage `gs://` URI without slicing.
+            -   Configured with `thinkingConfig: { thinkingBudget: 0 }` and `maxOutputTokens: 65536`.
+            -   Produces continuous cues across all target languages (`original`, `en`, `zh-Hant`, `zh-Hans`) plus 8 YouTube chapters.
+        -   **Chromium Zero-Duration Cue Guard**: Prevents browser players from dropping captions. When models output identical start and end timestamps (e.g. `start: 393.0, end: 393.0`), the system dynamically enforces `end = nextStart > start ? Math.min(nextStart, start + minDur) : (start + minDur)` during parsing and WebVTT/SRT compilation.
+        -   **Preserves Code-Switching**: Verbatim preservation of technical keywords (`Docker`, `useState`, `DynamoDB`, `PostgreSQL`) without unnatural Chinese translations.
+        -   **YouTube Chapters & Packaging**: Generates formatted title and description with chapter timestamps (`00:00 - Introduction`) and CC language index.
+        -   **Output & State Persistence**:
+            -   Updates `classes/{classId}/lectureRecordings/{sessionId}`: sets `status = 'ready'`, `vttUrls`, `srtUrls`, and `youtubeMetadata`.
+            -   Logs FinOps token consumption and dollar cost to `classes/{classId}/aiCosts` via `logJob` and `calculateCost`.
 
 #### WebAuthn (FIDO2) Mobile Passkey & Hardware Lock Callables
 
@@ -209,7 +220,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`reconcileLectureRecordings`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Requires teacher authorization.
-    -   **Description**: Audits and reconciles physical Cloud Storage lecture recording media files (`recordings/{classId}/`) against Firestore `classes/{classId}/lectureRecordings` documents. Automatically discovers orphaned recordings, repairs missing metadata (e.g. durations, resolutions, file sizes), recovers interrupted sessions, and synchronizes status flags (`ready`, `processing`, `failed`).
+    -   **Description**: Audits and reconciles physical Cloud Storage lecture recording media files (`recordings/{classId}/`) against Firestore `classes/{classId}/lectureRecordings` documents. Automatically discovers orphaned recordings, repairs missing metadata (durations, resolutions, file sizes), recovers interrupted sessions, and synchronizes status flags. If a recording is stuck in `recording` or `uploading` for $>2$ hours with zero media in Cloud Storage, it cleanly marks it as `status: 'interrupted'` with the interruption reason. When media is successfully recovered, it automatically triggers `handleProcessLectureSubtitles` in the background so AI transcription and chapters continue without manual teacher action.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
@@ -380,17 +391,16 @@ This directory contains Cloud Functions responsible for handling media-related t
     -   **Configuration**: `region: asia-east2`, `memory: 2GiB`, `cpu: 2`, `timeoutSeconds: 540`.
     -   **Security & Authorization**: Requires authenticated caller verified as a teacher in the class (`isTeacherInClass(classId)` or global teacher claim).
     -   **Parameters**: `classId` (string), `sessionGroupId` (optional string), `recordingIds` (optional array of strings), `customTitle` (optional string).
-    -   **Fast Stream-Copy Concatenation (`ffmpeg -c copy`)**:
+    -   **Crash Tolerance & Gap Detection Pipeline**:
         -   Fetches source clips matching `recordingIds` or `sessionGroupId` from `classes/{classId}/lectureRecordings`.
-        -   Filters out existing merged recordings to eliminate infinite concatenation recursion.
-        -   Sorts clips chronologically by `startedAt`.
-        -   Streams WebM clips into a local temporary directory `/tmp` and executes `ffmpeg -f concat -safe 0 -i list.txt -c copy -y combined.webm`.
-        -   Runs in **~2 seconds** with zero re-encoding CPU overhead or video quality degradation.
-        -   Synthesizes standard Matroska EBML `Duration` headers and seek indexes (`Cues`), healing the Chromium browser `MediaRecorder` duration bug.
-        -   Extracts synchronized pure Opus audio track: `ffmpeg -i combined.webm -vn -c:a copy combined_audio.webm`.
-        -   Uploads both combined media artifacts to Cloud Storage (`recordings/{classId}/{combinedSessionId}/`).
-        -   Creates a new master Firestore document (`isCombined: true`, `sourceRecordingIds: [...]`) and updates source clips with `isFragment: true`, `fragmentIndex`, and `mergedIntoSessionId: combinedSessionId`.
-        -   Automatically triggers the AI subtitle pipeline (`processLectureSubtitles`) on the merged lecture.
+        -   Audits Cloud Storage to salvage any partial recordings before classifying as invalid.
+        -   **Single Surviving Clip Preservation**: If only 1 completed clip exists alongside 1+ crashed/interrupted clips, does not abort with `single_valid_clip`. Instead, calculates lost duration, updates the surviving clip with `hasMissingSegment: true` and `interruptionRemarks`, marks crashed stubs as `status: 'interrupted'`, and returns `success: true` to seamlessly drive the downstream subtitle pipeline.
+        -   **Gap Calculation**: When merging multiple clips, detects time discontinuities (`nextStart - currEnd > 15s`), calculates exact lost seconds, and compiles human-readable remarks (e.g. `~2.5 min gap between 10:25 AM and 10:27 AM`).
+        -   **Zero-Transcoding Stream Copy**: Concatenates valid clips via `ffmpeg -f concat -safe 0 -i list.txt -c copy -y combined.webm` in **~2 seconds**.
+        -   **EBML & Seek Index Synthesis**: Injects Matroska EBML `Duration` headers and seek indexes (`Cues`), healing the Chromium browser `MediaRecorder` duration bug.
+        -   **Pure Opus Extraction**: Extracts synchronized audio track via `ffmpeg -i combined.webm -vn -c:a copy combined_audio.webm`.
+        -   **Document Hierarchy & Traceability**: Creates master document with `isCombined: true`, `hasMissingSegment`, `interruptionRemarks`, `lostDurationSeconds`, and `gapDetails`. Updates source fragments and crashed stubs.
+        -   **Continuous Automation**: Returns master session parameters, automatically driving `processLectureSubtitles` for Gemini multilingual translation and chapter creation.
 
 #### Firestore Triggers
 

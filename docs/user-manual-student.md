@@ -10,7 +10,7 @@ Welcome to the **Google AI Classroom** Student Guide. This manual walks you thro
 
 ## 📑 Table of Contents
 1. [System & Browser Requirements](#1-system--browser-requirements)
-2. [Logging In & Getting Started](#2-logging-in--getting-started)
+2. [Account Registration, Passkeys & Daily Sign-In](#2-account-registration-passkeys--daily-sign-in)
 3. [The 3-Step Pre-Flight Readiness Wizard](#3-the-3-step-pre-flight-readiness-wizard)
 4. [The Active Classroom Streaming Experience](#4-the-active-classroom-streaming-experience)
 5. [Understanding On-Device AI Feedback (HUD)](#5-understanding-on-device-ai-feedback-hud)
@@ -39,17 +39,35 @@ To protect academic integrity and ensure smooth on-device AI performance, **you 
 
 ---
 
-## 2. Logging In & Getting Started
+## 2. Account Registration, Passkeys & Daily Sign-In
 
-1. Open **Google Chrome** and navigate to your school's application portal URL (e.g., `https://it114115-2627.web.app/student`).
-2. Sign in using your **institutional student Google account** (e.g., `student1@stu.vtc.edu.hk`).
-3. When prompted by your browser:
-   - Click **Allow** for **Notifications** so you receive alerts when your teacher sends messages or triggers presence checks.
-   - Click **Allow** for **Camera** and **Microphone** permissions.
-4. You will arrive at the **Student Home Dashboard**:
-   - **`🚀 Start Setup & Readiness Test`**: Launches the guided calibration wizard.
-   - **`🖥️ Quick Start (Screen Only)`**: Used only when instructed by your teacher for screen-only programming labs.
-   - **`📋 My Records`**: Direct access to your attendance history, video recordings, and lab grades.
+> [!TIP]
+> For the complete step-by-step onboarding walkthrough with iPhone Safari and Android Chrome screenshots and troubleshooting, see the dedicated **[Student Registration & Passkey Onboarding Guide](./student-registration-guide.md)**.
+
+### A. First-Time Account Registration
+1. Navigate to the portal login page in **Google Chrome** (e.g. `https://it114115-2627.web.app/login`).
+2. Switch to the **"✉️ Email & Password"** tab and click **`[ Register ]`**.
+3. Enter your institutional email ending with `@stu.vtc.edu.hk` and create your password.
+4. Open the verification email sent to your VTC Outlook inbox, click the verification link, and return to the login screen.
+
+### B. One-Time Mobile Passkey Pairing (1-Student = 1-Phone)
+To prevent password sharing and enable 2-second in-class attendance, your account must be paired with your personal smartphone:
+1. When you first log in on a lab PC, the **Personal Mobile Passkey Required** gate appears with a pairing QR code.
+2. **iPhone Students:** Open the **built-in iOS Camera app** $\rightarrow$ tap the yellow Safari link $\rightarrow$ tap **`[ Pair This Phone ]`** $\rightarrow$ confirm with **Face ID**. *(Do NOT use Chrome on iOS or WeChat)*.
+3. **Android Students:** Open **Google Chrome for Android** $\rightarrow$ scan QR $\rightarrow$ tap **`[ Pair This Phone ]`** $\rightarrow$ confirm with **Fingerprint**.
+4. The lab desktop PC automatically detects the pairing and unlocks your workspace.
+
+### C. Daily Sign-In (Scan QR Code)
+1. On your lab desktop PC, the login screen displays **📱 Scan QR Code (Lab PC)** with a 15-second rotating countdown.
+2. Point your smartphone camera at the screen.
+3. Confirm with **Face ID** or **Fingerprint** on your phone.
+4. The lab desktop logs in automatically in under 2 seconds without typing any password!
+
+### D. Arriving at the Student Home Dashboard
+Once authenticated:
+- **`🚀 Start Setup & Readiness Test`**: Launches the guided calibration wizard.
+- **`🖥️ Quick Start (Screen Only)`**: Used only when instructed by your teacher for screen-only programming labs.
+- **`📋 My Records`**: Direct access to your attendance history, video recordings, and lab grades.
 
 ---
 
@@ -376,19 +394,25 @@ You have full transparency into your learning progress and attendance records. N
 1. **🎬 Video Screencasts (`videos`):**
    - View a complete list of your past lab recordings with date, duration, and file size.
    - Click **`▶ Watch`** to stream your recording, or **`⬇ Download`** to save the MP4 file for your portfolio.
-2. **📅 Attendance Matrix (`attendance`):**
+2. **🎥 Teacher Lectures (`teacherRecordings`):**
+   - Access official lecture and screen demonstration videos shared by your instructor for the course.
+   - **Default Deny Privacy:** Teacher lectures are private by default; they appear only when your instructor enables lecture sharing for the class and selectively publishes individual recordings.
+   - **Multi-Player Streaming:** Stream recordings seamlessly via adaptive **YouTube embed**, **Google Drive stream**, or **Cloud Storage HTML5 player**.
+   - **Multilingual Subtitles:** Switch between AI-generated CC subtitle tracks (English, Traditional Chinese, Simplified Chinese, Japanese, and Original Cantonese/English).
+   - *Note: To protect instructor intellectual property and lecture materials, shared teacher recordings are streaming-only within the platform.*
+3. **📅 Attendance Matrix (`attendance`):**
    - Switch between **`Per Lesson Breakdown`** and **`All Lessons Summary`**.
    - Inspect the **Minute-by-Minute Heatmap Table**:
      - 🟩 **Green:** Verified present and working.
      - 🟥 **Red:** Absent / stream dropped.
      - 🟧 **Orange Striped:** Minutes deducted due to missed Bingo checks.
    - Read teacher notes, class summaries, and personalized AI feedback.
-3. **📋 Tasks & Lab Progress (`tasks`):**
+4. **📋 Tasks & Lab Progress (`tasks`):**
    - Track your progress across milestone lab exercises (e.g., *Task 1: Git MFA*, *Task 2: CloudShell*).
    - See completion timestamps, durations, and AI rubric feedback.
-4. **⚠️ Irregularities (`irregularities`):**
+5. **⚠️ Irregularities (`irregularities`):**
    - Review any proctoring flags logged during class (e.g., look-away alerts, multi-face detections).
-5. **🎙️ Audio Transcripts (`audio`):**
+6. **🎙️ Audio Transcripts (`audio`):**
    - Review speech captured during lessons with language tags and click **`▶ Play Clip`** to review audio recordings.
 
 ---

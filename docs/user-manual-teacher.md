@@ -696,7 +696,14 @@ Teachers can review their own screen/microphone lecture recordings, play them wi
      > 💡 **2 separate recording clips detected from 9/21/2026** (53m 5s total). Would you like to merge them into a single continuous full lecture? `[ 🔗 Merge into Full Lecture ]`
    - **🔗 Custom Merge:** Click "Custom Merge" to select specific clips with checkboxes and merge them on demand.
    - **Badges:** Combined master lectures display `🌟 Combined Full Lecture`, while individual clips display `✂️ Part 1` / `✂️ Part 2 (Merged into master lecture)`.
-3. **Features & Retrieval:**
+   - **Interrupted & Gap-Remarked Lectures:** Display `⚠️ Combined (Gap Remarked)` or `⚠️ Rest Preserved`.
+3. **Crash Resilience, Auto-Recovery & Gap Remarking:**
+   - **Accidental Tab Close Protection:** An active `beforeunload` guard warns you if you accidentally close the browser tab or hit refresh while recording is in progress.
+   - **Power Loss / Browser Crash Recovery:** The recording engine continuously buffers 10-second video chunks into persistent local browser storage (IndexedDB). If your computer reboots or the browser crashes mid-class, simply reopen the class page—the pre-crash recording is automatically recovered, uploaded to Cloud Storage, and queued for session merging.
+   - **Automatic Gap Calculation & Interruption Remarks:** When combining pre-crash and post-crash clips (or preserving a surviving segment), the system automatically detects the time gap, calculates the missing duration (e.g., `~2.5 min gap between 10:25 AM and 10:27 AM`), and attaches a **Lecture Interruption & Crash Recovery Notice** banner above the video player.
+   - **Uninterrupted Automation Pipeline:** The system never aborts or halts when an interrupted segment is present; it automatically passes the discontinuity context to Gemini, generating continuous multi-language subtitles and chapters for the preserved lecture content.
+   - **3-Hour Auto-Stop Safety Limit:** If you forget to stop recording after class, the recorder automatically finalizes, uploads, and processes the lecture after 3 hours, preventing memory leaks or ballooned files.
+4. **Features & Retrieval:**
    - **HTML5 Player with Subtitle Tracks:** Preview the recorded lecture with synchronized closed captions in Original, English (`en`), Traditional Chinese (`zh-Hant`), Simplified Chinese (`zh-Hans`), and Japanese (`ja`).
    - **📥 Download YouTube Package (.zip):** One-click bundle containing the clean high-definition video, multi-language `.srt` subtitle files, and a pre-formatted `youtube_metadata.txt`.
    - **📋 1-Click Clipboard Copy:** Instant buttons to copy the generated YouTube Title and YouTube Description (complete with timestamped chapter markers like `00:00 - Introduction`, `14:20 - Code Walkthrough`).

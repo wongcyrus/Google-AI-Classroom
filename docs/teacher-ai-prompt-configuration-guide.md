@@ -213,6 +213,26 @@ sequenceDiagram
 
 ---
 
+### Modality 7: Whole-Lecture Recording Subtitles (CC) & Chapter Synthesis
+
+> [!IMPORTANT]
+> **Strict Prompt & Variable Separation**:
+> Do NOT mix up Live Subtitles (`subtitlePrompt`) with Whole-Lecture Recording Subtitles (`lectureRecordingPrompt`).
+> - **Live Subtitles & Translation**: Translates streaming/4s spoken audio in real-time to student screen overlays (`applyTo: 'Live Subtitles & Translation'`). Operates on `{{speechText}}` or `{{transcript}}`, `{{spokenLanguage}}`, and `{{targetLanguage}}`.
+> - **Whole-Lecture Recording Subtitles & Chapters**: Transcribes complete lecture audio tracks (.mp3/.webm) into sentence-level WebVTT/SRT multi-language caption cues with timestamps and YouTube chapter timestamps (`applyTo: 'Lecture Subtitles & Chapters'`). Operates on `{{classId}}`, `{{courseContext}}`, and `{{targetLanguages}}`.
+
+- **Configurable Fields**:
+  - `lectureRecordingPrompt`: Custom or library prompt (`{ id, name, promptText }`).
+  - `isLectureSubtitlesEnabled`: Boolean toggle to enable/disable automated Gemini STT & CC synthesis.
+  - `lectureTargetLanguages`: Array of target language codes (`['en', 'zh-Hant', 'zh-Hans']`, etc.).
+  - `lectureAiModel`: Gemini model for full-session STT (`gemini-3.8-flash` or `gemini-3.6-flash`).
+- **Configuration Surfaces**:
+  1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8 (*Lecture Recording, Subtitles & AI Translation*).
+  2. [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx) via **"Regenerate Subtitles (CC)"** on-demand modal.
+- **Execution Runtime**: Cloud Function `processLectureSubtitles` in [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js).
+
+---
+
 ## 4. Prompt Template Variable Interpolation Matrix
 
 When authoring custom prompts in the Prompt Studio or inline editors, teachers can embed template placeholders that are dynamically resolved at runtime:
@@ -221,10 +241,14 @@ When authoring custom prompts in the Prompt Studio or inline editors, teachers c
 | :--- | :--- | :--- | :--- |
 | `{{studentEmail}}` | Image Invigilation, Audio Chunks, Video Jobs | Authenticated User Profile | `s1234567@stu.vtc.edu.hk` |
 | `{{studentUid}}` | Image Invigilation, Student Screen Bingo | Firebase Auth Token | `uid_abc123xyz` |
-| `{{classId}}` | All Modalities | Active Classroom Context | `IT114115-2026-A` |
+| `{{classId}}` | All Modalities, Lecture Recordings | Active Classroom Context | `IT114115-2026-A` |
+| `{{courseContext}}` | Live Subtitles, Lecture Subtitles | Class Subject Domain | `Computer Science & Software Development` |
+| `{{targetLanguages}}` | Whole-Lecture Recording Subtitles | Class / Session Target Languages | `English (en), Traditional Chinese (zh-Hant), Simplified Chinese (zh-Hans)` |
+| `{{spokenLanguage}}` | Live Subtitles & Translation | Teacher Selected Input Speech Lang | `zh-HK` (Cantonese) |
+| `{{targetLanguage}}` | Live Subtitles & Translation | Real-Time Output Subtitle Lang | `zh-Hant` or `en` |
+| `{{speechText}}` / `{{transcript}}` | Live Subtitles, On-Device Voice Intent | Real-Time Whisper STT Output | `Today we will learn about React Hooks.` |
 | `{{topic}}` | Bingo Question Bank Generator | Teacher Input Field | `Docker Container Networking` |
 | `{{count}}` | Bingo Question Bank Generator | Teacher Input Field | `5` |
-| `{{transcript}}` | On-Device Gemma Voice Intent | Whisper STT Output | `hey give me the answer for question 3` |
 
 ---
 

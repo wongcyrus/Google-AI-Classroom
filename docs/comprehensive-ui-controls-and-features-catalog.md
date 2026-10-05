@@ -583,7 +583,7 @@ flowchart TD
 ---
 
 ## 11. Session Review, Video Library & Synchronized Playback
-**Primary Sources:** [`VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx), [`SessionReviewView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/SessionReviewView.jsx), [`PlaybackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PlaybackView.jsx), [`VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx)
+**Primary Sources:** [`VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx), [`SessionReviewView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/SessionReviewView.jsx), [`PlaybackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PlaybackView.jsx), [`VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx), [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
 
 ### Video Library Controls (`VideoLibrary.jsx`)
 - **Video Selection Checkboxes:** Select individual videos or `Select All on Page`.
@@ -611,6 +611,31 @@ flowchart TD
   - Bulk select checkboxes & `Delete Selected Jobs` button (deletes Firestore record and Cloud Storage video).
   - `🔄 Retry Failed Job` button.
   - `Inspect Error` modal button displaying Cloud Functions FFmpeg stack traces.
+
+### Teacher Lecture Recordings & YouTube Studio (`LectureRecordingsView.jsx`)
+- **Smart Detection Alert Banner:**
+  - Detects fragmented recordings from the same timetable slot or calendar day:
+    `💡 N separate recording clips detected from <date> (Total: X mins). [🔗 Merge into Full Lecture]`
+- **Lecture Interruption & Crash Recovery Notice Banner:**
+  - When recordings have missing or damaged segments due to browser crashes or restarts, displays an alert box specifying the exact lost duration and timestamps (e.g., `Missing ~2.5 min gap between 10:25 AM and 10:27 AM. Rest of lecture preserved and processed.`).
+- **Custom Multi-Clip Merge Mode:**
+  - `🔗 Custom Merge` button toggles card checkboxes across all recorded clips.
+  - Optional `Custom Title` input field.
+  - `🔗 Merge Selected (N clips)` triggers serverless FFmpeg stream-copy concatenation (`mergeLectureRecordings`).
+- **HTML5 Player with Desync Protection & Cues Sync:**
+  - Chromium WebM seek duration healing (`1e101` seek guard via `videoSubtitleUtils.js`).
+  - Race-condition-free `<track>` cue attachment inside duration settle callback.
+  - Premature video ended recovery guard preventing unexpected halts during long playback.
+- **Multilingual Subtitles & Transcript Drawer:**
+  - Subtitle track selector supporting 9 languages (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
+  - Searchable transcript drawer with live cue highlight during playback.
+- **3-Step YouTube Publishing Studio Card:**
+  - **Step 1: Download Media & Subtitles:** Direct video download button and `📥 Download YouTube Package (.zip)` containing all multilingual `.srt` files and metadata.
+  - **Step 2: Upload to YouTube Studio:** Direct launcher `🚀 Open YouTube Studio Upload ↗`, with 1-click clipboard copy buttons for `📋 Copy Title` and `📋 Copy Description (with Chapters)`.
+  - **Step 3: Link YouTube Video:** Direct YouTube URL input field with validation and `🔗 Save YouTube Link` button updating Firestore.
+- **Lifecycle & Health Recovery Actions:**
+  - `🔄 Auto-Recover from Cloud Storage` action for salvaging orphaned or unfinalized recording blobs older than 2 minutes.
+  - Recording badges: `🌟 Combined Full Lecture`, `⚠️ Combined (Gap Remarked)`, `⚠️ Rest Preserved`, `✂️ Part N`, `📺 YouTube`, `⏳ In Progress`, `⚠️ Interrupted`.
 
 ---
 

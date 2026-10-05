@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >1,580 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >1,760 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 42 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 267 Tests in ai_flows + 6 Other Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,246 Tests across 133 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 343+ Tests in ai_flows, media_processing & Other Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,351 Tests across 135 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -67,8 +67,11 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (133 Test Files / 1,246 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (135 Test Files / 1,351 Tests).
 * **Covered Modules**:
+  * `web-app/src/utils/videoSubtitleUtils.test.js`: 44 tests covering Chromium WebM duration healing (`1e101` seek settle callback), race-condition-free `<track>` cue attachment, dynamic reading-speed duration guards (`buildWebVTT` / `buildSRT`), and `handleVideoEndedGuard` premature playback termination protection.
+  * `web-app/src/hooks/useLectureRecorder.test.js`: 16 tests covering recording lifecycle, `beforeunload` navigation guard, 10-second chunk IndexedDB persistence, post-crash session auto-recovery, and 3-hour auto-stop safety limit (`DEFAULT_MAX_RECORDING_SECONDS`).
+  * `web-app/src/utils/classRankingUtils.test.js`: 13 tests covering cohort score calculation and ranking distributions.
   * `web-app/src/components/passkey/PasskeyEnforcementGate.test.jsx`: Validates automatic classId resolution from schedule hook when classId prop is omitted, multi-class session selector dropdown rendering, teacher bypass request submission, emergency PIN verification, multi-class real-time bypass listening, and immediate sign-out.
   * `web-app/src/components/passkey/PasskeyPairModal.test.jsx`: Validates restricted self-service phone unlinking (regular students see instructor guidance; teachers and whitelisted testing accounts render unlink button), countdown timer, and auto-refresh.
   * `web-app/src/components/EnrolledRosterModal.test.jsx`: Validates enrolled student roster modal rendering, search query filtering by student email and name, passkey registration status badges, temporary emergency passkey bypass button (`[ ⚡ Temp Bypass ]`), custom duration prompt, real-time active bypass badges (`⚡ Bypass Active`), and unlinked phone resetting.
@@ -119,11 +122,13 @@ flowchart TD
   * `web-app/src/components/BingoQuestionBankModal.test.jsx`: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing questions, and 1-click addition to class pool; tests Aiken format parser and JSON array batch importer with syntax validation; tests Question Pool tab displaying questions, answers, explanations, and delete actions.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (17 Test Files / 267 Tests in `functions/ai_flows` + 6 Other Codebases).
+* **Framework**: `vitest` with Node.js 22 runtime (24 Test Files / 343+ Tests in `functions/ai_flows`, `functions/media_processing` + Other Codebases).
 * **Covered Modules**:
+  * `functions/media_processing/mergeLectureRecordings.test.js`: 9 tests validating serverless stream-copy FFmpeg concatenation, gap calculation (`nextStart - currEnd > 15s`), lost time computation, single surviving clip preservation with `hasMissingSegment: true` and `interruptionRemarks`, and crashed stub status updates.
+  * `functions/media_processing/onLectureVideoFinalized.test.js`: 9 tests validating Matroska EBML seek index healing (`hasCuesIndex`).
+  * `functions/ai_flows/processLectureSubtitles.test.js` & `processLectureSubtitlesHandler.test.js`: 31 tests validating Gemini single-pass whole-audio ingestion, discontinuity prompt injection, multilingual VTT/SRT generation, non-zero cue duration guards, and reconciler recovery.
   * `functions/ai_flows/passkeyFlows.test.js`: Validates all 15 WebAuthn FIDO2 passkey callables, including `handleCreateLectureBingoSession`, `handleGetLecturePasskeyAuthOptions`, `handleVerifyLecturePasskeyAuth`, fallback UID resolution from class enrolled students map and Firebase Auth for teacher roster pre-granting, token challenge caching, device fingerprint hardware lock, counter increments, and response ranking.
   * `functions/ai_flows/resetStudentPasskey.test.js`: Validates security authorization restricting passkey resets to teachers and whitelisted testing accounts while strictly blocking unauthorized student self-unlinking.
-  * `functions/ai_flows/processLectureSubtitlesHandler.test.js`: Validates subtitle synthesis, video processing, and `handleReconcileLectureRecordings` Cloud Storage synchronization and recovery.
   * `functions/ai_flows/config.test.js`: Tests `deriveUserRole`, domain matching, regex hierarchies, and allowed email domain descriptions.
   * `functions/ai_flows/analysisFlows.test.js`: Tests `analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, and `analyzeAudioFlow` with Gemini resilient fallback logic and quota checking.
   * `functions/ai_flows/bingoFlows.test.js`: Validates `triggerBingoCheck` across all 3 FinOps modes (`question_bank`, `teacher_screen`, `student_screen`), payload security (stripping `correctIndex` from student payloads), `submitBingoAnswer` 2-strike state machine (correct $\to$ `passed`, incorrect $\to$ `failed_incorrect`, timeout Strike 1 reading configurable `bingoRetryDelayMinutes` and enqueuing Cloud Task with sanitized task ID, consecutive timeout Strike 2 $\to$ attendance adjustment penalty with dynamic elapsed minute boundaries), `enqueueBingoRetryTask` (regional queue targeting `locations/asia-east2/functions/dispatchBingoRetryTask`, deterministic task ID formatting), `handleDispatchBingoRetry` (pre-flight checks, skipping already cleared students, generating Strike 2 challenge on pending students, and fallback to `classes/{classId}.questionBank`), and `generateQuestionBankAi` with Gemini 3.5 Flash Lite drafting multiple choice questions with structured JSON output schema.
