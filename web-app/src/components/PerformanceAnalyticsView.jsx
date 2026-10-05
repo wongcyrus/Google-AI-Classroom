@@ -48,12 +48,7 @@ const PerformanceAnalyticsView = ({
   timezone,
   handleLessonChange,
 }) => {
-  let routeParams = {};
-  try {
-    routeParams = useParams() || {};
-  } catch (e) {
-    routeParams = {};
-  }
+  const routeParams = useParams() || {};
   const classId = propClassId || routeParams.classId;
 
   const [loading, setLoading] = useState(true);

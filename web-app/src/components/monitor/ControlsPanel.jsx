@@ -753,7 +753,7 @@ const ControlsPanel = ({
                     borderRadius: '4px',
                     fontWeight: 600,
                     background: currentVoiceMode === 'disabled' ? '#fee2e2' : currentVoiceMode === 'cloud_only' ? '#eff6ff' : '#dbeafe',
-                    color: currentVoiceMode === 'disabled' ? '#991b1b' : currentVoiceMode === 'cloud_only' ? '#1e40af' : '#1e40af'
+                    color: currentVoiceMode === 'disabled' ? '#991b1b' : '#1e40af'
                   }}>
                     {currentVoiceMode === 'hybrid' && '⚡ Whisper + Gemma'}
                     {currentVoiceMode === 'client_only' && '💻 Whisper Local'}

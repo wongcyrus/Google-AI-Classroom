@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PromptSchema,
   safePromptText,
   safePromptPreview,
   validateCategoryMatch,

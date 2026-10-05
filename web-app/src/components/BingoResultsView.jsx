@@ -1438,8 +1438,8 @@ export default function BingoResultsView({
                                       padding: '4px 8px',
                                       fontSize: '0.75rem',
                                       fontWeight: 600,
-                                      cursor: Boolean(overridingUids[r.id]) ? 'not-allowed' : 'pointer',
-                                      opacity: Boolean(overridingUids[r.id]) ? 0.6 : 1,
+                                      cursor: overridingUids[r.id] ? 'not-allowed' : 'pointer',
+                                      opacity: overridingUids[r.id] ? 0.6 : 1,
                                       whiteSpace: 'nowrap',
                                     }}
                                     title="Verify student in person at instructor podium"

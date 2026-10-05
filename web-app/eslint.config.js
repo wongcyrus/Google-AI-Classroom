@@ -7,7 +7,7 @@ import sonarjs from 'eslint-plugin-sonarjs';
 
 export default [
   {
-    ignores: ['dist/', 'node_modules/'],
+    ignores: ['dist/', 'node_modules/', 'public/**', 'coverage/**'],
   },
   {
     files: ['**/*.{js,jsx}'],
@@ -47,7 +47,8 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       'react/no-unescaped-entities': 'off',
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',

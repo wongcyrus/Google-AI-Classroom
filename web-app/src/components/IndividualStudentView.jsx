@@ -65,6 +65,8 @@ const IndividualStudentView = ({
     latestAudioPath: null,
   });
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
+  const [isCallingStudentBingo, setIsCallingStudentBingo] = useState(false);
+  const [studentBingoStatus, setStudentBingoStatus] = useState(null);
 
   const liveVideoRef = useRef(null);
   const liveScreenVideoRef = useRef(null);
@@ -272,9 +274,6 @@ const IndividualStudentView = ({
       console.error('Error sending intervention: ', error);
     }
   };
-
-  const [isCallingStudentBingo, setIsCallingStudentBingo] = useState(false);
-  const [studentBingoStatus, setStudentBingoStatus] = useState(null);
 
   const handleCallStudentBingo = async () => {
     const studentUid = student?.id || student?.uid || student?.studentUid;
@@ -574,7 +573,7 @@ const IndividualStudentView = ({
           {activeTab === 'live_peek' ? (
             <div className="individual-live-peek-container" style={{ position: 'relative', minHeight: '400px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' }}>
               {/* Hidden audio element to play student microphone audio to teacher in real time */}
-              <audio ref={liveAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+              <audio ref={liveAudioRef} autoPlay style={{ display: 'none' }} />
 
               {connectionState !== 'connected' && (
                 <div

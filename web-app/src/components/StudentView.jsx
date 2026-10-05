@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ref, uploadBytes } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, db, auth, functions } from '../firebase-config';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
@@ -45,16 +45,6 @@ import StudentMobileView from './student/StudentMobileView';
 import Sidebar from './student/Sidebar';
 
 const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeToggle, onSwitchToMobile }) => {
-  // Browser validation guard for desktop proctored students (bypassed in teacher preview mode)
-  const isChrome = isGoogleChrome();
-  if (!isChrome && !isPreviewMode) {
-    return (
-      <UnsupportedBrowserNotice
-        onBackToLogin={() => signOut(auth)}
-      />
-    );
-  }
-
   // State
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
@@ -2051,6 +2041,15 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     };
   }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
 
+  const isChrome = isGoogleChrome();
+  if (!isChrome && !isPreviewMode) {
+    return (
+      <UnsupportedBrowserNotice
+        onBackToLogin={() => signOut(auth)}
+      />
+    );
+  }
+
   if (!previewClassId && !activeClass && (!userClasses || userClasses.length === 0)) {
     return (
       <UnenrolledStudentView
@@ -3432,6 +3431,15 @@ const StudentView = ({
         previewClassId={previewClassId}
         isPreviewMode={isPreviewMode}
         onViewModeToggle={onViewModeToggle}
+      />
+    );
+  }
+
+  const isChrome = isGoogleChrome();
+  if (!isChrome && !isPreviewMode) {
+    return (
+      <UnsupportedBrowserNotice
+        onBackToLogin={() => signOut(auth)}
       />
     );
   }

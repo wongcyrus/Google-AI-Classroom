@@ -337,7 +337,7 @@ export const parseStudentRosterRows = (rawRows = []) => {
   }
 
   const rawHeaderCells = rows[0].map(h => String(h ?? '').trim());
-  const normalizedHeaders = rawHeaderCells.map(h => h.toLowerCase().replace(/[\s_\-]/g, ''));
+  const normalizedHeaders = rawHeaderCells.map(h => h.toLowerCase().replace(/[\s_-]/g, ''));
 
   // Header alias map
   const ALIASES = {
