@@ -55,6 +55,18 @@ export default function TeacherSubtitleControlModal({
   }, [subtitlePrompt]);
 
   useEffect(() => {
+    if (promptsList && promptsList.length > 0 && subtitlePrompt) {
+      if (!subtitlePrompt.promptText) {
+        const found = promptsList.find((p) => p.id === subtitlePrompt.id || p.originalId === subtitlePrompt.id || p.id === subtitlePrompt.originalId || p.originalId === subtitlePrompt.originalId);
+        if (found && found.promptText) {
+          onSelectSubtitlePrompt?.(found);
+          setCustomPromptDraft(found.promptText);
+        }
+      }
+    }
+  }, [promptsList, subtitlePrompt, onSelectSubtitlePrompt]);
+
+  useEffect(() => {
     if (!isOpen) return;
     let isMounted = true;
 
@@ -441,14 +453,14 @@ export default function TeacherSubtitleControlModal({
                   <select
                     id="modal-subtitle-prompt-select"
                     aria-label="Translation AI Prompt"
-                    value={subtitlePrompt?.id || (subtitlePrompt ? 'custom' : '')}
+                    value={subtitlePrompt?.id || subtitlePrompt?.originalId || (subtitlePrompt ? 'custom' : '')}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (!val) {
                         onSelectSubtitlePrompt?.(null);
                         setIsEditingPrompt(false);
                       } else {
-                        const found = promptsList.find((p) => p.id === val);
+                        const found = promptsList.find((p) => p.id === val || p.originalId === val);
                         if (found) {
                           onSelectSubtitlePrompt?.(found);
                           setCustomPromptDraft(found.promptText || '');
@@ -459,18 +471,18 @@ export default function TeacherSubtitleControlModal({
                   >
                     <option value="">-- Default Discipline Prompt --</option>
                     {promptsList.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <option key={p.id || p.originalId} value={p.id || p.originalId}>
                         {p.name}
                       </option>
                     ))}
-                    {subtitlePrompt && !promptsList.some((p) => p.id === subtitlePrompt.id) && (
+                    {subtitlePrompt && !promptsList.some((p) => (p.id && (p.id === subtitlePrompt.id || p.id === subtitlePrompt.originalId)) || (p.originalId && (p.originalId === subtitlePrompt.id || p.originalId === subtitlePrompt.originalId))) && (
                       <option value="custom">{subtitlePrompt.name || 'Custom Prompt'}</option>
                     )}
                   </select>
                 </div>
               </div>
 
-              {subtitlePrompt?.promptText ? (
+              {(subtitlePrompt?.promptText || customPromptDraft) ? (
                 <div className="prompt-preview-container">
                   <div className="prompt-details-header">
                     <span className="prompt-name-tag">Prompt Instructions Preview:</span>
@@ -508,9 +520,9 @@ export default function TeacherSubtitleControlModal({
                         onClick={() => {
                           onSelectSubtitlePrompt?.({
                             ...subtitlePrompt,
-                            name: subtitlePrompt.name?.includes('(Customized)')
+                            name: subtitlePrompt?.name?.includes('(Customized)')
                               ? subtitlePrompt.name
-                              : `${subtitlePrompt.name || 'Translation Prompt'} (Customized)`,
+                              : `${subtitlePrompt?.name || 'Translation Prompt'} (Customized)`,
                             promptText: customPromptDraft,
                           });
                           setIsEditingPrompt(false);
@@ -521,9 +533,9 @@ export default function TeacherSubtitleControlModal({
                     </div>
                   ) : (
                     <div className="prompt-preview-snippet">
-                      "{subtitlePrompt.promptText.length > 140
-                        ? `${subtitlePrompt.promptText.substring(0, 140)}...`
-                        : subtitlePrompt.promptText}"
+                      "{((subtitlePrompt?.promptText || customPromptDraft || '').length > 140)
+                        ? `${(subtitlePrompt?.promptText || customPromptDraft || '').substring(0, 140)}...`
+                        : (subtitlePrompt?.promptText || customPromptDraft || '')}"
                     </div>
                   )}
                 </div>

@@ -89,7 +89,12 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       try {
         const snap = await getDoc(doc(db, 'classes', classId));
         if (snap && snap.exists && snap.exists()) {
-          setStudentProfiles(snap.data().studentProfiles || {});
+          const classData = snap.data();
+          setStudentProfiles(classData.studentProfiles || {});
+          if (classData.afterClassVideoPrompt) {
+            setSelectedPrompt(classData.afterClassVideoPrompt);
+            setEditablePromptText(classData.afterClassVideoPrompt.promptText || '');
+          }
         }
       } catch (err) {
         console.debug('Could not load student profiles in VideoLibrary:', err);
@@ -233,7 +238,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   };
 
   const handleRequestAnalysis = async () => {
-    if (!editablePromptText.trim() || selectedVideos.size === 0) {
+    const promptToUse = (editablePromptText || selectedPrompt?.promptText || '').trim();
+    if (!promptToUse || selectedVideos.size === 0) {
       alert('Please select a prompt and at least one video to analyze.');
       return;
     }
@@ -254,7 +260,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           classId: classId,
           requester: user.uid,
           videos: videos,
-          prompt: editablePromptText,
+          prompt: promptToUse,
+          promptId: selectedPrompt?.id || selectedPrompt?.originalId || null,
           model: selectedModel,
           status: 'pending',
           createdAt: serverTimestamp(),
@@ -276,7 +283,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   };
 
   const handleRequestAllAnalysis = async () => {
-    if (!editablePromptText.trim()) {
+    const promptToUse = (editablePromptText || selectedPrompt?.promptText || '').trim();
+    if (!promptToUse) {
       alert('Please select a prompt.');
       return;
     }
@@ -296,7 +304,8 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           startTime: new Date(startTime),
           endTime: new Date(endTime),
           filterField: filterField,
-          prompt: editablePromptText,
+          prompt: promptToUse,
+          promptId: selectedPrompt?.id || selectedPrompt?.originalId || null,
           model: selectedModel,
           status: 'pending',
           createdAt: serverTimestamp(),
@@ -600,10 +609,10 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           </div>
 
           <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis || !editablePromptText.trim()}>
+              <button onClick={handleRequestAnalysis} disabled={selectedVideos.size === 0 || isRequestingAnalysis || !(editablePromptText || selectedPrompt?.promptText || '').trim()}>
                 {isRequestingAnalysis ? 'Requesting...' : `Request Analysis for Selected ${selectedVideos.size > 0 ? `(${selectedVideos.size})` : ''}`}
               </button>
-              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis || !editablePromptText.trim()}>
+              <button onClick={handleRequestAllAnalysis} disabled={isRequestingAnalysis || !(editablePromptText || selectedPrompt?.promptText || '').trim()}>
                 {isRequestingAnalysis ? 'Requesting...' : 'Request Analysis for the whole class'}
               </button>
           </div>

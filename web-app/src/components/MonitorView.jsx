@@ -453,6 +453,32 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [uidToEmailMap, setUidToEmailMap] = useState(new Map());
   const [studentProfiles, setStudentProfiles] = useState({});
 
+  // Auto-synchronize and hydrate prompt selection when prompts library finishes loading asynchronously
+  useEffect(() => {
+    if (prompts && prompts.length > 0) {
+      if (selectedPrompt && (!selectedPrompt.promptText || !editablePromptText)) {
+        const match = prompts.find(p => p.id === selectedPrompt.id || p.originalId === selectedPrompt.id || p.id === selectedPrompt.originalId || p.originalId === selectedPrompt.originalId || p.name === selectedPrompt.name);
+        if (match && match.promptText) {
+          setSelectedPrompt(prev => ({ ...match, ...prev, promptText: prev?.promptText || match.promptText }));
+          if (!editablePromptText) {
+            setEditablePromptText(match.promptText);
+          }
+        }
+      }
+    }
+  }, [prompts, selectedPrompt, editablePromptText]);
+
+  // Auto-synchronize live audio prompts when audio prompts library finishes loading asynchronously
+  useEffect(() => {
+    if (audioPrompts && audioPrompts.length > 0) {
+      if (liveAudioPrompt && typeof liveAudioPrompt === 'object' && !liveAudioPrompt.promptText) {
+        const match = audioPrompts.find(p => p.id === liveAudioPrompt.id || p.originalId === liveAudioPrompt.id || p.id === liveAudioPrompt.originalId || p.originalId === liveAudioPrompt.originalId || p.name === liveAudioPrompt.name);
+        if (match && match.promptText) {
+          setLiveAudioPrompt(prev => ({ ...match, ...prev, promptText: match.promptText }));
+        }
+      }
+    }
+  }, [audioPrompts, liveAudioPrompt]);
 
   const handleAiModelChange = async (newModel) => {
     setSelectedAiModel(newModel);
@@ -1151,17 +1177,22 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           lastAnalyzedPathMapRef.current.set(studentUid, { imagePath: primaryPath, timestamp: Date.now() });
           activeAnalysisInFlightRef.current.add(studentUid);
 
-          runPerImageAnalysis({ [studentUid]: { url: primaryUrl, email: studentEmail } }, editablePromptText, selectedAiModel)
-            .catch((err) => {
-              console.error(`[MonitorView] Error during per-image analysis for ${studentEmail}:`, err);
-            })
-            .finally(() => {
-              activeAnalysisInFlightRef.current.delete(studentUid);
-            });
+          const promptToUse = (editablePromptText || selectedPrompt?.promptText || '').trim();
+          if (promptToUse) {
+            runPerImageAnalysis({ [studentUid]: { url: primaryUrl, email: studentEmail } }, promptToUse, selectedAiModel)
+              .catch((err) => {
+                console.error(`[MonitorView] Error during per-image analysis for ${studentEmail}:`, err);
+              })
+              .finally(() => {
+                activeAnalysisInFlightRef.current.delete(studentUid);
+              });
+          } else {
+            activeAnalysisInFlightRef.current.delete(studentUid);
+          }
         }
       }
     }
-  }, [studentStatuses, screenshots, isPerImageAnalysisRunning, isPaused, reviewTime, frameRate, samplingRate, editablePromptText, selectedAiModel, uidToEmailMap, runPerImageAnalysis]);
+  }, [studentStatuses, screenshots, isPerImageAnalysisRunning, isPaused, reviewTime, frameRate, samplingRate, editablePromptText, selectedPrompt, selectedAiModel, uidToEmailMap, runPerImageAnalysis]);
 
   useEffect(() => {
     if (!isAllImagesAnalysisRunning) {
@@ -1169,7 +1200,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       return;
     }
 
-    if (!editablePromptText || !editablePromptText.trim()) {
+    const promptToUse = (editablePromptText || selectedPrompt?.promptText || '').trim();
+    if (!promptToUse) {
       console.warn('[MonitorView] Cannot run all-images analysis without a prompt.');
       return;
     }
@@ -1214,7 +1246,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           if (sPath) lastAllImagesPathsRef.current.set(sId, sPath);
         }
         console.log(`[MonitorView] Triggering all-images analysis (${Object.keys(screenshotsToAnalyze).length} screens, interval: every ${samplingRate} rounds / ${intervalMs / 1000}s) using model:`, selectedAiModel);
-        runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
+        runAllImagesAnalysis(screenshotsToAnalyze, promptToUse, selectedAiModel);
       }
     };
 
@@ -1226,7 +1258,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     const intervalId = setInterval(performAllImagesAnalysis, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedAiModel]);
+  }, [isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedPrompt, selectedAiModel]);
 
   const handleSendMessage = async (customText = null) => {
     const textToSend = typeof customText === 'string' ? customText : message;
@@ -1643,8 +1675,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   };
 
   const handleRunAnalysis = async (overridePromptText, overrideModel) => {
-    const promptToUse = (overridePromptText !== undefined ? overridePromptText : editablePromptText) || '';
-    const modelToUse = overrideModel || selectedAiModel;
+    const promptToUse = (overridePromptText !== undefined ? overridePromptText : (editablePromptText || selectedPrompt?.promptText)) || '';
+    const modelToUse = overrideModel || selectedAiModel || 'gemini-3.5-flash-lite';
 
     if (!promptToUse.trim()) {
       alert('Please select or enter a prompt.');
@@ -1687,8 +1719,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   };
 
   const handleRunAllImagesAnalysis = async (overridePromptText, overrideModel) => {
-    const promptToUse = (overridePromptText !== undefined ? overridePromptText : editablePromptText) || '';
-    const modelToUse = overrideModel || selectedAiModel;
+    const promptToUse = (overridePromptText !== undefined ? overridePromptText : (editablePromptText || selectedPrompt?.promptText)) || '';
+    const modelToUse = overrideModel || selectedAiModel || 'gemini-3.5-flash-lite';
 
     if (!promptToUse.trim()) {
       alert('Please select or enter a prompt.');

@@ -1441,17 +1441,18 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
   const handleOpenPromptModal = () => {
     setModalPrompt(afterClassVideoPrompt);
-    setModalPromptText(afterClassVideoPrompt ? afterClassVideoPrompt.promptText : '');
+    setModalPromptText(afterClassVideoPrompt ? (afterClassVideoPrompt.promptText || '') : '');
     setShowPromptModal(true);
   };
 
   const handleSetPrompt = () => {
     if (modalPrompt) {
-      const isModified = modalPrompt.promptText !== modalPromptText;
+      const chosenText = modalPromptText || modalPrompt.promptText || '';
+      const isModified = modalPrompt.promptText ? (modalPrompt.promptText !== chosenText) : false;
       const promptId = modalPrompt.id || modalPrompt.originalId || null;
       const finalPrompt = {
         ...modalPrompt,
-        promptText: modalPromptText,
+        promptText: chosenText,
         name: isModified && modalPrompt.name ? `${modalPrompt.name} (Customized)` : (modalPrompt.name || 'Custom Prompt'),
         originalId: promptId,
         id: promptId,
@@ -1479,18 +1480,19 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     else if (type === 'lecture_recording') target = lectureSttPrompt || lectureRecordingPrompt;
 
     setModalAudioPrompt(target);
-    setModalAudioPromptText(target ? target.promptText : '');
+    setModalAudioPromptText(target ? (target.promptText || '') : '');
     setShowAudioPromptModal(true);
   };
 
   const handleSetAudioPrompt = () => {
     let finalPrompt = null;
     if (modalAudioPrompt) {
-      const isModified = modalAudioPrompt.promptText !== modalAudioPromptText;
+      const chosenText = modalAudioPromptText || modalAudioPrompt.promptText || '';
+      const isModified = modalAudioPrompt.promptText ? (modalAudioPrompt.promptText !== chosenText) : false;
       const promptId = modalAudioPrompt.id || modalAudioPrompt.originalId || null;
       finalPrompt = {
         ...modalAudioPrompt,
-        promptText: modalAudioPromptText,
+        promptText: chosenText,
         name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Subtitle Prompt' : audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt')),
         originalId: promptId,
         id: promptId,
@@ -1520,18 +1522,19 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
   const handleOpenTranslationPromptModal = () => {
     setModalTranslationPrompt(lectureTranslationPrompt);
-    setModalTranslationPromptText(lectureTranslationPrompt ? lectureTranslationPrompt.promptText : '');
+    setModalTranslationPromptText(lectureTranslationPrompt ? (lectureTranslationPrompt.promptText || '') : '');
     setShowTranslationPromptModal(true);
   };
 
   const handleSetTranslationPrompt = () => {
     let finalPrompt = null;
     if (modalTranslationPrompt) {
-      const isModified = modalTranslationPrompt.promptText !== modalTranslationPromptText;
+      const chosenText = modalTranslationPromptText || modalTranslationPrompt.promptText || '';
+      const isModified = modalTranslationPrompt.promptText ? (modalTranslationPrompt.promptText !== chosenText) : false;
       const promptId = modalTranslationPrompt.id || modalTranslationPrompt.originalId || null;
       finalPrompt = {
         ...modalTranslationPrompt,
-        promptText: modalTranslationPromptText,
+        promptText: chosenText,
         name: isModified && modalTranslationPrompt.name ? `${modalTranslationPrompt.name} (Customized)` : (modalTranslationPrompt.name || 'Custom Translation Prompt'),
         originalId: promptId,
         id: promptId,
@@ -1553,7 +1556,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setImagePromptModalType(type);
     const target = type === 'bingo' ? bingoPrompt : liveImagePrompt;
     setModalImagePrompt(target);
-    setModalImagePromptText(target ? target.promptText : '');
+    setModalImagePromptText(target ? (target.promptText || '') : '');
     setShowImagePromptModal(true);
   };
 
@@ -1561,11 +1564,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     let finalPrompt = null;
     const isBingo = imagePromptModalType === 'bingo';
     if (modalImagePrompt) {
-      const isModified = modalImagePrompt.promptText !== modalImagePromptText;
+      const chosenText = modalImagePromptText || modalImagePrompt.promptText || '';
+      const isModified = modalImagePrompt.promptText ? (modalImagePrompt.promptText !== chosenText) : false;
       const promptId = modalImagePrompt.id || modalImagePrompt.originalId || null;
       finalPrompt = {
         ...modalImagePrompt,
-        promptText: modalImagePromptText,
+        promptText: chosenText,
         name: isModified && modalImagePrompt.name ? `${modalImagePrompt.name} (Customized)` : (modalImagePrompt.name || (isBingo ? 'Custom Bingo Prompt' : 'Custom Image Prompt')),
         originalId: promptId,
         id: promptId,
@@ -2824,7 +2828,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               </p>
               {bingoPrompt && (
                 <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                  <strong>Prompt preview:</strong> {bingoPrompt.promptText.substring(0, 120)}...
+                  <strong>Prompt preview:</strong> {(bingoPrompt?.promptText || '').substring(0, 120)}...
                 </p>
               )}
             </div>
@@ -2972,7 +2976,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </p>
           {liveImagePrompt && (
             <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {liveImagePrompt.promptText.substring(0, 120)}...
+              <strong>Prompt preview:</strong> {(liveImagePrompt?.promptText || '').substring(0, 120)}...
             </p>
           )}
         </div>
@@ -2996,7 +3000,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
           {afterClassVideoPrompt && (
             <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {afterClassVideoPrompt.promptText.substring(0, 120)}...
+              <strong>Prompt preview:</strong> {(afterClassVideoPrompt?.promptText || '').substring(0, 120)}...
             </p>
           )}
         </div>
@@ -3023,7 +3027,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </p>
           {gemmaIntentPrompt && (
             <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {gemmaIntentPrompt.promptText.substring(0, 120)}...
+              <strong>Prompt preview:</strong> {(gemmaIntentPrompt?.promptText || '').substring(0, 120)}...
             </p>
           )}
         </div>
@@ -3265,7 +3269,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     </div>
                     {liveAudioPrompt && (
                       <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                        <strong>Prompt preview:</strong> {liveAudioPrompt.promptText.substring(0, 120)}...
+                        <strong>Prompt preview:</strong> {(liveAudioPrompt?.promptText || '').substring(0, 120)}...
                       </p>
                     )}
                   </div>
@@ -3330,7 +3334,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     </div>
                     {sessionAudioPrompt && (
                       <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                        <strong>Prompt preview:</strong> {sessionAudioPrompt.promptText.substring(0, 120)}...
+                        <strong>Prompt preview:</strong> {(sessionAudioPrompt?.promptText || '').substring(0, 120)}...
                       </p>
                     )}
                   </div>
@@ -3400,7 +3404,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
           {subtitlePrompt && (
             <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {subtitlePrompt.promptText.substring(0, 120)}...
+              <strong>Prompt preview:</strong> {(subtitlePrompt?.promptText || '').substring(0, 120)}...
             </p>
           )}
         </div>
@@ -3512,7 +3516,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     📄 {(lectureSttPrompt || lectureRecordingPrompt).name || 'Custom Prompt'}
                   </div>
                   <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    "{(lectureSttPrompt || lectureRecordingPrompt).promptText.substring(0, 180)}..."
+                    "{((lectureSttPrompt || lectureRecordingPrompt)?.promptText || '').substring(0, 180)}..."
                   </div>
                 </div>
               )}
@@ -3561,7 +3565,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     📄 {lectureTranslationPrompt.name || 'Custom Prompt'}
                   </div>
                   <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    "{lectureTranslationPrompt.promptText.substring(0, 180)}..."
+                    "{(lectureTranslationPrompt?.promptText || '').substring(0, 180)}..."
                   </div>
                 </div>
               )}

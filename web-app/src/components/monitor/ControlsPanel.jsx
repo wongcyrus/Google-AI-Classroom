@@ -329,20 +329,53 @@ const ControlsPanel = ({
       setModalVadSensitivity(vadSensitivity || 15);
       setModalVoiceAiCloudFallbackRate(voiceAiCloudFallbackRate || 3);
       setModalVoicePromptFilter('all');
-      setModalSelectedVoicePrompt(liveAudioPrompt || null);
-      setModalEditableVoicePromptText(liveAudioPrompt?.promptText || (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : ''));
+
+      // Voice AI prompt hydration
+      let currentVoicePrompt = liveAudioPrompt || null;
+      if (currentVoicePrompt && typeof currentVoicePrompt === 'object') {
+        const matchedVoice = (audioPrompts || []).find(p => p.id === currentVoicePrompt.id || p.originalId === currentVoicePrompt.originalId || p.name === currentVoicePrompt.name);
+        if (matchedVoice) {
+          currentVoicePrompt = { ...matchedVoice, ...currentVoicePrompt, promptText: currentVoicePrompt.promptText || matchedVoice.promptText };
+        }
+      }
+      setModalSelectedVoicePrompt(currentVoicePrompt);
+      setModalEditableVoicePromptText(currentVoicePrompt?.promptText || (typeof currentVoicePrompt === 'string' ? currentVoicePrompt : ''));
+
       setModalSelectedAiModel(selectedAiModel || 'gemini-3.5-flash-lite');
       setModalSamplingRate(samplingRate || 5);
 
+      // Vision prompt hydration
       let currentVisionPrompt = selectedPrompt || liveImagePrompt || null;
-      if (!currentVisionPrompt && editablePromptText) {
-        currentVisionPrompt = (prompts || []).find(p => p.promptText === editablePromptText || p.name === editablePromptText) || null;
+      const allVisionPrompts = filteredPrompts || prompts || [];
+      if (currentVisionPrompt) {
+        const matchedVision = allVisionPrompts.find(p => p.id === currentVisionPrompt.id || p.originalId === currentVisionPrompt.originalId || p.name === currentVisionPrompt.name);
+        if (matchedVision) {
+          currentVisionPrompt = { ...matchedVision, ...currentVisionPrompt, promptText: currentVisionPrompt.promptText || matchedVision.promptText };
+        }
+      } else if (editablePromptText) {
+        currentVisionPrompt = allVisionPrompts.find(p => p.promptText === editablePromptText || p.name === editablePromptText) || null;
       }
+      const initialVisionText = editablePromptText || currentVisionPrompt?.promptText || '';
       setModalSelectedVisionPrompt(currentVisionPrompt);
-      setModalEditablePromptText(editablePromptText || currentVisionPrompt?.promptText || '');
+      setModalEditablePromptText(initialVisionText);
 
       setShowGazeModal(true);
     };
+
+    // Keep modal prompt selection synchronized if prompts finish loading while modal is open
+    useEffect(() => {
+      if (!showGazeModal) return;
+      const allVisionPrompts = filteredPrompts || prompts || [];
+      if (allVisionPrompts.length === 0) return;
+
+      if (modalSelectedVisionPrompt && (!modalEditablePromptText || !modalSelectedVisionPrompt.promptText)) {
+        const match = allVisionPrompts.find(p => p.id === modalSelectedVisionPrompt.id || p.originalId === modalSelectedVisionPrompt.originalId || p.name === modalSelectedVisionPrompt.name);
+        if (match?.promptText) {
+          setModalEditablePromptText(match.promptText);
+          setModalSelectedVisionPrompt(prev => ({ ...match, ...prev, promptText: match.promptText }));
+        }
+      }
+    }, [showGazeModal, filteredPrompts, prompts, modalSelectedVisionPrompt, modalEditablePromptText]);
 
     const handleApplyGazeSettings = async () => {
       const clientAllowed = modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'client_only';
@@ -1829,8 +1862,10 @@ const ControlsPanel = ({
                         if (setSelectedPrompt) setSelectedPrompt(p || null);
                         if (p && p.promptText) {
                           setModalEditablePromptText(p.promptText);
+                          if (setEditablePromptText) setEditablePromptText(p.promptText);
                         } else {
                           setModalEditablePromptText('');
+                          if (setEditablePromptText) setEditablePromptText('');
                         }
                       }}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '6px' }}
@@ -1955,8 +1990,9 @@ const ControlsPanel = ({
                       <button
                         type="button"
                         onClick={() => {
-                          const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
-                          if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                          const activePromptObj = modalSelectedVisionPrompt || (filteredPrompts || prompts || []).find(p => p.id === selectedVisionPromptId) || selectedPrompt || liveImagePrompt;
+                          const promptToRun = modalEditablePromptText || activePromptObj?.promptText || editablePromptText || '';
+                          if (setSelectedPrompt && activePromptObj) setSelectedPrompt(activePromptObj);
                           if (setEditablePromptText) setEditablePromptText(promptToRun);
                           if (setSamplingRate) setSamplingRate(modalSamplingRate);
                           if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
@@ -1972,8 +2008,9 @@ const ControlsPanel = ({
                       <button
                         type="button"
                         onClick={() => {
-                          const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
-                          if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                          const activePromptObj = modalSelectedVisionPrompt || (filteredPrompts || prompts || []).find(p => p.id === selectedVisionPromptId) || selectedPrompt || liveImagePrompt;
+                          const promptToRun = modalEditablePromptText || activePromptObj?.promptText || editablePromptText || '';
+                          if (setSelectedPrompt && activePromptObj) setSelectedPrompt(activePromptObj);
                           if (setEditablePromptText) setEditablePromptText(promptToRun);
                           if (setSamplingRate) setSamplingRate(modalSamplingRate);
                           if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
@@ -1993,9 +2030,10 @@ const ControlsPanel = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
-                            const modelToRun = modalSelectedAiModel || selectedAiModel;
-                            if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                            const activePromptObj = modalSelectedVisionPrompt || (filteredPrompts || prompts || []).find(p => p.id === selectedVisionPromptId) || selectedPrompt || liveImagePrompt;
+                            const promptToRun = modalEditablePromptText || activePromptObj?.promptText || editablePromptText || '';
+                            const modelToRun = modalSelectedAiModel || selectedAiModel || 'gemini-3.5-flash-lite';
+                            if (setSelectedPrompt && activePromptObj) setSelectedPrompt(activePromptObj);
                             if (setEditablePromptText) setEditablePromptText(promptToRun);
                             handleRunAnalysis(promptToRun, modelToRun);
                             setShowGazeModal(false);
@@ -2011,9 +2049,10 @@ const ControlsPanel = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
-                            const modelToRun = modalSelectedAiModel || selectedAiModel;
-                            if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                            const activePromptObj = modalSelectedVisionPrompt || (filteredPrompts || prompts || []).find(p => p.id === selectedVisionPromptId) || selectedPrompt || liveImagePrompt;
+                            const promptToRun = modalEditablePromptText || activePromptObj?.promptText || editablePromptText || '';
+                            const modelToRun = modalSelectedAiModel || selectedAiModel || 'gemini-3.5-flash-lite';
+                            if (setSelectedPrompt && activePromptObj) setSelectedPrompt(activePromptObj);
                             if (setEditablePromptText) setEditablePromptText(promptToRun);
                             handleRunAllImagesAnalysis(promptToRun, modelToRun);
                             setShowGazeModal(false);
