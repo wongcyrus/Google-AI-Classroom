@@ -446,8 +446,8 @@ describe('ControlsPanel Full Component Suite', () => {
     const voiceTabBtn = screen.getByRole('button', { name: /Voice & Speech/i });
     fireEvent.click(voiceTabBtn);
 
-    expect(screen.getByText(/Select & Edit Voice AI Prompt:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Available Placeholders:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Select Voice AI Prompt Template \(Read-Only Preview\):/i)).toBeInTheDocument();
+    expect(screen.getByText(/Template Preview \(Read-Only\)/i)).toBeInTheDocument();
 
     // Select Voice Prompt
     const selects = screen.getAllByRole('combobox');
@@ -455,14 +455,13 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(voiceSelect).toBeDefined();
     fireEvent.change(voiceSelect, { target: { value: 'voice_p1' } });
 
-    // Verify textarea populated
-    const textarea = screen.getByPlaceholderText(/Select a voice prompt template or write custom instructions/i);
+    // Verify textarea populated and read-only
+    const textarea = screen.getByPlaceholderText(/Select a voice prompt template from the dropdown above/i);
+    expect(textarea).toHaveAttribute('readonly');
     expect(textarea.value).toContain('Analyze speech for {{studentUid}} in {{classId}}: {{transcript}}');
 
-    // Insert placeholder pill
-    const studentEmailPill = screen.getByRole('button', { name: /\+ \{\{studentEmail\}\}/i });
-    fireEvent.click(studentEmailPill);
-    expect(textarea.value).toContain('{{studentEmail}}');
+    // Verify copy button exists
+    expect(screen.getByRole('button', { name: /Copy Prompt Text/i })).toBeInTheDocument();
 
     // Click Save & Apply
     const saveButton = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
@@ -472,7 +471,7 @@ describe('ControlsPanel Full Component Suite', () => {
       voiceAiMode: 'hybrid',
       liveAudioPrompt: expect.objectContaining({
         id: 'voice_p1',
-        promptText: expect.stringContaining('{{studentEmail}}'),
+        promptText: expect.stringContaining('Analyze speech for {{studentUid}} in {{classId}}: {{transcript}}'),
       })
     }));
   });
@@ -862,18 +861,15 @@ describe('ControlsPanel Full Component Suite', () => {
     const allRadio = document.querySelector('input[name="modalVoicePromptFilter"][value="all"]');
     fireEvent.click(allRadio);
 
-    // Select voice prompt template and click a placeholder chip
+    // Select voice prompt template
     const voicePromptSelect = screen.getByDisplayValue(/-- Select a voice\/audio prompt template --/i);
     fireEvent.change(voicePromptSelect, { target: { value: 'ap_1' } });
-    const chipBtn = screen.getByRole('button', { name: '+ {{transcript}}' });
-    fireEvent.click(chipBtn);
 
-    const classIdChip = screen.getByRole('button', { name: '+ {{classId}}' });
-    fireEvent.click(classIdChip);
-
-    // Edit textarea
-    const voiceTextarea = screen.getByPlaceholderText(/Select a voice prompt template or write custom instructions/i);
-    fireEvent.change(voiceTextarea, { target: { value: 'Custom instructions text' } });
+    // Verify read-only preview and copy button
+    const voiceTextarea = screen.getByPlaceholderText(/Select a voice prompt template from the dropdown above/i);
+    expect(voiceTextarea).toHaveAttribute('readonly');
+    expect(voiceTextarea.value).toBe('Evaluate classroom engagement');
+    expect(screen.getByRole('button', { name: /Copy Prompt Text/i })).toBeInTheDocument();
 
     // Switch to Screen & Vision tab
     const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });

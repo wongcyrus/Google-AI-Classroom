@@ -26,10 +26,14 @@ export function getToolsForAudioAnalysis() {
  * Executes AI generation with automatic exponential backoff, jitter,
  * connection reset recovery, and fallback to flash-lite if the primary model is overloaded.
  */
-export async function generateWithResilience(generateConfig, preferredModel) {
+export async function generateWithResilience(
+  generateConfig,
+  preferredModel,
+  fallbackModel = 'gemini-3.5-flash-lite'
+) {
   const modelsToTry = [preferredModel];
-  if (preferredModel !== 'gemini-3.5-flash-lite') {
-    modelsToTry.push('gemini-3.5-flash-lite');
+  if (fallbackModel && preferredModel !== fallbackModel) {
+    modelsToTry.push(fallbackModel);
   }
 
   let lastError = null;
@@ -51,8 +55,15 @@ export async function generateWithResilience(generateConfig, preferredModel) {
           msg.includes('connection reset') ||
           msg.includes('ECONNRESET') ||
           msg.includes('ETIMEDOUT') ||
+          msg.includes('fetch failed') ||
+          msg.includes('socket') ||
+          msg.includes('timeout') ||
+          msg.includes('Timeout') ||
           msg.includes('503') ||
           msg.includes('429') ||
+          msg.includes('504') ||
+          msg.includes('SyntaxError') ||
+          msg.includes('JSON5') ||
           msg.includes('RESOURCE_EXHAUSTED') ||
           msg.includes('UNAVAILABLE') ||
           msg.includes('INTERNAL');

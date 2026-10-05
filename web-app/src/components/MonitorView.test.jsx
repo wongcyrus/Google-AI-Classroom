@@ -22,6 +22,7 @@ const mockOnSnapshot = vi.fn((ref, cb) => {
           isAudioSharing: true,
           faceStatus: 'normal',
           timestamp: fixedDate,
+          latestScreenPath: 'screenshots/CLASS_101/s_1/screen.jpg',
         }),
       },
       {
@@ -92,8 +93,12 @@ const mockStopBroadcast = vi.fn();
 
 vi.mock('../hooks/usePrompts', () => ({
   usePrompts: vi.fn(() => ({
-    prompts: [],
-    filteredPrompts: [],
+    prompts: [
+      { id: 'p1', name: 'Standard Vision Proctor', promptText: 'Detect browser tabs and prohibited apps', accessLevel: 'public', category: 'images' },
+    ],
+    filteredPrompts: [
+      { id: 'p1', name: 'Standard Vision Proctor', promptText: 'Detect browser tabs and prohibited apps', accessLevel: 'public', category: 'images' },
+    ],
     promptFilter: 'all',
     setPromptFilter: mockSetPromptFilter,
   })),
@@ -161,6 +166,7 @@ describe('MonitorView Component Suite', () => {
     currentExamActive = false;
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(fixedDate);
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
   });
@@ -357,9 +363,14 @@ describe('MonitorView Component Suite', () => {
     const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
     fireEvent.click(screenTabBtn);
 
-    // Enter prompt into textarea
-    const promptTextarea = screen.getByPlaceholderText(/Select a prompt template or write custom instructions/i);
-    fireEvent.change(promptTextarea, { target: { value: 'Detect browser tabs and prohibited apps' } });
+    // Select prompt template from dropdown
+    const promptSelect = screen.getByDisplayValue(/Select a prompt template.../i);
+    fireEvent.change(promptSelect, { target: { value: 'p1' } });
+
+    // Verify textarea is populated and read-only
+    const promptTextarea = screen.getByPlaceholderText(/Select a prompt template from the dropdown above/i);
+    expect(promptTextarea).toHaveAttribute('readonly');
+    expect(promptTextarea.value).toBe('Detect browser tabs and prohibited apps');
 
     // Save & apply settings to populate editablePromptText in parent
     const saveSettingsBtn = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
@@ -378,7 +389,15 @@ describe('MonitorView Component Suite', () => {
       fireEvent.click(analyzeBtn);
     });
 
-    expect(mockRunPerImageAnalysis).toHaveBeenCalled();
+    expect(mockRunPerImageAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        s_1: expect.objectContaining({ email: 'student1@school.edu' }),
+      }),
+      'Detect browser tabs and prohibited apps',
+      expect.any(String)
+    );
+    // Student 2 is NOT sharing and must be strictly skipped
+    expect(mockRunPerImageAnalysis.mock.calls[0][0]['s_2']).toBeUndefined();
   });
 
   it('opens and closes Not Sharing students modal, allows sorting and searching', () => {

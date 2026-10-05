@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '../Modal';
+import PromptViewModal from '../PromptViewModal';
 import AiCostReportView from '../AiCostReportView';
 import BingoQuestionBankModal from '../BingoQuestionBankModal';
 import { auth, functions, db } from '../../firebase-config';
@@ -41,6 +42,7 @@ const ControlsPanel = ({
     vadSensitivity = 15,
     voiceAiCloudFallbackRate = 3,
     liveAudioPrompt = null,
+    liveImagePrompt = null,
     audioPrompts = [],
     handleSaveAiSettings,
     handleSaveGazeSettings,
@@ -266,7 +268,49 @@ const ControlsPanel = ({
     const [modalEditableVoicePromptText, setModalEditableVoicePromptText] = useState('');
     const [modalSelectedAiModel, setModalSelectedAiModel] = useState('gemini-3.5-flash-lite');
     const [modalSamplingRate, setModalSamplingRate] = useState(5);
+    const [modalSelectedVisionPrompt, setModalSelectedVisionPrompt] = useState(null);
     const [modalEditablePromptText, setModalEditablePromptText] = useState('');
+    const [copiedVoicePrompt, setCopiedVoicePrompt] = useState(false);
+    const [copiedVisionPrompt, setCopiedVisionPrompt] = useState(false);
+    const [showVoicePromptModal, setShowVoicePromptModal] = useState(false);
+    const [showVisionPromptModal, setShowVisionPromptModal] = useState(false);
+
+    const selectedVisionPromptId = useMemo(() => {
+      const activePrompt = modalSelectedVisionPrompt || selectedPrompt || liveImagePrompt;
+      if (!activePrompt) return '';
+      const list = filteredPrompts || prompts || [];
+      if (activePrompt.id && list.some(p => p.id === activePrompt.id)) {
+        return activePrompt.id;
+      }
+      if (activePrompt.originalId && list.some(p => p.id === activePrompt.originalId)) {
+        return activePrompt.originalId;
+      }
+      const match = list.find(p => p.name === activePrompt.name);
+      if (match) return match.id;
+      return activePrompt.id || activePrompt.originalId || '';
+    }, [modalSelectedVisionPrompt, selectedPrompt, liveImagePrompt, filteredPrompts, prompts]);
+
+    const handleCopyVoicePrompt = () => {
+      if (!modalEditableVoicePromptText) return;
+      try {
+        navigator.clipboard?.writeText(modalEditableVoicePromptText);
+        setCopiedVoicePrompt(true);
+        setTimeout(() => setCopiedVoicePrompt(false), 2000);
+      } catch (err) {
+        console.warn('Failed to copy voice prompt:', err);
+      }
+    };
+
+    const handleCopyVisionPrompt = () => {
+      if (!modalEditablePromptText) return;
+      try {
+        navigator.clipboard?.writeText(modalEditablePromptText);
+        setCopiedVisionPrompt(true);
+        setTimeout(() => setCopiedVisionPrompt(false), 2000);
+      } catch (err) {
+        console.warn('Failed to copy vision prompt:', err);
+      }
+    };
 
     const openGazeConfigModal = () => {
       setModalAiMonitoringMode(currentMode);
@@ -289,7 +333,13 @@ const ControlsPanel = ({
       setModalEditableVoicePromptText(liveAudioPrompt?.promptText || (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : ''));
       setModalSelectedAiModel(selectedAiModel || 'gemini-3.5-flash-lite');
       setModalSamplingRate(samplingRate || 5);
-      setModalEditablePromptText(editablePromptText || '');
+
+      let currentVisionPrompt = selectedPrompt || liveImagePrompt || null;
+      if (!currentVisionPrompt && editablePromptText) {
+        currentVisionPrompt = (prompts || []).find(p => p.promptText === editablePromptText || p.name === editablePromptText) || null;
+      }
+      setModalSelectedVisionPrompt(currentVisionPrompt);
+      setModalEditablePromptText(editablePromptText || currentVisionPrompt?.promptText || '');
 
       setShowGazeModal(true);
     };
@@ -298,23 +348,36 @@ const ControlsPanel = ({
       const clientAllowed = modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'client_only';
       const cloudAllowed = modalAiMonitoringMode === 'hybrid' || modalAiMonitoringMode === 'cloud_only';
 
+      if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
       if (setSamplingRate) setSamplingRate(modalSamplingRate);
       if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
       if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
 
       let finalLiveAudioPrompt = null;
       if (modalSelectedVoicePrompt) {
-        const isModified = modalSelectedVoicePrompt.promptText !== modalEditableVoicePromptText;
         finalLiveAudioPrompt = {
           ...modalSelectedVoicePrompt,
-          promptText: modalEditableVoicePromptText,
-          name: isModified && modalSelectedVoicePrompt.name ? `${modalSelectedVoicePrompt.name} (Customized)` : (modalSelectedVoicePrompt.name || 'Custom Voice Prompt'),
+          promptText: modalSelectedVoicePrompt.promptText || modalEditableVoicePromptText,
           originalId: modalSelectedVoicePrompt.id || modalSelectedVoicePrompt.originalId,
         };
       } else if (modalEditableVoicePromptText && modalEditableVoicePromptText.trim()) {
         finalLiveAudioPrompt = {
           name: 'Custom Voice Prompt',
           promptText: modalEditableVoicePromptText,
+        };
+      }
+
+      let finalLiveImagePrompt = null;
+      if (modalSelectedVisionPrompt) {
+        finalLiveImagePrompt = {
+          ...modalSelectedVisionPrompt,
+          promptText: modalEditablePromptText || modalSelectedVisionPrompt.promptText,
+          originalId: modalSelectedVisionPrompt.id || modalSelectedVisionPrompt.originalId,
+        };
+      } else if (modalEditablePromptText && modalEditablePromptText.trim()) {
+        finalLiveImagePrompt = {
+          name: 'Custom Vision Prompt',
+          promptText: modalEditablePromptText,
         };
       }
 
@@ -342,6 +405,7 @@ const ControlsPanel = ({
           liveAudioPrompt: finalLiveAudioPrompt,
           // Screen / Cloud Model
           selectedAiModel: modalSelectedAiModel,
+          liveImagePrompt: finalLiveImagePrompt,
         });
       } else {
         if (handleFaceDebounceChange) handleFaceDebounceChange(modalFaceDebounceSeconds);
@@ -1512,7 +1576,7 @@ const ControlsPanel = ({
                   {modalVoiceAiMode !== 'disabled' && (
                     <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
-                        Select & Edit Voice AI Prompt:
+                        Select Voice AI Prompt Template (Read-Only Preview):
                       </label>
 
                       {/* Filter Radio */}
@@ -1539,9 +1603,11 @@ const ControlsPanel = ({
                           setModalSelectedVoicePrompt(p || null);
                           if (p && p.promptText) {
                             setModalEditableVoicePromptText(p.promptText);
+                          } else {
+                            setModalEditableVoicePromptText('');
                           }
                         }}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '8px' }}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '6px' }}
                       >
                         <option value="">-- Select a voice/audio prompt template --</option>
                         {(audioPrompts || [])
@@ -1557,47 +1623,110 @@ const ControlsPanel = ({
                           ))}
                       </select>
 
-                      {/* Placeholder hint chips */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Available Placeholders:</span>
-                        {['{{transcript}}', '{{classId}}', '{{studentUid}}', '{{studentEmail}}'].map(tag => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => setModalEditableVoicePromptText(prev => prev + (prev.endsWith(' ') || !prev ? '' : ' ') + tag)}
-                            style={{
-                              fontSize: '0.68rem',
-                              padding: '2px 6px',
-                              background: '#e0e7ff',
-                              color: '#3730a3',
-                              border: '1px solid #c7d2fe',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontFamily: 'monospace'
-                            }}
-                            title={`Insert ${tag} into prompt`}
-                          >
-                            + {tag}
-                          </button>
-                        ))}
+                      {/* Read-Only Notice Bar & Review Toolbar */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 6px 0', fontSize: '0.74rem', color: '#64748b', flexWrap: 'wrap', gap: '6px' }}>
+                        <div>
+                          <span>🔒 <strong>Template Preview (Read-Only)</strong></span>
+                          <span style={{ marginLeft: '8px' }}>Customized prompts must be created in Prompt Management</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowVoicePromptModal(true)}
+                          disabled={!modalEditableVoicePromptText}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: '0.72rem',
+                            backgroundColor: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '4px',
+                            cursor: modalEditableVoicePromptText ? 'pointer' : 'not-allowed',
+                            color: '#1d4ed8',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          ⛶ Expand / Full Review
+                        </button>
                       </div>
 
-                      {/* Editable Prompt Textarea */}
+                      {/* Read-Only Prompt Textarea */}
                       <textarea
                         value={modalEditableVoicePromptText}
-                        onChange={(e) => setModalEditableVoicePromptText(e.target.value)}
-                        placeholder="Select a voice prompt template or write custom instructions for LiteRT Gemma & Cloud Gemini..."
+                        readOnly
+                        placeholder="Select a voice prompt template from the dropdown above..."
+                        rows={8}
                         style={{
                           width: '100%',
-                          minHeight: '100px',
+                          minHeight: '140px',
                           padding: '8px 10px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
-                          fontSize: '0.82rem',
+                          fontSize: '0.84rem',
+                          lineHeight: 1.5,
                           fontFamily: 'monospace',
-                          boxSizing: 'border-box'
+                          boxSizing: 'border-box',
+                          backgroundColor: '#f8fafc',
+                          color: '#334155',
+                          cursor: 'default',
+                          resize: 'vertical'
                         }}
                       />
+
+                      {/* Copy & Prompt Management Guidance */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={handleCopyVoicePrompt}
+                            disabled={!modalEditableVoicePromptText}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              cursor: modalEditableVoicePromptText ? 'pointer' : 'not-allowed',
+                              color: '#334155',
+                            }}
+                          >
+                            {copiedVoicePrompt ? '✓ Copied!' : '📋 Copy Prompt Text'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowVoicePromptModal(true)}
+                            disabled={!modalEditableVoicePromptText}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '4px',
+                              cursor: modalEditableVoicePromptText ? 'pointer' : 'not-allowed',
+                              color: '#1d4ed8',
+                              fontWeight: 600
+                            }}
+                          >
+                            ⛶ Full Screen Review
+                          </button>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          ✏️ Manage custom prompts in <strong>Prompt Management</strong>
+                        </span>
+                      </div>
+
+                      {/* Fullscreen Voice Prompt Review Modal */}
+                      {showVoicePromptModal && (
+                        <PromptViewModal
+                          show={showVoicePromptModal}
+                          onClose={() => setShowVoicePromptModal(false)}
+                          promptName={modalSelectedVoicePrompt?.name || 'Voice AI Prompt Template'}
+                          category="audios"
+                          accessLevel={modalSelectedVoicePrompt?.accessLevel || 'public'}
+                          promptText={modalEditableVoicePromptText}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1668,10 +1797,10 @@ const ControlsPanel = ({
                     </div>
                   </div>
 
-                  {/* Prompt Selection & Live Editor */}
+                  {/* Prompt Selection & Read-Only Preview */}
                   <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <label style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: '6px' }}>
-                      Select & Edit Vision AI Prompt:
+                      Select Vision AI Prompt Template (Read-Only Preview):
                     </label>
 
                     {/* Filter Radio */}
@@ -1692,38 +1821,132 @@ const ControlsPanel = ({
 
                     {/* Prompt Select */}
                     <select
-                      value={selectedPrompt ? selectedPrompt.id : ''}
+                      value={selectedVisionPromptId}
                       onChange={(e) => {
-                        const p = (prompts || []).find(item => item.id === e.target.value);
-                        if (setSelectedPrompt) setSelectedPrompt(p);
+                        const allAvailable = filteredPrompts || prompts || [];
+                        const p = allAvailable.find(item => item.id === e.target.value);
+                        setModalSelectedVisionPrompt(p || null);
+                        if (setSelectedPrompt) setSelectedPrompt(p || null);
                         if (p && p.promptText) {
                           setModalEditablePromptText(p.promptText);
+                        } else {
+                          setModalEditablePromptText('');
                         }
                       }}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '8px' }}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '6px' }}
                     >
-                      <option value="" disabled>Select a prompt template...</option>
-                      {(filteredPrompts || prompts || []).map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
+                      <option value="">Select a prompt template...</option>
+                      {(filteredPrompts || prompts || [])
+                        .filter(p => !p.name?.toLowerCase().includes('bingo') && !p.applyTo?.includes('Classroom Bingo Questions'))
+                        .map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
                     </select>
 
-                    {/* Editable Prompt Textarea */}
+                    {/* Read-Only Notice Bar & Review Toolbar */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 6px 0', fontSize: '0.74rem', color: '#64748b', flexWrap: 'wrap', gap: '6px' }}>
+                      <div>
+                        <span>🔒 <strong>Template Preview (Read-Only)</strong></span>
+                        <span style={{ marginLeft: '8px' }}>Customized prompts must be created in Prompt Management</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowVisionPromptModal(true)}
+                        disabled={!modalEditablePromptText}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '0.72rem',
+                          backgroundColor: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '4px',
+                          cursor: modalEditablePromptText ? 'pointer' : 'not-allowed',
+                          color: '#1d4ed8',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        ⛶ Expand / Full Review
+                      </button>
+                    </div>
+
+                    {/* Read-Only Prompt Textarea */}
                     <textarea
                       value={modalEditablePromptText}
-                      onChange={(e) => setModalEditablePromptText(e.target.value)}
-                      placeholder="Select a prompt template or write custom instructions for Gemini Vision..."
+                      readOnly
+                      placeholder="Select a prompt template from the dropdown above..."
+                      rows={8}
                       style={{
                         width: '100%',
-                        minHeight: '90px',
+                        minHeight: '140px',
                         padding: '8px 10px',
                         borderRadius: '6px',
                         border: '1px solid #cbd5e1',
-                        fontSize: '0.82rem',
-                        fontFamily: 'inherit',
-                        boxSizing: 'border-box'
+                        fontSize: '0.84rem',
+                        lineHeight: 1.5,
+                        fontFamily: 'monospace',
+                        boxSizing: 'border-box',
+                        backgroundColor: '#f8fafc',
+                        color: '#334155',
+                        cursor: 'default',
+                        resize: 'vertical'
                       }}
                     />
+
+                    {/* Copy & Prompt Management Guidance */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={handleCopyVisionPrompt}
+                          disabled={!modalEditablePromptText}
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: '0.75rem',
+                            backgroundColor: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '4px',
+                            cursor: modalEditablePromptText ? 'pointer' : 'not-allowed',
+                            color: '#334155',
+                          }}
+                        >
+                          {copiedVisionPrompt ? '✓ Copied!' : '📋 Copy Prompt Text'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowVisionPromptModal(true)}
+                          disabled={!modalEditablePromptText}
+                          style={{
+                            padding: '3px 8px',
+                            fontSize: '0.75rem',
+                            backgroundColor: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '4px',
+                            cursor: modalEditablePromptText ? 'pointer' : 'not-allowed',
+                            color: '#1d4ed8',
+                            fontWeight: 600
+                          }}
+                        >
+                          ⛶ Full Screen Review
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                        ✏️ Manage custom prompts in <strong>Prompt Management</strong>
+                      </span>
+                    </div>
+
+                    {/* Fullscreen Vision Prompt Review Modal */}
+                    {showVisionPromptModal && (
+                      <PromptViewModal
+                        show={showVisionPromptModal}
+                        onClose={() => setShowVisionPromptModal(false)}
+                        promptName={modalSelectedVisionPrompt?.name || selectedPrompt?.name || 'Vision AI Prompt Template'}
+                        category="images"
+                        accessLevel={modalSelectedVisionPrompt?.accessLevel || selectedPrompt?.accessLevel || 'public'}
+                        promptText={modalEditablePromptText}
+                      />
+                    )}
                   </div>
 
                   {/* Stream & Run Trigger Controls */}
@@ -1732,7 +1955,9 @@ const ControlsPanel = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                          const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
+                          if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                          if (setEditablePromptText) setEditablePromptText(promptToRun);
                           if (setSamplingRate) setSamplingRate(modalSamplingRate);
                           if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
                           setIsPerImageAnalysisRunning(prev => !prev);
@@ -1747,7 +1972,9 @@ const ControlsPanel = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
+                          const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
+                          if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                          if (setEditablePromptText) setEditablePromptText(promptToRun);
                           if (setSamplingRate) setSamplingRate(modalSamplingRate);
                           if (handleAiModelChange) handleAiModelChange(modalSelectedAiModel);
                           setIsAllImagesAnalysisRunning(prev => !prev);
@@ -1766,8 +1993,11 @@ const ControlsPanel = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
-                            handleRunAnalysis();
+                            const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
+                            const modelToRun = modalSelectedAiModel || selectedAiModel;
+                            if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                            if (setEditablePromptText) setEditablePromptText(promptToRun);
+                            handleRunAnalysis(promptToRun, modelToRun);
                             setShowGazeModal(false);
                           }}
                           disabled={isAnalyzing}
@@ -1781,8 +2011,11 @@ const ControlsPanel = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (setEditablePromptText) setEditablePromptText(modalEditablePromptText);
-                            handleRunAllImagesAnalysis();
+                            const promptToRun = modalEditablePromptText || modalSelectedVisionPrompt?.promptText || editablePromptText || '';
+                            const modelToRun = modalSelectedAiModel || selectedAiModel;
+                            if (setSelectedPrompt && modalSelectedVisionPrompt) setSelectedPrompt(modalSelectedVisionPrompt);
+                            if (setEditablePromptText) setEditablePromptText(promptToRun);
+                            handleRunAllImagesAnalysis(promptToRun, modelToRun);
                             setShowGazeModal(false);
                           }}
                           disabled={isAnalyzing}

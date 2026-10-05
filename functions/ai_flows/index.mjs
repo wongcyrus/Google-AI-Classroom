@@ -83,14 +83,14 @@ const callOptions = {
 export const analyzeImage = onCallGenkit({
     ...callOptions,    
     authPolicy: (auth) => {
-        return auth?.token?.role === 'teacher';
+        return auth?.token?.role === 'teacher' || auth?.token?.role === 'admin';
     },
 }, analyzeImageFlow);
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,
     authPolicy: (auth) => {
-        return auth?.token?.role === 'teacher';
+        return auth?.token?.role === 'teacher' || auth?.token?.role === 'admin';
     },
 }, analyzeAllImagesFlow);
 
@@ -572,7 +572,7 @@ export const reconcileLectureRecordings = onCall(callOptions, async (request) =>
   return await handleReconcileLectureRecordings({ classId });
 });
 
-import { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
-export { processLectureSubtitles, handleReconcileLectureRecordings };
+import { processLectureSubtitles, processLectureSubtitleJob, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
+export { processLectureSubtitles, processLectureSubtitleJob, handleReconcileLectureRecordings };
 export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';
 export { evaluateTaskSubmission, evaluateTaskSubmissionTask, enqueueTaskEvaluation } from './evaluateTaskSubmission.js';

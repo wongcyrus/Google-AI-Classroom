@@ -46,8 +46,8 @@ const parseAutoRollConfig = (value) => {
   return { stepRows, intervalMs: intervalSeconds * 1000 };
 };
 
-const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange }) => {
-  const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts();
+const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange, activeLiveClass = null, onSwitchClass = null }) => {
+  const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts('Per Image');
   const audioPrompts = useAudioPrompts(user);
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
@@ -141,6 +141,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [classSubjectDomain, setClassSubjectDomain] = useState('');
   const [classSubtitlePrompt, setClassSubtitlePrompt] = useState(null);
   const [classDefaultLectureRecording, setClassDefaultLectureRecording] = useState(true);
+  const [classSchedule, setClassSchedule] = useState(null);
   const [pendingBypassRequests, setPendingBypassRequests] = useState([]);
   const [classEmergencyPin, setClassEmergencyPin] = useState('');
 
@@ -297,7 +298,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         audioStream: synchronizedAudio,
         title: lectureTitle,
         topic: lectureTopic,
+        className,
         broadcastSessionId: currentBroadcastSessionId,
+        schedule: classSchedule,
       });
     }
 
@@ -338,8 +341,11 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     // Automatically check if multiple recordings exist for this broadcast session and merge them
     if (broadcastSessionIdToMerge && lectureRecorder?.mergeSessionRecordings) {
       setTimeout(() => {
+        const cleanGroupId = broadcastSessionIdToMerge.startsWith('bcast_')
+          ? broadcastSessionIdToMerge
+          : `bcast_${broadcastSessionIdToMerge}`;
         lectureRecorder
-          .mergeSessionRecordings({ sessionGroupId: `bcast_${broadcastSessionIdToMerge}` })
+          .mergeSessionRecordings({ sessionGroupId: cleanGroupId })
           .then((res) => {
             if (res?.success) {
               console.info('[MonitorView] Automatically merged lecture session:', res.combinedSessionId);
@@ -492,6 +498,12 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         setLiveAudioPrompt(settings.liveAudioPrompt);
       }
 
+      if (settings.liveImagePrompt !== undefined) {
+        payload.liveImagePrompt = settings.liveImagePrompt;
+        setSelectedPrompt(settings.liveImagePrompt);
+        setEditablePromptText(settings.liveImagePrompt?.promptText || '');
+      }
+
       if (settings.selectedAiModel) {
         payload.aiModel = settings.selectedAiModel;
         setSelectedAiModel(settings.selectedAiModel);
@@ -640,6 +652,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         if (data.aiModel) {
           setSelectedAiModel(data.aiModel);
         }
+        if (data.schedule) {
+          setClassSchedule(data.schedule);
+        }
 
         setFrameRate(prevRate => {
           const newRate = data.frameRate || 15;
@@ -720,6 +735,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
         if (data.liveAudioPrompt !== undefined) {
           setLiveAudioPrompt(data.liveAudioPrompt);
+        }
+        if (data.liveImagePrompt !== undefined) {
+          setSelectedPrompt(data.liveImagePrompt);
+          setEditablePromptText(data.liveImagePrompt?.promptText || '');
         }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
@@ -1168,6 +1187,12 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       let hasNewImages = false;
 
       for (const student of students) {
+        // Skip students who are not actively sharing their screen to prevent analyzing stale images and wasting AI tokens
+        if (!student.isSharing) {
+          lastAllImagesPathsRef.current.delete(student.id);
+          continue;
+        }
+
         const studentScreenshot = screenshotsRef.current[student.id];
         const studentUrl = studentScreenshot?.url || studentScreenshot?.screen?.url;
         const studentPath = studentScreenshot?.imagePath || studentScreenshot?.screen?.imagePath;
@@ -1617,17 +1642,20 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     await exportComplianceResultsToExcel(filteredStudents, problemFilter, classComplianceSettings, screenshots, classId);
   };
 
-  const handleRunAnalysis = async () => {
-    if (!editablePromptText.trim()) {
-        alert('Please select or enter a prompt.');
-        return;
+  const handleRunAnalysis = async (overridePromptText, overrideModel) => {
+    const promptToUse = (overridePromptText !== undefined ? overridePromptText : editablePromptText) || '';
+    const modelToUse = overrideModel || selectedAiModel;
+
+    if (!promptToUse.trim()) {
+      alert('Please select or enter a prompt.');
+      return;
     }
 
     const screenshotsToAnalyze = {};
     if (reviewTime) {
       for (const studentId in screenshots) {
         const student = students.find(s => s.id === studentId);
-        if (student && screenshots[studentId]) {
+        if (student && screenshots[studentId]?.url) {
           screenshotsToAnalyze[studentId] = {
             url: screenshots[studentId].url,
             email: student.email,
@@ -1636,33 +1664,42 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
       }
     } else {
+      // Only include students who are actively sharing their screen. Non-sharing students are strictly skipped to avoid wasting tokens on stale images.
       for (const student of students) {
-          if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.id] = {
-              url: screenshots[student.id].url,
-              email: student.email,
-              imagePath: screenshots[student.id].imagePath
-            };
-          }
+        if (student.isSharing && screenshots[student.id]?.url) {
+          screenshotsToAnalyze[student.id] = {
+            url: screenshots[student.id].url,
+            email: student.email,
+            imagePath: screenshots[student.id].imagePath
+          };
+        }
       }
+    }
+
+    if (Object.keys(screenshotsToAnalyze).length === 0) {
+      alert('No students are currently sharing their screen. Analysis skipped to avoid analyzing stale images and wasting AI tokens.');
+      return;
     }
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
-    await runPerImageAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
+    await runPerImageAnalysis(screenshotsToAnalyze, promptToUse, modelToUse);
   };
 
-  const handleRunAllImagesAnalysis = async () => {
-    if (!editablePromptText.trim()) {
-        alert('Please select or enter a prompt.');
-        return;
+  const handleRunAllImagesAnalysis = async (overridePromptText, overrideModel) => {
+    const promptToUse = (overridePromptText !== undefined ? overridePromptText : editablePromptText) || '';
+    const modelToUse = overrideModel || selectedAiModel;
+
+    if (!promptToUse.trim()) {
+      alert('Please select or enter a prompt.');
+      return;
     }
 
     const screenshotsToAnalyze = {};
     if (reviewTime) {
       for (const studentId in screenshots) {
         const student = students.find(s => s.id === studentId);
-        if (student && screenshots[studentId]) {
+        if (student && screenshots[studentId]?.url) {
           screenshotsToAnalyze[studentId] = {
             url: screenshots[studentId].url,
             email: student.email,
@@ -1671,20 +1708,26 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
       }
     } else {
+      // Only include students who are actively sharing their screen. Non-sharing students are strictly skipped to avoid wasting tokens on stale images.
       for (const student of students) {
-          if (student.isSharing && screenshots[student.id]) {
-            screenshotsToAnalyze[student.id] = {
-              url: screenshots[student.id].url,
-              email: student.email,
-              imagePath: screenshots[student.id].imagePath
-            };
-          }
+        if (student.isSharing && screenshots[student.id]?.url) {
+          screenshotsToAnalyze[student.id] = {
+            url: screenshots[student.id].url,
+            email: student.email,
+            imagePath: screenshots[student.id].imagePath
+          };
+        }
       }
+    }
+
+    if (Object.keys(screenshotsToAnalyze).length === 0) {
+      alert('No students are currently sharing their screen. Analysis skipped to avoid analyzing stale images and wasting AI tokens.');
+      return;
     }
 
     setShowPromptModal(false);
     setShowAnalysisResultsModal(true);
-    await runAllImagesAnalysis(screenshotsToAnalyze, editablePromptText, selectedAiModel);
+    await runAllImagesAnalysis(screenshotsToAnalyze, promptToUse, modelToUse);
   };
 
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
@@ -1815,6 +1858,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         vadSensitivity={vadSensitivity}
         voiceAiCloudFallbackRate={voiceAiCloudFallbackRate}
         liveAudioPrompt={liveAudioPrompt}
+        liveImagePrompt={selectedPrompt}
         audioPrompts={audioPrompts}
         handleSaveAiSettings={handleSaveAiSettings}
         handleSaveGazeSettings={handleSaveGazeSettings}
@@ -2331,6 +2375,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         defaultRecordOnStart={classDefaultLectureRecording}
         onOpenRecordings={() => setShowRecordingsModal(true)}
         classId={classId}
+        className={className}
+        activeLiveClass={activeLiveClass}
+        onSwitchClass={onSwitchClass}
         isPublicBroadcast={isPublicBroadcast}
         publicPin={publicPin}
       />
