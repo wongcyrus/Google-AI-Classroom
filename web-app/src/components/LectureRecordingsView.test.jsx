@@ -29,12 +29,14 @@ vi.mock('firebase/firestore', () => ({
   setDoc: (...args) => mockSetDoc(...args),
   query: vi.fn((collRef) => collRef),
   orderBy: vi.fn(),
+  where: vi.fn(),
   onSnapshot: (...args) => mockOnSnapshot(...args),
 }));
 
 const mockHttpsCallable = vi.fn();
+const mockHttpsCallableFactory = vi.fn(() => mockHttpsCallable);
 vi.mock('firebase/functions', () => ({
-  httpsCallable: () => mockHttpsCallable,
+  httpsCallable: (...args) => mockHttpsCallableFactory(...args),
 }));
 
 // Mock JSZip
@@ -55,6 +57,11 @@ describe('LectureRecordingsView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     snapshotCallbacks = [];
+    mockOnSnapshot.mockImplementation((queryRef, cb) => {
+      snapshotCallback = cb;
+      snapshotCallbacks.push({ path: queryRef?.path, cb });
+      return vi.fn();
+    });
     global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
     global.URL.revokeObjectURL = vi.fn();
     global.fetch = vi.fn().mockResolvedValue({
@@ -127,6 +134,31 @@ describe('LectureRecordingsView Component', () => {
     expect(videoElement).toBeInTheDocument();
     const tracks = videoElement.querySelectorAll('track');
     expect(tracks.length).toBe(3); // en, zh-Hant, ja
+
+    // Subtitle language toolbar checks
+    expect(screen.getByTestId('subtitle-language-toolbar')).toBeInTheDocument();
+    const enBtn = screen.getByRole('button', { name: /🇬🇧 English/i });
+    const zhBtn = screen.getByRole('button', { name: /🇭🇰 繁體中文/i });
+    const jaBtn = screen.getByRole('button', { name: /🇯🇵 日本語/i });
+    const offBtn = screen.getByRole('button', { name: /🚫 Off/i });
+
+    expect(enBtn).toBeInTheDocument();
+    expect(zhBtn).toBeInTheDocument();
+    expect(jaBtn).toBeInTheDocument();
+    expect(offBtn).toBeInTheDocument();
+
+    // Default to English
+    expect(enBtn).toHaveClass('active');
+
+    // Select Traditional Chinese
+    fireEvent.click(zhBtn);
+    expect(zhBtn).toHaveClass('active');
+    expect(enBtn).not.toHaveClass('active');
+
+    // Select Off
+    fireEvent.click(offBtn);
+    expect(offBtn).toHaveClass('active');
+    expect(zhBtn).not.toHaveClass('active');
   });
 
   it('allows copying YouTube title to clipboard', async () => {
@@ -236,10 +268,17 @@ describe('LectureRecordingsView Component', () => {
       fireEvent.click(retryBtn);
     });
 
+    const startBtn = screen.getByRole('button', { name: /Start AI Generation/i });
+    expect(startBtn).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
     expect(mockHttpsCallable).toHaveBeenCalledWith(
       expect.objectContaining({
         classId: 'test_class',
         sessionId: 'rec_retry',
+        isManualTrigger: true,
       })
     );
   });
@@ -335,6 +374,73 @@ describe('LectureRecordingsView Component', () => {
         classId: 'test_class',
         sessionGroupId: 'grp_lecture_1',
         recordingIds: ['rec_clip_1', 'rec_clip_2'],
+      })
+    );
+  });
+
+  it('detects and clusters multiple clips with differing bcast_ IDs from the same date', async () => {
+    mockHttpsCallable.mockResolvedValue({
+      data: {
+        success: true,
+        combinedSessionId: 'rec_combined_abc',
+        storagePath: 'recordings/test_class/rec_combined_abc/lecture.webm',
+        title: 'Combined Full Lecture - 10/5/2026',
+      },
+    });
+
+    render(
+      <LectureRecordingsView
+        classId="test_class"
+        user={{ uid: 'teacher_1', email: 'teacher@test.com' }}
+      />
+    );
+
+    const mockDocs = [
+      {
+        id: 'rec_clip_a',
+        data: () => ({
+          title: 'Lecture Clip A',
+          sessionGroupId: 'bcast_1759000_abc',
+          durationSeconds: 120,
+          startedAt: new Date('2026-10-05T09:15:00'),
+          status: 'ready',
+          videoUrl: 'https://storage.googleapis.com/test/clipA.webm',
+        }),
+      },
+      {
+        id: 'rec_clip_b',
+        data: () => ({
+          title: 'Lecture Clip B',
+          sessionGroupId: 'bcast_1759001_xyz',
+          durationSeconds: 300,
+          startedAt: new Date('2026-10-05T09:30:00'),
+          status: 'ready',
+          videoUrl: 'https://storage.googleapis.com/test/clipB.webm',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    // Verify unmerged banner appears despite differing bcast_ sessionGroupIds
+    await waitFor(() => {
+      expect(screen.getByText(/2 separate recording clips detected/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Merge into Full Lecture/i })).toBeInTheDocument();
+    });
+
+    // Click Merge
+    const mergeBtn = screen.getByRole('button', { name: /Merge into Full Lecture/i });
+    await act(async () => {
+      fireEvent.click(mergeBtn);
+    });
+
+    // Check that callable was invoked with recordingIds
+    expect(mockHttpsCallable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'test_class',
+        recordingIds: ['rec_clip_a', 'rec_clip_b'],
       })
     );
   });
@@ -707,12 +813,19 @@ describe('LectureRecordingsView Component', () => {
         fireEvent.click(retryBtn);
       });
 
+      const startBtn = screen.getByRole('button', { name: /Start AI Generation/i });
+      expect(startBtn).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(startBtn);
+      });
+
       expect(mockHttpsCallable).toHaveBeenCalledWith(
         expect.objectContaining({
           classId: 'test_class',
           sessionId: 'rec_failed_sub',
           title: 'Failed Subtitles Lecture',
           topic: 'Debugging',
+          isManualTrigger: true,
         })
       );
     });
@@ -772,7 +885,638 @@ describe('LectureRecordingsView Component', () => {
       );
       confirmSpy.mockRestore();
     });
+
+    it('displays shared and private badges, toggles student sharing, and warns when class sharing is disabled', async () => {
+      const mockDocs = [
+        {
+          id: 'rec_private',
+          data: () => ({
+            title: 'Private Lecture Session',
+            durationSeconds: 300,
+            status: 'ready',
+            isSharedWithStudents: false,
+          }),
+        },
+        {
+          id: 'rec_shared',
+          data: () => ({
+            title: 'Shared Lecture Session',
+            durationSeconds: 400,
+            status: 'ready',
+            isSharedWithStudents: true,
+          }),
+        },
+      ];
+
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const recCb = snapshotCallbacks.find((s) => s.path?.includes('lectureRecordings'))?.cb || snapshotCallback;
+      const classDocCb = snapshotCallbacks.find((s) => s.path === 'classes/test_class')?.cb;
+
+      await act(async () => {
+        recCb({ docs: mockDocs });
+        if (classDocCb) {
+          classDocCb({
+            exists: () => true,
+            data: () => ({ allowShareTeacherRecordings: false }),
+          });
+        }
+      });
+
+      // Verify badges in the recording list
+      expect(screen.getByText('🔒 Private')).toBeInTheDocument();
+      expect(screen.getByText('👥 Shared')).toBeInTheDocument();
+
+      // Warning banner is displayed when class sharing is disabled
+      expect(screen.getByText(/Class Sharing Disabled/i)).toBeInTheDocument();
+
+      // Verify 1-click class-level student sharing toggle button
+      const enableClassBtn = screen.getByRole('button', { name: /Enable Student Access for Class/i });
+      expect(enableClassBtn).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(enableClassBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/test_class' }),
+        expect.objectContaining({
+          allowShareTeacherRecordings: true,
+        })
+      );
+    });
+
+    it('supports 3 policy modes (always_shared, selective, private) and controls in the studio', async () => {
+      const mockDocs = [
+        {
+          id: 'rec_auto_1',
+          data: () => ({
+            title: 'Auto Shared Lecture',
+            status: 'completed',
+            videoUrl: 'https://storage.googleapis.com/test/auto.webm',
+            isSharedWithStudents: false,
+            durationSeconds: 900,
+          }),
+        },
+      ];
+
+      render(
+        <LectureRecordingsView
+          classId="test_class"
+          user={{ uid: 'teacher_1', email: 'teacher@school.edu' }}
+        />
+      );
+
+      const recCb = snapshotCallbacks.find((s) => s.path?.includes('lectureRecordings'))?.cb || snapshotCallback;
+      const classDocCb = snapshotCallbacks.find((s) => s.path === 'classes/test_class')?.cb;
+
+      // 1. Test always_shared policy
+      await act(async () => {
+        recCb({ docs: mockDocs });
+        if (classDocCb) {
+          classDocCb({
+            exists: () => true,
+            data: () => ({ teacherRecordingsPolicy: 'always_shared', allowShareTeacherRecordings: true }),
+          });
+        }
+      });
+
+      expect(screen.getByText(/Class Student Access: Always Shared \(Automatic\)/i)).toBeInTheDocument();
+      // Even though isSharedWithStudents is false, badge shows Shared because policy is always_shared
+      expect(screen.getByText('👥 Shared')).toBeInTheDocument();
+
+      // Recording is auto-selected into detail panel
+      expect(screen.getAllByText('Auto Shared Lecture').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Automatically shared with enrolled students \(Class Policy: Always Share\)/i)).toBeInTheDocument();
+
+      // Click Switch to Selective
+      const switchToSelectiveBtn = screen.getByRole('button', { name: /Switch to Selective/i });
+      await act(async () => {
+        fireEvent.click(switchToSelectiveBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/test_class' }),
+        expect.objectContaining({
+          teacherRecordingsPolicy: 'selective',
+          allowShareTeacherRecordings: true,
+        })
+      );
+    });
+
+    it('filters recordings by lesson using the lesson dropdown filter', async () => {
+      const mockLessons = [
+        {
+          id: 'lesson_1',
+          lessonId: 'lesson_1',
+          title: 'Lesson 1: Intro',
+          startTime: '2026-10-02T08:00:00Z',
+          endTime: '2026-10-02T09:00:00Z',
+          duration: 60,
+        },
+        {
+          id: 'lesson_2',
+          lessonId: 'lesson_2',
+          title: 'Lesson 2: Advanced',
+          startTime: '2026-10-09T08:00:00Z',
+          endTime: '2026-10-09T09:00:00Z',
+          duration: 60,
+        },
+      ];
+
+      const mockDocs = [
+        {
+          id: 'rec_l1',
+          data: () => ({
+            title: 'Recording for Lesson 1',
+            startedAt: '2026-10-02T08:15:00Z',
+            lessonId: 'lesson_1',
+            isSharedWithStudents: true,
+          }),
+        },
+        {
+          id: 'rec_l2',
+          data: () => ({
+            title: 'Recording for Lesson 2',
+            startedAt: '2026-10-09T08:15:00Z',
+            lessonId: 'lesson_2',
+            isSharedWithStudents: false,
+          }),
+        },
+      ];
+
+      render(<LectureRecordingsView classId="test_class" lessons={mockLessons} />);
+
+      const recCb = snapshotCallbacks.find((s) => s.path?.includes('lectureRecordings'))?.cb || snapshotCallback;
+      await act(async () => {
+        recCb({ docs: mockDocs });
+      });
+
+      // Initially all lessons shown
+      expect(screen.getAllByText('Recording for Lesson 1').length).toBeGreaterThan(0);
+      expect(screen.getByText('Recording for Lesson 2')).toBeInTheDocument();
+
+      // Filter by Lesson 1
+      const filterSelect = screen.getByLabelText(/Filter recordings by lesson:/i);
+      await act(async () => {
+        fireEvent.change(filterSelect, { target: { value: 'lesson_1' } });
+      });
+
+      expect(screen.getAllByText('Recording for Lesson 1').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Recording for Lesson 2')).not.toBeInTheDocument();
+    });
+
+    it('automatically promotes class policy to selective when sharing an individual recording on a private class', async () => {
+      const mockDocs = [
+        {
+          id: 'rec_target_to_share',
+          data: () => ({
+            title: 'Operating Systems Virtual Memory',
+            status: 'ready',
+            videoUrl: 'https://storage.googleapis.com/test/os.webm',
+            isSharedWithStudents: false,
+            durationSeconds: 1200,
+          }),
+        },
+      ];
+
+      render(<LectureRecordingsView classId="it3901-l" />);
+
+      const recCb = snapshotCallbacks.find((s) => s.path?.includes('lectureRecordings'))?.cb || snapshotCallback;
+      const classDocCb = snapshotCallbacks.find((s) => s.path === 'classes/it3901-l')?.cb;
+
+      await act(async () => {
+        recCb({ docs: mockDocs });
+        if (classDocCb) {
+          classDocCb({
+            exists: () => true,
+            data: () => ({ teacherRecordingsPolicy: 'private', allowShareTeacherRecordings: false }),
+          });
+        }
+      });
+
+      // Target recording should be selected into detail panel
+      expect(screen.getAllByText('Operating Systems Virtual Memory').length).toBeGreaterThanOrEqual(1);
+
+      const shareBtn = screen.getByRole('button', { name: /Share with Students/i });
+      expect(shareBtn).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(shareBtn);
+      });
+
+      // Verify the recording document was marked as shared
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it3901-l/lectureRecordings/rec_target_to_share' }),
+        expect.objectContaining({
+          isSharedWithStudents: true,
+        })
+      );
+
+      // Verify the class document was automatically promoted to selective sharing
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it3901-l' }),
+        expect.objectContaining({
+          teacherRecordingsPolicy: 'selective',
+          allowShareTeacherRecordings: true,
+        })
+      );
+    });
+
+    it('defaults to Cloud Storage HTML5 Player when CC subtitles exist even if Drive is linked, and shows Drive no-CC banner if switched to Drive', async () => {
+      let snapshotCallback;
+      mockOnSnapshot.mockImplementation((query, callback) => {
+        snapshotCallback = callback;
+        return vi.fn();
+      });
+
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_drive_and_cc',
+          data: () => ({
+            title: 'DevOps Cloud Lecture',
+            durationSeconds: 1500,
+            status: 'ready',
+            videoUrl: 'https://storage.googleapis.com/test/devops.webm',
+            driveFileId: 'drive_file_abc123',
+            vttUrls: {
+              en: 'https://storage.googleapis.com/test/devops_en.vtt',
+              'zh-Hant': 'https://storage.googleapis.com/test/devops_zh.vtt',
+            },
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      // HTML5 video player should be active by default (not Drive iframe)
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(screen.getByTestId('subtitle-language-toolbar')).toBeInTheDocument();
+
+      // Switch to Drive stream tab
+      const driveTab = screen.getByRole('button', { name: /Google Drive Stream \(⚠️ No CC\)/i });
+      fireEvent.click(driveTab);
+
+      // In Drive mode, the warning banner is shown
+      expect(screen.getByTestId('drive-no-cc-banner')).toBeInTheDocument();
+      expect(screen.getByText(/Google Drive Preview does not support external CC subtitles/i)).toBeInTheDocument();
+
+      // Click language button from Drive banner to switch back to Cloud player with Traditional Chinese
+      const switchZhBtn = screen.getByRole('button', { name: /🇭🇰 繁體中文 \(Cloud Player\)/i });
+      fireEvent.click(switchZhBtn);
+
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /🇭🇰 繁體中文/i })).toHaveClass('active');
+    });
+
+    it('opens regeneration modal and allows teacher to pick model, target languages, and custom prompt', async () => {
+      render(<LectureRecordingsView classId="test_class" user={{ uid: 'teacher_1' }} />);
+
+      const mockDocs = [
+        {
+          id: 'rec_regen_test',
+          data: () => ({
+            title: 'Full Stack Development',
+            durationSeconds: 3600,
+            status: 'ready',
+            storagePath: 'recordings/test_class/rec_regen_test/lecture.webm',
+            videoUrl: 'https://storage.googleapis.com/test/fullstack.webm',
+            targetLanguages: ['en', 'zh-Hant'],
+            aiModelUsed: 'gemini-3.8-flash',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: /Re-generate Subtitles & CC/i })[0]).toBeInTheDocument();
+      });
+
+      // Click Re-generate Subtitles button
+      const regenBtn = screen.getAllByRole('button', { name: /Re-generate Subtitles & CC/i })[0];
+      await act(async () => {
+        fireEvent.click(regenBtn);
+      });
+
+      // Modal is visible
+      expect(screen.getByText(/Re-generate Multilingual Subtitles & CC/i)).toBeInTheDocument();
+      expect(screen.getByText(/Select Gemini AI Model/i)).toBeInTheDocument();
+      expect(screen.getByText(/Target Subtitle & CC Languages/i)).toBeInTheDocument();
+
+      // Switch model to Gemini 3.6 Flash
+      const gemini36Radio = screen.getByRole('radio', { name: /Gemini 3.6 Flash/i });
+      fireEvent.click(gemini36Radio);
+      expect(gemini36Radio).toBeChecked();
+
+      // Enter custom prompt in the textarea
+      const promptTextarea = screen.getByPlaceholderText(/Select a lecture recording prompt|Select a translation prompt/i);
+      fireEvent.change(promptTextarea, {
+        target: { value: 'Translate Computer Science and Vue.js terms carefully with Cantonese slang.' },
+      });
+
+      // Start generation
+      const startBtn = screen.getByRole('button', { name: /Start AI Generation/i });
+      await act(async () => {
+        fireEvent.click(startBtn);
+      });
+
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'test_class',
+          sessionId: 'rec_regen_test',
+          isManualTrigger: true,
+          preferredModel: 'gemini-3.6-flash',
+          customPrompt: 'Translate Computer Science and Vue.js terms carefully with Cantonese slang.',
+          targetLanguages: expect.arrayContaining(['en', 'zh-Hant']),
+        })
+      );
+    });
+
+    it('handles deadline-exceeded gracefully without popping an alert when subtitle generation takes long', async () => {
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+      const deadlineError = new Error('deadline-exceeded');
+      deadlineError.code = 'functions/deadline-exceeded';
+      mockHttpsCallable.mockRejectedValueOnce(deadlineError);
+
+      render(<LectureRecordingsView classId="test_class" user={{ uid: 'teacher_1' }} />);
+
+      const mockDocs = [
+        {
+          id: 'rec_timeout_test',
+          data: () => ({
+            title: 'Long 50min Lecture',
+            durationSeconds: 3400,
+            status: 'ready',
+            storagePath: 'recordings/test_class/rec_timeout_test/lecture.webm',
+            videoUrl: 'https://storage.googleapis.com/test/long.webm',
+            targetLanguages: ['en'],
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      const regenBtn = screen.getAllByRole('button', { name: /Re-generate Subtitles & CC/i })[0];
+      await act(async () => {
+        fireEvent.click(regenBtn);
+      });
+
+      const startBtn = screen.getByRole('button', { name: /Start AI Generation/i });
+      await act(async () => {
+        fireEvent.click(startBtn);
+      });
+
+      expect(mockHttpsCallableFactory).toHaveBeenCalledWith(
+        expect.anything(),
+        'processLectureSubtitles',
+        expect.objectContaining({ timeout: 600000 })
+      );
+      expect(alertSpy).not.toHaveBeenCalled();
+      alertSpy.mockRestore();
+    });
+
+    it('renders CC Skipped status badge when subtitlesDisabled is true and no vttUrls exist', async () => {
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_skipped_subs',
+          data: () => ({
+            title: 'Lecture with Subtitles Disabled',
+            durationSeconds: 1800,
+            status: 'ready',
+            subtitlesDisabled: true,
+            vttUrls: {},
+            videoUrl: 'https://storage.googleapis.com/test/lecture_no_cc.webm',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Video Ready \(CC Skipped\)/i)).toBeInTheDocument();
+      });
+    });
+
+    it('enables Custom Merge selection mode, allows selecting clips via checkboxes, and triggers merge with selected clips', async () => {
+      mockHttpsCallable.mockResolvedValue({
+        data: {
+          success: true,
+          combinedSessionId: 'rec_custom_merged',
+          storagePath: 'recordings/test_class/rec_custom_merged/lecture.webm',
+          title: 'Custom Merged Lecture',
+        },
+      });
+
+      render(<LectureRecordingsView classId="test_class" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_clip_1',
+          data: () => ({
+            title: 'Python Part 1',
+            startedAt: { seconds: 1791167878, nanoseconds: 0 },
+            durationSeconds: 273,
+            storagePath: 'recordings/test_class/rec_clip_1/lecture.webm',
+            status: 'ready',
+          }),
+        },
+        {
+          id: 'rec_clip_2',
+          data: () => ({
+            title: 'Python Part 2',
+            startedAt: { seconds: 1791169996, nanoseconds: 0 },
+            durationSeconds: 627,
+            storagePath: 'recordings/test_class/rec_clip_2/lecture.webm',
+            status: 'ready',
+          }),
+        },
+        {
+          id: 'rec_already_combined',
+          data: () => ({
+            title: 'Full Combined Lecture',
+            startedAt: { seconds: 1789957831, nanoseconds: 0 },
+            durationSeconds: 3183,
+            isCombined: true,
+            storagePath: 'recordings/test_class/rec_already_combined/lecture.webm',
+            status: 'ready',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      // 1. Click Custom Merge to enter selection mode
+      const toggleMergeBtn = screen.getByRole('button', { name: /Custom Merge/i });
+      await act(async () => {
+        fireEvent.click(toggleMergeBtn);
+      });
+
+      expect(screen.getByText(/Cancel Selection/i)).toBeInTheDocument();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 0 clips');
+
+      // 1b. Verify clicking checkbox directly selects and unselects clips
+      const checkboxes = screen.getAllByRole('checkbox');
+      expect(checkboxes.length).toBe(3);
+      expect(checkboxes[0]).not.toBeChecked();
+      expect(checkboxes[2]).toBeDisabled(); // rec_already_combined is non-mergeable
+
+      // Click directly on the checkbox of clip 1
+      await act(async () => {
+        fireEvent.click(checkboxes[0]);
+      });
+      expect(checkboxes[0]).toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 1 clip');
+
+      // Click directly on the checkbox of clip 1 again to deselect
+      await act(async () => {
+        fireEvent.click(checkboxes[0]);
+      });
+      expect(checkboxes[0]).not.toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 0 clips');
+
+      // Click on card body (e.g. card container) to select
+      const clipCard0 = document.querySelectorAll('.recording-card')[0];
+      await act(async () => {
+        fireEvent.click(clipCard0);
+      });
+      expect(checkboxes[0]).toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 1 clip');
+
+      // Click directly on checkbox to deselect clip that was selected via card
+      await act(async () => {
+        fireEvent.click(checkboxes[0]);
+      });
+      expect(checkboxes[0]).not.toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 0 clips');
+
+      // Keyboard Space/Enter on card to toggle selection
+      const clipCard1 = document.querySelectorAll('.recording-card')[1];
+      await act(async () => {
+        fireEvent.keyDown(clipCard1, { key: ' ' });
+      });
+      expect(checkboxes[1]).toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 1 clip');
+
+      await act(async () => {
+        fireEvent.keyDown(clipCard1, { key: 'Enter' });
+      });
+      expect(checkboxes[1]).not.toBeChecked();
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 0 clips');
+
+      // 2. Select All Mergeable toggle
+      const selectAllBtn = screen.getByRole('button', { name: /Select All Mergeable/i });
+      await act(async () => {
+        fireEvent.click(selectAllBtn);
+      });
+
+      // Only the 2 uncombined clips should be selected
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 2 clips');
+
+      // 3. Click Merge Selected (2)
+      const mergeActionBtn = screen.getByRole('button', { name: /Merge Selected \(2\)/i });
+      expect(mergeActionBtn).not.toBeDisabled();
+
+      await act(async () => {
+        fireEvent.click(mergeActionBtn);
+      });
+
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'test_class',
+          recordingIds: expect.arrayContaining(['rec_clip_1', 'rec_clip_2']),
+        })
+      );
+    });
+
+    it('filters recordings by lesson and displays accurate lesson counts in the dropdown', async () => {
+      const lessons = [
+        {
+          id: '2026-10-05T02:30:00.000Z',
+          start: new Date('2026-10-05T02:30:00.000Z'),
+          end: new Date('2026-10-05T03:30:00.000Z'),
+          title: 'Lesson 03 (10/5/2026)',
+        },
+        {
+          id: '2026-09-28T02:30:00.000Z',
+          start: new Date('2026-09-28T02:30:00.000Z'),
+          end: new Date('2026-09-28T03:30:00.000Z'),
+          title: 'Lesson 02 (9/28/2026)',
+        },
+      ];
+
+      render(<LectureRecordingsView classId="test_class" lessons={lessons} selectedLesson="all" />);
+
+      const mockDocs = [
+        {
+          id: 'rec_1005_1',
+          data: () => ({
+            title: 'Oct 5 Clip 1',
+            startedAt: { seconds: 1791167878, nanoseconds: 0 },
+            durationSeconds: 273,
+            classId: 'test_class',
+          }),
+        },
+        {
+          id: 'rec_1005_2',
+          data: () => ({
+            title: 'Oct 5 Clip 2',
+            startedAt: { seconds: 1791169996, nanoseconds: 0 },
+            durationSeconds: 627,
+            classId: 'test_class',
+          }),
+        },
+        {
+          id: 'rec_0928_1',
+          data: () => ({
+            title: 'Sep 28 Full',
+            startedAt: { seconds: 1790563137, nanoseconds: 0 },
+            durationSeconds: 2079,
+            classId: 'test_class',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      // Filter select element exists
+      const filterSelect = screen.getByLabelText(/Filter recordings by lesson:/i);
+      expect(filterSelect).toBeInTheDocument();
+
+      // Verify dropdown shows non-zero counts for lessons that have matching recordings
+      expect(screen.getByText(/🌐 All Lessons \(3\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Lesson 03 \(10\/5\/2026\) \(2\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Lesson 02 \(9\/28\/2026\) \(1\)/i)).toBeInTheDocument();
+
+      // Switch to Lesson 03
+      await act(async () => {
+        fireEvent.change(filterSelect, { target: { value: '2026-10-05T02:30:00.000Z' } });
+      });
+
+      // Header updates to show 2 of 3
+      expect(screen.getByText(/Past Lectures \(2 of 3\)/i)).toBeInTheDocument();
+      expect(screen.getAllByText('Oct 5 Clip 1').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Oct 5 Clip 2').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Sep 28 Full')).not.toBeInTheDocument();
+    });
   });
 });
+
 
 

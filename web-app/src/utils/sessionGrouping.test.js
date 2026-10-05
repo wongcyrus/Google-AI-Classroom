@@ -73,6 +73,30 @@ describe('sessionGrouping utilities', () => {
       expect(res).toBe('bcast_sess_12345');
     });
 
+    it('does not duplicate bcast_ prefix when broadcastSessionId already starts with bcast_', () => {
+      const res = resolveSessionGroupId({
+        classId: 'ite3101-l',
+        broadcastSessionId: 'bcast_1759000_abc',
+        timestamp: new Date('2026-09-21T10:28:31'),
+      });
+      expect(res).toBe('bcast_1759000_abc');
+    });
+
+    it('anchors to schedule slot when timetable is provided, even if broadcastSessionId is present', () => {
+      const schedule = {
+        timeSlots: [
+          { startTime: '10:30', endTime: '11:30', days: ['Mon'] },
+        ],
+      };
+      const res = resolveSessionGroupId({
+        classId: 'ite3101-l',
+        broadcastSessionId: 'bcast_random_temp_id',
+        schedule,
+        timestamp: new Date('2026-09-21T10:35:00'),
+      });
+      expect(res).toBe('ite3101-l_2026-09-21_slot_1030_1130');
+    });
+
     it('resolves fuzzy schedule slot when timetable is provided', () => {
       const schedule = {
         timeSlots: [

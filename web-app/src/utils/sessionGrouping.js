@@ -62,17 +62,13 @@ export function isWithinFuzzySlot(dateObj, slot, earlyMinutes = 45, overrunMinut
  * @returns {string} The canonical sessionGroupId
  */
 export function resolveSessionGroupId({ classId, broadcastSessionId, schedule, timestamp = new Date() }) {
-  if (broadcastSessionId) {
-    return `bcast_${broadcastSessionId}`;
-  }
-
   const dateObj = timestamp instanceof Date ? timestamp : new Date(timestamp);
   const yyyy = dateObj.getFullYear();
   const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
   const dd = String(dateObj.getDate()).padStart(2, '0');
   const dateStr = `${yyyy}-${mm}-${dd}`;
 
-  // Check schedule time slots if available
+  // 1. If class schedule timetable matches, anchor to schedule slot so all clips in this lecture share the same group
   if (schedule && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
     for (const slot of schedule.timeSlots) {
       if (isWithinFuzzySlot(dateObj, slot)) {
@@ -83,7 +79,12 @@ export function resolveSessionGroupId({ classId, broadcastSessionId, schedule, t
     }
   }
 
-  // Fallback: Date-level session group
+  // 2. Explicit broadcastSessionId for unscheduled / ad-hoc class broadcasts
+  if (broadcastSessionId) {
+    return broadcastSessionId.startsWith('bcast_') ? broadcastSessionId : `bcast_${broadcastSessionId}`;
+  }
+
+  // 3. Fallback: Date-level session group
   return `${classId}_${dateStr}`;
 }
 

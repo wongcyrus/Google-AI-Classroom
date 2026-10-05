@@ -7,6 +7,9 @@ const {
   mockCollectionGet,
   mockCollectionRef,
   mockSave,
+  mockDownload,
+  mockUpload,
+  mockDelete,
   mockSetMetadata,
   mockGetMetadata,
   mockExists,
@@ -27,12 +30,17 @@ const {
     get: mockCollectionGet,
   }));
   const mockSave = vi.fn().mockResolvedValue();
+  const mockDownload = vi.fn().mockResolvedValue();
+  const mockUpload = vi.fn().mockResolvedValue();
+  const mockDelete = vi.fn().mockResolvedValue();
   const mockSetMetadata = vi.fn().mockResolvedValue();
   const mockGetMetadata = vi.fn().mockResolvedValue([{ size: 1048576, metadata: {} }]);
   const mockExists = vi.fn().mockResolvedValue([true]);
   const mockGetSignedUrl = vi.fn().mockResolvedValue(['https://signed.url/file']);
   const mockFile = vi.fn(() => ({
     save: mockSave,
+    download: mockDownload,
+    delete: mockDelete,
     setMetadata: mockSetMetadata,
     getMetadata: mockGetMetadata,
     exists: mockExists,
@@ -41,6 +49,7 @@ const {
   const mockBucket = vi.fn(() => ({
     name: 'test-bucket',
     file: mockFile,
+    upload: mockUpload,
   }));
   const mockGenerateWithResilience = vi.fn();
   const mockLogJob = vi.fn().mockResolvedValue('ai_job_id');
@@ -52,6 +61,9 @@ const {
     mockCollectionGet,
     mockCollectionRef,
     mockSave,
+    mockDownload,
+    mockUpload,
+    mockDelete,
     mockSetMetadata,
     mockGetMetadata,
     mockExists,
@@ -251,7 +263,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     expect(mockGenerateWithResilience).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.arrayContaining([
-          expect.objectContaining({ media: { url: 'gs://test-bucket/recordings/c1/s1/lecture_audio.webm', contentType: 'audio/webm' } }),
+          expect.objectContaining({ media: { url: 'gs://test-bucket/recordings/c1/s1/lecture_audio_normalized.mp3', contentType: 'audio/mpeg' } }),
         ]),
       }),
       expect.any(String)
@@ -287,6 +299,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
         data: {
           classId: 'c1',
           sessionId: 's1',
+          transcriptionMode: 'flash_lite',
         },
       })
     ).rejects.toMatchObject({
@@ -302,6 +315,233 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     expect(mockLogJob).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
+      })
+    );
+  });
+
+  it('processes long audio with single-pass whole-audio ingestion via gemini-3.8-flash', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Full 1-Hour Lecture',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+        audioStoragePath: 'recordings/c1/s1/lecture_audio.webm',
+        durationSeconds: 3600,
+      }),
+    });
+
+    const mockAiResponse = {
+      response: {
+        usage: { promptTokens: 3500, completionTokens: 1200 },
+        text: JSON.stringify({
+          chapters: [
+            { timeSeconds: 0, title: 'Introduction & Setup' },
+            { timeSeconds: 1800, title: 'Deep Dive Architecture' },
+          ],
+          segments: [
+            {
+              start: 1.0,
+              end: 4.5,
+              original: '今日我哋會講 Cloud Architecture。',
+              translations: {
+                en: 'Today we will discuss Cloud Architecture.',
+                'zh-Hant': '今天我們將討論雲端架構。',
+                'zh-Hans': '今天我们将讨论云端架构。',
+              },
+            },
+            {
+              start: 5.0,
+              end: 9.0,
+              original: '請確保已經登入 GCP Console。',
+              translations: {
+                en: 'Please ensure you are logged into GCP Console.',
+                'zh-Hant': '請確保已經登入 GCP 控制台。',
+                'zh-Hans': '请确保已经登录 GCP 控制台。',
+              },
+            },
+          ],
+        }),
+      },
+      modelUsed: 'gemini-3.8-flash',
+    };
+
+    mockGenerateWithResilience.mockResolvedValueOnce(mockAiResponse);
+
+    const result = await processLectureSubtitles({
+      data: {
+        classId: 'c1',
+        sessionId: 's1',
+        targetLanguages: ['en', 'zh-Hant', 'zh-Hans'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('ready');
+    expect(result.chapters).toHaveLength(2);
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ready',
+        segmentCount: 2,
+        aiModelUsed: 'gemini-3.8-flash',
+      })
+    );
+    expect(mockGenerateWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          thinkingConfig: { thinkingBudget: 0 },
+          maxOutputTokens: 65536,
+        }),
+        prompt: expect.arrayContaining([
+          expect.objectContaining({ media: { url: 'gs://test-bucket/recordings/c1/s1/lecture_audio_normalized.mp3', contentType: 'audio/mpeg' } }),
+        ]),
+      }),
+      'gemini-3.8-flash'
+    );
+  });
+
+  it('translates missing languages in batches when master cues lack target translations', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Database Systems',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+        audioStoragePath: 'recordings/c1/s1/lecture_audio.webm',
+        durationSeconds: 600,
+      }),
+    });
+
+    // Primary AI response contains segments with only original text (missing zh-Hans)
+    const mockPrimaryResponse = {
+      response: {
+        usage: { promptTokens: 1000, completionTokens: 150 },
+        text: JSON.stringify({
+          chapters: [
+            { timeSeconds: 0, title: 'Intro' },
+            { timeSeconds: 300, title: 'Trade-offs' },
+          ],
+          segments: [
+            {
+              start: 0.5,
+              end: 3.5,
+              original: 'SQL vs NoSQL trade-offs',
+              translations: {
+                en: 'SQL vs NoSQL trade-offs',
+                'zh-Hant': 'SQL 與 NoSQL 的權衡',
+              },
+            },
+          ],
+        }),
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    };
+
+    // Translation fallback response providing zh-Hans
+    const mockTranslationResponse = {
+      response: {
+        usage: { promptTokens: 100, completionTokens: 40 },
+        text: JSON.stringify([
+          {
+            'zh-Hans': 'SQL 与 NoSQL 的权衡',
+          },
+        ]),
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    };
+
+    mockGenerateWithResilience
+      .mockResolvedValueOnce(mockPrimaryResponse)
+      .mockResolvedValueOnce(mockTranslationResponse);
+
+    const result = await processLectureSubtitles({
+      data: {
+        classId: 'c1',
+        sessionId: 's1',
+        targetLanguages: ['en', 'zh-Hant', 'zh-Hans'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('ready');
+    expect(mockGenerateWithResilience).toHaveBeenCalledTimes(2);
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ready',
+        segmentCount: 1,
+      })
+    );
+  });
+
+  it('synthesizes YouTube chapters when AI model output lacks chapters', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Microservices Design',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+        audioStoragePath: 'recordings/c1/s1/lecture_audio.webm',
+        durationSeconds: 1200,
+      }),
+    });
+
+    // Primary response with empty chapters array
+    const mockPrimaryResponse = {
+      response: {
+        usage: { promptTokens: 800, completionTokens: 100 },
+        text: JSON.stringify({
+          chapters: [],
+          segments: [
+            {
+              start: 0.0,
+              end: 10.0,
+              original: 'First topic overview',
+              translations: { en: 'First topic overview' },
+            },
+            {
+              start: 600.0,
+              end: 610.0,
+              original: 'Docker containers',
+              translations: { en: 'Docker containers' },
+            },
+          ],
+        }),
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    };
+
+    // Chapter fallback synthesis response
+    const mockChapterResponse = {
+      response: {
+        usage: { promptTokens: 200, completionTokens: 50 },
+        text: JSON.stringify({
+          chapters: [
+            { timeSeconds: 0, title: 'Introduction' },
+            { timeSeconds: 600, title: 'Containers Deep Dive' },
+          ],
+        }),
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    };
+
+    mockGenerateWithResilience
+      .mockResolvedValueOnce(mockPrimaryResponse)
+      .mockResolvedValueOnce(mockChapterResponse);
+
+    const result = await processLectureSubtitles({
+      data: {
+        classId: 'c1',
+        sessionId: 's1',
+        targetLanguages: ['en'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.chapters).toHaveLength(2);
+    expect(result.chapters[1].title).toBe('Containers Deep Dive');
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ready',
+        chapters: expect.arrayContaining([
+          expect.objectContaining({ timeSeconds: 600, title: 'Containers Deep Dive' }),
+        ]),
       })
     );
   });

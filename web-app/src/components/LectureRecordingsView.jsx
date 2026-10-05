@@ -6,6 +6,20 @@ import JSZip from 'jszip';
 import { formatDuration } from '../hooks/useLectureRecorder';
 import { useGoogleDrive } from '../hooks/useGoogleDrive';
 import { extractGoogleDriveFileId, formatGoogleDriveEmbedUrl } from '../utils/googleDriveService';
+import {
+  SUBTITLE_LANGUAGES,
+  getInitialSubtitleLang,
+  getSubtitleLanguageLabel,
+  applySubtitleTrack,
+  getActiveSubtitleLang,
+  determineDefaultPlayerMode,
+  fixWebmPlaybackDuration,
+  handleVideoEndedGuard,
+} from '../utils/videoSubtitleUtils';
+import { isRecordInLesson } from './StudentRecordsView';
+import Modal from './Modal';
+import AudioPromptSelector from './AudioPromptSelector';
+import TranslationPromptSelector from './TranslationPromptSelector';
 import './LectureRecordingsView.css';
 
 export function formatFileSize(bytes) {
@@ -37,6 +51,9 @@ export default function LectureRecordingsView({
   user,
   onBack = null,
   className = '',
+  lessons = EMPTY_ARRAY,
+  selectedLesson = '',
+  timezone = 'UTC',
 }) {
   const [recordings, setRecordings] = useState(EMPTY_ARRAY);
   const [loading, setLoading] = useState(true);
@@ -44,6 +61,15 @@ export default function LectureRecordingsView({
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
   const [isRetryingSubtitles, setIsRetryingSubtitles] = useState(false);
+  const [showRegenModal, setShowRegenModal] = useState(false);
+  const [regenPrompt, setRegenPrompt] = useState(null);
+  const [regenPromptText, setRegenPromptText] = useState('');
+  const [regenSttPrompt, setRegenSttPrompt] = useState(null);
+  const [regenSttPromptText, setRegenSttPromptText] = useState('');
+  const [regenTransPrompt, setRegenTransPrompt] = useState(null);
+  const [regenTransPromptText, setRegenTransPromptText] = useState('');
+  const [regenLanguages, setRegenLanguages] = useState(['en', 'zh-Hant', 'zh-Hans']);
+  const [regenModel, setRegenModel] = useState('gemini-3.8-flash');
   const [copyFeedback, setCopyFeedback] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
@@ -56,11 +82,19 @@ export default function LectureRecordingsView({
 
   // Phase 1 YouTube & Dual Player state
   const [activePlayerMode, setActivePlayerMode] = useState('cloud'); // 'youtube' | 'drive' | 'cloud'
+  const [selectedSubtitleLang, setSelectedSubtitleLang] = useState('en');
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
   const [isEditingYouTube, setIsEditingYouTube] = useState(false);
   const [isSavingYouTube, setIsSavingYouTube] = useState(false);
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState('');
+
+  // Student Sharing (Dual-Tier: Class-level gate & recording-level toggle)
+  const [classInfo, setClassInfo] = useState(null);
+  const [isClassSharingToggling, setIsClassSharingToggling] = useState(false);
+  const [isSharingToggling, setIsSharingToggling] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState('');
+  const [selectedLessonFilter, setSelectedLessonFilter] = useState(selectedLesson || 'all');
 
   // Google Drive integration hook & state
   const {
@@ -78,6 +112,7 @@ export default function LectureRecordingsView({
     connect: connectGdrive,
     disconnect: disconnectGdrive,
     uploadRecording: uploadToGdrive,
+    uploadSubtitlesOnly: uploadSubtitlesToGdrive,
     linkManualDrive,
     unlinkRecording: unlinkGdrive,
     clearFeedback: clearGdriveFeedback,
@@ -88,30 +123,6 @@ export default function LectureRecordingsView({
   const [baseFolderDraft, setBaseFolderDraft] = useState('');
 
   const videoRef = useRef(null);
-
-  // Chromium WebM seek/duration fix
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleLoadedMetadata = () => {
-      // Chromium WebM fix: MediaRecorder WebM files stream without container duration headers.
-      // If browser reports Infinity, NaN, or 0, seek to end to read true length, then reset.
-      if (!isFinite(video.duration) || video.duration === 0) {
-        const onSeeked = () => {
-          video.currentTime = 0;
-          video.removeEventListener('seeked', onSeeked);
-        };
-        video.addEventListener('seeked', onSeeked);
-        video.currentTime = 1e101;
-      }
-    };
-
-    video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    return () => {
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-    };
-  }, [selectedRecordingId]);
 
   // Permanently delete a lecture recording and all associated storage files
   const handleDeleteRecording = async (recordingId) => {
@@ -161,6 +172,104 @@ export default function LectureRecordingsView({
     }
   };
 
+  // Subscribe to parent class document to watch allowShareTeacherRecordings
+  useEffect(() => {
+    if (!classId) {
+      setClassInfo(null);
+      return;
+    }
+    const classDocRef = doc(db, 'classes', classId);
+    const unsub = onSnapshot(classDocRef, (snap) => {
+      if (snap.exists()) {
+        setClassInfo(snap.data());
+      }
+    });
+    return () => unsub();
+  }, [classId]);
+
+  const classPolicy = classInfo?.teacherRecordingsPolicy || (classInfo?.allowShareTeacherRecordings ? 'selective' : 'private');
+
+  // Handle updating class-level student sharing policy on the class document
+  const handleSetClassPolicy = async (targetPolicy) => {
+    if (!classId) return;
+    setIsClassSharingToggling(true);
+    setShareFeedback('');
+    try {
+      const isAllowed = targetPolicy !== 'private';
+      await updateDoc(doc(db, 'classes', classId), {
+        teacherRecordingsPolicy: targetPolicy,
+        allowShareTeacherRecordings: isAllowed,
+      });
+      if (targetPolicy === 'always_shared') {
+        setShareFeedback('Automatic sharing enabled! All recorded lectures are now visible to enrolled students.');
+      } else if (targetPolicy === 'selective') {
+        setShareFeedback('Selective sharing enabled! Enrolled students can view lectures marked as "Shared".');
+      } else {
+        setShareFeedback('Class sharing disabled (Private). All lectures are now hidden from students.');
+      }
+      setTimeout(() => setShareFeedback(''), 5000);
+    } catch (err) {
+      console.error('[LectureRecordingsView] Failed to update class sharing policy:', err);
+      setShareFeedback(`Failed to update class policy: ${err.message}`);
+    } finally {
+      setIsClassSharingToggling(false);
+    }
+  };
+
+  // Handle toggling class-level student sharing permission on the class document
+  const handleToggleClassSharing = async () => {
+    const nextPolicy = classPolicy === 'private' ? 'selective' : 'private';
+    await handleSetClassPolicy(nextPolicy);
+  };
+
+  // Synchronize lesson filter if selectedLesson prop updates
+  useEffect(() => {
+    if (selectedLesson && selectedLesson !== 'all') {
+      setSelectedLessonFilter(selectedLesson);
+    }
+  }, [selectedLesson]);
+
+  // Handle toggling manual share with students for a specific recording
+  const handleToggleShareWithStudents = async (recordingId, currentSharedState) => {
+    if (!classId || !recordingId) return;
+    setIsSharingToggling(true);
+    setShareFeedback('');
+    try {
+      const recDocRef = doc(db, 'classes', classId, 'lectureRecordings', recordingId);
+      const newSharedState = !currentSharedState;
+      await updateDoc(recDocRef, {
+        isSharedWithStudents: newSharedState,
+        sharedAt: newSharedState ? new Date().toISOString() : null,
+      });
+
+      // If enabling student access on a recording and class-level policy is private/unset,
+      // auto-promote class policy to 'selective' so enrolled students can immediately access it!
+      if (newSharedState && classPolicy === 'private') {
+        try {
+          await updateDoc(doc(db, 'classes', classId), {
+            teacherRecordingsPolicy: 'selective',
+            allowShareTeacherRecordings: true,
+          });
+          setClassInfo((prev) => ({
+            ...prev,
+            teacherRecordingsPolicy: 'selective',
+            allowShareTeacherRecordings: true,
+          }));
+        } catch (classErr) {
+          console.warn('[LectureRecordingsView] Could not auto-promote class policy to selective:', classErr);
+        }
+      }
+
+      setShareFeedback(newSharedState ? 'Lecture shared with students! (Selective class sharing enabled)' : 'Student access revoked.');
+      setTimeout(() => setShareFeedback(''), 4000);
+    } catch (err) {
+      console.error('[LectureRecordingsView] Failed to toggle sharing:', err);
+      setShareFeedback(`Failed to update sharing: ${err.message}`);
+    } finally {
+      setIsSharingToggling(false);
+    }
+  };
+
   // Subscribe to lectureRecordings subcollection in real time
   useEffect(() => {
     if (!classId) {
@@ -181,11 +290,6 @@ export default function LectureRecordingsView({
         const validDocs = docs.filter((d) => d.status !== 'discarded');
         setRecordings(validDocs);
         setLoading(false);
-
-        // Select the newest recording by default if none selected
-        if (!selectedRecordingId && validDocs.length > 0) {
-          setSelectedRecordingId(validDocs[0].id);
-        }
 
         // Auto-reconcile once if any recording is older than 2 mins and unfinalized
         const hasOrphaned = validDocs.some((d) => {
@@ -211,21 +315,37 @@ export default function LectureRecordingsView({
     return () => unsubscribe();
   }, [classId]);
 
-  // Automatically select the newest recording if none selected or if selected was removed
-  useEffect(() => {
-    if ((!selectedRecordingId || !recordings.some((r) => r.id === selectedRecordingId)) && recordings.length > 0) {
-      setSelectedRecordingId(recordings[0].id);
+  // Filter recordings by lesson when a specific lesson is selected
+  const filteredRecordings = useMemo(() => {
+    if (selectedLessonFilter === 'all' || !lessons || lessons.length === 0) {
+      return recordings;
     }
-  }, [recordings, selectedRecordingId]);
+    const lesson = lessons.find((l) => (l.id || l.lessonId) === selectedLessonFilter);
+    if (!lesson) return recordings;
+    return recordings.filter((r) => isRecordInLesson(r, lesson));
+  }, [recordings, selectedLessonFilter, lessons]);
 
-  // Group unmerged recordings by sessionGroupId or calendar date
+  // Automatically select the newest recording in filtered list if none selected or removed
+  useEffect(() => {
+    if (filteredRecordings.length > 0) {
+      if (!selectedRecordingId || !filteredRecordings.some((r) => r.id === selectedRecordingId)) {
+        setSelectedRecordingId(filteredRecordings[0].id);
+      }
+    } else {
+      setSelectedRecordingId(null);
+    }
+  }, [filteredRecordings, selectedRecordingId]);
+
+  // Group unmerged recordings by schedule slot or calendar date
   const unmergedGroups = useMemo(() => {
     const groups = {};
     recordings.forEach((rec) => {
       const dateKey = rec.startedAt?.toDate
         ? rec.startedAt.toDate().toLocaleDateString()
         : (rec.startedAt ? new Date(rec.startedAt).toLocaleDateString() : 'recent');
-      const groupId = rec.sessionGroupId || `date_${dateKey}`;
+      const rawGroupId = rec.sessionGroupId || '';
+      // If sessionGroupId starts with 'bcast_', group by date so separate broadcast restarts on the same day can be merged together
+      const groupId = rawGroupId.startsWith('bcast_') ? `date_${dateKey}` : (rawGroupId || `date_${dateKey}`);
       if (!groups[groupId]) {
         groups[groupId] = {
           groupId,
@@ -269,6 +389,20 @@ export default function LectureRecordingsView({
       });
   }, [recordings]);
 
+  const toggleSelectForMerge = (recId, explicitVal) => {
+    setSelectedIdsToMerge((prev) => {
+      const exists = prev.includes(recId);
+      const shouldInclude = explicitVal !== undefined ? explicitVal : !exists;
+      if (shouldInclude && !exists) {
+        return [...prev, recId];
+      }
+      if (!shouldInclude && exists) {
+        return prev.filter((id) => id !== recId);
+      }
+      return prev;
+    });
+  };
+
   const handleMergeClips = async (sessionGroupId, clipIds) => {
     if (!classId || !clipIds || clipIds.length < 2) return;
 
@@ -277,9 +411,12 @@ export default function LectureRecordingsView({
 
     try {
       const callMerge = httpsCallable(functions, 'mergeLectureRecordings');
+      const sanitizedGroupId = (!sessionGroupId || sessionGroupId === 'custom' || sessionGroupId.startsWith('date_'))
+        ? null
+        : sessionGroupId;
       const result = await callMerge({
         classId,
-        sessionGroupId: sessionGroupId.startsWith('date_') ? null : sessionGroupId,
+        sessionGroupId: sanitizedGroupId,
         recordingIds: clipIds,
       });
 
@@ -289,12 +426,15 @@ export default function LectureRecordingsView({
 
         // Auto-trigger Gemini subtitle and chapter generation
         try {
-          const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
-          await callSubtitles({
+          const callSubtitles = httpsCallable(functions, 'processLectureSubtitles', { timeout: 600000 });
+          callSubtitles({
             classId,
             sessionId: result.data.combinedSessionId,
             storagePath: result.data.storagePath,
             title: result.data.title,
+            targetLanguages: result.data.targetLanguages || selectedRecording?.targetLanguages,
+          }).catch((subErr) => {
+            console.warn('[LectureRecordingsView] Subtitle auto-trigger notice:', subErr);
           });
         } catch (subErr) {
           console.warn('[LectureRecordingsView] Subtitle auto-trigger notice:', subErr);
@@ -328,13 +468,8 @@ export default function LectureRecordingsView({
       setYoutubeUrlInput(selectedRecording.youtubeUrl || '');
       setIsEditingYouTube(false);
       setManualDriveUrlInput(selectedRecording.driveWebViewLink || selectedRecording.driveFileId || '');
-      if (selectedRecording.youtubeVideoId) {
-        setActivePlayerMode('youtube');
-      } else if (selectedRecording.driveFileId) {
-        setActivePlayerMode('drive');
-      } else {
-        setActivePlayerMode('cloud');
-      }
+      setActivePlayerMode(determineDefaultPlayerMode(selectedRecording));
+      setSelectedSubtitleLang(getInitialSubtitleLang(selectedRecording.vttUrls));
     }
   }, [
     selectedRecording?.id,
@@ -342,7 +477,60 @@ export default function LectureRecordingsView({
     selectedRecording?.youtubeUrl,
     selectedRecording?.driveFileId,
     selectedRecording?.driveWebViewLink,
+    selectedRecording?.vttUrls,
   ]);
+
+  const handleSelectSubtitleLang = (lang) => {
+    setSelectedSubtitleLang(lang);
+    if (videoRef.current) {
+      applySubtitleTrack(videoRef.current, lang);
+    }
+  };
+
+  const handleSelectSubtitleLangFromDrive = (lang) => {
+    setActivePlayerMode('cloud');
+    setSelectedSubtitleLang(lang);
+    setTimeout(() => {
+      if (videoRef.current) {
+        applySubtitleTrack(videoRef.current, lang);
+      }
+    }, 100);
+  };
+
+  useEffect(() => {
+    if (activePlayerMode === 'cloud' && videoRef.current) {
+      applySubtitleTrack(videoRef.current, selectedSubtitleLang);
+    }
+  }, [activePlayerMode, selectedSubtitleLang, selectedRecording?.id]);
+
+  useEffect(() => {
+    if (activePlayerMode === 'cloud' && videoRef.current && selectedRecording?.durationSeconds) {
+      fixWebmPlaybackDuration(videoRef.current, selectedRecording.durationSeconds);
+    }
+  }, [activePlayerMode, selectedRecording?.id, selectedRecording?.durationSeconds]);
+
+  // Synchronize native player textTracks state (e.g. built-in CC menu in fullscreen) with toolbar
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks) return;
+
+    const handleTracksChange = () => {
+      const activeLang = getActiveSubtitleLang(video);
+      setSelectedSubtitleLang((prev) => (prev !== activeLang ? activeLang : prev));
+    };
+
+    if (typeof video.textTracks.addEventListener === 'function') {
+      video.textTracks.addEventListener('change', handleTracksChange);
+      return () => {
+        video.textTracks.removeEventListener('change', handleTracksChange);
+      };
+    } else if ('onchange' in video.textTracks) {
+      video.textTracks.onchange = handleTracksChange;
+      return () => {
+        video.textTracks.onchange = null;
+      };
+    }
+  }, [videoRef.current, selectedRecording?.id]);
 
   // Handle saving/updating the linked YouTube URL
   const handleSaveYouTubeLink = async () => {
@@ -444,25 +632,76 @@ export default function LectureRecordingsView({
     setTimeout(() => setCopyFeedback(''), 2500);
   };
 
-  // Trigger offline Gemini subtitle generation
-  const handleTriggerSubtitles = async () => {
+  // Open modal to configure prompt, languages, and model for subtitle generation
+  const handleOpenRegenModal = (rec = selectedRecording) => {
+    if (!rec) return;
+    const initialStt = rec.lectureSttPrompt || rec.lectureRecordingPrompt || classInfo?.lectureSttPrompt || classInfo?.lectureRecordingPrompt || null;
+    const initialSttText = rec.customSttPrompt || rec.customPrompt || initialStt?.promptText || '';
+    setRegenSttPrompt(initialStt);
+    setRegenSttPromptText(initialSttText);
+    setRegenPrompt(initialStt);
+    setRegenPromptText(initialSttText);
+
+    const initialTrans = rec.lectureTranslationPrompt || classInfo?.lectureTranslationPrompt || null;
+    const initialTransText = rec.customTranslationPrompt || initialTrans?.promptText || '';
+    setRegenTransPrompt(initialTrans);
+    setRegenTransPromptText(initialTransText);
+
+    const initialLangs = (Array.isArray(rec.targetLanguages) && rec.targetLanguages.length > 0)
+      ? rec.targetLanguages
+      : (Array.isArray(classInfo?.lectureTargetLanguages) && classInfo?.lectureTargetLanguages.length > 0)
+        ? classInfo?.lectureTargetLanguages
+        : ['en', 'zh-Hant', 'zh-Hans'];
+    setRegenLanguages(initialLangs);
+
+    const candidateModel = rec.aiModelUsed || classInfo?.lectureAiModel || 'gemini-3.8-flash';
+    const initialModel = (candidateModel && !candidateModel.includes('2.5')) ? candidateModel : 'gemini-3.8-flash';
+    setRegenModel(initialModel);
+    setShowRegenModal(true);
+  };
+
+  const handleExecuteRegenSubtitles = async () => {
     if (!selectedRecording) return;
     setIsRetryingSubtitles(true);
+    setShowRegenModal(false);
     try {
-      const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
+      const callSubtitles = httpsCallable(functions, 'processLectureSubtitles', { timeout: 600000 });
+      const effectiveStt = regenSttPrompt || regenPrompt;
+      const effectiveSttText = (regenSttPromptText || regenPromptText || '').trim();
+      const effectiveTrans = regenTransPrompt;
+      const effectiveTransText = (regenTransPromptText || '').trim();
+
       await callSubtitles({
         classId,
         sessionId: selectedRecording.id,
         storagePath: selectedRecording.storagePath,
         title: selectedRecording.title,
         topic: selectedRecording.topic,
+        isManualTrigger: true,
+        sttPromptId: effectiveStt?.id || null,
+        customSttPrompt: effectiveSttText || undefined,
+        translationPromptId: effectiveTrans?.id || null,
+        customTranslationPrompt: effectiveTransText || undefined,
+        // Legacy parameter fallbacks
+        promptId: effectiveStt?.id || null,
+        customPrompt: effectiveSttText || undefined,
+        targetLanguages: regenLanguages,
+        preferredModel: regenModel,
       });
     } catch (err) {
       console.error('[LectureRecordingsView] Subtitle generation failed:', err);
-      alert(`Failed to trigger subtitle generation: ${err.message}`);
+      if (err.code === 'functions/deadline-exceeded' || err.message?.includes('deadline-exceeded')) {
+        console.info('[LectureRecordingsView] Subtitle request exceeded client connection window; generation is proceeding in background.');
+      } else {
+        alert(`Failed to trigger subtitle generation: ${err.message}`);
+      }
     } finally {
       setIsRetryingSubtitles(false);
     }
+  };
+
+  const handleTriggerSubtitles = () => {
+    handleOpenRegenModal(selectedRecording);
   };
 
   // Download complete YouTube Package (.zip)
@@ -545,8 +784,18 @@ export default function LectureRecordingsView({
       return <span className="recording-status-badge status-failed">⚠️ Incomplete / Interrupted</span>;
     }
 
+    if (rec?.hasMissingSegment) {
+      if (status === 'ready') {
+        return <span className="recording-status-badge status-warning" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>⚠️ Combined (Gap Remarked)</span>;
+      }
+      return <span className="recording-status-badge status-warning" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>⚠️ Rest Preserved</span>;
+    }
+
     switch (status) {
       case 'ready':
+        if (rec.subtitlesDisabled && (!rec.vttUrls || Object.keys(rec.vttUrls).length === 0)) {
+          return <span className="recording-status-badge status-warning" style={{ background: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' }}>⏸️ Video Ready (CC Skipped)</span>;
+        }
         return <span className="recording-status-badge status-ready">✅ Ready (Multi-CC)</span>;
       case 'generating_subtitles':
       case 'processing_subtitles':
@@ -570,6 +819,135 @@ export default function LectureRecordingsView({
           </button>
         )}
       </div>
+
+      {/* Tier 1: Class-Level Student Sharing Master Switch */}
+      {classInfo && (
+        <div
+          className={`class-sharing-control-bar ${classPolicy !== 'private' ? 'is-enabled' : 'is-disabled'}`}
+          style={{
+            marginBottom: '16px',
+            padding: '12px 18px',
+            borderRadius: '8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            background: classPolicy === 'always_shared' ? '#eff6ff' : classPolicy === 'selective' ? '#f0fdf4' : '#fffbeb',
+            border: `1px solid ${classPolicy === 'always_shared' ? '#93c5fd' : classPolicy === 'selective' ? '#86efac' : '#fde68a'}`,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.4rem' }}>
+              {classPolicy === 'always_shared' ? '🌐' : classPolicy === 'selective' ? '👥' : '🔒'}
+            </span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: classPolicy === 'always_shared' ? '#1d4ed8' : classPolicy === 'selective' ? '#166534' : '#92400e' }}>
+                {classPolicy === 'always_shared'
+                  ? 'Class Student Access: Always Shared (Automatic)'
+                  : classPolicy === 'selective'
+                  ? 'Class-Level Student Sharing: Enabled (Selective)'
+                  : 'Class-Level Student Sharing: Disabled (Default Deny)'}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: classPolicy === 'always_shared' ? '#2563eb' : classPolicy === 'selective' ? '#15803d' : '#b45309', marginTop: '2px' }}>
+                {classPolicy === 'always_shared'
+                  ? 'All recordings in this class are automatically visible to enrolled students without needing manual per-video sharing.'
+                  : classPolicy === 'selective'
+                  ? 'Enrolled students can access the Teacher Lectures tab and view any recordings marked as "👥 Shared".'
+                  : 'All recordings in this class are currently kept private to instructors. Students cannot view any lectures until class sharing is enabled.'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {classPolicy === 'always_shared' && (
+              <button
+                type="button"
+                onClick={() => handleSetClassPolicy('selective')}
+                disabled={isClassSharingToggling}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#334155',
+                }}
+              >
+                👥 Switch to Selective
+              </button>
+            )}
+
+            {classPolicy === 'selective' && (
+              <button
+                type="button"
+                onClick={() => handleSetClassPolicy('always_shared')}
+                disabled={isClassSharingToggling}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: '#3b82f6',
+                  color: '#ffffff',
+                }}
+              >
+                🌐 Always Share All
+              </button>
+            )}
+
+            {classPolicy === 'private' && (
+              <button
+                type="button"
+                onClick={() => handleSetClassPolicy('always_shared')}
+                disabled={isClassSharingToggling}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#334155',
+                }}
+              >
+                🌐 Always Share All
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn-toggle-class-sharing"
+              onClick={handleToggleClassSharing}
+              disabled={isClassSharingToggling}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                border: 'none',
+                background: classPolicy !== 'private' ? '#fee2e2' : '#2563eb',
+                color: classPolicy !== 'private' ? '#991b1b' : '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              {isClassSharingToggling
+                ? '⏳ Updating...'
+                : classPolicy !== 'private'
+                ? '🔒 Revoke Class Student Access'
+                : '📢 Enable Student Access for Class'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {unmergedGroups.length > 0 && (
         <div className="unmerged-groups-container">
@@ -620,9 +998,40 @@ export default function LectureRecordingsView({
           {/* Recordings List */}
           <div className="recordings-list-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', color: '#4a5568' }}>
-                Past Lectures ({recordings.length})
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: '#4a5568' }}>
+                  Past Lectures ({filteredRecordings.length}{recordings.length !== filteredRecordings.length ? ` of ${recordings.length}` : ''})
+                </h3>
+                {lessons && lessons.length > 0 && (
+                  <select
+                    id="teacher-lesson-filter-select"
+                    aria-label="Filter recordings by lesson:"
+                    value={selectedLessonFilter}
+                    onChange={(e) => setSelectedLessonFilter(e.target.value)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.82rem',
+                      color: '#334155',
+                      backgroundColor: '#ffffff',
+                    }}
+                  >
+                    <option value="all">🌐 All Lessons ({recordings.length})</option>
+                    {lessons.map((l) => {
+                      const lCount = recordings.filter((r) => isRecordInLesson(r, l)).length;
+                      const dateStr = l.start instanceof Date
+                        ? l.start.toLocaleDateString()
+                        : (l.startTime ? new Date(l.startTime).toLocaleDateString() : l.title || l.id);
+                      return (
+                        <option key={l.id || l.lessonId} value={l.id || l.lessonId}>
+                          📅 {l.title || dateStr} ({lCount})
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
               <button
                 className="btn-toggle-merge"
                 onClick={() => {
@@ -636,89 +1045,208 @@ export default function LectureRecordingsView({
 
             {isSelectionMode && (
               <div className="merge-selection-bar">
-                <span>Selected: {selectedIdsToMerge.length} clips</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>Selected: <strong>{selectedIdsToMerge.length}</strong> clip{selectedIdsToMerge.length === 1 ? '' : 's'}</span>
+                  <button
+                    type="button"
+                    className="btn-select-all-toggle"
+                    onClick={() => {
+                      const mergeableClips = filteredRecordings.filter(
+                        (r) => !r.isCombined && (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
+                      );
+                      const mergeableIds = mergeableClips.map((r) => r.id);
+                      if (selectedIdsToMerge.length === mergeableIds.length && mergeableIds.length > 0) {
+                        setSelectedIdsToMerge([]);
+                      } else {
+                        setSelectedIdsToMerge(mergeableIds);
+                      }
+                    }}
+                  >
+                    {selectedIdsToMerge.length > 0 &&
+                     selectedIdsToMerge.length === filteredRecordings.filter(
+                       (r) => !r.isCombined && (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
+                     ).length
+                      ? '✕ Deselect All'
+                      : '✓ Select All Mergeable'}
+                  </button>
+                </div>
                 <button
                   className="btn-merge-action btn-sm"
                   disabled={selectedIdsToMerge.length < 2 || isMerging}
                   onClick={() => handleMergeClips('custom', selectedIdsToMerge)}
+                  title={selectedIdsToMerge.length < 2 ? 'Select at least 2 clips to merge' : 'Merge selected clips with ffmpeg'}
                 >
-                  {isMerging ? 'Merging...' : `Merge Selected (${selectedIdsToMerge.length})`}
+                  {isMerging ? '⏳ Merging...' : `🔗 Merge Selected (${selectedIdsToMerge.length})`}
                 </button>
               </div>
             )}
 
-            {recordings.map((rec) => {
-              const isSelected = rec.id === selectedRecordingId;
-              const dateStr = rec.startedAt?.toDate
-                ? rec.startedAt.toDate().toLocaleString()
-                : rec.startedAt
-                ? new Date(rec.startedAt).toLocaleString()
-                : 'Recent';
-
-              const isChecked = selectedIdsToMerge.includes(rec.id);
-
-              return (
-                <div
-                  key={rec.id}
-                  className={`recording-card ${isSelected ? 'active' : ''}`}
-                  onClick={() => {
-                    if (isSelectionMode) {
-                      if (isChecked) {
-                        setSelectedIdsToMerge(selectedIdsToMerge.filter((id) => id !== rec.id));
-                      } else {
-                        setSelectedIdsToMerge([...selectedIdsToMerge, rec.id]);
-                      }
-                    } else {
-                      setSelectedRecordingId(rec.id);
-                    }
-                  }}
+            {filteredRecordings.length === 0 ? (
+              <div style={{ padding: '24px 12px', textAlign: 'center', color: '#64748b' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>🔍</div>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>No recordings found for this lesson.</p>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ marginTop: '12px', fontSize: '0.8rem' }}
+                  onClick={() => setSelectedLessonFilter('all')}
                 >
-                  <div className="recording-card-select">
-                    {isSelectionMode && (
-                      <input
-                        type="checkbox"
-                        className="recording-checkbox"
-                        checked={isChecked}
-                        onChange={() => {}}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )}
-                    <div style={{ flex: 1 }}>
-                      <div className="recording-card-title">{rec.title || 'Classroom Lecture'}</div>
-                      <div className="recording-card-meta">
-                        <span>📅 {dateStr}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span>⏱️ {formatDuration(rec.durationSeconds || 0)}</span>
-                          {rec.fileSize ? <span>• 📦 {formatFileSize(rec.fileSize)}</span> : null}
-                          {rec.isCombined ? (
-                            <span className="badge-pill-combined">🌟 Combined Full Lecture</span>
-                          ) : rec.isFragment ? (
-                            <span className="badge-pill-fragment">✂️ Part {rec.fragmentIndex || 1}</span>
-                          ) : rec.durationSeconds >= 600 ? (
-                            <span className="badge-pill-full">🌟 Full Lecture</span>
-                          ) : (
-                            <span className="badge-pill-clip">✂️ Clip</span>
+                  🌐 Show All Lessons ({recordings.length})
+                </button>
+              </div>
+            ) : (
+              filteredRecordings.map((rec) => {
+                const isSelected = rec.id === selectedRecordingId;
+                const matchedLesson = (lessons || []).find((l) => isRecordInLesson(rec, l));
+                const dateStr = rec.startedAt?.toDate
+                  ? rec.startedAt.toDate().toLocaleString()
+                  : rec.startedAt
+                  ? new Date(rec.startedAt).toLocaleString()
+                  : 'Recent';
+
+                const isChecked = selectedIdsToMerge.includes(rec.id);
+                const isMergeable = !rec.isCombined && (rec.storagePath || rec.videoUrl) && rec.status !== 'recording' && rec.status !== 'discarded';
+
+                return (
+                  <div
+                    key={rec.id}
+                    className={`recording-card ${isSelected ? 'active' : ''} ${isChecked ? 'selected-for-merge' : ''} ${isSelectionMode && !isMergeable ? 'disabled-merge' : ''}`}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        if (isSelectionMode) {
+                          if (isMergeable) {
+                            toggleSelectForMerge(rec.id, !isChecked);
+                          }
+                        } else {
+                          setSelectedRecordingId(rec.id);
+                        }
+                      }
+                    }}
+                    onClick={() => {
+                      if (isSelectionMode) {
+                        if (isMergeable) {
+                          toggleSelectForMerge(rec.id, !isChecked);
+                        }
+                      } else {
+                        setSelectedRecordingId(rec.id);
+                      }
+                    }}
+                  >
+                    <div className="recording-card-select">
+                      {isSelectionMode && (
+                        <input
+                          type="checkbox"
+                          className="recording-checkbox"
+                          checked={isChecked}
+                          disabled={!isMergeable}
+                          title={rec.isCombined ? 'Already a combined full lecture' : (!rec.storagePath && !rec.videoUrl) ? 'Recording media not available' : 'Select clip to merge'}
+                          aria-label={`Select ${rec.title || 'recording'} for merge`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            if (isMergeable) {
+                              toggleSelectForMerge(rec.id, e.target.checked);
+                            }
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div className="recording-card-title">{rec.title || 'Classroom Lecture'}</div>
+                        <div className="recording-card-meta">
+                          <span>📅 {dateStr}</span>
+                          {matchedLesson && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#f1f5f9',
+                                border: '1px solid #e2e8f0',
+                                fontSize: '0.75rem',
+                                color: '#475569',
+                                fontWeight: 600,
+                              }}
+                              title={`Associated with lesson ${matchedLesson.title || 'schedule slot'}`}
+                            >
+                              📅 {matchedLesson.title || 'Lesson'}
+                            </span>
                           )}
-                          {rec.youtubeVideoId && (
-                            <span className="badge-pill-youtube">📺 YouTube</span>
-                          )}
-                          {rec.driveFileId && (
-                            <span className="badge-pill-drive">📁 Drive</span>
-                          )}
-                        </span>
-                        {rec.topic && <span>📌 Topic: {rec.topic}</span>}
-                        {rec.isFragment && rec.mergedIntoSessionId && (
-                          <span style={{ fontSize: '0.75rem', color: '#718096', fontStyle: 'italic' }}>
-                            (Merged into master lecture)
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>⏱️ {formatDuration(rec.durationSeconds || 0)}</span>
+                            {rec.fileSize ? <span>• 📦 {formatFileSize(rec.fileSize)}</span> : null}
+                            {rec.isCombined ? (
+                              <span className="badge-pill-combined">🌟 Combined Full Lecture</span>
+                            ) : rec.isFragment ? (
+                              <span className="badge-pill-fragment">✂️ Part {rec.fragmentIndex || 1}</span>
+                            ) : rec.durationSeconds >= 600 ? (
+                              <span className="badge-pill-full">🌟 Full Lecture</span>
+                            ) : (
+                              <span className="badge-pill-clip">✂️ Clip</span>
+                            )}
+                            {rec.youtubeVideoId && (
+                              <span className="badge-pill-youtube">📺 YouTube</span>
+                            )}
+                            {rec.driveFileId && (
+                              <span className="badge-pill-drive">📁 Drive</span>
+                            )}
+                            {rec.aiModelUsed && (
+                              <span className="badge-pill-clip" style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.72rem' }}>
+                                🤖 {rec.aiModelUsed}
+                              </span>
+                            )}
+                            {classPolicy === 'always_shared' || rec.isSharedWithStudents ? (
+                              <span className="badge-pill-shared" title="Enrolled students can view this video">
+                                👥 Shared
+                              </span>
+                            ) : (
+                              <span className="badge-pill-private" title="Private to instructor">
+                                🔒 Private
+                              </span>
+                            )}
                           </span>
-                        )}
+                          {rec.topic && <span>📌 Topic: {rec.topic}</span>}
+                          {rec.isFragment && rec.mergedIntoSessionId && (
+                            <span style={{ fontSize: '0.75rem', color: '#718096', fontStyle: 'italic' }}>
+                              (Merged into master lecture)
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginTop: '4px' }}>
+                          {getStatusBadge(rec.status, rec)}
+                          {(rec.subtitlesDisabled || rec.status === 'subtitles_failed' || (!rec.vttUrls && rec.status === 'ready')) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenRegenModal(rec);
+                              }}
+                              style={{
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                color: '#1d4ed8',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                              title="Generate subtitles and CC with Gemini"
+                            >
+                              🔄 CC
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {getStatusBadge(rec.status, rec)}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           {/* Detailed Player & YouTube Studio Export Panel */}
@@ -728,15 +1256,81 @@ export default function LectureRecordingsView({
                 <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#2d3748' }}>
                   {selectedRecording.title || 'Lecture Recording'}
                 </h3>
-                <button
-                  className="btn-delete-recording"
-                  onClick={() => handleDeleteRecording(selectedRecording.id)}
-                  disabled={isDeleting}
-                  title="Permanently delete recording, video, audio & subtitle files"
-                >
-                  {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete Recording'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleOpenRegenModal(selectedRecording)}
+                    disabled={isRetryingSubtitles}
+                    title="Configure AI model, target languages, and custom prompt to synthesize CC subtitles on demand"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, padding: '7px 14px' }}
+                  >
+                    <span>🔄</span>
+                    <span>{isRetryingSubtitles ? 'Invoking Gemini...' : 'Re-generate Subtitles & CC'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-share-recording ${selectedRecording.isSharedWithStudents ? 'is-shared' : ''}`}
+                    onClick={() => handleToggleShareWithStudents(selectedRecording.id, selectedRecording.isSharedWithStudents)}
+                    disabled={isSharingToggling}
+                    title={selectedRecording.isSharedWithStudents ? 'Click to revoke student access for this lecture' : 'Click to share this lecture with enrolled students'}
+                  >
+                    {isSharingToggling ? '⏳ Updating...' : selectedRecording.isSharedWithStudents ? '👥 Shared with Students' : '📢 Share with Students'}
+                  </button>
+                  <button
+                    className="btn-delete-recording"
+                    onClick={() => handleDeleteRecording(selectedRecording.id)}
+                    disabled={isDeleting}
+                    title="Permanently delete recording, video, audio & subtitle files"
+                  >
+                    {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete Recording'}
+                  </button>
+                </div>
+                <div style={{ width: '100%', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {classPolicy === 'always_shared' ? (
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                      🌐 Automatically shared with enrolled students (Class Policy: Always Share)
+                    </span>
+                  ) : classPolicy === 'private' && selectedRecording.isSharedWithStudents ? (
+                    <span style={{ color: '#b45309', fontWeight: 600 }}>
+                      ⚠️ Marked as shared, but Class Sharing is currently set to Private (Default Deny). Students cannot view it until class sharing is enabled.
+                    </span>
+                  ) : selectedRecording.isSharedWithStudents ? (
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                      ✓ Shared with enrolled students for {(lessons || []).find((l) => isRecordInLesson(selectedRecording, l))?.title || selectedRecording.lessonTitle || selectedRecording.title || 'this lesson'}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#64748b' }}>
+                      🔒 Kept private to instructor (not visible to students)
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {shareFeedback && (
+                <div className="share-feedback-toast" style={{ marginBottom: '12px', padding: '8px 14px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                  ✅ {shareFeedback}
+                </div>
+              )}
+
+              {classInfo && classPolicy === 'private' && (
+                <div className="class-sharing-warning-banner" style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                    <span>
+                      <strong>Class Sharing Disabled:</strong> Enrolled students cannot access shared lecture recordings until class sharing is enabled.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleClassSharing}
+                    disabled={isClassSharingToggling}
+                    style={{ padding: '4px 10px', fontSize: '0.8rem', fontWeight: 600, background: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    {isClassSharingToggling ? 'Updating...' : 'Enable for Class'}
+                  </button>
+                </div>
+              )}
 
               {/* Verified Duration & Session Info Banner */}
               <div className="lecture-duration-banner">
@@ -753,7 +1347,70 @@ export default function LectureRecordingsView({
                 ) : (
                   <span className="badge-pill-clip">✂️ Short Recording Clip</span>
                 )}
+                {selectedRecording.aiModelUsed && (
+                  <span className="filesize-pill" style={{ background: '#f8fafc', color: '#334155' }}>
+                    🤖 AI Model: <strong>{selectedRecording.aiModelUsed}</strong>
+                  </span>
+                )}
               </div>
+
+              {/* On-Demand Subtitles Notice Banner (when CC skipped by class policy or not yet generated) */}
+              {(!selectedRecording.vttUrls || Object.keys(selectedRecording.vttUrls).length === 0 || selectedRecording.subtitlesDisabled) && selectedRecording.status !== 'recording' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    backgroundColor: '#eff6ff',
+                    border: '1.5px solid #bfdbfe',
+                    borderRadius: '8px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>💬</span>
+                    <div>
+                      <strong style={{ display: 'block', color: '#1e40af', fontSize: '0.92rem' }}>
+                        {selectedRecording.subtitlesDisabled
+                          ? 'Automated Subtitles Were Skipped for this Lecture'
+                          : selectedRecording.status === 'subtitles_failed'
+                          ? 'Subtitle Generation Needs Retry'
+                          : 'No Multilingual CC Subtitles Generated Yet'}
+                      </strong>
+                      <span style={{ fontSize: '0.8rem', color: '#3b82f6' }}>
+                        {selectedRecording.subtitlesDisabled
+                          ? 'Automated AI processing was turned off for this class to save quota. You can synthesize CC on demand.'
+                          : 'Generate timestamped transcripts, YouTube chapters, and multilingual subtitles with Gemini AI.'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRegenModal(selectedRecording)}
+                    disabled={isRetryingSubtitles}
+                    style={{
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      cursor: isRetryingSubtitles ? 'not-allowed' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    <span>🚀</span>
+                    <span>{isRetryingSubtitles ? 'Invoking Gemini...' : 'Generate CC On-Demand (Select Prompt & Model)'}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Multi-Player Switcher (when YouTube or Google Drive is linked) */}
               {(selectedRecording.youtubeVideoId || selectedRecording.driveFileId) && (
@@ -768,17 +1425,19 @@ export default function LectureRecordingsView({
                   )}
                   {selectedRecording.driveFileId && (
                     <button
+                      type="button"
                       className={`player-mode-tab ${activePlayerMode === 'drive' ? 'active' : ''}`}
                       onClick={() => setActivePlayerMode('drive')}
                     >
-                      📁 Google Drive Stream
+                      📁 Google Drive Stream (⚠️ No CC)
                     </button>
                   )}
                   <button
+                    type="button"
                     className={`player-mode-tab ${activePlayerMode === 'cloud' ? 'active' : ''}`}
                     onClick={() => setActivePlayerMode('cloud')}
                   >
-                    🎞️ Cloud Storage HTML5 Player (Multilingual CC)
+                    🎞️ Cloud Storage HTML5 Player (💬 Multilingual CC)
                   </button>
                   {selectedRecording.youtubeUrl && (
                     <a
@@ -803,6 +1462,34 @@ export default function LectureRecordingsView({
                 </div>
               )}
 
+              {/* Recording Interruption & Gap Notice */}
+              {selectedRecording.hasMissingSegment && selectedRecording.interruptionRemarks && (
+                <div
+                  className="recording-interruption-notice-box"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '8px',
+                    color: '#92400e',
+                    fontSize: '0.9rem',
+                    marginBottom: '16px',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⚠️</span>
+                  <div>
+                    <strong style={{ display: 'block', marginBottom: '2px', color: '#78350f' }}>
+                      Lecture Interruption & Crash Recovery Notice
+                    </strong>
+                    <span>{selectedRecording.interruptionRemarks}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Player Area: YouTube Embed, Google Drive Embed, or Native HTML5 Video */}
               {activePlayerMode === 'youtube' && selectedRecording.youtubeVideoId ? (
                 <div className="lecture-youtube-player-box">
@@ -816,73 +1503,164 @@ export default function LectureRecordingsView({
                   />
                 </div>
               ) : activePlayerMode === 'drive' && (selectedRecording.driveEmbedUrl || selectedRecording.driveFileId) ? (
-                <div className="lecture-drive-player-box">
-                  <iframe
-                    src={selectedRecording.driveEmbedUrl || `https://drive.google.com/file/d/${selectedRecording.driveFileId}/preview`}
-                    title={selectedRecording.title || 'Google Drive Classroom Video'}
-                    frameBorder="0"
-                    allow="autoplay; encrypted-media"
-                    allowFullScreen
-                    className="lecture-drive-iframe"
-                  />
+                <div>
+                  <div className="lecture-drive-player-box">
+                    <iframe
+                      src={selectedRecording.driveEmbedUrl || `https://drive.google.com/file/d/${selectedRecording.driveFileId}/preview`}
+                      title={selectedRecording.title || 'Google Drive Classroom Video'}
+                      frameBorder="0"
+                      allow="autoplay; encrypted-media"
+                      allowFullScreen
+                      className="lecture-drive-iframe"
+                    />
+                  </div>
+                  {selectedRecording.vttUrls && Object.keys(selectedRecording.vttUrls).length > 0 && (
+                    <div className="drive-no-cc-banner" data-testid="drive-no-cc-banner">
+                      <div className="drive-no-cc-banner-header">
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⚠️</span>
+                        <div>
+                          <strong>Google Drive Preview does not support external CC subtitles.</strong>
+                          <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                            Subtitles ({Object.keys(selectedRecording.vttUrls).map((k) => getSubtitleLanguageLabel(k)).join(', ')}) are available in the <strong>Cloud Storage HTML5 Player</strong>.
+                            Click any language below to watch with subtitles:
+                          </p>
+                        </div>
+                      </div>
+                      <div className="subtitle-lang-buttons">
+                        {Object.keys(selectedRecording.vttUrls).map((langKey) => {
+                          const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                          const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                          return (
+                            <button
+                              key={langKey}
+                              type="button"
+                              className="btn-sub-lang"
+                              onClick={() => handleSelectSubtitleLangFromDrive(langKey)}
+                              title={`Switch to Cloud Player with ${label} Subtitles`}
+                            >
+                              {label} (Cloud Player)
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className="action-btn-sm action-btn-primary"
+                          style={{ fontWeight: 600, padding: '6px 12px' }}
+                          onClick={() => setActivePlayerMode('cloud')}
+                        >
+                          🎞️ Switch to Cloud Player
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : selectedRecording.videoUrl ? (
-                <div className="lecture-video-player-box">
-                  <video
-                    ref={videoRef}
-                    key={selectedRecording.videoUrl}
-                    controls
-                    playsInline
-                    crossOrigin="anonymous"
-                  >
-                    <source
-                      src={selectedRecording.videoUrl}
-                      type={selectedRecording.mimeType || 'video/webm'}
-                    />
-                    {/* Multilingual Closed Caption Tracks */}
-                    {selectedRecording.vttUrls?.en && (
-                      <track
-                        kind="subtitles"
-                        src={selectedRecording.vttUrls.en}
-                        srcLang="en"
-                        label="English"
-                        default
+                <div>
+                  <div className="lecture-video-player-box">
+                    <video
+                      ref={videoRef}
+                      key={selectedRecording.videoUrl}
+                      controls
+                      playsInline
+                      crossOrigin="anonymous"
+                      onLoadedMetadata={(e) => {
+                        const vid = e.currentTarget;
+                        fixWebmPlaybackDuration(vid, selectedRecording?.durationSeconds, (v) => {
+                          applySubtitleTrack(v, selectedSubtitleLang);
+                        });
+                      }}
+                      onEnded={(e) => handleVideoEndedGuard(e, selectedRecording?.durationSeconds)}
+                    >
+                      <source
+                        src={selectedRecording.videoUrl}
+                        type={selectedRecording.mimeType || 'video/webm'}
                       />
-                    )}
-                    {selectedRecording.vttUrls?.['zh-Hant'] && (
-                      <track
-                        kind="subtitles"
-                        src={selectedRecording.vttUrls['zh-Hant']}
-                        srcLang="zh-Hant"
-                        label="Traditional Chinese (繁體中文)"
-                      />
-                    )}
-                    {selectedRecording.vttUrls?.['zh-Hans'] && (
-                      <track
-                        kind="subtitles"
-                        src={selectedRecording.vttUrls['zh-Hans']}
-                        srcLang="zh-Hans"
-                        label="Simplified Chinese (简体中文)"
-                      />
-                    )}
-                    {selectedRecording.vttUrls?.ja && (
-                      <track
-                        kind="subtitles"
-                        src={selectedRecording.vttUrls.ja}
-                        srcLang="ja"
-                        label="Japanese (日本語)"
-                      />
-                    )}
-                    {selectedRecording.vttUrls?.original && (
-                      <track
-                        kind="subtitles"
-                        src={selectedRecording.vttUrls.original}
-                        srcLang="original"
-                        label="Original (Cantonese/English)"
-                      />
-                    )}
-                    Your browser does not support HTML5 video playback.
-                  </video>
+                      {/* Multilingual Closed Caption Tracks (dynamic) */}
+                      {selectedRecording.vttUrls &&
+                        Object.entries(selectedRecording.vttUrls).map(([langKey, url]) => {
+                          const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                          const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                          const bcp47 = langConfig?.bcp47 || langKey;
+                          return (
+                            <track
+                              key={langKey}
+                              kind="subtitles"
+                              src={url}
+                              srcLang={bcp47}
+                              label={label}
+                              default={selectedSubtitleLang === langKey}
+                            />
+                          );
+                        })}
+                      Your browser does not support HTML5 video playback.
+                    </video>
+                  </div>
+
+                  {/* Subtitle / CC Language Selector Toolbar */}
+                  {selectedRecording.vttUrls && Object.keys(selectedRecording.vttUrls).length > 0 && (
+                    <div className="subtitle-language-toolbar" data-testid="subtitle-language-toolbar" role="region" aria-label="Subtitle Language Selector">
+                      <div className="subtitle-toolbar-header">
+                        <span className="subtitle-toolbar-title">
+                          💬 <strong>Subtitles / CC Language:</strong>
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="subtitle-toolbar-badge">
+                            Active: {getSubtitleLanguageLabel(selectedSubtitleLang)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRegenModal(selectedRecording)}
+                            disabled={isRetryingSubtitles}
+                            title="Regenerate subtitles with different prompt, languages, or AI model"
+                            style={{
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              color: '#1d4ed8',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <span>🔄</span>
+                            <span>{isRetryingSubtitles ? 'Generating...' : 'Re-generate CC'}</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="subtitle-lang-buttons">
+                        {Object.keys(selectedRecording.vttUrls).map((langKey) => {
+                          const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                          const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                          const isActive = selectedSubtitleLang === langKey;
+                          return (
+                            <button
+                              key={langKey}
+                              type="button"
+                              className={`btn-sub-lang ${isActive ? 'active' : ''}`}
+                              onClick={() => handleSelectSubtitleLang(langKey)}
+                              title={`Switch to ${label} Subtitles`}
+                              aria-pressed={isActive}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className={`btn-sub-lang btn-sub-lang-off ${selectedSubtitleLang === 'off' ? 'active' : ''}`}
+                          onClick={() => handleSelectSubtitleLang('off')}
+                          title="Turn Subtitles Off"
+                          aria-pressed={selectedSubtitleLang === 'off'}
+                        >
+                          🚫 Off (關閉)
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="empty-state" style={{ padding: '2rem 1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
@@ -1314,23 +2092,50 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <button
-                              className="btn-upload-drive"
-                              onClick={isGdriveConnected ? () => uploadToGdrive({
+                            {(() => {
+                              const hasSubtitles = selectedRecording.vttUrls && Object.keys(selectedRecording.vttUrls).length > 0;
+                              const hasDriveSubtitles = selectedRecording.driveSubtitleFiles && Object.keys(selectedRecording.driveSubtitleFiles).length > 0;
+                              const isAlreadyInDrive = Boolean(selectedRecording.driveFileId);
+
+                              let label = '☁️ Upload Video & Subtitles to Drive';
+                              let action = () => uploadToGdrive({
                                 recording: selectedRecording,
                                 classId,
                                 className: classId,
                                 lessonName: selectedRecording.lessonTitle || selectedRecording.title || 'General Recordings',
                                 baseFolder: baseFolderName,
-                              }) : () => connectGdrive()}
-                              disabled={isGdriveConnecting || isGdriveUploading}
-                            >
-                              {isGdriveConnected
-                                ? '☁️ Upload Video to Google Drive'
-                                : isGdriveConnecting
-                                ? '⏳ Connecting Google Drive...'
-                                : '📁 Connect Google Drive to Upload'}
-                            </button>
+                              });
+
+                              if (!isGdriveConnected) {
+                                label = isGdriveConnecting ? '⏳ Connecting Google Drive...' : '📁 Connect Google Drive to Upload';
+                                action = () => connectGdrive();
+                              } else if (isAlreadyInDrive && hasSubtitles && !hasDriveSubtitles) {
+                                label = '💬 Sync Subtitles to Drive (1 Click)';
+                                action = () => uploadSubtitlesToGdrive({
+                                  recording: selectedRecording,
+                                  classId,
+                                  className: classId,
+                                  lessonName: selectedRecording.lessonTitle || selectedRecording.title || 'General Recordings',
+                                  baseFolder: baseFolderName,
+                                });
+                              } else if (isAlreadyInDrive) {
+                                label = '🔄 Re-upload Video & Subtitles to Drive';
+                              } else if (hasSubtitles) {
+                                label = '☁️ Upload Video & Subtitles to Drive (1 Click)';
+                              } else {
+                                label = '☁️ Upload Video to Drive';
+                              }
+
+                              return (
+                                <button
+                                  className="btn-upload-drive"
+                                  onClick={action}
+                                  disabled={isGdriveConnecting || isGdriveUploading}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })()}
 
                             {selectedRecording.driveWebViewLink && (
                               <a
@@ -1347,6 +2152,42 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                           {selectedRecording.driveFolderPath && (
                             <div style={{ fontSize: '0.8rem', color: '#4a5568' }}>
                               📁 Stored in: <code>{selectedRecording.driveFolderPath}</code>
+                            </div>
+                          )}
+
+                          {selectedRecording.driveSubtitleFiles && Object.keys(selectedRecording.driveSubtitleFiles).length > 0 && (
+                            <div style={{ marginTop: '8px', padding: '8px 12px', background: '#ebf8ff', borderRadius: '6px', fontSize: '0.8rem', color: '#2b6cb0', border: '1px solid #bee3f8' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
+                                <span style={{ fontWeight: 600 }}>💬 Multilingual Subtitle Files in Drive:</span>
+                                <button
+                                  type="button"
+                                  style={{ background: 'none', border: 'none', color: '#2b6cb0', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                                  onClick={isGdriveConnected ? () => uploadSubtitlesToGdrive({
+                                    recording: selectedRecording,
+                                    classId,
+                                    className: classId,
+                                    lessonName: selectedRecording.lessonTitle || selectedRecording.title || 'General Recordings',
+                                    baseFolder: baseFolderName,
+                                  }) : () => connectGdrive()}
+                                  disabled={isGdriveConnecting || isGdriveUploading}
+                                  title="Re-upload or refresh subtitle tracks in this Drive folder"
+                                >
+                                  🔄 Re-sync Subtitles
+                                </button>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {Object.entries(selectedRecording.driveSubtitleFiles).map(([lang, fileObj]) => (
+                                  <a
+                                    key={lang}
+                                    href={fileObj.webViewLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: '#2b6cb0', textDecoration: 'underline' }}
+                                  >
+                                    📄 {lang.toUpperCase()} (.vtt) ↗
+                                  </a>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1396,15 +2237,17 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
 
                 {/* Additional Recording Actions */}
                 <div className="recording-footer-actions">
-                  {selectedRecording.status !== 'ready' && (
-                    <button
-                      className="btn-secondary"
-                      onClick={handleTriggerSubtitles}
-                      disabled={isRetryingSubtitles}
-                    >
-                      {isRetryingSubtitles ? '🤖 Invoking Gemini...' : '🔄 Generate / Retry Subtitles'}
-                    </button>
-                  )}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleOpenRegenModal(selectedRecording)}
+                    disabled={isRetryingSubtitles}
+                  >
+                    {isRetryingSubtitles
+                      ? '🤖 Invoking Gemini...'
+                      : selectedRecording.status === 'ready'
+                      ? '🔄 Re-generate Subtitles & CC'
+                      : '🔄 Generate / Retry Subtitles'}
+                  </button>
 
                   <button
                     className="btn-delete-recording"
@@ -1420,6 +2263,277 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
           )}
         </div>
       )}
+
+      {/* On-Demand Multilingual CC & Subtitles Regeneration Modal */}
+      <Modal
+        show={showRegenModal}
+        onClose={() => setShowRegenModal(false)}
+        title="🔄 Re-generate Multilingual Subtitles & CC"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+          {selectedRecording && (
+            <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+              <div><strong>Lecture:</strong> {selectedRecording.title || 'Untitled Session'}</div>
+              <div style={{ display: 'flex', gap: '15px', color: '#64748b', marginTop: '4px' }}>
+                <span>⏱️ {formatDuration(selectedRecording.durationSeconds)}</span>
+                <span>📦 {formatFileSize(selectedRecording.fileSize)}</span>
+                <span>Status: {selectedRecording.status}</span>
+                {selectedRecording.aiModelUsed && <span>🤖 Prior Model: {selectedRecording.aiModelUsed}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* AI Model Selection */}
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b', display: 'block', marginBottom: '6px' }}>
+              1. Select Gemini AI Model
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: regenModel === 'gemini-3.8-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                  background: regenModel === 'gemini-3.8-flash' ? '#eff6ff' : '#ffffff',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="regenModel"
+                  value="gemini-3.8-flash"
+                  checked={regenModel === 'gemini-3.8-flash'}
+                  onChange={() => setRegenModel('gemini-3.8-flash')}
+                  style={{ accentColor: '#3b82f6' }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600 }}>✨ Gemini 3.8 Flash</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Recommended (CS terms &amp; code-switching)</div>
+                </div>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: regenModel === 'gemini-3.6-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                  background: regenModel === 'gemini-3.6-flash' ? '#eff6ff' : '#ffffff',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="regenModel"
+                  value="gemini-3.6-flash"
+                  checked={regenModel === 'gemini-3.6-flash'}
+                  onChange={() => setRegenModel('gemini-3.6-flash')}
+                  style={{ accentColor: '#3b82f6' }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600 }}>⚡ Gemini 3.6 Flash</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>High Performance &amp; Fast Token Output</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Target Languages */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
+                2. Target Subtitle &amp; CC Languages ({regenLanguages.length} selected)
+              </label>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => setRegenLanguages(['en', 'zh-Hant', 'zh-Hans'])}
+                  style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}
+                >
+                  Standard 3
+                </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={() => setRegenLanguages(SUBTITLE_LANGUAGES.filter((l) => l.code !== 'original').map((l) => l.code))}
+                  style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}
+                >
+                  Select All
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {SUBTITLE_LANGUAGES.filter((l) => l.code !== 'original').map((lang) => {
+                const isChecked = regenLanguages.includes(lang.code);
+                return (
+                  <label
+                    key={lang.code}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      border: isChecked ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                      background: isChecked ? '#eff6ff' : '#ffffff',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {
+                        if (isChecked) {
+                          if (regenLanguages.length > 1) {
+                            setRegenLanguages(regenLanguages.filter((c) => c !== lang.code));
+                          }
+                        } else {
+                          setRegenLanguages([...regenLanguages, lang.code]);
+                        }
+                      }}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    <span>{lang.icon} {lang.label} ({lang.code})</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Audio Speech-to-Text & Milestone Chapters AI Prompt */}
+          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: '260px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
+                3. Speech-to-Text &amp; Milestone Chapters Prompt
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultStt = classInfo?.lectureSttPrompt || classInfo?.lectureRecordingPrompt || null;
+                  setRegenSttPrompt(defaultStt);
+                  setRegenSttPromptText(defaultStt?.promptText || '');
+                  setRegenPrompt(defaultStt);
+                  setRegenPromptText(defaultStt?.promptText || '');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Reset to Class Default
+              </button>
+            </div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Verbatim speech recognition, technical terminology retention, Cantonese-English code switching, and YouTube milestone chapter rules.
+            </p>
+            <div style={{ flexGrow: 1, minHeight: '200px' }}>
+              <AudioPromptSelector
+                user={user}
+                applyToFilter="Lecture STT & Chapters"
+                selectedPrompt={regenSttPrompt || regenPrompt}
+                onSelectPrompt={(p) => {
+                  setRegenSttPrompt(p);
+                  setRegenSttPromptText(p ? p.promptText : '');
+                  setRegenPrompt(p);
+                  setRegenPromptText(p ? p.promptText : '');
+                }}
+                promptText={regenSttPromptText !== undefined ? regenSttPromptText : regenPromptText}
+                onTextChange={(val) => {
+                  setRegenSttPromptText(val);
+                  setRegenPromptText(val);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 4. Multilingual Subtitle Translation Prompt */}
+          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: '260px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
+                4. Multilingual Subtitle Translation Prompt
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultTrans = classInfo?.lectureTranslationPrompt || null;
+                  setRegenTransPrompt(defaultTrans);
+                  setRegenTransPromptText(defaultTrans?.promptText || '');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Reset to Class Default
+              </button>
+            </div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Language-by-language translation rules, Cantonese-to-書面語 normalization, and CS technical keyword preservation.
+            </p>
+            <div style={{ flexGrow: 1, minHeight: '200px' }}>
+              <TranslationPromptSelector
+                user={user}
+                applyToFilter="Lecture Subtitle Translation"
+                selectedPrompt={regenTransPrompt}
+                onSelectPrompt={(p) => {
+                  setRegenTransPrompt(p);
+                  setRegenTransPromptText(p ? p.promptText : '');
+                }}
+                promptText={regenTransPromptText}
+                onTextChange={setRegenTransPromptText}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setShowRegenModal(false)}
+            disabled={isRetryingSubtitles}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleExecuteRegenSubtitles}
+            disabled={isRetryingSubtitles || regenLanguages.length === 0}
+            style={{
+              backgroundColor: '#3b82f6',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.5rem 1.25rem',
+              borderRadius: '6px',
+              fontWeight: 600,
+              cursor: isRetryingSubtitles || regenLanguages.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isRetryingSubtitles ? '🤖 Processing...' : '🚀 Start AI Generation'}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

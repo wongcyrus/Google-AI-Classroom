@@ -1,5 +1,6 @@
 import './firebase.js';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
@@ -126,51 +127,200 @@ export async function executeMergeLectureRecordings(
     throw new HttpsError('invalid-argument', 'Either recordingIds or sessionGroupId must be specified.');
   }
 
+  let bucket = null;
+  try {
+    bucket = currentStorage?.bucket ? currentStorage.bucket() : null;
+  } catch {}
+
   // Separate valid completed recordings from incomplete/interrupted stubs
-  const validRecordings = recordingsToMerge.filter(
+  let validRecordings = recordingsToMerge.filter(
     (r) => r.storagePath && r.status !== 'recording' && r.status !== 'discarded'
   );
-  const invalidRecordings = recordingsToMerge.filter(
+  let invalidRecordings = recordingsToMerge.filter(
     (r) => !r.storagePath || r.status === 'recording' || r.status === 'discarded'
   );
 
-  // If there are fewer than 2 valid clips, simply return without modifying any Firestore documents
-  if (validRecordings.length < 2) {
-    if (validRecordings.length === 1) {
+  // Check if any "invalid" recordings actually have a valid file in Storage that can be salvaged
+  if (bucket) {
+    for (let i = invalidRecordings.length - 1; i >= 0; i--) {
+      const candidate = invalidRecordings[i];
+      if (candidate.storagePath) {
+        try {
+          const f = bucket.file(candidate.storagePath);
+          const [exists] = await f.exists();
+          if (exists) {
+            // Salvage this recording segment
+            validRecordings.push(candidate);
+            invalidRecordings.splice(i, 1);
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // Sort valid recordings chronologically by startedAt ascending
+  validRecordings.sort((a, b) => {
+    const timeA = a.startedAt?.toMillis ? a.startedAt.toMillis() : (a.startedAt ? new Date(a.startedAt).getTime() : 0);
+    const timeB = b.startedAt?.toMillis ? b.startedAt.toMillis() : (b.startedAt ? new Date(b.startedAt).getTime() : 0);
+    return timeA - timeB;
+  });
+
+  // Calculate interruption gaps between consecutive valid clips and from crashed stubs
+  const gaps = [];
+  let totalLostSeconds = 0;
+
+  for (let i = 0; i < validRecordings.length - 1; i++) {
+    const curr = validRecordings[i];
+    const next = validRecordings[i + 1];
+    const currStart = curr.startedAt?.toMillis ? curr.startedAt.toMillis() : (curr.startedAt ? new Date(curr.startedAt).getTime() : 0);
+    const currDurMs = (curr.durationSeconds || 0) * 1000;
+    const currEnd = curr.endedAt?.toMillis ? curr.endedAt.toMillis() : (currStart + currDurMs);
+    const nextStart = next.startedAt?.toMillis ? next.startedAt.toMillis() : (next.startedAt ? new Date(next.startedAt).getTime() : 0);
+
+    if (currEnd && nextStart && nextStart > currEnd + 15000) {
+      const gapSecs = Math.round((nextStart - currEnd) / 1000);
+      totalLostSeconds += gapSecs;
+      const startTimeStr = new Date(currEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const resumeTimeStr = new Date(nextStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      gaps.push({
+        segmentBefore: i + 1,
+        segmentAfter: i + 2,
+        gapSeconds: gapSecs,
+        gapMinutes: Math.round((gapSecs / 60) * 10) / 10,
+        approxStart: startTimeStr,
+        approxResume: resumeTimeStr,
+      });
+    }
+  }
+
+  // Also check if any invalid recordings represented lost segments before or between valid clips
+  for (const badRec of invalidRecordings) {
+    const badStart = badRec.startedAt?.toMillis ? badRec.startedAt.toMillis() : (badRec.startedAt ? new Date(badRec.startedAt).getTime() : 0);
+    if (badStart) {
+      const nextValid = validRecordings.find((v) => {
+        const vStart = v.startedAt?.toMillis ? v.startedAt.toMillis() : (v.startedAt ? new Date(v.startedAt).getTime() : 0);
+        return vStart > badStart;
+      });
+      if (nextValid) {
+        const nextStart = nextValid.startedAt?.toMillis ? nextValid.startedAt.toMillis() : (nextValid.startedAt ? new Date(nextValid.startedAt).getTime() : 0);
+        const badGapSecs = Math.max(0, Math.round((nextStart - badStart) / 1000));
+        if (badGapSecs > 15 && !gaps.some((g) => Math.abs(g.gapSeconds - badGapSecs) < 10)) {
+          totalLostSeconds += badGapSecs;
+          gaps.push({
+            crashedSessionId: badRec.id,
+            gapSeconds: badGapSecs,
+            gapMinutes: Math.round((badGapSecs / 60) * 10) / 10,
+            approxStart: new Date(badStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            approxResume: new Date(nextStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+      }
+    }
+  }
+
+  const hasMissingSegment = gaps.length > 0 || invalidRecordings.length > 0;
+  let interruptionRemarks = null;
+  if (hasMissingSegment) {
+    const lostMins = Math.round((totalLostSeconds / 60) * 10) / 10;
+    const gapTexts = gaps.map(
+      (g) => `~${g.gapMinutes} min gap between ${g.approxStart} and ${g.approxResume}`
+    );
+    if (gapTexts.length > 0) {
+      interruptionRemarks = `Recording interrupted (e.g. browser crash/reconnect). Missing ${gapTexts.join('; ')} (approx. ${lostMins || 1} min total lost). Rest of lecture preserved and processed.`;
+    } else {
+      interruptionRemarks = `Recording interrupted by a browser crash or disconnect. Previous segment lost, remaining lecture content preserved and processed.`;
+    }
+  }
+
+  // Handle case where no valid clips exist at all
+  if (validRecordings.length === 0) {
+    return {
+      success: false,
+      reason: 'insufficient_clips',
+      message: 'No completed recording clips available to merge.',
+      count: 0,
+      ignoredIncompleteCount: invalidRecordings.length,
+    };
+  }
+
+  // Handle case where only 1 valid clip exists
+  if (validRecordings.length === 1) {
+    // If no interruption occurred and only 1 clip exists, merging is not required
+    if (invalidRecordings.length === 0) {
       return {
         success: false,
         reason: 'single_valid_clip',
         message: 'Only 1 completed recording clip exists. Single clips do not require merging.',
         count: 1,
-        ignoredIncompleteCount: invalidRecordings.length,
+        ignoredIncompleteCount: 0,
       };
     }
 
+    // A crash/interruption DID occur, and 1 valid clip survived!
+    // Preserve the surviving clip, stamp it with the interruption remarks, and continue the pipeline!
+    const survivingClip = validRecordings[0];
+    const survivingDocRef = recordingsRef.doc(survivingClip.id);
+    await survivingDocRef.update({
+      hasMissingSegment: true,
+      interruptionRemarks,
+      lostDurationSeconds: totalLostSeconds,
+      gapDetails: gaps,
+    });
+
+    const batch = currentDb.batch();
+    for (const badRec of invalidRecordings) {
+      const badDocRef = recordingsRef.doc(badRec.id);
+      batch.update(badDocRef, {
+        status: 'interrupted',
+        interruptionRemarks: `Recording crashed before upload. Rest of lecture preserved in session ${survivingClip.id}.`,
+        mergedIntoSessionId: survivingClip.id,
+        discardedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+
     return {
-      success: false,
-      reason: 'insufficient_clips',
-      message: 'No completed recording clips available to merge.',
-      count: validRecordings.length,
-      ignoredIncompleteCount: invalidRecordings.length,
+      success: true,
+      combinedSessionId: survivingClip.id,
+      title: survivingClip.title,
+      durationSeconds: survivingClip.durationSeconds || 0,
+      videoUrl: survivingClip.videoUrl,
+      audioUrl: survivingClip.audioUrl,
+      storagePath: survivingClip.storagePath,
+      audioStoragePath: survivingClip.audioStoragePath,
+      hasMissingSegment: true,
+      interruptionRemarks,
+      lostDurationSeconds: totalLostSeconds,
+      gapDetails: gaps,
+      clipCount: 1,
+      crashedClipsCount: invalidRecordings.length,
+      message: 'Preserved surviving lecture recording with crash interruption remarks.',
+    };
+  }
+
+  // Check if clips were already merged into a session to prevent duplicate processing
+  const alreadyMergedClips = validRecordings.filter((r) => r.mergedIntoSessionId && r.mergedIntoSessionId !== 'merging');
+  if (alreadyMergedClips.length > 0 && alreadyMergedClips.length === validRecordings.length) {
+    const existingCombinedId = alreadyMergedClips[0].mergedIntoSessionId;
+    return {
+      success: true,
+      alreadyMerged: true,
+      combinedSessionId: existingCombinedId,
+      message: `Recording clips have already been merged into session ${existingCombinedId}.`,
     };
   }
 
   // Use only the valid clips for FFmpeg concatenation
   recordingsToMerge = validRecordings;
 
-  // Sort chronologically by startedAt ascending
-  recordingsToMerge.sort((a, b) => {
-    const timeA = a.startedAt?.toMillis ? a.startedAt.toMillis() : (a.startedAt ? new Date(a.startedAt).getTime() : 0);
-    const timeB = b.startedAt?.toMillis ? b.startedAt.toMillis() : (b.startedAt ? new Date(b.startedAt).getTime() : 0);
-    return timeA - timeB;
-  });
-
   // 3. Set up temporary working directory
   const workDir = path.join(os.tmpdir(), `merge_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`);
   fs.mkdirSync(workDir, { recursive: true });
 
-  const bucket = currentStorage.bucket();
   const downloadedFiles = [];
+  if (!bucket) {
+    bucket = currentStorage.bucket();
+  }
 
   try {
     ensureFfmpegPath();
@@ -190,29 +340,52 @@ export async function executeMergeLectureRecordings(
     const concatContent = downloadedFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent, 'utf-8');
 
-    // 6. Concatenate videos via stream copy (-c copy)
+    // 6. Concatenate videos via stream copy (-c copy) with monotonic DTS/PTS generation
     const combinedVideoPath = path.join(workDir, 'combined_lecture.webm');
     const concatCmd = ffmpeg()
       .input(concatListPath)
       .inputOptions(['-f concat', '-safe 0'])
-      .outputOptions(['-c copy'])
+      .outputOptions(['-c copy', '-avoid_negative_ts make_zero', '-fflags +genpts'])
       .output(combinedVideoPath);
 
     await currentFfmpegRunner(concatCmd);
 
-    // 7. Extract synchronized pure-audio track for Gemini transcription
-    const combinedAudioPath = path.join(workDir, 'combined_audio.webm');
-    const audioExtractCmd = ffmpeg(combinedVideoPath)
+    // 7. Extract normalized pure-audio track (48kHz Constant Bitrate MP3) for Gemini transcription
+    // Crucial: transcoding to pristine 48kHz CBR MP3 eliminates MediaRecorder WebM timestamp resets
+    // and prevents the 1.48x speed drift / subtitle desynchronization.
+    const combinedMp3Path = path.join(workDir, 'combined_audio_normalized.mp3');
+    const audioNormalizedCmd = ffmpeg(combinedVideoPath)
+      .noVideo()
+      .audioCodec('libmp3lame')
+      .audioBitrate('128k')
+      .audioChannels(2)
+      .audioFrequency(48000)
+      .outputOptions(['-avoid_negative_ts make_zero', '-fflags +genpts'])
+      .output(combinedMp3Path);
+
+    await currentFfmpegRunner(audioNormalizedCmd);
+
+    // Also extract WebM audio for HTML5 audio fallback if needed
+    const combinedAudioWebmPath = path.join(workDir, 'combined_audio.webm');
+    const audioWebmCmd = ffmpeg(combinedVideoPath)
       .noVideo()
       .outputOptions(['-c:a copy'])
-      .output(combinedAudioPath);
+      .output(combinedAudioWebmPath);
 
-    await currentFfmpegRunner(audioExtractCmd);
+    try {
+      await currentFfmpegRunner(audioWebmCmd);
+    } catch (e) {
+      console.warn('[mergeLectureRecordings] WebM audio copy skipped:', e.message);
+    }
 
     // 8. Probe precise combined duration
-    const durationSeconds = await currentDurationProber(combinedVideoPath);
+    let durationSeconds = await currentDurationProber(combinedVideoPath);
+    if (!durationSeconds || durationSeconds <= 0) {
+      durationSeconds = await currentDurationProber(combinedMp3Path);
+    }
     const videoStats = fs.existsSync(combinedVideoPath) ? fs.statSync(combinedVideoPath) : { size: 0 };
-    const audioStats = fs.existsSync(combinedAudioPath) ? fs.statSync(combinedAudioPath) : { size: 0 };
+    const mp3Stats = fs.existsSync(combinedMp3Path) ? fs.statSync(combinedMp3Path) : { size: 0 };
+    const webmStats = fs.existsSync(combinedAudioWebmPath) ? fs.statSync(combinedAudioWebmPath) : { size: 0 };
 
     // 9. Upload combined video and audio to Cloud Storage
     const firstClip = recordingsToMerge[0];
@@ -221,9 +394,13 @@ export async function executeMergeLectureRecordings(
     const combinedSessionId = `rec_combined_${timestampMs}_full`;
 
     const destVideoPath = `recordings/${classId}/${combinedSessionId}/lecture.webm`;
-    const destAudioPath = `recordings/${classId}/${combinedSessionId}/lecture_audio.webm`;
+    const destNormalizedAudioPath = `recordings/${classId}/${combinedSessionId}/lecture_audio_normalized.mp3`;
+    const destAudioPath = fs.existsSync(combinedAudioWebmPath)
+      ? `recordings/${classId}/${combinedSessionId}/lecture_audio.webm`
+      : destNormalizedAudioPath;
 
     const videoToken = crypto.randomUUID();
+    const mp3Token = crypto.randomUUID();
     const audioToken = crypto.randomUUID();
 
     await bucket.upload(combinedVideoPath, {
@@ -236,16 +413,17 @@ export async function executeMergeLectureRecordings(
           sessionId: combinedSessionId,
           durationSeconds: String(Math.round(durationSeconds)),
           isCombined: 'true',
+          hasCuesIndex: 'true',
         },
       },
     });
 
-    await bucket.upload(combinedAudioPath, {
-      destination: destAudioPath,
+    await bucket.upload(combinedMp3Path, {
+      destination: destNormalizedAudioPath,
       metadata: {
-        contentType: 'audio/webm',
+        contentType: 'audio/mpeg',
         metadata: {
-          firebaseStorageDownloadTokens: audioToken,
+          firebaseStorageDownloadTokens: mp3Token,
           classId,
           sessionId: combinedSessionId,
           durationSeconds: String(Math.round(durationSeconds)),
@@ -254,9 +432,28 @@ export async function executeMergeLectureRecordings(
       },
     });
 
+    if (fs.existsSync(combinedAudioWebmPath) && destAudioPath !== destNormalizedAudioPath) {
+      await bucket.upload(combinedAudioWebmPath, {
+        destination: destAudioPath,
+        metadata: {
+          contentType: 'audio/webm',
+          metadata: {
+            firebaseStorageDownloadTokens: audioToken,
+            classId,
+            sessionId: combinedSessionId,
+            durationSeconds: String(Math.round(durationSeconds)),
+            isCombined: 'true',
+          },
+        },
+      });
+    }
+
     const bucketName = bucket.name;
     const combinedVideoUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destVideoPath)}?alt=media&token=${videoToken}`;
-    const combinedAudioUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destAudioPath)}?alt=media&token=${audioToken}`;
+    const combinedNormalizedAudioUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destNormalizedAudioPath)}?alt=media&token=${mp3Token}`;
+    const combinedAudioUrl = destAudioPath === destNormalizedAudioPath
+      ? combinedNormalizedAudioUrl
+      : `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(destAudioPath)}?alt=media&token=${audioToken}`;
 
     // 10. Format lecture title
     const firstClipDate = firstClip.startedAt?.toDate ? firstClip.startedAt.toDate() : new Date();
@@ -269,18 +466,28 @@ export async function executeMergeLectureRecordings(
       title: finalTitle,
       durationSeconds: Math.round(durationSeconds),
       status: 'processing_subtitles',
+      subtitlesStatus: 'processing',
+      hasCuesIndex: true,
       isCombined: true,
+      hasMissingSegment,
+      interruptionRemarks,
+      lostDurationSeconds: totalLostSeconds,
+      gapDetails: gaps,
       sourceRecordingIds: recordingsToMerge.map((r) => r.id),
-      sessionGroupId: sessionGroupId || firstClip.sessionGroupId || null,
+      sessionGroupId: (sessionGroupId && sessionGroupId !== 'custom' && !sessionGroupId.startsWith('date_'))
+        ? sessionGroupId
+        : (firstClip.sessionGroupId || null),
       startedAt: firstClip.startedAt || FieldValue.serverTimestamp(),
       endedAt: lastClip.endedAt || FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
       videoUrl: combinedVideoUrl,
       audioUrl: combinedAudioUrl,
+      normalizedAudioUrl: combinedNormalizedAudioUrl,
       storagePath: destVideoPath,
       audioStoragePath: destAudioPath,
+      normalizedAudioStoragePath: destNormalizedAudioPath,
       fileSize: videoStats.size,
-      audioFileSize: audioStats.size,
+      audioFileSize: mp3Stats.size || webmStats.size,
       teacherUid: callerUid,
       teacherEmail: callerEmail,
       classId,
@@ -300,22 +507,35 @@ export async function executeMergeLectureRecordings(
     }
 
     for (const badRec of invalidRecordings) {
-      const startedMs = badRec.startedAt?.toMillis
-        ? badRec.startedAt.toMillis()
-        : badRec.startedAt
-        ? new Date(badRec.startedAt).getTime()
-        : 0;
-      const isStale = !startedMs || Date.now() - startedMs > 30 * 60 * 1000;
-      if (isStale && badRec.status !== 'discarded') {
-        const badDocRef = recordingsRef.doc(badRec.id);
-        batch.update(badDocRef, {
-          status: 'discarded',
-          discardReason: 'ignored_incomplete_segment_during_merge',
-          discardedAt: FieldValue.serverTimestamp(),
-        });
-      }
+      const badDocRef = recordingsRef.doc(badRec.id);
+      batch.update(badDocRef, {
+        status: 'interrupted',
+        interruptionRemarks: `Recording crashed before upload. Rest of lecture continued in session ${combinedSessionId}.`,
+        mergedIntoSessionId: combinedSessionId,
+        discardedAt: FieldValue.serverTimestamp(),
+      });
     }
     await batch.commit();
+
+    // 13. Create decoupled subtitle job document in Firestore
+    // This allows background workers in ai_flows to process subtitles with Gemini 3
+    // even if the teacher closes the browser or disconnects.
+    const subtitleJobId = `sub_${classId}_${combinedSessionId}`;
+    try {
+      await currentDb.collection('lectureSubtitleJobs').doc(subtitleJobId).set({
+        jobId: subtitleJobId,
+        classId,
+        sessionId: combinedSessionId,
+        storagePath: destVideoPath,
+        audioStoragePath: destNormalizedAudioPath,
+        normalizedAudioStoragePath: destNormalizedAudioPath,
+        title: finalTitle,
+        status: 'pending',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (jobErr) {
+      console.warn(`[mergeLectureRecordings] Failed to write lectureSubtitleJobs: ${jobErr.message}`);
+    }
 
     return {
       success: true,
@@ -324,13 +544,19 @@ export async function executeMergeLectureRecordings(
       durationSeconds: Math.round(durationSeconds),
       videoUrl: combinedVideoUrl,
       audioUrl: combinedAudioUrl,
+      normalizedAudioUrl: combinedNormalizedAudioUrl,
       storagePath: destVideoPath,
       audioStoragePath: destAudioPath,
+      normalizedAudioStoragePath: destNormalizedAudioPath,
+      hasMissingSegment,
+      interruptionRemarks,
+      lostDurationSeconds: totalLostSeconds,
+      gapDetails: gaps,
       clipCount: recordingsToMerge.length,
       ignoredIncompleteCount: invalidRecordings.length,
     };
   } finally {
-    // 13. Clean up temporary files
+    // 14. Clean up temporary files
     try {
       fs.rmSync(workDir, { recursive: true, force: true });
     } catch (cleanupErr) {
@@ -357,5 +583,55 @@ export const mergeLectureRecordings = onCall(
       customTitle: request.data?.customTitle,
       auth: request.auth,
     });
+  }
+);
+
+/**
+ * Firestore Triggered Worker: processLectureMergeJob
+ * Automatically executes lecture recording combination jobs enqueued by scheduled tasks.
+ */
+export const processLectureMergeJob = onDocumentCreated(
+  {
+    document: 'lectureMergeJobs/{jobId}',
+    region: FUNCTION_REGION,
+    memory: '2GiB',
+    timeoutSeconds: 300,
+  },
+  async (event) => {
+    const jobSnap = event.data;
+    if (!jobSnap) return;
+    const jobData = jobSnap.data() || {};
+    const jobId = event.params.jobId;
+
+    if (jobData.status !== 'pending') return;
+
+    const jobRef = jobSnap.ref;
+    await jobRef.update({ status: 'processing', startedAt: FieldValue.serverTimestamp() });
+
+    try {
+      const result = await executeMergeLectureRecordings({
+        classId: jobData.classId,
+        recordingIds: jobData.recordingIds,
+        sessionGroupId: jobData.sessionGroupId,
+        customTitle: jobData.customTitle,
+        auth: {
+          uid: 'system-scheduler',
+          token: { role: 'admin', email: 'system-scheduler@service.internal' },
+        },
+      });
+
+      await jobRef.update({
+        status: result.success ? 'completed' : 'failed',
+        result,
+        finishedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      console.error(`[processLectureMergeJob] Failed for job ${jobId}:`, err);
+      await jobRef.update({
+        status: 'failed',
+        error: err.message,
+        finishedAt: FieldValue.serverTimestamp(),
+      });
+    }
   }
 );

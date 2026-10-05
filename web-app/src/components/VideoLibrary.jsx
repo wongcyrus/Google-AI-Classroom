@@ -581,6 +581,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             }}
             promptText={editablePromptText}
             onTextChange={setEditablePromptText}
+            readOnly={false}
           />
           <div style={{ marginTop: '12px', marginBottom: '8px' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #334155)', marginBottom: '4px' }}>

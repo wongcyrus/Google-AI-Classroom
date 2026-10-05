@@ -1,9 +1,35 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { db, storage, functions } from '../firebase-config';
-import { collection, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
+import fixWebmDuration from 'fix-webm-duration';
 import { resolveSessionGroupId } from '../utils/sessionGrouping';
+import {
+  persistRecoveryChunk,
+  getPendingRecoverySessions,
+  clearRecoverySession,
+} from '../utils/lectureRecoveryDb';
+
+/**
+ * Injects missing EBML container duration headers into WebM blobs recorded by MediaRecorder.
+ * This fixes the Chromium streaming issue where HTML5 video player reports duration < 1 min
+ * and prematurely fires 'ended' event while Google Drive displays the full 35+ mins.
+ */
+export async function injectWebmDuration(blob, durationMs) {
+  if (!blob || !durationMs || durationMs <= 0) return blob;
+  try {
+    const fn = typeof fixWebmDuration === 'function' ? fixWebmDuration : fixWebmDuration?.default;
+    if (typeof fn === 'function' && typeof FileReader !== 'undefined') {
+      const fixPromise = fn(blob, durationMs, { logger: false });
+      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(blob), 30000));
+      return await Promise.race([fixPromise, timeoutPromise]);
+    }
+  } catch (err) {
+    console.warn('[useLectureRecorder] fixWebmDuration failed, falling back to raw blob:', err);
+  }
+  return blob;
+}
 
 /**
  * Supported MIME types in priority order.
@@ -64,6 +90,8 @@ export function formatDuration(seconds) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+export const DEFAULT_MAX_RECORDING_SECONDS = 3 * 60 * 60; // 3 hours safety auto-stop limit
+
 /**
  * Hook to manage high-definition lecture screen + microphone recording
  * with full teacher control (Start, Pause, Resume, Stop, Discard),
@@ -73,6 +101,7 @@ export default function useLectureRecorder({
   classId,
   teacherUid,
   teacherEmail = '',
+  maxDurationSeconds = DEFAULT_MAX_RECORDING_SECONDS,
   onRecordingComplete = null,
 } = {}) {
   const [recordingState, setRecordingState] = useState('idle'); // 'idle' | 'recording' | 'paused' | 'uploading' | 'completed' | 'error'
@@ -93,6 +122,12 @@ export default function useLectureRecorder({
   const durationRef = useRef(0);
   const metadataRef = useRef({});
   const isStartingOrRecordingRef = useRef(false);
+  const maxDurationRef = useRef(maxDurationSeconds);
+  const stopRecordingRef = useRef(null);
+
+  useEffect(() => {
+    maxDurationRef.current = maxDurationSeconds;
+  }, [maxDurationSeconds]);
 
   // Clean up timer
   const stopTimer = useCallback(() => {
@@ -140,6 +175,7 @@ export default function useLectureRecorder({
       audioStream = null,
       title = '',
       topic = '',
+      className = '',
       targetLanguages = ['en', 'zh-Hant', 'zh-Hans', 'ja'],
       broadcastSessionId = null,
       schedule = null,
@@ -265,12 +301,30 @@ export default function useLectureRecorder({
           videoTrack.onended = () => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
               console.info('[useLectureRecorder] Screen track ended by system; stopping recording.');
-              stopRecording();
+              if (stopRecordingRef.current) {
+                stopRecordingRef.current();
+              } else {
+                stopRecording();
+              }
             }
           };
         }
 
-        // 4. Initialize W3C MediaRecorder for Composite Video
+        // 4. Generate unique UUID Session ID & resolve Session Group
+        const sessionId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        activeSessionIdRef.current = sessionId;
+        setActiveSessionId(sessionId);
+
+        const effectiveSessionGroupId =
+          sessionGroupId ||
+          resolveSessionGroupId({
+            classId,
+            broadcastSessionId,
+            schedule,
+            timestamp: new Date(),
+          });
+
+        // 5. Initialize W3C MediaRecorder for Composite Video
         const mimeType = getSupportedMimeType();
         const options = mimeType ? { mimeType, videoBitsPerSecond: 2500000 } : {};
         const mediaRecorder = new MediaRecorder(combinedStream, options);
@@ -279,10 +333,21 @@ export default function useLectureRecorder({
         mediaRecorder.ondataavailable = (event) => {
           if (mediaRecorderRef.current === mediaRecorder && event.data && event.data.size > 0) {
             recordedChunksRef.current.push(event.data);
+            persistRecoveryChunk({
+              sessionId,
+              classId,
+              sessionGroupId: effectiveSessionGroupId,
+              title: title || `Lecture - ${new Date().toLocaleDateString()}`,
+              topic: topic || '',
+              targetLanguages: targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
+              mimeType: mediaRecorder.mimeType || mimeType,
+              chunk: event.data,
+              startedAt: Date.now(),
+            });
           }
         };
 
-        // 5. Initialize Parallel Audio-Only Recorder for Gemini Subtitle Processing (~25MB vs 1.5GB)
+        // 6. Initialize Parallel Audio-Only Recorder for Gemini Subtitle Processing (~25MB vs 1.5GB)
         audioRecordedChunksRef.current = [];
         if (pureAudioStream && pureAudioStream.getAudioTracks().length > 0) {
           try {
@@ -303,23 +368,15 @@ export default function useLectureRecorder({
           }
         }
 
-        // 6. Generate unique UUID Session ID & initialize Firestore document
-        const sessionId = `rec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        activeSessionIdRef.current = sessionId;
-        setActiveSessionId(sessionId);
-
-        const effectiveSessionGroupId =
-          sessionGroupId ||
-          resolveSessionGroupId({
-            classId,
-            broadcastSessionId,
-            schedule,
-            timestamp: new Date(),
-          });
+        const dateStr = new Date().toLocaleDateString();
+        const defaultTitle = className
+          ? `${className} - ${dateStr}`
+          : `Lecture - ${dateStr}`;
 
         const sessionMeta = {
-          title: title || `Lecture - ${new Date().toLocaleDateString()}`,
+          title: title || defaultTitle,
           topic: topic || '',
+          className: className || '',
           targetLanguages: targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
           mimeType: mediaRecorder.mimeType || mimeType,
           startedAt: serverTimestamp(),
@@ -339,10 +396,14 @@ export default function useLectureRecorder({
         mediaRecorder.start(10000);
         setRecordingState('recording');
 
-        // Start duration timer
+        // Start duration timer with safety limit auto-stop
         timerIntervalRef.current = setInterval(() => {
           durationRef.current += 1;
           setDurationSeconds(durationRef.current);
+          if (maxDurationRef.current > 0 && durationRef.current >= maxDurationRef.current) {
+            console.warn(`[useLectureRecorder] Safety limit of ${maxDurationRef.current}s reached; auto-stopping recording.`);
+            stopRecordingRef.current?.();
+          }
         }, 1000);
       } catch (err) {
         isStartingOrRecordingRef.current = false;
@@ -390,6 +451,10 @@ export default function useLectureRecorder({
     timerIntervalRef.current = setInterval(() => {
       durationRef.current += 1;
       setDurationSeconds(durationRef.current);
+      if (maxDurationRef.current > 0 && durationRef.current >= maxDurationRef.current) {
+        console.warn(`[useLectureRecorder] Safety limit of ${maxDurationRef.current}s reached; auto-stopping recording.`);
+        stopRecordingRef.current?.();
+      }
     }, 1000);
 
     if (classId && activeSessionIdRef.current) {
@@ -419,10 +484,16 @@ export default function useLectureRecorder({
 
           const mimeType = mediaRecorderRef.current?.mimeType || 'video/webm';
           const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-          const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+          const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
 
-          if (blob.size === 0) {
+          if (rawBlob.size === 0) {
             throw new Error('Recorded lecture file is empty.');
+          }
+
+          // Inject missing EBML container duration into WebM video blob so browsers don't stop after < 1 min
+          let blob = rawBlob;
+          if (ext === 'webm' && finalDuration > 0) {
+            blob = await injectWebmDuration(rawBlob, finalDuration * 1000);
           }
 
           // Upload parallel pure-audio track if recorded (~25MB Opus vs ~1.2GB Video)
@@ -434,9 +505,13 @@ export default function useLectureRecorder({
             try {
               const audioMimeType = audioRecorderRef.current?.mimeType || 'audio/webm';
               const audioExt = audioMimeType.includes('mp4') ? 'm4a' : 'webm';
-              const audioBlob = new Blob(audioRecordedChunksRef.current, { type: audioMimeType });
+              const rawAudioBlob = new Blob(audioRecordedChunksRef.current, { type: audioMimeType });
 
-              if (audioBlob.size > 0) {
+              if (rawAudioBlob.size > 0) {
+                let audioBlob = rawAudioBlob;
+                if (audioExt === 'webm' && finalDuration > 0) {
+                  audioBlob = await injectWebmDuration(rawAudioBlob, finalDuration * 1000);
+                }
                 audioStoragePath = `recordings/${classId}/${sessionId}/lecture_audio.${audioExt}`;
                 const audioRef = storageRef(storage, audioStoragePath);
                 const audioUploadTask = await uploadBytesResumable(audioRef, audioBlob, {
@@ -501,20 +576,46 @@ export default function useLectureRecorder({
 
                 setRecordingState('completed');
 
-                // Automatically trigger Gemini subtitle & chapter processing in the background
+                // Check if lecture subtitles are enabled for this class
+                let isSubtitlesEnabled = true;
                 try {
-                  const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
-                  callSubtitles({
-                    classId,
-                    sessionId,
-                    storagePath: filePath,
-                    title: metadataRef.current?.title || `Lecture - ${new Date().toLocaleDateString()}`,
-                    topic: metadataRef.current?.topic || '',
-                  }).catch((err) => {
-                    console.warn('[useLectureRecorder] Background subtitle trigger failed (can retry in UI):', err);
-                  });
-                } catch (triggerErr) {
-                  console.warn('[useLectureRecorder] Failed to invoke processLectureSubtitles:', triggerErr);
+                  const classSnap = await getDoc(doc(db, 'classes', classId));
+                  if (classSnap.exists() && classSnap.data()?.isLectureSubtitlesEnabled === false) {
+                    isSubtitlesEnabled = false;
+                  }
+                } catch (checkErr) {
+                  console.warn('[useLectureRecorder] Could not check isLectureSubtitlesEnabled policy:', checkErr);
+                }
+
+                if (isSubtitlesEnabled) {
+                  // Automatically trigger Gemini subtitle & chapter processing in the background
+                  try {
+                    const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
+                    callSubtitles({
+                      classId,
+                      sessionId,
+                      storagePath: filePath,
+                      title: metadataRef.current?.title || `Lecture - ${new Date().toLocaleDateString()}`,
+                      topic: metadataRef.current?.topic || '',
+                      targetLanguages: metadataRef.current?.targetLanguages,
+                    }).catch((err) => {
+                      console.warn('[useLectureRecorder] Background subtitle trigger failed (can retry in UI):', err);
+                    });
+                  } catch (triggerErr) {
+                    console.warn('[useLectureRecorder] Failed to invoke processLectureSubtitles:', triggerErr);
+                  }
+                } else {
+                  console.info(`[useLectureRecorder] Lecture subtitles disabled by class policy for ${classId}. Marking session ready without AI generation.`);
+                  try {
+                    await updateDoc(doc(db, 'classes', classId, 'lectureRecordings', sessionId), {
+                      status: 'ready',
+                      subtitlesStatus: 'ready',
+                      subtitlesDisabled: true,
+                      updatedAt: serverTimestamp(),
+                    });
+                  } catch (updateErr) {
+                    console.warn('[useLectureRecorder] Failed to set subtitlesDisabled flag:', updateErr);
+                  }
                 }
 
                 const result = {
@@ -532,6 +633,7 @@ export default function useLectureRecorder({
                   onRecordingComplete(result);
                 }
 
+                await clearRecoverySession(sessionId);
                 resolve(result);
               } catch (updateErr) {
                 console.error('[useLectureRecorder] Finalize error:', updateErr);
@@ -562,6 +664,8 @@ export default function useLectureRecorder({
     });
   }, [classId, teacherEmail, stopTimer, cleanupStreams, onRecordingComplete]);
 
+  stopRecordingRef.current = stopRecording;
+
   /**
    * Discard/Cancel recording (the safety hatch).
    * Deletes in-memory buffers and removes the Firestore draft with zero storage or AI cost.
@@ -570,6 +674,10 @@ export default function useLectureRecorder({
     isStartingOrRecordingRef.current = false;
     stopTimer();
     cleanupStreams();
+
+    if (activeSessionIdRef.current) {
+      await clearRecoverySession(activeSessionIdRef.current);
+    }
 
     if (mediaRecorderRef.current) {
       try {
@@ -626,19 +734,43 @@ export default function useLectureRecorder({
         });
 
         if (result.data?.success && result.data?.combinedSessionId) {
-          // Auto-trigger processLectureSubtitles for the master combined lecture
+          // Check if subtitles enabled for this class before auto-triggering
+          let isSubtitlesEnabled = true;
           try {
-            const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
-            callSubtitles({
-              classId,
-              sessionId: result.data.combinedSessionId,
-              storagePath: result.data.storagePath,
-              title: result.data.title,
-            }).catch((err) => {
-              console.warn('[useLectureRecorder] Background combined subtitle trigger notice:', err);
-            });
-          } catch (triggerErr) {
-            console.warn('[useLectureRecorder] Failed to trigger combined subtitles:', triggerErr);
+            const classSnap = await getDoc(doc(db, 'classes', classId));
+            if (classSnap.exists() && classSnap.data()?.isLectureSubtitlesEnabled === false) {
+              isSubtitlesEnabled = false;
+            }
+          } catch (e) {
+            console.warn('[useLectureRecorder] Notice checking subtitle policy in merge:', e);
+          }
+
+          if (isSubtitlesEnabled) {
+            // Auto-trigger processLectureSubtitles for the master combined lecture
+            try {
+              const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
+              callSubtitles({
+                classId,
+                sessionId: result.data.combinedSessionId,
+                storagePath: result.data.storagePath,
+                title: result.data.title,
+              }).catch((err) => {
+                console.warn('[useLectureRecorder] Background combined subtitle trigger notice:', err);
+              });
+            } catch (triggerErr) {
+              console.warn('[useLectureRecorder] Failed to trigger combined subtitles:', triggerErr);
+            }
+          } else {
+            try {
+              await updateDoc(doc(db, 'classes', classId, 'lectureRecordings', result.data.combinedSessionId), {
+                status: 'ready',
+                subtitlesStatus: 'ready',
+                subtitlesDisabled: true,
+                updatedAt: serverTimestamp(),
+              });
+            } catch (e) {
+              console.warn('[useLectureRecorder] Failed to mark combined session subtitlesDisabled:', e);
+            }
           }
         }
         return result.data;
@@ -684,6 +816,95 @@ export default function useLectureRecorder({
     };
   }, [stopTimer, cleanupStreams]);
 
+  /**
+   * Recovers an interrupted recording session saved in local IndexedDB from before a browser crash.
+   */
+  const recoverInterruptedSession = useCallback(
+    async (recoverySession) => {
+      if (!recoverySession || !recoverySession.chunks?.length) return null;
+      const { sessionId, classId: recClassId, sessionGroupId, mimeType, chunks, title, topic, targetLanguages } = recoverySession;
+      try {
+        const targetClassId = recClassId || classId;
+        const finalMimeType = mimeType || 'video/webm';
+        const ext = finalMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const rawBlob = new Blob(chunks, { type: finalMimeType });
+
+        if (rawBlob.size === 0) {
+          await clearRecoverySession(sessionId);
+          return null;
+        }
+
+        const filePath = `recordings/${targetClassId}/${sessionId}/lecture.${ext}`;
+        const fileRef = storageRef(storage, filePath);
+        const uploadTask = await uploadBytesResumable(fileRef, rawBlob, {
+          contentType: finalMimeType,
+          customMetadata: {
+            classId: targetClassId,
+            sessionId,
+            isRecoveredAfterCrash: 'true',
+          },
+        });
+        const downloadUrl = await getDownloadURL(uploadTask.ref);
+
+        const sessionDocRef = doc(db, `classes/${targetClassId}/lectureRecordings/${sessionId}`);
+        await setDoc(
+          sessionDocRef,
+          {
+            title: title || `Recovered Lecture Segment (${new Date().toLocaleDateString()})`,
+            topic: topic || '',
+            targetLanguages: targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
+            status: 'ready',
+            isRecoveredAfterCrash: true,
+            videoUrl: downloadUrl,
+            storagePath: filePath,
+            fileSize: rawBlob.size,
+            sessionGroupId: sessionGroupId || null,
+            endedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        await clearRecoverySession(sessionId);
+
+        // If part of a session group, automatically trigger merge to combine with other clips
+        if (sessionGroupId) {
+          try {
+            const callMerge = httpsCallable(functions, 'mergeLectureRecordings');
+            await callMerge({
+              classId: targetClassId,
+              sessionGroupId,
+            });
+          } catch (e) {
+            console.debug('[useLectureRecorder] Auto-merge after crash recovery notice:', e.message);
+          }
+        }
+
+        return { sessionId, downloadUrl };
+      } catch (recErr) {
+        console.warn('[useLectureRecorder] Failed to recover session:', recErr);
+        return null;
+      }
+    },
+    [classId]
+  );
+
+  // On mount, auto-recover any crashed sessions stored in local IndexedDB
+  useEffect(() => {
+    if (!classId) return;
+    try {
+      getPendingRecoverySessions()
+        .then(async (sessions) => {
+          if (!Array.isArray(sessions)) return;
+          const classSessions = sessions.filter((s) => s.classId === classId);
+          for (const s of classSessions) {
+            console.info('[useLectureRecorder] Auto-recovering crash session from IndexedDB:', s.sessionId);
+            await recoverInterruptedSession(s);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+  }, [classId, recoverInterruptedSession]);
+
   return {
     recordingState,
     isRecording: recordingState === 'recording',
@@ -701,5 +922,6 @@ export default function useLectureRecorder({
     stopRecording,
     discardRecording,
     mergeSessionRecordings,
+    recoverInterruptedSession,
   };
 }

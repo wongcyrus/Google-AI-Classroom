@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import useLectureRecorder, { formatDuration, getSupportedMimeType, getSupportedAudioMimeType } from './useLectureRecorder';
+import useLectureRecorder, {
+  formatDuration,
+  getSupportedMimeType,
+  getSupportedAudioMimeType,
+  injectWebmDuration,
+} from './useLectureRecorder';
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -12,12 +17,21 @@ vi.mock('firebase/functions', () => ({
   httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: { success: true } })),
 }));
 
+vi.mock('fix-webm-duration', () => ({
+  default: vi.fn((blob) => Promise.resolve(blob)),
+}));
+
 const mockSetDoc = vi.fn(() => Promise.resolve());
 const mockUpdateDoc = vi.fn(() => Promise.resolve());
+const mockGetDoc = vi.fn(() => Promise.resolve({
+  exists: () => true,
+  data: () => ({ isLectureSubtitlesEnabled: true }),
+}));
 
 vi.mock('firebase/firestore', () => ({
-  doc: vi.fn((db, path) => ({ path })),
-  collection: vi.fn((db, path) => ({ path })),
+  doc: vi.fn((db, ...args) => ({ path: args.join('/') })),
+  collection: vi.fn((db, ...args) => ({ path: args.join('/') })),
+  getDoc: (...args) => mockGetDoc(...args),
   setDoc: (...args) => mockSetDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
@@ -381,6 +395,90 @@ describe('useLectureRecorder Hook & Utilities', () => {
         await result.current.stopRecording();
       });
       expect(result.current.recordingState).toBe('completed');
+    });
+
+    it('automatically triggers stopRecording when maxDurationSeconds safety limit is reached', async () => {
+      const { result } = renderHook(() =>
+        useLectureRecorder({ classId: 'test_class', teacherUid: 'teacher_1', maxDurationSeconds: 5 })
+      );
+
+      await act(async () => {
+        await result.current.startRecording();
+      });
+      expect(result.current.recordingState).toBe('recording');
+
+      // Provide chunk data
+      act(() => {
+        mockMediaRecorderInstances.forEach((inst) => {
+          if (inst.ondataavailable) {
+            inst.ondataavailable({ data: new Blob(['chunk-data'], { type: inst.mimeType }) });
+          }
+        });
+      });
+
+      // Advance time by 5 seconds to trigger safety limit
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(result.current.recordingState).toBe('completed');
+    });
+
+    it('skips processLectureSubtitles and updates session with subtitlesDisabled: true when class policy is disabled', async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ isLectureSubtitlesEnabled: false }),
+      });
+
+      const { result } = renderHook(() =>
+        useLectureRecorder({
+          classId: 'class_disabled_subs',
+          teacherUid: 'teacher_123',
+        })
+      );
+
+      await act(async () => {
+        await result.current.startRecording();
+      });
+
+      act(() => {
+        mockMediaRecorderInstances.forEach((inst) => {
+          if (inst.ondataavailable) {
+            inst.ondataavailable({ data: new Blob(['chunk'], { type: inst.mimeType }) });
+          }
+        });
+      });
+
+      await act(async () => {
+        await result.current.stopRecording();
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: 'ready',
+          subtitlesDisabled: true,
+        })
+      );
+    });
+  });
+
+  describe('injectWebmDuration', () => {
+    it('returns raw blob if blob is null or undefined', async () => {
+      expect(await injectWebmDuration(null, 1000)).toBeNull();
+      expect(await injectWebmDuration(undefined, 1000)).toBeUndefined();
+    });
+
+    it('returns raw blob if durationMs is zero or negative', async () => {
+      const mockBlob = new Blob(['abc']);
+      expect(await injectWebmDuration(mockBlob, 0)).toBe(mockBlob);
+      expect(await injectWebmDuration(mockBlob, -100)).toBe(mockBlob);
+    });
+
+    it('calls fixWebmDuration with duration and returns patched blob', async () => {
+      const mockBlob = new Blob(['test-video'], { type: 'video/webm' });
+      const resultBlob = await injectWebmDuration(mockBlob, 2211000);
+      expect(resultBlob).toBeDefined();
     });
   });
 });

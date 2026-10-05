@@ -152,6 +152,8 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(result.durationSeconds).toBe(3182);
     expect(result.clipCount).toBe(2);
     expect(result.videoUrl).toContain('firebasestorage.googleapis.com');
+    expect(result.normalizedAudioStoragePath).toContain('lecture_audio_normalized.mp3');
+    expect(result.normalizedAudioUrl).toContain('lecture_audio_normalized.mp3');
   });
 
   it('ignores trailing interrupted segment and merges valid clips successfully', async () => {
@@ -197,7 +199,7 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(result.ignoredIncompleteCount).toBe(1);
   });
 
-  it('handles 1 valid clip and 1 incomplete clip gracefully by returning single_valid_clip', async () => {
+  it('handles 1 valid clip and 1 incomplete clip gracefully by preserving valid clip and remarking crash interruption', async () => {
     const recordings = [
       {
         id: 'rec_1',
@@ -209,7 +211,7 @@ describe('mergeLectureRecordings Cloud Function', () => {
       {
         id: 'rec_interrupted',
         storagePath: null,
-        startedAt: { toMillis: () => 1789958000000 },
+        startedAt: { toMillis: () => 1789957000000 },
         status: 'recording',
       },
     ];
@@ -224,9 +226,131 @@ describe('mergeLectureRecordings Cloud Function', () => {
       { db }
     );
 
-    expect(result.success).toBe(false);
-    expect(result.reason).toBe('single_valid_clip');
-    expect(result.count).toBe(1);
-    expect(result.ignoredIncompleteCount).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.combinedSessionId).toBe('rec_1');
+    expect(result.hasMissingSegment).toBe(true);
+    expect(result.interruptionRemarks).toMatch(/Recording interrupted/);
+    expect(result.clipCount).toBe(1);
+    expect(result.crashedClipsCount).toBe(1);
+  });
+
+  it('calculates gap between clips and stamps interruptionRemarks onto combined master lecture', async () => {
+    const recordings = [
+      {
+        id: 'rec_part1',
+        storagePath: 'recordings/CLASS-1/rec_part1/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        durationSeconds: 300,
+      },
+      {
+        id: 'rec_part2',
+        storagePath: 'recordings/CLASS-1/rec_part2/lecture.webm',
+        startedAt: { toMillis: () => 1700000420000 }, // 120s gap
+        durationSeconds: 600,
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(900);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_part1', 'rec_part2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.hasMissingSegment).toBe(true);
+    expect(result.lostDurationSeconds).toBe(120);
+    expect(result.interruptionRemarks).toMatch(/gap between/);
+  });
+
+  it('prevents duplicate merge if all clips have already been merged into an existing session', async () => {
+    const recordings = [
+      {
+        id: 'rec_1',
+        storagePath: 'recordings/CLASS-1/rec_1/lecture.webm',
+        mergedIntoSessionId: 'rec_combined_prev_full',
+        startedAt: 1000,
+      },
+      {
+        id: 'rec_2',
+        storagePath: 'recordings/CLASS-1/rec_2/lecture.webm',
+        mergedIntoSessionId: 'rec_combined_prev_full',
+        startedAt: 2000,
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_1', 'rec_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.alreadyMerged).toBe(true);
+    expect(result.combinedSessionId).toBe('rec_combined_prev_full');
+  });
+
+  it('writes decoupled subtitle job to lectureSubtitleJobs collection upon successful merge', async () => {
+    const recordings = [
+      {
+        id: 'rec_a',
+        storagePath: 'recordings/CLASS-1/rec_a/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        durationSeconds: 100,
+      },
+      {
+        id: 'rec_b',
+        storagePath: 'recordings/CLASS-1/rec_b/lecture.webm',
+        startedAt: { toMillis: () => 1700000100000 },
+        durationSeconds: 200,
+      },
+    ];
+
+    const subtitleJobSetSpy = vi.fn().mockResolvedValue({});
+    const db = {
+      ...createMockDb({ recordings }),
+      collection: vi.fn((colName) => {
+        if (colName === 'lectureSubtitleJobs') {
+          return {
+            doc: vi.fn(() => ({
+              set: subtitleJobSetSpy,
+            })),
+          };
+        }
+        return createMockDb({ recordings }).collection(colName);
+      }),
+    };
+
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(300);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_a', 'rec_b'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    expect(subtitleJobSetSpy).toHaveBeenCalledTimes(1);
+    const jobPayload = subtitleJobSetSpy.mock.calls[0][0];
+    expect(jobPayload.classId).toBe('CLASS-1');
+    expect(jobPayload.sessionId).toBe(result.combinedSessionId);
+    expect(jobPayload.status).toBe('pending');
+    expect(jobPayload.audioStoragePath).toContain('lecture_audio_normalized.mp3');
   });
 });

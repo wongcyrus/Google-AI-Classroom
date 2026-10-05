@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
-export const useTranslationPrompts = (user) => {
+export const useTranslationPrompts = (user, applyToFilter = null) => {
   const [translationPrompts, setTranslationPrompts] = useState([]);
 
   useEffect(() => {
@@ -18,7 +18,30 @@ export const useTranslationPrompts = (user) => {
     const combineAndSetPrompts = () => {
       const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
       const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
-      const filtered = unique.filter(p => p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation'));
+      let filtered;
+      if (applyToFilter === 'Lecture Subtitle Translation' || applyToFilter === 'Lecture Subtitles & Chapters') {
+        filtered = unique.filter(p =>
+          p.category === 'translations' && (
+            p.applyTo?.includes('Lecture Subtitle Translation') ||
+            p.applyTo?.includes('Lecture Subtitles & Chapters') ||
+            p.name?.includes('Lecture Subtitle') ||
+            p.name?.includes('Translator')
+          )
+        );
+      } else if (applyToFilter === 'Live Subtitles & Translation') {
+        filtered = unique.filter(p =>
+          p.category === 'translations' && (
+            p.applyTo?.includes('Live Subtitles & Translation') ||
+            (!p.applyTo?.includes('Lecture Subtitles & Chapters') && !p.applyTo?.includes('Lecture Subtitle Translation'))
+          ) &&
+          !p.applyTo?.includes('Lecture Subtitles & Chapters') &&
+          !p.applyTo?.includes('Lecture Subtitle Translation')
+        );
+      } else if (applyToFilter) {
+        filtered = unique.filter(p => p.applyTo?.includes(applyToFilter));
+      } else {
+        filtered = unique.filter(p => p.category === 'translations');
+      }
       filtered.sort((a, b) => a.name.localeCompare(b.name));
       setTranslationPrompts(filtered);
     };
@@ -44,7 +67,8 @@ export const useTranslationPrompts = (user) => {
     }));
 
     return () => unsubscribers.forEach(unsub => unsub());
-  }, [user]);
+  }, [user, applyToFilter]);
 
   return translationPrompts;
 };
+
