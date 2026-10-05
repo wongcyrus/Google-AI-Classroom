@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useTranslationPrompts } from '../hooks/useTranslationPrompts';
 import { getDropdownPlaceholderForSelector, getPlaceholderTextForSelector } from '../constants/promptRegistry';
 import PromptViewModal from './PromptViewModal';
@@ -44,6 +44,20 @@ const TranslationPromptSelector = ({
     if (match) return match.id;
     return selectedPrompt.id || selectedPrompt.originalId || '';
   }, [selectedPrompt, prompts]);
+
+  // Synchronize prompt text and resolved prompt object when translation prompts finish loading asynchronously
+  useEffect(() => {
+    if (!selectedPromptId || !prompts || prompts.length === 0) return;
+    const matchedPrompt = prompts.find(p => p.id === selectedPromptId);
+    if (matchedPrompt && matchedPrompt.promptText) {
+      if (onTextChange && !promptText) {
+        onTextChange(matchedPrompt.promptText);
+      }
+      if (onSelectPrompt && (!selectedPrompt?.promptText || selectedPrompt.id !== matchedPrompt.id)) {
+        onSelectPrompt({ ...matchedPrompt, ...selectedPrompt, promptText: selectedPrompt?.promptText || matchedPrompt.promptText });
+      }
+    }
+  }, [selectedPromptId, prompts, promptText, selectedPrompt, onTextChange, onSelectPrompt]);
 
   const detectedPlaceholders = useMemo(() => {
     if (!promptText || typeof promptText !== 'string') return [];
@@ -184,7 +198,7 @@ const TranslationPromptSelector = ({
                 backgroundColor: '#eff6ff',
                 border: '1px solid #bfdbfe',
                 borderRadius: '4px',
-                cursor: promptText ? 'pointer' : 'not-allowed',
+                cursor: (promptText || selectedPrompt?.promptText) ? 'pointer' : 'not-allowed',
                 color: '#1d4ed8',
                 fontWeight: 600,
                 display: 'inline-flex',
@@ -203,7 +217,7 @@ const TranslationPromptSelector = ({
       )}
 
       <textarea
-        value={promptText}
+        value={promptText || selectedPrompt?.promptText || ''}
         onChange={(e) => onTextChange && onTextChange(e.target.value)}
         readOnly={readOnly}
         placeholder={getPlaceholderTextForSelector('translations', applyToFilter)}
