@@ -3,6 +3,7 @@ import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
 import ImagePromptSelector from './ImagePromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
+import ClassPromptField from './class-management/ClassPromptField';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../firebase-config';
@@ -22,7 +23,7 @@ import {
   normalizeStudentEmail,
   readTextFileWithEncoding,
 } from '../utils/studentDisplayUtils';
-import { exportToExcel } from '../utils/exportUtils';
+import { exportToExcel, readExcelFile } from '../utils/exportUtils';
 import useCloudPricing from '../hooks/useCloudPricing';
 import { formatStorageCost } from '../utils/formatters';
 import { SUBTITLE_LANGUAGES } from '../utils/videoSubtitleUtils';
@@ -2090,8 +2091,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                   valB = (profB.programme || '').toLowerCase();
                   break;
                 case 'passkey': {
-                  const passA = Boolean(registeredPasskeysMap[normA] || (profA.uid && registeredPasskeysMap[profA.uid])) ? 1 : 0;
-                  const passB = Boolean(registeredPasskeysMap[normB] || (profB.uid && registeredPasskeysMap[profB.uid])) ? 1 : 0;
+                  const passA = (registeredPasskeysMap[normA] || (profA.uid && registeredPasskeysMap[profA.uid])) ? 1 : 0;
+                  const passB = (registeredPasskeysMap[normB] || (profB.uid && registeredPasskeysMap[profB.uid])) ? 1 : 0;
                   return inlineSortDirection === 'asc' ? passB - passA : passA - passB;
                 }
                 case 'displayName':
@@ -2806,32 +2807,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </div>
 
 
-            <div className="form-group" style={{ marginTop: '10px' }}>
-              <label>🎯 Bingo Active Presence AI Prompt</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <button type="button" className="secondary-btn" onClick={() => handleOpenImagePromptModal('bingo')}>
-                  {bingoPrompt ? `Selected: ${bingoPrompt.name || 'Custom Prompt'}` : 'Select Bingo Question Prompt'}
-                </button>
-                {bingoPrompt && (
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => setBingoPrompt(null)}
-                    style={{ color: '#ef4444' }}
-                  >
-                    Reset to Default
-                  </button>
-                )}
-              </div>
-              <p className="input-hint">
-                Custom prompt guiding question generation from lesson material, teacher screen, or student screen.
-              </p>
-              {bingoPrompt && (
-                <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                  <strong>Prompt preview:</strong> {(bingoPrompt?.promptText || '').substring(0, 120)}...
-                </p>
-              )}
-            </div>
+            <ClassPromptField
+              containerStyle={{ marginTop: '10px' }}
+              label="🎯 Bingo Active Presence AI Prompt"
+              prompt={bingoPrompt}
+              onOpenModal={() => handleOpenImagePromptModal('bingo')}
+              onReset={() => setBingoPrompt(null)}
+              selectButtonText="Select Bingo Question Prompt"
+              hint="Custom prompt guiding question generation from lesson material, teacher screen, or student screen."
+            />
           </>
         )}
 
@@ -2954,83 +2938,32 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <p className="input-hint">Generates a session video recording for each student when the class concludes.</p>
         </div>
 
-        <div className="form-group">
-          <label>📸 AI Image &amp; Screen Invigilation Prompt</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button type="button" className="secondary-btn" onClick={() => handleOpenImagePromptModal('live_image')}>
-              {liveImagePrompt ? `Selected: ${liveImagePrompt.name || 'Custom Prompt'}` : 'Select Image Invigilation Prompt'}
-            </button>
-            {liveImagePrompt && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setLiveImagePrompt(null)}
-                style={{ color: '#ef4444' }}
-              >
-                Reset to Default
-              </button>
-            )}
-          </div>
-          <p className="input-hint">
-            Prompt steering Cloud Gemini visual verification (e.g. face presence, gaze orientation, or suspicious screen activity).
-          </p>
-          {liveImagePrompt && (
-            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {(liveImagePrompt?.promptText || '').substring(0, 120)}...
-            </p>
-          )}
-        </div>
+        <ClassPromptField
+          label="📸 AI Image &amp; Screen Invigilation Prompt"
+          prompt={liveImagePrompt}
+          onOpenModal={() => handleOpenImagePromptModal('live_image')}
+          onReset={() => setLiveImagePrompt(null)}
+          selectButtonText="Select Image Invigilation Prompt"
+          hint="Prompt steering Cloud Gemini visual verification (e.g. face presence, gaze orientation, or suspicious screen activity)."
+        />
 
-        <div className="form-group">
-          <label>After-Class Video Analysis Prompt</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button type="button" className="secondary-btn" onClick={handleOpenPromptModal}>
-              {afterClassVideoPrompt ? `Selected: ${afterClassVideoPrompt.name || 'Custom Prompt'}` : 'Select Video AI Prompt'}
-            </button>
-            {afterClassVideoPrompt && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setAfterClassVideoPrompt(null)}
-                style={{ color: '#ef4444' }}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-          {afterClassVideoPrompt && (
-            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {(afterClassVideoPrompt?.promptText || '').substring(0, 120)}...
-            </p>
-          )}
-        </div>
+        <ClassPromptField
+          label="After-Class Video Analysis Prompt"
+          prompt={afterClassVideoPrompt}
+          onOpenModal={handleOpenPromptModal}
+          onReset={() => setAfterClassVideoPrompt(null)}
+          selectButtonText="Select Video AI Prompt"
+          resetButtonText="Remove"
+        />
 
-        <div className="form-group">
-          <label>🤖 On-Device Gemma Voice Intent Prompt (LiteRT-LM Gemma 4 E2B)</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('gemma_intent')}>
-              {gemmaIntentPrompt ? `Selected: ${gemmaIntentPrompt.name || 'Custom Prompt'}` : 'Select Gemma Intent Prompt'}
-            </button>
-            {gemmaIntentPrompt && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setGemmaIntentPrompt(null)}
-                style={{ color: '#ef4444' }}
-              >
-                Reset to Default
-              </button>
-            )}
-          </div>
-          <p className="input-hint">
-            Custom system prompt and taxonomy rules evaluated locally on student machines in real time.
-          </p>
-          {gemmaIntentPrompt && (
-            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {(gemmaIntentPrompt?.promptText || '').substring(0, 120)}...
-            </p>
-          )}
-        </div>
+        <ClassPromptField
+          label="🤖 On-Device Gemma Voice Intent Prompt (LiteRT-LM Gemma 4 E2B)"
+          prompt={gemmaIntentPrompt}
+          onOpenModal={() => handleOpenAudioPromptModal('gemma_intent')}
+          onReset={() => setGemmaIntentPrompt(null)}
+          selectButtonText="Select Gemma Intent Prompt"
+          hint="Custom system prompt and taxonomy rules evaluated locally on student machines in real time."
+        />
 
         {/* Quick shortcut to Whole-Lecture Recording Studio Prompts */}
         <div className="form-group" style={{ marginTop: '1.25rem', padding: '14px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -3250,29 +3183,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     </div>
                   </div>
 
-                  <div className="form-group" style={{ marginTop: '10px' }}>
-                    <label>Live Audio Invigilation AI Prompt</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('live_audio')}>
-                        {liveAudioPrompt ? `Selected: ${liveAudioPrompt.name || 'Custom Prompt'}` : 'Select Live Invigilation Prompt'}
-                      </button>
-                      {liveAudioPrompt && (
-                        <button
-                          type="button"
-                          className="secondary-btn"
-                          onClick={() => setLiveAudioPrompt(null)}
-                          style={{ color: '#ef4444' }}
-                        >
-                          Reset to Default
-                        </button>
-                      )}
-                    </div>
-                    {liveAudioPrompt && (
-                      <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                        <strong>Prompt preview:</strong> {(liveAudioPrompt?.promptText || '').substring(0, 120)}...
-                      </p>
-                    )}
-                  </div>
+                  <ClassPromptField
+                    containerStyle={{ marginTop: '10px' }}
+                    label="Live Audio Invigilation AI Prompt"
+                    prompt={liveAudioPrompt}
+                    onOpenModal={() => handleOpenAudioPromptModal('live_audio')}
+                    onReset={() => setLiveAudioPrompt(null)}
+                    selectButtonText="Select Live Invigilation Prompt"
+                  />
                 </>
               )}
             </div>
@@ -3315,29 +3233,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                     </p>
                   </div>
 
-                  <div className="form-group" style={{ marginTop: '10px' }}>
-                    <label>Discussion / Session Audio AI Prompt</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('session_audio')}>
-                        {sessionAudioPrompt ? `Selected: ${sessionAudioPrompt.name || 'Custom Prompt'}` : 'Select Discussion / Session AI Prompt'}
-                      </button>
-                      {sessionAudioPrompt && (
-                        <button
-                          type="button"
-                          className="secondary-btn"
-                          onClick={() => setSessionAudioPrompt(null)}
-                          style={{ color: '#ef4444' }}
-                        >
-                          Reset to Default
-                        </button>
-                      )}
-                    </div>
-                    {sessionAudioPrompt && (
-                      <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-                        <strong>Prompt preview:</strong> {(sessionAudioPrompt?.promptText || '').substring(0, 120)}...
-                      </p>
-                    )}
-                  </div>
+                  <ClassPromptField
+                    containerStyle={{ marginTop: '10px' }}
+                    label="Discussion / Session Audio AI Prompt"
+                    prompt={sessionAudioPrompt}
+                    onOpenModal={() => handleOpenAudioPromptModal('session_audio')}
+                    onReset={() => setSessionAudioPrompt(null)}
+                    selectButtonText="Select Discussion / Session AI Prompt"
+                  />
                 </>
               )}
             </div>
@@ -3385,29 +3288,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
         )}
 
-        <div className="form-group" style={{ marginTop: '1rem' }}>
-          <label>Live Subtitle &amp; Speech Translation AI Prompt</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button type="button" className="secondary-btn" onClick={() => handleOpenAudioPromptModal('subtitle')}>
-              {subtitlePrompt ? `Selected: ${subtitlePrompt.name || 'Custom Prompt'}` : 'Select Subtitle Translation Prompt'}
-            </button>
-            {subtitlePrompt && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setSubtitlePrompt(null)}
-                style={{ color: '#ef4444' }}
-              >
-                Reset to Default
-              </button>
-            )}
-          </div>
-          {subtitlePrompt && (
-            <p className="input-hint" style={{ marginTop: '0.5rem' }}>
-              <strong>Prompt preview:</strong> {(subtitlePrompt?.promptText || '').substring(0, 120)}...
-            </p>
-          )}
-        </div>
+        <ClassPromptField
+          containerStyle={{ marginTop: '1rem' }}
+          label="Live Subtitle &amp; Speech Translation AI Prompt"
+          prompt={subtitlePrompt}
+          onOpenModal={() => handleOpenAudioPromptModal('subtitle')}
+          onReset={() => setSubtitlePrompt(null)}
+          selectButtonText="Select Subtitle Translation Prompt"
+        />
 
       </div>
 
@@ -3471,105 +3359,43 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px' }}>
             {/* Stage 1: Speech-to-Text & Milestone Chapters */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                <label style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e40af', margin: 0 }}>
-                  🎙️ Stage 1: Speech-to-Text (STT) &amp; Chapters
-                </label>
-                {(lectureSttPrompt || lectureRecordingPrompt) && (
-                  <span style={{ fontSize: '0.75rem', background: '#dbeafe', color: '#1e40af', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                    Customized STT Active
-                  </span>
-                )}
-              </div>
-              <p className="input-hint" style={{ marginTop: '4px' }}>
-                Instruct Gemini on verbatim audio speech recognition, Cantonese-English code switching, technical keywords, and YouTube milestone chapter rules.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '6px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => handleOpenAudioPromptModal('lecture_recording')}
-                  style={{ fontWeight: 600, padding: '8px 16px', background: '#ffffff', border: '1.5px solid #3b82f6', color: '#1d4ed8' }}
-                >
-                  {(lectureSttPrompt || lectureRecordingPrompt)
-                    ? `Selected: ${(lectureSttPrompt || lectureRecordingPrompt).name || 'Custom Prompt'}`
-                    : '🔍 Select STT Prompt from Library'}
-                </button>
-                {(lectureSttPrompt || lectureRecordingPrompt) && (
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => {
-                      setLectureSttPrompt(null);
-                      setLectureRecordingPrompt(null);
-                    }}
-                    style={{ color: '#ef4444', border: '1px solid #fca5a5' }}
-                  >
-                    Reset to Default System Prompt
-                  </button>
-                )}
-              </div>
-              {(lectureSttPrompt || lectureRecordingPrompt) && (
-                <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
-                  <div style={{ fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
-                    📄 {(lectureSttPrompt || lectureRecordingPrompt).name || 'Custom Prompt'}
-                  </div>
-                  <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    "{((lectureSttPrompt || lectureRecordingPrompt)?.promptText || '').substring(0, 180)}..."
-                  </div>
-                </div>
-              )}
-            </div>
+            <ClassPromptField
+              cardStyle
+              label="🎙️ Stage 1: Speech-to-Text (STT) &amp; Chapters"
+              labelColor="#1e40af"
+              prompt={lectureSttPrompt || lectureRecordingPrompt}
+              badgeText="Customized STT Active"
+              badgeBg="#dbeafe"
+              badgeColor="#1e40af"
+              hint="Instruct Gemini on verbatim audio speech recognition, Cantonese-English code switching, technical keywords, and YouTube milestone chapter rules."
+              onOpenModal={() => handleOpenAudioPromptModal('lecture_recording')}
+              onReset={() => {
+                setLectureSttPrompt(null);
+                setLectureRecordingPrompt(null);
+              }}
+              selectButtonText="🔍 Select STT Prompt from Library"
+              selectButtonStyle={{ border: '1.5px solid #3b82f6', color: '#1d4ed8' }}
+              resetButtonText="Reset to Default System Prompt"
+              previewLength={180}
+            />
 
             {/* Stage 2: Multilingual Subtitle Translation */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                <label style={{ fontWeight: 600, fontSize: '0.88rem', color: '#15803d', margin: 0 }}>
-                  🌐 Stage 2: Multilingual Subtitle Translation
-                </label>
-                {lectureTranslationPrompt && (
-                  <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#166534', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
-                    Customized Translation Active
-                  </span>
-                )}
-              </div>
-              <p className="input-hint" style={{ marginTop: '4px' }}>
-                Instruct Gemini on language-by-language subtitle translation, Cantonese-to-書面語 conversion, and domain terminology preservation.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '6px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={handleOpenTranslationPromptModal}
-                  style={{ fontWeight: 600, padding: '8px 16px', background: '#ffffff', border: '1.5px solid #16a34a', color: '#15803d' }}
-                >
-                  {lectureTranslationPrompt
-                    ? `Selected: ${lectureTranslationPrompt.name || 'Custom Prompt'}`
-                    : '🌐 Select Translation Prompt from Library'}
-                </button>
-                {lectureTranslationPrompt && (
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => setLectureTranslationPrompt(null)}
-                    style={{ color: '#ef4444', border: '1px solid #fca5a5' }}
-                  >
-                    Reset to Default System Prompt
-                  </button>
-                )}
-              </div>
-              {lectureTranslationPrompt && (
-                <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
-                  <div style={{ fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
-                    📄 {lectureTranslationPrompt.name || 'Custom Prompt'}
-                  </div>
-                  <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    "{(lectureTranslationPrompt?.promptText || '').substring(0, 180)}..."
-                  </div>
-                </div>
-              )}
-            </div>
+            <ClassPromptField
+              cardStyle
+              label="🌐 Stage 2: Multilingual Subtitle Translation"
+              labelColor="#15803d"
+              prompt={lectureTranslationPrompt}
+              badgeText="Customized Translation Active"
+              badgeBg="#dcfce7"
+              badgeColor="#166534"
+              hint="Instruct Gemini on language-by-language subtitle translation, Cantonese-to-書面語 conversion, and domain terminology preservation."
+              onOpenModal={handleOpenTranslationPromptModal}
+              onReset={() => setLectureTranslationPrompt(null)}
+              selectButtonText="🌐 Select Translation Prompt from Library"
+              selectButtonStyle={{ border: '1.5px solid #16a34a', color: '#15803d' }}
+              resetButtonText="Reset to Default System Prompt"
+              previewLength={180}
+            />
           </div>
         </div>
 
