@@ -166,11 +166,9 @@ const AiCostReportView = ({
             onChange={(e) => setSelectedJobType(e.target.value)}
           >
             <option value="all">All Job Types</option>
-            <option value="analyzeImage">Single Screenshot Analysis</option>
-            <option value="analyzeAllImages">Multi-Student Grid Analysis</option>
-            <option value="analyzeSingleVideo">Video Screencast Inspection</option>
-            <option value="cloudFallbackFaceAnalysis">Cloud Gaze Fallback</option>
-            <option value="analyzeAudio">Audio STT & Diarization</option>
+            {Object.entries(JOB_TYPE_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
           </select>
         </div>
 

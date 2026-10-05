@@ -73,7 +73,7 @@ export function aggregateAiCost(jobs = [], options = {}) {
   for (const job of filteredJobs) {
     const cost = Math.max(0, Number(job.cost) || 0);
     const usage = job.usage || {};
-    const inputTokens = Math.max(
+    let inputTokens = Math.max(
       0,
       Number(
         usage.inputTokens ??
@@ -83,7 +83,7 @@ export function aggregateAiCost(jobs = [], options = {}) {
         0
       )
     );
-    const outputTokens = Math.max(
+    let outputTokens = Math.max(
       0,
       Number(
         usage.outputTokens ??
@@ -93,6 +93,20 @@ export function aggregateAiCost(jobs = [], options = {}) {
         0
       )
     );
+
+    // If historical/legacy job has recorded cost but omitted token usage in Firestore
+    if (cost > 0 && inputTokens === 0 && outputTokens === 0) {
+      const modelPricing = (job.modelUsed?.includes('flash-lite'))
+        ? { input: 0.30, output: 2.50 }
+        : (job.modelUsed?.includes('3.6-flash'))
+        ? { input: 0.50, output: 3.00 }
+        : { input: 0.75, output: 3.75 };
+      // Typical STT & translation distribution is ~75% input, ~25% output spend
+      const estInputSpend = cost * 0.75;
+      const estOutputSpend = cost * 0.25;
+      inputTokens = Math.round((estInputSpend / modelPricing.input) * 1000000);
+      outputTokens = Math.round((estOutputSpend / modelPricing.output) * 1000000);
+    }
 
     totalCost += cost;
     totalInputTokens += inputTokens;
@@ -127,9 +141,10 @@ export function aggregateAiCost(jobs = [], options = {}) {
     byModelMap[modelKey].outputTokens += outputTokens;
 
     // By Student
-    const sUid = job.studentUid || job.uid || job.userId || 'class_wide';
-    const sEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (sUid === 'class_wide' ? 'Class-Wide Task' : (sUid.includes('@') ? sUid : 'Unknown Student'));
-    const sName = job.displayName || job.studentName || job.name || (sEmail !== 'Unknown Student' ? sEmail : 'Unknown Student');
+    const isInstructorTask = job.studentUid === 'instructor' || job.studentUid === 'teacher' || job.jobType === 'processLectureSubtitles';
+    const sUid = isInstructorTask ? 'instructor' : (job.studentUid || job.uid || job.userId || 'class_wide');
+    const sEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (isInstructorTask ? 'Instructor (Lecture Subtitles & CC)' : (sUid === 'class_wide' ? 'Class-Wide Task' : (sUid.includes('@') ? sUid : 'Unknown Student')));
+    const sName = isInstructorTask ? '👨‍🏫 Instructor / Lecture' : (job.displayName || job.studentName || job.name || (sEmail !== 'Unknown Student' ? sEmail : 'Unknown Student'));
     const sClass = job.studentClass || job.cohort || job.class || job.className || '';
     const sProg = job.programme || job.program || '';
     if (!byStudentMap[sUid]) {

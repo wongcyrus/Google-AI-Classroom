@@ -1023,10 +1023,12 @@ The speaker code-switches between Cantonese and English technical terminology (e
       );
 
       lastModelUsed = modelUsed;
-      const u = response.usage || {};
-      cumulativeUsage.promptTokens += (u.promptTokens || u.promptTokenCount || u.inputTokens || 0);
-      cumulativeUsage.completionTokens += (u.completionTokens || u.candidatesTokenCount || u.outputTokens || 0);
-      cumulativeUsage.totalTokens += (u.totalTokens || 0);
+      const u = response.usage || response.usageMetadata || response.raw?.usageMetadata || {};
+      const inTok = u.promptTokens || u.promptTokenCount || u.inputTokens || 0;
+      const outTok = u.completionTokens || u.candidatesTokenCount || u.outputTokens || 0;
+      cumulativeUsage.promptTokens += inTok;
+      cumulativeUsage.completionTokens += outTok;
+      cumulativeUsage.totalTokens += (u.totalTokens || u.totalTokenCount || (inTok + outTok));
 
       let parsedData = null;
       if (response.text) {
@@ -1162,10 +1164,12 @@ The speaker code-switches between Cantonese and English technical terminology (e
                   activeModel || AI_MODEL
                 );
 
-                const tu = transRes.usage || {};
-                cumulativeUsage.promptTokens += (tu.promptTokens || tu.promptTokenCount || tu.inputTokens || 0);
-                cumulativeUsage.completionTokens += (tu.completionTokens || tu.candidatesTokenCount || tu.outputTokens || 0);
-                cumulativeUsage.totalTokens += (tu.totalTokens || 0);
+                const tu = transRes.usage || transRes.usageMetadata || transRes.raw?.usageMetadata || {};
+                const tinTok = tu.promptTokens || tu.promptTokenCount || tu.inputTokens || 0;
+                const toutTok = tu.completionTokens || tu.candidatesTokenCount || tu.outputTokens || 0;
+                cumulativeUsage.promptTokens += tinTok;
+                cumulativeUsage.completionTokens += toutTok;
+                cumulativeUsage.totalTokens += (tu.totalTokens || tu.totalTokenCount || (tinTok + toutTok));
 
                 let parsedTrans = parseAiJsonResponse(transRes.text);
                 if (!parsedTrans) {
@@ -1243,6 +1247,13 @@ Output valid JSON with this exact schema:
               },
               AI_MODEL
             );
+
+            const chu = chRes?.usage || chRes?.usageMetadata || chRes?.raw?.usageMetadata || {};
+            const chinTok = chu.promptTokens || chu.promptTokenCount || chu.inputTokens || 0;
+            const choutTok = chu.completionTokens || chu.candidatesTokenCount || chu.outputTokens || 0;
+            cumulativeUsage.promptTokens += chinTok;
+            cumulativeUsage.completionTokens += choutTok;
+            cumulativeUsage.totalTokens += (chu.totalTokens || chu.totalTokenCount || (chinTok + choutTok));
 
             let parsedCh = parseAiJsonResponse(chRes.text);
             if (!parsedCh) {
@@ -1347,10 +1358,17 @@ Output valid JSON with this exact schema:
 
       await logJob({
         classId,
+        studentUid: 'instructor',
+        studentEmail: sessionData.teacherEmail || 'teacher',
         jobType: 'processLectureSubtitles',
         status: 'completed',
         promptText: 'Single-pass whole-audio lecture transcription with multilingual translations.',
         mediaPaths: [gsUri],
+        usage: {
+          inputTokens: cumulativeUsage.promptTokens,
+          outputTokens: cumulativeUsage.completionTokens,
+          totalTokens: cumulativeUsage.totalTokens,
+        },
         cost: aiCost,
         modelUsed: lastModelUsed,
         result: `Generated ${segments.length} segments across ${allLanguages.length} languages via ${lastModelUsed}.`,
@@ -1380,10 +1398,17 @@ Output valid JSON with this exact schema:
 
       await logJob({
         classId,
+        studentUid: 'instructor',
+        studentEmail: sessionData.teacherEmail || 'teacher',
         jobType: 'processLectureSubtitles',
         status: 'failed',
         promptText: 'Lecture subtitle generation',
         mediaPaths: [gsUri],
+        usage: {
+          inputTokens: cumulativeUsage.promptTokens,
+          outputTokens: cumulativeUsage.completionTokens,
+          totalTokens: cumulativeUsage.totalTokens,
+        },
         cost: 0,
         modelUsed: lastModelUsed || AI_MODEL,
         errorDetails: err.message,

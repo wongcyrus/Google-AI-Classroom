@@ -215,7 +215,7 @@ describe('AiCostReportView Component', () => {
       />
     );
 
-    expect(screen.getByText(/Gemini Live Subtitle Stream/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Gemini Live Subtitle Stream/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/gemini-3.1-flash-live-preview/i)).toBeInTheDocument();
   });
 });

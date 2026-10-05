@@ -20,6 +20,7 @@ import { isRecordInLesson } from './StudentRecordsView';
 import Modal from './Modal';
 import AudioPromptSelector from './AudioPromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
+import { formatAiCost } from '../utils/formatters';
 import './LectureRecordingsView.css';
 
 export function formatFileSize(bytes) {
@@ -1199,6 +1200,15 @@ export default function LectureRecordingsView({
                                 🤖 {rec.aiModelUsed}
                               </span>
                             )}
+                            {rec.aiCost !== undefined && rec.aiCost !== null && (
+                              <span
+                                className="badge-pill-clip"
+                                style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.72rem', fontWeight: 600 }}
+                                title={`AI Subtitle Processing Cost: $${Number(rec.aiCost).toFixed(4)} USD`}
+                              >
+                                💰 {formatAiCost(rec.aiCost)}
+                              </span>
+                            )}
                             {classPolicy === 'always_shared' || rec.isSharedWithStudents ? (
                               <span className="badge-pill-shared" title="Enrolled students can view this video">
                                 👥 Shared
@@ -1286,7 +1296,27 @@ export default function LectureRecordingsView({
                     {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete Recording'}
                   </button>
                 </div>
-                <div style={{ width: '100%', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '100%', fontSize: '0.8rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  {selectedRecording.aiCost !== undefined && selectedRecording.aiCost !== null && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        color: '#166534',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                      }}
+                      title="Gemini AI transcription, chaptering & translation cost for this lecture recording"
+                    >
+                      💰 AI Processing Cost: {formatAiCost(selectedRecording.aiCost)}
+                      {selectedRecording.aiModelUsed && ` (${selectedRecording.aiModelUsed})`}
+                    </span>
+                  )}
                   {classPolicy === 'always_shared' ? (
                     <span style={{ color: '#16a34a', fontWeight: 600 }}>
                       🌐 Automatically shared with enrolled students (Class Policy: Always Share)
@@ -2279,6 +2309,9 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                 <span>📦 {formatFileSize(selectedRecording.fileSize)}</span>
                 <span>Status: {selectedRecording.status}</span>
                 {selectedRecording.aiModelUsed && <span>🤖 Prior Model: {selectedRecording.aiModelUsed}</span>}
+                {selectedRecording.aiCost !== undefined && selectedRecording.aiCost !== null && (
+                  <span>💰 Prior Cost: {formatAiCost(selectedRecording.aiCost)}</span>
+                )}
               </div>
             </div>
           )}

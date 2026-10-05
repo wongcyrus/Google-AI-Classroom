@@ -153,20 +153,30 @@ Guidelines:
     }
   }
 
-  // Calculate actual cost based on usageMetadata
-  const actualCost = response.usageMetadata
-    ? calculateCost(response.usageMetadata, modelUsed)
+  // Calculate actual cost based on usage or usageMetadata
+  const usage = response.usage || response.usageMetadata || response.raw?.usageMetadata || {};
+  const inputTokens = usage.promptTokens || usage.promptTokenCount || usage.inputTokens || 0;
+  const outputTokens = usage.completionTokens || usage.candidatesTokenCount || usage.outputTokens || 0;
+  const totalTokens = usage.totalTokens || usage.totalTokenCount || (inputTokens + outputTokens);
+
+  const actualCost = (inputTokens > 0 || outputTokens > 0)
+    ? calculateCost(usage, modelUsed)
     : estimatedCost;
 
   if (classId) {
     await logJob({
       classId,
       studentUid: teacherUid || 'teacher',
-      studentEmail: teacherEmail,
+      studentEmail: teacherEmail || 'teacher',
       jobType: 'translateTeacherSpeech',
       status: 'completed',
       promptText: trimmedText,
       mediaPaths: [],
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+      },
       cost: actualCost,
       modelUsed,
     });
