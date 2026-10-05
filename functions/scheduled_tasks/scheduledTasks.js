@@ -271,6 +271,80 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
           });
           jobCreationPromises.push(jobPromise);
         }
+
+        // Also check for unmerged teacher lecture clips from this ended lesson slot
+        const cleanStart = (slot.startTime || '').replace(':', '');
+        const cleanEnd = (slot.endTime || '').replace(':', '');
+        const expectedSlotSessionGroupId = `${classId}_${todayStr}_slot_${cleanStart}_${cleanEnd}`;
+        const slotStartMs = lessonStartDateTimeInZone.getTime() - 45 * 60 * 1000;
+        const slotEndMs = lessonEndDateTimeInZone.getTime() + 15 * 60 * 1000;
+
+        const lectureMergePromise = (async () => {
+          try {
+            const lectureRecsRef = db.collection(`classes/${classId}/lectureRecordings`);
+            const lectureSnap = await lectureRecsRef.get();
+            if (!lectureSnap || lectureSnap.empty) return;
+
+            const unmergedClips = [];
+            lectureSnap.forEach((recDoc) => {
+              const r = recDoc.data() || {};
+              if (r.isCombined || r.mergedIntoSessionId) return;
+              if (r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
+              if (!r.storagePath && !r.videoUrl) return;
+
+              const rStartMs = r.startedAt?.toMillis ? r.startedAt.toMillis() : (r.startedAt ? new Date(r.startedAt).getTime() : 0);
+              // Must be at least 2 minutes old to ensure upload is completely finalized
+              if (rStartMs && Date.now() - rStartMs < 2 * 60 * 1000) return;
+
+              const matchesSlotId = r.sessionGroupId === expectedSlotSessionGroupId;
+              const matchesTimeWindow = rStartMs >= slotStartMs && rStartMs <= slotEndMs;
+
+              if (matchesSlotId || matchesTimeWindow) {
+                unmergedClips.push({ id: recDoc.id, ...r });
+              }
+            });
+
+            if (unmergedClips.length >= 2) {
+              const mergeJobId = `merge_${classId}_${cleanStart}_${cleanEnd}_${todayStr}`;
+              const mergeJobRef = db.collection('lectureMergeJobs').doc(mergeJobId);
+              const existingMergeJob = await mergeJobRef.get();
+
+              if (!existingMergeJob || !existingMergeJob.exists) {
+                logger.info(`Creating automatic lecture merge job '${mergeJobId}' for ${unmergedClips.length} clips in class ${classId}`);
+                await mergeJobRef.set({
+                  jobId: mergeJobId,
+                  classId,
+                  recordingIds: unmergedClips.map((c) => c.id),
+                  sessionGroupId: expectedSlotSessionGroupId,
+                  customTitle: `Combined Full Lecture - ${todayStr}`,
+                  status: 'pending',
+                  createdAt: FieldValue.serverTimestamp(),
+                });
+              }
+            } else if (unmergedClips.length === 1 && unmergedClips[0].status === 'processing_subtitles') {
+              const singleClip = unmergedClips[0];
+              const subtitleJobId = `sub_${classId}_${singleClip.id}`;
+              const subJobRef = db.collection('lectureSubtitleJobs').doc(subtitleJobId);
+              const existingSubJob = await subJobRef.get();
+              if (!existingSubJob || !existingSubJob.exists) {
+                logger.info(`Enqueuing subtitle job for unfinalized single clip ${singleClip.id} in class ${classId}`);
+                await subJobRef.set({
+                  jobId: subtitleJobId,
+                  classId,
+                  sessionId: singleClip.id,
+                  storagePath: singleClip.storagePath,
+                  audioStoragePath: singleClip.normalizedAudioStoragePath || singleClip.audioStoragePath,
+                  title: singleClip.title,
+                  status: 'pending',
+                  createdAt: FieldValue.serverTimestamp(),
+                });
+              }
+            }
+          } catch (lecErr) {
+            logger.warn(`Automatic lecture combination check for class ${classId} skipped: ${lecErr.message}`);
+          }
+        })();
+        jobCreationPromises.push(lectureMergePromise);
       }
     }
     if (!slotFound) {

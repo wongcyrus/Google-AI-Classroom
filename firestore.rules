@@ -4,13 +4,19 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     function isTeacher() {
-      return request.auth != null && request.auth.token.role == 'teacher';
+      return request.auth != null && (
+        request.auth.token.role == 'teacher' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
+      );
     }
 
     function isTeacherInClass(classId) {
       let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let isTeacherByEmail = classData.teacherEmails != null && request.auth.token.email in classData.teacherEmails;
-      let isTeacherByUid = classData.teachers != null && request.auth.uid in classData.teachers;
+      let isTeacherByEmail = (classData.get('teacherEmails', null) != null && request.auth.token.email in classData.get('teacherEmails', [])) ||
+                             classData.get('teacherEmail', '') == request.auth.token.email;
+      let isTeacherByUid = (classData.get('teachers', null) != null && request.auth.uid in classData.get('teachers', {})) ||
+                           classData.get('teacherUid', '') == request.auth.uid ||
+                           classData.get('ownerUid', '') == request.auth.uid;
       return isTeacherByEmail || isTeacherByUid;
     }
 
@@ -63,7 +69,8 @@ service cloud.firestore {
       allow create: if request.resource.data.teacherEmails is list &&
                       request.auth.token.email in request.resource.data.teacherEmails &&
                       classId.size() >= 3;
-      allow update, delete: if isTeacher();
+      allow update: if isTeacher() || isTeacherInClass(classId);
+      allow delete: if isTeacher();
 
       match /students/{studentId} {
         allow read: if isTeacherInClass(classId);
@@ -130,7 +137,19 @@ service cloud.firestore {
       }
 
       match /lectureRecordings/{sessionId} {
-        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId) || 
+          (isStudentInClass(classId) && 
+           (
+             get(/databases/$(database)/documents/classes/$(classId)).data.get('teacherRecordingsPolicy', '') == 'always_shared' ||
+             (
+               (
+                 get(/databases/$(database)/documents/classes/$(classId)).data.get('teacherRecordingsPolicy', '') != 'private' ||
+                 get(/databases/$(database)/documents/classes/$(classId)).data.get('allowShareTeacherRecordings', false) == true
+               ) &&
+               resource.data.get('isSharedWithStudents', false) == true
+             )
+           )
+          );
         allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
       }
 
@@ -205,7 +224,7 @@ service cloud.firestore {
     }
 
     match /prompts/{promptId} {
-      allow read: if isTeacher();
+      allow read: if isTeacher() || (request.auth != null && resource.data.get('accessLevel', '') == 'public');
 
       // Teachers can create private, shared, or public prompts, as long as they are the owner
       // Public system templates can ONLY be seeded/created via Admin SDK / backend

@@ -194,6 +194,77 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       await handleAutomaticVideoCombination();
       expect(mockDoc.set).not.toHaveBeenCalled();
     });
+
+    it('creates lectureMergeJobs when 2 or more unmerged lecture clips exist for ended lesson slot', async () => {
+      const fixedTime = new Date('2026-09-14T10:15:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      const classDoc = {
+        id: 'class_with_lecture_clips',
+        data: () => ({
+          automaticCombine: true,
+          students: { 'student-uid-1': 'student1@stu.vtc.edu.hk' },
+          teachers: { 'teacher-uid-1': 'teacher1@vtc.edu.hk' },
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [
+              { days: ['Mon'], startTime: '09:00', endTime: '10:00' },
+            ],
+          },
+        }),
+      };
+
+      const clip1 = {
+        id: 'rec_clip_1',
+        data: () => ({
+          storagePath: 'recordings/class_with_lecture_clips/rec_clip_1/lecture.webm',
+          startedAt: { toMillis: () => new Date('2026-09-14T09:10:00Z').getTime() },
+          status: 'ready',
+        }),
+      };
+      const clip2 = {
+        id: 'rec_clip_2',
+        data: () => ({
+          storagePath: 'recordings/class_with_lecture_clips/rec_clip_2/lecture.webm',
+          startedAt: { toMillis: () => new Date('2026-09-14T09:35:00Z').getTime() },
+          status: 'ready',
+        }),
+      };
+
+      mockDoc.get.mockResolvedValue({ exists: false });
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [classDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: true,
+          docs: [],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          forEach: (cb) => {
+            cb(clip1);
+            cb(clip2);
+          },
+        });
+
+      await handleAutomaticVideoCombination();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: expect.stringMatching(/^merge_class_with_lecture_clips_0900_1000_/),
+          classId: 'class_with_lecture_clips',
+          recordingIds: ['rec_clip_1', 'rec_clip_2'],
+          status: 'pending',
+        })
+      );
+
+      vi.useRealTimers();
+    });
   });
 
   describe('syncGeminiPricing Scheduled Function', () => {

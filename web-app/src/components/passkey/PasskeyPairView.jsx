@@ -15,6 +15,7 @@ const PasskeyPairView = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [isSupported, setIsSupported] = useState(true);
+  const isIOSChrome = typeof navigator !== 'undefined' && /CriOS\//i.test(navigator.userAgent || '');
 
   useEffect(() => {
     if (!isHandheldPhone()) {
@@ -169,6 +170,12 @@ const PasskeyPairView = () => {
             {errorMessage && (
               <div className="passkey-alert passkey-alert-error">
                 {errorMessage}
+              </div>
+            )}
+
+            {isIOSChrome && (
+              <div className="passkey-alert passkey-alert-warning" style={{ textAlign: 'left', lineHeight: 1.4, fontSize: '0.82rem', marginBottom: '1rem', background: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)', color: '#fbbf24' }}>
+                💡 <strong>iPhone Notice:</strong> To ensure you can scan the lab PC QR code using your phone's Camera app, please open this page in <strong>Apple Safari</strong>.
               </div>
             )}
 

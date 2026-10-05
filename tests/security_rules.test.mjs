@@ -634,11 +634,164 @@ async function runSecurityRulesSuite() {
       'Unauthenticated user can read system_config/loginPolicy'
     );
 
-    // Cleanup passkey test fixtures
-    await adminDb.collection('studentPasskeys').doc(passkeyStudent1Id).delete();
-    await adminDb.collection('loginSessions').doc(loginSessionId).delete();
-    await adminDb.collection('passkeyPairingTokens').doc(pairingTokenId).delete();
-    await adminDb.collection('passkeyAuditLogs').doc(auditLogId).delete();
+    // -------------------------------------------------------------
+    // SUITE 5: Lecture Recordings & Prompt Library Security
+    // -------------------------------------------------------------
+    console.log(`\n🎬 SUITE 5: Lecture Recordings & Prompt Library Security Permissions...`);
+
+    const systemPromptId = `sys-lecture-prompt-${timestamp}`;
+    const teacherCustomPromptId = `teacher-prompt-${timestamp}`;
+    const recPrivateId = `rec-private-${timestamp}`;
+    const recSharedId = `rec-shared-${timestamp}`;
+
+    // Admin seeds system prompt & fixture recordings
+    await adminDb.collection('prompts').doc(systemPromptId).set({
+      name: 'System Lecture Subtitle Synthesizer',
+      promptText: 'System instructions for lecture transcription',
+      category: 'translations',
+      applyTo: ['Lecture Subtitles & Chapters'],
+      accessLevel: 'public',
+      isSystem: true,
+      owner: 'system',
+      createdAt: FieldValue.serverTimestamp()
+    });
+
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recPrivateId).set({
+      title: 'Private Lecture Recording',
+      status: 'ready',
+      subtitlesStatus: 'ready',
+      subtitlesDisabled: true,
+      isSharedWithStudents: false,
+      createdAt: FieldValue.serverTimestamp()
+    });
+
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recSharedId).set({
+      title: 'Shared Lecture Recording',
+      status: 'ready',
+      subtitlesStatus: 'ready',
+      isSharedWithStudents: true,
+      createdAt: FieldValue.serverTimestamp()
+    });
+
+    // Sign in as Teacher
+    await signInWithEmailAndPassword(clientAuth, teacherEmail, defaultPassword);
+
+    // 1. Teacher can read system prompt
+    await expectAllowed(
+      getDoc(doc(clientDb, 'prompts', systemPromptId)),
+      'Teacher can read system prompt template'
+    );
+
+    // 2. Teacher CANNOT tamper with or overwrite system prompts
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'prompts', systemPromptId), { promptText: 'Hacked prompt' }),
+      'Teacher CANNOT update system prompt (system template immutability)'
+    );
+    await expectPermissionDenied(
+      deleteDoc(doc(clientDb, 'prompts', systemPromptId)),
+      'Teacher CANNOT delete system prompt'
+    );
+
+    // 3. Teacher can create custom prompt
+    await expectAllowed(
+      setDoc(doc(clientDb, 'prompts', teacherCustomPromptId), {
+        name: 'Teacher Custom Translation Rules',
+        promptText: 'Custom instructions',
+        category: 'translations',
+        applyTo: ['Lecture Subtitles & Chapters'],
+        accessLevel: 'private',
+        isSystem: false,
+        owner: teacherUid,
+      }),
+      'Teacher can create custom private prompt'
+    );
+
+    // 4. Teacher CANNOT set isSystem: true when creating prompt
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'prompts', `fake-sys-${timestamp}`), {
+        name: 'Fake System Prompt',
+        promptText: 'Fake',
+        category: 'translations',
+        isSystem: true,
+        owner: teacherUid,
+        accessLevel: 'public',
+      }),
+      'Teacher CANNOT forge isSystem: true on prompt creation'
+    );
+
+    // 5. Teacher can update their own custom prompt
+    await expectAllowed(
+      updateDoc(doc(clientDb, 'prompts', teacherCustomPromptId), {
+        promptText: 'Updated custom instructions',
+      }),
+      'Teacher can update their own prompt'
+    );
+
+    // 6. Teacher can read & update lectureRecordings in their class
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recPrivateId)),
+      'Teacher can read private lecture recording in Class A'
+    );
+    await expectAllowed(
+      updateDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recPrivateId), {
+        subtitlesDisabled: false,
+        subtitlesStatus: 'generating_subtitles'
+      }),
+      'Teacher can update lecture recording subtitles status in Class A'
+    );
+
+    // 7. Teacher can update class-level lecture subtitle settings
+    await expectAllowed(
+      updateDoc(doc(clientDb, 'classes', classA), {
+        isLectureSubtitlesEnabled: false,
+        lectureAiModel: 'gemini-3.8-flash',
+        lectureTargetLanguages: ['en', 'zh-Hant', 'zh-Hans'],
+        lectureRecordingPrompt: { name: 'Custom', promptText: 'Rules' }
+      }),
+      'Teacher can save class-level lecture subtitle and translation settings'
+    );
+
+    // 8. Sign in as Student 1 (Enrolled in Class A)
+    await signInWithEmailAndPassword(clientAuth, student1Email, defaultPassword);
+
+    // Student CANNOT tamper with lectureRecordings
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recPrivateId), { status: 'deleted' }),
+      'Student CANNOT update lecture recordings in Class A'
+    );
+    await expectPermissionDenied(
+      deleteDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recPrivateId)),
+      'Student CANNOT delete lecture recordings in Class A'
+    );
+
+    // Student CANNOT read private unshared lecture recording
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recPrivateId)),
+      'Student CANNOT read unshared private lecture recording'
+    );
+
+    // Student CAN read shared lecture recording
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recSharedId)),
+      'Student CAN read shared lecture recording in enrolled class'
+    );
+
+    // Student CANNOT create prompts
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'prompts', `student-prompt-${timestamp}`), {
+        name: 'Student Prompt',
+        promptText: 'test',
+        owner: student1Uid,
+        accessLevel: 'private'
+      }),
+      'Student CANNOT create prompts in prompt library'
+    );
+
+    // Cleanup prompt & recording fixtures
+    await adminDb.collection('prompts').doc(systemPromptId).delete().catch(() => {});
+    await adminDb.collection('prompts').doc(teacherCustomPromptId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recPrivateId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recSharedId).delete().catch(() => {});
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users
