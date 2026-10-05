@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import ControlsPanel from './ControlsPanel';
 
@@ -904,6 +904,118 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(openBingoBtn).toBeInTheDocument();
     fireEvent.click(openBingoBtn);
     expect(onOpenBingoModal).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers onOpenLectureQrModal when bingoMode is lecture_passkey_qr', async () => {
+    const onOpenLectureQrModal = vi.fn();
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        onOpenLectureQrModal={onOpenLectureQrModal}
+      />
+    );
+
+    // Switch bingo mode to lecture_passkey_qr
+    const qrRadio = screen.getByRole('radio', { name: /Lecture Dynamic QR/i });
+    fireEvent.click(qrRadio);
+
+    // Click dispatch bingo button
+    const dispatchBtn = screen.getByRole('button', { name: /Project Lecture QR Code/i });
+    fireEvent.click(dispatchBtn);
+    expect(onOpenLectureQrModal).toHaveBeenCalledTimes(1);
+  });
+
+  it('displays error feedback when triggerBingoCheck callable function fails', async () => {
+    mockTriggerBingo.mockRejectedValueOnce(new Error('Network failure'));
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+      />
+    );
+
+    const dispatchBtn = screen.getByRole('button', { name: /Call Bingo/i });
+    await act(async () => {
+      fireEvent.click(dispatchBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to trigger Bingo: Network failure/i)).toBeInTheDocument();
+    });
+  });
+
+  it('invokes fallback handlers when handleSaveAiSettings is omitted in GazeConfigModal', async () => {
+    const handleFaceDebounceChange = vi.fn();
+    const handleEnableCloudFallbackChange = vi.fn();
+    const handleCloudFallbackRateChange = vi.fn();
+    const handleAiModelChange = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        handleSaveAiSettings={undefined}
+        handleSaveGazeSettings={undefined}
+        handleFaceDebounceChange={handleFaceDebounceChange}
+        handleEnableCloudFallbackChange={handleEnableCloudFallbackChange}
+        handleCloudFallbackRateChange={handleCloudFallbackRateChange}
+        handleAiModelChange={handleAiModelChange}
+      />
+    );
+
+    // Open Config Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // Save & Apply
+    const saveApplyBtn = screen.getByRole('button', { name: /Save & Apply to Live Class/i });
+    await act(async () => {
+      fireEvent.click(saveApplyBtn);
+    });
+
+    expect(handleFaceDebounceChange).toHaveBeenCalled();
+    expect(handleEnableCloudFallbackChange).toHaveBeenCalled();
+    expect(handleCloudFallbackRateChange).toHaveBeenCalled();
+    expect(handleAiModelChange).toHaveBeenCalled();
+  });
+
+  it('copies vision and voice prompt text to clipboard', async () => {
+    const writeTextSpy = vi.fn().mockResolvedValue();
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextSpy,
+      },
+    });
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        editablePromptText="Classroom activity analysis"
+        liveAudioPrompt={{ id: 'ap_1', promptText: 'Audio noise analysis' }}
+      />
+    );
+
+    // Open Config Modal
+    const configBtn = screen.getByRole('button', { name: /Configure AI Suite/i });
+    fireEvent.click(configBtn);
+
+    // 1. Switch to Voice & Speech and copy Voice Prompt
+    const voiceTabBtn = screen.getByRole('button', { name: /Voice & Speech/i });
+    fireEvent.click(voiceTabBtn);
+
+    const voiceCopyBtn = screen.getByRole('button', { name: /Copy Prompt Text/i });
+    fireEvent.click(voiceCopyBtn);
+    expect(writeTextSpy).toHaveBeenCalledWith('Audio noise analysis');
+
+    // 2. Switch to Screen & Vision and copy Vision Prompt
+    const screenTabBtn = screen.getByRole('button', { name: /Screen & Vision/i });
+    fireEvent.click(screenTabBtn);
+
+    const visionCopyBtn = screen.getByRole('button', { name: /Copy Prompt Text/i });
+    fireEvent.click(visionCopyBtn);
+    expect(writeTextSpy).toHaveBeenCalledWith('Classroom activity analysis');
   });
 });
 

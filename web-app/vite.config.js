@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
       fileParallelism: false,
       coverage: {
         provider: 'v8',
-        reporter: ['text', 'json-summary'],
+        reporter: ['text', 'json-summary', 'json'],
         include: ['src/**/*.{js,jsx}'],
         exclude: [
           'src/test/**',

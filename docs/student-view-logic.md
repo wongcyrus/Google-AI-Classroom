@@ -207,7 +207,7 @@ To prevent Chrome from throwing `OverconstrainedError` before native permission 
 - Audio recording is completely **decoupled from Vision AI modes**. Even if Vision AI is set to `disabled` (`aiMonitoringMode === 'disabled'`), audio capture operates independently whenever the teacher enables the class audio toggle (`enableAudioCapture: true`).
 - **Direct Audio Stream Attachment**: `useAudioRecorder` opens the media stream using the student's selected microphone and supplies `audioStream` directly to `useClientLiteRTWhisper`.
 - `useClientLiteRTWhisper` attaches a real-time Web Audio `ScriptProcessorNode` to `audioStream`, downsampling to 16kHz PCM Float32Array and performing local Voice Activity Detection (VAD).
-- This ensures on-device LiteRT Whisper STT transcribes speech directly from whichever microphone the student selected (USB headset, external podcast mic, webcam mic, or internal default).
+- This ensures on-device LiteRT Whisper Speech Engine transcribes speech directly from whichever microphone the student selected (USB headset, external podcast mic, webcam mic, or internal default).
 - **On-Device Gemma Intent Analysis & Cloud Fallback (`useClientLiteRTGemma.js`)**: Spoken transcripts are fed to on-device Gemma 4 E2B (`litertGemma.worker.js`) running in WebGPU/WASM for instant cheating/whispering classification. Downloaded model weights are saved in Cache Storage (`litert-gemma-cache-v1`) with `navigator.storage.persist()`. In hybrid modes or when Gemma is loading, transcripts are simultaneously routed directly to Cloud Genkit (`analyzeAudio`) for immediate reasoning without re-transcribing raw audio.
 - Audio from the selected microphone is also recorded in continuous 1-second slices into a rolling circular memory buffer.
 - Every 15 seconds (stride), the previous 30-second window is packaged and uploaded to Firebase Cloud Storage under `audio/{classId}/{studentUid}/audio_{start}_{end}.webm`.
@@ -407,7 +407,7 @@ Students can switch between 3 native viewing modes at any time using the thumb-a
    - Fullscreen 100% viewport teacher screen / slide presentation broadcast.
    - **YouTube-Style Closed Captions (CC)**:
      - Captions appear as native translucent cue pills (`background: rgba(8, 8, 8, 0.82)`) overlaid directly near the bottom center of the video frame, hugging only the active text.
-     - Dual-line bilingual cues: Original speech in dimmer crisp text (`#e2e8f0`) + Translated speech in YouTube caption yellow (`#ffe600` / `#ffffff`).
+     - Dual-line bilingual cues: Original speech in dimmer crisp text (`#e2e8f0`) + captioned speech in YouTube caption yellow (`#ffe600` / `#ffffff`).
      - Zero slide occlusion: When no speech is occurring or during silence, caption cues disappear completely—leaving 100% of the teacher's screen visible.
    - **YouTube-Style Slim Player Control Bar**:
      - A 36px translucent control bar at the bottom with iconic YouTube `[ CC ]` button (active red underline indicator).
@@ -418,15 +418,15 @@ Students can switch between 3 native viewing modes at any time using the thumb-a
    - Touch pinch-to-zoom (up to 3x), double-tap zoom toggle (1x / 2x), drag-to-pan when magnified, and fullscreen toggle (⛶).
    - Live resolution badge (`SCREEN LIVE 1080P`).
 3. **💬 CC Only (`'cc'`)**:
-   - Dedicated full-page live subtitle and translation reader.
-   - Dynamic language chips derived directly from the teacher's active target languages and translations (defaulting to Simplified Chinese `[ 简体中文 ]` and English `[ English ]`).
+   - Dedicated full-page live subtitle and multilingual captioning reader.
+   - Dynamic language chips derived directly from the teacher's active target languages and subtitles (defaulting to Simplified Chinese `[ 简体中文 ]` and English `[ English ]`).
    - Large typography font scale controls (`A-`, `A`, `A+`).
    - Earphone audio read-aloud (`SpeechSynthesisUtterance`).
    - Active prominent live utterance box + full scrollable lecture transcript history.
    - Quick jump alert banner if the teacher is sharing their screen (`"🖥️ Teacher is sharing screen live! View Screen →"`).
 
 ### 3. Dynamic Language Alignment & Simplified Chinese Default
-- **Teacher-Driven Language List**: Available student subtitle languages are derived strictly from the teacher's active `targetLanguages` and emitted `translations`. Students only see language chips that the teacher is actually providing.
+- **Teacher-Driven Language List**: Available student subtitle languages are derived strictly from the teacher's active `targetLanguages` and emitted `subtitles`. Students only see language chips that the teacher is actually providing.
 - **Default Language Pair**: The default configuration across teacher subtitle broadcasting and student reception is **Simplified Chinese (`zh-Hans` / 简体中文)** and **English (`en` / English)**.
 - **Auto-Fallback**: If a student's previously persisted language preference is not being provided by the current teacher session, the student view automatically falls back to Simplified Chinese (`zh-Hans`) or English (`en`).
 

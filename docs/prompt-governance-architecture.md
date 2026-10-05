@@ -6,7 +6,7 @@
 **Applicable Files**:
 - Security Rules: [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules)
 - Management Views: [`PromptManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.jsx), [`PromptForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptForm.jsx), [`PromptList.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptList.jsx)
-- Hooks: [`usePrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/usePrompts.js), [`useAudioPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioPrompts.js), [`useVideoPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useVideoPrompts.js), [`useTranslationPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTranslationPrompts.js), [`useRubricPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useRubricPrompts.js)
+- Hooks: [`usePrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/usePrompts.js), [`useAudioPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioPrompts.js), [`useVideoPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useVideoPrompts.js), [`useSubtitlePrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useSubtitlePrompts.js), [`useRubricPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useRubricPrompts.js)
 - Seeding Scripts: [`seed_prompts.cjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/seed_prompts.cjs), [`seed_initial_data.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/seed_initial_data.mjs)
 - Schema Docs: [`docs/firestore-schema.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/firestore-schema.md), [`docs/comprehensive-ui-controls-and-features-catalog.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/comprehensive-ui-controls-and-features-catalog.md)
 
@@ -20,7 +20,7 @@ In earlier iterations of the platform, the access control model suffered from a 
 
 Because pre-seeded system prompts had `accessLevel: 'public'`, the system mistakenly assumed that *any* document with `accessLevel === 'public'` was an official, immutable system template. Consequently:
 1. Teachers were **blocked from creating or saving `public` prompts** in the UI and in Firestore security rules (`request.resource.data.accessLevel != 'public'`).
-2. This was completely unintuitive for instructors. When an instructor crafts an assessment rubric, translation glossary, or invigilation prompt and wants to share it school-wide with all teaching staff, that prompt is inherently **public**. Preventing teachers from creating public prompts contradicted real-world academic collaboration.
+2. This was completely unintuitive for instructors. When an instructor crafts an assessment rubric, multilingual captioning glossary, or invigilation prompt and wants to share it school-wide with all teaching staff, that prompt is inherently **public**. Preventing teachers from creating public prompts contradicted real-world academic collaboration.
 
 ### 1.2 The Resolution: Decoupled Two-Tier Governance
 The new design strictly separates **Authority / Origin** from **Visibility Scope**:
@@ -63,7 +63,7 @@ A critical requirement was ensuring that redefining access levels **did NOT brea
      const qShared = query(promptsCollectionRef, where('sharedWith', 'array-contains', uid));
      ```
 2. **Deduplication Resilience**:
-   - All prompt hooks (`usePrompts.js`, `useAudioPrompts.js`, `useVideoPrompts.js`, `useTranslationPrompts.js`, `useRubricPrompts.js`) already merge query results using:
+   - All prompt hooks (`usePrompts.js`, `useAudioPrompts.js`, `useVideoPrompts.js`, `useSubtitlePrompts.js`, `useRubricPrompts.js`) already merge query results using:
      ```javascript
      const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
      const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
@@ -147,7 +147,7 @@ const isReadOnly = selectedPrompt && !canEdit;
 ### 4.4 The "Make a Copy to Personalize" Workflow
 When an instructor clicks **`📋 Make a Copy to Personalize`**:
 1. Switches the form into Create Mode (`setSelectedPrompt(null)`).
-2. Appends ` - Copy` to the name (e.g., `Live Subtitles & Translation - Copy`).
+2. Appends ` - Copy` to the name (e.g., `Live Subtitles & Multilingual Captions - Copy`).
 3. Sets `accessLevel: 'private'`.
 4. Clears shared collaborators list.
 5. Displays confirmation alert: *"Created a personal copy of '[Name]'. You can now customize and save it."*

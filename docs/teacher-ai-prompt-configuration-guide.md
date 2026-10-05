@@ -1,13 +1,13 @@
 # 🧠 Teacher AI Prompt & Discipline Domain Configuration Architecture
 
-[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Instructor Manual](./user-manual-teacher.md) | [🌐 Live Subtitles & Translation](./live-subtitles-and-translation.md) | [🗄️ Firestore Schema](./firestore-schema.md)
+[🏠 Documentation Index](../README.md#documentation-index) | [👨‍🏫 Instructor Manual](./user-manual-teacher.md) | [🌐 Live Subtitles & Multilingual Captions](./live-subtitles-and-multilingual-captions.md) | [🗄️ Firestore Schema](./firestore-schema.md)
 
 ---
 
 ## 1. Executive Summary & Design Principles
 
 The **Google AI Classroom** is built around three core architectural tenets governing AI execution:
-1. **Universal Prompt Library**: Every AI system prompt across every sensory modality (Live Subtitle Translation, On-Device Gemma Voice Intent, Acoustic Invigilation, Discussion Diarization, Image/Screen Invigilation, Bingo Active Presence, and After-Class Video Analysis) is cataloged as a reusable, versioned asset in the central prompt library (`prompts` collection and `admin/prompts/`).
+1. **Universal Prompt Library**: Every AI system prompt across every sensory modality (Live Subtitle multilingual captioning, On-Device Gemma Voice Intent, Acoustic Invigilation, Discussion Diarization, Image/Screen Invigilation, Bingo Active Presence, and After-Class Video Analysis) is cataloged as a reusable, versioned asset in the central prompt library (`prompts` collection and `admin/prompts/`).
 2. **Zero Hardcoding & Full Instructor Agency**: Instructors are never locked into rigid, one-size-fits-all prompts. Teachers can select, preview, tweak, inline-edit, or reset prompts for any class, ensuring terminology is tailored to the specific course curriculum.
 3. **Dual-Surface Configuration**:
    - **Pre-Flight Class Setup (`ClassManagement.jsx`)**: Persistent configuration of default prompts stored in `classes/{classId}`.
@@ -22,8 +22,8 @@ The following diagram illustrates how prompts flow from the centralized catalog 
 ```mermaid
 flowchart TD
     subgraph Catalog ["1. Central Prompt Library & Storage"]
-        SeedMD["Markdown Seed Repository\n(admin/prompts/translations, audios, images, videos)"] --> SeedScript["seed_prompts.cjs / seed_initial_data.mjs"]
-        SeedScript --> FSPrompts[("Firestore Collection: /prompts/{promptId}\n- category: translations | audios | images | videos\n- applyToFilter, accessLevel, promptText")]
+        SeedMD["Markdown Seed Repository\n(admin/prompts/subtitles, audios, images, videos)"] --> SeedScript["seed_prompts.cjs / seed_initial_data.mjs"]
+        SeedScript --> FSPrompts[("Firestore Collection: /prompts/{promptId}\n- category: subtitles | audios | images | videos\n- applyToFilter, accessLevel, promptText")]
     end
 
     subgraph TeacherUI ["2. Teacher Configuration Surfaces"]
@@ -38,8 +38,8 @@ flowchart TD
 
     subgraph RuntimeConsumers ["4. Multimodal Runtime Inference Engines"]
         ClassDoc -->|"Snapshot Listener"| EdgeGemma["Edge Web Worker (litertGemma.worker.js)\nLiteRT-LM Gemma 4 E2B Voice Intent Proctor"]
-        ClassDoc -->|"Snapshot Listener"| ChromeAI["Chrome Built-in AI (chromeTranslator.js)\nwindow.Translator (Gemini Nano)"]
-        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: translateTeacherSpeech\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite Server STT/Translation"]
+        ClassDoc -->|"Snapshot Listener"| ChromeAI["Chrome Built-in AI (chromeLanguageModel.js)\nwindow.subtitle engine (Gemini Nano)"]
+        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: processTeacherSpeechSubtitles\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite Server Speech Recognition/multilingual captioning"]
         ClassDoc -->|"useTeacherLiveSubtitles Hook"| GeminiLive["Gemini Live WebSocket Stream\n(firebase/ai: gemini-3.1-flash-live-preview)"]
         ClassDoc -->|"analyzeFaceFallbackFlow"| CFVision["Cloud Function: analyzeFaceFallbackFlow\n(functions/ai_flows/analysisFlows.js)\nGemini Fallback Face & Gaze Invigilation"]
         ClassDoc -->|"resolveBingoQuestion"| CFBingo["Cloud Function: resolveBingoQuestion\n(functions/ai_flows/bingoFlows.js)\nGemini Attention Verification MCQ"]
@@ -51,7 +51,7 @@ flowchart TD
         ChromeAI --> SubChannel["Firestore: classes/{classId}/liveSubtitles/current"]
         CFSubtitles --> SubChannel
         GeminiLive --> SubChannel
-        SubChannel --> StudentOverlay["Student Viewport (LiveSubtitleOverlay.jsx)\nBilingual Subtitle Display (Original + Translation)"]
+        SubChannel --> StudentOverlay["Student Viewport (LiveSubtitleOverlay.jsx)\nBilingual Subtitle Display (Original + multilingual captioning)"]
     end
 ```
 
@@ -59,11 +59,11 @@ flowchart TD
 
 ## 3. Detailed Logic Trace-Down by Modality
 
-### Modality 1: Live Subtitles & Multilingual Translation
+### Modality 1: Live Subtitles & Multilingual Captions
 
 - **Configurable Fields**: `subjectDomain`, `customSubjectDomain`, `subtitlePrompt` (`{ id, name, promptText }`).
 - **Configuration Surfaces**:
-  1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8: Dropdown for `subjectDomain` and button triggering `AudioPromptSelector` (`applyToFilter='Live Subtitles & Translation'`).
+  1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8: Dropdown for `subjectDomain` and button triggering `AudioPromptSelector` (`applyToFilter='Live Subtitles & Multilingual Captions'`).
   2. [`TeacherSubtitleControlModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx): Accessible anytime during live monitoring from the toolbar in [`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx).
 
 ```mermaid
@@ -81,7 +81,7 @@ sequenceDiagram
     Modal->>Mon: onSelectCourseContext("Healthcare, Nursing & Medical Sciences")
     Mon->>FS: updateDoc({ subjectDomain: "Healthcare..." })
 
-    Teacher->>Modal: Selects Prompt ("Nursing & Medical Clinical Translation")
+    Teacher->>Modal: Selects Prompt ("Nursing & Medical Clinical Captions")
     Modal->>Mon: onSelectSubtitlePrompt(selectedPrompt)
     Mon->>FS: updateDoc({ subtitlePrompt: selectedPrompt })
 
@@ -91,23 +91,23 @@ sequenceDiagram
 
     FS-->>Hook: onSnapshot listener updates classConfig
     Hook->>Engine: Dispatches audio chunk with customized prompt & discipline domain
-    Engine->>FS: Publishes translated subtitle to /classes/{id}/liveSubtitles/current
-    FS-->>Student: LiveSubtitleOverlay displays domain-accurate clinical translations
+    Engine->>FS: Publishes multilingual subtitle to /classes/{id}/liveSubtitles/current
+    FS-->>Student: LiveSubtitleOverlay displays domain-accurate Clinical Captionss
 ```
 
 #### Code Execution Paths:
 1. **Server Model Mode ([`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js))**:
-   - `translateTeacherSpeech` extracts `classData.subtitlePrompt?.promptText` and `classData.subjectDomain`.
+   - `processTeacherSpeechSubtitles` extracts `classData.subtitlePrompt?.promptText` and `classData.subjectDomain`.
    - If a custom prompt is set, it injects the custom instructions directly into the Gemini prompt while maintaining strict JSON schema output:
      ```javascript
      const domainContext = classData.subjectDomain || 'General Studies & Interdisciplinary';
      const basePrompt = classData.subtitlePrompt?.promptText 
        ? `${classData.subtitlePrompt.promptText}\n\nAcademic Subject Domain Context: "${domainContext}".`
-       : `You are an expert real-time classroom lecture translator specializing in: "${domainContext}".`;
+       : `You are an expert real-time classroom Lecture Subtitles specializing in: "${domainContext}".`;
      ```
-2. **Client Model Mode ([`web-app/src/utils/chromeTranslator.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/chromeTranslator.js) & [`useClientLiteRTWhisper.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useClientLiteRTWhisper.js))**:
-   - STT is performed entirely on device by LiteRT Whisper WASM.
-   - Translation is executed via `window.Translator` (Chrome Built-in AI / Gemini Nano). Domain context and glossaries are prefixed to the prompt context to prevent programming terms from being translated into literal colloquial words.
+2. **Client Model Mode ([`web-app/src/utils/chromeLanguageModel.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/chromeLanguageModel.js) & [`useClientLiteRTWhisper.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useClientLiteRTWhisper.js))**:
+   - Speech Recognition is performed entirely on device by LiteRT Whisper WASM.
+   - multilingual captioning is executed via `window.LanguageModel` (Chrome Built-in AI / Gemini Nano). Domain context and glossaries are prefixed to the prompt context to prevent programming terms from being captioned into literal colloquial words.
 3. **Gemini Live Stream Mode ([`web-app/src/utils/aiLogic.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/aiLogic.js))**:
    - Uses Firebase AI Logic (`gemini-3.1-flash-live-preview`).
    - The system instructions configured for the WebSocket session include the teacher's selected domain and subtitle prompt, guaranteeing low-latency (~200ms) token streaming with accurate domain vocabulary.
@@ -127,7 +127,7 @@ flowchart TD
     Hook --> WorkerInit["Worker Message: { type: 'INIT', customPrompt: gemmaIntentPrompt.promptText }"]
     WorkerInit --> Worker["LiteRT-LM Gemma 4 E2B Web Worker (litertGemma.worker.js)"]
     
-    StudentSpeech["Student speaks during proctored exam"] --> Whisper["On-Device Whisper STT transcribes transcript"]
+    StudentSpeech["Student speaks during proctored exam"] --> Whisper["On-Device Whisper Speech Engine transcribes transcript"]
     Whisper --> WorkerEval["Worker Message: { type: 'EVALUATE_TRANSCRIPT', transcript }"]
     WorkerEval --> PromptBuild["Worker interpolates: Student transcript: '${transcript}' into custom prompt"]
     PromptBuild --> GemmaInference["Local LiteRT Gemma 4 E2B Token Generation"]
@@ -218,16 +218,16 @@ sequenceDiagram
 > [!IMPORTANT]
 > **Strict Prompt & Variable Separation**:
 > Do NOT mix up Live Subtitles (`subtitlePrompt`) with Whole-Lecture Recording Subtitles (`lectureRecordingPrompt`).
-> - **Live Subtitles & Translation**: Translates streaming/4s spoken audio in real-time to student screen overlays (`applyTo: 'Live Subtitles & Translation'`). Operates on `{{speechText}}` or `{{transcript}}`, `{{spokenLanguage}}`, and `{{targetLanguage}}`.
+> - **Live Subtitles & Multilingual Captions**: generates subtitles for streaming/4s spoken audio in real-time to student screen overlays (`applyTo: 'Live Subtitles & Multilingual Captions'`). Operates on `{{speechText}}` or `{{transcript}}`, `{{spokenLanguage}}`, and `{{targetLanguage}}`.
 > - **Whole-Lecture Recording Subtitles & Chapters**: Transcribes complete lecture audio tracks (.mp3/.webm) into sentence-level WebVTT/SRT multi-language caption cues with timestamps and YouTube chapter timestamps (`applyTo: 'Lecture Subtitles & Chapters'`). Operates on `{{classId}}`, `{{courseContext}}`, and `{{targetLanguages}}`.
 
 - **Configurable Fields**:
   - `lectureRecordingPrompt`: Custom or library prompt (`{ id, name, promptText }`).
-  - `isLectureSubtitlesEnabled`: Boolean toggle to enable/disable automated Gemini STT & CC synthesis.
+  - `isLectureSubtitlesEnabled`: Boolean toggle to enable/disable automated Gemini Speech Recognition & CC synthesis.
   - `lectureTargetLanguages`: Array of target language codes (`['en', 'zh-Hant', 'zh-Hans']`, etc.).
-  - `lectureAiModel`: Gemini model for full-session STT (`gemini-3.8-flash` or `gemini-3.6-flash`).
+  - `lectureAiModel`: Gemini model for full-session Speech Recognition (`gemini-3.8-flash` or `gemini-3.6-flash`).
 - **Configuration Surfaces**:
-  1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8 (*Lecture Recording, Subtitles & AI Translation*).
+  1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8 (*Lecture Recording, Subtitles & AI multilingual captioning*).
   2. [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx) via **"Regenerate Subtitles (CC)"** on-demand modal.
 - **Execution Runtime**: Cloud Function `processLectureSubtitles` in [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js).
 
@@ -244,9 +244,9 @@ When authoring custom prompts in the Prompt Studio or inline editors, teachers c
 | `{{classId}}` | All Modalities, Lecture Recordings | Active Classroom Context | `IT114115-2026-A` |
 | `{{courseContext}}` | Live Subtitles, Lecture Subtitles | Class Subject Domain | `Computer Science & Software Development` |
 | `{{targetLanguages}}` | Whole-Lecture Recording Subtitles | Class / Session Target Languages | `English (en), Traditional Chinese (zh-Hant), Simplified Chinese (zh-Hans)` |
-| `{{spokenLanguage}}` | Live Subtitles & Translation | Teacher Selected Input Speech Lang | `zh-HK` (Cantonese) |
-| `{{targetLanguage}}` | Live Subtitles & Translation | Real-Time Output Subtitle Lang | `zh-Hant` or `en` |
-| `{{speechText}}` / `{{transcript}}` | Live Subtitles, On-Device Voice Intent | Real-Time Whisper STT Output | `Today we will learn about React Hooks.` |
+| `{{spokenLanguage}}` | Live Subtitles & Multilingual Captions | Teacher Selected Input Speech Lang | `zh-HK` (Cantonese) |
+| `{{targetLanguage}}` | Live Subtitles & Multilingual Captions | Real-Time Output Subtitle Lang | `zh-Hant` or `en` |
+| `{{speechText}}` / `{{transcript}}` | Live Subtitles, On-Device Voice Intent | Real-Time Whisper Speech Engine Output | `Today we will learn about React Hooks.` |
 | `{{topic}}` | Bingo Question Bank Generator | Teacher Input Field | `Docker Container Networking` |
 | `{{count}}` | Bingo Question Bank Generator | Teacher Input Field | `5` |
 

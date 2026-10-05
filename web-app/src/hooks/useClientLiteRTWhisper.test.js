@@ -19,6 +19,11 @@ vi.mock("../firebase-config", () => ({
   db: {},
 }));
 
+const mockTranscribeAudioWithFirebaseAI = vi.fn().mockResolvedValue("Fallback cloud transcribed text");
+vi.mock("../utils/aiLogic", () => ({
+  transcribeAudioWithFirebaseAI: (...args) => mockTranscribeAudioWithFirebaseAI(...args),
+}));
+
 let mockWorkerInstance = null;
 
 class MockWorker {
@@ -503,5 +508,200 @@ describe("useClientLiteRTWhisper Hook", () => {
 
     unmount();
     window.AudioContext = originalAudioContext;
+  });
+
+  it("handles fallback to Firebase AI Logic when Whisper returns empty transcript", async () => {
+    const mockOnTranscript = vi.fn();
+    const { result } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: "CLASS_TEST",
+        studentUid: "student_123",
+        enabled: false,
+        onTranscript: mockOnTranscript,
+      })
+    );
+
+    // 1. Preload model
+    let preloadPromise;
+    act(() => {
+      preloadPromise = result.current.preloadModel();
+    });
+
+    const initCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === "INIT");
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "INIT_COMPLETE",
+          id: initCall[0].id,
+          payload: { ready: true, delegate: "wasm", cached: true },
+        },
+      });
+      await preloadPromise;
+    });
+
+    const fakePcm = new Float32Array(16000); // >= 8000 samples
+    let transcribePromise;
+    act(() => {
+      transcribePromise = result.current.transcribeAudioChunk(fakePcm, { audioPath: "audio/test.webm" });
+    });
+
+    const transCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === "TRANSCRIBE");
+    const reqId = transCall[0].id;
+
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "TRANSCRIBE_COMPLETE",
+          id: reqId,
+          payload: {
+            transcript: "", // Empty transcript triggers fallback
+            language: "mixed",
+          },
+        },
+      });
+      await transcribePromise;
+    });
+
+    expect(mockTranscribeAudioWithFirebaseAI).toHaveBeenCalled();
+    expect(result.current.latestTranscript).toBe("Fallback cloud transcribed text");
+  });
+
+  it("handles worker STATUS, PROGRESS, and ERROR events", () => {
+    const { result } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: "CLASS_TEST",
+        studentUid: "student_123",
+        enabled: false,
+      })
+    );
+
+    // STATUS event
+    act(() => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "STATUS",
+          payload: { status: "loading", progress: 45 },
+        },
+      });
+    });
+    expect(result.current.status).toBe("loading");
+    expect(result.current.loadingProgress).toBe(45);
+
+    // PROGRESS event
+    act(() => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "PROGRESS",
+          payload: { progress: 80 },
+        },
+      });
+    });
+    expect(result.current.loadingProgress).toBe(80);
+
+    // ERROR event
+    act(() => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "ERROR",
+          payload: { error: "Custom worker load error" },
+        },
+      });
+    });
+    expect(result.current.status).toBe("error");
+    expect(result.current.error).toBe("Custom worker load error");
+  });
+
+  it("handles SpeechRecognition speech transcription and interim debounce", () => {
+    const originalSpeechRecognition = window.SpeechRecognition;
+    let capturedRecognition = null;
+
+    class MockSpeechRecognition {
+      constructor() {
+        this.continuous = false;
+        this.interimResults = false;
+        this.lang = "";
+        this.onresult = null;
+        this.onerror = null;
+        this.onend = null;
+        this.start = vi.fn();
+        this.abort = vi.fn();
+        capturedRecognition = this;
+      }
+    }
+    window.SpeechRecognition = MockSpeechRecognition;
+
+    const mockAudioTrack = {
+      label: "Mock Mic",
+      readyState: "live",
+      getSettings: () => ({ deviceId: "mic_123" }),
+    };
+    const mockAudioStream = {
+      getAudioTracks: () => [mockAudioTrack],
+    };
+
+    const mockOnTranscript = vi.fn();
+    const { unmount } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: "CLASS_TEST",
+        studentUid: "student_123",
+        enabled: true,
+        audioStream: mockAudioStream,
+        onTranscript: mockOnTranscript,
+      })
+    );
+
+    expect(capturedRecognition).not.toBeNull();
+    expect(capturedRecognition.start).toHaveBeenCalledWith(mockAudioTrack);
+
+    // Fire interim result
+    vi.useFakeTimers();
+    act(() => {
+      capturedRecognition.onresult({
+        resultIndex: 0,
+        results: [
+          [{ transcript: "speaking question interim" }],
+        ],
+      });
+    });
+
+    // Advance 1000ms debounce
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(mockOnTranscript).toHaveBeenCalledWith(
+      "speaking question interim",
+      expect.objectContaining({ isFinal: true })
+    );
+
+    // Fire final result
+    act(() => {
+      const finalResultItem = [{ transcript: "Final student response" }];
+      finalResultItem.isFinal = true;
+      capturedRecognition.onresult({
+        resultIndex: 0,
+        results: [finalResultItem],
+      });
+    });
+
+    expect(mockOnTranscript).toHaveBeenCalledWith(
+      "Final student response",
+      expect.objectContaining({ isFinal: true })
+    );
+
+    // Test onend restart
+    act(() => {
+      capturedRecognition.onend();
+    });
+    expect(capturedRecognition.start).toHaveBeenCalledTimes(2);
+
+    // Test onerror
+    act(() => {
+      capturedRecognition.onerror({ error: "audio-capture" });
+    });
+
+    unmount();
+    vi.useRealTimers();
+    window.SpeechRecognition = originalSpeechRecognition;
   });
 });

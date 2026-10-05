@@ -16,10 +16,22 @@ vi.mock('react-router-dom', () => ({
 
 let mockSnapshotCallbacks = [];
 const mockDoc = vi.fn((db, ...args) => ({ path: args.join('/'), id: args[args.length - 1] }));
-const mockOnSnapshot = vi.fn((ref, callback) => {
-  mockSnapshotCallbacks.push({ ref, callback });
+const mockOnSnapshot = vi.fn((ref, callback, errCallback) => {
+  mockSnapshotCallbacks.push({ ref, callback, errCallback });
   return vi.fn();
 });
+
+
+vi.mock('../passkey/PasskeyPairModal', () => ({
+  default: ({ show, onClose }) => (
+    show ? (
+      <div data-testid="mock-passkey-pair-modal">
+        <span>Passkey Pair Modal</span>
+        <button onClick={onClose}>Close Passkey</button>
+      </div>
+    ) : null
+  ),
+}));
 
 const mockSubmitBingoFn = vi.fn().mockResolvedValue({ data: { success: true, result: 'passed' } });
 vi.mock('firebase/functions', () => ({
@@ -748,6 +760,213 @@ describe('StudentMobileView Component', () => {
     expect(closeSpy).toHaveBeenCalled();
 
     closeSpy.mockRestore();
+  });
+
+  it('handles dock view mode switching and dedicated CC reader controls', () => {
+    mockBroadcastReturn = {
+      isBroadcastActive: true,
+      broadcastInfo: { resolution: '1080p' },
+      liveFrame: null,
+      connectionState: 'connected',
+      joinBroadcast: vi.fn(),
+    };
+    mockSubtitlesReturn = {
+      ...mockSubtitlesReturn,
+      active: true,
+      originalText: 'Today we discuss distributed systems.',
+      currentTranslation: '今天我們討論分佈式系統。',
+      translations: { 'zh-Hans': '今天我们讨论分布式系统。' },
+    };
+
+    render(<StudentMobileView user={mockUser} />);
+
+    // Switch to Screen Only
+    const screenOnlyBtn = screen.getByRole('button', { name: 'Teacher Screen Only' });
+    fireEvent.click(screenOnlyBtn);
+    expect(document.querySelector('.mode-screen')).toBeInTheDocument();
+
+    // Switch to CC Only reader mode
+    const ccOnlyBtn = screen.getByRole('button', { name: 'Subtitles Only' });
+    fireEvent.click(ccOnlyBtn);
+    expect(document.querySelector('.mode-cc')).toBeInTheDocument();
+
+    // Verify Dedicated Reader Mode controls
+    const smallFontBtn = screen.getByRole('button', { name: 'Small font' });
+    fireEvent.click(smallFontBtn);
+    expect(mockSubtitlesReturn.setFontSize).toHaveBeenCalledWith('small');
+
+    const mediumFontBtn = screen.getByRole('button', { name: 'Medium font' });
+    fireEvent.click(mediumFontBtn);
+    expect(mockSubtitlesReturn.setFontSize).toHaveBeenCalledWith('medium');
+
+    const largeFontBtn = screen.getByRole('button', { name: 'Large font' });
+    fireEvent.click(largeFontBtn);
+    expect(mockSubtitlesReturn.setFontSize).toHaveBeenCalledWith('large');
+
+    // Language chip selection
+    const zhHansChip = screen.getByRole('tab', { name: '简体中文' });
+    fireEvent.click(zhHansChip);
+    expect(mockSubtitlesReturn.setSelectedLanguage).toHaveBeenCalledWith('zh-Hans');
+
+    // Switch back to Screen via the alert banner in reader mode
+    const alertSwitchBtn = screen.getByRole('button', { name: /Teacher is sharing screen live\. Tap to switch to screen\./i });
+    fireEvent.click(alertSwitchBtn);
+    expect(document.querySelector('.mode-overlay')).toBeInTheDocument();
+  });
+
+  it('subscribes to enrolled bingo challenges and handles submission, closing, and expiration', async () => {
+    render(<StudentMobileView user={mockUser} />);
+
+    // Verify snapshot callback was registered
+    expect(mockSnapshotCallbacks.length).toBeGreaterThan(0);
+    const registeredCb = mockSnapshotCallbacks.find(cb => cb.ref?.path?.includes('studentProperties')) || mockSnapshotCallbacks[mockSnapshotCallbacks.length - 1];
+
+    // 1. Emit active challenge
+    await act(async () => {
+      registeredCb.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'bingo_99',
+            question: 'What is cloud elasticity?',
+            options: ['Auto-scaling', 'Manual Server Setup'],
+            status: 'pending',
+            result: 'pending',
+            timeLimitSeconds: 60,
+            expiresAtMillis: Date.now() + 60000,
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('What is cloud elasticity?')).toBeInTheDocument();
+      expect(screen.getByText('Auto-scaling')).toBeInTheDocument();
+    });
+
+    // 2. Select option
+    const optionA = screen.getByTestId('bingo-option-0');
+    fireEvent.click(optionA);
+
+    await waitFor(() => {
+      expect(mockSubmitBingoFn).toHaveBeenCalledWith(expect.objectContaining({
+        classId: 'class101',
+        bingoId: 'bingo_99',
+        selectedIndex: 0,
+      }));
+      expect(screen.getByTestId('bingo-result-card')).toBeInTheDocument();
+    });
+
+    // 3. Dismiss result card
+    const dismissBtn = screen.getByTestId('bingo-btn-dismiss');
+    fireEvent.click(dismissBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
+    });
+
+    // 4. Test expired challenge cleanup
+    await act(async () => {
+      registeredCb.callback({
+        exists: () => true,
+        data: () => ({
+          activeBingo: {
+            bingoId: 'expired_1',
+            status: 'active',
+            result: 'pending',
+            expiresAtMillis: Date.now() - 5000,
+          },
+        }),
+      });
+    });
+    expect(screen.queryByTestId('bingo-modal-overlay')).not.toBeInTheDocument();
+
+    // 5. Test snapshot error handler
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (registeredCb.errCallback) {
+      act(() => {
+        registeredCb.errCallback(new Error('Snapshot permissions failed'));
+      });
+      expect(warnSpy).toHaveBeenCalled();
+    }
+    warnSpy.mockRestore();
+  });
+
+  it('handles multi-class selection and follow schedule button', () => {
+    mockScheduleReturn = {
+      userClasses: [
+        { id: 'class101', name: 'Cloud Computing 101' },
+        { id: 'class202', name: 'Advanced AI Systems' },
+      ],
+      currentActiveClassId: 'class101',
+      activeClassIds: ['class101'],
+    };
+
+    render(<StudentMobileView user={mockUser} />);
+
+    const select = screen.getByLabelText('Select Enrolled Class');
+    expect(select).toBeInTheDocument();
+
+    // Change to class202
+    fireEvent.change(select, { target: { value: 'class202' } });
+
+    // The follow schedule button ↩ should appear
+    const followBtn = screen.getByTitle(/Follow scheduled class: class101/i);
+    expect(followBtn).toBeInTheDocument();
+
+    // Click follow schedule button
+    fireEvent.click(followBtn);
+    expect(select.value).toBe('class101');
+  });
+
+  it('handles passkey modal and zoom / fullscreen controls with active live stream', () => {
+    mockBroadcastReturn = {
+      isBroadcastActive: true,
+      broadcastInfo: { resolution: '1080p' },
+      liveFrame: 'data:image/png;base64,liveframebytes',
+      connectionState: 'connected',
+      joinBroadcast: vi.fn(),
+    };
+    mockSubtitlesReturn = {
+      ...mockSubtitlesReturn,
+      active: true,
+      originalText: 'Live lecture audio line.',
+      currentTranslation: '現場演講音頻行。',
+    };
+
+    render(<StudentMobileView user={mockUser} />);
+
+    // Open Passkey modal via header button
+    const passkeyBtn = screen.getByRole('button', { name: 'Link or View Mobile Passkey' });
+    fireEvent.click(passkeyBtn);
+    expect(screen.getByTestId('mock-passkey-pair-modal')).toBeInTheDocument();
+
+    const closePasskeyBtn = screen.getByRole('button', { name: 'Close Passkey' });
+    fireEvent.click(closePasskeyBtn);
+    expect(screen.queryByTestId('mock-passkey-pair-modal')).not.toBeInTheDocument();
+
+    // Zoom controls on live screen
+    const zoomBtn = screen.getByRole('button', { name: 'Toggle Zoom' });
+    expect(zoomBtn).toHaveTextContent('🔍 2x Zoom');
+    fireEvent.click(zoomBtn);
+
+    const resetZoomBtn = screen.getByRole('button', { name: 'Reset Zoom' });
+    expect(resetZoomBtn).toBeInTheDocument();
+    fireEvent.click(resetZoomBtn);
+
+    // Fullscreen button
+    const fullscreenBtn = screen.getByRole('button', { name: 'Fullscreen' });
+    fireEvent.click(fullscreenBtn);
+
+    // Subtitle Mode cycle
+    const modeBtn = screen.getByRole('button', { name: 'Toggle Subtitle Mode' });
+    fireEvent.click(modeBtn);
+    expect(mockSubtitlesReturn.setDisplayMode).toHaveBeenCalledWith('translation');
+
+    // Font size toggle in player bottom bar
+    const fontToggleBtn = screen.getByRole('button', { name: 'Toggle Font Size' });
+    fireEvent.click(fontToggleBtn);
+    expect(mockSubtitlesReturn.setFontSize).toHaveBeenCalled();
   });
 });
 

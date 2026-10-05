@@ -22,7 +22,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **18:00 – 26:00** | **03 \| Gemini Agent Platform** | Gemini 3 Suite Routing, Genkit Resilience, Teacher AI Prompt Studio & Optimizers, Structured Schemas | Slides 10–13 |
 | **26:00 – 34:00** | **04 \| Edge AI & Privacy** | MediaPipe Mesh, Hardware Loop, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 14–17 |
 | **34:00 – 38:00** | **05 \| Zero-Trust Security** | Zero-Trust Exam Mode, 1-Min Bingo Presence & 2-Strike State Machine | Slides 18–19 |
-| **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Live Subtitles, Subject Domains & Custom Translation Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
+| **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Live Subtitles, Subject Domains & Custom Subtitle Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
 | **48:00 – 52:00** | **07 \| Video AI Pipeline** | Map-Reduce-Map Video Intelligence Pipeline, Dynamic Lab Tasks & Sortable Milestone Matrix | Slide 29 |
 | **52:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 19 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 30–34 |
 | **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,450+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
@@ -93,7 +93,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Here is our 4-tier hybrid architecture:
 >
-> 1. **Student Browser Edge (Client Tier):** Runs React with Vite, orchestrating dual-channel screen and camera capture. It houses isolated Web Workers executing MediaPipe FaceLandmarker, LiteRT Whisper STT, and LiteRT Gemma 4 E2B via WebAssembly and WebGPU.
+> 1. **Student Browser Edge (Client Tier):** Runs React with Vite, orchestrating dual-channel screen and camera capture. It houses isolated Web Workers executing MediaPipe FaceLandmarker, LiteRT Whisper Speech Engine, and LiteRT Gemma 4 E2B via WebAssembly and WebGPU.
 > 2. **Realtime Signaling & Data Layer (Firebase Tier):** Firestore acts as our low-latency distributed state bus. Cloud Storage handles discrete screenshot chunks, compiled MP4 timelapse recordings, and audit archives.
 > 3. **Serverless Cloud Intelligence (Google Cloud Run / Functions Gen 2):** Decoupled micro-codebases handle automated media compilation via FFmpeg, Genkit AI flows, and scheduled TTL lifecycle routines.
 > 4. **Teacher Command Center (Instructor Tier):** A high-density dashboard that gives the instructor a real-time compliance matrix, targeted nudges, and 1-click WebRTC live peek capabilities."
@@ -165,7 +165,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > 2. **Custom Hooks Data Mesh & Dedicated Web Workers:**
 >    - To guarantee a steady 60 FPS in the browser, we offloaded all heavy machine learning to dedicated background Web Workers.
 >    - `useFaceMonitor` manages `faceLandmarker.worker.js` for 468-point mesh tracking.
->    - `useClientLiteRTWhisper` manages `litertWhisper.worker.js` for on-device speech-to-text.
+>    - `useClientLiteRTWhisper` manages `litertWhisper.worker.js` for on-device Speech Recognition.
 >    - `useClientLiteRTGemma` manages `litertGemma.worker.js` for real-time intent classification.
 >    - Web Workers communicate via structured cloning and `ImageBitmap` zero-copy transfers, keeping the main React UI thread completely unblocked.
 > 3. **Persistent Browser Cache Storage & Self-Service Records Portal:**
@@ -180,8 +180,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "When building AI-powered production systems, one size does not fit all. We deploy Google's **Gemini 3 model suite**, routing each task to its optimal price-performance tier with pure modern model architecture:
 >
-> 1. **`gemini-3.8-flash` (Deep Multimodal Reasoning & Full Lectures):** Our flagship model for whole-class lecture speech-to-text, YouTube chapter generation, and Map-Reduce rubric synthesis. Its 1M+ context window effortlessly ingests 90-minute unbroken audio tracks.
-> 2. **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse):** Our fast workhorse for single-frame inspections, serverless live speech translation into 7 languages, and instant resilience fallback.
+> 1. **`gemini-3.8-flash` (Deep Multimodal Reasoning & Full Lectures):** Our flagship model for whole-class lecture Speech Recognition, YouTube chapter generation, and Map-Reduce rubric synthesis. Its 1M+ context window effortlessly ingests 90-minute unbroken audio tracks.
+> 2. **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse):** Our fast workhorse for single-frame inspections, serverless live speech multilingual captioning into 7 languages, and instant resilience fallback.
 > 3. **`gemini-3.1-flash-live-preview` (Live Bidirectional Streaming):** Dedicated model for ultra-low latency WebSocket audio streaming via regional `us-central1`, powering live classroom subtitles with sub-second feedback.
 > 4. **`gemini-3.5-transcribe-preview` (Audio Diarization):** Cloud audio reasoning that separates multi-speaker overlaps and outputs exact millisecond timestamps.
 > 5. **`LiteRT Gemma 4 E2B & Whisper`:** Runs browser-native in student Web Workers via WebGPU/WASM at zero cloud cost."
@@ -215,10 +215,10 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > 1. **Images:** Vision AI prompts for dual-screen analysis, IDE active code verification, and off-screen gaze diversion.
 > 2. **Videos:** Map-Reduce coursework rubric synthesis prompts for distilling class-wide milestones.
 > 3. **Audios:** Speech intent proctoring, distinguishing legitimate inquiries from exam collusion or external AI copilot queries.
-> 4. **Translations:** Technical discipline translation prompts ensuring terms like `useEffect`, `Docker`, or `EBITDA` remain untranslated in localized subtitles.
+> 4. **subtitles:** Technical discipline Subtitle Prompts ensuring terms like `useEffect`, `Docker`, or `EBITDA` remain preserved verbatim in localized subtitles.
 >
 > In addition, we equipped every modality with a dedicated **AI Prompt Optimizer (`✨ Optimize` button)**:
-> - Powered by built-in Gemini meta-prompts (e.g. `translationOptimizerPrompt`, `visionOptimizerPrompt`), it automatically transforms an instructor's rough notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.
+> - Powered by built-in Gemini meta-prompts (e.g. `subtitleOptimizerPrompt`, `visionOptimizerPrompt`), it automatically transforms an instructor's rough notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.
 > - An **In-App FinOps Testing Sandbox** allows teachers to run live test executions against Gemini models, previewing actual output, execution latency in milliseconds, token counts, and estimated dollar costs before deploying to students.
 > - Furthermore, our strict platform rule mandates that **100% of prompts**—from client-side Gemma Web Workers to Gemini Live WebSockets and Cloud Run Genkit flows—are maintained in version-controlled Markdown files in `admin/prompts/` and dynamically resolved with Firestore persistence."
 
@@ -273,7 +273,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Beyond vision, we run edge audio invigilation using **LiteRT** (Google's lightweight runtime for on-device models):
 > - The Web Audio API captures a 16kHz Float32 stream.
-> - Our `litertWhisper.worker.js` provides real-time bilingual English and Cantonese speech-to-text directly in the browser.
+> - Our `litertWhisper.worker.js` provides real-time bilingual English and Cantonese Speech Recognition directly in the browser.
 > - Spoken sentences are passed to `litertGemma.worker.js` (Gemma 4 E2B) for intent classification.
 > - **Browser Cache Persistence:** Using `caches.open('litert-gemma-cache-v1')` and `navigator.storage.persist()`, models are downloaded once during the first orientation and persisted offline permanently.
 > - Cloud egress cost: **$0.00**."
@@ -400,19 +400,19 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 39:30 – 40:30 | Slide 22: Real-Time Live Subtitles & Multilingual Translation Engine
-*Visual: `slide_live_subtitles_translation.png`*
+### 39:30 – 40:30 | Slide 22: Real-Time Live Subtitles & Multilingual Captions Engine
+*Visual: `slide_live_subtitles_multilingual.png`*
 
 > **Cyrus Wong:**  
 > "In international computing faculties and polytechnics, students possess diverse native languages. We engineered a flexible **3-Tier Multilingual Live Subtitle Engine**:
 >
 > - **Tier 1: On-Device Client AI ($0.00 Cloud Cost):**
 >   - LiteRT Whisper Web Worker processes the teacher's microphone locally.
->   - Spoken text is instantly translated via Chrome Built-in AI (`window.Translator` powered by Gemini Nano).
+>   - Spoken text is instantly captioned via Chrome Built-in AI (`window.LanguageModel` powered by Gemini Nano).
 >   - Zero latency, zero cloud egress, 100% privacy-compliant.
-> - **Tier 2: Serverless Batch Translation (High Precision):**
->   - Edge Whisper STT streams transcribed sentences to Cloud Run Function `translateTeacherSpeech`.
->   - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback), delivering high-precision translations into **7 languages** (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
+> - **Tier 2: Serverless Batch Multilingual Subtitling (High Precision):**
+>   - Edge Whisper Speech Engine streams transcribed sentences to Cloud Run Function `processTeacherSpeechSubtitles`.
+>   - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback), delivering high-precision subtitles into **7 languages** (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
 >   - Preserves Cantonese-English technical code-switching (e.g. keeping terms like `useState` or `Docker` intact).
 > - **Tier 3: Gemini 3.1 Flash Live (Bidirectional Streaming):**
 >   - Uses WebSocket connection directly to regional `us-central1` via Firebase AI Logic.
@@ -421,13 +421,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 40:30 – 42:00 | Slide 22: Course Subject Domains & Domain-Specific AI Translation
-*Visual: `slide_subject_domain_translation.png`*
+### 40:30 – 42:00 | Slide 22: Course Subject Domains & Domain-Specific Subtitle Intelligence
+*Visual: `slide_subject_domain_multilingual.png`*
 
 > **Cyrus Wong:**  
-> "A generic translation model completely breaks down when applied to specialized academic lectures. If a lecturer says *'Deploy a cluster'* or *'Check the EBITDA'*, a standard translator might naively translate 'cluster' as a bunch of bananas or grapes, or mangle clinical medical terminology into gibberish!
+> "A generic multilingual captioning model completely breaks down when applied to specialized academic lectures. If a lecturer says *'Deploy a cluster'* or *'Check the EBITDA'*, a standard subtitle engine might naively generate subtitles for 'cluster' as a bunch of bananas or grapes, or mangle clinical medical terminology into gibberish!
 >
-> To solve this, we architected **Course Subject Domains & Domain-Specific AI Translation**:
+> To solve this, we architected **Course Subject Domains & Domain-Specific Subtitle Intelligence**:
 >
 > 1. **8 Academic Discipline Domains (+ Custom Freeform):**
 >    - 💻 **Computer Science & Software Development:** Strictly locks programming APIs, variables, framework syntax, and keywords (`useState`, `Docker`, `SQL`, `git commit`).
@@ -438,15 +438,15 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >    - 🍳 **Hospitality, Culinary & Tourism:** Preserves culinary jargon, HACCP hygiene standards, and hotel PMS codes.
 >    - 📚 **Languages, Humanities & Social Sciences:** Preserves historical context, cultural idioms, and dialect nuances.
 >    - ✏️ **Custom Subject Domain:** Allows instructors to type any specialized field (e.g. *Aeronautical Avionics*).
-> 2. **Domain Context Injection & Specialized Translation AI Prompts:**
->    - The selected `subjectDomain` and custom `subtitlePrompt` are injected directly into the Gemini system instructions at runtime, guaranteeing domain glossary preservation without literal translation errors.
->    - Instructors can click the **Translation Prompt AI Optimizer (`✨ Optimize`)** to have Gemini refine their prompt into rigorous bilingual guidelines with glossary constraints.
+> 2. **Domain Context Injection & Specialized Subtitle AI Prompts:**
+>    - The selected `subjectDomain` and custom `subtitlePrompt` are injected directly into the Gemini system instructions at runtime, guaranteeing domain glossary preservation without literal multilingual captioning errors.
+>    - Instructors can click the **Subtitle Prompt AI Optimizer (`✨ Optimize`)** to have Gemini refine their prompt into rigorous bilingual guidelines with glossary constraints.
 > 3. **Hong Kong Cantonese-English Code-Switching Normalization:**
->    - In Hong Kong higher education, teachers naturally speak in mixed Cantonese and English (*'呢個 function return 個 boolean'*, *'deploy 個 cluster'*). Our translation prompt intelligently normalizes code-switching, producing clean, readable bilingual subtitles.
+>    - In Hong Kong higher education, teachers naturally speak in mixed Cantonese and English (*'呢個 function return 個 boolean'*, *'deploy 個 cluster'*). Our subtitle prompt intelligently normalizes code-switching, producing clean, readable bilingual subtitles.
 > 4. **Zero-Restart Real-Time Dynamic Propagation:**
->    - When an instructor updates their subject domain or translation prompt in Class Management, Firestore `onSnapshot` dynamically pushes updates to the active subtitle broadcast (`useTeacherLiveSubtitles`) on the fly with **zero broadcast restart**!
+>    - When an instructor updates their subject domain or subtitle prompt in Class Management, Firestore `onSnapshot` dynamically pushes updates to the active subtitle broadcast (`useTeacherLiveSubtitles`) on the fly with **zero broadcast restart**!
 > 5. **High-Contrast Dual-Line Subtitles:**
->    - Displayed in student players with original spoken Cantonese on top and high-visibility **YouTube Caption Yellow** (`#ffe600`) English translation on the bottom!"
+>    - Displayed in student players with original spoken Cantonese on top and high-visibility **YouTube Caption Yellow** (`#ffe600`) English multilingual captioning on the bottom!"
 
 ---
 
@@ -481,7 +481,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > We redesigned the student desktop into an intuitive **YouTube-style Player Experience**:
 > - **Integrated Video Player Stage:** Embeds the teacher's live screen broadcast (`🔴 LIVE`, `1080P`, stream zoom), while proctoring screen/webcam streams dock cleanly in Picture-in-Picture.
-> - **YouTube Closed Caption (CC) Overlay:** Renders speech cues directly on the player stage. Original speech appears in a translucent dark pill, while real-time translations render in high-contrast **YouTube Caption Yellow** (`#ffe600`).
+> - **YouTube Closed Caption (CC) Overlay:** Renders speech cues directly on the player stage. Original speech appears in a translucent dark pill, while real-time subtitles render in high-contrast **YouTube Caption Yellow** (`#ffe600`).
 > - **YouTube Bottom Control Bar:** Provides a 1-click `[CC]` toggle, live target language selector, settings gear popover for font size and display modes, and native fullscreen toggle.
 > - **Flexible Screen Modes ('Just Max or Smallest'):**
 >   - **🗖 Max Mode (Theater / Full-Width):** Video player expands to 100% width via CSS `display: contents;`. Controls and the tabbed sidebar flow beneath in a clean 2-column layout with **zero DOM reparenting and zero stream flicker**.
@@ -660,7 +660,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - **24/7 Pre-Seeded Development Sandbox (`IT114115-Demo`):**
 >   - The setup script pre-seeds a verified lead teacher account (`teacher1@vtc.edu.hk`) and 5 demo students (`student1`..`student5@stu.vtc.edu.hk`).
 >   - Includes 1-click clipboard credential copy buttons in the documentation for instant testing without manual registration.
->   - Pre-seeds 13 multimodal system prompt templates across images, videos, audios, and multilingual translation.
+>   - Pre-seeds 13 multimodal system prompt templates across images, videos, audios, and multilingual captioning.
 > - **Dual-Environment Workflow:** Seamless switching between development (`it114115-dev-2026`) and production (`it114115-2627`) via `./switch-env.sh [dev|prod]` with build-time environment guardrails."
 
 ---

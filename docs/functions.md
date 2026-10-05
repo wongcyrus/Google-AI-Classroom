@@ -49,7 +49,7 @@ flowchart TD
         CT_Bingo -->|onTaskDispatched| DBR[dispatchBingoRetryTask: Strike 2 Grace Dispatcher]
         CT_Bingo -->|onTaskDispatched| DSB[dispatchScheduledBingoTask / processBingoJob]
         T_Call -->|generateQuestionBankAi| GQB[generateQuestionBankAi: Gemini 3.5 Flash Lite MCQ Drafter]
-        T_Call -->|translateTeacherSpeech| TTS[translateTeacherSpeech: Live Multi-Language Subtitles]
+        T_Call -->|processTeacherSpeechSubtitles| TTS[processTeacherSpeechSubtitles: Live Multi-Language Subtitles]
         T_Call -->|processLectureSubtitles| PLS[processLectureSubtitles: Whole-Class Audio & VTT/SRT]
         T_Call -->|extractTaskDemoSteps| ETD[extractTaskDemoSteps: Practical Task AI Rubric Extractor]
         T_Call -->|evaluateTaskSubmission| ETS[evaluateTaskSubmission: Practical Task AI Auto-Grading]
@@ -97,7 +97,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`analyzeImage`**: A callable function restricted to users with a 'teacher' role. It triggers the `analyzeImageFlow` Genkit flow to perform AI multimodal analysis on a single image.
 -   **`analyzeAllImages`**: A callable function for teachers that triggers the `analyzeAllImagesFlow` Genkit flow, which analyzes all images associated with a specific student within a given context.
 -   **`analyzeFaceFallback`**: A high-efficiency callable function triggering `analyzeFaceFallbackFlow` using `gemini-3.5-flash-lite` with structured JSON output and temperature 0.1. Used for cloud-assisted face and gaze invigilation when classes operate in `hybrid` or `cloud_only` modes, or when a student browser cannot execute client-side WebGL/MediaPipe.
--   **`analyzeAudio`**: A callable function for teachers and students triggering `analyzeAudioFlow`. Supports dual input paths: (1) Audio URL path with `gemini-3.5-transcribe-preview` (resilience fallback to `gemini-3.5-flash-lite`) for multi-speaker diarization and word-level timestamps; (2) Direct transcript path for client-side Whisper/WebSpeech STT to run fast `gemini-3.5-flash-lite` proctor reasoning with tools without re-transcription. Performs conversational exam cheating detection, whisper identification, and quota-protected execution.
+-   **`analyzeAudio`**: A callable function for teachers and students triggering `analyzeAudioFlow`. Supports dual input paths: (1) Audio URL path with `gemini-3.5-transcribe-preview` (resilience fallback to `gemini-3.5-flash-lite`) for multi-speaker diarization and word-level timestamps; (2) Direct transcript path for client-side Whisper/WebSpeech Speech Recognition to run fast `gemini-3.5-flash-lite` proctor reasoning with tools without re-transcription. Performs conversational exam cheating detection, whisper identification, and quota-protected execution.
 -   **`triggerBingoCheck`**: A callable function restricted to users with a 'teacher' role that dispatches an active presence and attention verification challenge to one or all students (automated follow-ups are dispatched asynchronously via Google Cloud Tasks `dispatchBingoRetryTask`).
     -   **Parameters**: `classId` (string), `targetStudentUid` (string: `'all'` or specific UID), `questionSource` (`'question_bank'` | `'teacher_screen'` | `'student_screen'`), `triggerType` (`'manual'` | `'scheduled'` | `'retry'`), `strikeNumber` (1 or 2, default 1), `priorBingoId` (optional string).
     -   **3 FinOps Modes**:
@@ -150,7 +150,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
             -   Configured with `thinkingConfig: { thinkingBudget: 0 }` and `maxOutputTokens: 65536`.
             -   Produces continuous cues across all target languages (`original`, `en`, `zh-Hant`, `zh-Hans`) plus 8 YouTube chapters.
         -   **Chromium Zero-Duration Cue Guard**: Prevents browser players from dropping captions. When models output identical start and end timestamps (e.g. `start: 393.0, end: 393.0`), the system dynamically enforces `end = nextStart > start ? Math.min(nextStart, start + minDur) : (start + minDur)` during parsing and WebVTT/SRT compilation.
-        -   **Preserves Code-Switching**: Verbatim preservation of technical keywords (`Docker`, `useState`, `DynamoDB`, `PostgreSQL`) without unnatural Chinese translations.
+        -   **Preserves Code-Switching**: Verbatim preservation of technical keywords (`Docker`, `useState`, `DynamoDB`, `PostgreSQL`) without unnatural Chinese subtitles.
         -   **YouTube Chapters & Packaging**: Generates formatted title and description with chapter timestamps (`00:00 - Introduction`) and CC language index.
         -   **Output & State Persistence**:
             -   Updates `classes/{classId}/lectureRecordings/{sessionId}`: sets `status = 'ready'`, `vttUrls`, `srtUrls`, and `youtubeMetadata`.
@@ -268,13 +268,13 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Trigger**: `onCall` (`functions/ai_flows/retryVideoAnalysisJob.js`).
     -   **Description**: A callable function allowing teachers to retry failed videos in a `videoAnalysisJob`. Enqueues failed videos directly into the `analyzeSingleVideoTask` Cloud Tasks queue, updates `totalVideos` to `existingSuccessCount + retryCount`, and returns immediately without client HTTP timeouts.
 -   **`generateLabTaskPrompt`**: A callable function for teachers that synthesizes a tailored lab coursework prompt from a completed `videoAnalysisJobs` execution. Queries all completed child `aiJobs`, extracts student video summaries across the entire cohort, and invokes Gemini 3.8 Flash to discover coursework tasks, cloud platforms, rubrics, milestone checklists, and common student blockers. Outputs a ready-to-run Markdown prompt with strict tool instructions (`recordActualWorkingTime`, `recordTaskDuration`, `recordLessonSummary`).
--   **`translateTeacherSpeech`**:
+-   **`processTeacherSpeechSubtitles`**:
     -   **Trigger**: `onCall` (`functions/ai_flows/subtitleFlows.js`).
     -   **Authentication & Security**: Protected by Firebase Auth (`context.auth`) and App Check. Enforces teacher authorization in `classes/{classId}` and checks classroom monthly AI quota limits in `classes/{classId}/aiUsage`.
-    -   **Description**: Translates spoken Cantonese lecture sentences into multiple target languages simultaneously (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) using Gemini 3.8 Flash (with automatic fallback to Gemini 3.5 Flash-Lite) with structured JSON output schema.
+    -   **Description**: processes spoken Cantonese lecture sentences into multiple target languages simultaneously (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) using Gemini 3.8 Flash (with automatic fallback to Gemini 3.5 Flash-Lite) with structured JSON output schema.
     -   **Technical Lexicon Integrity**: System instructions strictly enforce preservation of English programming terminology, variable names, keywords, and command lines (e.g., `useState`, `Docker`, `git commit`, `npm`, `SQL`, `flexbox`).
     -   **Input Schema**: `{ text: string, sourceLang: string, targetLangs: string[], classId: string, courseContext?: string }`.
-    -   **Output Schema**: `{ translations: { [langCode: string]: string } }`.
+    -   **Output Schema**: `{ subtitles: { [langCode: string]: string } }`.
 - **`extractTaskDemoSteps`**:
     -   **Trigger**: `onCall` (`functions/ai_flows/extractTaskDemoSteps.js`).
     -   **Authentication & Security**: Requires teacher authentication and ownership of `classes/{classId}`.
@@ -400,7 +400,7 @@ This directory contains Cloud Functions responsible for handling media-related t
         -   **EBML & Seek Index Synthesis**: Injects Matroska EBML `Duration` headers and seek indexes (`Cues`), healing the Chromium browser `MediaRecorder` duration bug.
         -   **Pure Opus Extraction**: Extracts synchronized audio track via `ffmpeg -i combined.webm -vn -c:a copy combined_audio.webm`.
         -   **Document Hierarchy & Traceability**: Creates master document with `isCombined: true`, `hasMissingSegment`, `interruptionRemarks`, `lostDurationSeconds`, and `gapDetails`. Updates source fragments and crashed stubs.
-        -   **Continuous Automation**: Returns master session parameters, automatically driving `processLectureSubtitles` for Gemini multilingual translation and chapter creation.
+        -   **Continuous Automation**: Returns master session parameters, automatically driving `processLectureSubtitles` for Gemini multilingual captioning and chapter creation.
 
 #### Firestore Triggers
 

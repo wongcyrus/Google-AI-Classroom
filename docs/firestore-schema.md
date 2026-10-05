@@ -82,7 +82,7 @@ erDiagram
         boolean enableAudioCapture "Continuous microphone capture"
         string audioCaptureMode "mandatory | optional"
         boolean audioSilenceSuppression "Discard quiet chunks"
-        boolean enableSegmentTranscription "Moving window STT"
+        boolean enableSegmentTranscription "Moving window Speech Recognition"
         boolean enableCombinedLongAudio "Full-session diarization"
         number audioMovingWindowDuration "Rolling window seconds"
         number audioMovingWindowStride "Sliding stride seconds"
@@ -108,7 +108,7 @@ erDiagram
         string subjectDomain "Academic discipline context"
         string customSubjectDomain "Custom academic discipline text"
         map studentProfiles "{ [email]: { studentName, nickname, programme, studentClass } } - Unified student profile directory"
-        object subtitlePrompt "{ id, name, promptText } - Class translation AI prompt"
+        object subtitlePrompt "{ id, name, promptText } - Class Subtitle AI Prompt"
         object liveImagePrompt "{ id, name, promptText } - Cloud fallback face/gaze/screen invigilation prompt"
         object bingoPrompt "{ id, name, promptText } - Active presence challenge prompt"
         object liveAudioPrompt "{ id, name, promptText } - Acoustic invigilation prompt"
@@ -298,7 +298,7 @@ erDiagram
     prompts {
         string promptId PK
         string name
-        string category "images | videos | audios | translations | rubrics"
+        string category "images | videos | audios | subtitles | rubrics"
         string prompt
         array applyTo
         string accessLevel "private | shared | public"
@@ -566,8 +566,8 @@ Stores information about each class.
     *   `autoBingoMode`: (string) Question generation strategy for automated runs (`question_bank`, `teacher_screen`, `student_screen`). Defaults to zero-token `question_bank` ($0.00).
     *   `autoBingoJitterMinutes`: (number) Maximum randomized anti-collusion jitter window in minutes (0–5, default `3`) used to stagger student challenge deliveries via Google Cloud Tasks.
     *   `lastAutoBingoAt`: (timestamp) Server timestamp recording when the automated scheduler last triggered a Bingo run for this class.
-    *   `subjectDomain`: (string) The course academic discipline/domain context (`'Computer Science & Software Development'`, `'Business, Finance & Accounting'`, `'Design, Media & Visual Arts'`, `'Healthcare, Nursing & Medical Sciences'`, `'Engineering & Construction'`, `'Hospitality, Culinary & Tourism'`, `'Languages, Humanities & Social Sciences'`, `'General Studies & Interdisciplinary'`, or `'custom'`). Injected into live subtitle and translation prompts to preserve domain-specific vocabulary and technical terminology.
-    *   `subtitlePrompt`: (object | null) Specialized AI translation prompt configuration object (`{ id, name, promptText }`) selected or authored in Prompt Management (`applyTo: 'Live Subtitles & Translation'`). Governs translation tone, glossary definitions, dialect preservation (Cantonese/English code-switching), and domain terminology rules.
+    *   `subjectDomain`: (string) The course academic discipline/domain context (`'Computer Science & Software Development'`, `'Business, Finance & Accounting'`, `'Design, Media & Visual Arts'`, `'Healthcare, Nursing & Medical Sciences'`, `'Engineering & Construction'`, `'Hospitality, Culinary & Tourism'`, `'Languages, Humanities & Social Sciences'`, `'General Studies & Interdisciplinary'`, or `'custom'`). Injected into live subtitle and Subtitle Prompts to preserve domain-specific vocabulary and technical terminology.
+    *   `subtitlePrompt`: (object | null) Specialized AI subtitle prompt configuration object (`{ id, name, promptText }`) selected or authored in Prompt Management (`applyTo: 'Live Subtitles & Multilingual Captions'`). Governs multilingual captioning tone, glossary definitions, dialect preservation (Cantonese/English code-switching), and domain terminology rules.
     *   `liveImagePrompt`: (object | null) Cloud fallback face/gaze/screen invigilation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Injected into `analyzeFaceFallbackFlow` with template tags (`{{studentEmail}}`, `{{studentUid}}`, `{{classId}}`).
     *   `bingoPrompt`: (object | null) Active presence challenge generation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 5. Directs Gemini in `resolveBingoQuestion` and `generateBingoQuestionBank` with template tags (`{{topic}}`, `{{count}}`, `{{studentUid}}`).
     *   `liveAudioPrompt`: (object | null) Real-time acoustic invigilation prompt configuration object (`{ id, name, promptText }`) selected in Class Settings Section 6. Directs Gemini in `analyzeAudioChunk` to evaluate 30s rolling audio slices for proctoring anomalies.
@@ -668,17 +668,17 @@ Stores information about each class.
             *   Helper `isAuthorizedPublicViewer(classId)`: Verifies `isPublicBroadcastActive(classId)` AND `request.auth != null` AND `exists(.../screenBroadcastViewers/$(request.auth.uid))`.
             *   Creating a viewer presence doc requires either being an enrolled student/teacher OR submitting `request.resource.data.pin == get(.../session).data.publicPin`.
             *   This prevents unauthorized clients from discovering the PIN by reading the `session` doc directly; access to `screenBroadcast` and `liveSubtitles` is unlocked only after a valid PIN-verified viewer presence record is created.
-    *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual translation stream.
+    *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual captioning stream.
         *   **Document `current`** (`classes/{classId}/liveSubtitles/current`):
             *   `active`: (boolean) Whether live subtitling is currently active for this class.
-            *   `engineMode`: (string) Selected translation engine architecture (`'client'` [LiteRT + Chrome Nano], `'server'` [LiteRT + Cloud Function Gemini 3.5 Flash-Lite], or `'firebase_live'` [Firebase AI Logic Gemini Live WebSocket]).
+            *   `engineMode`: (string) Selected multilingual captioning engine architecture (`'client'` [LiteRT + Chrome Nano], `'server'` [LiteRT + Cloud Function Gemini 3.5 Flash-Lite], or `'firebase_live'` [Firebase AI Logic Gemini Live WebSocket]).
             *   `original`: (string) Original spoken transcript (Cantonese with English technical terms).
-            *   `translations`: (map of string -> string) Keyed by language code (e.g. `{ "en": "...", "zh-Hant": "...", "zh-Hans": "...", "ja": "...", "ko": "...", "es": "...", "fr": "..." }`).
+            *   `subtitles`: (map of string -> string) Keyed by language code (e.g. `{ "en": "...", "zh-Hant": "...", "zh-Hans": "...", "ja": "...", "ko": "...", "es": "...", "fr": "..." }`).
             *   `isFinal`: (boolean) Flag indicating whether the turn is complete/finalized (`true`) or actively receiving token streaming (`false`).
             *   `speechLanguage`: (string) Teacher's primary spoken language code (`'zh-HK'`).
-            *   `targetLanguages`: (array of strings) Enabled target languages for translation.
+            *   `targetLanguages`: (array of strings) Enabled target languages for multilingual captioning.
             *   `updatedAt`: (timestamp) Server timestamp of the latest subtitle update.
-            *   `history`: (array of objects) Rolling buffer of the last 5 finalized turns (`[{ original, translations, timestamp }]`) for UI history and contextual recall.
+            *   `history`: (array of objects) Rolling buffer of the last 5 finalized turns (`[{ original, subtitles, timestamp }]`) for UI history and contextual recall.
         *   **Security Rules**: Readable by teachers, enrolled students, or authorized public spectators (`allow read: if isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);`), while writes remain strictly restricted to the authorized teacher (`allow write: if isTeacherInClass(classId);`).
     *   **`classes/{classId}/irregularities`**: Class-scoped incident logs for class-specific report generation and teacher dashboards.
         *   **Document ID**: Auto-generated.
@@ -980,14 +980,14 @@ Stores individual and aggregated task duration records for students, tracking ho
 
 ### `prompts`
 
-Stores the system and instructor AI prompts. Under the system rule, **all** AI prompts across the platform—including client-side Web Worker prompts (LiteRT Gemma voice intent & multilingual translation), Firebase AI Logic streaming prompts (Gemini Live WebSocket subtitles & speech transcriber), Cloud Function Genkit flows (audio invigilation diarizer, cloud face fallback, rubric synthesizer), and Bingo active presence question generators—are maintained in this collection and seeded from `admin/prompts/`.
+Stores the system and instructor AI prompts. Under the system rule, **all** AI prompts across the platform—including client-side Web Worker prompts (LiteRT Gemma voice intent & multilingual captioning), Firebase AI Logic streaming prompts (Gemini Live WebSocket subtitles & speech transcriber), Cloud Function Genkit flows (audio invigilation diarizer, cloud face fallback, rubric synthesizer), and Bingo active presence question generators—are maintained in this collection and seeded from `admin/prompts/`.
 
 *   **Document ID**: Auto-generated.
 *   **Fields**:
-    *   `name`: (string) The name of the prompt (e.g. `'On-Device Gemma Multilingual Lecture Translator'`, `'Gemini Live Multimodal Lecture Translator'`, `'Cloud Fallback Face & Gaze Invigilator'`, `'Two-Stage Map-Reduce Lab Rubric Synthesizer'`).
-    *   `category`: (string) The category of the prompt (`images`, `videos`, `audios`, `translations`, or `rubrics`).
+    *   `name`: (string) The name of the prompt (e.g. `'On-Device Gemma Multilingual Lecture Subtitles'`, `'Gemini Live Multimodal Lecture Subtitles'`, `'Cloud Fallback Face & Gaze Invigilator'`, `'Two-Stage Map-Reduce Lab Rubric Synthesizer'`).
+    *   `category`: (string) The category of the prompt (`images`, `videos`, `audios`, `subtitles`, or `rubrics`).
     *   `promptText`: (string) The prompt text markdown body. May include variable placeholders like `{{transcript}}`, `{{courseContext}}`, `{{sourceLang}}`, `{{targetLangs}}`, `{{studentEmail}}`, etc.
-    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
+    *   `applyTo`: (array) An array of strings indicating where the prompt can be applied (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Multilingual Captions`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
     *   `createdAt`: (timestamp) A timestamp of when the prompt was created.
     *   `lastUpdated`: (timestamp) A timestamp of when the prompt was last edited.
     *   `accessLevel`: (string) The visibility scope of the prompt (`'private'`, `'shared'`, `'public'`).

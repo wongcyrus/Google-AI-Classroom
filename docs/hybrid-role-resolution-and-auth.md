@@ -252,7 +252,7 @@ As the user types into the registration email field, `deriveRoleFromEmail(email)
   ```text
   "Google Chrome is strictly required for students. Detected: Firefox"
   ```
-  This guarantees hardware acceleration, Web Workers, LiteRT Whisper/Gemma STT, and screen-sharing capture APIs work without failure.
+  This guarantees hardware acceleration, Web Workers, LiteRT Whisper/Gemma Speech Recognition, and screen-sharing capture APIs work without failure.
 - **Instructors**: Permitted to access the dashboard from any modern web browser.
 
 ---

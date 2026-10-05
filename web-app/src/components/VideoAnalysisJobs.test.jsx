@@ -38,6 +38,7 @@ vi.mock('firebase/storage', () => ({
   getDownloadURL: (...args) => mockGetDownloadURL(...args),
 }));
 
+
 const mockJobs = [
   {
     id: 'job_v1',
@@ -564,6 +565,45 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     const viewBtn = screen.getByRole('button', { name: 'View' });
     fireEvent.click(viewBtn);
     expect(screen.getByText(/Analysis Result:/i)).toBeInTheDocument();
+  });
+
+  it('handles exporting jobs directory and student AI jobs to Excel', async () => {
+    render(
+      <VideoAnalysisJobs
+        classId="CLASS_101"
+        collectionPath="analysisJobs"
+        filterField="createdAt"
+      />
+    );
+
+    // 1. Export jobs directory
+    const exportJobsBtn = screen.getByRole('button', { name: /Export Jobs Log \(Excel\)/i });
+    await act(async () => {
+      fireEvent.click(exportJobsBtn);
+    });
+    expect(URL.createObjectURL).toHaveBeenCalled();
+
+    // 2. Click job row to expand
+    const jobRow = screen.getByText('job_v1');
+    await act(async () => {
+      fireEvent.click(jobRow);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Export Findings \(Excel\)/i })).toBeInTheDocument();
+    });
+
+    // Export findings
+    const exportFindingsBtn = screen.getByRole('button', { name: /Export Findings \(Excel\)/i });
+    await act(async () => {
+      fireEvent.click(exportFindingsBtn);
+    });
+    expect(URL.createObjectURL).toHaveBeenCalled();
+
+    // Export JSON
+    const exportJsonBtn = screen.getByRole('button', { name: /Export Batch \(JSON\)/i });
+    fireEvent.click(exportJsonBtn);
+    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 });
 

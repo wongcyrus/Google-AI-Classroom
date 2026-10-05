@@ -353,7 +353,7 @@ Every 24 hours, Cloud Scheduler triggers `syncGeminiPricing` to ensure token cal
 | `gemini-3.7-flash` | **$0.15** | **$0.60** | Balanced vision & code evaluation. |
 | `gemini-3.8-flash` | **$0.15** | **$0.60** | Automated rubric synthesis & video evaluation. |
 | `gemini-3.7-pro` | **$1.25** | **$5.00** | Deep reasoning for high-stakes exam incident investigation. |
-| `gemini-3.5-transcribe-preview` | **$0.002** (per audio minute) | — | Multi-speaker diarization and speech STT. |
+| `gemini-3.5-transcribe-preview` | **$0.002** (per audio minute) | — | Multi-speaker diarization and speech Speech Recognition. |
 
 ### Quota Enforcement
 - Every class has a configurable budget limit (default: **$10.00**).

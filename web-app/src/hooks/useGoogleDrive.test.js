@@ -522,4 +522,161 @@ describe('useGoogleDrive Hook', () => {
       })
     );
   });
+
+  it('updates and persists base folder name', () => {
+    const { result } = renderHook(() => useGoogleDrive());
+    expect(result.current.baseFolderName).toBe('Classroom Archives');
+
+    act(() => {
+      result.current.setBaseFolderName('Custom School Archive');
+    });
+
+    expect(result.current.baseFolderName).toBe('Custom School Archive');
+    expect(localStorage.getItem('classroom_gdrive_base_folder')).toBe('Custom School Archive');
+  });
+
+  it('links and unlinks manual Google Drive URLs to lecture recordings', async () => {
+    const { result } = renderHook(() => useGoogleDrive());
+
+    // 1. Invalid link
+    let success;
+    await act(async () => {
+      success = await result.current.linkManualDrive({
+        classId: 'test_class',
+        recordingId: 'rec_1',
+        driveUrlOrId: 'invalid-url',
+      });
+    });
+    expect(success).toBe(false);
+    expect(result.current.error).toContain('Invalid Google Drive URL or File ID');
+
+    // 2. Valid URL
+    await act(async () => {
+      success = await result.current.linkManualDrive({
+        classId: 'test_class',
+        recordingId: 'rec_1',
+        driveUrlOrId: 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+      });
+    });
+    expect(success).toBe(true);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_1' }),
+      expect.objectContaining({
+        driveFileId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+      })
+    );
+    expect(result.current.successMessage).toContain('Successfully linked');
+
+    // 3. Unlink recording
+    await act(async () => {
+      success = await result.current.unlinkRecording({
+        classId: 'test_class',
+        recordingId: 'rec_1',
+      });
+    });
+    expect(success).toBe(true);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_1' }),
+      expect.objectContaining({
+        driveFileId: null,
+      })
+    );
+  });
+
+  it('handles backupTaskVideosToDrive with validation, execution, and abort', async () => {
+    const { result } = renderHook(() => useGoogleDrive());
+
+    // 1. Disconnected check
+    let res;
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: 'test_class',
+        task: { id: 'task_1', title: 'Task 1' },
+        submissions: [{ id: 'sub_1' }],
+      });
+    });
+    expect(res.successful).toEqual([]);
+    expect(result.current.error).toContain('Please connect your Google Drive first');
+
+    // Connect
+    vi.mocked(gdriveService.requestGoogleDriveToken).mockResolvedValue({
+      access_token: 'valid_token',
+      expires_in: 3600,
+    });
+    vi.mocked(gdriveService.fetchGoogleUserInfo).mockResolvedValue({
+      email: 'teacher@gmail.com',
+      name: 'Teacher',
+    });
+    await act(async () => {
+      await result.current.connect('test-client-id');
+    });
+
+    // 2. Missing task or class
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: '',
+        task: null,
+        submissions: [{ id: 'sub_1' }],
+      });
+    });
+    expect(res.successful).toEqual([]);
+    expect(result.current.error).toContain('Task and class information are required');
+
+    // 3. Empty submissions
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: 'test_class',
+        task: { id: 'task_1' },
+        submissions: [],
+      });
+    });
+    expect(res.successful).toEqual([]);
+    expect(result.current.error).toContain('No task submissions found');
+
+    // 4. Successful backup
+    vi.mocked(gdriveService.uploadVideoToGoogleDrive).mockResolvedValue({
+      fileId: 'drive_task_vid_888',
+      webViewLink: 'https://drive.google.com/file/d/drive_task_vid_888/view',
+    });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['fake-video-bytes'], { type: 'video/webm' })),
+    });
+
+    const submissions = [
+      {
+        id: 'sub_1',
+        studentEmail: 'student1@school.edu',
+        compiledVideoPath: 'tasks/task_1/submissions/sub_1.webm',
+        attemptNumber: 1,
+      },
+    ];
+
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: 'test_class',
+        className: 'CS101',
+        task: { id: 'task_1', title: 'Practical Lab 1' },
+        submissions,
+      });
+    });
+
+    expect(res.successful.length).toBe(1);
+    expect(res.failed.length).toBe(0);
+    expect(mockUpdateDoc).toHaveBeenCalled();
+
+    // 5. Aborted backup
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: 'test_class',
+        task: { id: 'task_1', title: 'Practical Lab 1' },
+        submissions,
+        abortSignal: abortController.signal,
+      });
+    });
+    expect(res.aborted).toBe(true);
+  });
 });

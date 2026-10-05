@@ -22,8 +22,17 @@ const mockGetAllSystemStudentEmails = vi.fn().mockResolvedValue({
   },
 });
 
+const mockResetStudentPasskey = vi.fn().mockResolvedValue({ data: { success: true } });
+const mockApproveTeacherPasskeyBypass = vi.fn().mockResolvedValue({ data: { success: true } });
+const mockToggleStudentExemption = vi.fn().mockResolvedValue({ data: { success: true } });
+
 vi.mock('firebase/functions', () => ({
-  httpsCallable: vi.fn(() => mockGetAllSystemStudentEmails),
+  httpsCallable: vi.fn((_functions, name) => {
+    if (name === 'resetStudentPasskey') return mockResetStudentPasskey;
+    if (name === 'approveTeacherPasskeyBypass') return mockApproveTeacherPasskeyBypass;
+    if (name === 'toggleStudentExemption') return mockToggleStudentExemption;
+    return mockGetAllSystemStudentEmails;
+  }),
 }));
 
 const mockSetDoc = vi.fn().mockResolvedValue({});
@@ -75,9 +84,35 @@ const mockGetDocs = vi.fn((colRef) =>
       cb({
         data: () => ({
           studentEmails: ['fallback.student@school.edu'],
+          tags: ['CS101', 'CloudArchitecture'],
+          studentProfiles: {
+            'alice@school.edu': {
+              studentName: 'Alice Alison',
+              nickname: 'Ali',
+              programme: 'BEng Computer Science',
+              studentClass: 'Year 2',
+            },
+          },
         }),
       });
     },
+    docs: [
+      {
+        id: 'doc1',
+        data: () => ({
+          studentEmails: ['fallback.student@school.edu'],
+          tags: ['CS101', 'CloudArchitecture'],
+          studentProfiles: {
+            'alice@school.edu': {
+              studentName: 'Alice Alison',
+              nickname: 'Ali',
+              programme: 'BEng Computer Science',
+              studentClass: 'Year 2',
+            },
+          },
+        }),
+      },
+    ],
   })
 );
 
@@ -113,6 +148,49 @@ vi.mock('firebase/firestore', () => ({
       });
       return () => {};
     }
+    if (refOrQuery?.path?.includes('prompts')) {
+      callback({
+        docs: [
+          {
+            id: 'sample_video_prompt',
+            data: () => ({
+              name: 'Focus Audit Standard',
+              promptText: 'Analyze attention and eye gaze carefully',
+              accessLevel: 'public',
+              category: 'videos',
+            }),
+          },
+          {
+            id: 'sample_audio_prompt',
+            data: () => ({
+              name: 'Invigilation Audio Standard',
+              promptText: 'Detect abnormal speech or communication',
+              accessLevel: 'public',
+              category: 'audios',
+            }),
+          },
+          {
+            id: 'sample_translation_prompt',
+            data: () => ({
+              name: 'Subtitle Prompt Standard',
+              promptText: 'Translate verbatim into Cantonese',
+              accessLevel: 'public',
+              category: 'translations',
+            }),
+          },
+          {
+            id: 'sample_image_prompt',
+            data: () => ({
+              name: 'Presence Check Standard',
+              promptText: 'Verify student face is in frame',
+              accessLevel: 'public',
+              category: 'images',
+            }),
+          },
+        ],
+      });
+      return () => {};
+    }
     callback({
       exists: () => true,
       data: () => ({
@@ -122,7 +200,7 @@ vi.mock('firebase/firestore', () => ({
     });
     return () => {};
   }),
-  query: vi.fn(),
+  query: vi.fn((colRef) => colRef || { path: 'query' }),
   where: vi.fn(),
   orderBy: vi.fn(),
   limit: vi.fn(),
@@ -1578,6 +1656,134 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     });
 
     expect(capturedUpdateData.lectureAiModel).toBe('gemini-3.8-flash');
+  });
+
+  it('handles prompt modals: opening, saving, and clearing audio, image, video and subtitle prompts', async () => {
+    await act(async () => {
+      render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="class-1" onBack={vi.fn()} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Basic Information & Storage Quota/i)).toBeInTheDocument();
+    });
+
+    // 1. Video prompt modal (initial name is Focus Audit from mockClassData)
+    const selectVideoBtn = screen.getByRole('button', { name: /Focus Audit/i });
+    fireEvent.click(selectVideoBtn);
+    expect(screen.getByText('Select After-Class Video Prompt')).toBeInTheDocument();
+
+    const saveBtns = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveBtns[0]);
+    await waitFor(() => {
+      expect(screen.queryByText('Select After-Class Video Prompt')).not.toBeInTheDocument();
+    });
+
+    // Reopen and clear
+    fireEvent.click(screen.getByRole('button', { name: /Focus Audit/i }));
+    const clearBtns = screen.getAllByRole('button', { name: /Clear Prompt/i });
+    fireEvent.click(clearBtns[0]);
+
+    // 2. Gemma intent prompt modal
+    const selectGemmaBtn = screen.getByRole('button', { name: /Select Gemma Intent Prompt/i });
+    fireEvent.click(selectGemmaBtn);
+    expect(screen.getByText('Select On-Device Gemma Voice Intent Prompt')).toBeInTheDocument();
+    const saveGemma = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveGemma[saveGemma.length - 1]);
+
+    // Reopen and clear
+    fireEvent.click(selectGemmaBtn);
+    const clearGemma = screen.getAllByRole('button', { name: /Clear Prompt/i });
+    fireEvent.click(clearGemma[clearGemma.length - 1]);
+
+    // 3. Live Image prompt modal
+    const selectImageBtn = screen.getByRole('button', { name: /Select Image Invigilation Prompt/i });
+    fireEvent.click(selectImageBtn);
+    expect(screen.getByText('Select Live Image & Screen Invigilation Prompt')).toBeInTheDocument();
+    const saveImage = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveImage[saveImage.length - 1]);
+
+    // Reopen and clear
+    fireEvent.click(selectImageBtn);
+    const clearImage = screen.getAllByRole('button', { name: /Clear Prompt/i });
+    fireEvent.click(clearImage[clearImage.length - 1]);
+
+    // 4. Bingo prompt modal (requires enabling auto bingo)
+    const autoBingoCheckbox = screen.getByLabelText(/Enable Automated Periodic Bingo Verification/i);
+    fireEvent.click(autoBingoCheckbox);
+
+    const selectBingoBtn = screen.getByRole('button', { name: /Select Bingo Question Prompt/i });
+    fireEvent.click(selectBingoBtn);
+    expect(screen.getByText('Select Bingo Active Presence AI Prompt')).toBeInTheDocument();
+    const saveBingo = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveBingo[saveBingo.length - 1]);
+
+    // Reopen and clear
+    fireEvent.click(selectBingoBtn);
+    const clearBingo = screen.getAllByRole('button', { name: /Clear Prompt/i });
+    fireEvent.click(clearBingo[clearBingo.length - 1]);
+
+    // 5. Live Audio Invigilation prompt modal
+    const liveAudioCheckbox = screen.getByLabelText(/Enable Moving Window Real-Time Transcription/i);
+    fireEvent.click(liveAudioCheckbox);
+
+    const selectLiveAudioBtn = screen.getByRole('button', { name: /Select Live Invigilation Prompt/i });
+    fireEvent.click(selectLiveAudioBtn);
+    expect(screen.getByText('Select Live Audio Invigilation Prompt')).toBeInTheDocument();
+    const saveLiveAudio = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveLiveAudio[saveLiveAudio.length - 1]);
+
+    // Reopen and clear
+    fireEvent.click(selectLiveAudioBtn);
+    const clearLiveAudio = screen.getAllByRole('button', { name: /Clear Prompt/i });
+    fireEvent.click(clearLiveAudio[clearLiveAudio.length - 1]);
+
+    // 6. Discussion Audio prompt modal
+    const sessionAudioCheckbox = screen.getByLabelText(/Enable Session & Discussion Audio Analysis & Diarization/i);
+    fireEvent.click(sessionAudioCheckbox);
+
+    const selectSessionAudioBtn = screen.getByRole('button', { name: /Select Discussion \/ Session AI Prompt/i });
+    fireEvent.click(selectSessionAudioBtn);
+    expect(screen.getByText('Select Discussion / Session Audio Summary Prompt')).toBeInTheDocument();
+    const saveSessionAudio = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveSessionAudio[saveSessionAudio.length - 1]);
+
+    // 7. Subtitle prompt modal
+    const selectSubtitleBtn = screen.getByRole('button', { name: /Select Subtitle Translation Prompt/i });
+    fireEvent.click(selectSubtitleBtn);
+    expect(screen.getByText('Select Live Subtitles & Translation Prompt')).toBeInTheDocument();
+    const saveSubtitle = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveSubtitle[saveSubtitle.length - 1]);
+
+    // 8. Lecture STT prompt modal
+    const selectSttBtn = screen.getByRole('button', { name: /^Select STT Prompt$/i });
+    fireEvent.click(selectSttBtn);
+    expect(screen.getByText('Select Lecture Audio Speech-to-Text & Chapters Prompt')).toBeInTheDocument();
+    const saveStt = screen.getAllByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(saveStt[saveStt.length - 1]);
+  }, 15000);
+
+  it('handles delete class action confirmation and execution', async () => {
+    window.confirm = vi.fn().mockReturnValue(false);
+    await act(async () => {
+      render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="class-1" onBack={vi.fn()} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Delete This Class/i })).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByRole('button', { name: /Delete This Class/i });
+    // Cancelled confirmation
+    fireEvent.click(deleteBtn);
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+    // Confirmed deletion
+    window.confirm = vi.fn().mockReturnValue(true);
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+    expect(mockDeleteDoc).toHaveBeenCalled();
+    expect(window.alert).toHaveBeenCalledWith('Class deleted successfully.');
   });
 });
 

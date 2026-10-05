@@ -950,7 +950,7 @@ footer, header {
 <h3 id="balancing-extreme-low-bandwidth-at-the-edge-with-hyperscale-cloud-reasoning">Balancing Extreme Low Bandwidth at the Edge with Hyperscale Cloud Reasoning</h3>
 <p><img src="images/slide_hybrid_architecture.png" alt="" style="width:1050px;" /></p>
 <ol>
-<li><strong>Student Browser Edge:</strong> MediaPipe FaceLandmarker, LiteRT Whisper STT, LiteRT Gemma 4 E2B Web Workers.</li>
+<li><strong>Student Browser Edge:</strong> MediaPipe FaceLandmarker, LiteRT Whisper Speech Engine, LiteRT Gemma 4 E2B Web Workers.</li>
 <li><strong>Realtime Signaling &amp; Data:</strong> Firestore single-stream status channel + Cloud Storage chunks.</li>
 <li><strong>Cloud Intelligence &amp; Serverless:</strong> Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 3.8 &amp; 3.5).</li>
 <li><strong>Teacher Command Center:</strong> Live compliance matrix, WebRTC live peek, and broadcast nudges.</li>
@@ -1764,7 +1764,7 @@ footer, header {
 <li><strong>Custom Hooks Data Mesh &amp; Dedicated Web Workers:</strong>
 <ul>
 <li><code>useFaceMonitor</code>: 468-point Iris mesh running in <code>faceLandmarker.worker.js</code>.</li>
-<li><code>useClientLiteRTWhisper</code>: Browser STT running in <code>litertWhisper.worker.js</code>.</li>
+<li><code>useClientLiteRTWhisper</code>: Browser Speech Recognition running in <code>litertWhisper.worker.js</code>.</li>
 <li><code>useClientLiteRTGemma</code>: On-device LLM intent evaluation in <code>litertGemma.worker.js</code>.</li>
 <li>Offloads 100% of AI inference from the main React render loop (steady 60 FPS).</li>
 </ul>
@@ -2017,7 +2017,7 @@ footer, header {
 </li>
 <li><strong><code>gemini-3.5-flash-lite</code> (Ultra-Low Latency Workhorse &amp; Fallback):</strong>
 <ul>
-<li>Rapid single-frame inspection, serverless subtitle translation, resilient fallback target.</li>
+<li>Rapid single-frame inspection, serverless subtitle multilingual captioning, resilient fallback target.</li>
 </ul>
 </li>
 <li><strong><code>gemini-3.1-flash-live-preview</code> (Live Bidirectional Audio Streaming):</strong>
@@ -2520,12 +2520,12 @@ footer, header {
 <li><strong>Images:</strong> Vision AI for dual-screen analysis, off-screen gaze diversion &amp; attentiveness.</li>
 <li><strong>Videos:</strong> Two-Stage Map-Reduce Coursework Rubric Synthesizer.</li>
 <li><strong>Audios:</strong> Speech intent classification (collusion, unauthorized talk, teacher inquiry) &amp; diarization.</li>
-<li><strong>Translations:</strong> Code-switching subtitle engine preserving programming terms (<code>useState</code>, <code>Docker</code>).</li>
+<li><strong>subtitles:</strong> Code-switching subtitle engine preserving programming terms (<code>useState</code>, <code>Docker</code>).</li>
 </ul>
 </li>
 <li><strong>Modality-Specific AI Prompt Optimizers (<code><img class="emoji" draggable="false" alt="✨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/2728.svg" data-marp-twemoji=""/> Optimize</code>):</strong>
 <ul>
-<li>Built-in Gemini meta-prompts specifically tuned for each modality (e.g. <code>translationOptimizerPrompt</code>, <code>visionOptimizerPrompt</code>).</li>
+<li>Built-in Gemini meta-prompts specifically tuned for each modality (e.g. <code>subtitleOptimizerPrompt</code>, <code>visionOptimizerPrompt</code>).</li>
 <li>Automatically converts brief teacher notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.</li>
 </ul>
 </li>
@@ -3251,7 +3251,7 @@ footer, header {
 
 <ul>
 <li><strong>16kHz Float32 Audio Stream:</strong> Captured via Web Audio API.</li>
-<li><strong>LiteRT Whisper STT Worker:</strong> Real-time bilingual transcription.</li>
+<li><strong>LiteRT Whisper Speech Engine Worker:</strong> Real-time bilingual transcription.</li>
 <li><strong>LiteRT Gemma 4 E2B Worker:</strong> Real-time intent classification.</li>
 <li><strong>Browser Cache Storage Persistence:</strong>
 <ul>
@@ -5167,7 +5167,7 @@ footer, header {
   color: #EA4335;
   font-weight: bold;
 }
-;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="background" data-marpit-advanced-background-split="right"><div data-marpit-advanced-background-container="true" data-marpit-advanced-background-direction="horizontal"><figure style="background-image:url(&quot;images/slide_live_subtitles_translation.png&quot;);background-size:95%;"></figure></div></section></foreignObject><foreignObject width="40%" height="720"><section id="24" data-paginate="true" data-header="Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)" data-footer="Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent" data-theme="default" data-style="section {
+;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="background" data-marpit-advanced-background-split="right"><div data-marpit-advanced-background-container="true" data-marpit-advanced-background-direction="horizontal"><figure style="background-image:url(&quot;images/slide_live_subtitles_multilingual.png&quot;);background-size:95%;"></figure></div></section></foreignObject><foreignObject width="40%" height="720"><section id="24" data-paginate="true" data-header="Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)" data-footer="Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent" data-theme="default" data-style="section {
   background-color: #0f172a;
   color: #f1f5f9;
   font-family: &quot;Google Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif;
@@ -5259,21 +5259,21 @@ footer, header {
 }
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
-<h2 id="real-time-live-subtitles--multilingual-translation-engine">Real-Time Live Subtitles &amp; Multilingual Translation Engine</h2>
+<h2 id="real-time-live-subtitles--multilingual-captions-engine">Real-Time Live Subtitles &amp; Multilingual Captions Engine</h2>
 <h3 id="3-tier-multi-engine-edge-gemini-nano-serverless-genkit--live-websockets">3-Tier Multi-Engine: Edge Gemini Nano, Serverless Genkit &amp; Live WebSockets</h3>
 
 <ul>
 <li><strong>Tier 1: On-Device Client AI ($0.00 Cloud Cost):</strong>
 <ul>
-<li>LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time STT.</li>
-<li>Chrome Built-in AI (<code>window.Translator</code> powered by Gemini Nano).</li>
+<li>LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time Speech Recognition.</li>
+<li>Chrome Built-in AI (<code>window.LanguageModel</code> powered by Gemini Nano).</li>
 <li>100% privacy-compliant, zero cloud egress, and zero token billing.</li>
 </ul>
 </li>
-<li><strong>Tier 2: Serverless Batch Translation (High Precision):</strong>
+<li><strong>Tier 2: Serverless Batch Multilingual Subtitling (High Precision):</strong>
 <ul>
-<li>Local LiteRT Whisper + Cloud Function <code>translateTeacherSpeech</code>.</li>
-<li>Powered by <strong>Gemini 3.5 Flash-Lite</strong> (with 3.8 Flash fallback) translating to <strong>7 languages</strong>.</li>
+<li>Local LiteRT Whisper + Cloud Function <code>processTeacherSpeechSubtitles</code>.</li>
+<li>Powered by <strong>Gemini 3.5 Flash-Lite</strong> (with 3.8 Flash fallback) generating subtitles in <strong>7 languages</strong>.</li>
 <li>Preserves Cantonese-English technical code-switching (<code>useState</code>, <code>Docker</code>).</li>
 </ul>
 </li>
@@ -5422,7 +5422,7 @@ footer, header {
   color: #EA4335;
   font-weight: bold;
 }
-;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="background" data-marpit-advanced-background-split="right"><div data-marpit-advanced-background-container="true" data-marpit-advanced-background-direction="horizontal"><figure style="background-image:url(&quot;images/slide_subject_domain_translation.png&quot;);background-size:95%;"></figure></div></section></foreignObject><foreignObject width="40%" height="720"><section id="25" data-paginate="true" data-header="Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)" data-footer="Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent" data-theme="default" data-style="section {
+;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="background" data-marpit-advanced-background-split="right"><div data-marpit-advanced-background-container="true" data-marpit-advanced-background-direction="horizontal"><figure style="background-image:url(&quot;images/slide_subject_domain_multilingual.png&quot;);background-size:95%;"></figure></div></section></foreignObject><foreignObject width="40%" height="720"><section id="25" data-paginate="true" data-header="Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)" data-footer="Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent" data-theme="default" data-style="section {
   background-color: #0f172a;
   color: #f1f5f9;
   font-family: &quot;Google Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif;
@@ -5514,7 +5514,7 @@ footer, header {
 }
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="40" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
-<h2 id="course-subject-domains--domain-specific-ai-translation">Course Subject Domains &amp; Domain-Specific AI Translation</h2>
+<h2 id="course-subject-domains--domain-specific-subtitle-intelligence">Course Subject Domains &amp; Domain-Specific Subtitle Intelligence</h2>
 <h3 id="preserving-discipline-glossaries-hong-kong-code-switching--real-time-dynamic-prompt-propagation">Preserving Discipline Glossaries, Hong Kong Code-Switching &amp; Real-Time Dynamic Prompt Propagation</h3>
 
 <ul>
@@ -5530,10 +5530,10 @@ footer, header {
 <li><img class="emoji" draggable="false" alt="✏️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/270f.svg" data-marp-twemoji=""/> <strong>Custom Subject Domain:</strong> Arbitrary typing (e.g., <em>Aeronautical Avionics</em>, <em>Biochemical Genetics</em>).</li>
 </ul>
 </li>
-<li><strong>Domain Context Injection &amp; Specialized Translation AI Prompts:</strong>
+<li><strong>Domain Context Injection &amp; Specialized Subtitle AI Prompts:</strong>
 <ul>
-<li>Injected directly into live subtitle &amp; translation prompts to prevent naive literal translations.</li>
-<li>Dedicated <strong>Translation Prompt AI Optimizer (<code><img class="emoji" draggable="false" alt="✨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/2728.svg" data-marp-twemoji=""/> Optimize</code>)</strong> tunes glossary locks and pedagogical tone.</li>
+<li>Injected directly into live subtitle &amp; Subtitle Prompts to prevent naive literal subtitles.</li>
+<li>Dedicated <strong>Subtitle Prompt AI Optimizer (<code><img class="emoji" draggable="false" alt="✨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/2728.svg" data-marp-twemoji=""/> Optimize</code>)</strong> tunes glossary locks and pedagogical tone.</li>
 </ul>
 </li>
 <li><strong>Hong Kong Cantonese-English Code-Switching Normalization:</strong>
@@ -6046,7 +6046,7 @@ footer, header {
 <li><strong>YouTube-Style Cinematic Player Stage:</strong>
 <ul>
 <li>Embedded teacher stream (<code><img class="emoji" draggable="false" alt="🔴" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f534.svg" data-marp-twemoji=""/> LIVE</code>, <code>1080P</code>, zoom toggle); proctoring feeds dock into PiP.</li>
-<li>Dual CC Overlay: original speech in dark pill, live translation in high-contrast <strong>YouTube yellow</strong> (<code>#ffe600</code>).</li>
+<li>Dual CC Overlay: original speech in dark pill, live multilingual captions in high-contrast <strong>YouTube yellow</strong> (<code>#ffe600</code>).</li>
 <li>Bottom Bar: <code>[CC]</code> toggle, live target language selector, settings gear popover, native fullscreen.</li>
 </ul>
 </li>
@@ -8360,7 +8360,7 @@ footer, header {
 </li>
 <li><strong>Automated Prompt Governance &amp; Maintenance:</strong>
 <ul>
-<li>Version-controlled markdown prompts in <code>admin/prompts/</code> (Images, Videos, Audios, Translations).</li>
+<li>Version-controlled markdown prompts in <code>admin/prompts/</code> (Images, Videos, Audios, subtitles).</li>
 <li>Automated seeding CLI (<code>node admin/scripts/seed_prompts.mjs</code>) updates Firestore system prompts with zero downtime.</li>
 <li>Automated demo sandbox reset (<code>reset_demo_env.sh</code>) &amp; live security audit trail logging.</li>
 </ul>
@@ -8610,7 +8610,7 @@ footer, header {
 <ul>
 <li>Pre-seeded lead instructor: <code>teacher1@vtc.edu.hk</code> (<code>teacherProfiles</code> document &amp; custom claims).</li>
 <li>5 pre-enrolled demo students: <code>student1</code>..<code>student5@stu.vtc.edu.hk</code> with 1-click clipboard copy buttons.</li>
-<li>Pre-loaded multimodal prompt library across images, videos, audios, and multilingual translations.</li>
+<li>Pre-loaded multimodal prompt library across images, videos, audios, and multilingual subtitles.</li>
 </ul>
 </li>
 <li><strong>Automated Dual-Environment Management:</strong>

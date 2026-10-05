@@ -184,7 +184,7 @@ flowchart TD
 
 ### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
 - **Teacher Screen Broadcast Setup:** Launched from the Class Hub header `🎙️🖥️ Broadcast` button or Controls Panel:
-  - **Step 1 (Audio & Subtitles):** Select microphone device, live volume VU meter test, recording checkboxes, and subtitle translation settings.
+  - **Step 1 (Audio & Subtitles):** Select microphone device, live volume VU meter test, recording checkboxes, and subtitle multilingual captioning settings.
   - **Step 2 (Stream & Presentation Presets):**
     - **Broadcast Quality Selector:** Dropdown with `720p (Fast) [Recommended]`, `1080p (Standard)`, and `1440p (High-Res)`.
     - **Broadcast Frame Interval Selector:** Dropdown with `3.0s / 0.3 FPS (Default)`, `1.5s / 0.7 FPS`, `0.8s / 1.2 FPS`, or `0.5s / 2.0 FPS`.
@@ -304,7 +304,7 @@ flowchart TD
 
 ### Voice AI & Speech Invigilation HUD
 - **Speech Activity Indicator:** Displays `Speaking` vs `Listening`.
-- **Whisper On-Device STT Badge:** Shows status (`⏳ Loading`, `🧠 Transcribing`, `🟢 Whisper Ready (WASM/GPU)`, `☁️ Cloud STT Mode`).
+- **Whisper On-Device Speech Recognition Badge:** Shows status (`⏳ Loading`, `🧠 Transcribing`, `🟢 Whisper Ready (WASM/GPU)`, `☁️ Cloud Speech Recognition Mode`).
 - **Gemma On-Device Intent LLM Badge & Preload Button:** Preloads client-side LLM for instant cheat detection (`📥 Preload Gemma AI` / `🤖 Gemma Ready` / `⏳ Loading N%`).
 - **Dynamic VU Level Meter:** 0–100% volume bar with color transitions.
 - **Live Rolling Transcript Box:** Displays real-time spoken phrases captured by Whisper.
@@ -330,7 +330,7 @@ flowchart TD
 - **Spoken Phrase Verification Challenge:**
   - Random challenge phrase box (e.g., *"The quick brown fox jumps over the lazy dog"*).
   - `▶ Start Voice Test` / `⏹ Stop Listening` button.
-  - Real-time Speech-to-Text transcript confirmation badge (`✅ Voice Verified (98%)`).
+  - Real-time Speech Recognition transcript confirmation badge (`✅ Voice Verified (98%)`).
 - **Loopback Playback Check (`🎧 Hear My Voice (3s Test)`):** Records a 3-second audio sample and plays it back through headphones to confirm clarity.
 - **No-Mic Fallback Card:** Detects lack of audio hardware and offers `Skip / Proceed Without Mic`.
 
@@ -485,12 +485,12 @@ flowchart TD
   - Interval Dropdown (`Full Session`, `5m`, `10m`, `15m`, `30m`).
   - Session Audio Summary Prompt picker.
 
-### Section 8: Live Subtitles, Translation & Subject Domain
+### Section 8: Live Subtitles, Captions & Subject Domain
 - **Course Subject / Discipline Domain Selector:** Selects course discipline (`Computer Science & Software Development`, `Business, Finance & Accounting`, `Design, Media & Visual Arts`, `Healthcare, Nursing & Medical Sciences`, `Engineering & Construction`, `Hospitality, Culinary & Tourism`, `Languages, Humanities & Social Sciences`, `General Studies & Interdisciplinary`, or `Custom Subject Domain...`).
 - **Custom Discipline Input:** Freeform text input shown when `Custom Subject Domain...` is selected.
-- **`Select Subtitle Translation Prompt` Button:** Opens the Audio Prompt Selector filtered to `Live Subtitles & Translation` prompts.
+- **`Select Subtitle subtitle prompt` Button:** Opens the Audio Prompt Selector filtered to `Live Subtitles & Multilingual Captions` prompts.
 - **Prompt Preview Box:** Shows prompt title, custom badge, and snippet preview.
-- **`Remove / Reset Prompt` Button:** Clears custom translation prompt and returns to default discipline rules.
+- **`Remove / Reset Prompt` Button:** Clears custom subtitle prompt and returns to default discipline rules.
 
 ### Section 9: Security & Danger Zone
 - **Authorized IP Subnets Textarea:** Restricts student session access to campus lab IP ranges (CIDR notation).
@@ -769,7 +769,7 @@ flowchart TD
 
 ### Filter Toolbar
 - **Student Dropdown:** Filter by individual student (rendered with resolved display name and cohort) or `All Students`.
-- **Job Type Dropdown:** Single Screenshot Analysis, Multi-Student Grid Analysis, Video Screencast Inspection, Cloud Gaze Fallback, Audio STT & Diarization.
+- **Job Type Dropdown:** Single Screenshot Analysis, Multi-Student Grid Analysis, Video Screencast Inspection, Cloud Gaze Fallback, Audio Speech Recognition & Diarization.
 - **Model Dropdown:** Filter by specific Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`).
 - **Date Range Pickers:** `From Date` and `To Date`.
 - **`Reset Filters` Button:** Clears all active filters.
@@ -788,7 +788,7 @@ flowchart TD
 ### Full-Screen Studio Layout & Ergonomics
 - **Fluid Full-Bleed Layout (`.prompt-studio-view`):** Overrides default 1200px max-width container to occupy 100% of the viewport width with dynamic vertical space (`calc(100vh - 145px)`), eliminating boxed margins and squashed editor ceilings.
 - **Collapsible Sidebar (`◀ Hide List` / `▶ Show List`):** Allows teachers to collapse the prompt list column completely, granting **100% of the screen width** exclusively to the prompt editor and Markdown preview.
-- **Distraction-Free Zen Fullscreen (`⛶ Zen Mode`):** One-click toggle that expands the prompt editor into a fixed 100vw × 100vh full-screen writing canvas with docked controls, perfect for writing multi-step technical rubrics or extensive translation dictionaries.
+- **Distraction-Free Zen Fullscreen (`⛶ Zen Mode`):** One-click toggle that expands the prompt editor into a fixed 100vw × 100vh full-screen writing canvas with docked controls, perfect for writing multi-step technical rubrics or extensive multilingual captioning dictionaries.
 - **Two-Tier Form Architecture:**
   - *Top Action Bar:* Places Prompt Name, Save, Duplicate, Delete, Optimize, Undo, and Zen toggle in a compact header strip.
   - *Maximized Center Canvas:* `MDEditor` occupies ~80–85% of vertical space with side-by-side edit and rendered preview.
@@ -799,16 +799,16 @@ flowchart TD
   - `🖼️ Image Prompts (N)`: Vision proctoring and screenshot analysis prompts.
   - `🎬 Video Prompts (N)`: Lecture video processing and segmentation prompts.
   - `🎙️ Voice / Audio Prompts (N)`: Live audio invigilation, session summaries, and on-device Gemma voice intents.
-  - `🌐 Translation Prompts (N)`: Real-time dual-line subtitles, Cantonese-English code-switching, and discipline glossaries.
+  - `🌐 Subtitle Prompts (N)`: Real-time dual-line subtitles, Cantonese-English code-switching, and discipline glossaries.
   - `📋 Task Rubric Prompts (N)`: Practical task demo milestone extraction and student screen recording evaluators.
 - **Search & Quick Clear (`✕`):** Filters prompts instantly with clear icon.
-- **Prompt List Badges:** Displays access tags (`Public`, `Private`, `Shared`) and application scope badges (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Translation`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
+- **Prompt List Badges:** Displays access tags (`Public`, `Private`, `Shared`) and application scope badges (`Per Image`, `All Images`, `Per Video`, `Live Audio Invigilation`, `Session Audio Summary`, `On-Device Gemma Voice Intent`, `Live Subtitles & Multilingual Captions`, `Code-Switching Lectures`, `Technical Discipline Glossary`, `Lab Rubric Milestones`, `Task Milestones Extraction`).
 
 ### AI Prompt Optimizer (`✨ Optimize` Button)
 - **Domain-Tailored AI Rewriting Guidelines:**
   - *Images/Videos:* Visual grounding, bbox verification, and hallucination elimination.
   - *Voice/Audios:* Multi-speaker dynamics, conversational intent, and acoustic collusion detection.
-  - *Translations:* Dual-line subtitle pacing, code-switching handling, and clinical/technical terminology preservation.
+  - *subtitles:* Dual-line subtitle pacing, code-switching handling, and clinical/technical terminology preservation.
   - *Rubrics:* Chronological milestone structuring (3–8 steps), observable on-screen evidence definitions, balanced 100-point weighting, and strict JSON output schemas.
 - **`Undo` Button:** Reverts AI optimization back to original text with full state rollback.
 - **Action Buttons:** `Save Prompt` / `Save Changes`, `Duplicate` (for custom prompts), `📋 Make a Copy to Personalize` (for system templates), `Delete`, `Optimize`, `Undo`, and `⛶ Zen Mode`.

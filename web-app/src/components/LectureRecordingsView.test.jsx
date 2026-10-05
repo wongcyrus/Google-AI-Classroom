@@ -1516,6 +1516,153 @@ describe('LectureRecordingsView Component', () => {
       expect(screen.queryByText('Sep 28 Full')).not.toBeInTheDocument();
     });
   });
+
+  it('handles deleting a lecture recording with confirmation', async () => {
+    window.confirm = vi.fn().mockReturnValue(false);
+
+    render(<LectureRecordingsView classId="test_class" />);
+
+    const mockDocs = [
+      {
+        id: 'rec_to_del',
+        data: () => ({
+          title: 'Lecture to Delete',
+          startedAt: { seconds: 1791167878, nanoseconds: 0 },
+          durationSeconds: 120,
+          videoUrl: 'https://storage.googleapis.com/test.webm',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    const deleteBtn = screen.getAllByRole('button', { name: /🗑️ Delete Recording/i })[0];
+    expect(deleteBtn).toBeInTheDocument();
+
+    // Cancel deletion
+    fireEvent.click(deleteBtn);
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+    // Confirm deletion
+    window.confirm = vi.fn().mockReturnValue(true);
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    expect(mockDeleteDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_to_del' })
+    );
+  });
+
+  it('handles direct video download and fallback window open', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['mock-video-binary'], { type: 'video/webm' })),
+    });
+
+    render(<LectureRecordingsView classId="test_class" />);
+
+    const mockDocs = [
+      {
+        id: 'rec_download_test',
+        data: () => ({
+          title: 'Downloadable Lecture',
+          startedAt: { seconds: 1791167878, nanoseconds: 0 },
+          durationSeconds: 200,
+          videoUrl: 'https://storage.googleapis.com/lecture.webm',
+          mimeType: 'video/webm',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    const downloadBtn = screen.getByRole('button', { name: /Direct Video Download/i });
+    expect(downloadBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(downloadBtn);
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith('https://storage.googleapis.com/lecture.webm');
+    expect(await screen.findByText(/Video downloaded!/i)).toBeInTheDocument();
+
+    // Test fallback when fetch fails
+    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+    window.open = vi.fn();
+
+    await act(async () => {
+      fireEvent.click(downloadBtn);
+    });
+
+    expect(window.open).toHaveBeenCalledWith('https://storage.googleapis.com/lecture.webm', '_blank');
+  });
+
+  it('handles merging clips with ffmpeg and auto-triggering subtitles', async () => {
+    const mockCallableDispatch = vi.fn((params) => {
+      if (params.recordingIds) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            combinedSessionId: 'rec_merged_123',
+            storagePath: 'classes/test_class/lectures/rec_merged_123.mp4',
+            title: 'Merged Full Lecture',
+            targetLanguages: ['en', 'zh-HK'],
+          },
+        });
+      }
+      return Promise.resolve({ data: { success: true } });
+    });
+    mockHttpsCallableFactory.mockReturnValue(mockCallableDispatch);
+
+    render(<LectureRecordingsView classId="test_class" />);
+
+    const mockDocs = [
+      {
+        id: 'clip_1',
+        data: () => ({
+          title: 'Part 1',
+          sessionGroupId: 'grp_001',
+          startedAt: { seconds: 1791167000, nanoseconds: 0 },
+          durationSeconds: 300,
+          videoUrl: 'https://storage.googleapis.com/clip1.webm',
+        }),
+      },
+      {
+        id: 'clip_2',
+        data: () => ({
+          title: 'Part 2',
+          sessionGroupId: 'grp_001',
+          startedAt: { seconds: 1791167400, nanoseconds: 0 },
+          durationSeconds: 400,
+          videoUrl: 'https://storage.googleapis.com/clip2.webm',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    const mergeBtn = screen.getByRole('button', { name: /Merge into Full Lecture/i });
+    expect(mergeBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(mergeBtn);
+    });
+
+    expect(mockCallableDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classId: 'test_class',
+        sessionGroupId: 'grp_001',
+        recordingIds: ['clip_1', 'clip_2'],
+      })
+    );
+  });
 });
 
 

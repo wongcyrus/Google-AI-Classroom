@@ -13,8 +13,18 @@ vi.mock('../firebase-config', () => ({
   functions: {},
 }));
 
+const mockCallableInstance = vi.fn().mockResolvedValue({ data: { success: true } });
 vi.mock('firebase/functions', () => ({
-  httpsCallable: vi.fn(() => vi.fn().mockResolvedValue({ data: { success: true } })),
+  httpsCallable: vi.fn(() => mockCallableInstance),
+}));
+
+const mockClearRecoverySession = vi.fn().mockResolvedValue();
+const mockPersistRecoveryChunk = vi.fn().mockResolvedValue();
+const mockGetPendingRecoverySessions = vi.fn().mockResolvedValue([]);
+vi.mock('../utils/lectureRecoveryDb', () => ({
+  clearRecoverySession: (...args) => mockClearRecoverySession(...args),
+  persistRecoveryChunk: (...args) => mockPersistRecoveryChunk(...args),
+  getPendingRecoverySessions: (...args) => mockGetPendingRecoverySessions(...args),
 }));
 
 vi.mock('fix-webm-duration', () => ({
@@ -460,6 +470,127 @@ describe('useLectureRecorder Hook & Utilities', () => {
           subtitlesDisabled: true,
         })
       );
+    });
+  });
+
+  describe('mergeSessionRecordings', () => {
+    it('throws error if classId is missing', async () => {
+      const { result } = renderHook(() => useLectureRecorder({ classId: null }));
+      await expect(result.current.mergeSessionRecordings({ sessionGroupId: 'grp1' })).rejects.toThrow(
+        'classId is required to merge recordings.'
+      );
+    });
+
+    it('merges recordings and triggers processLectureSubtitles when subtitles are enabled', async () => {
+      mockCallableInstance.mockResolvedValueOnce({
+        data: {
+          success: true,
+          combinedSessionId: 'combined_123',
+          storagePath: 'recordings/class_1/combined_123/lecture.webm',
+          title: 'Master Combined Lecture',
+        },
+      });
+
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      const mergeRes = await result.current.mergeSessionRecordings({
+        sessionGroupId: 'grp1',
+        recordingIds: ['rec1', 'rec2'],
+        customTitle: 'Master Combined Lecture',
+      });
+
+      expect(mergeRes.success).toBe(true);
+      expect(mergeRes.combinedSessionId).toBe('combined_123');
+    });
+
+    it('merges recordings and marks subtitlesDisabled when class subtitles are disabled', async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ isLectureSubtitlesEnabled: false }),
+      });
+      mockCallableInstance.mockResolvedValueOnce({
+        data: {
+          success: true,
+          combinedSessionId: 'combined_456',
+        },
+      });
+
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      const mergeRes = await result.current.mergeSessionRecordings({
+        sessionGroupId: 'grp2',
+        recordingIds: ['rec3', 'rec4'],
+      });
+
+      expect(mergeRes.success).toBe(true);
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ subtitlesDisabled: true })
+      );
+    });
+
+    it('propagates error when merge call fails', async () => {
+      mockCallableInstance.mockRejectedValueOnce(new Error('Merge Cloud Function Failed'));
+
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      await expect(
+        result.current.mergeSessionRecordings({ sessionGroupId: 'grp_err' })
+      ).rejects.toThrow('Merge Cloud Function Failed');
+    });
+  });
+
+  describe('recoverInterruptedSession', () => {
+    it('returns null if recoverySession is missing or has empty chunks', async () => {
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      expect(await result.current.recoverInterruptedSession(null)).toBeNull();
+      expect(await result.current.recoverInterruptedSession({ sessionId: 's1', chunks: [] })).toBeNull();
+    });
+
+    it('clears recovery session and returns null if chunks create empty blob', async () => {
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      const res = await result.current.recoverInterruptedSession({
+        sessionId: 's_empty',
+        chunks: [new Blob([])],
+      });
+      expect(res).toBeNull();
+      expect(mockClearRecoverySession).toHaveBeenCalledWith('s_empty');
+    });
+
+    it('recovers crashed recording session with chunks, uploads and saves to firestore', async () => {
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      const recoverySession = {
+        sessionId: 'session_crashed_1',
+        classId: 'class_1',
+        sessionGroupId: 'group_crash_1',
+        mimeType: 'video/webm',
+        chunks: [new Blob(['test-video-chunk'], { type: 'video/webm' })],
+        title: 'Crashed Lecture Part 1',
+        topic: 'Neural Networks',
+      };
+
+      const res = await result.current.recoverInterruptedSession(recoverySession);
+      expect(res).toBeDefined();
+      expect(res.sessionId).toBe('session_crashed_1');
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          title: 'Crashed Lecture Part 1',
+          isRecoveredAfterCrash: true,
+          status: 'ready',
+        }),
+        { merge: true }
+      );
+      expect(mockClearRecoverySession).toHaveBeenCalledWith('session_crashed_1');
+    });
+
+    it('catches error and returns null when recovery upload fails', async () => {
+      const { result } = renderHook(() => useLectureRecorder({ classId: 'class_1' }));
+      mockSetDoc.mockRejectedValueOnce(new Error('Firestore crash write failed'));
+
+      const res = await result.current.recoverInterruptedSession({
+        sessionId: 's_err',
+        classId: 'class_1',
+        chunks: [new Blob(['video-data'])],
+      });
+      expect(res).toBeNull();
     });
   });
 

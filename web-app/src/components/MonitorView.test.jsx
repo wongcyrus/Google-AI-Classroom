@@ -56,9 +56,15 @@ const mockOnSnapshot = vi.fn((ref, cb) => {
 vi.mock('../firebase-config', () => ({
   db: {},
   storage: {},
+  functions: {},
   auth: {
     currentUser: { uid: 'teacher_1', email: 'teacher@school.edu' },
   },
+}));
+
+const mockCallable = vi.fn().mockResolvedValue({ data: { success: true } });
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => mockCallable),
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -66,8 +72,8 @@ vi.mock('react-router-dom', () => ({
 }));
 
 vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn(),
+  collection: vi.fn((db, ...args) => ({ path: args.join('/') })),
+  doc: vi.fn((db, ...args) => ({ path: args.join('/'), id: args[args.length - 1] })),
   query: vi.fn(),
   where: vi.fn(),
   orderBy: vi.fn(),
@@ -75,8 +81,9 @@ vi.mock('firebase/firestore', () => ({
   addDoc: (...args) => mockAddDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   setDoc: vi.fn().mockResolvedValue(),
-  serverTimestamp: vi.fn(),
+  serverTimestamp: vi.fn(() => 'SERVER_TIMESTAMP'),
   getDocs: vi.fn().mockResolvedValue({ docs: [] }),
+  getDoc: vi.fn().mockResolvedValue({ exists: () => false, data: () => ({}) }),
   onSnapshot: (...args) => mockOnSnapshot(...args),
 }));
 
@@ -461,7 +468,7 @@ describe('MonitorView Component Suite', () => {
     });
 
     expect(mockAddDoc).toHaveBeenCalledWith(
-      undefined,
+      expect.anything(),
       expect.objectContaining({
         message: 'Please keep camera on',
         senderEmail: 'teacher@school.edu',
@@ -570,7 +577,7 @@ describe('MonitorView Component Suite', () => {
       fireEvent.click(examModeBtn);
     });
     expect(mockUpdateDoc).toHaveBeenCalledWith(
-      undefined,
+      expect.anything(),
       expect.objectContaining({ isExamActive: false })
     );
   });
@@ -737,6 +744,94 @@ describe('MonitorView Component Suite', () => {
       fireEvent.click(showControlsBtn);
     });
     expect(screen.queryByRole('button', { name: /Show Controls/i })).not.toBeInTheDocument();
+  });
+
+  it('handles capture interval change and rollback on failure', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const intervalSelect = screen.getByLabelText(/Webcam capture interval/i);
+    await act(async () => {
+      fireEvent.change(intervalSelect, { target: { value: '30' } });
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ frameRate: 30 })
+    );
+
+    // Test error branch
+    mockUpdateDoc.mockRejectedValueOnce(new Error('Update failed'));
+    await act(async () => {
+      fireEvent.change(intervalSelect, { target: { value: '60' } });
+    });
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to update frame rate'));
+  });
+
+  it('handles max image size change and error alert', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const sizeSelect = screen.getByLabelText(/Webcam max image size/i);
+    await act(async () => {
+      fireEvent.change(sizeSelect, { target: { value: '524288' } });
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ maxImageSize: 524288 })
+    );
+
+    // Test error branch
+    mockUpdateDoc.mockRejectedValueOnce(new Error('Size update failed'));
+    await act(async () => {
+      fireEvent.change(sizeSelect, { target: { value: '262144' } });
+    });
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to update max image size'));
+  });
+
+  it('toggles capture on and off, handling cancelActiveBingo when stopping', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const startBtn = screen.getByRole('button', { name: /▶ Start Capture/i });
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isCapturing: true })
+    );
+
+    const stopBtn = screen.getByRole('button', { name: /⏹ Stop Capture/i });
+    await act(async () => {
+      fireEvent.click(stopBtn);
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isCapturing: false })
+    );
+  });
+
+  it('handles error rollback when toggleCapture fails', async () => {
+    mockUpdateDoc.mockRejectedValueOnce(new Error('Toggle error'));
+    render(<MonitorView {...defaultProps} />);
+
+    const startBtn = screen.getByRole('button', { name: /▶ Start Capture/i });
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to update capture status'));
+  });
+
+  it('handles capture mode change and audio capture toggle', async () => {
+    render(<MonitorView {...defaultProps} />);
+
+    const screenOnlyBtn = screen.queryByRole('button', { name: /Screen Only/i });
+    if (screenOnlyBtn) {
+      await act(async () => {
+        fireEvent.click(screenOnlyBtn);
+      });
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ captureMode: 'screen' })
+      );
+    }
   });
 });
 

@@ -2407,5 +2407,102 @@ describe('StudentRecordsView Component', () => {
       });
     });
   });
+
+  describe('StudentRecordsView Utility Functions & Edge Cases', () => {
+    it('formats duration in seconds and minutes', () => {
+      expect(formatDuration(0)).toBe('0s');
+      expect(formatDuration(null)).toBe('0s');
+      expect(formatDuration(NaN)).toBe('0s');
+      expect(formatDuration(45)).toBe('45s');
+      expect(formatDuration(125)).toBe('2m 5s');
+      expect(formatDuration(3600)).toBe('60m 0s');
+    });
+
+    it('formats bytes into human-readable strings', () => {
+      expect(formatBytes(0)).toBe('0 B');
+      expect(formatBytes(null)).toBe('0 B');
+      expect(formatBytes(NaN)).toBe('0 B');
+      expect(formatBytes(500)).toBe('500 B');
+      expect(formatBytes(1024)).toBe('1 KB');
+      expect(formatBytes(1024 * 1024 * 3.5)).toBe('3.5 MB');
+      expect(formatBytes(1024 * 1024 * 1024 * 2.1)).toBe('2.1 GB');
+    });
+
+    it('formats dates cleanly and safely', () => {
+      expect(formatDate(null)).toBe('N/A');
+      expect(formatDate('invalid-date')).toBe('N/A');
+      const testDate = new Date('2026-10-06T00:00:00.000Z');
+      expect(formatDate(testDate)).not.toBe('N/A');
+      expect(formatDate({ toDate: () => testDate })).not.toBe('N/A');
+    });
+
+    it('parses timestamps across Firestore Timestamp, Date, and numbers', () => {
+      expect(parseTimeMs(null)).toBeNaN();
+      expect(parseTimeMs({ toMillis: () => 54321 })).toBe(54321);
+      expect(parseTimeMs({ seconds: 120 })).toBe(120000);
+      expect(parseTimeMs(new Date('2026-10-06T00:00:00.000Z'))).toBe(1791244800000);
+      expect(parseTimeMs('2026-10-06T00:00:00.000Z')).toBe(1791244800000);
+      expect(parseTimeMs('invalid-time')).toBeNaN();
+    });
+
+    it('evaluates whether a record falls into a lesson window', () => {
+      expect(isRecordInLesson(null, null)).toBe(false);
+      expect(isRecordInLesson({ classId: 'CLASS_A' }, { classId: 'CLASS_B' })).toBe(false);
+
+      // Match by lessonId
+      expect(isRecordInLesson({ lessonId: 'les_1' }, { lessonId: 'les_1' })).toBe(true);
+      expect(isRecordInLesson({ lessonId: 'les_1' }, { id: 'les_1' })).toBe(true);
+
+      // Match by lessonTitle
+      expect(isRecordInLesson({ lessonTitle: 'Networking Lab' }, { title: 'Networking Lab' })).toBe(true);
+
+      // Match by sessionGroupId
+      expect(isRecordInLesson({ sessionGroupId: 'grp_99' }, { id: 'grp_99' })).toBe(true);
+
+      // Match by overlapping time bounds (within pre 30m / post 60m buffer)
+      const lesson = {
+        startTime: '2026-10-06T10:00:00.000Z',
+        endTime: '2026-10-06T12:00:00.000Z',
+      };
+      // Record inside lesson
+      expect(isRecordInLesson({ startTime: '2026-10-06T10:30:00.000Z' }, lesson)).toBe(true);
+      // Record in 30min pre-buffer (9:45 is within 9:30-13:00)
+      expect(isRecordInLesson({ startTime: '2026-10-06T09:45:00.000Z' }, lesson)).toBe(true);
+      // Record far before (08:00)
+      expect(isRecordInLesson({ startTime: '2026-10-06T08:00:00.000Z' }, lesson)).toBe(false);
+
+      // Record with durationSeconds
+      expect(isRecordInLesson({
+        startTime: '2026-10-06T09:50:00.000Z',
+        durationSeconds: 1800,
+      }, lesson)).toBe(true);
+
+      // Lesson with duration instead of endTime
+      const shortLesson = {
+        start: new Date('2026-10-06T10:00:00.000Z'),
+        duration: 60,
+      };
+      expect(isRecordInLesson({ createdAt: '2026-10-06T10:15:00.000Z' }, shortLesson)).toBe(true);
+    });
+
+    it('evaluates whether a record is an exam record', () => {
+      expect(isExamRecord(null, null)).toBe(false);
+      expect(isExamRecord({ isExam: true }, null)).toBe(true);
+
+      const classObj = {
+        examPeriods: [
+          {
+            startDate: '2026-11-01',
+            endDate: '2026-11-05',
+          },
+        ],
+      };
+
+      // Record during exam period
+      expect(isExamRecord({ timestamp: '2026-11-02T10:00:00.000Z' }, classObj)).toBe(true);
+      // Record outside exam period
+      expect(isExamRecord({ timestamp: '2026-10-02T10:00:00.000Z' }, classObj)).toBe(false);
+    });
+  });
 });
 

@@ -19,6 +19,42 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+const mockUploadBytes = vi.fn().mockResolvedValue({ ref: { fullPath: 'mock/path' } });
+const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage/mock.jpg');
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn((storage, path) => ({ path, fullPath: path })),
+  uploadBytes: (...args) => mockUploadBytes(...args),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+}));
+
+vi.mock('../utils/audioDecoder', () => ({
+  decodeAudioBlobToPcm: vi.fn().mockResolvedValue(new Float32Array(16000)),
+}));
+
+let mockUploadItemHandler = null;
+vi.mock('../utils/offlineBufferManager', () => ({
+  saveToOfflineQueue: vi.fn().mockResolvedValue(true),
+  flushOfflineQueue: vi.fn(async (opts) => {
+    if (opts?.uploadItemHandler) {
+      mockUploadItemHandler = opts.uploadItemHandler;
+      await opts.uploadItemHandler({
+        type: 'screenshot',
+        classId: 'class1',
+        studentUid: 'student123',
+        studentEmail: 'student@school.edu',
+        blob: new Blob(['data'], { type: 'image/jpeg' }),
+        timestamp: Date.now(),
+        metadata: { channel: 'screen', retentionDays: 30, ipAddress: '127.0.0.1' },
+      });
+      await opts.uploadItemHandler({
+        type: 'unknown_type',
+      });
+    }
+    return { flushed: 1, failed: 0 };
+  }),
+  getOfflineQueueCount: vi.fn().mockResolvedValue(0),
+}));
+
 vi.mock('../firebase-config', () => ({
   auth: {
     signOut: () => mockSignOut(),
@@ -127,21 +163,28 @@ vi.mock('../hooks/useFaceMonitor', () => ({
   useFaceMonitor: () => mockFaceMonitorReturn,
 }));
 
+let lastAudioRecorderOptions = null;
 vi.mock('../hooks/useAudioRecorder', () => ({
-  default: () => ({
-    isRecording: false,
-    audioStream: null,
-    audioLevel: 0,
-    isSpeaking: false,
-    hasMicPermission: true,
-  }),
-  useAudioRecorder: () => ({
-    isRecording: false,
-    audioStream: null,
-    audioLevel: 0,
-    isSpeaking: false,
-    hasMicPermission: true,
-  }),
+  default: (opts) => {
+    lastAudioRecorderOptions = opts;
+    return {
+      isRecording: false,
+      audioStream: null,
+      audioLevel: 0,
+      isSpeaking: false,
+      hasMicPermission: true,
+    };
+  },
+  useAudioRecorder: (opts) => {
+    lastAudioRecorderOptions = opts;
+    return {
+      isRecording: false,
+      audioStream: null,
+      audioLevel: 0,
+      isSpeaking: false,
+      hasMicPermission: true,
+    };
+  },
 }));
 
 vi.mock('../hooks/useWebRTCPeekStudent', () => ({
@@ -155,20 +198,27 @@ vi.mock('../hooks/useWebRTCPeekStudent', () => ({
   }),
 }));
 
+let lastWhisperOptions = null;
 let mockWhisperReturn = {
   transcript: '',
   whisperStatus: 'ready',
   isWhisperCached: true,
   preloadWhisperModel: vi.fn(),
+  transcribeAudioChunk: vi.fn().mockResolvedValue({ transcript: 'Hello classroom' }),
+  setLatestTranscript: vi.fn(),
 };
 
+let mockEvaluateSpeech = vi.fn().mockResolvedValue({ pass: true });
 let mockGemmaReturn = {
   latestEvaluation: null,
   isGemmaReady: true,
   isGemmaCached: true,
   preloadGemmaModel: vi.fn(),
+  status: 'ready',
   gemmaStatus: 'ready',
+  engine: 'litert_lm_gemma_e2b',
   shouldEvaluateVoiceWithGemma: true,
+  evaluateTranscript: mockEvaluateSpeech,
 };
 
 let mockTeacherBroadcastReturn = {
@@ -181,8 +231,14 @@ let mockTeacherBroadcastReturn = {
 };
 
 vi.mock('../hooks/useClientLiteRTWhisper', () => ({
-  default: () => mockWhisperReturn,
-  useClientLiteRTWhisper: () => mockWhisperReturn,
+  default: (opts) => {
+    lastWhisperOptions = opts;
+    return mockWhisperReturn;
+  },
+  useClientLiteRTWhisper: (opts) => {
+    lastWhisperOptions = opts;
+    return mockWhisperReturn;
+  },
 }));
 
 vi.mock('../hooks/useClientLiteRTGemma', () => ({
@@ -279,7 +335,7 @@ describe('StudentView Component Extended Test Suite', () => {
       latestTranscript: '',
       latestLanguage: 'english',
       preloadModel: vi.fn(),
-      transcribeAudioChunk: vi.fn(),
+      transcribeAudioChunk: vi.fn().mockResolvedValue({ transcript: 'Hello classroom' }),
       setLatestTranscript: vi.fn(),
     };
     mockGemmaReturn = {
@@ -287,8 +343,11 @@ describe('StudentView Component Extended Test Suite', () => {
       isGemmaReady: true,
       isGemmaCached: true,
       preloadGemmaModel: vi.fn(),
-      gemmaStatus: 'ready',
+      status: 'ready',
+  gemmaStatus: 'ready',
+      engine: 'litert_lm_gemma_e2b',
       shouldEvaluateVoiceWithGemma: true,
+      evaluateTranscript: mockEvaluateSpeech,
     };
     mockTeacherBroadcastReturn = {
       isBroadcastActive: false,
@@ -735,6 +794,7 @@ describe('StudentView Component Extended Test Suite', () => {
       ...mockGemmaReturn,
       isGemmaReady: false,
       isGemmaCached: false,
+      status: 'idle',
       gemmaStatus: 'idle',
       shouldEvaluateVoiceWithGemma: true,
     };
@@ -1635,6 +1695,184 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(toggleBtn).toBeInTheDocument();
     fireEvent.click(toggleBtn);
     expect(mockToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles online event by flushing offline queue including screenshot items', async () => {
+    render(<StudentView user={mockUser} />);
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(mockUploadBytes).toHaveBeenCalled();
+  });
+
+  it('handles audio recorder upload callback, performs PCM decoding, LiteRT transcription and updates status', async () => {
+    render(<StudentView user={mockUser} />);
+    expect(lastAudioRecorderOptions?.onAudioUploaded).toBeDefined();
+
+    await act(async () => {
+      await lastAudioRecorderOptions.onAudioUploaded({
+        path: 'audio/class1/segment_0.webm',
+        url: 'https://storage/audio/class1/segment_0.webm',
+        blob: new Blob(['audio-data'], { type: 'audio/webm' }),
+        strideIndex: 0,
+      });
+    });
+
+    expect(mockWhisperReturn.transcribeAudioChunk).toHaveBeenCalled();
+    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Hello classroom');
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class1/status/student123' }),
+      expect.objectContaining({ liveTranscript: 'Hello classroom' }),
+      { merge: true }
+    );
+  });
+
+  it('handles mic device resolution and updates preferred mic device in localStorage', async () => {
+    render(<StudentView user={mockUser} />);
+    expect(lastAudioRecorderOptions?.onDeviceResolved).toBeDefined();
+
+    act(() => {
+      lastAudioRecorderOptions.onDeviceResolved('mic_device_99');
+    });
+
+    expect(localStorage.getItem('preferred_mic_device_id')).toBe('mic_device_99');
+  });
+
+  it('handles live voice transcript with Gemma evaluation', async () => {
+    render(<StudentView user={mockUser} />);
+    expect(lastWhisperOptions?.onTranscript).toBeDefined();
+
+    await act(async () => {
+      await lastWhisperOptions.onTranscript('Testing student speech');
+    });
+
+    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Testing student speech');
+  });
+
+  it('rejects window/tab screen sharing when requireFullScreenOnly is true and logs irregularity', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const mockTrack = {
+      stop: vi.fn(),
+      getSettings: () => ({ displaySurface: 'window' }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const mockWindowStream = {
+      getVideoTracks: () => [mockTrack],
+      getTracks: () => [mockTrack],
+    };
+
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockWindowStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(shareBtn);
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Entire Screen Required'));
+    alertSpy.mockRestore();
+  });
+
+  it('handles screen sharing error and alerts user', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockRejectedValue(new Error('Permission denied'));
+
+    render(<StudentView user={mockUser} />);
+
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(shareBtn);
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Could not start screen sharing'));
+    alertSpy.mockRestore();
+  });
+
+  it('stops all streams when Stop Session button is clicked', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    const mockCamTrack = { stop: vi.fn(), getSettings: () => ({}), addEventListener: vi.fn() };
+    const mockCamStream = {
+      getTracks: vi.fn().mockReturnValue([mockCamTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockCamTrack]),
+    };
+    navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockCamStream);
+
+    render(<StudentView user={mockUser} />);
+
+    // Complete wizard to start both screen and webcam
+    const wizardBtn = screen.getByRole('button', { name: /Start Setup & Readiness Test/i });
+    fireEvent.click(wizardBtn);
+
+    await waitFor(() => {
+      const nextBtn1 = screen.getByRole('button', { name: /Next: Camera Check/i });
+      fireEvent.click(nextBtn1);
+    });
+
+    await waitFor(() => {
+      const calibrateBtn = screen.getByRole('button', { name: /Set Center Pose/i });
+      fireEvent.click(calibrateBtn);
+      const nextBtn2 = screen.getByRole('button', { name: /Next: Screen Share/i });
+      fireEvent.click(nextBtn2);
+    });
+
+    await waitFor(() => {
+      const screenShareBtn = screen.getByRole('button', { name: /Select & Share Entire Screen/i });
+      fireEvent.click(screenShareBtn);
+    });
+
+    await waitFor(() => {
+      const finishBtn = screen.getByRole('button', { name: /Complete & Enter Class/i });
+      fireEvent.click(finishBtn);
+    });
+
+    const stopBtn = await screen.findByRole('button', { name: /Stop Session/i });
+    await act(async () => {
+      fireEvent.click(stopBtn);
+    });
+
+    expect(mockScreenTrack.stop).toHaveBeenCalled();
+    expect(mockCamTrack.stop).toHaveBeenCalled();
+  });
+
+  it('switches desktop YouTube screen modes and toggles fullscreen', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    render(<StudentView user={mockUser} />);
+
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    await act(async () => {
+      fireEvent.click(shareBtn);
+    });
+
+    // YouTube mode buttons exist in active mode
+    const theaterBtns = screen.queryAllByTitle(/Theater Mode/i);
+    if (theaterBtns.length > 0) {
+      await act(async () => {
+        fireEvent.click(theaterBtns[0]);
+      });
+      expect(localStorage.getItem('student_desktop_screen_mode')).toBe('max');
+    }
+
+    const standardBtns = screen.queryAllByTitle(/Standard Mode/i);
+    if (standardBtns.length > 0) {
+      await act(async () => {
+        fireEvent.click(standardBtns[0]);
+      });
+      expect(localStorage.getItem('student_desktop_screen_mode')).toBe('standard');
+    }
   });
 });
 

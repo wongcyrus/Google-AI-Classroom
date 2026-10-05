@@ -290,7 +290,7 @@ npm run dev
 The app will start at `http://localhost:5173`. You can log in with your configured instructor or student account.
 
 > [!IMPORTANT]
-> **Google Chrome Enforcement**: Students are strictly required to use Google Chrome on desktop for full Web Worker, LiteRT Whisper/Gemma STT, and screen-sharing API support. Instructors may use any modern browser.
+> **Google Chrome Enforcement**: Students are strictly required to use Google Chrome on desktop for full Web Worker, LiteRT Whisper/Gemma Speech Recognition, and screen-sharing API support. Instructors may use any modern browser.
 
 ---
 

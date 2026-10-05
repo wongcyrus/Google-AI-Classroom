@@ -289,7 +289,7 @@ flowchart LR
 
 | Modality & Setting | Configuration UI Surface | Firestore Field | Runtime Inference Engine | Purpose & Customization Options |
 | :--- | :--- | :--- | :--- | :--- |
-| **Live Subtitles & Translation** | Class Settings (Sec 8) & Live Subtitle Modal | `subtitlePrompt` & `subjectDomain` | Cloud Function `translateTeacherSpeech` / Chrome Nano / Gemini Live | Select discipline (Healthcare, CS, Business, etc.) and custom prompt preserving technical glossaries. |
+| **Live Subtitles & Multilingual Captions** | Class Settings (Sec 8) & Live Subtitle Modal | `subtitlePrompt` & `subjectDomain` | Cloud Function `processTeacherSpeechSubtitles` / Chrome Nano / Gemini Live | Select discipline (Healthcare, CS, Business, etc.) and custom prompt preserving technical glossaries. |
 | **On-Device Gemma Voice Intent** | Class Settings (Sec 6) | `gemmaIntentPrompt` | Edge Web Worker `litertGemma.worker.js` (LiteRT-LM Gemma 4 E2B) | Detects vocal exam collusion (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`) 100% on-device. |
 | **Live Image & Screen Invigilation** | Class Settings (Sec 6) | `liveImagePrompt` | Cloud Function `analyzeFaceFallbackFlow` (Gemini Vision) | Guides visual fallback checks (face presence, looking away, suspicious screen states) with template tags (`{{studentEmail}}`, etc.). |
 | **Bingo Active Presence Challenge** | Class Settings (Sec 5) | `bingoPrompt` | Cloud Functions `resolveBingoQuestion` & `generateBingoQuestionBank` | Shapes presence verification questions from teacher screen, student screen, or question bank generator (`{{topic}}`, `{{count}}`). |
@@ -299,14 +299,14 @@ flowchart LR
 
 > 📘 **Architectural Deep Dive:** For an exhaustive code trace of all prompt execution paths, template variable tags, and fallback hierarchies, refer to [**Teacher AI Prompt & Discipline Domain Configuration Architecture**](./teacher-ai-prompt-configuration-guide.md).
 
-### Live Subtitles, Translation & Course Discipline Domain
-In **Class Settings ➔ Section 8: Live Subtitles, Translation & Subject Domain** and in the live **Monitor View (`🎙️ Subtitle Settings`)**:
+### Live Subtitles, Captions & Course Discipline Domain
+In **Class Settings ➔ Section 8: Live Subtitles, Captions & Subject Domain** and in the live **Monitor View (`🎙️ Subtitle Settings`)**:
 - **Course Subject / Discipline Domain**: Select your field of study (`Computer Science & Software Development`, `Business, Finance & Accounting`, `Design, Media & Visual Arts`, `Healthcare, Nursing & Medical Sciences`, `Engineering & Construction`, `Hospitality, Culinary & Tourism`, `Languages, Humanities & Social Sciences`, `General Studies & Interdisciplinary`, or `Custom Subject Domain...`).
-  - *Prevents IT Bias*: Ensures speech recognizers and translation engines preserve medical, financial, culinary, or engineering terminologies instead of mistranslating them as software keywords.
-- **Live Subtitle & Speech Translation AI Prompt**: Click **`Select Subtitle Translation Prompt`** to choose or write a specialized translation system prompt.
-  - Custom prompts can specify translation tone, code-switching guidelines (e.g. colloquial Cantonese with English technical acronyms), and glossary definitions.
+  - *Prevents IT Bias*: Ensures speech recognizers and multilingual captioning engines preserve medical, financial, culinary, or engineering terminologies instead of misinterpreting them as software keywords.
+- **Live Subtitle & Speech Subtitle AI Prompt**: Click **`Select Subtitle subtitle prompt`** to choose or write a specialized multilingual captioning system prompt.
+  - Custom prompts can specify multilingual captioning tone, code-switching guidelines (e.g. colloquial Cantonese with English technical acronyms), and glossary definitions.
   - In the live **Monitor View**, click **`✏️ Edit Prompt`** inside the Subtitle Control Modal to tweak prompt instructions on the fly and click **`Apply Custom Instructions`**—changes take effect immediately for all students without stopping the broadcast.
-  - **Saved with Class**: The selected domain and translation prompt are saved directly to the class document in Cloud Firestore (`classes/{classId}`), persisting across all lectures and automatically synchronizing to all co-instructors in real time.
+  - **Saved with Class**: The selected domain and subtitle prompt are saved directly to the class document in Cloud Firestore (`classes/{classId}`), persisting across all lectures and automatically synchronizing to all co-instructors in real time.
 
 ---
 
@@ -436,7 +436,7 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
 - **Zero Login Friction**: When an attendee scans the QR code, the public viewer automatically logs them in anonymously (`signInAnonymously`).
 - **Automatic PIN Verification**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly without needing to manually type the PIN. (If accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed).
 - **Responsive Screen Viewing**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens.
-- **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native translation picker (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
+- **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native multilingual captioning picker (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
 - **Privacy & Isolation**: Attendees have **zero access** to any other classroom collections, student names, grades, submissions, or teacher administrative tools.
 
 ---

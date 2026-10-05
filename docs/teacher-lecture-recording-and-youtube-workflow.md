@@ -7,17 +7,17 @@ In classroom instruction—especially technical engineering and software develop
 ### Why Real-Time Subtitles Are NOT Reused for Lecture Recordings
 Real-time live subtitles operate under extreme latency constraints (<1.5s per chunk). Consequently:
 - Subtitles are produced from 15–30 second moving-window chunks with Voice Activity Detection (VAD) cutoffs.
-- Chunks lack global discourse context, leading to sentence fragmentation, mistranslated technical terminology, and incomplete clauses.
+- Chunks lack global discourse context, leading to sentence fragmentation, misinterpreted technical terminology, and incomplete clauses.
 - Minor network fluctuations or packet jitter during live broadcast can cause dropped or desynchronized lines.
 
-For high-stakes archive recordings and public/unlisted **YouTube publishing**, the system employs **Full-Context Offline Gemini Transcription & Translation**:
+For high-stakes archive recordings and public/unlisted **YouTube publishing**, the system employs **Full-Context Offline Gemini Transcription & multilingual captioning**:
 1. The teacher records the complete lecture (clean video + mixed high-fidelity microphone and desktop audio).
 2. The recordings are uploaded in parallel to Cloud Storage (`lecture.webm` for video and `lecture_audio.webm` for pure audio).
 3. An offline Cloud Function passes the **pure audio track (`lecture_audio.webm`)** to Google Gemini. **Video frames are strictly never sent to Gemini for captioning**, eliminating up to 90% token waste and preventing premature context exhaustion. Pure audio consumes only 32 tokens/second (~115,200 tokens/hour), fitting comfortably within Gemini's processing limits.
 4. The system employs the **Whole-Audio Single-Pass Architecture (`gemini-3.5-flash-lite`)** as its definitive subtitle and CC engine:
    - Ingests the entire pure audio track via `gs://` Cloud Storage URI in a single pass without any audio slicing or chunking.
    - Leverages Gemini's 1,000,000+ token context window, zero reasoning token overhead (`thinkingConfig: { thinkingBudget: 0 }`), and `maxOutputTokens: 65536`.
-   - Generates verbatim Hong Kong CS code-switching transcription (Cantonese + English technical terms), synchronized multilingual translations (`en`, `zh-Hant`, `zh-Hans`), and YouTube chapter milestones in one unified operation.
+   - Generates verbatim Hong Kong CS code-switching transcription (Cantonese + English technical terms), synchronized multilingual subtitles (`en`, `zh-Hant`, `zh-Hans`), and YouTube chapter milestones in one unified operation.
 5. The video remains clean (unburned pixels), while standalone standard `.vtt` (in-browser HTML5 playback with synchronized `onComplete` track attachment and zero-duration cue guards) and `.srt` (YouTube Creator Studio upload) files are generated.
 
 ---
@@ -71,7 +71,7 @@ Student data and teacher data serve fundamentally different educational purposes
                                                          ▼
                                        [Gemini 3.5 Transcribe / 3.5 Flash via gs:// URI]
                                          ├── Verbatim Cantonese/English Transcript (Single-Pass, No Slicing)
-                                         ├── Multilingual Translations (en, zh-Hant, zh-Hans)
+                                         ├── multilingual subtitles (en, zh-Hant, zh-Hans)
                                          └── YouTube Chapter Markers & Metadata
                                                          │
                                                          ▼ (Cloud Storage write)
@@ -178,14 +178,14 @@ flowchart TB
         B1["Teacher Live Microphone Input"] --> B2["AudioWorklet Processor\n(Downsample to 16kHz PCM)"]
         B2 --> B3["Voice Activity Detection (VAD)\n(Energy Threshold Detection)"]
         B3 --> B4["Fragmented Moving Windows\n(15-30s Speech Chunks)"]
-        B4 --> B5["On-Device Whisper WASM or\ntranslateTeacherSpeech Cloud Function"]
-        B5 --> B6["Sentence-by-Sentence Translation\n(Sub-second to 1.5s latency)"]
+        B4 --> B5["On-Device Whisper WASM or\nprocessTeacherSpeechSubtitles Cloud Function"]
+        B5 --> B6["Sentence-by-Sentence multilingual captioning\n(Sub-second to 1.5s latency)"]
         B6 --> B7["Firestore / WebRTC Live Sync\n(classes/{classId}/liveSubtitles/current)"]
         B7 --> B8["Student Screen Live Subtitle Overlay\n(Immediate live viewing during speech)"]
     end
 ```
 
-#### Detailed Sequence: Whole-Class Voice STT & Translation Workflow
+#### Detailed Sequence: Whole-Class voice recognition & multilingual captioning Workflow
 
 ```mermaid
 sequenceDiagram
@@ -211,8 +211,8 @@ sequenceDiagram
     Note over CF,Gemini: Whole class voice passed as ONE continuous URI (no segmenting)
     CF->>Gemini: generateWithResilience(prompt, media: "gs://bucket/.../lecture_audio.webm")
     Note over Gemini: Ingests entire audio into 1M token context window
-    Note over Gemini: Performs full-lecture STT, code-switching preservation, translations, and chapters
-    Gemini-->>CF: LLM JSON/Text: { chapters, segments: [ { start, end, original, translations } ] }
+    Note over Gemini: Performs full-lecture speech recognition, code-switching preservation, subtitles, and chapters
+    Gemini-->>CF: LLM JSON/Text: { chapters, segments: [ { start, end, original, subtitles } ] }
     CF->>CF: parseAiJsonResponse() (clean trailing commas & repair truncated JSON)
     CF->>CF: calibrateSubtitleTimeline() (stretches ~1.68x Gemini timescale drift to match probed duration 1:1)
     CF->>CF: buildWebVTT() & buildSRT() with non-zero duration cue guards
@@ -234,7 +234,7 @@ sequenceDiagram
 
 2. **Accurate Code-Switching & Technical Term Retention**:
    - Spoken Cantonese in Hong Kong higher education is heavily interspersed with English software engineering jargon (e.g., `useState`, `Docker`, `Kubernetes`, `async/await`, `reducer`).
-   - Fragmented speech chunks lack context, causing generic STT engines to mistranslate English terms into phonetic Cantonese/Mandarin homophones.
+   - Fragmented speech chunks lack context, causing generic speech recognition engines to misinterpret English terms into phonetic Cantonese/Mandarin homophones.
    - Whole-class audio ingestion gives Gemini the macro context of the entire technical lecture, ensuring that English programming keywords, variable names, and terminal commands are retained verbatim in code blocks and subtitles.
 
 3. **Macro-Structure & YouTube Chapter Extraction**:
@@ -260,7 +260,7 @@ sequenceDiagram
 | **YouTube Chapter Markers** | **Yes**: Automatically synthesized with timestamps | **No**: Impossible from isolated segments |
 | **Code-Switching Accuracy** | **Highest**: Full technical domain context retained | Good: Dependent on short-window prompt hinting |
 | **File Artifacts Produced** | `subtitles_*.vtt`, `subtitles_*.srt`, `youtube_metadata.txt` | Temporary Firestore live documents (`liveSubtitles/current`) |
-| **Underlying Engine** | Google Gemini 3.8 Flash / 3.5 Flash-Lite (Vertex AI) | LiteRT Whisper WASM / Chrome Built-in AI / `translateTeacherSpeech` |
+| **Underlying Engine** | Google Gemini 3.8 Flash / 3.5 Flash-Lite (Vertex AI) | LiteRT Whisper WASM / Chrome Built-in AI / `processTeacherSpeechSubtitles` |
 | **FinOps Cost Model** | 1 multimodal API invocation per lecture (~$0.01 – $0.03) | Real-time sentence calls ($0.00 for client model) |
 
 ---
@@ -358,7 +358,7 @@ When conducting standard university or vocational lectures lasting **60 to 90 mi
 | **Maximum Supported Duration** | **~8.5 to 9.5 Hours** in a single call | **~45 to 55 Minutes** (Google Vertex official ceiling) | Pure audio easily covers entire half-day workshops |
 | **Empirical 37-min Benchmark** | **55,450 input tokens** | **~650,000 input tokens** | 91.5% input token reduction |
 | **Upload Payload & Memory** | **~25 MB** (Opus audio stream) | **~1.2 GB** (VP9/H.264 video container) | Zero risk of Cloud Functions 2GiB OOM |
-| **Speech Context & Accuracy** | 100% focused on acoustic speech | Distracted by visual slide changes & webcam frames | Pure audio yields superior STT and timestamp precision |
+| **Speech Context & Accuracy** | 100% focused on acoustic speech | Distracted by visual slide changes & webcam frames | Pure audio yields superior Speech Recognition and timestamp precision |
 
 > [!IMPORTANT]
 > **Why Video Frames Are NEVER Sent into Gemini for Captions**:
@@ -380,9 +380,9 @@ A common misconception is that Gemini has a hard single-turn limit of 8,192 outp
 - **Execution Time**: **174.5 seconds (~2.9 minutes)** in a single pass.
 - **Output Artifacts**: 268 continuous, uninterrupted subtitle segments from `0.5s` to `3653s` covering:
   - Original verbatim Cantonese/English transcript
-  - English (`en`) translation
-  - Traditional Chinese (`zh-Hant`) translation
-  - Simplified Chinese (`zh-Hans`) translation
+  - English (`en`) multilingual captioning
+  - Traditional Chinese (`zh-Hant`) multilingual captioning
+  - Simplified Chinese (`zh-Hans`) multilingual captioning
   - 10 structured YouTube chapter markers (`00:00 - Introduction & Course Overview` to `37:20 - SQL vs NoSQL Databases`)
 
 ---
@@ -400,7 +400,7 @@ flowchart TD
     A["Clean Lecture Audio<br/>gs://.../lecture_audio.webm"] --> B["Gemini 3.5 Flash-Lite<br/>Whole-Audio Single Pass<br/>thinkingBudget: 0 (No Reasoning Token Waste)"]
     B --> C["400+ Master Sentence-Level Cues<br/>(2 to 6s cadence, verbatim Cantonese/English)"]
     B --> D["YouTube Chapter Milestones<br/>(4 to 10 chapters with timestamps)"]
-    C --> E["Multilingual Translation Alignment<br/>en, zh-Hant, zh-Hans (Identical Timestamps)"]
+    C --> E["multilingual captioning Alignment<br/>en, zh-Hant, zh-Hans (Identical Timestamps)"]
     E --> F["Zero-Duration Cue Duration Guard<br/>(Forces min 1.8s duration so browser players don't discard cues)"]
     F --> G["Standard .vtt & .srt Track Generation"]
     G --> H["YouTube Creator Studio CC & Description Package"]

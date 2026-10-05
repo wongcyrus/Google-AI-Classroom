@@ -207,7 +207,7 @@ flowchart TD
         - Gaze Yaw / Pitch Deviation
         - EAR (Drowsiness) & MAR (Speech)"]
         M3 --> W2["litertWhisper.worker.js
-        - Multilingual Speech-to-Text
+        - Multilingual Speech Recognition
         - Cantonese / Mandarin / English"]
         W2 --> W3["litertGemma.worker.js
         - Zero-Cloud Edge LLM

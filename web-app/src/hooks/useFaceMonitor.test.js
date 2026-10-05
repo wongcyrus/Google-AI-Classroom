@@ -459,5 +459,181 @@ describe('useFaceMonitor Hook', () => {
     expect(result.current.faceStatus).toBe('talking');
     mockCalculateMAR.mockReturnValue(0.15);
   });
+
+  it('handles preloadModel trigger and progress callback', async () => {
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        aiMonitoringMode: 'client_only',
+        preloadClientAi: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.preloadModel();
+    });
+
+    expect(result.current.loadingProgress).toBe(100);
+    expect(result.current.isModelCached).toBe(true);
+  });
+
+  it('handles aiMonitoringMode disabled and cloud_only', async () => {
+    const { result: disabledResult } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        aiMonitoringMode: 'disabled',
+      })
+    );
+    expect(disabledResult.current.clientAiStatus).toBe('disabled');
+    expect(disabledResult.current.faceStatus).toBe('disabled');
+
+    const { result: cloudResult } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        aiMonitoringMode: 'cloud_only',
+      })
+    );
+    expect(cloudResult.current.clientAiStatus).toBe('cloud_fallback');
+    expect(cloudResult.current.faceStatus).toBe('cloud_fallback');
+  });
+
+  it('calibrates baseline and resets calibration properly', async () => {
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    act(() => {
+      result.current.calibrateBaseline();
+    });
+    expect(result.current.isCalibrated).toBe(true);
+
+    act(() => {
+      result.current.resetCalibration();
+    });
+    expect(result.current.isCalibrated).toBe(false);
+  });
+
+  it('detects head pitch down and up anomalies', async () => {
+    // Pitch Down
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [createMockLandmarks(0, 0.25)] });
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+        debounceSeconds: 0,
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.faceStatus).toBe('looking_away');
+  });
+
+  it('detects iris gaze shift away from screen', async () => {
+    const irisAwayLandmarks = createMockLandmarks();
+    // Shift left and right iris centers towards the extreme right
+    irisAwayLandmarks[468] = { x: 0.49, y: 0.4, z: 0 };
+    irisAwayLandmarks[473] = { x: 0.65, y: 0.4, z: 0 };
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [irisAwayLandmarks] });
+
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+        debounceSeconds: 0,
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.faceStatus).toBe('looking_away');
+  });
+
+  it('creates incident and clears violation when normal posture resumes', async () => {
+    // Trigger anomaly
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [createMockLandmarks(0.35, 0)] });
+    const { result } = renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: { id: 'class_1' },
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+        debounceSeconds: 0,
+        showMeshOverlay: true,
+      })
+    );
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(result.current.faceStatus).toBe('looking_away');
+
+    // Return to normal
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [createMockLandmarks(0, 0)] });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+
+    expect(result.current.faceStatus).toBe('normal');
+  });
 });
 

@@ -311,7 +311,7 @@ flowchart TD
  
 To avoid re-downloading large AI models on every session, the client uses the browser's Cache Storage API and Persistent Storage permission:
  
-1. **Whisper STT Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
+1. **Whisper Speech Engine Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
 2. **Gemma 4 E2B Model (`gemma-4-e2b.bin` ~1.5 GB)**:
    - Cached in Cache Storage namespace `litert-gemma-cache-v1`.
    - Background worker (`litertGemma.worker.js`) checks `caches.open('litert-gemma-cache-v1')` before initiating network download.

@@ -92,7 +92,7 @@
 3. **Pipeline Hardening for Future Recordings**:
    - **Resilient JSON Parser (`parseAiJsonResponse`)**: Handles markdown fences, cleans control characters, cleans iterative trailing commas, and auto-repairs truncated JSON objects/arrays if an LLM response is cut off at token limits.
    - **Expanded `isRetryable` Network Recovery**: Treats `fetch failed`, `socket`, `timeout`, `504`, `SyntaxError`, and `JSON5` as retryable, triggering automatic exponential backoff and fallback to `gemini-3.5-flash-lite`.
-   - **Automatic Post-STT Timescale Calibration (`calibrateSubtitleTimeline`)**: Automatically detects if `rawMaxEnd < totalDuration` (ratio > 1.05) and linearly stretches cues and chapters to 100% 1:1 sync with probed media length.
+   - **Automatic Post-Speech Recognition Timescale Calibration (`calibrateSubtitleTimeline`)**: Automatically detects if `rawMaxEnd < totalDuration` (ratio > 1.05) and linearly stretches cues and chapters to 100% 1:1 sync with probed media length.
 
 ## 0.0.0.0.0.0.0.0.0.0 Crash-Tolerant Merging, Gap Detection & Continuous Automation Pipeline
 
@@ -180,14 +180,14 @@
 
 ### Root Cause Analysis & Architectural Discoveries:
 1. **Gemini 3.5 Transcribe Integration & Boundary Condition**:
-   - Google's dedicated speech-to-text foundation model (`gemini-3.5-transcribe-preview` on Vertex AI) offers native word-level timestamps, speaker diarization, and smart formatting with ~2.6% Word Error Rate.
+   - Google's dedicated Speech Recognition foundation model (`gemini-3.5-transcribe-preview` on Vertex AI) offers native word-level timestamps, speaker diarization, and smart formatting with ~2.6% Word Error Rate.
    - For audio <= 30 minutes (<= 45,000 audio tokens), the system prefers `gemini-3.5-transcribe-preview`.
    - For lectures > 30 minutes, Vertex AI returns `400 Bad Request` (`exceeds maximum 45000 tokens`). The resilience layer seamlessly cascades to `gemini-3.5-flash-lite` / `gemini-2.5-flash` in a single pass without audio slicing.
 2. **The Root Cause of Single-Pass Stalls on Gemini 2.5 Flash (`thinkingBudget: 0`)**:
    - In single-pass generation on Gemini 2.5 models, the model generated `thoughtsTokens: 62,911`, burning 62,911 tokens on internal reasoning, which consumed the entire 65,536 token budget and caused the output JSON to truncate midway with syntax errors.
    - Setting `config: { maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } }` disables internal reasoning tokens. The entire 65,536 token capacity is dedicated to verbatim sentence-level cues (2 to 6s pacing) covering the full lecture from start to finish.
-3. **Decoupled Master Transcription from Multilingual Translation**:
-   - Transcribing 37 minutes of Cantonese speech and simultaneously generating 4 translations in one massive JSON response exceeds 70,000 output tokens.
+3. **Decoupled Master Transcription from multilingual captioning**:
+   - Transcribing 37 minutes of Cantonese speech and simultaneously generating 4 subtitles in one massive JSON response exceeds 70,000 output tokens.
    - Decoupled into Step 1 (Master Audio -> Cues) and Step 2 (Cues -> `en`, `zh-Hant`, `zh-Hans`), locking identical timestamps with zero cross-lingual drift.
 4. **Zero Slicing / Chunking**:
    - Removed all `ffmpeg` audio slicing and chunking loops. The complete audio file is ingested in a single pass via Cloud Storage URI (`gs://.../lecture_audio.webm`). Pure audio uses only 32 tokens/second (~115,200 tokens/hour).
@@ -342,7 +342,7 @@
 - Backend Passkey Cloud Functions: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
 - Enrolled Class Roster: [`EnrolledRosterModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.jsx), [`EnrolledRosterModal.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.css), [`EnrolledRosterModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/EnrolledRosterModal.test.jsx), [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx)
 - Recording Reconciler: [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js), [`functions/ai_flows/processLectureSubtitlesHandler.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitlesHandler.test.js), [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
-- Bilingual Subtitle Translation: [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js) & [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js)
+- Bilingual Subtitle multilingual captioning: [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js) & [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js)
 
 ### 0.0.1 Dynamic Rotating QR Code Lecture Attendance
 - **Anti-Proxy Protection**: Generates HMAC-SHA256 encrypted time-rotating tokens every 5–10 seconds displayed on the classroom lecture projector. Prevent students from photographing or messaging static QR codes to absent peers outside the lecture hall.
@@ -357,8 +357,8 @@
 - **Cloud Storage Auto-Recovery**: `handleReconcileLectureRecordings` scans for un-finalized recording documents and checks for existing video files and VTT subtitles in Cloud Storage, automatically restoring and linking them without manual database editing.
 - **On-Demand & Automatic Triggers**: `LectureRecordingsView` automatically prompts auto-recovery when unfinalized recordings older than 2 minutes are detected, and provides a manual `🔄 Auto-Recover from Cloud Storage` action.
 
-### 0.0.4 Speech Translation Quality & Code-Switching
-- **Cantonese & English Translation**: Improved prompts and normalized language key matching across Gemini 3.8 Flash Cloud Functions and LiteRT Gemma Web workers to ensure complete translation of colloquial Cantonese phrases and code-switching into natural English and Standard Chinese.
+### 0.0.4 Speech Caption Quality & Code-Switching
+- **Cantonese & English multilingual captioning**: Improved prompts and normalized language key matching across Gemini 3.8 Flash Cloud Functions and LiteRT Gemma Web workers to ensure complete multilingual captioning of colloquial Cantonese phrases and code-switching into natural English and Standard Chinese.
 
 ### 0.0.5 Tablet & iPad Passkey Restriction & Flip/Foldable Phone Support
 - **Handheld Smartphone Exclusivity**: Updated `browserDetection.js` with `isTabletDevice()` and `isHandheldPhone()` to distinguish iPads and Android tablets from handheld smartphones using multi-touch detection (`navigator.maxTouchPoints > 1` + Mac UA on iPadOS) and the Android `Mobile` token convention.
@@ -471,7 +471,7 @@
 - Mobile-first, responsive dark theme with zero user account login required (`signInAnonymously`).
 - Auto-verifies the 4-digit PIN when scanned via QR code query parameter (`?pin=XXXX`).
 - Displays live screen frames with pinch/zoom controls (`1x`, `1.5x`, `2x`).
-- Displays real-time bilingual subtitle overlay with client-side translation language selector supporting 9 languages.
+- Displays real-time bilingual subtitle overlay with client-side multilingual captioning language selector supporting 9 languages.
 - Header and footer navigation bars are suppressed to maintain an immersive viewing experience.
 
 ### 1.4 Screen Broadcast Defaults & Sub-Tab Navigation
@@ -501,7 +501,7 @@
 
 ### 1.3 Distraction-Free Zen Fullscreen Writing Mode (`⛶ Zen Mode`)
 - **Immersive Writing Canvas**: Toggling `⛶ Zen Mode` transforms the prompt editor into a fixed `100vw × 100vh` full-screen overlay with zero browser distractions.
-- **Dedicated Controls**: Docked top toolbar with quick save, duplicate, AI optimization, and one-click `✕ Exit Zen` button (or Escape key), perfect for authoring lengthy practical rubrics or multi-language translation dictionaries.
+- **Dedicated Controls**: Docked top toolbar with quick save, duplicate, AI optimization, and one-click `✕ Exit Zen` button (or Escape key), perfect for authoring lengthy practical rubrics or multi-language multilingual captioning dictionaries.
 
 ### 1.4 Ergonomic Two-Tier Form & Collapsible Permissions Drawer
 - **Compact Top Action Bar**: Prompt name input and all action buttons (`Save Changes` / `Save Prompt`, `Duplicate`, `Delete`, `✨ Optimize`, `Undo`, and `Zen Mode`) are docked into a sleek, space-efficient horizontal header.
@@ -513,7 +513,7 @@
   - `🖼️ Image Prompts (N)`
   - `🎬 Video Prompts (N)`
   - `🎙️ Voice / Audio Prompts (N)`
-  - `🌐 Translation Prompts (N)`
+  - `🌐 Subtitle Prompts (N)`
   - `📋 Task Rubric Prompts (N)`
 - **Dynamic Counters**: Category tab buttons feature live count badges showing exactly how many prompts are saved in each category.
 - **Scope Pills & Search Clear**: Saved prompt list items render scope badges (e.g. `[Lab Rubrics]`, `[Gemma Voice]`, `[Dual Subtitles]`), and the search box features a quick-clear (`✕`) button.
@@ -521,7 +521,7 @@
 ### 1.6 Two-Tier Prompt Governance Architecture: System Templates vs. Instructor Public Prompts
 - **Problem Statement**:
   - The previous design conflated **Authority/Origin** with **Visibility Scope**: it treated `accessLevel: 'public'` as strictly meaning "pre-seeded official system template", thereby barring instructors from choosing or saving `public` prompts.
-  - This contradicted real-world collaborative teaching: instructors creating high-quality prompts (e.g. specialized translation glossaries, assessment rubrics) frequently want to share them school-wide ("public"), while still retaining ownership of their own work.
+  - This contradicted real-world collaborative teaching: instructors creating high-quality prompts (e.g. specialized multilingual captioning glossaries, assessment rubrics) frequently want to share them school-wide ("public"), while still retaining ownership of their own work.
 - **Two-Tier Governance Model (Guaranteed Zero Breaking Changes)**:
   - Preserves the `accessLevel: ['private', 'shared', 'public']` enum across all existing Firestore queries (`where('accessLevel', '==', 'public')`) and selector dropdowns without requiring database migrations.
   - **Tier 1: Official System Templates (`isSystem: true`, `owner: 'system'`, `accessLevel: 'public'`)**:
@@ -667,12 +667,12 @@ The 1-minute schedule operates **100% within Google Cloud's permanent Free Tier*
 
 ---
 
-## 4. Live Subtitles & Multilingual Translation
+## 4. Live Subtitles & Multilingual Captions
 
 ### 4.1 3-Tier Selectable Architecture
 Implemented three operation modes in `TeacherSubtitleControlModal.jsx` and `useTeacherLiveSubtitles.js`:
-- **Mode 1: Client Model ($0.00)**: Browser-local LiteRT Whisper WASM STT worker + Chrome Built-in AI (`window.Translator` powered by Gemini Nano). Zero cloud cost, 100% privacy-compliant.
-- **Mode 2: Server Model (Batched)**: Local LiteRT Whisper STT worker + Cloud Function `translateTeacherSpeech` using `gemini-3.8-flash` (with `gemini-3.5-flash-lite` fallback). Delivers high-precision translations preserving code keywords into 7 languages (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
+- **Mode 1: Client Model ($0.00)**: Browser-local LiteRT Whisper WASM speech worker + Chrome Built-in AI (`window.LanguageModel` powered by Gemini Nano). Zero cloud cost, 100% privacy-compliant.
+- **Mode 2: Server Model (Batched)**: Local LiteRT Whisper Speech Engine Worker + Cloud Function `processTeacherSpeechSubtitles` using `gemini-3.8-flash` (with `gemini-3.5-flash-lite` fallback). Delivers high-precision subtitles preserving code keywords into 7 languages (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
 - **Mode 3: Gemini Live Streaming**: Full bidirectional streaming audio via WebSockets using `gemini-3.1-flash-live-preview` (at regional `us-central1`), debounced to a 350ms Firestore sync buffer with instant student rendering.
 
 ### 4.2 Resilience, Circuit Breakers & Token Telemetry
@@ -849,7 +849,7 @@ When a student has concurrent overlapping classes (or during back-to-back transi
 
 ---
 
-## 13. Auto-Bingo Screen Vision Non-Fallback & Context-Aware Subtitle Translation
+## 13. Auto-Bingo Screen Vision Non-Fallback & Context-Aware Subtitle multilingual captioning
 
 - **Commit Date**: September 2026
 - **Architecture & Technical Details**:
@@ -860,28 +860,28 @@ When a student has concurrent overlapping classes (or during back-to-back transi
        - `generateBingoChallenge`: If `sharedQuestionData === null` for `teacher_screen`, cleanly skips challenge creation and returns `{ success: false, skipped: true, reason: 'teacher_screen_not_broadcasting', message: 'Teacher screen broadcast frame is unavailable. Skipped vision challenge without fallback.' }`.
        - For `student_screen`: If a student has no active screen capture, logs and skips only that student. If all targeted students have no screens, returns `{ success: true, skipped: true, createdCount: 0, reason: 'no_screens_available' }`.
        - `handleProcessBingoJob`: When `challengeRes?.skipped` is true, updates the `bingoJobs/{jobId}` document status to `skipped_no_screen_available` with `skippedReason` and `totalStudentsTargeted: 0`.
-  2. **Multi-Turn Preceding Context for Real-Time Subtitle Translation**:
-     - **Rationale**: Real-time STT delivers speech sentence-by-sentence. Without conversational history, LLMs struggle to resolve pronouns (e.g. "it", "they", "this", "佢哋") and maintain consistent translation of domain-specific terminology across sequential utterances.
+  2. **Multi-Turn Preceding Context for Real-Time Subtitle multilingual captioning**:
+     - **Rationale**: Real-time Speech Recognition delivers speech sentence-by-sentence. Without conversational history, LLMs struggle to resolve pronouns (e.g. "it", "they", "this", "佢哋") and maintain consistent multilingual captioning of domain-specific terminology across sequential utterances.
      - In [`subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js):
-       - Extended `translateTeacherSpeech` to accept an optional `historyText` parameter (string or array of preceding utterances).
+       - Extended `processTeacherSpeechSubtitles` to accept an optional `historyText` parameter (string or array of preceding utterances).
        - Formats and injects a dedicated context block into the Gemini prompt:
          ```
-         Preceding Speech History (for conversational context, pronoun resolution, and terminology continuity only; DO NOT translate this section):
+         Preceding Speech History (for conversational context, pronoun resolution, and terminology continuity only; DO NOT generate subtitles for this section):
          - "sentence 1"
          - "sentence 2"
 
-         Current Speech to Translate:
+         Current Speech to generate subtitles for:
          "..."
          ```
-       - Adds explicit prompt rule: *"Translate ONLY the 'Current Speech to Translate', using the Preceding Speech History solely to infer context, resolve pronouns, and maintain technical consistency."*
+       - Adds explicit prompt rule: *"generate subtitles for ONLY the 'Current Speech to generate subtitles for', using the Preceding Speech History solely to infer context, resolve pronouns, and maintain technical consistency."*
      - In [`index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs):
-       - Extracts `historyText` from callable `request.data` and forwards it to `translateTeacherSpeechInternal`.
+       - Extracts `historyText` from callable `request.data` and forwards it to `processTeacherSpeechSubtitlesInternal`.
      - In [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js):
-       - Extracts the most recent 3–4 sentences from `historyBufferRef.current` (`entry.originalText`) and forwards them under `historyText` when invoking `translateTeacherSpeech`.
+       - Extracts the most recent 3–4 sentences from `historyBufferRef.current` (`entry.originalText`) and forwards them under `historyText` when invoking `processTeacherSpeechSubtitles`.
   3. **Automated Unit Testing**:
      - In [`bingoFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.test.js): Added test cases verifying `resolveBingoQuestion` returns `null` for missing frames, and `generateBingoChallenge` returns `skipped: true` with `teacher_screen_not_broadcasting`.
      - In [`subtitleFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.test.js): Added test case verifying preceding speech history is formatted and injected into the Gemini model prompt.
-     - In [`useTeacherLiveSubtitles.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.test.js): Added test case verifying `historyText` is passed to subsequent translation calls from the history buffer.
+     - In [`useTeacherLiveSubtitles.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.test.js): Added test case verifying `historyText` is passed to subsequent multilingual captioning calls from the history buffer.
 
 ---
 
@@ -978,7 +978,7 @@ All subsystems have been rigorously validated across automated unit and integrat
   - 1.5-hour WebM screen recording is **~750 MB – 1.25 GB**; safely buffered in 64-bit desktop browsers with 10s timeslices.
   - Uploaded directly via Firebase `uploadBytesResumable`.
   - **Gemini Token Limits**: Audio input for 1.5 hours (~172,800 tokens) consumes only 17.3% of the 1,000,000 input window. However, Gemini has an **8,192 max output token limit per call**. Requesting 4 languages simultaneously for a 1.5h lecture exceeds 22,000 output tokens.
-  - **Recommended YouTube Workflow**: Gemini produces the Master Original + English transcript and YouTube Chapters (~6,800 output tokens, 100% safe within 8k limit). Uploading the resulting `.srt` into YouTube Studio enables YouTube's free, zero-token auto-translation into 50+ languages with perfect timing.
+  - **Recommended YouTube Workflow**: Gemini produces the Master Original + English transcript and YouTube Chapters (~6,800 output tokens, 100% safe within 8k limit). Uploading the resulting `.srt` into YouTube Studio enables YouTube's free, zero-token auto-multilingual captioning into 50+ languages with perfect timing.
 
 ---
 
@@ -988,7 +988,7 @@ All subsystems have been rigorously validated across automated unit and integrat
 In standard lecture recordings lasting 60 to 90 minutes, the composite screen recording (`lecture.webm`) generates a 750 MB – 1.25 GB file. Ingesting this multi-gigabyte video into Gemini 3.8 Flash / 3.5 Flash-Lite solely to transcribe speech and extract chapters incurred severe operational penalties:
 - **Cloud Functions Memory Pressure**: Ingesting or buffering large composite video blobs approached the Cloud Function Gen 2 memory boundary (2 GiB ceiling), risking sudden OOM kills.
 - **Network Bandwidth & Latency**: Transferring ~1.2 GB per lecture from Cloud Storage to Gemini inference endpoints prolonged initial processing latency.
-- **Compute Waste**: Gemini was forced to demux, decode, and discard 5,400+ video frames when only the speech audio track was required for transcription and translation.
+- **Compute Waste**: Gemini was forced to demux, decode, and discard 5,400+ video frames when only the speech audio track was required for transcription and multilingual captioning.
 
 ### 17.2 Technical Implementation: Dual-Recorder Pipeline
 
@@ -1472,9 +1472,9 @@ The Cloud Function (`extractTaskDemoSteps`) was upgraded to support custom promp
   - Generates milestones with balanced point distributions matching the task's `maxScore`.
 - Thoroughly tested with a new unit test in `extractTaskDemoSteps.test.js` verifying that prompt library instructions are passed to Gemini.
 
-### 25.4 Fixed Bug: "Translation Prompts is empty"
-Investigated and resolved the issue where Translation Prompts appeared empty:
-- **Seed Synchronization**: Ensured translation prompts (`live_speech_translation.json`, `lecture_subtitles_refinement.json`) were seeded into both `it114115-dev-2026` and `it114115-2627` Firestore collections.
+### 25.4 Fixed Bug: "Subtitle Prompts is empty"
+Investigated and resolved the issue where Subtitle Prompts appeared empty:
+- **Seed Synchronization**: Ensured Subtitle Prompts (`live_speech_multilingual.json`, `lecture_subtitles_refinement.json`) were seeded into both `it114115-dev-2026` and `it114115-2627` Firestore collections.
 - **Auth Listener Race Condition**: Updated `PromptManagement.jsx` to ensure category tabs wait for authentication initialization before querying user-scoped prompts, ensuring public and system prompts render immediately on first load.
 
 ### 25.5 Dual Deployment & Governance Verification

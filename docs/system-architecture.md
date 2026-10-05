@@ -24,7 +24,7 @@ This document outlines the architectural blueprint, data-flow topology, and tech
 
 The Google AI Classroom is engineered as a **100% serverless, zero-maintenance, hybrid Edge/Cloud AI platform**. Rather than streaming continuous, multi-gigabyte video feeds to expensive cloud GPUs, the architecture implements a **privacy-first, edge-computing paradigm**:
 
-1. **Edge Intelligence First**: Lightweight machine learning models (MediaPipe Iris/Face Mesh, LiteRT Whisper STT, and LiteRT Gemma 4 E2B) execute directly in student browser Web Workers on the client's local CPU/GPU.
+1. **Edge Intelligence First**: Lightweight machine learning models (MediaPipe Iris/Face Mesh, LiteRT Whisper Speech Engine, and LiteRT Gemma 4 E2B) execute directly in student browser Web Workers on the client's local CPU/GPU.
 2. **Event-Driven Cloud Backplane**: Google Cloud Functions Gen 2 (running on Google Cloud Run) ingest asynchronous signals, manage multi-speaker transcription healing, execute two-strike active presence checks via Google Cloud Tasks, and orchestrate map-reduce-map video synthesis.
 3. **Multimodal Frontier Reasoning**: Google Gemini Enterprise Agent Platform (formerly Vertex AI) and the Gemini 3 suite (`gemini-3.7-pro`, `gemini-3.7-flash`, `gemini-3.8-flash`, and `gemini-3.5-transcribe-preview`) provide deep multimodal reasoning and rubric synthesis only when targeted intervention or assessment auditing is required.
 
@@ -62,7 +62,7 @@ graph TD
             F_dispatchScheduledBingoTask["dispatchScheduledBingoTask (onTaskDispatched)"]
             F_processBingoJob["processBingoJob (onTaskDispatched)"]
             F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 3.5 Flash Lite)"]
-            F_translateTeacherSpeech["translateTeacherSpeech (onCall: Gemini 3.5 Flash Lite)"]
+            F_processTeacherSpeechSubtitles["processTeacherSpeechSubtitles (onCall: Gemini 3.5 Flash Lite)"]
             F_processLectureSubtitles["processLectureSubtitles (onCall: Gemini 3.8 Flash)"]
             F_extractTaskDemoSteps["extractTaskDemoSteps (onCall: Practical Tasks AI)"]
             F_evaluateTaskSubmission["evaluateTaskSubmission (onCall & Task: AI Auto-Grading)"]
@@ -183,17 +183,17 @@ The repository is structured as a modular monorepo composed of three decoupled f
 * **Framework**: React 18 SPA bundled with Vite, leveraging route-level code-splitting (`React.lazy`).
 * **Edge Workers**:
   - `faceLandmarker.worker.js`: MediaPipe 468-point 3D facial landmark mesh calculation running at 15–30 FPS on an isolated Web Worker thread.
-  - `litertWhisper.worker.js`: In-browser Speech-to-Text inference via LiteRT (TFLite) Whisper-tiny.
+  - `litertWhisper.worker.js`: In-browser Speech Recognition inference via LiteRT (TFLite) Whisper-tiny.
   - `litertGemma.worker.js`: On-device intent classification via quantized LiteRT Gemma 4 E2B.
 * **Real-Time Data Engine**: Direct, low-latency Firestore listeners (`onSnapshot`) with offline screen frame caching and positive clock-drift tolerances.
 * **Low-Bandwidth Screen Broadcaster**: Lightweight, delta-compressed JPEG canvas streaming for 1-to-many teacher screen sharing without WebRTC server strain.
-* **Live Lecture Subtitles & Translation**: 3-tier selectable pipeline (Client Mode: LiteRT Whisper + Chrome Nano; Server Mode: LiteRT Whisper + Cloud Function Gemini 3.5 Flash-Lite; Gemini Live Mode: Firebase AI Logic WebSocket streaming `gemini-3.1-flash-live-preview`) with 350ms debounced Firestore synchronization to `classes/{classId}/liveSubtitles/current`.
+* **Live Lecture Subtitles & multilingual captioning**: 3-tier selectable pipeline (Client Mode: LiteRT Whisper + Chrome Nano; Server Mode: LiteRT Whisper + Cloud Function Gemini 3.5 Flash-Lite; Gemini Live Mode: Firebase AI Logic WebSocket streaming `gemini-3.1-flash-live-preview`) with 350ms debounced Firestore synchronization to `classes/{classId}/liveSubtitles/current`.
 
 ### 2. Serverless Backend (`functions/`)
 * **Runtime**: Google Cloud Functions Gen 2 running on Google Cloud Run container instances.
 * **Micro-Codebase Isolation**: 7 isolated packages (`ai_flows`, `media_processing`, `auth_triggers`, `storage_triggers`, `scheduled_tasks`, `property_processing`, `attendance`) guaranteeing separate memory configurations (up to 4 GiB for FFmpeg and 2 GiB for Genkit), independent failure domains, and rapid parallel deployments.
 * **Asynchronous Queue Workers**: Cloud Tasks integration via `dispatchBingoRetryTask` providing zero-idle-cost scheduling for 2-strike active presence timeouts.
-* **Multilingual Lecture Translation & Subtitling**: Serverless `translateTeacherSpeech` and `processLectureSubtitles` onCall functions using Gemini 3.8 Flash and Gemini 3.5 Flash-Lite with strict technical term preservation for computer science education.
+* **Multilingual Lecture multilingual captioning & Subtitling**: Serverless `processTeacherSpeechSubtitles` and `processLectureSubtitles` onCall functions using Gemini 3.8 Flash and Gemini 3.5 Flash-Lite with strict technical term preservation for computer science education.
 * **Serverless Lecture Video Concatenation**: High-speed stream-copy FFmpeg remuxing via `mergeLectureRecordings` assembling fragmented lecture recordings into unified master lectures in ~2s, repairing Matroska EBML duration headers and extracting pure Opus audio tracks.
 
 ### 3. Infrastructure & Administration (`terraform/` & `admin/`)
@@ -207,7 +207,7 @@ The repository is structured as a modular monorepo composed of three decoupled f
 | Google Technology | Role in System Architecture | Operational Benefit |
 | :--- | :--- | :--- |
 | **Gemini Enterprise Agent Platform & Gemini 3** | Multimodal video understanding, audio diarization, and lab rubric synthesis | State-of-the-art reasoning across text, code, audio, and visual timelines. |
-| **Firebase AI Logic (`firebase/ai`)** | Gemini Live Multimodal WebSocket bidirectional audio streaming | Sub-second real-time lecture translation with zero teacher client GPU/CPU load. |
+| **Firebase AI Logic (`firebase/ai`)** | Gemini Live Multimodal WebSocket bidirectional audio streaming | Sub-second real-time lecture multilingual captioning with zero teacher client GPU/CPU load. |
 | **Google Cloud Identity Platform** | Blocking authentication triggers (`beforeUserCreated`, `beforeUserSignedIn`) | 4-tier domain hierarchy security, time-gated IP CIDR checks, and role immutability. |
 | **Cloud Firestore** | Real-time NoSQL state database with subcollection hierarchy | Reactive client UI updates, granular security rules, and automatic TTL document expiration. |
 | **Cloud Storage for Firebase** | Scalable object storage for raw screenshots, compressed MP4s, and dossiers | Fine-grained metadata security rules (`resource.metadata.isExam`) and event triggers. |
@@ -226,7 +226,7 @@ To optimize cost, privacy, and responsiveness, computational workloads are parti
 ┌────────────────────────────────────────────────────────┐
 │                   EDGE TIER (Client)                   │
 │  - MediaPipe 3D Mesh (Eye/Mouth Aspect Ratios)         │
-│  - LiteRT Whisper (Acoustic Silence Detection & STT)   │
+│  - LiteRT Whisper (Acoustic Silence Detection & Speech Recognition)   │
 │  - LiteRT Gemma (Prompt-based intent filtering)        │
 │  - Screen capture downscaling (1920x1080p, 0.85 JPEG)  │
 │  - Delta compression diffing for teacher broadcast     │
