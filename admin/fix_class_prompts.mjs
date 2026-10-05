@@ -45,20 +45,28 @@ for (const classDoc of classesSnap.docs) {
     const val = classData[field];
     if (!val || typeof val !== 'object') continue;
 
-    // Matching resolution hierarchy:
-    // 1. By val.id directly
-    // 2. By val.originalId directly
+    // Matching resolution hierarchy prioritizing expected category:
+    // 1. By val.id with expectedCat
+    // 2. By val.originalId with expectedCat
     // 3. By exact name and expected category
-    // 4. By exact name
+    // 4. By val.id directly
+    // 5. By val.originalId directly
+    // 6. By exact name
     let matched = null;
     if (val.id) {
+      matched = libraryPrompts.find((p) => p.id === val.id && p.category === expectedCat);
+    }
+    if (!matched && val.originalId) {
+      matched = libraryPrompts.find((p) => p.id === val.originalId && p.category === expectedCat);
+    }
+    if (!matched && val.name) {
+      matched = libraryPrompts.find((p) => p.category === expectedCat && p.name === val.name);
+    }
+    if (!matched && val.id) {
       matched = libraryPrompts.find((p) => p.id === val.id);
     }
     if (!matched && val.originalId) {
       matched = libraryPrompts.find((p) => p.id === val.originalId);
-    }
-    if (!matched && val.name) {
-      matched = libraryPrompts.find((p) => p.category === expectedCat && p.name === val.name);
     }
     if (!matched && val.name) {
       matched = libraryPrompts.find((p) => p.name === val.name);
@@ -67,22 +75,24 @@ for (const classDoc of classesSnap.docs) {
     if (matched) {
       const needsIdFix = val.id !== matched.id;
       const needsOriginalIdFix = val.originalId !== matched.id;
-      const needsCategoryFix = !val.category || val.category !== matched.category;
+      const needsCategoryFix = val.category !== matched.category || (expectedCat && val.category !== expectedCat);
+      const needsPromptTextFix = !val.promptText && Boolean(matched.promptText);
 
-      if (needsIdFix || needsOriginalIdFix || needsCategoryFix) {
+      if (needsIdFix || needsOriginalIdFix || needsCategoryFix || needsPromptTextFix) {
         console.log(`\nFixing Class [${classId}].${field}:`);
         console.log(`  Name: "${val.name || matched.name}"`);
         console.log(`  id: ${val.id} -> ${matched.id}`);
         console.log(`  originalId: ${val.originalId} -> ${matched.id}`);
         console.log(`  category: ${val.category} -> ${matched.category}`);
+        console.log(`  promptText: ${val.promptText ? 'preserved' : 'hydrated from library'}`);
 
         updates[field] = {
           ...val,
           id: matched.id,
           originalId: matched.id,
           name: val.name || matched.name,
-          category: val.category || matched.category,
-          promptText: val.promptText || matched.promptText,
+          category: matched.category,
+          promptText: val.promptText || matched.promptText || '',
         };
         classModified = true;
         totalRepairedFields++;
