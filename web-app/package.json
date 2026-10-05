@@ -9,6 +9,8 @@
     "build:prod": "vite build --mode production",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=--max-old-space-size=8192 vitest run",
     "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 vitest run --coverage"
@@ -35,7 +37,8 @@
     "read-excel-file": "^9.3.10",
     "recharts": "^3.10.1",
     "uuid": "latest",
-    "write-excel-file": "^4.1.1"
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
@@ -50,8 +53,10 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "0.5.5",
+    "eslint-plugin-sonarjs": "^4.2.2",
     "globals": "^17.11.0",
     "jsdom": "^30.0.1",
+    "typescript": "^5.9.3",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
   }

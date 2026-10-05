@@ -3,10 +3,11 @@ import globals from 'globals';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import sonarjs from 'eslint-plugin-sonarjs';
 
 export default [
   {
-    ignores: ['dist/'],
+    ignores: ['dist/', 'node_modules/'],
   },
   {
     files: ['**/*.{js,jsx}'],
@@ -14,12 +15,23 @@ export default [
       'react': react,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      'sonarjs': sonarjs,
     },
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.browser,
+        ...globals.node,
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
       },
       parserOptions: {
         ecmaFeatures: {
@@ -41,6 +53,13 @@ export default [
       'react/prop-types': 'off',
       'react-refresh/only-export-components': 'warn',
       'no-unused-vars': ['warn', { 'varsIgnorePattern': '^_', 'argsIgnorePattern': '^_' }],
+      'no-empty': ['error', { 'allowEmptyCatch': true }],
+      'sonarjs/no-hook-setter-in-body': 'error',
+      'sonarjs/no-useless-react-setstate': 'warn',
+      'sonarjs/no-dead-store': 'warn',
+      'sonarjs/no-identical-conditions': 'error',
+      'sonarjs/no-all-duplicated-branches': 'error',
+      'sonarjs/no-element-overwrite': 'error',
     },
   },
 ];
