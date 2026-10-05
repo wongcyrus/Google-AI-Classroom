@@ -47,6 +47,7 @@ const PasskeyVerifyView = lazyWithRetry(() => import('./components/passkey/Passk
 const LecturePasskeyVerifyView = lazyWithRetry(() => import('./components/passkey/LecturePasskeyVerifyView'));
 const PasskeyMobileLoginView = lazyWithRetry(() => import('./components/passkey/PasskeyMobileLoginView'));
 const PasskeyEnforcementGate = lazyWithRetry(() => import('./components/passkey/PasskeyEnforcementGate'));
+const PresentationView = lazyWithRetry(() => import('./components/PresentationView'));
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -248,6 +249,7 @@ const AppShell = ({
             <Route path="/mailbox" element={<Navigate to="/teacher" replace />} />
             <Route path="/mailbox/*" element={<Navigate to="/teacher" replace />} />
             <Route path="/manage-prompts" element={user && role === 'teacher' ? <PromptManagement /> : <Navigate to="/login" />} />
+            <Route path="/presentation" element={<PresentationView />} />
             <Route path="/class/:classId" element={user && role === 'teacher' ? <ClassView user={user} /> : <Navigate to="/login" />} />
             <Route path="/preview/student/:classId" element={user && role === 'teacher' ? <StudentPreviewPage user={user} /> : <Navigate to="/login" />} />
             <Route path="/live/:classId" element={<PublicLiveView />} />
@@ -363,6 +365,9 @@ const MainHeader = ({ onLogout, user, role }) => {
             <NavLink to="/manage-prompts">
               <span>💡 AI Prompts</span>
             </NavLink>
+            <NavLink to="/presentation">
+              <span>📽️ Presentation</span>
+            </NavLink>
           </nav>
         )}
 
@@ -398,6 +403,15 @@ const MainHeader = ({ onLogout, user, role }) => {
                 <span className="profile-menu-email">{user.email}</span>
                 <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
               </div>
+              <div className="profile-menu-divider" />
+              <Link 
+                to="/presentation" 
+                className="profile-menu-item"
+                onClick={() => setShowProfileMenu(false)}
+              >
+                <span className="menu-item-icon">📽️</span>
+                <span>Presentation Deck</span>
+              </Link>
               <div className="profile-menu-divider" />
               <button 
                 type="button"
@@ -465,6 +479,8 @@ const MainHeader = ({ onLogout, user, role }) => {
             <span className="breadcrumb-current">Class Management</span>
           ) : location.pathname.startsWith('/manage-prompts') ? (
             <span className="breadcrumb-current">Prompt Management</span>
+          ) : location.pathname.startsWith('/presentation') ? (
+            <span className="breadcrumb-current">Presentation Deck</span>
           ) : null}
         </div>
       )}

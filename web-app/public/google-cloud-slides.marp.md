@@ -117,7 +117,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 
 ![width:1050px](images/slide_hybrid_architecture.png)
 
-1. **Student Browser Edge:** MediaPipe FaceLandmarker, LiteRT Whisper STT, LiteRT Gemma 4 E2B Web Workers.
+1. **Student Browser Edge:** MediaPipe FaceLandmarker, LiteRT Whisper Speech Engine, LiteRT Gemma 4 E2B Web Workers.
 2. **Realtime Signaling & Data:** Firestore single-stream status channel + Cloud Storage chunks.
 3. **Cloud Intelligence & Serverless:** Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 3.8 & 3.5).
 4. **Teacher Command Center:** Live compliance matrix, WebRTC live peek, and broadcast nudges.
@@ -192,7 +192,7 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
   - Auto-retries chunk loading on deployment updates to eliminate stale caching crashes.
 - **Custom Hooks Data Mesh & Dedicated Web Workers:**
   - `useFaceMonitor`: 468-point Iris mesh running in `faceLandmarker.worker.js`.
-  - `useClientLiteRTWhisper`: Browser STT running in `litertWhisper.worker.js`.
+  - `useClientLiteRTWhisper`: Browser Speech Recognition running in `litertWhisper.worker.js`.
   - `useClientLiteRTGemma`: On-device LLM intent evaluation in `litertGemma.worker.js`.
   - Offloads 100% of AI inference from the main React render loop (steady 60 FPS).
 - **Persistent Cache Storage & Reactive Streaming:**
@@ -210,7 +210,7 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 - **`gemini-3.8-flash` (Deep Multimodal Reasoning & Full Lectures):**
   - High-throughput cross-student rubric synthesis, whole-class lecture subtitles & chapter markers.
 - **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse & Fallback):**
-  - Rapid single-frame inspection, serverless subtitle translation, resilient fallback target.
+  - Rapid single-frame inspection, serverless subtitle multilingual captioning, resilient fallback target.
 - **`gemini-3.1-flash-live-preview` (Live Bidirectional Audio Streaming):**
   - WebSocket streaming via regional endpoint (`us-central1`), debounced 350ms HUD sync.
 - **`gemini-3.5-transcribe-preview` (Long Audio Reasoning & Diarization):**
@@ -253,9 +253,9 @@ async function generateWithResilience(prompt, context, retryCount = 0) {
   - **Images:** Vision AI for dual-screen analysis, off-screen gaze diversion & attentiveness.
   - **Videos:** Two-Stage Map-Reduce Coursework Rubric Synthesizer.
   - **Audios:** Speech intent classification (collusion, unauthorized talk, teacher inquiry) & diarization.
-  - **Translations:** Code-switching subtitle engine preserving programming terms (`useState`, `Docker`).
+  - **subtitles:** Code-switching subtitle engine preserving programming terms (`useState`, `Docker`).
 - **Modality-Specific AI Prompt Optimizers (`✨ Optimize`):**
-  - Built-in Gemini meta-prompts specifically tuned for each modality (e.g. `translationOptimizerPrompt`, `visionOptimizerPrompt`).
+  - Built-in Gemini meta-prompts specifically tuned for each modality (e.g. `subtitleOptimizerPrompt`, `visionOptimizerPrompt`).
   - Automatically converts brief teacher notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.
 - **In-App FinOps Testing Sandbox:**
   - Real-time test runs against Gemini models with live execution latency (ms), token usage counters, and dollar cost estimations before classroom deployment.
@@ -337,7 +337,7 @@ const processFrame = async (now, metadata) => {
 ![bg right:60% 95%](images/slide_edge_speech_proctor.png)
 
 - **16kHz Float32 Audio Stream:** Captured via Web Audio API.
-- **LiteRT Whisper STT Worker:** Real-time bilingual transcription.
+- **LiteRT Whisper Speech Engine Worker:** Real-time bilingual transcription.
 - **LiteRT Gemma 4 E2B Worker:** Real-time intent classification.
 - **Browser Cache Storage Persistence:**
   - `caches.open('litert-gemma-cache-v1')` caches ~1.5 GB model locally.
@@ -397,7 +397,7 @@ const processFrame = async (now, metadata) => {
 ## Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
 ### Zero-Password Pairing, Biometric Attendance (<2s) & Anti-Proxy Physical Security
 
-![bg right:60% 95%](images/slide_edge_vision_gaze.png)
+![bg right:60% 95%](images/slide_mobile_passkey_attendance.png)
 
 - **The Password-Sharing Human Proxy Challenge:**
   - In computer labs without webcams, students share login credentials. Proxy helpers log in adjacent PCs.
@@ -418,7 +418,7 @@ const processFrame = async (now, metadata) => {
 ## Dynamic Rotating QR Attendance, Shared Lab PC Passkeys & Roster Pre-Granting
 ### Dynamic Projector QRs, Passwordless Lab PC Login & Desktop Gate Resilience
 
-![bg right:60% 95%](images/slide_hybrid_role_resolution.png)
+![bg right:60% 95%](images/slide_mobile_passkey_attendance.png)
 
 - **Dynamic Rotating HMAC-SHA256 Lecture Projector Attendance:**
   - Dynamic 15s rotating encrypted QR codes projected in lecture halls prevent photo forwarding proxy cheating.
@@ -473,18 +473,18 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Real-Time Live Subtitles & Multilingual Translation Engine
+## Real-Time Live Subtitles & Multilingual Captions Engine
 ### 3-Tier Multi-Engine: Edge Gemini Nano, Serverless Genkit & Live WebSockets
 
-![bg right:60% 95%](images/slide_live_subtitles_translation.png)
+![bg right:60% 95%](images/slide_live_subtitles_multilingual.png)
 
 - **Tier 1: On-Device Client AI ($0.00 Cloud Cost):**
-  - LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time STT.
-  - Chrome Built-in AI (`window.Translator` powered by Gemini Nano).
+  - LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time Speech Recognition.
+  - Chrome Built-in AI (`window.LanguageModel` powered by Gemini Nano).
   - 100% privacy-compliant, zero cloud egress, and zero token billing.
-- **Tier 2: Serverless Batch Translation (High Precision):**
-  - Local LiteRT Whisper + Cloud Function `translateTeacherSpeech`.
-  - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback) translating to **7 languages**.
+- **Tier 2: Serverless Batch Multilingual Subtitling (High Precision):**
+  - Local LiteRT Whisper + Cloud Function `processTeacherSpeechSubtitles`.
+  - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback) generating subtitles in **7 languages**.
   - Preserves Cantonese-English technical code-switching (`useState`, `Docker`).
 - **Tier 3: Gemini 3.1 Flash Live (Bidirectional WebSocket):**
   - Regional streaming endpoint (`us-central1`) via Firebase AI Logic WebSocket.
@@ -493,10 +493,10 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Course Subject Domains & Domain-Specific AI Translation
+## Course Subject Domains & Domain-Specific Subtitle Intelligence
 ### Preserving Discipline Glossaries, Hong Kong Code-Switching & Real-Time Dynamic Prompt Propagation
 
-![bg right:60% 95%](images/slide_subject_domain_translation.png)
+![bg right:60% 95%](images/slide_subject_domain_multilingual.png)
 
 - **8 Academic Discipline Domains (+ Custom Freeform):**
   - 💻 **Computer Science:** Preserves code syntax, APIs & terms (`useState`, `Docker`, `SQL`, `git commit`).
@@ -507,9 +507,9 @@ const processFrame = async (now, metadata) => {
   - 🍳 **Hospitality & Culinary:** Preserves culinary terms, HACCP standards, hotel PMS & viticulture.
   - 📚 **Languages & Humanities:** Preserves sociological constructs, historical references & dialects.
   - ✏️ **Custom Subject Domain:** Arbitrary typing (e.g., *Aeronautical Avionics*, *Biochemical Genetics*).
-- **Domain Context Injection & Specialized Translation AI Prompts:**
-  - Injected directly into live subtitle & translation prompts to prevent naive literal translations.
-  - Dedicated **Translation Prompt AI Optimizer (`✨ Optimize`)** tunes glossary locks and pedagogical tone.
+- **Domain Context Injection & Specialized Subtitle AI Prompts:**
+  - Injected directly into live subtitle & Subtitle Prompts to prevent naive literal subtitles.
+  - Dedicated **Subtitle Prompt AI Optimizer (`✨ Optimize`)** tunes glossary locks and pedagogical tone.
 - **Hong Kong Cantonese-English Code-Switching Normalization:**
   - Intelligently parses mixed colloquial classroom speech (*"呢個 function return 個 boolean"*, *"deploy 個 cluster"*) into pristine bilingual subtitles.
 - **Zero-Restart Real-Time Dynamic Propagation:**
@@ -546,7 +546,7 @@ const processFrame = async (now, metadata) => {
 
 - **YouTube-Style Cinematic Player Stage:**
   - Embedded teacher stream (`🔴 LIVE`, `1080P`, zoom toggle); proctoring feeds dock into PiP.
-  - Dual CC Overlay: original speech in dark pill, live translation in high-contrast **YouTube yellow** (`#ffe600`).
+  - Dual CC Overlay: original speech in dark pill, live multilingual captions in high-contrast **YouTube yellow** (`#ffe600`).
   - Bottom Bar: `[CC]` toggle, live target language selector, settings gear popover, native fullscreen.
 - **3 Flexible Desktop Screen Modes (Zero Video Re-Mounting):**
   - **🗖 Max Mode (Theater / Full-Width):** Spans 100% width via CSS `display: contents;` with zero stream flicker.
@@ -715,7 +715,7 @@ const processFrame = async (now, metadata) => {
   - Daily AI FinOps budget caps & automated Gemini model pricing sync.
   - Dual-environment switcher (`./switch-env.sh dev` / `prod`) syncing configuration across 7 function codebases.
 - **Automated Prompt Governance & Maintenance:**
-  - Version-controlled markdown prompts in `admin/prompts/` (Images, Videos, Audios, Translations).
+  - Version-controlled markdown prompts in `admin/prompts/` (Images, Videos, Audios, subtitles).
   - Automated seeding CLI (`node admin/scripts/seed_prompts.mjs`) updates Firestore system prompts with zero downtime.
   - Automated demo sandbox reset (`reset_demo_env.sh`) & live security audit trail logging.
 
@@ -733,7 +733,7 @@ const processFrame = async (now, metadata) => {
 - **24/7 Pre-Seeded Development Sandbox (`IT114115-Demo`):**
   - Pre-seeded lead instructor: `teacher1@vtc.edu.hk` (`teacherProfiles` document & custom claims).
   - 5 pre-enrolled demo students: `student1`..`student5@stu.vtc.edu.hk` with 1-click clipboard copy buttons.
-  - Pre-loaded multimodal prompt library across images, videos, audios, and multilingual translations.
+  - Pre-loaded multimodal prompt library across images, videos, audios, and multilingual subtitles.
 - **Automated Dual-Environment Management:**
   - Rapid environment switching (`./switch-env.sh [dev|prod]`) with build-time environment verification.
 

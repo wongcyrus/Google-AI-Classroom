@@ -95,6 +95,10 @@ vi.mock('./components/passkey/PasskeyMobileLoginView', () => ({
   default: () => <div data-testid="passkey-mobile-login-view">Passkey Mobile Login View</div>,
 }));
 
+vi.mock('./components/PresentationView', () => ({
+  default: () => <div data-testid="presentation-view">Presentation Deck View</div>,
+}));
+
 vi.mock('./assets/HKIIT_logo_RGB_horizontal.jpg', () => ({
   default: 'logo.jpg',
 }));
@@ -154,6 +158,7 @@ describe('App & MainHeader Components', () => {
     expect(await screen.findByTestId('teacher-view')).toBeInTheDocument();
     expect(screen.getByText('Google AI Classroom')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('📽️ Presentation')).toBeInTheDocument();
     expect(screen.queryByText('⚙️ Class Manager')).not.toBeInTheDocument();
     expect(screen.queryByText('📬 Mailbox')).not.toBeInTheDocument();
 
@@ -169,6 +174,7 @@ describe('App & MainHeader Components', () => {
     fireEvent.click(userTrigger);
 
     expect(screen.getByText('👨‍🏫 Teacher')).toBeInTheDocument();
+    expect(screen.getByText('Presentation Deck')).toBeInTheDocument();
 
     // Open Passkey Phone Modal from Account Settings Menu
     const passkeyBtn = screen.getByText(/Passkey Phone/i);
@@ -479,6 +485,29 @@ describe('App & MainHeader Components', () => {
     expect(screen.queryByTestId('student-view')).not.toBeInTheDocument();
 
     window.history.pushState({}, 'Dashboard', '/');
+  });
+
+  it('renders PresentationView on /presentation route for teacher with presentation breadcrumb', async () => {
+    window.history.pushState({}, 'Presentation Deck', '/presentation');
+
+    const mockTeacher = {
+      uid: 'teacher_1',
+      email: 'teacher@school.edu',
+      emailVerified: true,
+      getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'teacher' } }),
+    };
+
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(mockTeacher);
+      return vi.fn();
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId('presentation-view')).toBeInTheDocument();
+    expect(screen.getByText('Presentation Deck')).toBeInTheDocument();
+
+    window.history.pushState({}, 'Dashboard', '/teacher');
   });
 });
 

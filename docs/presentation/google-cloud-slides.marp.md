@@ -397,7 +397,7 @@ const processFrame = async (now, metadata) => {
 ## Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
 ### Zero-Password Pairing, Biometric Attendance (<2s) & Anti-Proxy Physical Security
 
-![bg right:60% 95%](images/slide_edge_vision_gaze.png)
+![bg right:60% 95%](images/slide_mobile_passkey_attendance.png)
 
 - **The Password-Sharing Human Proxy Challenge:**
   - In computer labs without webcams, students share login credentials. Proxy helpers log in adjacent PCs.
@@ -418,7 +418,7 @@ const processFrame = async (now, metadata) => {
 ## Dynamic Rotating QR Attendance, Shared Lab PC Passkeys & Roster Pre-Granting
 ### Dynamic Projector QRs, Passwordless Lab PC Login & Desktop Gate Resilience
 
-![bg right:60% 95%](images/slide_hybrid_role_resolution.png)
+![bg right:60% 95%](images/slide_mobile_passkey_attendance.png)
 
 - **Dynamic Rotating HMAC-SHA256 Lecture Projector Attendance:**
   - Dynamic 15s rotating encrypted QR codes projected in lecture halls prevent photo forwarding proxy cheating.

@@ -326,7 +326,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 ---
 
 ### 38:00 – 40:00 | Slide 20: Mobile Passkey (WebAuthn / FIDO2): 1-Phone Hardware Lock
-*Visual: `slide_edge_vision_gaze.png`*
+*Visual: `slide_mobile_passkey_attendance.png`*
 
 > **Cyrus Wong:**  
 > "Now, what happens in a real university computer lab where PCs **do NOT have webcams**, and students share account passwords with friends who sit next to them?
@@ -345,7 +345,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 ---
 
 ### 40:00 – 41:30 | Slide 21: Dynamic Rotating QR Attendance, Shared Lab PC Passkeys & Roster Pre-Granting
-*Visual: `slide_hybrid_role_resolution.png`*
+*Visual: `slide_mobile_passkey_attendance.png`*
 
 > **Cyrus Wong:**  
 > "Building upon our 1-phone hardware lock, we pushed physical lab security even further:
