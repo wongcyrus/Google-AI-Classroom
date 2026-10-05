@@ -1,0 +1,384 @@
+import { useState, useMemo, useEffect } from 'react';
+import { getDropdownPlaceholderForSelector, getPlaceholderTextForSelector } from '../../constants/promptRegistry';
+import { safePromptText } from '../../schemas/promptSchema';
+import PromptViewModal from '../PromptViewModal';
+
+/**
+ * BasePromptSelector
+ * Unified reusable UI engine for Image, Audio, Video, and Translation prompt selectors.
+ * Eliminates duplicate state, filter logic, placeholder inspection, and modal handling.
+ */
+const BasePromptSelector = ({
+  prompts = [],
+  category = 'images',
+  user = null,
+  selectedPrompt = null,
+  onSelectPrompt = null,
+  promptText = '',
+  onTextChange = null,
+  applyToFilter = null,
+  readOnly = true,
+  filterGroupName = null,
+  selectAriaLabel = null,
+  textareaAriaLabel = null,
+  defaultModalTitle = null,
+}) => {
+  const [promptFilter, setPromptFilter] = useState('all');
+  const [copied, setCopied] = useState(false);
+  const [showFullReviewModal, setShowFullReviewModal] = useState(false);
+  const [isExpandedHeight, setIsExpandedHeight] = useState(false);
+
+  const groupName = filterGroupName || `${category}PromptFilter`;
+
+  const filteredPrompts = useMemo(() => {
+    if (!user) {
+      return [];
+    }
+    const { uid } = user;
+    if (promptFilter === 'all') {
+      return prompts;
+    }
+    if (promptFilter === 'public') {
+      return prompts.filter((p) => p.accessLevel === 'public');
+    }
+    if (promptFilter === 'private') {
+      return prompts.filter((p) => p.owner === uid && p.accessLevel === 'private');
+    }
+    if (promptFilter === 'shared') {
+      return prompts.filter((p) => p.accessLevel === 'shared');
+    }
+    return prompts;
+  }, [prompts, promptFilter, user]);
+
+  const selectedPromptId = useMemo(() => {
+    if (!selectedPrompt) return '';
+    if (selectedPrompt.id && prompts.some((p) => p.id === selectedPrompt.id)) return selectedPrompt.id;
+    if (selectedPrompt.originalId && prompts.some((p) => p.id === selectedPrompt.originalId)) return selectedPrompt.originalId;
+    const match = prompts.find((p) => p.name === selectedPrompt.name);
+    if (match) return match.id;
+    return selectedPrompt.id || selectedPrompt.originalId || '';
+  }, [selectedPrompt, prompts]);
+
+  // Synchronize prompt text and resolved prompt object when prompts library finishes loading asynchronously
+  useEffect(() => {
+    if (!selectedPromptId || !prompts || prompts.length === 0) return;
+    const matchedPrompt = prompts.find((p) => p.id === selectedPromptId);
+    if (matchedPrompt && matchedPrompt.promptText) {
+      if (onTextChange && !promptText) {
+        onTextChange(matchedPrompt.promptText);
+      }
+      if (onSelectPrompt && (!selectedPrompt?.promptText || selectedPrompt.id !== matchedPrompt.id)) {
+        onSelectPrompt({
+          ...matchedPrompt,
+          ...selectedPrompt,
+          promptText: selectedPrompt?.promptText || matchedPrompt.promptText,
+        });
+      }
+    }
+  }, [selectedPromptId, prompts, promptText, selectedPrompt, onTextChange, onSelectPrompt]);
+
+  const activeText = safePromptText(promptText) || safePromptText(selectedPrompt);
+
+  const detectedPlaceholders = useMemo(() => {
+    if (!activeText) return [];
+    const matches = activeText.match(/\{\{[^}]+\}\}/g);
+    return matches ? Array.from(new Set(matches)) : [];
+  }, [activeText]);
+
+  const handleCopy = () => {
+    if (!activeText) return;
+    try {
+      navigator.clipboard?.writeText(activeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy prompt text:', err);
+    }
+  };
+
+  const computedSelectAriaLabel = selectAriaLabel || `Select a ${category} AI prompt template`;
+  const computedTextareaAriaLabel = textareaAriaLabel || `${category} AI prompt instructions text`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Filter Tabs: All, Public, Private, Shared */}
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
+        <label>
+          <input
+            type="radio"
+            value="all"
+            name={groupName}
+            checked={promptFilter === 'all'}
+            onChange={(e) => setPromptFilter(e.target.value)}
+          />{' '}
+          All
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="public"
+            name={groupName}
+            checked={promptFilter === 'public'}
+            onChange={(e) => setPromptFilter(e.target.value)}
+          />{' '}
+          Public
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="private"
+            name={groupName}
+            checked={promptFilter === 'private'}
+            onChange={(e) => setPromptFilter(e.target.value)}
+          />{' '}
+          Private
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="shared"
+            name={groupName}
+            checked={promptFilter === 'shared'}
+            onChange={(e) => setPromptFilter(e.target.value)}
+          />{' '}
+          Shared
+        </label>
+      </div>
+
+      {/* Prompt Dropdown Selector */}
+      <select
+        value={selectedPromptId}
+        onChange={(e) => {
+          const prompt = prompts.find((p) => p.id === e.target.value);
+          onSelectPrompt && onSelectPrompt(prompt || null);
+          if (onTextChange) {
+            onTextChange(prompt ? prompt.promptText || '' : '');
+          }
+        }}
+        style={{ width: '100%', marginBottom: '6px', boxSizing: 'border-box' }}
+        aria-label={computedSelectAriaLabel}
+      >
+        <option value="">{getDropdownPlaceholderForSelector(category, applyToFilter)}</option>
+        {filteredPrompts.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Dynamic Placeholder Variable Badges */}
+      {detectedPlaceholders.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '4px',
+            alignItems: 'center',
+            marginBottom: '6px',
+            padding: '4px 8px',
+            background: '#f0fdf4',
+            borderRadius: '5px',
+            border: '1px solid #bbf7d0',
+            fontSize: '0.72rem',
+          }}
+        >
+          <span style={{ color: '#166534', fontWeight: 600 }}>Variables:</span>
+          {detectedPlaceholders.map((tag) => (
+            <code
+              key={tag}
+              style={{
+                background: '#dcfce7',
+                color: '#15803d',
+                padding: '1px 5px',
+                borderRadius: '3px',
+                fontFamily: 'monospace',
+              }}
+            >
+              {tag}
+            </code>
+          ))}
+        </div>
+      )}
+
+      {/* Notice & Review Toolbar */}
+      {readOnly ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            margin: '4px 0 6px 0',
+            fontSize: '0.74rem',
+            color: '#64748b',
+            flexWrap: 'wrap',
+            gap: '6px',
+          }}
+        >
+          <div>
+            <span>
+              🔒 <strong>Template Preview (Read-Only)</strong>
+            </span>
+            <span style={{ marginLeft: '8px' }}>Customized prompts must be created in Prompt Management</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => setIsExpandedHeight((prev) => !prev)}
+              style={{
+                padding: '2px 7px',
+                fontSize: '0.72rem',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#475569',
+              }}
+            >
+              {isExpandedHeight ? '↕️ Compact Box' : '↕️ Taller Box'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFullReviewModal(true)}
+              disabled={!activeText}
+              style={{
+                padding: '2px 8px',
+                fontSize: '0.72rem',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '4px',
+                cursor: activeText ? 'pointer' : 'not-allowed',
+                color: '#1d4ed8',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              ⛶ Expand / Full Review
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            margin: '4px 0 6px 0',
+            fontSize: '0.74rem',
+            color: '#0369a1',
+            flexWrap: 'wrap',
+            gap: '6px',
+          }}
+        >
+          <div>
+            💡 <em>You can customize the prompt instructions below for this specific {category === 'videos' ? 'video analysis job' : 'task'}.</em>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => setIsExpandedHeight((prev) => !prev)}
+              style={{
+                padding: '2px 7px',
+                fontSize: '0.72rem',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#475569',
+              }}
+            >
+              {isExpandedHeight ? '↕️ Compact Box' : '↕️ Taller Box'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFullReviewModal(true)}
+              disabled={!activeText}
+              style={{
+                padding: '2px 8px',
+                fontSize: '0.72rem',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '4px',
+                cursor: activeText ? 'pointer' : 'not-allowed',
+                color: '#1d4ed8',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              ⛶ Expand / Full Review
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Prompt Instructions Textarea */}
+      <textarea
+        value={activeText}
+        onChange={(e) => onTextChange && onTextChange(e.target.value)}
+        readOnly={readOnly}
+        placeholder={getPlaceholderTextForSelector(category, applyToFilter)}
+        rows={isExpandedHeight ? 16 : 9}
+        style={{
+          width: '100%',
+          flexGrow: 1,
+          minHeight: isExpandedHeight ? '300px' : '150px',
+          boxSizing: 'border-box',
+          marginTop: '2px',
+          fontFamily: 'monospace',
+          fontSize: '0.84rem',
+          lineHeight: 1.5,
+          resize: 'vertical',
+          backgroundColor: readOnly ? '#f8fafc' : '#ffffff',
+          color: readOnly ? '#334155' : 'inherit',
+          cursor: readOnly ? 'default' : 'text',
+          border: '1px solid #cbd5e1',
+          borderRadius: '6px',
+          padding: '8px 10px',
+        }}
+        aria-label={computedTextareaAriaLabel}
+      />
+
+      {readOnly && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={!activeText}
+            style={{
+              padding: '3px 8px',
+              fontSize: '0.75rem',
+              backgroundColor: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: '4px',
+              cursor: activeText ? 'pointer' : 'not-allowed',
+              color: '#334155',
+            }}
+          >
+            {copied ? '✓ Copied!' : '📋 Copy Prompt Text'}
+          </button>
+          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+            ✏️ Manage custom prompts in <strong>Prompt Management</strong>
+          </span>
+        </div>
+      )}
+
+      {/* Fullscreen Prompt Inspection & Review Modal */}
+      {showFullReviewModal && (
+        <PromptViewModal
+          show={showFullReviewModal}
+          onClose={() => setShowFullReviewModal(false)}
+          promptName={selectedPrompt?.name || defaultModalTitle || `${category} AI Prompt`}
+          category={category}
+          accessLevel={selectedPrompt?.accessLevel || 'public'}
+          promptText={activeText}
+          placeholders={detectedPlaceholders}
+        />
+      )}
+    </div>
+  );
+};
+
+export default BasePromptSelector;
