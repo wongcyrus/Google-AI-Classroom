@@ -72,17 +72,23 @@ async function seedPrompts() {
     const name = path.basename(filePath, '.md');
     const category = path.basename(path.dirname(filePath));
 
-    const existingSnap = await db.collection('prompts').where('name', '==', name).limit(1).get();
+    const existingSnap = await db.collection('prompts')
+      .where('name', '==', name)
+      .where('category', '==', category)
+      .limit(1)
+      .get();
     if (!existingSnap.empty) {
       const existingDoc = existingSnap.docs[0];
-      createdPrompts[name] = { id: existingDoc.id, originalId: existingDoc.id, ...existingDoc.data() };
+      createdPrompts[`${category}_${name}`] = { id: existingDoc.id, originalId: existingDoc.id, ...existingDoc.data() };
       continue;
     }
     
     let applyTo;
     if (category === 'images') {
-      if (name.includes('Teacher Screen')) {
-        applyTo = ['All Images', 'Per Image'];
+      if (name.includes('Bingo')) {
+        applyTo = ['Classroom Bingo Questions'];
+      } else if (name.includes('Teacher Screen')) {
+        applyTo = ['All Images'];
       } else if (name.includes('Student Screen') || name.includes('Face & Gaze')) {
         applyTo = ['Per Image'];
       } else {
@@ -91,7 +97,11 @@ async function seedPrompts() {
     } else if (category === 'videos') {
       applyTo = ['Per Video'];
     } else if (category === 'audios') {
-      if (name.includes('Gemma')) {
+      if (name.includes('Real-Time') || name.includes('Live Rolling Audio') || name.includes('Rolling Audio') || name.includes('Acoustic Invigilation') || name.includes('Intent Proctor')) {
+        applyTo = ['Live Audio Invigilation', 'Live Subtitles & Translation'];
+      } else if (name.includes('Lecture Audio') || name.includes('Chapters')) {
+        applyTo = ['Lecture STT & Chapters'];
+      } else if (name.includes('Gemma')) {
         applyTo = ['On-Device Gemma Voice Intent'];
       } else if (name.includes('Discussion') || name.includes('Long Audio')) {
         applyTo = ['Session Audio Summary'];
@@ -99,12 +109,16 @@ async function seedPrompts() {
         applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
       }
     } else if (category === 'translations') {
-      applyTo = ['Live Subtitles & Translation'];
-      if (name.includes('Code-Switching')) {
-        applyTo.push('Code-Switching Lectures');
-      }
-      if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
-        applyTo.push('Technical Discipline Glossary');
+      if (name.includes('Lecture Subtitle') || name.includes('Whole-Lecture') || name.includes('Recording') || name.includes('Chapter')) {
+        applyTo = ['Lecture Subtitle Translation', 'Lecture Subtitles & Chapters'];
+      } else {
+        applyTo = ['Live Subtitles & Translation'];
+        if (name.includes('Code-Switching')) {
+          applyTo.push('Code-Switching Lectures');
+        }
+        if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
+          applyTo.push('Technical Discipline Glossary');
+        }
       }
     } else if (category === 'rubrics') {
       applyTo = ['Lab Rubric Milestones', 'Task Milestones Extraction'];

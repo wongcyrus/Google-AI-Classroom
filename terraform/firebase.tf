@@ -222,11 +222,7 @@ resource "local_file" "storage_cors" {
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
     "maxAgeSeconds": 3600,
     "responseHeader": [
-      "Content-Type",
-      "Authorization",
-      "Content-Length",
-      "User-Agent",
-      "x-goog-resumable"
+      "*"
     ]
   }
 ]

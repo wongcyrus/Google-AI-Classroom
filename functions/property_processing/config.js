@@ -8,6 +8,8 @@ export const CORS_ORIGINS = true;
 // Genkit AI Model parameters
 export const AI_MODEL = 'gemini-3.5-flash-lite';
 export const AI_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-preview';
+export const DEFAULT_LECTURE_AI_MODEL = 'gemini-3.8-flash';
+export const SUPPORTED_LECTURE_AI_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
 export const VERTEX_AI_LOCATION = 'global';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;
@@ -31,7 +33,7 @@ const _detectedProjectId = process.env.GCLOUD_PROJECT || (() => {
   try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId; } catch { return ''; }
 })() || '';
 const _isDevRuntime = _detectedProjectId === 'it114115-dev-2026' || _detectedProjectId.includes('dev');
-const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : 'stu.vtc.edu.hk,gmail.com';
+const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : 'stu.vtc.edu.hk';
 
 export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || _fallbackStudentDomains)
   .split(',')

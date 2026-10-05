@@ -89,6 +89,8 @@ export const CORS_ORIGINS = true;
 // Genkit AI Model parameters
 export const AI_MODEL = 'gemini-3.5-flash-lite';
 export const AI_TRANSCRIBE_MODEL = 'gemini-3.5-transcribe-preview';
+export const DEFAULT_LECTURE_AI_MODEL = 'gemini-3.8-flash';
+export const SUPPORTED_LECTURE_AI_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
 export const VERTEX_AI_LOCATION = 'global';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;
@@ -213,11 +215,7 @@ cat << CORS_EOF > cors.json
     "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
     "maxAgeSeconds": 3600,
     "responseHeader": [
-      "Content-Type",
-      "Authorization",
-      "Content-Length",
-      "User-Agent",
-      "x-goog-resumable"
+      "*"
     ]
   }
 ]

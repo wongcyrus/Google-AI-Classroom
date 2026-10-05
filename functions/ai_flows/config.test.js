@@ -17,6 +17,8 @@ import {
   TEACHER_EMAIL_DOMAINS,
   PASSKEY_DEVICE_SHARING_WHITELIST,
   isPasskeySharingWhitelisted,
+  DEFAULT_LECTURE_AI_MODEL,
+  SUPPORTED_LECTURE_AI_MODELS,
 } from './config.js';
 
 describe('functions/ai_flows/config.js Suite', () => {
@@ -25,6 +27,8 @@ describe('functions/ai_flows/config.js Suite', () => {
     expect(CORS_ORIGINS).toBe(true);
     expect(AI_MODEL).toBe('gemini-3.5-flash-lite');
     expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe-preview');
+    expect(DEFAULT_LECTURE_AI_MODEL).toBe('gemini-3.8-flash');
+    expect(SUPPORTED_LECTURE_AI_MODELS).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash']);
     expect(VERTEX_AI_LOCATION).toBe('global');
     expect(AI_TEMPERATURE).toBe(0);
     expect(AI_TOP_P).toBe(0.1);
@@ -54,7 +58,11 @@ describe('functions/ai_flows/config.js Suite', () => {
 
     it('identifies student email by subdomain or student domain', () => {
       expect(deriveUserRole('200123456@stu.vtc.edu.hk')).toBe('student');
-      expect(deriveUserRole('student@gmail.com')).toBe('student');
+      if (STUDENT_EMAIL_DOMAINS.includes('gmail.com')) {
+        expect(deriveUserRole('student@gmail.com')).toBe('student');
+      } else {
+        expect(deriveUserRole('student@gmail.com')).toBeNull();
+      }
     });
 
     it('returns null for unauthorized external domains', () => {

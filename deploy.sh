@@ -81,25 +81,50 @@ else
 fi
 
 # Parse extra arguments
-ONLY_HOSTING=false
-FIREBASE_DEPLOY_ARGS=()
-for arg in "$@"; do
-    if [ "$arg" = "hosting" ]; then
-        ONLY_HOSTING=true
-        FIREBASE_DEPLOY_ARGS+=(--only hosting)
-    elif [ "$arg" = "functions" ]; then
-        FIREBASE_DEPLOY_ARGS+=(--only functions)
+TARGETS=()
+OTHER_ARGS=()
+SKIP_NEXT=false
+for ((i=1; i<=$#; i++)); do
+    if [ "$SKIP_NEXT" = true ]; then
+        SKIP_NEXT=false
+        continue
+    fi
+    arg="${!i}"
+    if [ "$arg" = "hosting" ] || [ "$arg" = "functions" ] || [ "$arg" = "firestore" ] || [ "$arg" = "storage" ]; then
+        TARGETS+=("$arg")
     elif [ -d "functions/$arg" ] || [ -d "functions/${arg//-/_}" ]; then
         codebase_name="${arg//_/-}"
-        FIREBASE_DEPLOY_ARGS+=(--only "functions:$codebase_name")
+        TARGETS+=("functions:$codebase_name")
     elif [[ "$arg" =~ ^functions: ]]; then
-        FIREBASE_DEPLOY_ARGS+=(--only "$arg")
+        TARGETS+=("$arg")
     elif [ "$arg" = "--only" ]; then
-        FIREBASE_DEPLOY_ARGS+=("$arg")
+        next_idx=$((i+1))
+        next_arg="${!next_idx}"
+        if [ -n "$next_arg" ]; then
+            IFS=',' read -ra ADDR <<< "$next_arg"
+            for t in "${ADDR[@]}"; do
+                TARGETS+=("$t")
+            done
+            SKIP_NEXT=true
+        fi
     else
-        FIREBASE_DEPLOY_ARGS+=("$arg")
+        OTHER_ARGS+=("$arg")
     fi
 done
+
+FIREBASE_DEPLOY_ARGS=()
+if [ ${#TARGETS[@]} -gt 0 ]; then
+    TARGETS_JOINED=$(IFS=,; echo "${TARGETS[*]}")
+    FIREBASE_DEPLOY_ARGS+=(--only "$TARGETS_JOINED")
+fi
+for o in "${OTHER_ARGS[@]}"; do
+    FIREBASE_DEPLOY_ARGS+=("$o")
+done
+
+ONLY_HOSTING=false
+if [ "${#TARGETS[@]}" -eq 1 ] && [ "${TARGETS[0]}" = "hosting" ]; then
+    ONLY_HOSTING=true
+fi
 
 if [ "$ONLY_HOSTING" = false ]; then
     echo "Ensuring required AI & Firebase APIs (including Firebase AI Logic) are enabled on $TARGET_PROJECT..."
@@ -119,8 +144,6 @@ if [ "$ONLY_HOSTING" = false ]; then
 
     echo "Deploying Storage and Firestore rules..."
     FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --project="$TARGET_PROJECT" --only storage,firestore --force || true
-    echo "Ensuring Storage bucket CORS rules are active on $TARGET_PROJECT..."
-    gcloud storage buckets update "gs://${TARGET_PROJECT}.firebasestorage.app" --cors-file=cors.json --project="$TARGET_PROJECT" --quiet 2>/dev/null || true
 
     echo "Synchronizing system prompts & initial demo data on $TARGET_PROJECT..."
     node admin/scripts/seed_initial_data.mjs "$TARGET_PROJECT" || true

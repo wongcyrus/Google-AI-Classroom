@@ -1,23 +1,25 @@
 
 const admin = require('firebase-admin');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const fs = require('fs');
 const path = require('path');
 
 // Initialize Firebase Admin SDK
 function initializeFirebase() {
-    // Check if the service account key file exists
     const serviceAccountPath = path.join(__dirname, '..', 'sp.json');
-    if (!fs.existsSync(serviceAccountPath)) {
-        console.error('Error: sp.json not found in the admin directory.');
-        console.log('Please download it from your Firebase project settings and place it in the admin directory.');
-        process.exit(1);
+    let app;
+    if (fs.existsSync(serviceAccountPath)) {
+        const serviceAccount = require(serviceAccountPath);
+        app = admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log('Initialized Firebase Admin with sp.json');
+    } else {
+        const projectId = process.argv[2] || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'it114115-2627';
+        app = admin.initializeApp({ projectId });
+        console.log(`Initialized Firebase Admin using Application Default Credentials for project: ${projectId}`);
     }
-    const serviceAccount = require(serviceAccountPath);
-
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    return admin;
+    return { admin, app, db: getFirestore(app) };
 }
 
 // Seed prompts from the admin/prompts directory
@@ -55,8 +57,10 @@ async function seedPrompts(db) {
 
         let applyTo;
         if (category === 'images') {
-            if (name.includes('Teacher Screen')) {
-                applyTo = ['All Images', 'Per Image'];
+            if (name.includes('Bingo')) {
+                applyTo = ['Classroom Bingo Questions'];
+            } else if (name.includes('Teacher Screen')) {
+                applyTo = ['All Images'];
             } else if (name.includes('Student Screen') || name.includes('Face & Gaze')) {
                 applyTo = ['Per Image'];
             } else {
@@ -65,7 +69,11 @@ async function seedPrompts(db) {
         } else if (category === 'videos') {
             applyTo = ['Per Video'];
         } else if (category === 'audios') {
-            if (name.includes('Gemma')) {
+            if (name.includes('Real-Time') || name.includes('Live Rolling Audio') || name.includes('Rolling Audio') || name.includes('Acoustic Invigilation') || name.includes('Intent Proctor')) {
+                applyTo = ['Live Audio Invigilation', 'Live Subtitles & Translation'];
+            } else if (name.includes('Lecture Audio') || name.includes('Chapters')) {
+                applyTo = ['Lecture STT & Chapters'];
+            } else if (name.includes('Gemma')) {
                 applyTo = ['On-Device Gemma Voice Intent'];
             } else if (name.includes('Discussion') || name.includes('Long Audio')) {
                 applyTo = ['Session Audio Summary'];
@@ -73,12 +81,16 @@ async function seedPrompts(db) {
                 applyTo = ['Live Audio Invigilation', 'Session Audio Summary'];
             }
         } else if (category === 'translations') {
-            applyTo = ['Live Subtitles & Translation'];
-            if (name.includes('Code-Switching')) {
-                applyTo.push('Code-Switching Lectures');
-            }
-            if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
-                applyTo.push('Technical Discipline Glossary');
+            if (name.includes('Lecture Subtitle') || name.includes('Whole-Lecture') || name.includes('Recording') || name.includes('Chapter')) {
+                applyTo = ['Lecture Subtitle Translation', 'Lecture Subtitles & Chapters'];
+            } else {
+                applyTo = ['Live Subtitles & Translation'];
+                if (name.includes('Code-Switching')) {
+                    applyTo.push('Code-Switching Lectures');
+                }
+                if (name.includes('Terminology') || name.includes('Clinical') || name.includes('Accounting') || name.includes('Engineering') || name.includes('Gemma')) {
+                    applyTo.push('Technical Discipline Glossary');
+                }
             }
         } else if (category === 'rubrics') {
             applyTo = ['Lab Rubric Milestones', 'Task Milestones Extraction'];
@@ -94,16 +106,20 @@ async function seedPrompts(db) {
             accessLevel: 'public',
             isSystem: true,
             owner: 'system',
-            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+            lastUpdated: FieldValue.serverTimestamp()
         };
 
         try {
-            const snap = await db.collection('prompts').where('name', '==', name).limit(1).get();
+            const snap = await db.collection('prompts')
+                .where('name', '==', name)
+                .where('category', '==', category)
+                .limit(1)
+                .get();
             if (!snap.empty) {
                 await snap.docs[0].ref.update(promptData);
                 console.log(`Updated existing prompt "${name}" (${category})`);
             } else {
-                promptData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+                promptData.createdAt = FieldValue.serverTimestamp();
                 const docRef = await db.collection('prompts').add(promptData);
                 console.log(`Successfully seeded prompt "${name}" from category "${category}" with ID: ${docRef.id}`);
             }
@@ -116,8 +132,7 @@ async function seedPrompts(db) {
 // Main function to run the script
 async function main() {
     console.log('--- Starting to seed prompts from files ---');
-    const admin = initializeFirebase();
-    const db = admin.firestore();
+    const { db } = initializeFirebase();
     await seedPrompts(db);
     console.log('--- Prompt seeding finished ---');
 }
