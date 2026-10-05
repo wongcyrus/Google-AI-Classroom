@@ -164,4 +164,43 @@ describe('VideoPromptSelector Component', () => {
     expect(selects[selects.length - 1].value).toBe('p1');
     unmount();
   });
+
+  it('renders read-only notice and copy button when readOnly is true (default)', () => {
+    render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText="Video prompt preview"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Template Preview \(Read-Only\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Customized prompts must be created in Prompt Management/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy Prompt Text/i })).toBeInTheDocument();
+
+    const textarea = screen.getByRole('textbox');
+    expect(textarea).toHaveAttribute('readonly');
+  });
+
+  it('renders editable mode hint and editable textarea when readOnly is false (for AI Video Analysis Jobs)', () => {
+    render(
+      <VideoPromptSelector
+        user={{ uid: 'user_1' }}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText="Custom video job instructions"
+        onTextChange={vi.fn()}
+        readOnly={false}
+      />
+    );
+
+    expect(screen.queryByText(/Template Preview \(Read-Only\)/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/You can customize the prompt instructions below for this specific video analysis job/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copy Prompt Text/i })).not.toBeInTheDocument();
+
+    const textarea = screen.getByRole('textbox');
+    expect(textarea).not.toHaveAttribute('readonly');
+  });
 });

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 
-export const usePrompts = () => {
+export const usePrompts = (applyToFilter = null) => {
   const [prompts, setPrompts] = useState([]);
   const [filteredPrompts, setFilteredPrompts] = useState([]);
   const [promptFilter, setPromptFilter] = useState('all');
@@ -24,7 +24,35 @@ export const usePrompts = () => {
     const combineAndSetPrompts = () => {
         const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
         const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
-        const imagePrompts = unique.filter(p => p.category === 'images');
+        let imagePrompts;
+
+        if (applyToFilter === 'Classroom Bingo Questions' || applyToFilter === 'bingo') {
+          imagePrompts = unique.filter(p =>
+            (p.category === 'images' || !p.category) && (
+              p.applyTo?.includes('Classroom Bingo Questions') ||
+              p.name?.toLowerCase().includes('bingo')
+            )
+          );
+        } else if (applyToFilter === 'Per Image' || applyToFilter === 'invigilation') {
+          imagePrompts = unique.filter(p =>
+            p.category === 'images' &&
+            !p.name?.toLowerCase().includes('bingo') &&
+            !p.applyTo?.includes('Classroom Bingo Questions') &&
+            (!p.applyTo || p.applyTo.includes('Per Image') || p.applyTo.includes('All Images'))
+          );
+        } else if (applyToFilter === 'All Images') {
+          imagePrompts = unique.filter(p =>
+            p.category === 'images' &&
+            !p.name?.toLowerCase().includes('bingo') &&
+            !p.applyTo?.includes('Classroom Bingo Questions') &&
+            (!p.applyTo || p.applyTo.includes('All Images'))
+          );
+        } else if (applyToFilter) {
+          imagePrompts = unique.filter(p => p.category === 'images' && p.applyTo?.includes(applyToFilter));
+        } else {
+          imagePrompts = unique.filter(p => p.category === 'images');
+        }
+
         imagePrompts.sort((a, b) => a.name.localeCompare(b.name));
         setPrompts(imagePrompts);
     };
@@ -48,7 +76,7 @@ export const usePrompts = () => {
     }));
 
     return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
+  }, [applyToFilter]);
 
   useEffect(() => {
     const { uid } = auth.currentUser || {};

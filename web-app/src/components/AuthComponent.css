@@ -203,35 +203,6 @@
   cursor: not-allowed;
 }
 
-.auth-clear-cache-container {
-  margin-top: 1rem;
-  border-top: 1px dashed var(--color-border, #cbd5e1);
-  padding-top: 0.85rem;
-  display: flex;
-  justify-content: center;
-}
-
-.auth-clear-cache-btn {
-  background: transparent;
-  color: var(--color-text-muted, #64748b);
-  border: 1px solid var(--color-border, #cbd5e1);
-  padding: 0.45rem 0.85rem;
-  border-radius: var(--radius-sm, 6px);
-  font-size: 0.78rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  transition: all 0.15s ease;
-}
-
-.auth-clear-cache-btn:hover {
-  background: var(--color-surface-hover, #f8fafc);
-  color: var(--color-text-main, #0f172a);
-  border-color: #94a3b8;
-}
-
 .message-container {
   margin-top: 1.25rem;
   display: flex;

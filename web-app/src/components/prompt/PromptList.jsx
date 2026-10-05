@@ -1,5 +1,6 @@
 import React from 'react';
 import { auth } from '../../firebase-config';
+import { PROMPT_CATEGORIES } from '../../constants/promptRegistry';
 
 const PromptList = ({ 
     prompts, 
@@ -18,7 +19,7 @@ const PromptList = ({
   const filteredPrompts = prompts
     .filter(p => {
       if (activeTab === 'translations') {
-        return p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation');
+        return p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation') || p.applyTo?.includes('Lecture Subtitle Translation') || p.applyTo?.includes('Lecture Subtitles & Chapters');
       }
       if (activeTab === 'rubrics') {
         return p.category === 'rubrics' || p.applyTo?.includes('Lab Rubric Milestones') || p.applyTo?.includes('Task Milestones Extraction');
@@ -31,46 +32,22 @@ const PromptList = ({
   return (
     <div className={`prompt-list-column ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="tabs">
-            <button 
-                onClick={() => setActiveTab('images')} 
-                className={activeTab === 'images' ? 'active' : ''}
-                aria-label="Image Prompts"
+          {PROMPT_CATEGORIES.map((cat) => (
+            <button
+              key={cat.key}
+              onClick={() => setActiveTab(cat.key)}
+              className={activeTab === cat.key ? 'active' : ''}
+              aria-label={cat.label}
+              title={cat.desc}
             >
-                Image Prompts
-                {categoryCounts.images > 0 && <span className="tab-count-badge" aria-hidden="true">{categoryCounts.images}</span>}
+              {cat.label}
+              {categoryCounts[cat.key] > 0 && (
+                <span className="tab-count-badge" aria-hidden="true">
+                  {categoryCounts[cat.key]}
+                </span>
+              )}
             </button>
-            <button 
-                onClick={() => setActiveTab('videos')} 
-                className={activeTab === 'videos' ? 'active' : ''}
-                aria-label="Video Prompts"
-            >
-                Video Prompts
-                {categoryCounts.videos > 0 && <span className="tab-count-badge" aria-hidden="true">{categoryCounts.videos}</span>}
-            </button>
-            <button 
-                onClick={() => setActiveTab('audios')} 
-                className={activeTab === 'audios' ? 'active' : ''}
-                aria-label="Voice / Audio Prompts"
-            >
-                Voice / Audio Prompts
-                {categoryCounts.audios > 0 && <span className="tab-count-badge" aria-hidden="true">{categoryCounts.audios}</span>}
-            </button>
-            <button 
-                onClick={() => setActiveTab('translations')} 
-                className={activeTab === 'translations' ? 'active' : ''}
-                aria-label="Translation Prompts"
-            >
-                Translation Prompts
-                {categoryCounts.translations > 0 && <span className="tab-count-badge" aria-hidden="true">{categoryCounts.translations}</span>}
-            </button>
-            <button 
-                onClick={() => setActiveTab('rubrics')} 
-                className={activeTab === 'rubrics' ? 'active' : ''}
-                aria-label="Task Rubric Prompts"
-            >
-                Task Rubric Prompts
-                {categoryCounts.rubrics > 0 && <span className="tab-count-badge" aria-hidden="true">{categoryCounts.rubrics}</span>}
-            </button>
+          ))}
         </div>
         <div className="search-box-wrapper">
             <input 

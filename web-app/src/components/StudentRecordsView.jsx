@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db, storage, functions } from '../firebase-config';
 import { collection, query, where, getDocs, doc, getDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -8,6 +8,16 @@ import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import StudentTaskFeedbackView from './tasks/StudentTaskFeedbackView';
 import { computeLessonDuration, getLessonId } from '../utils/attendanceUtils';
 import { generateLessons } from '../hooks/useClassSchedule';
+import {
+  SUBTITLE_LANGUAGES,
+  getInitialSubtitleLang,
+  getSubtitleLanguageLabel,
+  applySubtitleTrack,
+  getActiveSubtitleLang,
+  determineDefaultPlayerMode,
+  fixWebmPlaybackDuration,
+  handleVideoEndedGuard,
+} from '../utils/videoSubtitleUtils';
 import './StudentRecordsView.css';
 
 export const formatDuration = (totalSeconds) => {
@@ -53,16 +63,22 @@ export const isRecordInLesson = (record, lesson) => {
     return false;
   }
 
-  // 2. Direct lessonId match
-  if (record.lessonId && lesson.lessonId && record.lessonId === lesson.lessonId) {
+  // 2. Direct lessonId, lessonTitle, or sessionGroupId match
+  if (record.lessonId && (record.lessonId === lesson.lessonId || record.lessonId === lesson.id)) {
+    return true;
+  }
+  if (record.lessonTitle && lesson.title && record.lessonTitle === lesson.title) {
+    return true;
+  }
+  if (record.sessionGroupId && (record.sessionGroupId === lesson.lessonId || record.sessionGroupId === lesson.id)) {
     return true;
   }
 
-  // 3. Lesson time bounds
-  const lStart = parseTimeMs(lesson.startTime);
+  // 3. Lesson time bounds (supports both startTime/endTime strings and start/end Date objects from useClassSchedule)
+  const lStart = parseTimeMs(lesson.startTime || lesson.start);
   if (isNaN(lStart)) return false;
 
-  let lEnd = parseTimeMs(lesson.endTime);
+  let lEnd = parseTimeMs(lesson.endTime || lesson.end);
   if (isNaN(lEnd) && lesson.duration) {
     lEnd = lStart + Number(lesson.duration) * 60 * 1000;
   }
@@ -77,15 +93,17 @@ export const isRecordInLesson = (record, lesson) => {
   const winStart = lStart - PRE_BUFFER_MS;
   const winEnd = lEnd + POST_BUFFER_MS;
 
-  // Extract record time
+  // Extract record time (supports startTime, startedAt Timestamp/Date, timestamp, or createdAt)
   const rStart = parseTimeMs(record.startTime) ||
                  parseTimeMs(record.startedAt) ||
                  parseTimeMs(record.timestamp) ||
                  parseTimeMs(record.createdAt);
 
+  // Extract record end time (supports endTime, endedAt Timestamp/Date, finishedAt, or calculated duration)
   const rEnd = parseTimeMs(record.endTime) ||
+               parseTimeMs(record.endedAt) ||
                parseTimeMs(record.finishedAt) ||
-               rStart;
+               (!isNaN(rStart) && record.durationSeconds ? rStart + Number(record.durationSeconds) * 1000 : rStart);
 
   if (!isNaN(rStart) && !isNaN(rEnd)) {
     return Math.max(rStart, winStart) <= Math.min(rEnd, winEnd);
@@ -185,6 +203,66 @@ const StudentRecordsView = ({ user }) => {
   const [audioUrlMap, setAudioUrlMap] = useState({});
   const [audioLoadingId, setAudioLoadingId] = useState(null);
 
+  // Teacher lecture recordings state
+  const [teacherRecordings, setTeacherRecordings] = useState([]);
+  const [loadingTeacherRecordings, setLoadingTeacherRecordings] = useState(false);
+  const [activeTeacherLecture, setActiveTeacherLecture] = useState(null);
+  const [teacherPlayerMode, setTeacherPlayerMode] = useState('cloud');
+  const [selectedSubtitleLang, setSelectedSubtitleLang] = useState('en');
+  const teacherVideoRef = useRef(null);
+
+  const handleSelectSubtitleLang = (lang) => {
+    setSelectedSubtitleLang(lang);
+    if (teacherVideoRef.current) {
+      applySubtitleTrack(teacherVideoRef.current, lang);
+    }
+  };
+
+  const handleSelectSubtitleLangFromDrive = (lang) => {
+    setTeacherPlayerMode('cloud');
+    setSelectedSubtitleLang(lang);
+    setTimeout(() => {
+      if (teacherVideoRef.current) {
+        applySubtitleTrack(teacherVideoRef.current, lang);
+      }
+    }, 100);
+  };
+
+  useEffect(() => {
+    if (teacherPlayerMode === 'cloud' && teacherVideoRef.current) {
+      applySubtitleTrack(teacherVideoRef.current, selectedSubtitleLang);
+    }
+  }, [teacherPlayerMode, selectedSubtitleLang, activeTeacherLecture?.id]);
+
+  useEffect(() => {
+    if (teacherPlayerMode === 'cloud' && teacherVideoRef.current && activeTeacherLecture?.durationSeconds) {
+      fixWebmPlaybackDuration(teacherVideoRef.current, activeTeacherLecture.durationSeconds);
+    }
+  }, [teacherPlayerMode, activeTeacherLecture?.id, activeTeacherLecture?.durationSeconds]);
+
+  // Synchronize native player textTracks state (e.g. built-in CC menu in fullscreen) with toolbar
+  useEffect(() => {
+    const video = teacherVideoRef.current;
+    if (!video || !video.textTracks) return;
+
+    const handleTracksChange = () => {
+      const activeLang = getActiveSubtitleLang(video);
+      setSelectedSubtitleLang((prev) => (prev !== activeLang ? activeLang : prev));
+    };
+
+    if (typeof video.textTracks.addEventListener === 'function') {
+      video.textTracks.addEventListener('change', handleTracksChange);
+      return () => {
+        video.textTracks.removeEventListener('change', handleTracksChange);
+      };
+    } else if ('onchange' in video.textTracks) {
+      video.textTracks.onchange = handleTracksChange;
+      return () => {
+        video.textTracks.onchange = null;
+      };
+    }
+  }, [teacherVideoRef.current, activeTeacherLecture?.id]);
+
   // 1. Fetch Enrolled Classes for Student
   useEffect(() => {
     if (!user?.uid) return;
@@ -208,17 +286,20 @@ const StudentRecordsView = ({ user }) => {
           const classDocs = await Promise.all(
             classIds.map((id) => getDoc(doc(db, 'classes', id)).catch(() => null))
           );
-          classDocs.forEach((cSnap) => {
+          classDocs.forEach((cSnap, idx) => {
             if (cSnap && cSnap.exists()) {
+              const docId = cSnap.id || classIds[idx];
               const data = cSnap.data();
-              classMap.set(cSnap.id, {
-                id: cSnap.id,
-                name: data.name || cSnap.id,
+              classMap.set(docId, {
+                id: docId,
+                name: data.name || docId,
                 timeZone: data.schedule?.timeZone || 'UTC',
                 schedule: data.schedule || null,
                 examPeriods: data.examPeriods || [],
                 studentRecordingsPolicy: data.studentRecordingsPolicy || 'always_enabled',
                 studentRecordingsReleaseDate: data.studentRecordingsReleaseDate || null,
+                teacherRecordingsPolicy: data.teacherRecordingsPolicy || (data.allowShareTeacherRecordings ? 'selective' : 'private'),
+                allowShareTeacherRecordings: Boolean(data.allowShareTeacherRecordings),
               });
             }
           });
@@ -352,6 +433,8 @@ const StudentRecordsView = ({ user }) => {
                   timeZone: cData.schedule?.timeZone || 'UTC',
                   schedule: cData.schedule || null,
                   examPeriods: cData.examPeriods || [],
+                  teacherRecordingsPolicy: cData.teacherRecordingsPolicy || (cData.allowShareTeacherRecordings ? 'selective' : 'private'),
+                  allowShareTeacherRecordings: Boolean(cData.allowShareTeacherRecordings),
                 });
               }
             });
@@ -563,6 +646,14 @@ const StudentRecordsView = ({ user }) => {
           return lessonWithAccessibleVideo.lessonId;
         }
 
+        // Prioritize lesson with shared instructor lecture recordings
+        const lessonWithTeacherRecording = classLessons.find((l) =>
+          teacherRecordings.some((rec) => isRecordInLesson(rec, l))
+        );
+        if (lessonWithTeacherRecording) {
+          return lessonWithTeacherRecording.lessonId;
+        }
+
         const lessonWithActivity = classLessons.find((l) =>
           l.attendedMinutes > 0 || l.sharedScreenMinutes > 0 || l.hasAttendanceDoc
         );
@@ -575,7 +666,7 @@ const StudentRecordsView = ({ user }) => {
     } else {
       setSelectedLessonId('');
     }
-  }, [classLessons, videoJobs, selectedClassId, isExamVideo]);
+  }, [classLessons, videoJobs, teacherRecordings, selectedClassId, isExamVideo]);
 
   // Active lesson for per-lesson breakdown
   const activeLesson = useMemo(() => {
@@ -605,6 +696,58 @@ const StudentRecordsView = ({ user }) => {
   const excludedExamVideosCount = useMemo(() => {
     return videoJobs.filter((v) => v.classId === selectedClassId && isExamVideo(v)).length;
   }, [videoJobs, selectedClassId, isExamVideo]);
+
+  // Subscribe to shared teacher recordings for the selected class based on access policy
+  useEffect(() => {
+    const policy = activeClassObj?.teacherRecordingsPolicy || (activeClassObj?.allowShareTeacherRecordings ? 'selective' : 'private');
+    const isTeacherSharingAllowed = policy !== 'private';
+
+    if (!selectedClassId || !isTeacherSharingAllowed) {
+      setTeacherRecordings([]);
+      setLoadingTeacherRecordings(false);
+      return;
+    }
+
+    if (typeof onSnapshot !== 'function') return;
+
+    setLoadingTeacherRecordings(true);
+    const recordingsRef = collection(db, 'classes', selectedClassId, 'lectureRecordings');
+    const q = policy === 'always_shared'
+      ? query(recordingsRef)
+      : query(recordingsRef, where('isSharedWithStudents', '==', true));
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const rawDocs = (snapshot?.docs || []).map((d) => ({ id: d.id, ...d.data() }));
+        const docs = rawDocs.filter((r) => !r.discarded && r.status !== 'discarded');
+        docs.sort((a, b) => {
+          const timeA = a.startedAt?.toDate ? a.startedAt.toDate() : new Date(a.startedAt || a.createdAt || 0);
+          const timeB = b.startedAt?.toDate ? b.startedAt.toDate() : new Date(b.startedAt || b.createdAt || 0);
+          return timeB - timeA;
+        });
+        setTeacherRecordings(docs);
+        setLoadingTeacherRecordings(false);
+      },
+      (err) => {
+        console.warn('Could not fetch teacher recordings for class:', selectedClassId, err);
+        setTeacherRecordings([]);
+        setLoadingTeacherRecordings(false);
+      }
+    );
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [selectedClassId, activeClassObj?.teacherRecordingsPolicy, activeClassObj?.allowShareTeacherRecordings]);
+
+  // Filtered teacher recordings scoped to active lesson when applicable
+  const filteredTeacherRecordings = useMemo(() => {
+    if (!activeLesson || selectedLessonId === 'all') {
+      return teacherRecordings;
+    }
+    return teacherRecordings.filter((rec) => isRecordInLesson(rec, activeLesson));
+  }, [teacherRecordings, activeLesson, selectedLessonId]);
 
   const filteredMetrics = useMemo(() => {
     if (!selectedClassId) return [];
@@ -1034,11 +1177,13 @@ const StudentRecordsView = ({ user }) => {
                 <option value="all">🌐 All Lessons / Full Semester ({classLessons.length})</option>
                 {classLessons.map((l, idx) => {
                   const hasVideo = videoJobs.some((v) => v.classId === selectedClassId && isRecordInLesson(v, l));
+                  const hasTeacherRec = teacherRecordings.some((rec) => isRecordInLesson(rec, l));
                   return (
                     <option key={l.lessonId} value={l.lessonId}>
                       {idx === 0 ? '⭐ Latest: ' : '📅 '}
                       {formatDate(l.startTime)} ({l.duration}m)
                       {hasVideo ? ' 🎬' : ''}
+                      {hasTeacherRec ? ' 🎥' : ''}
                       {l.attendedMinutes > 0 ? ' ✓' : ''}
                     </option>
                   );
@@ -1123,6 +1268,20 @@ const StudentRecordsView = ({ user }) => {
           <span>🎬</span> Screencasts
           {visibleVideos.length > 0 && (
             <span className="tab-badge">{visibleVideos.length}</span>
+          )}
+        </button>
+
+        <button
+          className={`records-tab-btn ${activeTab === 'teacherRecordings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('teacherRecordings')}
+          role="tab"
+          aria-selected={activeTab === 'teacherRecordings'}
+        >
+          <span>🎥</span> Teacher Lectures
+          {(selectedLessonId === 'all' ? teacherRecordings.length : filteredTeacherRecordings.length) > 0 && (
+            <span className="tab-badge">
+              {selectedLessonId === 'all' ? teacherRecordings.length : filteredTeacherRecordings.length}
+            </span>
           )}
         </button>
 
@@ -1411,6 +1570,158 @@ const StudentRecordsView = ({ user }) => {
                               </button>
                             </div>
                           )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Teacher Lecture Recordings */}
+      {activeTab === 'teacherRecordings' && (
+        <div className="tab-panel-card">
+          <div className="panel-header">
+            <div>
+              <h2 className="panel-title">Instructor Lecture Recordings</h2>
+              <small style={{ color: '#64748b' }}>
+                Official classroom lectures and tutorial screen recordings shared by your teacher for {activeClassObj?.name || selectedClassId}
+              </small>
+            </div>
+          </div>
+
+          {(activeClassObj?.teacherRecordingsPolicy ? activeClassObj.teacherRecordingsPolicy === 'private' : !activeClassObj?.allowShareTeacherRecordings) ? (
+            <div
+              className="security-notice-banner"
+              role="alert"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '1.5rem',
+                margin: '1rem 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                color: '#475569',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>🔒</span>
+              <div>
+                <h4 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>
+                  Teacher Lectures Not Shared For This Class
+                </h4>
+                <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.875rem', color: '#64748b', lineHeight: 1.5 }}>
+                  Sharing of teacher lecture recordings is currently kept private by default for this class. Once your instructor enables lecture sharing in class settings, recordings will appear here.
+                </p>
+              </div>
+            </div>
+          ) : loadingTeacherRecordings ? (
+            <div className="empty-state-box">
+              <div className="empty-state-icon">⏳</div>
+              <div className="empty-state-text">Loading shared teacher lecture recordings...</div>
+            </div>
+          ) : teacherRecordings.length === 0 ? (
+            <div className="empty-state-box">
+              <div className="empty-state-icon">🎥</div>
+              <div className="empty-state-text">
+                {activeClassObj?.teacherRecordingsPolicy === 'always_shared'
+                  ? 'No lecture recordings have been published for this class yet. As soon as your teacher records a lecture, it will appear here automatically.'
+                  : 'No lecture recordings have been shared by your instructor for this class yet. When your teacher selects a lecture recording to share, it will appear here.'}
+              </div>
+            </div>
+          ) : filteredTeacherRecordings.length === 0 ? (
+            <div className="empty-state-box">
+              <div className="empty-state-icon">🔍</div>
+              <div className="empty-state-text">
+                No teacher recordings found matching the selected lesson.
+              </div>
+              <button
+                type="button"
+                className="scope-toggle-btn"
+                style={{ marginTop: '1rem' }}
+                onClick={() => setSelectedLessonId('all')}
+              >
+                🌐 Show All Lessons ({teacherRecordings.length} shared recordings)
+              </button>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="records-table">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Lecture Topic / Title</th>
+                    <th>Duration</th>
+                    <th>Formats Available</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTeacherRecordings.map((recording) => {
+                    const dateStr = recording.startedAt?.toDate
+                      ? recording.startedAt.toDate().toLocaleString()
+                      : recording.startedAt
+                      ? new Date(recording.startedAt).toLocaleString()
+                      : 'Recent';
+
+                    return (
+                      <tr key={recording.id}>
+                        <td style={{ fontWeight: 600 }}>{dateStr}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>
+                            {recording.title || 'Classroom Lecture'}
+                          </div>
+                          {recording.topic && recording.topic !== recording.title && (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                              Topic: {recording.topic}
+                            </div>
+                          )}
+                        </td>
+                        <td>{formatDuration(recording.durationSeconds || 0)}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {recording.isCombined ? (
+                              <span className="pill-badge pill-success">🌟 Full Lecture</span>
+                            ) : recording.isFragment ? (
+                              <span className="pill-badge pill-neutral">✂️ Part {recording.fragmentIndex || 1}</span>
+                            ) : recording.durationSeconds >= 600 ? (
+                              <span className="pill-badge pill-success">🌟 Full Lecture</span>
+                            ) : (
+                              <span className="pill-badge pill-neutral">✂️ Clip</span>
+                            )}
+                            {recording.youtubeVideoId && (
+                              <span className="pill-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+                                📺 YouTube
+                              </span>
+                            )}
+                            {recording.driveFileId && (
+                              <span className="pill-badge" style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+                                📁 Drive
+                              </span>
+                            )}
+                            {recording.vttUrls && Object.keys(recording.vttUrls).length > 0 && (
+                              <span className="pill-badge pill-neutral">
+                                💬 CC ({Object.keys(recording.vttUrls).length})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="action-btn-sm action-btn-primary"
+                            onClick={() => {
+                              setActiveTeacherLecture(recording);
+                              setTeacherPlayerMode(determineDefaultPlayerMode(recording));
+                              setSelectedSubtitleLang(getInitialSubtitleLang(recording.vttUrls));
+                            }}
+                          >
+                            ▶ Watch Lecture
+                          </button>
                         </td>
                       </tr>
                     );
@@ -2282,6 +2593,235 @@ const StudentRecordsView = ({ user }) => {
           onStartAttempt={handleStartTaskAttempt}
           onFinishAttempt={handleFinishTaskAttempt}
         />
+      )}
+
+      {/* Teacher Lecture Video Player Modal */}
+      {activeTeacherLecture && (
+        <div
+          className="teacher-lecture-modal-overlay"
+          onClick={() => setActiveTeacherLecture(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={activeTeacherLecture.title || 'Teacher Lecture Recording'}
+        >
+          <div
+            className="teacher-lecture-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="teacher-lecture-modal-header">
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', color: '#0f172a' }}>
+                  🎥 {activeTeacherLecture.title || 'Classroom Lecture'}
+                </h3>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  <span>
+                    📅 {activeTeacherLecture.startedAt?.toDate
+                      ? activeTeacherLecture.startedAt.toDate().toLocaleString()
+                      : activeTeacherLecture.startedAt
+                      ? new Date(activeTeacherLecture.startedAt).toLocaleString()
+                      : 'Recent'}
+                  </span>
+                  <span>⏱️ Length: {formatDuration(activeTeacherLecture.durationSeconds || 0)}</span>
+                  {activeTeacherLecture.fileSize && (
+                    <span>📦 Size: {formatBytes(activeTeacherLecture.fileSize)}</span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="action-btn-sm action-btn-secondary"
+                onClick={() => setActiveTeacherLecture(null)}
+                style={{ fontSize: '1.2rem', padding: '2px 10px', lineHeight: 1 }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="teacher-lecture-modal-body">
+              {/* Multi-Player Switcher */}
+              {(activeTeacherLecture.youtubeVideoId || activeTeacherLecture.driveFileId) && (
+                <div className="player-mode-switcher" style={{ marginBottom: '10px' }}>
+                  {activeTeacherLecture.youtubeVideoId && (
+                    <button
+                      type="button"
+                      className={`player-mode-tab ${teacherPlayerMode === 'youtube' ? 'active' : ''}`}
+                      onClick={() => setTeacherPlayerMode('youtube')}
+                    >
+                      📺 YouTube Stream
+                    </button>
+                  )}
+                  {activeTeacherLecture.driveFileId && (
+                    <button
+                      type="button"
+                      className={`player-mode-tab ${teacherPlayerMode === 'drive' ? 'active' : ''}`}
+                      onClick={() => setTeacherPlayerMode('drive')}
+                    >
+                      📁 Google Drive Stream (⚠️ No CC)
+                    </button>
+                  )}
+                  {activeTeacherLecture.videoUrl && (
+                    <button
+                      type="button"
+                      className={`player-mode-tab ${teacherPlayerMode === 'cloud' ? 'active' : ''}`}
+                      onClick={() => setTeacherPlayerMode('cloud')}
+                    >
+                      🎞️ Cloud Storage HTML5 Player (💬 Multilingual CC)
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Player Box */}
+              <div className="teacher-lecture-player-container">
+                {teacherPlayerMode === 'youtube' && activeTeacherLecture.youtubeVideoId ? (
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${activeTeacherLecture.youtubeVideoId}?rel=0&autoplay=1`}
+                    title={activeTeacherLecture.title || 'Teacher Lecture Video'}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : teacherPlayerMode === 'drive' && (activeTeacherLecture.driveEmbedUrl || activeTeacherLecture.driveFileId) ? (
+                  <iframe
+                    src={activeTeacherLecture.driveEmbedUrl || `https://drive.google.com/file/d/${activeTeacherLecture.driveFileId}/preview`}
+                    title={activeTeacherLecture.title || 'Google Drive Lecture Video'}
+                    allow="autoplay; encrypted-media"
+                    allowFullScreen
+                  />
+                ) : activeTeacherLecture.videoUrl ? (
+                  <>
+                    <video
+                      ref={teacherVideoRef}
+                      key={activeTeacherLecture.videoUrl}
+                      controls
+                      autoPlay
+                      playsInline
+                      crossOrigin="anonymous"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      onLoadedMetadata={(e) => {
+                        const vid = e.currentTarget;
+                        fixWebmPlaybackDuration(vid, activeTeacherLecture?.durationSeconds, (v) => {
+                          applySubtitleTrack(v, selectedSubtitleLang);
+                        });
+                      }}
+                      onEnded={(e) => handleVideoEndedGuard(e, activeTeacherLecture?.durationSeconds)}
+                    >
+                      <source
+                        src={activeTeacherLecture.videoUrl}
+                        type={activeTeacherLecture.mimeType || 'video/webm'}
+                      />
+                      {/* Multilingual Closed Caption Tracks (dynamic) */}
+                      {activeTeacherLecture.vttUrls &&
+                        Object.entries(activeTeacherLecture.vttUrls).map(([langKey, url]) => {
+                          const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                          const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                          const bcp47 = langConfig?.bcp47 || langKey;
+                          return (
+                            <track
+                              key={langKey}
+                              kind="subtitles"
+                              src={url}
+                              srcLang={bcp47}
+                              label={label}
+                              default={selectedSubtitleLang === langKey}
+                            />
+                          );
+                        })}
+                      Your browser does not support HTML5 video playback.
+                    </video>
+                  </>
+                ) : (
+                  <div style={{ color: '#fff', textAlign: 'center', padding: '2rem' }}>
+                    <p>No playable media stream found for this lecture.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Cloud Mode Subtitle Language Selector Toolbar */}
+              {teacherPlayerMode === 'cloud' && activeTeacherLecture.vttUrls && Object.keys(activeTeacherLecture.vttUrls).length > 0 && (
+                <div className="subtitle-language-toolbar" data-testid="subtitle-language-toolbar" role="region" aria-label="Subtitle Language Selector">
+                  <div className="subtitle-toolbar-header">
+                    <span className="subtitle-toolbar-title">
+                      💬 <strong>Subtitles / CC Language:</strong>
+                    </span>
+                    <span className="subtitle-toolbar-badge">
+                      Active: {getSubtitleLanguageLabel(selectedSubtitleLang)}
+                    </span>
+                  </div>
+                  <div className="subtitle-lang-buttons">
+                    {Object.keys(activeTeacherLecture.vttUrls).map((langKey) => {
+                      const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                      const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                      const isActive = selectedSubtitleLang === langKey;
+                      return (
+                        <button
+                          key={langKey}
+                          type="button"
+                          className={`btn-sub-lang ${isActive ? 'active' : ''}`}
+                          onClick={() => handleSelectSubtitleLang(langKey)}
+                          title={`Switch to ${label} Subtitles`}
+                          aria-pressed={isActive}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className={`btn-sub-lang btn-sub-lang-off ${selectedSubtitleLang === 'off' ? 'active' : ''}`}
+                      onClick={() => handleSelectSubtitleLang('off')}
+                      title="Turn Subtitles Off"
+                      aria-pressed={selectedSubtitleLang === 'off'}
+                    >
+                      🚫 Off (關閉)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Drive Mode Multilingual Subtitles Information & 1-Click Switcher */}
+              {teacherPlayerMode === 'drive' && activeTeacherLecture.vttUrls && Object.keys(activeTeacherLecture.vttUrls).length > 0 && (
+                <div className="drive-no-cc-banner" data-testid="drive-no-cc-banner">
+                  <div className="drive-no-cc-banner-header">
+                    <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>⚠️</span>
+                    <div>
+                      <strong>Google Drive Preview does not support external CC subtitles.</strong>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#475569' }}>
+                        Subtitles ({Object.keys(activeTeacherLecture.vttUrls).map((k) => getSubtitleLanguageLabel(k)).join(', ')}) are available in the <strong>Cloud Storage HTML5 Player</strong>.
+                        Click any language below to watch with subtitles:
+                      </p>
+                    </div>
+                  </div>
+                  <div className="subtitle-lang-buttons">
+                    {Object.keys(activeTeacherLecture.vttUrls).map((langKey) => {
+                      const langConfig = SUBTITLE_LANGUAGES.find((l) => l.code === langKey);
+                      const label = langConfig ? `${langConfig.icon} ${langConfig.label}` : langKey.toUpperCase();
+                      return (
+                        <button
+                          key={langKey}
+                          type="button"
+                          className="btn-sub-lang"
+                          onClick={() => handleSelectSubtitleLangFromDrive(langKey)}
+                          title={`Switch to Cloud Player with ${label} Subtitles`}
+                        >
+                          {label} (Cloud Player)
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="action-btn-sm action-btn-primary"
+                      style={{ fontWeight: 600, padding: '6px 12px' }}
+                      onClick={() => setTeacherPlayerMode('cloud')}
+                    >
+                      🎞️ Switch to Cloud Player
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -77,4 +77,30 @@ describe('PromptViewModal Component', () => {
     rerender(<PromptViewModal show={true} onClose={vi.fn()} job={null} />);
     expect(screen.queryByText('No prompt specified.')).not.toBeInTheDocument();
   });
+
+  it('renders prompt template review mode with metadata, detected placeholders, and font zoom', () => {
+    const promptText = 'Transcribe speech for {{courseContext}} with language {{speechLanguage}}. Keep technical terms.';
+    render(
+      <PromptViewModal
+        show={true}
+        onClose={vi.fn()}
+        promptName="Lecture Audio Speech-to-Text & Chapters"
+        category="audios"
+        accessLevel="public"
+        promptText={promptText}
+      />
+    );
+
+    expect(screen.getByText('Lecture Audio Speech-to-Text & Chapters')).toBeInTheDocument();
+    expect(screen.getByText(/audios/i)).toBeInTheDocument();
+    expect(screen.getByText(/public/i)).toBeInTheDocument();
+    expect(screen.getByText('{{courseContext}}')).toBeInTheDocument();
+    expect(screen.getByText('{{speechLanguage}}')).toBeInTheDocument();
+    expect(screen.getByText(/Transcribe speech for/i)).toBeInTheDocument();
+
+    // Test font size zoom
+    const zoomInBtn = screen.getByRole('button', { name: 'A+' });
+    fireEvent.click(zoomInBtn);
+    expect(screen.getByText('14px')).toBeInTheDocument();
+  });
 });

@@ -47,7 +47,8 @@ describe('AuthComponent Component', () => {
     expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
   });
 
-  it('displays Chrome requirement warning if current browser is not Chrome', () => {
+  it('displays Chrome requirement warning if current desktop browser is not Chrome', () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
     vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
     vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Apple Safari');
 
@@ -57,11 +58,14 @@ describe('AuthComponent Component', () => {
     expect(screen.getByText(/You are currently using Apple Safari/i)).toBeInTheDocument();
   });
 
-  it('blocks student login on non-Chrome browser with clear error message', async () => {
+  it('blocks student login on desktop non-Chrome browser with clear error message', async () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
     vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
     vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Mozilla Firefox');
 
     render(<AuthComponent />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /Email & Password/i }));
 
     fireEvent.change(screen.getByLabelText(/Email Address/i), {
       target: { value: 'student1@stu.vtc.edu.hk' }
@@ -199,16 +203,57 @@ describe('AuthComponent Component', () => {
     expect(screen.getByText(/Only emails ending with @stu\.vtc\.edu\.hk or @vtc\.edu\.hk are allowed\./i)).toBeInTheDocument();
   });
 
-  it('blocks student registration on non-Chrome browser', () => {
+  it('blocks student registration on desktop non-Chrome browser', () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
     vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
     vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Firefox');
     render(<AuthComponent />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /Email & Password/i }));
 
     fireEvent.change(screen.getByLabelText(/Email Address/i), { target: { value: 'student1@stu.vtc.edu.hk' } });
     fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } });
     fireEvent.click(screen.getByRole('button', { name: /Register/i }));
     expect(screen.getByText(/Google Chrome is strictly required for students\. Detected: Firefox/i)).toBeInTheDocument();
     expect(createUserWithEmailAndPassword).not.toHaveBeenCalled();
+  });
+
+  it('allows student login on mobile device even if browser is not Chrome (e.g. Apple Safari)', async () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(true);
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Apple Safari');
+    signInWithEmailAndPassword.mockResolvedValueOnce({
+      user: { uid: 'student1', emailVerified: true, reload: vi.fn(), getIdTokenResult: vi.fn() }
+    });
+
+    render(<AuthComponent />);
+
+    fireEvent.change(screen.getByLabelText(/Email Address/i), {
+      target: { value: 'student1@stu.vtc.edu.hk' }
+    });
+    fireEvent.change(screen.getByLabelText(/Password/i), {
+      target: { value: 'password123' }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
+
+    await waitFor(() => {
+      expect(signInWithEmailAndPassword).toHaveBeenCalledWith(
+        expect.anything(),
+        'student1@stu.vtc.edu.hk',
+        'password123'
+      );
+    });
+  });
+
+  it('does not display desktop Chrome requirement warning on mobile devices', () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(true);
+    vi.spyOn(browserDetection, 'isGoogleChrome').mockReturnValue(false);
+    vi.spyOn(browserDetection, 'getBrowserName').mockReturnValue('Apple Safari');
+
+    render(<AuthComponent />);
+
+    expect(screen.queryByText(/Students: Google Chrome Required/i)).not.toBeInTheDocument();
   });
 
   it('allows registration on Chrome and sends verification email', async () => {
@@ -387,29 +432,6 @@ describe('AuthComponent Component', () => {
       expect(screen.getByText(/Refreshes in:/i)).toBeInTheDocument();
       expect(screen.getByAltText('Desktop Login QR Code')).toBeInTheDocument();
     });
-  });
-
-  it('renders Clear Cache & Reset App button and clears storage on click', async () => {
-    const originalLocation = window.location;
-    const reloadMock = vi.fn();
-    delete window.location;
-    window.location = { ...originalLocation, reload: reloadMock };
-
-    localStorage.setItem('student_view_mode', 'desktop');
-    sessionStorage.setItem('test_session', 'val');
-
-    render(<AuthComponent />);
-
-    const clearBtn = screen.getByRole('button', { name: /Clear Cache & Reset App/i });
-    expect(clearBtn).toBeInTheDocument();
-
-    fireEvent.click(clearBtn);
-
-    expect(localStorage.getItem('student_view_mode')).toBeNull();
-    expect(sessionStorage.getItem('test_session')).toBeNull();
-    expect(reloadMock).toHaveBeenCalled();
-
-    window.location = originalLocation;
   });
 });
 

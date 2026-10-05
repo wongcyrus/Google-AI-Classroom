@@ -91,4 +91,58 @@ describe('ImagePromptSelector Component', () => {
     expect(selects[selects.length - 1].value).toBe('img-1');
     unmount();
   });
+
+  it('renders Bingo-specific aria labels and placeholders when applyToFilter is "Classroom Bingo Questions"', () => {
+    render(
+      <ImagePromptSelector
+        user={mockUser}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText=""
+        onTextChange={vi.fn()}
+        applyToFilter="Classroom Bingo Questions"
+      />
+    );
+
+    expect(screen.getByText(/-- Select a Classroom Bingo Question prompt --/i)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Select a Classroom Bingo Question prompt/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Select a Bingo question prompt or enter custom 4-option question formulation instructions.../i)).toBeInTheDocument();
+  });
+
+  it('renders read-only notice and copy button when readOnly is true (default)', () => {
+    render(
+      <ImagePromptSelector
+        user={mockUser}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText="Preview prompt content"
+        onTextChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Template Preview \(Read-Only\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Customized prompts must be created in Prompt Management/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy Prompt Text/i })).toBeInTheDocument();
+
+    const textarea = screen.getByRole('textbox');
+    expect(textarea).toHaveAttribute('readonly');
+  });
+
+  it('does not render read-only notice when readOnly is false', () => {
+    render(
+      <ImagePromptSelector
+        user={mockUser}
+        selectedPrompt={null}
+        onSelectPrompt={vi.fn()}
+        promptText="Preview prompt content"
+        onTextChange={vi.fn()}
+        readOnly={false}
+      />
+    );
+
+    expect(screen.queryByText(/Template Preview \(Read-Only\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copy Prompt Text/i })).not.toBeInTheDocument();
+    const textarea = screen.getByRole('textbox');
+    expect(textarea).not.toHaveAttribute('readonly');
+  });
 });

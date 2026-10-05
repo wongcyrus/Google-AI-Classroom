@@ -660,4 +660,83 @@
   background-color: #b91c1c !important;
 }
 
+/* Active Target Class Badge */
+.broadcast-target-class-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.2px;
+}
+
+.broadcast-target-class-badge strong {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+/* Schedule Mismatch Warning Banner */
+.broadcast-schedule-warning-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-bottom: 1.5px solid #f59e0b;
+  padding: 0.65rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.1);
+  animation: fadeInStep 0.2s ease-out;
+}
+
+.broadcast-schedule-warning-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.broadcast-schedule-warning-content {
+  flex: 1;
+  font-size: 0.82rem;
+  color: #92400e;
+  line-height: 1.35;
+}
+
+.broadcast-schedule-warning-content strong {
+  display: block;
+  font-size: 0.86rem;
+  color: #b45309;
+  margin-bottom: 2px;
+}
+
+.broadcast-schedule-warning-content p {
+  margin: 0;
+  color: #78350f;
+}
+
+.broadcast-switch-class-btn {
+  background-color: #b45309;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s ease;
+}
+
+.broadcast-switch-class-btn:hover {
+  background-color: #92400e;
+  transform: translateY(-1px);
+}
+
+
 

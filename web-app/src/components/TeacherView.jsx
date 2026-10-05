@@ -5,12 +5,29 @@ import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
 import { formatBytes, formatAiCost, formatStorageCost } from '../utils/formatters';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
+import {
+  getClassScheduleStatus,
+  extractClassTags,
+  filterAndSortClasses,
+} from '../utils/classRankingUtils';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [scheduleFilter, setScheduleFilter] = useState('today'); // 'today' (default) | 'live' | 'all'
+  const [sortOption, setSortOption] = useState('smart'); // 'smart' | 'name'
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  // Periodically refresh current time every 60s to keep live status accurate
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -139,15 +156,53 @@ const TeacherView = ({ user }) => {
     };
   }, [classes]);
 
-  // Filtered classes by search term
+  // Extract unique custom & smart tags across all classes
+  const availableTags = useMemo(() => {
+    return extractClassTags(classes, currentTime);
+  }, [classes, currentTime]);
+
+  // Compute live and today counts for quick filter buttons
+  const { liveCount, todayCount } = useMemo(() => {
+    let live = 0;
+    let today = 0;
+    classes.forEach(c => {
+      const status = getClassScheduleStatus(c, currentTime);
+      if (status.tier === 1) live++;
+      if (status.tier === 1 || status.tier === 2 || status.tier === 3) today++;
+    });
+    return { liveCount: live, todayCount: today };
+  }, [classes, currentTime]);
+
+  // Composable filtered and sorted classes
   const filteredClasses = useMemo(() => {
-    if (!searchTerm.trim()) return classes;
-    const term = searchTerm.toLowerCase();
-    return classes.filter(c =>
-      (c.id && c.id.toLowerCase().includes(term)) ||
-      (c.name && c.name.toLowerCase().includes(term))
+    return filterAndSortClasses(classes, {
+      searchTerm,
+      selectedTags,
+      scheduleFilter,
+      sortOption,
+      now: currentTime,
+    });
+  }, [classes, searchTerm, selectedTags, scheduleFilter, sortOption, currentTime]);
+
+  const toggleTag = (tag) => {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
-  }, [classes, searchTerm]);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedTags([]);
+    setScheduleFilter('all');
+    setSortOption('smart');
+  };
+
+  const hasActiveFilters = Boolean(
+    searchTerm.trim() ||
+    selectedTags.length > 0 ||
+    scheduleFilter !== 'all' ||
+    sortOption !== 'smart'
+  );
 
 
 
@@ -230,16 +285,124 @@ const TeacherView = ({ user }) => {
 
       {/* Classes Management Section */}
       <div className="classes-section-header">
-        <h2>Your Classes ({filteredClasses.length})</h2>
-        <div className="classes-search-box">
-          <span className="search-icon-placeholder">🔍</span>
-          <input
-            type="text"
-            placeholder="Search classes by name or code..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div>
+          <h2>Your Classes ({filteredClasses.length}{filteredClasses.length !== classes.length ? ` of ${classes.length}` : ''})</h2>
+          <p className="classes-section-subtitle">
+            Ranked by scheduled lesson status. Today's live and upcoming classes automatically appear first.
+          </p>
         </div>
+      </div>
+
+      {/* Composable Filter Bar */}
+      <div className="classes-filter-section">
+        <div className="classes-filter-controls">
+          {/* Search Box */}
+          <div className="classes-search-box">
+            <span className="search-icon-placeholder">🔍</span>
+            <input
+              type="text"
+              placeholder="Search classes by name or code..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="Search classes"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                className="clear-search-btn"
+                onClick={() => setSearchTerm('')}
+                aria-label="Clear input"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Schedule Quick Toggles */}
+          <div className="schedule-filter-toggles" role="group" aria-label="Schedule Filter">
+            <button
+              type="button"
+              className={`filter-toggle-btn ${scheduleFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setScheduleFilter('all')}
+            >
+              All ({classes.length})
+            </button>
+            <button
+              type="button"
+              className={`filter-toggle-btn live ${scheduleFilter === 'live' ? 'active' : ''}`}
+              onClick={() => setScheduleFilter(scheduleFilter === 'live' ? 'all' : 'live')}
+              title="Show currently active classes"
+            >
+              🟢 Live Now ({liveCount})
+            </button>
+            <button
+              type="button"
+              className={`filter-toggle-btn today ${scheduleFilter === 'today' ? 'active' : ''}`}
+              onClick={() => setScheduleFilter(scheduleFilter === 'today' ? 'all' : 'today')}
+              title="Show classes scheduled today"
+            >
+              📅 Today ({todayCount})
+            </button>
+          </div>
+
+          {/* Sort Order Selector */}
+          <div className="sort-order-selector">
+            <label htmlFor="class-sort-select">Sort:</label>
+            <select
+              id="class-sort-select"
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="sort-select-input"
+            >
+              <option value="smart">⚡ Smart Schedule (Active First)</option>
+              <option value="name">🔤 Name (A - Z)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Tag Pills Filter Bar */}
+        {availableTags.length > 0 && (
+          <div className="tag-filter-bar">
+            <span className="tag-filter-label">🏷️ Filter Tags:</span>
+            <div className="tag-pills-container">
+              {availableTags.map(({ tag, count, isSmart }) => {
+                const isSelected = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`filter-tag-pill ${isSelected ? 'active' : ''} ${isSmart ? 'smart-tag' : ''}`}
+                    onClick={() => toggleTag(tag)}
+                    title={isSelected ? `Remove ${tag} filter` : `Filter by ${tag}`}
+                  >
+                    <span>{tag}</span>
+                    <span className="tag-count-badge">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="clear-all-filters-btn"
+                onClick={clearAllFilters}
+                title="Clear all active search, tag, and schedule filters"
+              >
+                ✕ Clear Filters
+              </button>
+            )}
+          </div>
+        )}
+
+        {hasActiveFilters && (
+          <div className="active-filter-summary">
+            Showing <strong>{filteredClasses.length}</strong> of <strong>{classes.length}</strong> classes
+            {searchTerm && <span> matching "<em>{searchTerm}</em>"</span>}
+            {selectedTags.length > 0 && <span> with tags: <strong>{selectedTags.join(', ')}</strong></span>}
+            {scheduleFilter !== 'all' && <span> ({scheduleFilter === 'live' ? 'Live Now Only' : 'Today\'s Classes Only'})</span>}
+          </div>
+        )}
       </div>
 
       {filteredClasses.length > 0 ? (
@@ -254,9 +417,28 @@ const TeacherView = ({ user }) => {
             const aiPercent = aiQuota > 0 ? Math.min(100, (aiUsed / aiQuota) * 100) : 0;
 
             const studentCount = c.students ? Object.keys(c.students).length : (c.studentEmails?.length || 0);
+            const scheduleStatus = c._scheduleStatus || getClassScheduleStatus(c, currentTime);
+            const isLive = scheduleStatus.tier === 1;
+            const isSoon = scheduleStatus.tier === 2;
 
             return (
-              <div key={c.id} className="class-card">
+              <div
+                key={c.id}
+                className={`class-card ${isLive ? 'is-live-now' : isSoon ? 'is-starting-soon' : ''}`}
+              >
+                {/* Schedule Status Banner */}
+                {scheduleStatus.badge && (
+                  <div className={`class-schedule-status-banner tier-${scheduleStatus.tier}`}>
+                    <span className="status-badge-text">{scheduleStatus.badge}</span>
+                    {scheduleStatus.activeLesson?.title && (
+                      <span className="lesson-subtext">· {scheduleStatus.activeLesson.title}</span>
+                    )}
+                    {scheduleStatus.nextLesson?.title && (
+                      <span className="lesson-subtext">· {scheduleStatus.nextLesson.title}</span>
+                    )}
+                  </div>
+                )}
+
                 <div className="class-card-header">
                   <div>
                     <h3 className="class-card-title">{c.name || c.id}</h3>
@@ -266,6 +448,26 @@ const TeacherView = ({ user }) => {
                     👥 {studentCount} student{studentCount === 1 ? '' : 's'}
                   </span>
                 </div>
+
+                {/* Custom Tags Pill List */}
+                {Array.isArray(c.tags) && c.tags.length > 0 && (
+                  <div className="card-tags-list">
+                    {c.tags.map(t => (
+                      <span
+                        key={t}
+                        className={`card-tag-pill ${selectedTags.includes(t) ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleTag(t);
+                        }}
+                        title={`Filter by tag #${t}`}
+                      >
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div className="class-schedule-preview">
                   <span>📅</span>
@@ -329,22 +531,41 @@ const TeacherView = ({ user }) => {
             );
           })}
         </div>
-      ) : (
+      ) : classes.length === 0 ? (
         <div className="empty-dashboard-state">
           <div className="empty-state-icon">🏫</div>
-          <h3>{searchTerm ? 'No matching classes found' : 'No classes enrolled yet'}</h3>
+          <h3>No classes enrolled yet</h3>
+          <p>Create your first classroom to begin monitoring sessions, generating AI analytics, and managing recordings.</p>
+          <Link to="/class-management" className="create-class-btn">
+            + Create Your First Class
+          </Link>
+        </div>
+      ) : searchTerm ? (
+        <div className="empty-dashboard-state">
+          <div className="empty-state-icon">🔍</div>
+          <h3>No matching classes found</h3>
+          <p>We couldn't find any classes matching "{searchTerm}". Try clearing your search.</p>
+          <button className="secondary-btn" onClick={() => setSearchTerm('')}>Clear Search</button>
+        </div>
+      ) : scheduleFilter === 'today' ? (
+        <div className="empty-dashboard-state">
+          <div className="empty-state-icon">📅</div>
+          <h3>No classes scheduled for today</h3>
           <p>
-            {searchTerm
-              ? `We couldn't find any classes matching "${searchTerm}". Try clearing your search.`
-              : 'Create your first classroom to begin monitoring sessions, generating AI analytics, and managing recordings.'}
+            You have {classes.length} {classes.length === 1 ? 'course' : 'courses'} in total, but none are scheduled for today.
           </p>
-          {searchTerm ? (
-            <button className="secondary-btn" onClick={() => setSearchTerm('')}>Clear Search</button>
-          ) : (
-            <Link to="/class-management" className="create-class-btn">
-              + Create Your First Class
-            </Link>
-          )}
+          <button className="secondary-btn" onClick={() => setScheduleFilter('all')}>
+            View All Classes ({classes.length})
+          </button>
+        </div>
+      ) : (
+        <div className="empty-dashboard-state">
+          <div className="empty-state-icon">🏷️</div>
+          <h3>No classes match current filter</h3>
+          <p>No classes match your active filter criteria.</p>
+          <button className="secondary-btn" onClick={clearAllFilters}>
+            Clear Filters
+          </button>
         </div>
       )}
     </div>

@@ -88,8 +88,11 @@ export default function TeacherScreenBroadcastModal({
   defaultRecordOnStart = true,
   onOpenRecordings = null,
 
-  // Public presentation QR & PIN mode
+  // Target class & schedule awareness
   classId = '',
+  className = '',
+  activeLiveClass = null,
+  onSwitchClass = null,
   isPublicBroadcast = false,
   publicPin = null,
 }) {
@@ -356,13 +359,16 @@ export default function TeacherScreenBroadcastModal({
       if (setBroadcastInterval) setBroadcastInterval(selectedInterval);
 
       if (onStartBroadcast) {
+        const defaultTitle = className
+          ? `${className} - ${new Date().toLocaleDateString()}`
+          : `Lecture - ${new Date().toLocaleDateString()}`;
         await onStartBroadcast({
           resolution: selectedRes,
           interval: selectedInterval,
           isPublic: isPublicMode,
           publicPin: isPublicMode ? sessionPin : null,
           recordOnStart,
-          lectureTitle,
+          lectureTitle: lectureTitle?.trim() || defaultTitle,
           lectureTopic,
           micDeviceId: selectedMicDeviceId,
           enableSubtitles: effectiveSubtitlesEnabled,
@@ -409,7 +415,12 @@ export default function TeacherScreenBroadcastModal({
             <div className="broadcast-modal-title">
               <span className="setup-badge-icon">🎙️🖥️</span>
               <div>
-                <h3>Broadcast Screen & Voice</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h3>Broadcast Screen &amp; Voice</h3>
+                  <span className="broadcast-target-class-badge" title={`Broadcasting target: ${classId}`}>
+                    🎯 Target: <strong>{className || classId}</strong>
+                  </span>
+                </div>
                 <p className="setup-subtitle">
                   Configure microphone, live translations, and screen share for your classroom
                 </p>
@@ -419,6 +430,31 @@ export default function TeacherScreenBroadcastModal({
               ✕
             </button>
           </div>
+
+          {/* Schedule Mismatch Warning Banner if another class is live now */}
+          {activeLiveClass && activeLiveClass.id !== classId && (
+            <div className="broadcast-schedule-warning-banner" role="alert">
+              <div className="broadcast-schedule-warning-icon">⚠️</div>
+              <div className="broadcast-schedule-warning-content">
+                <strong>Schedule Warning: Another class is live now!</strong>
+                <p>
+                  According to your timetable, <strong>{activeLiveClass.name || activeLiveClass.id}</strong> ({activeLiveClass.id}) is scheduled right now, but this broadcast studio is set to <strong>{className || classId}</strong> ({classId}).
+                </p>
+              </div>
+              {onSwitchClass && (
+                <button
+                  type="button"
+                  className="broadcast-switch-class-btn"
+                  onClick={() => {
+                    onClose?.();
+                    onSwitchClass(activeLiveClass.id);
+                  }}
+                >
+                  Switch to {activeLiveClass.name || activeLiveClass.id}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Step Progress Tabs (Following Student Readiness Wizard Pattern) */}
           <div className="studio-step-tabs">
@@ -900,7 +936,7 @@ export default function TeacherScreenBroadcastModal({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '12px' }}>
                         <input
                           type="text"
-                          placeholder="Lecture Title (e.g. Unit 4: Cloud Architecture)"
+                          placeholder={`Lecture Title (e.g. ${className ? `${className} - ${new Date().toLocaleDateString()}` : 'Unit 4: Cloud Architecture'})`}
                           value={lectureTitle}
                           onChange={(e) => setLectureTitle(e.target.value)}
                           style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
@@ -1136,12 +1172,43 @@ export default function TeacherScreenBroadcastModal({
         <div className="broadcast-modal-header">
           <div className="broadcast-modal-title">
             <span className="live-pulse-dot" />
-            <h3>🖥️ Live Class Screen Broadcast</h3>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3>🖥️ Live Class Screen Broadcast</h3>
+                <span className="broadcast-target-class-badge" title={`Broadcasting target: ${classId}`}>
+                  🎯 Target: <strong>{className || classId}</strong>
+                </span>
+              </div>
+            </div>
           </div>
           <button className="broadcast-close-btn" onClick={onClose} aria-label="Close modal">
             ✕
           </button>
         </div>
+
+        {activeLiveClass && activeLiveClass.id !== classId && (
+          <div className="broadcast-schedule-warning-banner" role="alert" style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
+            <div className="broadcast-schedule-warning-icon">⚠️</div>
+            <div className="broadcast-schedule-warning-content">
+              <strong>Schedule Warning: Another class is live now!</strong>
+              <p>
+                Your timetable shows <strong>{activeLiveClass.name || activeLiveClass.id}</strong> ({activeLiveClass.id}) is live right now, but this broadcast is running under <strong>{className || classId}</strong> ({classId}).
+              </p>
+            </div>
+            {onSwitchClass && (
+              <button
+                type="button"
+                className="broadcast-switch-class-btn"
+                onClick={() => {
+                  onClose?.();
+                  onSwitchClass(activeLiveClass.id);
+                }}
+              >
+                Switch to {activeLiveClass.name || activeLiveClass.id}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="broadcast-modal-body">
           {/* Main Video Preview Area */}

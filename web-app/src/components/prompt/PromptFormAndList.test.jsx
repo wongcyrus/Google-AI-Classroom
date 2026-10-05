@@ -121,7 +121,7 @@ describe('PromptForm Component', () => {
     expect(screen.getByLabelText(/Live Audio Invigilation/i)).toBeChecked();
     expect(screen.getByLabelText(/Session Audio Summary/i)).not.toBeChecked();
     expect(screen.getByLabelText(/On-Device Gemma Voice Intent/i)).not.toBeChecked();
-    expect(screen.getByLabelText(/Live Subtitles & Translation/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/Lecture STT & Chapters/i)).not.toBeChecked();
 
     fireEvent.click(screen.getByLabelText(/Session Audio Summary/i));
     expect(handleApplyToChange).toHaveBeenCalled();
@@ -160,6 +160,7 @@ describe('PromptForm Component', () => {
     );
 
     expect(screen.getByLabelText(/Live Subtitles & Translation/i)).toBeChecked();
+    expect(screen.getByLabelText(/Lecture Subtitle Translation/i)).not.toBeChecked();
     expect(screen.getByLabelText(/Cantonese-English Code-Switching/i)).not.toBeChecked();
     expect(screen.getByLabelText(/Technical Discipline Glossary/i)).not.toBeChecked();
 
@@ -374,4 +375,82 @@ describe('PromptForm Component', () => {
     expect(screen.getByPlaceholderText('Prompt Name')).toBeDisabled();
     expect(screen.getByText('Optimizing...')).toBeDisabled();
   });
+
+  it('renders available placeholder chips and inserts placeholder when clicked', () => {
+    const setPromptText = vi.fn();
+
+    render(
+      <PromptForm
+        selectedPrompt={null}
+        name="Lecture Subtitle Custom"
+        setName={vi.fn()}
+        promptText="Base text"
+        setPromptText={setPromptText}
+        applyTo={['Lecture Subtitle Translation']}
+        handleApplyToChange={vi.fn()}
+        accessLevel="private"
+        setAccessLevel={vi.fn()}
+        sharedWithUsers={[]}
+        emailInput=""
+        setEmailInput={vi.fn()}
+        handleAddEmail={vi.fn()}
+        handleRemoveUser={vi.fn()}
+        handleSave={vi.fn()}
+        handleDuplicate={vi.fn()}
+        handleDelete={vi.fn()}
+        activeTab="translations"
+        handleOptimize={vi.fn()}
+        handleUndo={vi.fn()}
+        isOptimizing={false}
+        originalPromptText=""
+      />
+    );
+
+    // Verify model chip & paired role badge
+    expect(screen.getByText(/🤖 gemini-3.8-flash/i)).toBeInTheDocument();
+    expect(screen.getByText(/🔗 Stage 2 of Paired Pipeline/i)).toBeInTheDocument();
+
+    // Verify placeholder chip exists and clicking it invokes setPromptText
+    const targetLangChip = screen.getByText('{{targetLanguage}}');
+    expect(targetLangChip).toBeInTheDocument();
+    fireEvent.click(targetLangChip);
+    expect(setPromptText).toHaveBeenCalled();
+  });
+
+  it('toggles output schema inspector and shows JSON format guide', () => {
+    render(
+      <PromptForm
+        selectedPrompt={null}
+        name="Lecture STT Prompt"
+        setName={vi.fn()}
+        promptText=""
+        setPromptText={vi.fn()}
+        applyTo={['Lecture STT & Chapters']}
+        handleApplyToChange={vi.fn()}
+        accessLevel="private"
+        setAccessLevel={vi.fn()}
+        sharedWithUsers={[]}
+        emailInput=""
+        setEmailInput={vi.fn()}
+        handleAddEmail={vi.fn()}
+        handleRemoveUser={vi.fn()}
+        handleSave={vi.fn()}
+        handleDuplicate={vi.fn()}
+        handleDelete={vi.fn()}
+        activeTab="audios"
+        handleOptimize={vi.fn()}
+        handleUndo={vi.fn()}
+        isOptimizing={false}
+        originalPromptText=""
+      />
+    );
+
+    const toggleBtn = screen.getByRole('button', { name: /View Expected Schema/i });
+    expect(toggleBtn).toBeInTheDocument();
+
+    fireEvent.click(toggleBtn);
+    expect(screen.getByText(/Format: json_object/i)).toBeInTheDocument();
+    expect(screen.getByText(/Copy JSON Snippet/i)).toBeInTheDocument();
+  });
 });
+

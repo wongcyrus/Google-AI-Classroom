@@ -387,6 +387,36 @@ describe('PromptManagement Component', () => {
     expect(screen.getByText(/Community Prompt by colleague@school.edu/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Make a Copy to Personalize/i })).toBeInTheDocument();
   });
+
+  it('blocks saving and displays alert when required placeholders are missing', async () => {
+    render(<PromptManagement />);
+
+    // Switch to translations tab
+    const transTab = screen.getByRole('button', { name: /Translation Prompts/i });
+    fireEvent.click(transTab);
+
+    const newBtn = screen.getByRole('button', { name: /\+ New Prompt/i });
+    fireEvent.click(newBtn);
+
+    // Check 'Lecture Subtitle Translation'
+    const lectureSubCheckbox = screen.getByRole('checkbox', { name: /Lecture Subtitle Translation/i });
+    if (!lectureSubCheckbox.checked) {
+      fireEvent.click(lectureSubCheckbox);
+    }
+
+    // Enter name and promptText missing {{targetLanguage}}
+    const nameInput = screen.getByPlaceholderText('Prompt Name');
+    fireEvent.change(nameInput, { target: { value: 'Incomplete Translation Prompt' } });
+
+    const textarea = document.querySelector('.w-md-editor-text-input');
+    fireEvent.change(textarea, { target: { value: 'Translate this course: {{courseContext}} without target lang' } });
+
+    const saveBtn = screen.getByRole('button', { name: /Save Prompt/i });
+    fireEvent.click(saveBtn);
+
+    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Missing required placeholder: {{targetLanguage}}'));
+    expect(addDoc).not.toHaveBeenCalled();
+  });
 });
 
 

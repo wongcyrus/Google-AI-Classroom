@@ -70,7 +70,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       return;
     }
 
-    if (isStudentEmail(cleanEmail) && !isChrome) {
+    if (isStudentEmail(cleanEmail) && !isChrome && !isMobile) {
       setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please switch to Google Chrome.`);
       return;
     }
@@ -111,7 +111,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       return;
     }
 
-    if (isStudentEmail(cleanEmail) && !isChrome) {
+    if (isStudentEmail(cleanEmail) && !isChrome && !isMobile) {
       setError(`Google Chrome is strictly required for students. Detected: ${detectedBrowser}. Please reopen this page in Google Chrome.`);
       return;
     }
@@ -204,26 +204,6 @@ const AuthComponent = ({ unverifiedUser }) => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleClearCacheAndReset = async () => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
-      }
-      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const reg of registrations) {
-          await reg.unregister();
-        }
-      }
-    } catch (err) {
-      console.warn('[AuthComponent] Clear cache error:', err);
-    }
-    window.location.reload();
   };
 
   const initiateQrSession = async () => {
@@ -442,7 +422,7 @@ const AuthComponent = ({ unverifiedUser }) => {
           </div>
         )}
 
-        {!isChrome && (
+        {!isMobile && !isChrome && (
           <div className="auth-browser-warning" role="alert" style={{
             background: 'rgba(245, 158, 11, 0.12)',
             border: '1px solid rgba(245, 158, 11, 0.3)',
@@ -458,7 +438,7 @@ const AuthComponent = ({ unverifiedUser }) => {
           }}>
             <span>⚠️</span>
             <div>
-              <strong>Students: Google Chrome Required.</strong> You are currently using {detectedBrowser}. Students must use Google Chrome to join proctored sessions.
+              <strong>Students: Google Chrome Required.</strong> You are currently using {detectedBrowser}. Students must use Google Chrome on lab computers to join proctored sessions.
             </div>
           </div>
         )}
@@ -549,18 +529,6 @@ const AuthComponent = ({ unverifiedUser }) => {
                 {cooldown > 0 ? `Resend Verification (${cooldown}s)` : 'Resend Verification Email'}
               </button>
             )}
-
-            <div className="auth-clear-cache-container">
-              <button
-                type="button"
-                onClick={handleClearCacheAndReset}
-                className="auth-clear-cache-btn"
-                title="Clears local device storage, offline caches, and reloads the application"
-                aria-label="Clear Cache & Reset App"
-              >
-                🧹 Clear Cache & Reset App
-              </button>
-            </div>
           </div>
         </form>
 

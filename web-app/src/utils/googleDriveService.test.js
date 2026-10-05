@@ -6,6 +6,7 @@ import {
   requestGoogleDriveToken,
   fetchGoogleUserInfo,
   uploadVideoToGoogleDrive,
+  uploadTextFileToGoogleDrive,
   setGoogleDriveFilePublic,
   createGoogleDriveFolder,
   findOrCreateGoogleDriveFolder,
@@ -233,6 +234,98 @@ describe('googleDriveService', () => {
     });
   });
 
+  describe('uploadTextFileToGoogleDrive', () => {
+    it('uploads text file using multipart endpoint and sets permission to public', async () => {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ id: 'file_vtt_123', name: 'subtitles_en.vtt' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ id: 'perm_sub_123', role: 'reader', type: 'anyone' }),
+        });
+
+      const res = await uploadTextFileToGoogleDrive({
+        accessToken: 'tok_upload_vtt',
+        textContent: 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:04.000\nHello students',
+        fileName: 'subtitles_en.vtt',
+        mimeType: 'text/vtt',
+        folderId: 'folder_sub_999',
+      });
+
+      expect(res.fileId).toBe('file_vtt_123');
+      expect(res.name).toBe('subtitles_en.vtt');
+      expect(res.webViewLink).toBe('https://drive.google.com/file/d/file_vtt_123/view');
+
+      // Verify multipart upload call
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer tok_upload_vtt',
+            'Content-Type': expect.stringContaining('multipart/related; boundary='),
+          }),
+          body: expect.stringContaining('Hello students'),
+        })
+      );
+
+      // Verify setGoogleDriveFilePublic call
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        'https://www.googleapis.com/drive/v3/files/file_vtt_123/permissions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: 'Bearer tok_upload_vtt' }),
+        })
+      );
+    });
+
+    it('throws error when upload request fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        text: async () => 'Quota exceeded',
+      });
+
+      await expect(
+        uploadTextFileToGoogleDrive({
+          accessToken: 'tok_fail',
+          textContent: 'WEBVTT',
+          fileName: 'subtitles_en.vtt',
+        })
+      ).rejects.toThrow(/Failed to upload file "subtitles_en.vtt" to Google Drive: 403/);
+    });
+
+    it('throws error when required parameters are missing', async () => {
+      await expect(
+        uploadTextFileToGoogleDrive({
+          accessToken: '',
+          textContent: 'WEBVTT',
+          fileName: 'subtitles_en.vtt',
+        })
+      ).rejects.toThrow(/Access token is required/);
+
+      await expect(
+        uploadTextFileToGoogleDrive({
+          accessToken: 'tok_abc',
+          textContent: null,
+          fileName: 'subtitles_en.vtt',
+        })
+      ).rejects.toThrow(/textContent must be a string/);
+
+      await expect(
+        uploadTextFileToGoogleDrive({
+          accessToken: 'tok_abc',
+          textContent: 'WEBVTT',
+          fileName: '',
+        })
+      ).rejects.toThrow(/fileName is required/);
+    });
+  });
+
   describe('createGoogleDriveFolder', () => {
     it('creates folder with mimeType application/vnd.google-apps.folder', async () => {
       global.fetch = vi.fn().mockResolvedValue({
@@ -352,6 +445,40 @@ describe('googleDriveService', () => {
       expect(result.folderId).toBe('folder_4_Teacher Lectures');
       expect(result.folderPath).toBe(
         'Classroom Archives/IT114115-A/Lesson 01 - React State/Teacher Lectures'
+      );
+    });
+
+    it('resolves dedicated per-video subfolder when recordingTitle is provided', async () => {
+      const cache = new Map();
+      let folderCounter = 0;
+      global.fetch = vi.fn().mockImplementation(async (url, options) => {
+        if (options?.method === 'POST') {
+          folderCounter++;
+          const body = JSON.parse(options.body);
+          return {
+            ok: true,
+            json: async () => ({ id: `folder_${folderCounter}_${body.name}`, name: body.name }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ files: [] }),
+        };
+      });
+
+      const result = await resolveClassroomFolderHierarchy({
+        accessToken: 'tok_abc',
+        baseFolderName: 'Classroom Archives',
+        className: 'IT114115-A',
+        lessonName: 'Lesson 01 - React State',
+        recordingTitle: 'Lecture 1 - Introduction',
+        subfolderType: 'lectures',
+        cache,
+      });
+
+      expect(result.folderId).toBe('folder_5_Lecture 1 - Introduction');
+      expect(result.folderPath).toBe(
+        'Classroom Archives/IT114115-A/Lesson 01 - React State/Teacher Lectures/Lecture 1 - Introduction'
       );
     });
 

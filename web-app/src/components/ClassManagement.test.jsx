@@ -274,6 +274,61 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(savePromptBtn);
   });
 
+  it('configures and saves lecture subtitles enabled toggle, prompt, and target languages', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Automated AI Transcription & Multilingual Subtitles \(CC\)/i)).toBeInTheDocument();
+    });
+
+    // Check subtitle toggle is present and defaults to checked
+    const subtitleCheckbox = screen.getByRole('checkbox', { name: /Automated AI Transcription & Multilingual Subtitles/i });
+    expect(subtitleCheckbox).toBeInTheDocument();
+    expect(subtitleCheckbox).toBeChecked();
+
+    // Toggle off
+    fireEvent.click(subtitleCheckbox);
+    expect(subtitleCheckbox).not.toBeChecked();
+
+    // Check STT prompt selector button
+    const promptBtn = screen.getByRole('button', { name: /Select STT Prompt from Library/i });
+    expect(promptBtn).toBeInTheDocument();
+    fireEvent.click(promptBtn);
+
+    // Audio prompt modal should open with Lecture STT title
+    expect(screen.getByText(/Select Lecture Audio Speech-to-Text & Chapters Prompt/i)).toBeInTheDocument();
+
+    const savePromptBtn = screen.getByRole('button', { name: /Save Prompt Selection/i });
+    fireEvent.click(savePromptBtn);
+
+    // Check Translation prompt selector button
+    const transPromptBtn = screen.getByRole('button', { name: /Select Translation Prompt from Library/i });
+    expect(transPromptBtn).toBeInTheDocument();
+    fireEvent.click(transPromptBtn);
+
+    // Translation prompt modal should open
+    expect(screen.getByText(/Select Lecture Subtitle Translation Prompt/i)).toBeInTheDocument();
+
+    const saveTransPromptBtn = screen.getAllByRole('button', { name: /Save Prompt Selection/i })[0];
+    fireEvent.click(saveTransPromptBtn);
+
+    // Save class settings
+    const saveClassBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveClassBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          isLectureSubtitlesEnabled: false,
+          lectureTargetLanguages: expect.arrayContaining(['en']),
+        })
+      );
+    });
+  });
+
   it('handles importing student emails from uploaded text/excel file', async () => {
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
@@ -1256,7 +1311,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/🔒 9\. Security & IP Restrictions/i)).toBeInTheDocument();
+      expect(screen.getByText(/🔒 (?:9|10)\. Security & IP Restrictions/i)).toBeInTheDocument();
     });
 
     const ipTextarea = screen.getByPlaceholderText(/e\.g\. 202\.125\.10\.0\/24/i);
@@ -1366,6 +1421,163 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     await waitFor(() => {
       expect(screen.queryByText(/Class Timetable Change Safeguard/i)).not.toBeInTheDocument();
     });
+  });
+
+  it('supports adding and saving class tags', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation(async (ref, data) => {
+      capturedUpdateData = data;
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Type tag \(e\.g\. HD-IT/i)).toBeInTheDocument();
+    });
+
+    const tagInput = screen.getByPlaceholderText(/Type tag \(e\.g\. HD-IT/i);
+    const addTagBtn = screen.getByRole('button', { name: /\+ Add Tag/i });
+
+    // Type a new tag 'Lab 302' and click Add Tag
+    fireEvent.change(tagInput, { target: { value: 'Lab 302' } });
+    fireEvent.click(addTagBtn);
+
+    // Tag chip should appear
+    expect(await screen.findByText('#Lab 302')).toBeInTheDocument();
+
+    // Type another tag 'Year 1' with Enter key
+    fireEvent.change(tagInput, { target: { value: 'Year 1' } });
+    fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+
+    expect(await screen.findByText('#Year 1')).toBeInTheDocument();
+
+    // Save class settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.tags).toEqual(['Lab 302', 'Year 1']);
+  });
+
+  it('configures, toggles, and saves teacherRecordingsPolicy across all 3 modes (private, selective, always_shared)', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation(async (ref, data) => {
+      capturedUpdateData = data;
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Private to Instructor \(Default Deny - Recommended\)/i)).toBeInTheDocument();
+    });
+
+    // Check default deny (private) radio option is selected
+    const defaultDenyRadio = screen.getByRole('radio', { name: /Private to Instructor \(Default Deny - Recommended\)/i });
+    expect(defaultDenyRadio).toBeChecked();
+
+    const allowSelectiveRadio = screen.getByRole('radio', { name: /Allow Selective Sharing/i });
+    expect(allowSelectiveRadio).not.toBeChecked();
+
+    const alwaysShareRadio = screen.getByRole('radio', { name: /Always Share with Class/i });
+    expect(alwaysShareRadio).not.toBeChecked();
+
+    // Toggle to allow selective sharing
+    fireEvent.click(allowSelectiveRadio);
+    expect(allowSelectiveRadio).toBeChecked();
+    expect(defaultDenyRadio).not.toBeChecked();
+
+    // Save class settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.teacherRecordingsPolicy).toBe('selective');
+    expect(capturedUpdateData.allowShareTeacherRecordings).toBe(true);
+
+    // Now switch to always_shared mode
+    fireEvent.click(alwaysShareRadio);
+    expect(alwaysShareRadio).toBeChecked();
+    expect(allowSelectiveRadio).not.toBeChecked();
+
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    expect(capturedUpdateData.teacherRecordingsPolicy).toBe('always_shared');
+    expect(capturedUpdateData.allowShareTeacherRecordings).toBe(true);
+
+    // Switch back to private mode
+    fireEvent.click(defaultDenyRadio);
+    expect(defaultDenyRadio).toBeChecked();
+
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    expect(capturedUpdateData.teacherRecordingsPolicy).toBe('private');
+    expect(capturedUpdateData.allowShareTeacherRecordings).toBe(false);
+  });
+
+  it('configures, selects, and saves lectureAiModel in class settings', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation(async (ref, data) => {
+      capturedUpdateData = data;
+      return {};
+    });
+
+    await act(async () => {
+      render(<ClassManagement embeddedClassId="class-1" onBack={vi.fn()} />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Lecture Transcription & Subtitle AI Model/i)).toBeInTheDocument();
+    });
+
+    const gemini38Radio = screen.getByRole('radio', { name: /Gemini 3.8 Flash \(Recommended\)/i });
+    const gemini36Radio = screen.getByRole('radio', { name: /Gemini 3.6 Flash \(High Performance\)/i });
+
+    // Defaults to gemini-3.8-flash
+    expect(gemini38Radio).toBeChecked();
+    expect(gemini36Radio).not.toBeChecked();
+
+    // Verify 3.5 Flash-Lite is removed as an option for lecture transcription
+    expect(screen.queryByRole('radio', { name: /Gemini 3.5/i })).not.toBeInTheDocument();
+
+    // Select Gemini 3.6 Flash
+    fireEvent.click(gemini36Radio);
+    expect(gemini36Radio).toBeChecked();
+    expect(gemini38Radio).not.toBeChecked();
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.lectureAiModel).toBe('gemini-3.6-flash');
+
+    // Switch back to Gemini 3.8 Flash
+    fireEvent.click(gemini38Radio);
+    expect(gemini38Radio).toBeChecked();
+
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    expect(capturedUpdateData.lectureAiModel).toBe('gemini-3.8-flash');
   });
 });
 

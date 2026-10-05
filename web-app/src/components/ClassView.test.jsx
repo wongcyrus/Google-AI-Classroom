@@ -10,7 +10,7 @@ vi.mock('../firebase-config', () => ({
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
-  doc: vi.fn(),
+  doc: vi.fn((_db, ...args) => ({ path: args.join('/') })),
   getDoc: vi.fn().mockResolvedValue({
     exists: () => true,
     data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
@@ -39,20 +39,24 @@ const mockSetStartTime = vi.fn();
 const mockSetEndTime = vi.fn();
 const mockHandleLessonChange = vi.fn();
 
-vi.mock('../hooks/useClassSchedule', () => ({
-  useClassSchedule: vi.fn(() => ({
-    lessons: [
-      { start: new Date('2026-08-29T08:00:00Z'), end: new Date('2026-08-29T10:00:00Z') },
-    ],
-    selectedLesson: '2026-08-29T08:00:00.000Z',
-    startTime: '2026-08-29T08:00',
-    endTime: '2026-08-29T12:00',
-    setStartTime: mockSetStartTime,
-    setEndTime: mockSetEndTime,
-    handleLessonChange: mockHandleLessonChange,
-    timezone: 'Asia/Hong_Kong',
-  })),
-}));
+vi.mock('../hooks/useClassSchedule', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useClassSchedule: vi.fn(() => ({
+      lessons: [
+        { start: new Date('2026-08-29T08:00:00Z'), end: new Date('2026-08-29T10:00:00Z') },
+      ],
+      selectedLesson: '2026-08-29T08:00:00.000Z',
+      startTime: '2026-08-29T08:00',
+      endTime: '2026-08-29T12:00',
+      setStartTime: mockSetStartTime,
+      setEndTime: mockSetEndTime,
+      handleLessonChange: mockHandleLessonChange,
+      timezone: 'Asia/Hong_Kong',
+    })),
+  };
+});
 
 // Mock sub-views to keep tests clean and targeted
 vi.mock('./MonitorView', () => ({ default: () => <div data-testid="monitor-view">Live Monitor Content</div> }));
@@ -513,6 +517,50 @@ describe('ClassView Component Full Suite', () => {
     expect(previewBtn).toBeInTheDocument();
     expect(broadcastBtn).toHaveClass('broadcast-launcher-btn');
     expect(previewBtn).toHaveClass('student-preview-launcher-btn');
+  });
+
+  it('renders quick class switcher dropdown with smart schedule prefixes', async () => {
+    const { getDoc } = await import('firebase/firestore');
+    getDoc.mockImplementation(async (ref) => {
+      if (ref?.path?.includes('teacherProfiles')) {
+        return {
+          exists: () => true,
+          data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
+        };
+      }
+      if (ref?.path?.includes('CLASS-101')) {
+        return {
+          id: 'CLASS-101',
+          exists: () => true,
+          data: () => ({
+            name: 'Cloud Computing',
+            schedule: {
+              startDate: '2026-01-01',
+              endDate: '2026-12-31',
+              timeZone: 'UTC',
+              timeSlots: [{ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], startTime: '00:00', endTime: '23:59' }],
+            },
+          }),
+        };
+      }
+      return {
+        id: 'CLASS-202',
+        exists: () => true,
+        data: () => ({ name: 'Database Systems' }),
+      };
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const switcher = await screen.findByLabelText(/Switch Class:/i);
+    expect(switcher).toBeInTheDocument();
+    expect(await screen.findByText(/🟢 \[Live Now\] Cloud Computing/i)).toBeInTheDocument();
   });
 });
 

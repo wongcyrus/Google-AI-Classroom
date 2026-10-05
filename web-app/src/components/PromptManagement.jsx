@@ -11,6 +11,7 @@ const promptsCollectionRef = collection(db, 'prompts');
 
 import PromptList from './prompt/PromptList';
 import PromptForm from './prompt/PromptForm';
+import { validatePrompt } from '../constants/promptRegistry';
 
 const PromptManagement = () => {
   const [prompts, setPrompts] = useState([]);
@@ -199,6 +200,12 @@ const PromptManagement = () => {
           applyTo, 
           category: activeTab,
         };
+    }
+
+    const validation = validatePrompt(promptText, promptData.applyTo);
+    if (!validation.isValid) {
+      alert(`Cannot save prompt:\n- ${validation.errors.join('\n- ')}\n\nPlease insert the required placeholders before saving.`);
+      return;
     }
 
     const fullPromptData = {
@@ -504,7 +511,7 @@ const PromptManagement = () => {
       else if (p.category === 'translations') counts.translations++;
       else if (p.category === 'rubrics') counts.rubrics++;
       // Cross-scope fallbacks
-      if (p.category !== 'translations' && p.applyTo?.includes('Live Subtitles & Translation')) {
+      if (p.category !== 'translations' && (p.applyTo?.includes('Live Subtitles & Translation') || p.applyTo?.includes('Lecture Subtitles & Chapters'))) {
         counts.translations++;
       }
       if (p.category !== 'rubrics' && (p.applyTo?.includes('Lab Rubric Milestones') || p.applyTo?.includes('Task Milestones Extraction'))) {

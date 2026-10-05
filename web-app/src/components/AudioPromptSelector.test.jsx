@@ -118,8 +118,8 @@ describe('AudioPromptSelector Component', () => {
       />
     );
 
-    expect(screen.getByText('-- Select a translation AI prompt --')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Select a translation prompt or enter custom instructions here...')).toBeInTheDocument();
+    expect(screen.getByText(/-- Select a (live subtitle )?translation (AI )?prompt --/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Select a (live subtitle )?translation prompt/i)).toBeInTheDocument();
   });
 
   it('falls back to originalId or name when id is stale/not found in prompts', () => {

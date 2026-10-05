@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
 import ImagePromptSelector from './ImagePromptSelector';
+import TranslationPromptSelector from './TranslationPromptSelector';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../firebase-config';
@@ -24,6 +25,9 @@ import {
 import { exportToExcel } from '../utils/exportUtils';
 import useCloudPricing from '../hooks/useCloudPricing';
 import { formatStorageCost } from '../utils/formatters';
+import { SUBTITLE_LANGUAGES } from '../utils/videoSubtitleUtils';
+
+const AVAILABLE_SUBTITLE_LANGUAGES = SUBTITLE_LANGUAGES.filter((l) => l.code !== 'original');
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const { storageRatePerGibMonth } = useCloudPricing();
@@ -55,6 +59,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(embeddedClassId || null);
+  const [classTags, setClassTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
+  const [allKnownTags, setAllKnownTags] = useState([]);
 
   // Class settings state
   const [storageLimit, setStorageLimit] = useState('5'); // In GB
@@ -148,6 +155,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [studentRecordingsPolicy, setStudentRecordingsPolicy] = useState('always_enabled');
   const [studentRecordingsReleaseDate, setStudentRecordingsReleaseDate] = useState('');
   const [defaultLectureRecording, setDefaultLectureRecording] = useState(true);
+  const [allowShareTeacherRecordings, setAllowShareTeacherRecordings] = useState(false);
+  const [teacherRecordingsPolicy, setTeacherRecordingsPolicy] = useState('private');
+  const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
+  const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
+  const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(null);
+  const [lectureSttPrompt, setLectureSttPrompt] = useState(null);
+  const [lectureTranslationPrompt, setLectureTranslationPrompt] = useState(null);
+  const [showTranslationPromptModal, setShowTranslationPromptModal] = useState(false);
+  const [modalTranslationPrompt, setModalTranslationPrompt] = useState(null);
+  const [modalTranslationPromptText, setModalTranslationPromptText] = useState('');
+  const [lectureTargetLanguages, setLectureTargetLanguages] = useState(['en', 'zh-Hant', 'zh-Hans']);
 
   useEffect(() => {
     if (embeddedClassId) {
@@ -179,11 +197,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           });
         }
 
-        // 2. Cross-class aggregation: scan accessible classes to merge student profile information
+        // 2. Cross-class aggregation: scan accessible classes to merge student profile information & known tags
         try {
           const classesSnap = await getDocs(collection(db, 'classes'));
+          const knownTagsSet = new Set();
           classesSnap.forEach((d) => {
             const cData = d.data() || {};
+            if (Array.isArray(cData.tags)) {
+              cData.tags.forEach((t) => {
+                if (typeof t === 'string' && t.trim()) knownTagsSet.add(t.trim());
+              });
+            }
             if (cData.studentProfiles && typeof cData.studentProfiles === 'object') {
               for (const [rawE, prof] of Object.entries(cData.studentProfiles)) {
                 const normE = rawE.trim().toLowerCase();
@@ -199,8 +223,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               }
             }
           });
+          if (isMounted) {
+            setAllKnownTags([...knownTagsSet].sort());
+          }
         } catch (classErr) {
-          console.warn('Could not scan classes for student profiles:', classErr);
+          console.warn('Could not scan classes for student profiles & tags:', classErr);
         }
 
         if (isMounted) {
@@ -337,6 +364,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           const classData = classSnap.data();
           setClassId(activeId);
           setClassName(classData.name || '');
+          setClassTags(Array.isArray(classData.tags) ? classData.tags : []);
+          setTagInput('');
           setRetentionDays((classData.retentionDays || 30).toString());
           setVideoRetentionDays((classData.videoRetentionDays || 90).toString());
           if (classData.storageQuota) {
@@ -453,6 +482,20 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setStudentRecordingsPolicy(classData.studentRecordingsPolicy || 'always_enabled');
           setStudentRecordingsReleaseDate(classData.studentRecordingsReleaseDate || '');
           setDefaultLectureRecording(classData.defaultLectureRecording !== undefined ? Boolean(classData.defaultLectureRecording) : true);
+          const tPolicy = classData.teacherRecordingsPolicy || (classData.allowShareTeacherRecordings ? 'selective' : 'private');
+          setTeacherRecordingsPolicy(tPolicy);
+          setAllowShareTeacherRecordings(tPolicy !== 'private');
+          setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
+          setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
+          const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || null;
+          setLectureSttPrompt(loadedSttPrompt);
+          setLectureRecordingPrompt(loadedSttPrompt);
+          setLectureTranslationPrompt(classData.lectureTranslationPrompt || null);
+          setLectureTargetLanguages(
+            Array.isArray(classData.lectureTargetLanguages) && classData.lectureTargetLanguages.length > 0
+              ? classData.lectureTargetLanguages
+              : ['en', 'zh-Hant', 'zh-Hans']
+          );
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);
@@ -463,6 +506,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         // Reset form if no class is selected
         setClassId('');
         setClassName('');
+        setClassTags([]);
+        setTagInput('');
         setStorageLimit('5');
         setRetentionDays('30');
         setVideoRetentionDays('90');
@@ -506,6 +551,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setStudentRecordingsPolicy('always_enabled');
         setStudentRecordingsReleaseDate('');
         setDefaultLectureRecording(true);
+        setAllowShareTeacherRecordings(false);
+        setTeacherRecordingsPolicy('private');
+        setLectureAiModel('gemini-3.8-flash');
+        setIsLectureSubtitlesEnabled(true);
+        setLectureRecordingPrompt(null);
+        setLectureTargetLanguages(['en', 'zh-Hant', 'zh-Hans']);
         setBingoTimeLimitSeconds(30);
         setAutoBingoEnabled(false);
         setAutoBingoIntervalMinutes(5);
@@ -904,6 +955,28 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     }
   };
 
+  const handleAddTag = (tagToAdd) => {
+    const raw = tagToAdd || tagInput;
+    if (!raw || typeof raw !== 'string') return;
+    const clean = raw.trim().replace(/^#+/, '');
+    if (!clean) return;
+    if (!classTags.includes(clean)) {
+      setClassTags([...classTags, clean]);
+    }
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (tagToRemove) => {
+    setClassTags(classTags.filter((t) => t !== tagToRemove));
+  };
+
+  const handleTagInputKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      handleAddTag();
+    }
+  };
+
   const executeClassSave = async (payload, activeSchedule, historyToSave) => {
     const {
       targetClassId,
@@ -922,6 +995,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     const updateData = {
       name: className.trim() || targetClassId,
+      tags: classTags,
       storageQuota: storageQuotaBytes,
       retentionDays: retentionDaysNum,
       videoRetentionDays: videoRetentionDaysNum,
@@ -977,6 +1051,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
       studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
       defaultLectureRecording: defaultLectureRecording !== false,
+      teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
+      allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
+      lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
+      isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
+      lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
+      lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
+      lectureTranslationPrompt: lectureTranslationPrompt || null,
+      lectureTargetLanguages: Array.isArray(lectureTargetLanguages) && lectureTargetLanguages.length > 0 ? lectureTargetLanguages : ['en', 'zh-Hant', 'zh-Hans'],
     };
 
     await updateDoc(classRef, updateData);
@@ -1224,6 +1306,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
         await setDoc(classRef, {
           name: className.trim() || targetClassId,
+          tags: classTags,
           teacherEmails: uniqueTeachers,
           studentEmails: studentEmailList,
           studentProfiles: resolvedStudentProfiles,
@@ -1277,6 +1360,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
           studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
           defaultLectureRecording: defaultLectureRecording !== false,
+          teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
+          allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
+          lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
+          isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
+          lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
+          lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
+          lectureTranslationPrompt: lectureTranslationPrompt || null,
+          lectureTargetLanguages: Array.isArray(lectureTargetLanguages) && lectureTargetLanguages.length > 0 ? lectureTargetLanguages : ['en', 'zh-Hant', 'zh-Hans'],
           aiQuota: 50,
           aiUsedQuota: 0,
         });
@@ -1385,6 +1476,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     else if (type === 'session_audio') target = sessionAudioPrompt;
     else if (type === 'gemma_intent') target = gemmaIntentPrompt;
     else if (type === 'subtitle') target = subtitlePrompt;
+    else if (type === 'lecture_recording') target = lectureSttPrompt || lectureRecordingPrompt;
 
     setModalAudioPrompt(target);
     setModalAudioPromptText(target ? target.promptText : '');
@@ -1399,13 +1491,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       finalPrompt = {
         ...modalAudioPrompt,
         promptText: modalAudioPromptText,
-        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt')),
+        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Subtitle Prompt' : audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt')),
         originalId: promptId,
         id: promptId,
       };
     } else if (modalAudioPromptText.trim()) {
       finalPrompt = {
-        name: audioPromptModalType === 'subtitle' ? 'Custom Translation Prompt' : 'Custom Voice Prompt',
+        name: audioPromptModalType === 'subtitle' ? 'Custom Subtitle Prompt' : audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt',
         promptText: modalAudioPromptText,
         category: audioPromptModalType === 'subtitle' ? 'translations' : 'audios',
       };
@@ -1419,8 +1511,42 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       setGemmaIntentPrompt(finalPrompt);
     } else if (audioPromptModalType === 'subtitle') {
       setSubtitlePrompt(finalPrompt);
+    } else if (audioPromptModalType === 'lecture_recording') {
+      setLectureSttPrompt(finalPrompt);
+      setLectureRecordingPrompt(finalPrompt);
     }
     setShowAudioPromptModal(false);
+  };
+
+  const handleOpenTranslationPromptModal = () => {
+    setModalTranslationPrompt(lectureTranslationPrompt);
+    setModalTranslationPromptText(lectureTranslationPrompt ? lectureTranslationPrompt.promptText : '');
+    setShowTranslationPromptModal(true);
+  };
+
+  const handleSetTranslationPrompt = () => {
+    let finalPrompt = null;
+    if (modalTranslationPrompt) {
+      const isModified = modalTranslationPrompt.promptText !== modalTranslationPromptText;
+      const promptId = modalTranslationPrompt.id || modalTranslationPrompt.originalId || null;
+      finalPrompt = {
+        ...modalTranslationPrompt,
+        promptText: modalTranslationPromptText,
+        name: isModified && modalTranslationPrompt.name ? `${modalTranslationPrompt.name} (Customized)` : (modalTranslationPrompt.name || 'Custom Translation Prompt'),
+        originalId: promptId,
+        id: promptId,
+        category: 'translations',
+      };
+    } else if (modalTranslationPromptText.trim()) {
+      finalPrompt = {
+        name: 'Custom Translation Prompt',
+        promptText: modalTranslationPromptText,
+        category: 'translations',
+      };
+    }
+
+    setLectureTranslationPrompt(finalPrompt);
+    setShowTranslationPromptModal(false);
   };
 
   const handleOpenImagePromptModal = (type = 'live_image') => {
@@ -1495,7 +1621,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               ? 'Select Discussion / Session Audio Summary Prompt'
               : audioPromptModalType === 'subtitle'
                 ? 'Select Live Subtitles & Translation Prompt'
-                : 'Select On-Device Gemma Voice Intent Prompt'
+                : audioPromptModalType === 'lecture_recording'
+                  ? 'Select Lecture Audio Speech-to-Text & Chapters Prompt'
+                  : 'Select On-Device Gemma Voice Intent Prompt'
         }
       >
         <AudioPromptSelector
@@ -1514,7 +1642,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 ? 'Session Audio Summary'
                 : audioPromptModalType === 'subtitle'
                   ? 'Live Subtitles & Translation'
-                  : 'On-Device Gemma Voice Intent'
+                  : audioPromptModalType === 'lecture_recording'
+                    ? 'Lecture STT & Chapters'
+                    : 'On-Device Gemma Voice Intent'
           }
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
@@ -1526,12 +1656,50 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
               else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
               else if (audioPromptModalType === 'subtitle') setSubtitlePrompt(null);
+              else if (audioPromptModalType === 'lecture_recording') {
+                setLectureSttPrompt(null);
+                setLectureRecordingPrompt(null);
+              }
               setShowAudioPromptModal(false);
             }}
           >
             Clear Prompt
           </button>
           <button type="button" onClick={handleSetAudioPrompt}>
+            Save Prompt Selection
+          </button>
+        </div>
+      </Modal>
+
+      {/* Lecture Subtitle Translation Prompt Modal */}
+      <Modal
+        show={showTranslationPromptModal}
+        onClose={() => setShowTranslationPromptModal(false)}
+        title="Select Lecture Subtitle Translation Prompt"
+      >
+        <TranslationPromptSelector
+          user={user}
+          selectedPrompt={modalTranslationPrompt}
+          onSelectPrompt={(p) => {
+            setModalTranslationPrompt(p);
+            setModalTranslationPromptText(p ? p.promptText : '');
+          }}
+          promptText={modalTranslationPromptText}
+          onTextChange={setModalTranslationPromptText}
+          applyToFilter="Lecture Subtitle Translation"
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              setLectureTranslationPrompt(null);
+              setShowTranslationPromptModal(false);
+            }}
+          >
+            Clear Prompt
+          </button>
+          <button type="button" onClick={handleSetTranslationPrompt}>
             Save Prompt Selection
           </button>
         </div>
@@ -1545,6 +1713,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       >
         <ImagePromptSelector
           user={user}
+          applyToFilter={imagePromptModalType === 'bingo' ? 'Classroom Bingo Questions' : 'Per Image'}
           selectedPrompt={modalImagePrompt}
           onSelectPrompt={(p) => {
             setModalImagePrompt(p);
@@ -1637,6 +1806,69 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               onChange={(e) => setClassName(e.target.value)}
             />
           </div>
+        </div>
+
+        {/* Class Tags Editor */}
+        <div className="form-group" style={{ marginTop: '0.75rem', marginBottom: '1.25rem' }}>
+          <label htmlFor="class-tags-input">Class Tags (Categories & Cohort Labels)</label>
+          <div className="class-tags-editor">
+            {classTags.length > 0 && (
+              <div className="class-tags-chips-list">
+                {classTags.map((t) => (
+                  <span key={t} className="class-tag-chip">
+                    <span>#{t}</span>
+                    <button
+                      type="button"
+                      className="remove-tag-chip-btn"
+                      onClick={() => handleRemoveTag(t)}
+                      title={`Remove tag #${t}`}
+                      aria-label={`Remove tag #${t}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="tag-input-row">
+              <input
+                id="class-tags-input"
+                type="text"
+                placeholder="Type tag (e.g. HD-IT, Year 1, Lab 302) and press Enter..."
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagInputKeyDown}
+              />
+              <button
+                type="button"
+                className="add-tag-btn"
+                onClick={() => handleAddTag()}
+                disabled={!tagInput.trim()}
+              >
+                + Add Tag
+              </button>
+            </div>
+            {allKnownTags.filter(t => !classTags.includes(t)).length > 0 && (
+              <div className="tag-suggestions-row">
+                <span className="suggestions-label">Suggestions from other classes:</span>
+                {allKnownTags
+                  .filter((t) => !classTags.includes(t))
+                  .slice(0, 10)
+                  .map((sug) => (
+                    <button
+                      key={sug}
+                      type="button"
+                      className="suggestion-tag-pill"
+                      onClick={() => handleAddTag(sug)}
+                      title={`Add tag #${sug}`}
+                    >
+                      + #{sug}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+          <p className="input-hint">Tags allow you to filter and categorize classes on your Teacher Dashboard and quick switcher.</p>
         </div>
 
         <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
@@ -2795,6 +3027,38 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </p>
           )}
         </div>
+
+        {/* Quick shortcut to Whole-Lecture Recording Studio Prompts */}
+        <div className="form-group" style={{ marginTop: '1.25rem', padding: '14px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#1e293b' }}>
+                🎬 Whole-Lecture Recording AI Prompts (STT &amp; Translation)
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                Separate speech-to-text verbatim transcription and multi-language translation rules configured in Section 5 below.
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => handleOpenAudioPromptModal('lecture_recording')}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {lectureSttPrompt ? `STT: ${lectureSttPrompt.name || 'Custom'}` : 'Select STT Prompt'}
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleOpenTranslationPromptModal}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {lectureTranslationPrompt ? `Trans: ${lectureTranslationPrompt.name || 'Custom'}` : 'Select Translation Prompt'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Section 6: Exam & Test Periods (Restricted from Students) */}
@@ -3141,6 +3405,313 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           )}
         </div>
 
+      </div>
+
+      {/* Section 9: Whole-Lecture Recording Studio: Subtitles (CC), AI Models & Archives */}
+      <div className="settings-section-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <h3 style={{ margin: 0 }}>🎬 9. Whole-Lecture Recording Studio: Subtitles (CC), AI Models &amp; Archives</h3>
+          <span style={{ fontSize: '0.78rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+            Session Recordings &amp; Multilingual CC
+          </span>
+        </div>
+        <p className="input-hint" style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}>
+          Configure automated Gemini speech-to-text, Cantonese-English code switching, technical jargon prompts, multilingual CC translations, and student playback permissions for recorded classroom sessions.
+        </p>
+
+        {/* 1. Automated AI Subtitles Toggle */}
+        <div className="form-group" style={{ padding: '14px 16px', background: isLectureSubtitlesEnabled ? '#f0fdf4' : '#f8fafc', borderRadius: '8px', border: isLectureSubtitlesEnabled ? '1.5px solid #86efac' : '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+            <input
+              type="checkbox"
+              checked={isLectureSubtitlesEnabled}
+              onChange={(e) => setIsLectureSubtitlesEnabled(e.target.checked)}
+              style={{ width: '20px', height: '20px', accentColor: '#16a34a' }}
+            />
+            <span style={{ fontSize: '0.95rem', color: isLectureSubtitlesEnabled ? '#15803d' : '#475569' }}>
+              💬 Automated AI Transcription &amp; Multilingual Subtitles (CC)
+            </span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700, color: isLectureSubtitlesEnabled ? '#16a34a' : '#94a3b8' }}>
+              {isLectureSubtitlesEnabled ? 'ENABLED' : 'DISABLED'}
+            </span>
+          </label>
+          <p className="input-hint" style={{ marginTop: '6px', marginBottom: 0, color: isLectureSubtitlesEnabled ? '#166534' : '#64748b' }}>
+            {isLectureSubtitlesEnabled
+              ? 'When lectures finish recording, Gemini automatically synthesizes timestamped subtitles and multilingual CC files (.vtt / .srt).'
+              : 'Automated AI processing is skipped when recordings finish to conserve Gemini token quota and costs. You can still generate CC manually on-demand anytime from Lecture Recordings View.'}
+          </p>
+        </div>
+
+        {/* 2. Paired AI Prompts Pipeline (Required in Pair) */}
+        <div style={{
+          marginTop: '1.25rem',
+          padding: '16px',
+          background: '#f8fafc',
+          border: '1.5px solid #cbd5e1',
+          borderRadius: '8px',
+          opacity: isLectureSubtitlesEnabled ? 1 : 0.75,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🔗</span> 2. Paired AI Prompts Pipeline
+                <span style={{ fontSize: '0.75rem', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                  2 Prompts Required in Pair
+                </span>
+              </div>
+              <p className="input-hint" style={{ marginTop: '2px', marginBottom: 0 }}>
+                Subtitle synthesis executes in two distinct stages: Stage 1 performs speech recognition &amp; chapters; Stage 2 translates sentence cues into selected languages one by one.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px' }}>
+            {/* Stage 1: Speech-to-Text & Milestone Chapters */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                <label style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e40af', margin: 0 }}>
+                  🎙️ Stage 1: Speech-to-Text (STT) &amp; Chapters
+                </label>
+                {(lectureSttPrompt || lectureRecordingPrompt) && (
+                  <span style={{ fontSize: '0.75rem', background: '#dbeafe', color: '#1e40af', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                    Customized STT Active
+                  </span>
+                )}
+              </div>
+              <p className="input-hint" style={{ marginTop: '4px' }}>
+                Instruct Gemini on verbatim audio speech recognition, Cantonese-English code switching, technical keywords, and YouTube milestone chapter rules.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => handleOpenAudioPromptModal('lecture_recording')}
+                  style={{ fontWeight: 600, padding: '8px 16px', background: '#ffffff', border: '1.5px solid #3b82f6', color: '#1d4ed8' }}
+                >
+                  {(lectureSttPrompt || lectureRecordingPrompt)
+                    ? `Selected: ${(lectureSttPrompt || lectureRecordingPrompt).name || 'Custom Prompt'}`
+                    : '🔍 Select STT Prompt from Library'}
+                </button>
+                {(lectureSttPrompt || lectureRecordingPrompt) && (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setLectureSttPrompt(null);
+                      setLectureRecordingPrompt(null);
+                    }}
+                    style={{ color: '#ef4444', border: '1px solid #fca5a5' }}
+                  >
+                    Reset to Default System Prompt
+                  </button>
+                )}
+              </div>
+              {(lectureSttPrompt || lectureRecordingPrompt) && (
+                <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
+                  <div style={{ fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
+                    📄 {(lectureSttPrompt || lectureRecordingPrompt).name || 'Custom Prompt'}
+                  </div>
+                  <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    "{(lectureSttPrompt || lectureRecordingPrompt).promptText.substring(0, 180)}..."
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Stage 2: Multilingual Subtitle Translation */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                <label style={{ fontWeight: 600, fontSize: '0.88rem', color: '#15803d', margin: 0 }}>
+                  🌐 Stage 2: Multilingual Subtitle Translation
+                </label>
+                {lectureTranslationPrompt && (
+                  <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#166534', padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                    Customized Translation Active
+                  </span>
+                )}
+              </div>
+              <p className="input-hint" style={{ marginTop: '4px' }}>
+                Instruct Gemini on language-by-language subtitle translation, Cantonese-to-書面語 conversion, and domain terminology preservation.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={handleOpenTranslationPromptModal}
+                  style={{ fontWeight: 600, padding: '8px 16px', background: '#ffffff', border: '1.5px solid #16a34a', color: '#15803d' }}
+                >
+                  {lectureTranslationPrompt
+                    ? `Selected: ${lectureTranslationPrompt.name || 'Custom Prompt'}`
+                    : '🌐 Select Translation Prompt from Library'}
+                </button>
+                {lectureTranslationPrompt && (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => setLectureTranslationPrompt(null)}
+                    style={{ color: '#ef4444', border: '1px solid #fca5a5' }}
+                  >
+                    Reset to Default System Prompt
+                  </button>
+                )}
+              </div>
+              {lectureTranslationPrompt && (
+                <div style={{ marginTop: '8px', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
+                  <div style={{ fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
+                    📄 {lectureTranslationPrompt.name || 'Custom Prompt'}
+                  </div>
+                  <div style={{ color: '#64748b', fontStyle: 'italic', maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    "{lectureTranslationPrompt.promptText.substring(0, 180)}..."
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Subtitle Translation Target Languages */}
+        <div className="form-group" style={{ marginTop: '1.25rem', opacity: isLectureSubtitlesEnabled ? 1 : 0.75 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
+            <label style={{ fontWeight: 600, fontSize: '0.92rem', color: '#1e293b', margin: 0 }}>
+              Subtitle Translation Target Languages ({lectureTargetLanguages.length} selected)
+            </label>
+            <div style={{ display: 'flex', gap: '8px', fontSize: '0.78rem' }}>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => setLectureTargetLanguages(['en', 'zh-Hant', 'zh-Hans'])}
+                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+              >
+                Standard 3 (EN / 繁 / 简)
+              </button>
+              <span style={{ color: '#cbd5e1' }}>|</span>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => setLectureTargetLanguages(AVAILABLE_SUBTITLE_LANGUAGES.map((l) => l.code))}
+                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+              >
+                Select All ({AVAILABLE_SUBTITLE_LANGUAGES.length})
+              </button>
+            </div>
+          </div>
+          <p className="input-hint" style={{ marginTop: 0 }}>
+            Select which languages Gemini will synthesize into WebVTT and YouTube SRT subtitle files.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+            {AVAILABLE_SUBTITLE_LANGUAGES.map((lang) => {
+              const isChecked = lectureTargetLanguages.includes(lang.code);
+              return (
+                <label
+                  key={lang.code}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: isChecked ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                    backgroundColor: isChecked ? '#eff6ff' : '#ffffff',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    fontWeight: isChecked ? 600 : 400,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => {
+                      if (isChecked) {
+                        if (lectureTargetLanguages.length > 1) {
+                          setLectureTargetLanguages(lectureTargetLanguages.filter((c) => c !== lang.code));
+                        }
+                      } else {
+                        setLectureTargetLanguages([...lectureTargetLanguages, lang.code]);
+                      }
+                    }}
+                    style={{ accentColor: '#3b82f6' }}
+                  />
+                  <span>{lang.icon} {lang.label} ({lang.code})</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 4. Gemini AI Model for Lecture Audio */}
+        <div className="form-group" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🤖</span>
+            <span>Lecture Transcription &amp; Subtitle AI Model</span>
+          </label>
+          <p className="input-hint">
+            Select the Gemini model used to generate multilingual subtitles (.vtt &amp; .srt) and YouTube chapters from your audio.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', marginTop: '8px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: lectureAiModel === 'gemini-3.8-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: lectureAiModel === 'gemini-3.8-flash' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="lectureAiModel"
+                value="gemini-3.8-flash"
+                checked={lectureAiModel === 'gemini-3.8-flash'}
+                onChange={() => setLectureAiModel('gemini-3.8-flash')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  ✨ Gemini 3.8 Flash (Recommended)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Highest accuracy for technical CS terminology &amp; Cantonese/English code-switching with robust timestamps.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: lectureAiModel === 'gemini-3.6-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: lectureAiModel === 'gemini-3.6-flash' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="lectureAiModel"
+                value="gemini-3.6-flash"
+                checked={lectureAiModel === 'gemini-3.6-flash'}
+                onChange={() => setLectureAiModel('gemini-3.6-flash')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  ⚡ Gemini 3.6 Flash (High Performance)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Fast multimodal processing with high token efficiency and strong technical speech recognition.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* 5. Broadcast Recording Default */}
         <div className="form-group" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
           <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>🎥</span>
@@ -3209,11 +3780,122 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </label>
           </div>
         </div>
+
+        {/* 6. Student Access Policy */}
+        <div className="form-group" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>📢</span>
+            <span>Student Access to Teacher Lecture Recordings (Case 1)</span>
+          </label>
+          <p className="input-hint">
+            Class-level access gate. Choose whether students have zero access (Private), access only to specifically approved recordings (Selective), or immediate access to every recorded lecture (Always Share).
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', marginTop: '8px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: teacherRecordingsPolicy === 'private' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: teacherRecordingsPolicy === 'private' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="teacherRecordingsPolicy"
+                value="private"
+                checked={teacherRecordingsPolicy === 'private'}
+                onChange={() => {
+                  setTeacherRecordingsPolicy('private');
+                  setAllowShareTeacherRecordings(false);
+                }}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🔒 Private to Instructor (Default Deny - Recommended)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Students cannot view or query teacher recordings. Protects internal teaching materials and recordings.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: teacherRecordingsPolicy === 'selective' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: teacherRecordingsPolicy === 'selective' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="teacherRecordingsPolicy"
+                value="selective"
+                checked={teacherRecordingsPolicy === 'selective'}
+                onChange={() => {
+                  setTeacherRecordingsPolicy('selective');
+                  setAllowShareTeacherRecordings(true);
+                }}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  👥 Allow Selective Sharing (Click &amp; Share)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Enables student access in "My Records". You still manually choose which specific recordings to share from the Lecture Studio.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: teacherRecordingsPolicy === 'always_shared' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: teacherRecordingsPolicy === 'always_shared' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="teacherRecordingsPolicy"
+                value="always_shared"
+                checked={teacherRecordingsPolicy === 'always_shared'}
+                onChange={() => {
+                  setTeacherRecordingsPolicy('always_shared');
+                  setAllowShareTeacherRecordings(true);
+                }}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🌐 Always Share with Class (Automatic / Public to Students)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Automatically shares all lecture recordings with enrolled students. No manual per-video approval needed in the video view UI.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
       </div>
 
-      {/* Section 9: Security & Access Restrictions */}
+      {/* Section 10: Security & Access Restrictions */}
       <div className="settings-section-card">
-        <h3>🔒 9. Security &amp; IP Restrictions</h3>
+        <h3>🔒 10. Security &amp; IP Restrictions</h3>
         <div className="form-group">
           <label>Allowed Classroom IP Addresses</label>
           <textarea

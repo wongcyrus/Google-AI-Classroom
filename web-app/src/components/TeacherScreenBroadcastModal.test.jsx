@@ -834,4 +834,91 @@ describe('TeacherScreenBroadcastModal', () => {
     const video = screen.getByTitle(/Click to resume preview if paused/i);
     fireEvent.click(video);
   });
+
+  it('displays target class badge in setup wizard and active broadcast', () => {
+    const { unmount } = render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        classId="itp4903-l"
+        className="Database Principles"
+      />
+    );
+
+    expect(screen.getByText('Database Principles')).toBeInTheDocument();
+    expect(screen.getByTitle('Broadcasting target: itp4903-l')).toBeInTheDocument();
+
+    unmount();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        classId="itp4903-l"
+        className="Database Principles"
+      />
+    );
+
+    expect(screen.getByText('Database Principles')).toBeInTheDocument();
+    expect(screen.getByTitle('Broadcasting target: itp4903-l')).toBeInTheDocument();
+  });
+
+  it('displays schedule mismatch warning banner when another class is live now and calls onSwitchClass', () => {
+    const onSwitchClass = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={false}
+        classId="ite3101-l"
+        className="Python Programming"
+        activeLiveClass={{
+          id: 'itp4903-l',
+          name: 'Database Principles',
+        }}
+        onSwitchClass={onSwitchClass}
+      />
+    );
+
+    expect(screen.getByText(/Schedule Warning: Another class is live now!/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Database Principles/i).length).toBeGreaterThan(0);
+    const switchBtn = screen.getByRole('button', { name: /Switch to Database Principles/i });
+    expect(switchBtn).toBeInTheDocument();
+
+    fireEvent.click(switchBtn);
+    expect(onClose).toHaveBeenCalled();
+    expect(onSwitchClass).toHaveBeenCalledWith('itp4903-l');
+  });
+
+  it('uses course name and date as default lecture recording title when user leaves title blank', async () => {
+    const onStartBroadcast = vi.fn().mockResolvedValue();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        initialStep={2}
+        classId="itp4903-l"
+        className="Database Principles"
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+    fireEvent.click(startBtn);
+
+    await waitFor(() => {
+      expect(onStartBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lectureTitle: expect.stringContaining('Database Principles - '),
+        })
+      );
+    });
+  });
 });
+

@@ -26,6 +26,7 @@
     "exceljs": "^4.4.0",
     "fft.js": "^4.0.4",
     "firebase": "^12.18.0",
+    "fix-webm-duration": "^1.0.6",
     "jszip": "^3.10.2",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

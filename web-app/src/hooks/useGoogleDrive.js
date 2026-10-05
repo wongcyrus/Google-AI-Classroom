@@ -6,6 +6,7 @@ import {
   requestGoogleDriveToken,
   fetchGoogleUserInfo,
   uploadVideoToGoogleDrive,
+  uploadTextFileToGoogleDrive,
   extractGoogleDriveFileId,
   formatGoogleDriveEmbedUrl,
   resolveClassroomFolderHierarchy,
@@ -166,7 +167,8 @@ export function useGoogleDrive() {
       // Step 2: Format semantic filename and description
       const safeTitle = (recording.title || 'Lecture_Recording').replace(/[^a-zA-Z0-9_-]/g, '_');
       const ext = recording.mimeType?.includes('webm') ? 'webm' : 'mp4';
-      const fileName = `${classId || 'Class'}_${safeTitle}_${recording.id}.${ext}`;
+      const baseName = `${classId || 'Class'}_${safeTitle}_${recording.id}`;
+      const fileName = `${baseName}.${ext}`;
       const description = `Classroom Lecture: ${recording.title || 'Class Recording'}\nClass ID: ${classId}\nRecorded: ${recording.startedAt?.toDate ? recording.startedAt.toDate().toLocaleString() : new Date().toLocaleString()}`;
 
       // Step 3: Resolve hierarchical folder: [Base] / [Class] / [Lesson] / Teacher Lectures
@@ -178,6 +180,7 @@ export function useGoogleDrive() {
           baseFolderName: baseFolder || baseFolderName || 'Classroom Archives',
           className: className || classId || 'General Class',
           lessonName: lessonName || recording.lessonTitle || recording.title || 'General Recordings',
+          recordingTitle: recording.title || safeTitle || 'Lecture Recording',
           subfolderType: 'lectures',
         });
         targetFolderId = hierarchy.folderId;
@@ -196,21 +199,100 @@ export function useGoogleDrive() {
         onProgress: (percent) => setUploadProgress(percent),
       });
 
-      // Step 5: Persist Google Drive linkage in Firestore
+      // Step 5: Upload multilingual caption tracks (.vtt and .srt) into the same Drive folder
+      const driveSubtitleFiles = {};
+      const driveSrtFiles = {};
+      let uploadedSubtitlesCount = 0;
+
+      // 5a. Upload WebVTT files (.vtt)
+      if (recording.vttUrls && typeof recording.vttUrls === 'object') {
+        const vttEntries = Object.entries(recording.vttUrls);
+        for (const [lang, vttUrl] of vttEntries) {
+          if (!vttUrl) continue;
+          try {
+            const vttRes = await fetch(vttUrl);
+            if (vttRes.ok) {
+              const vttText = await vttRes.text();
+              const vttFileName = `${baseName}.${lang}.vtt`;
+              const uploadedVtt = await uploadTextFileToGoogleDrive({
+                accessToken,
+                textContent: vttText,
+                fileName: vttFileName,
+                mimeType: 'text/vtt',
+                folderId: targetFolderId,
+              });
+              driveSubtitleFiles[lang] = {
+                fileId: uploadedVtt.fileId,
+                fileName: vttFileName,
+                webViewLink: uploadedVtt.webViewLink,
+              };
+              uploadedSubtitlesCount++;
+            }
+          } catch (vttErr) {
+            console.warn(`[useGoogleDrive] Could not upload .vtt subtitle track (${lang}) to Drive:`, vttErr);
+          }
+        }
+      }
+
+      // 5b. Upload SubRip files (.srt)
+      if (recording.srtUrls && typeof recording.srtUrls === 'object') {
+        const srtEntries = Object.entries(recording.srtUrls);
+        for (const [lang, srtUrl] of srtEntries) {
+          if (!srtUrl) continue;
+          try {
+            const srtRes = await fetch(srtUrl);
+            if (srtRes.ok) {
+              const srtText = await srtRes.text();
+              const srtFileName = `${baseName}.${lang}.srt`;
+              const uploadedSrt = await uploadTextFileToGoogleDrive({
+                accessToken,
+                textContent: srtText,
+                fileName: srtFileName,
+                mimeType: 'text/plain',
+                folderId: targetFolderId,
+              });
+              driveSrtFiles[lang] = {
+                fileId: uploadedSrt.fileId,
+                fileName: srtFileName,
+                webViewLink: uploadedSrt.webViewLink,
+              };
+              uploadedSubtitlesCount++;
+            }
+          } catch (srtErr) {
+            console.warn(`[useGoogleDrive] Could not upload .srt subtitle track (${lang}) to Drive:`, srtErr);
+          }
+        }
+      }
+
+      // Step 6: Persist Google Drive linkage and subtitle files in Firestore
       if (classId && recording.id) {
         const recordingRef = doc(db, 'classes', classId, 'lectureRecordings', recording.id);
-        await updateDoc(recordingRef, {
+        const updatePayload = {
           driveFileId: result.fileId,
           driveWebViewLink: result.webViewLink,
           driveEmbedUrl: result.embedUrl,
           driveFolderPath: targetFolderPath,
           driveUploadedAt: new Date(),
           driveUploadedBy: connectedUser?.email || 'Teacher',
-        });
+        };
+        if (Object.keys(driveSubtitleFiles).length > 0) {
+          updatePayload.driveSubtitleFiles = driveSubtitleFiles;
+        }
+        if (Object.keys(driveSrtFiles).length > 0) {
+          updatePayload.driveSrtFiles = driveSrtFiles;
+        }
+        await updateDoc(recordingRef, updatePayload);
       }
 
-      setSuccessMessage(`Successfully uploaded "${fileName}" to Google Drive!`);
-      return result;
+      const subtitleMsg = uploadedSubtitlesCount > 0
+        ? ` and ${uploadedSubtitlesCount} multilingual subtitle track(s)`
+        : '';
+      setSuccessMessage(`Successfully uploaded "${fileName}"${subtitleMsg} to Google Drive!`);
+      return {
+        ...result,
+        driveSubtitleFiles,
+        driveSrtFiles,
+      };
     } catch (err) {
       setError(err?.message || 'Google Drive upload encountered an error.');
       return null;
@@ -218,6 +300,166 @@ export function useGoogleDrive() {
       setIsUploading(false);
     }
   }, [isConnected, accessToken, connectedUser, baseFolderName]);
+
+  const uploadSubtitlesOnly = useCallback(async ({
+    recording,
+    classId,
+    className = '',
+    lessonName = '',
+    baseFolder = null,
+  }) => {
+    if (!isConnected || !accessToken) {
+      setError('Please connect your Google Drive first.');
+      return null;
+    }
+
+    if (!recording?.vttUrls && !recording?.srtUrls) {
+      setError('Recording does not have caption files available to upload.');
+      return null;
+    }
+
+    setIsUploading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const safeTitle = (recording.title || 'Lecture_Recording').replace(/[^a-zA-Z0-9_-]/g, '_');
+      let baseName = `${classId || 'Class'}_${safeTitle}_${recording.id}`;
+
+      // Attempt to resolve targetFolderId:
+      // First preference: query the exact parent of recording.driveFileId if already in Drive
+      let targetFolderId = null;
+      let targetFolderPath = recording.driveFolderPath || null;
+
+      if (recording.driveFileId) {
+        try {
+          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${recording.driveFileId}?fields=name,parents`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (fileRes.ok) {
+            const fileData = await fileRes.json();
+            if (fileData.parents && fileData.parents.length > 0) {
+              targetFolderId = fileData.parents[0];
+            }
+            if (fileData.name) {
+              // Strip extension (.webm, .mp4, etc.) to get exact base name from Google Drive video
+              baseName = fileData.name.replace(/\.[^/.]+$/, '');
+            }
+          }
+        } catch (pErr) {
+          console.warn('[useGoogleDrive] Parent folder lookup from driveFileId notice:', pErr);
+        }
+      }
+
+      if (!targetFolderId) {
+        try {
+          const hierarchy = await resolveClassroomFolderHierarchy({
+            accessToken,
+            baseFolderName: baseFolder || baseFolderName || 'Classroom Archives',
+            className: className || classId || 'General Class',
+            lessonName: lessonName || recording.lessonTitle || recording.title || 'General Recordings',
+            recordingTitle: recording.title || safeTitle || 'Lecture Recording',
+            subfolderType: 'lectures',
+          });
+          targetFolderId = hierarchy.folderId;
+          targetFolderPath = hierarchy.folderPath;
+        } catch (fErr) {
+          console.warn('[useGoogleDrive] Folder hierarchy error (uploading to root fallback):', fErr);
+        }
+      }
+
+      const driveSubtitleFiles = { ...(recording.driveSubtitleFiles || {}) };
+      const driveSrtFiles = { ...(recording.driveSrtFiles || {}) };
+      let uploadedSubtitlesCount = 0;
+
+      // Upload WebVTT files (.vtt)
+      if (recording.vttUrls && typeof recording.vttUrls === 'object') {
+        const vttEntries = Object.entries(recording.vttUrls);
+        for (const [lang, vttUrl] of vttEntries) {
+          if (!vttUrl) continue;
+          try {
+            const vttRes = await fetch(vttUrl);
+            if (vttRes.ok) {
+              const vttText = await vttRes.text();
+              const vttFileName = `${baseName}.${lang}.vtt`;
+              const uploadedVtt = await uploadTextFileToGoogleDrive({
+                accessToken,
+                textContent: vttText,
+                fileName: vttFileName,
+                mimeType: 'text/vtt',
+                folderId: targetFolderId,
+              });
+              driveSubtitleFiles[lang] = {
+                fileId: uploadedVtt.fileId,
+                fileName: vttFileName,
+                webViewLink: uploadedVtt.webViewLink,
+              };
+              uploadedSubtitlesCount++;
+            }
+          } catch (vttErr) {
+            console.warn(`[useGoogleDrive] Could not upload .vtt subtitle track (${lang}) to Drive:`, vttErr);
+          }
+        }
+      }
+
+      // Upload SubRip files (.srt)
+      if (recording.srtUrls && typeof recording.srtUrls === 'object') {
+        const srtEntries = Object.entries(recording.srtUrls);
+        for (const [lang, srtUrl] of srtEntries) {
+          if (!srtUrl) continue;
+          try {
+            const srtRes = await fetch(srtUrl);
+            if (srtRes.ok) {
+              const srtText = await srtRes.text();
+              const srtFileName = `${baseName}.${lang}.srt`;
+              const uploadedSrt = await uploadTextFileToGoogleDrive({
+                accessToken,
+                textContent: srtText,
+                fileName: srtFileName,
+                mimeType: 'text/plain',
+                folderId: targetFolderId,
+              });
+              driveSrtFiles[lang] = {
+                fileId: uploadedSrt.fileId,
+                fileName: srtFileName,
+                webViewLink: uploadedSrt.webViewLink,
+              };
+              uploadedSubtitlesCount++;
+            }
+          } catch (srtErr) {
+            console.warn(`[useGoogleDrive] Could not upload .srt subtitle track (${lang}) to Drive:`, srtErr);
+          }
+        }
+      }
+
+      // Persist in Firestore
+      if (classId && recording.id) {
+        const recordingRef = doc(db, 'classes', classId, 'lectureRecordings', recording.id);
+        const updatePayload = {};
+        if (Object.keys(driveSubtitleFiles).length > 0) {
+          updatePayload.driveSubtitleFiles = driveSubtitleFiles;
+        }
+        if (Object.keys(driveSrtFiles).length > 0) {
+          updatePayload.driveSrtFiles = driveSrtFiles;
+        }
+        if (targetFolderPath && !recording.driveFolderPath) {
+          updatePayload.driveFolderPath = targetFolderPath;
+        }
+        await updateDoc(recordingRef, updatePayload);
+      }
+
+      setSuccessMessage(`Successfully uploaded ${uploadedSubtitlesCount} multilingual subtitle file(s) to Google Drive!`);
+      return {
+        driveSubtitleFiles,
+        driveSrtFiles,
+      };
+    } catch (err) {
+      setError(err?.message || 'Google Drive subtitle upload encountered an error.');
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [isConnected, accessToken, baseFolderName]);
 
   const backupStudentVideosToDrive = useCallback(async ({
     videos = [],
@@ -731,6 +973,7 @@ export function useGoogleDrive() {
     connect,
     disconnect,
     uploadRecording,
+    uploadSubtitlesOnly,
     backupStudentVideosToDrive,
     backupTaskVideosToDrive,
     linkManualDrive,

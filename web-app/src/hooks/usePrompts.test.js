@@ -112,4 +112,53 @@ describe('usePrompts Hook', () => {
 
     expect(unsubMock1).toHaveBeenCalled();
   });
+
+  it('filters out Bingo prompts when applyToFilter is "Per Image"', () => {
+    auth.currentUser = { uid: 'teacher_1' };
+    let pubCb;
+    onSnapshot.mockImplementation((q, cb) => {
+      if (!pubCb) pubCb = cb;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => usePrompts('Per Image'));
+
+    act(() => {
+      pubCb({
+        docs: [
+          { id: 'p1', data: () => ({ name: 'AI Invigilator', category: 'images', applyTo: ['Per Image'], accessLevel: 'public' }) },
+          { id: 'p2', data: () => ({ name: 'Bingo Question Bank Generator', category: 'images', applyTo: ['Classroom Bingo Questions'], accessLevel: 'public' }) },
+          { id: 'p3', data: () => ({ name: 'Standard Work Check', category: 'images', applyTo: ['Per Image'], accessLevel: 'public' }) },
+        ],
+      });
+    });
+
+    expect(result.current.prompts).toHaveLength(2);
+    expect(result.current.prompts.map(p => p.name)).toEqual(['AI Invigilator', 'Standard Work Check']);
+    expect(result.current.prompts.some(p => p.name.includes('Bingo'))).toBe(false);
+  });
+
+  it('filters only Bingo prompts when applyToFilter is "Classroom Bingo Questions"', () => {
+    auth.currentUser = { uid: 'teacher_1' };
+    let pubCb;
+    onSnapshot.mockImplementation((q, cb) => {
+      if (!pubCb) pubCb = cb;
+      return vi.fn();
+    });
+
+    const { result } = renderHook(() => usePrompts('Classroom Bingo Questions'));
+
+    act(() => {
+      pubCb({
+        docs: [
+          { id: 'p1', data: () => ({ name: 'AI Invigilator', category: 'images', applyTo: ['Per Image'], accessLevel: 'public' }) },
+          { id: 'p2', data: () => ({ name: 'Bingo Question Bank Generator', category: 'images', applyTo: ['Classroom Bingo Questions'], accessLevel: 'public' }) },
+          { id: 'p3', data: () => ({ name: 'Standard Work Check', category: 'images', applyTo: ['Per Image'], accessLevel: 'public' }) },
+        ],
+      });
+    });
+
+    expect(result.current.prompts).toHaveLength(1);
+    expect(result.current.prompts[0].name).toBe('Bingo Question Bank Generator');
+  });
 });

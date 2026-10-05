@@ -289,6 +289,80 @@ export async function setGoogleDriveFilePublic(fileId, accessToken) {
 }
 
 /**
+ * Uploads a text file (such as WebVTT .vtt or SubRip .srt subtitles) to Google Drive
+ * using standard multipart upload (uploadType=multipart).
+ * Automatically sets public reader permission so the file can be accessed by enrolled students.
+ * 
+ * @param {Object} params
+ * @param {string} params.accessToken
+ * @param {string} params.textContent - Text data of the subtitle file
+ * @param {string} params.fileName - e.g. "subtitles_en.vtt"
+ * @param {string} [params.mimeType='text/vtt'] - MIME type
+ * @param {string} [params.folderId] - Target Google Drive folder ID
+ * @returns {Promise<{ fileId: string, name: string, webViewLink: string }>}
+ */
+export async function uploadTextFileToGoogleDrive({
+  accessToken,
+  textContent,
+  fileName,
+  mimeType = 'text/vtt',
+  folderId = null,
+}) {
+  if (!accessToken) throw new Error('Access token is required for Google Drive upload');
+  if (typeof textContent !== 'string') throw new Error('textContent must be a string');
+  if (!fileName) throw new Error('fileName is required for Google Drive upload');
+
+  const metadata = {
+    name: fileName,
+    mimeType,
+    ...(folderId ? { parents: [folderId] } : {}),
+  };
+
+  const boundary = '-------314159265358979323846';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
+
+  const body =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    `Content-Type: ${mimeType}; charset=UTF-8\r\n\r\n` +
+    textContent +
+    closeDelimiter;
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Failed to upload file "${fileName}" to Google Drive: ${res.status} ${errText}`);
+  }
+
+  const fileData = await res.json();
+  const fileId = fileData.id;
+  const webViewLink = fileData.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+  try {
+    await setGoogleDriveFilePublic(fileId, accessToken);
+  } catch (permErr) {
+    console.warn(`[GoogleDriveService] Permission grant warning for ${fileName}:`, permErr);
+  }
+
+  return {
+    fileId,
+    name: fileData.name || fileName,
+    webViewLink,
+  };
+}
+
+/**
  * In-memory cache for resolved Google Drive folder IDs.
  */
 export const folderHierarchyCache = new Map();
@@ -400,6 +474,7 @@ export async function resolveClassroomFolderHierarchy({
   subfolderType = 'lectures',
   studentEmail = null,
   taskTitle = null,
+  recordingTitle = null,
   cache = folderHierarchyCache,
 }) {
   if (!accessToken) throw new Error('Access token is required');
@@ -491,6 +566,26 @@ export async function resolveClassroomFolderHierarchy({
       parentFolderId: lessonFolder.id,
       cache,
     });
+
+    if (recordingTitle) {
+      const cleanRecTitle = (recordingTitle || 'Lecture Recording')
+        .replace(/[/\\:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim() || 'Lecture Recording';
+
+      const videoSubfolder = await findOrCreateGoogleDriveFolder({
+        accessToken,
+        folderName: cleanRecTitle,
+        parentFolderId: lectureFolder.id,
+        cache,
+      });
+
+      return {
+        folderId: videoSubfolder.id,
+        folderPath: `${cleanBase}/${cleanClass}/${cleanLesson}/Teacher Lectures/${cleanRecTitle}`,
+      };
+    }
+
     return {
       folderId: lectureFolder.id,
       folderPath: `${cleanBase}/${cleanClass}/${cleanLesson}/Teacher Lectures`,

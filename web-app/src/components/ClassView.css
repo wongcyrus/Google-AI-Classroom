@@ -421,6 +421,89 @@
   box-sizing: border-box;
 }
 
+/* Live Timetable Transition Warning Banner */
+.live-class-alert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #f59e0b;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.65rem 1rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.12);
+  animation: fadeInBanner 0.25s ease-out;
+}
+
+@keyframes fadeInBanner {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.live-class-alert-content {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: #92400e;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.live-class-alert-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.live-class-alert-text strong {
+  color: #78350f;
+}
+
+.live-class-alert-text em {
+  font-style: normal;
+  text-decoration: underline;
+}
+
+.live-class-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.switch-live-class-btn {
+  background: #d97706;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.switch-live-class-btn:hover {
+  background: #b45309;
+  transform: translateY(-1px);
+}
+
+.dismiss-live-class-btn {
+  background: transparent;
+  color: #92400e;
+  border: none;
+  font-size: 0.95rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.dismiss-live-class-btn:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
 
 
 

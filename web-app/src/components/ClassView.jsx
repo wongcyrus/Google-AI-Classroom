@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase-config';
 import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 
 // Refactored Imports
 import { useClassSchedule } from '../hooks/useClassSchedule';
+import { compareClassesBySchedule, getClassScheduleStatus } from '../utils/classRankingUtils';
 import DateRangeFilter from './DateRangeFilter';
 
 // Component Imports
@@ -38,8 +39,18 @@ const ClassView = ({ user }) => {
 
   const [classInfo, setClassInfo] = useState(null);
   const [teacherClasses, setTeacherClasses] = useState([]);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [dismissedLiveClassId, setDismissedLiveClassId] = useState(null);
   const [filterField, setFilterField] = useState('startTime');
   const [broadcastState, setBroadcastState] = useState(null);
+
+  // Periodically refresh current time every 30s to detect lesson slot transitions
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Centralized schedule and date range management
   const {
@@ -112,12 +123,44 @@ const ClassView = ({ user }) => {
       if (snap.exists()) {
         const classIds = [...new Set(snap.data().classes || [])];
         const snaps = await Promise.all(classIds.map(id => getDoc(doc(db, 'classes', id))));
-        const list = snaps.map(s => ({ id: s.id, name: s.data()?.name || s.id }));
-        list.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+        const list = snaps.map(s => {
+          const cData = s.data() || {};
+          const status = getClassScheduleStatus({ id: s.id, ...cData }, currentTime);
+          return {
+            id: s.id,
+            name: cData.name || s.id,
+            schedule: cData.schedule,
+            scheduleHistory: cData.scheduleHistory,
+            _scheduleStatus: status,
+          };
+        });
+        list.sort((a, b) => compareClassesBySchedule(a, b, currentTime));
         setTeacherClasses(list);
       }
     }).catch(err => console.error('Error fetching teacher classes:', err));
-  }, [user]);
+  }, [user, currentTime]);
+
+  // Alert when current open class is NOT live, but another enrolled class IS actively Live Now
+  const liveClassWarning = useMemo(() => {
+    if (!classId || teacherClasses.length <= 1) return null;
+    const currentClass = teacherClasses.find((c) => c.id === classId);
+    const isCurrentLive = currentClass?._scheduleStatus?.tier === 1;
+    if (isCurrentLive) return null;
+
+    const liveOtherClass = teacherClasses.find(
+      (c) => c.id !== classId && c._scheduleStatus?.tier === 1
+    );
+    if (liveOtherClass && liveOtherClass.id !== dismissedLiveClassId) {
+      return liveOtherClass;
+    }
+    return null;
+  }, [classId, teacherClasses, dismissedLiveClassId]);
+
+  const handleSwitchToClass = (targetClassId) => {
+    if (targetClassId && targetClassId !== classId) {
+      navigate(`/class/${targetClassId}?tab=${mainTab}${subTab ? `&sub=${subTab}` : ''}`);
+    }
+  };
 
   // Sync body class for monitor tab to prevent outer viewport double scrolling
   useEffect(() => {
@@ -179,11 +222,11 @@ const ClassView = ({ user }) => {
     switch (mainTab) {
       case 'video':
         switch (subTab) {
-          case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
+          case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
-          default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} className={classInfo?.name || classId} />;
+          default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
         }
       case 'analytics':
         switch (subTab) {
@@ -310,11 +353,18 @@ const ClassView = ({ user }) => {
                 onChange={handleClassSwitch}
                 className="class-switcher-select"
               >
-                {teacherClasses.map((c, idx) => (
-                  <option key={`${c.id}-${idx}`} value={c.id}>
-                    {c.name ? `${c.name} (${c.id})` : c.id}
-                  </option>
-                ))}
+                {teacherClasses.map((c, idx) => {
+                  let prefix = '';
+                  if (c._scheduleStatus?.tier === 1) prefix = '🟢 [Live Now] ';
+                  else if (c._scheduleStatus?.tier === 2) prefix = `⏳ [In ${c._scheduleStatus.minutesUntilStart}m] `;
+                  else if (c._scheduleStatus?.tier === 3) prefix = '📅 [Today] ';
+
+                  return (
+                    <option key={`${c.id}-${idx}`} value={c.id}>
+                      {prefix}{c.name ? `${c.name} (${c.id})` : c.id}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}
@@ -407,6 +457,36 @@ const ClassView = ({ user }) => {
         )}
       </nav>
       </div>
+
+      {/* Live Timetable Transition Warning Banner */}
+      {liveClassWarning && (
+        <div className="live-class-alert-banner" role="alert">
+          <div className="live-class-alert-content">
+            <span className="live-class-alert-icon">⚠️</span>
+            <div className="live-class-alert-text">
+              <strong>Timetable Alert:</strong> You are currently in <em>{classInfo?.name || classId}</em> ({classId}).
+              Your scheduled timetable class right now ({liveClassWarning._scheduleStatus?.timeStr || 'Live Now'}) is <strong>{liveClassWarning.name || liveClassWarning.id}</strong>.
+            </div>
+          </div>
+          <div className="live-class-alert-actions">
+            <button
+              type="button"
+              className="switch-live-class-btn"
+              onClick={() => handleSwitchToClass(liveClassWarning.id)}
+            >
+              👉 Switch to {liveClassWarning.name || liveClassWarning.id}
+            </button>
+            <button
+              type="button"
+              className="dismiss-live-class-btn"
+              onClick={() => setDismissedLiveClassId(liveClassWarning.id)}
+              aria-label="Dismiss warning"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Secondary Sub-Tabs for Video Module */}
       {mainTab === 'video' && (
@@ -510,6 +590,7 @@ const ClassView = ({ user }) => {
           style={{ display: mainTab === 'monitor' ? 'flex' : 'none' }}
         >
           <MonitorView 
+            key={classId}
             user={user} 
             classId={classId} 
             className={classInfo?.name || classInfo?.className || ''}
@@ -521,6 +602,8 @@ const ClassView = ({ user }) => {
             handleLessonChange={handleLessonChange} 
             filterField={filterField} 
             onBroadcastStateChange={setBroadcastState}
+            activeLiveClass={liveClassWarning}
+            onSwitchClass={handleSwitchToClass}
           />
         </div>
         {mainTab !== 'monitor' && (

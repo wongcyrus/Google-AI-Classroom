@@ -30,6 +30,7 @@ vi.mock('../utils/googleDriveService', async (importOriginal) => {
     requestGoogleDriveToken: vi.fn(),
     fetchGoogleUserInfo: vi.fn(),
     uploadVideoToGoogleDrive: vi.fn(),
+    uploadTextFileToGoogleDrive: vi.fn(),
   };
 });
 
@@ -176,6 +177,80 @@ describe('useGoogleDrive Hook', () => {
         driveEmbedUrl: 'https://drive.google.com/file/d/uploaded_file_999/preview',
       })
     );
+  });
+
+  it('uploads video and multilingual caption tracks (.vtt and .srt) together to Google Drive', async () => {
+    vi.mocked(gdriveService.requestGoogleDriveToken).mockResolvedValue({
+      access_token: 'upload_token',
+    });
+    vi.mocked(gdriveService.fetchGoogleUserInfo).mockResolvedValue({
+      email: 'teacher@gmail.com',
+    });
+    vi.mocked(gdriveService.uploadVideoToGoogleDrive).mockResolvedValue({
+      fileId: 'uploaded_file_video_1',
+      name: 'test_class_Robotics_rec_2.webm',
+      webViewLink: 'https://drive.google.com/file/d/uploaded_file_video_1/view',
+      embedUrl: 'https://drive.google.com/file/d/uploaded_file_video_1/preview',
+    });
+    vi.mocked(gdriveService.uploadTextFileToGoogleDrive).mockImplementation(async ({ fileName }) => ({
+      fileId: `file_sub_${fileName}`,
+      name: fileName,
+      webViewLink: `https://drive.google.com/file/d/file_sub_${fileName}/view`,
+    }));
+
+    // Mock fetch for video blob and vtt text
+    global.fetch = vi.fn().mockImplementation(async (url) => {
+      if (typeof url === 'string' && url.includes('.vtt')) {
+        return {
+          ok: true,
+          text: async () => 'WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nSubtitles',
+        };
+      }
+      return {
+        ok: true,
+        blob: async () => new Blob(['video-data'], { type: 'video/webm' }),
+      };
+    });
+
+    const { result } = renderHook(() => useGoogleDrive());
+
+    await act(async () => {
+      await result.current.connect('client-id');
+    });
+
+    const mockRecordingWithSubtitles = {
+      id: 'rec_2',
+      title: 'Robotics 102',
+      videoUrl: 'https://storage.googleapis.com/bucket/video2.webm',
+      mimeType: 'video/webm',
+      vttUrls: {
+        en: 'https://storage.googleapis.com/bucket/en.vtt',
+        'zh-Hant': 'https://storage.googleapis.com/bucket/zh-Hant.vtt',
+      },
+    };
+
+    let uploadRes;
+    await act(async () => {
+      uploadRes = await result.current.uploadRecording({
+        recording: mockRecordingWithSubtitles,
+        classId: 'class_ai',
+      });
+    });
+
+    expect(uploadRes).toBeTruthy();
+    expect(uploadRes.fileId).toBe('uploaded_file_video_1');
+    expect(gdriveService.uploadTextFileToGoogleDrive).toHaveBeenCalledTimes(2);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class_ai/lectureRecordings/rec_2' }),
+      expect.objectContaining({
+        driveFileId: 'uploaded_file_video_1',
+        driveSubtitleFiles: expect.objectContaining({
+          en: expect.objectContaining({ fileId: expect.stringContaining('.en.vtt') }),
+          'zh-Hant': expect.objectContaining({ fileId: expect.stringContaining('.zh-Hant.vtt') }),
+        }),
+      })
+    );
+    expect(result.current.successMessage).toContain('multilingual subtitle track(s)');
   });
 
   it('manually links a Google Drive video with valid ID/URL', async () => {
@@ -356,6 +431,94 @@ describe('useGoogleDrive Hook', () => {
       expect.objectContaining({
         driveFileId: 'task_drive_file_99',
         driveWebViewLink: 'https://drive.google.com/file/d/task_drive_file_99/view',
+      })
+    );
+  });
+
+  it('uploads only subtitles to Google Drive for an existing recording and updates Firestore', async () => {
+    vi.mocked(gdriveService.requestGoogleDriveToken).mockResolvedValue({
+      access_token: 'subs_token',
+    });
+    vi.mocked(gdriveService.fetchGoogleUserInfo).mockResolvedValue({
+      email: 'teacher@gmail.com',
+    });
+    vi.mocked(gdriveService.uploadTextFileToGoogleDrive)
+      .mockResolvedValueOnce({
+        fileId: 'uploaded_vtt_111',
+        name: 'test_class_Lecture_rec_1_subtitles_en.vtt',
+        webViewLink: 'https://drive.google.com/file/d/uploaded_vtt_111/view',
+      })
+      .mockResolvedValueOnce({
+        fileId: 'uploaded_srt_222',
+        name: 'test_class_Lecture_rec_1_subtitles_en.srt',
+        webViewLink: 'https://drive.google.com/file/d/uploaded_srt_222/view',
+      });
+
+    // Mock global fetch for fetching the subtitle text
+    global.fetch = vi.fn().mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('subtitles.vtt')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:04.000\nHello students!',
+        });
+      }
+      if (typeof url === 'string' && url.includes('subtitles.srt')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => '1\n00:00:01,000 --> 00:00:04,000\nHello students!',
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ parents: ['existing_folder_999'] }),
+      });
+    });
+
+    const { result } = renderHook(() => useGoogleDrive());
+
+    await act(async () => {
+      await result.current.connect('test-client-id');
+    });
+
+    const recording = {
+      id: 'rec_sub_only',
+      title: 'Lecture_rec_1',
+      driveFileId: 'drive_video_file_777',
+      driveFolderPath: 'Classroom Archives/test_class/Lecture - 10/2/2026/Teacher Lectures',
+      vttUrls: { en: 'https://firebasestorage.googleapis.com/.../subtitles.vtt' },
+      srtUrls: { en: 'https://firebasestorage.googleapis.com/.../subtitles.srt' },
+    };
+
+    let uploadResult;
+    await act(async () => {
+      uploadResult = await result.current.uploadSubtitlesOnly({
+        recording,
+        classId: 'test_class',
+        className: 'Test Class',
+        lessonName: 'Lecture - 10/2/2026',
+      });
+    });
+
+    expect(uploadResult).not.toBeNull();
+    expect(uploadResult.driveSubtitleFiles.en).toEqual({
+      fileId: 'uploaded_vtt_111',
+      fileName: 'test_class_Lecture_rec_1_rec_sub_only.en.vtt',
+      webViewLink: 'https://drive.google.com/file/d/uploaded_vtt_111/view',
+    });
+    expect(uploadResult.driveSrtFiles.en).toEqual({
+      fileId: 'uploaded_srt_222',
+      fileName: 'test_class_Lecture_rec_1_rec_sub_only.en.srt',
+      webViewLink: 'https://drive.google.com/file/d/uploaded_srt_222/view',
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_sub_only' }),
+      expect.objectContaining({
+        driveSubtitleFiles: expect.objectContaining({
+          en: expect.objectContaining({ fileId: 'uploaded_vtt_111' }),
+        }),
+        driveSrtFiles: expect.objectContaining({
+          en: expect.objectContaining({ fileId: 'uploaded_srt_222' }),
+        }),
       })
     );
   });

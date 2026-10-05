@@ -18,8 +18,28 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
       const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
       const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
       let filtered;
-      if (applyToFilter === 'Live Subtitles & Translation') {
-        filtered = unique.filter(p => p.category === 'translations' || p.applyTo?.includes('Live Subtitles & Translation'));
+      if (applyToFilter === 'Lecture STT & Chapters') {
+        filtered = unique.filter(p =>
+          p.category === 'audios' &&
+          !p.name?.toLowerCase().includes('real-time') &&
+          !p.name?.toLowerCase().includes('live') &&
+          !p.name?.toLowerCase().includes('rolling') &&
+          (
+            p.applyTo?.includes('Lecture STT & Chapters') ||
+            (p.name?.toLowerCase().includes('lecture') && (p.name?.includes('Speech-to-Text') || p.name?.includes('Chapters') || p.name?.includes('STT')))
+          )
+        );
+      } else if (applyToFilter === 'Live Subtitles & Translation') {
+        // Exclusively Live Subtitles & Translation (never whole lecture recording prompts)
+        filtered = unique.filter(p =>
+          (p.applyTo?.includes('Live Subtitles & Translation') || (p.category === 'translations' && !p.applyTo?.includes('Lecture Subtitles & Chapters'))) &&
+          !p.applyTo?.includes('Lecture Subtitles & Chapters') &&
+          !p.applyTo?.includes('Lecture STT & Chapters')
+        );
+      } else if (applyToFilter === 'Lecture Subtitles & Chapters') {
+        filtered = unique.filter(p =>
+          p.applyTo?.includes('Lecture Subtitles & Chapters')
+        );
       } else {
         filtered = unique.filter(p => p.category === 'audios');
         if (applyToFilter) {

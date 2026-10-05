@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import { auth } from '../../firebase-config';
+import {
+  getPromptTypesByCategory,
+  getPlaceholdersForPrompt,
+  getOutputSchemaForPrompt,
+  getPromptTypeByApplyTo,
+  getPlaceholderTextForSelector,
+} from '../../constants/promptRegistry';
 
 const PromptForm = ({
   selectedPrompt,
@@ -56,6 +63,35 @@ const PromptForm = ({
   const canEdit = !selectedPrompt || isOwner || isSharedEditor;
   const isReadOnly = selectedPrompt && !canEdit;
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
+  const [showSchemaGuide, setShowSchemaGuide] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
+
+  const categoryPromptTypes = getPromptTypesByCategory(activeTab);
+  const effectiveApplyToList = applyTo.length > 0 ? applyTo : [categoryPromptTypes[0]?.applyTo].filter(Boolean);
+  const availablePlaceholders = getPlaceholdersForPrompt(effectiveApplyToList);
+  const activeSchema = getOutputSchemaForPrompt(effectiveApplyToList);
+  const activePromptType = getPromptTypeByApplyTo(effectiveApplyToList[0]);
+  const editorPlaceholder = getPlaceholderTextForSelector(activeTab, effectiveApplyToList[0]);
+
+  const handleInsertPlaceholder = (tag) => {
+    if (isReadOnly) return;
+    setPromptText((prev) => {
+      const current = prev || '';
+      if (!current.trim()) return tag;
+      return `${current}\n${tag}`;
+    });
+  };
+
+  const handleCopySnippet = (snippet) => {
+    if (!snippet) return;
+    try {
+      navigator.clipboard?.writeText(snippet);
+      setCopiedSnippet(true);
+      setTimeout(() => setCopiedSnippet(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy schema snippet:', err);
+    }
+  };
 
   return (
     <div className={`prompt-form-column ${isZenMode ? 'zen-active' : ''}`}>
@@ -123,13 +159,121 @@ const PromptForm = ({
             </div>
         </div>
 
+        {/* Centralized Prompt Metadata, Model Specs, and Placeholder Chips Toolbar */}
+        <div className="prompt-meta-toolbar">
+          <div className="meta-left">
+            {activePromptType?.recommendedModel && (
+              <span className="model-chip" title="Recommended Gemini Model for this prompt type">
+                🤖 {activePromptType.recommendedModel}
+              </span>
+            )}
+            {activePromptType?.pairedRole && (
+              <span className="paired-role-badge" title="Paired 2-Stage Pipeline Role">
+                🔗 {activePromptType.pairedRole}
+              </span>
+            )}
+            {availablePlaceholders.length > 0 && (
+              <div className="placeholders-strip">
+                <span className="placeholders-label">📌 Insert Placeholders:</span>
+                <div className="placeholders-list">
+                  {availablePlaceholders.map((ph) => {
+                    const isPresent = Boolean(promptText && promptText.includes(ph.tag));
+                    return (
+                      <button
+                        key={ph.tag}
+                        type="button"
+                        className={`placeholder-chip ${ph.required ? 'required' : ''} ${isPresent ? 'is-present' : (ph.required ? 'is-missing' : '')}`}
+                        onClick={() => handleInsertPlaceholder(ph.tag)}
+                        disabled={isReadOnly}
+                        title={`${ph.label}${ph.required ? ' (Required)' : ''}: ${ph.desc} - ${isPresent ? 'Present in prompt' : 'Click to insert into prompt'}`}
+                      >
+                        <span className="chip-status-icon">{isPresent ? '✓' : (ph.required ? '!' : '+')}</span>
+                        <code>{ph.tag}</code>
+                        {ph.required && <span className="chip-req-star" title="Required placeholder">*</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          {activeSchema && (
+            <div className="meta-right">
+              <button
+                type="button"
+                className={`schema-guide-toggle-btn ${showSchemaGuide ? 'active' : ''}`}
+                onClick={() => setShowSchemaGuide((prev) => !prev)}
+                title="View required output format and schema"
+              >
+                📋 {showSchemaGuide ? 'Hide Schema' : 'View Expected Schema'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Missing Required Placeholders Warning Banner */}
+        {(() => {
+          const missingRequired = availablePlaceholders.filter((ph) => ph.required && !(promptText && promptText.includes(ph.tag)));
+          if (missingRequired.length === 0 || isReadOnly) return null;
+          return (
+            <div
+              className="placeholder-validation-warning"
+              style={{
+                margin: '0 0 8px 0',
+                padding: '6px 12px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                color: '#991b1b',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <span>⚠️</span>
+              <span>
+                <strong>Missing required placeholder{missingRequired.length > 1 ? 's' : ''}:</strong>{' '}
+                <span className="missing-tags-label" style={{ fontWeight: 600 }}>
+                  {missingRequired.map((ph) => `${ph.label} (${ph.tag})`).join(', ')}
+                </span>{' '}
+                (Click the chip{missingRequired.length > 1 ? 's' : ''} above to insert before saving).
+              </span>
+            </div>
+          );
+        })()}
+
+        {showSchemaGuide && activeSchema && (
+          <div className="schema-inspector-panel">
+            <div className="schema-inspector-header">
+              <div className="schema-header-info">
+                <span className="schema-badge">Format: {activeSchema.format}</span>
+                <span className="schema-description">{activeSchema.description}</span>
+              </div>
+              <button
+                type="button"
+                className="copy-schema-btn"
+                onClick={() => handleCopySnippet(activeSchema.snippet)}
+              >
+                {copiedSnippet ? '✓ Copied!' : '📋 Copy JSON Snippet'}
+              </button>
+            </div>
+            <pre className="schema-code-block">
+              <code>{activeSchema.snippet}</code>
+            </pre>
+          </div>
+        )}
+
         <div className="editor-container" data-color-mode="light">
           <MDEditor
               value={promptText}
               onChange={setPromptText}
               preview={isReadOnly ? 'preview' : 'edit'}
               hideToolbar={isReadOnly}
-              textareaProps={{ readOnly: isReadOnly }}
+              textareaProps={{ 
+                readOnly: isReadOnly,
+                placeholder: editorPlaceholder
+              }}
               height="100%"
           />
         </div>
@@ -154,134 +298,21 @@ const PromptForm = ({
                 <div className="scope-settings-body">
                     <div className="apply-to-group">
                         <label>Apply to:</label>
-                        {activeTab === 'images' && (
-                            <>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Per Image" 
-                                    checked={applyTo.includes('Per Image')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Per Image
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="All Images" 
-                                    checked={applyTo.includes('All Images')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                All Images
-                                </label>
-                            </>
-                        )}
-                        {activeTab === 'videos' && (
+                        {activeTab === 'videos' ? (
                             <span> Per Video</span>
-                        )}
-                        {activeTab === 'audios' && (
-                            <>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Live Audio Invigilation" 
-                                    checked={applyTo.includes('Live Audio Invigilation')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Live Audio Invigilation
+                        ) : (
+                            categoryPromptTypes.map((pt) => (
+                                <label key={pt.applyTo} title={pt.description}>
+                                    <input 
+                                        type="checkbox" 
+                                        value={pt.applyTo} 
+                                        checked={applyTo.includes(pt.applyTo)} 
+                                        onChange={handleApplyToChange} 
+                                        disabled={isReadOnly}
+                                    />
+                                    {pt.label}
                                 </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Session Audio Summary" 
-                                    checked={applyTo.includes('Session Audio Summary')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Session Audio Summary
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="On-Device Gemma Voice Intent" 
-                                    checked={applyTo.includes('On-Device Gemma Voice Intent')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                On-Device Gemma Voice Intent
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Live Subtitles & Translation" 
-                                    checked={applyTo.includes('Live Subtitles & Translation')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Live Subtitles & Translation
-                                </label>
-                            </>
-                        )}
-                        {activeTab === 'translations' && (
-                            <>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Live Subtitles & Translation" 
-                                    checked={applyTo.includes('Live Subtitles & Translation')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Live Subtitles & Translation
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Code-Switching Lectures" 
-                                    checked={applyTo.includes('Code-Switching Lectures')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Cantonese-English Code-Switching
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Technical Discipline Glossary" 
-                                    checked={applyTo.includes('Technical Discipline Glossary')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Technical Discipline Glossary
-                                </label>
-                            </>
-                        )}
-                        {activeTab === 'rubrics' && (
-                            <>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Lab Rubric Milestones" 
-                                    checked={applyTo.includes('Lab Rubric Milestones')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Lab Rubric Milestones
-                                </label>
-                                <label>
-                                <input 
-                                    type="checkbox" 
-                                    value="Task Milestones Extraction" 
-                                    checked={applyTo.includes('Task Milestones Extraction')} 
-                                    onChange={handleApplyToChange} 
-                                    disabled={isReadOnly}
-                                />
-                                Task Milestones Extraction
-                                </label>
-                            </>
+                            ))
                         )}
                     </div>
 

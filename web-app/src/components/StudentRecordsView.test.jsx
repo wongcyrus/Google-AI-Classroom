@@ -665,6 +665,45 @@ describe('StudentRecordsView Component', () => {
       // Next week (outside window)
       expect(isRecordInLesson({ timestamp: '2026-09-08T09:30:00Z', classId: 'CLASS_A' }, lesson)).toBe(false);
     });
+
+    it('matches schedule lessons with start/end Date objects against Firestore lecture recordings with startedAt/endedAt', () => {
+      const scheduleLesson = {
+        id: '2026-10-05T02:30:00.000Z',
+        start: new Date('2026-10-05T02:30:00.000Z'), // 10:30 HKT
+        end: new Date('2026-10-05T03:30:00.000Z'),   // 11:30 HKT
+        title: 'Lesson 03 (10/5/2026)',
+        index: 3,
+      };
+
+      // Recording started at 10:37 HKT and ended at 10:42 HKT
+      const rec = {
+        id: 'rec_1791167878662_uxym6fu',
+        classId: 'ite3101-l',
+        startedAt: { seconds: 1791167878, nanoseconds: 682000000 },
+        endedAt: { seconds: 1791168160, nanoseconds: 732000000 },
+        durationSeconds: 273,
+      };
+
+      expect(isRecordInLesson(rec, scheduleLesson)).toBe(true);
+
+      // Recording with only startedAt and durationSeconds
+      const recWithDuration = {
+        id: 'rec_part_2',
+        classId: 'ite3101-l',
+        startedAt: { seconds: 1791169996, nanoseconds: 484000000 },
+        durationSeconds: 627,
+      };
+      expect(isRecordInLesson(recWithDuration, scheduleLesson)).toBe(true);
+
+      // Recording from previous week (9/28) should not match Lesson 03
+      const lastWeekRec = {
+        id: 'rec_prev_week',
+        classId: 'ite3101-l',
+        startedAt: { seconds: 1790563137, nanoseconds: 894000000 },
+        durationSeconds: 2079,
+      };
+      expect(isRecordInLesson(lastWeekRec, scheduleLesson)).toBe(false);
+    });
   });
 
   it('filters all tabs (videos, tasks, alerts, audio) to the selected lesson and allows viewing all lessons', async () => {
@@ -1628,7 +1667,7 @@ describe('StudentRecordsView Component', () => {
       });
 
       // Switch to Audio Recordings tab
-      const audioTab = screen.getByRole('tab', { name: /Audio Transcripts/i });
+      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
       fireEvent.click(audioTab);
 
       // If scope banner is visible, click Show All Lessons
@@ -1963,6 +2002,409 @@ describe('StudentRecordsView Component', () => {
       appendSpy.mockRestore();
       removeSpy.mockRestore();
       document.createElement.mockRestore();
+    });
+  });
+
+  describe('Teacher Lecture Recordings Sharing', () => {
+    it('shows private locked notice when allowShareTeacherRecordings is disabled or default deny', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        const path = docRef?.path || '';
+        if (path.includes('studentProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS_LOCKED'] }),
+          };
+        }
+        if (path.includes('classes/CLASS_LOCKED')) {
+          return {
+            id: 'CLASS_LOCKED',
+            exists: () => true,
+            data: () => ({
+              name: 'Cloud Computing 101',
+              allowShareTeacherRecordings: false,
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const teacherTab = screen.getByRole('tab', { name: /Teacher Lectures/i });
+      fireEvent.click(teacherTab);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Teacher Lectures Not Shared For This Class/i)).toBeInTheDocument();
+      });
+    });
+
+    it('subscribes to shared teacher recordings and displays player modal when enabled', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        const path = docRef?.path || '';
+        if (path.includes('studentProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS_SHARED'] }),
+          };
+        }
+        if (path.includes('classes/CLASS_SHARED')) {
+          return {
+            id: 'CLASS_SHARED',
+            exists: () => true,
+            data: () => ({
+              name: 'Advanced Distributed Systems',
+              allowShareTeacherRecordings: true,
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        if (typeof callback === 'function') {
+          const isRecordings = refOrQuery?.path?.includes('lectureRecordings') ||
+                               refOrQuery?.args?.[0]?.path?.includes('lectureRecordings');
+          if (isRecordings) {
+            callback({
+              docs: [
+                {
+                  id: 'rec_teacher_cloud',
+                  data: () => ({
+                    title: 'Distributed Consensus & Raft',
+                    topic: 'Consensus Protocols',
+                    durationSeconds: 1800,
+                    startedAt: '2026-09-12T10:00:00Z',
+                    isSharedWithStudents: true,
+                    videoUrl: 'https://storage.mock/raft_lecture.mp4',
+                    youtubeVideoId: 'raft_yt_123',
+                    vttUrls: {
+                      en: 'https://storage.mock/raft_en.vtt',
+                      'zh-Hant': 'https://storage.mock/raft_zh.vtt',
+                    },
+                  }),
+                },
+              ],
+            });
+          } else {
+            callback({ docs: [] });
+          }
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Advanced Distributed Systems/i).length).toBeGreaterThan(0);
+      });
+
+      const teacherTab = screen.getByRole('tab', { name: /Teacher Lectures/i });
+      expect(teacherTab).toBeInTheDocument();
+      fireEvent.click(teacherTab);
+
+      await waitFor(() => {
+        expect(screen.getByText('Distributed Consensus & Raft')).toBeInTheDocument();
+        expect(screen.getByText(/Consensus Protocols/i)).toBeInTheDocument();
+        expect(screen.getByText('30m 0s')).toBeInTheDocument();
+        expect(screen.getByText('📺 YouTube')).toBeInTheDocument();
+      });
+
+      // Click "Watch Lecture" to open player modal
+      const watchBtn = screen.getByRole('button', { name: /▶ Watch Lecture/i });
+      fireEvent.click(watchBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/📺 YouTube Stream/i)).toBeInTheDocument();
+      });
+
+      // Switch to HTML5 Cloud player
+      const cloudTab = screen.getByRole('button', { name: /Cloud Storage HTML5 Player/i });
+      fireEvent.click(cloudTab);
+
+      // Verify Subtitle Language Toolbar & Language selection
+      expect(screen.getByTestId('subtitle-language-toolbar')).toBeInTheDocument();
+      const enBtn = screen.getByRole('button', { name: /🇬🇧 English/i });
+      const zhBtn = screen.getByRole('button', { name: /🇭🇰 繁體中文/i });
+      const offBtn = screen.getByRole('button', { name: /🚫 Off/i });
+
+      expect(enBtn).toHaveClass('active');
+      fireEvent.click(zhBtn);
+      expect(zhBtn).toHaveClass('active');
+      expect(enBtn).not.toHaveClass('active');
+
+      fireEvent.click(offBtn);
+      expect(offBtn).toHaveClass('active');
+      expect(zhBtn).not.toHaveClass('active');
+
+      // Close modal
+      const closeBtn = screen.getByRole('button', { name: /Close/i });
+      fireEvent.click(closeBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+    });
+
+    it('defaults to Cloud Storage HTML5 Player when CC subtitles exist alongside Drive file, and supports Drive no-CC jump', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        const path = docRef?.path || '';
+        if (path.includes('studentProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS_DRIVE_CC'] }),
+          };
+        }
+        if (path.includes('classes/CLASS_DRIVE_CC')) {
+          return {
+            id: 'CLASS_DRIVE_CC',
+            exists: () => true,
+            data: () => ({
+              name: 'DevOps Cloud Lecture',
+              allowShareTeacherRecordings: true,
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        if (typeof callback === 'function') {
+          const isRecordings = refOrQuery?.path?.includes('lectureRecordings') ||
+                               refOrQuery?.args?.[0]?.path?.includes('lectureRecordings');
+          if (isRecordings) {
+            callback({
+              docs: [
+                {
+                  id: 'rec_teacher_drive_cc',
+                  data: () => ({
+                    title: 'CI/CD Pipeline Lecture',
+                    topic: 'DevOps',
+                    durationSeconds: 2400,
+                    startedAt: '2026-09-12T10:00:00Z',
+                    isSharedWithStudents: true,
+                    videoUrl: 'https://storage.mock/devops.mp4',
+                    driveFileId: 'drive_devops_file_456',
+                    vttUrls: {
+                      en: 'https://storage.mock/devops_en.vtt',
+                      'zh-Hant': 'https://storage.mock/devops_zh.vtt',
+                    },
+                  }),
+                },
+              ],
+            });
+          } else {
+            callback({ docs: [] });
+          }
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/DevOps Cloud Lecture/i).length).toBeGreaterThan(0);
+      });
+
+      const teacherTab = screen.getByRole('tab', { name: /Teacher Lectures/i });
+      fireEvent.click(teacherTab);
+
+      await waitFor(() => {
+        expect(screen.getByText('CI/CD Pipeline Lecture')).toBeInTheDocument();
+      });
+
+      const watchBtn = screen.getByRole('button', { name: /▶ Watch Lecture/i });
+      fireEvent.click(watchBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      // Because CC subtitles exist, Cloud Player should be active by default!
+      expect(screen.getByTestId('subtitle-language-toolbar')).toBeInTheDocument();
+      expect(document.querySelector('video')).toBeInTheDocument();
+
+      // Switch to Google Drive tab (which has no CC)
+      const driveTab = screen.getByRole('button', { name: /Google Drive Stream \(⚠️ No CC\)/i });
+      fireEvent.click(driveTab);
+
+      // Verify the Drive no-CC banner appears
+      expect(screen.getByTestId('drive-no-cc-banner')).toBeInTheDocument();
+      expect(screen.getByText(/Google Drive Preview does not support external CC subtitles/i)).toBeInTheDocument();
+
+      // Click Traditional Chinese from the Drive banner to jump back into Cloud Player
+      const switchZhBtn = screen.getByRole('button', { name: /🇭🇰 繁體中文 \(Cloud Player\)/i });
+      fireEvent.click(switchZhBtn);
+
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /🇭🇰 繁體中文/i })).toHaveClass('active');
+    });
+
+    it('scopes teacher recordings tab badge and table strictly to active lesson and renders camera indicator in lesson selector', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        const path = docRef?.path || '';
+        if (path.includes('studentProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS_SCOPED'] }),
+          };
+        }
+        if (path.includes('classes/CLASS_SCOPED')) {
+          return {
+            id: 'CLASS_SCOPED',
+            exists: () => true,
+            data: () => ({
+              name: 'Cloud Infrastructure',
+              allowShareTeacherRecordings: true,
+              schedule: {
+                startDate: '2026-09-18',
+                endDate: '2026-10-09',
+                timeZone: 'UTC',
+                timeSlots: [{ startTime: '09:00', endTime: '10:00', days: ['Fri'] }],
+              },
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        if (typeof callback === 'function') {
+          const isRecordings = refOrQuery?.path?.includes('lectureRecordings') ||
+                               refOrQuery?.args?.[0]?.path?.includes('lectureRecordings');
+          if (isRecordings) {
+            callback({
+              docs: [
+                {
+                  id: 'rec_oct2',
+                  data: () => ({
+                    title: 'Lecture - 10/2/2026',
+                    startedAt: '2026-10-02T09:15:00Z',
+                    durationSeconds: 1200,
+                    isSharedWithStudents: true,
+                    videoUrl: 'https://storage.mock/oct2.mp4',
+                  }),
+                },
+              ],
+            });
+          } else {
+            callback({ docs: [] });
+          }
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Infrastructure/i).length).toBeGreaterThan(0);
+      });
+
+      // Wait for lessonsData to generate and populate the lesson dropdown
+      await waitFor(() => {
+        const sel = screen.queryByLabelText(/Lesson \/ Date:/i);
+        expect(sel).toBeInTheDocument();
+        expect(sel.querySelectorAll('option').length).toBeGreaterThan(1);
+      });
+
+      const lessonSelector = screen.getByLabelText(/Lesson \/ Date:/i);
+      const options = Array.from(lessonSelector.querySelectorAll('option'));
+      const oct2Option = options.find((o) => o.textContent.includes('10/2') || o.textContent.includes('Oct 2'));
+      expect(oct2Option).toBeDefined();
+      expect(oct2Option.textContent).toContain('🎥');
+
+      // The Sep 25 option does not have a recording, so it should NOT have 🎥
+      const sep25Option = options.find((o) => o.textContent.includes('9/25') || o.textContent.includes('Sep 25'));
+      expect(sep25Option).toBeDefined();
+      expect(sep25Option.textContent).not.toContain('🎥');
+
+      // Switch to Oct 2, 2026
+      fireEvent.change(lessonSelector, { target: { value: oct2Option.value } });
+
+      // On Oct 2, the tab badge should show 1
+      const teacherTab = screen.getByRole('tab', { name: /Teacher Lectures/i });
+      expect(teacherTab.textContent).toContain('1');
+
+      // Switch to Sep 25, 2026
+      fireEvent.change(lessonSelector, { target: { value: sep25Option.value } });
+
+      // On Sep 25, the tab badge should NOT show 1 (it should have no badge since count is 0)
+      expect(teacherTab.textContent).not.toContain('1');
+
+      // Switch to "all" lessons
+      fireEvent.change(lessonSelector, { target: { value: 'all' } });
+
+      // In "all" mode, tab badge shows total shared recordings (1)
+      expect(teacherTab.textContent).toContain('1');
+    });
+
+    it('automatically displays recordings when class policy is always_shared even without per-video isSharedWithStudents', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        const path = docRef?.path || '';
+        if (path.includes('studentProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS_ALWAYS_SHARED'] }),
+          };
+        }
+        if (path.includes('classes/CLASS_ALWAYS_SHARED')) {
+          return {
+            id: 'CLASS_ALWAYS_SHARED',
+            exists: () => true,
+            data: () => ({
+              name: 'Automatic Sharing Course',
+              teacherRecordingsPolicy: 'always_shared',
+              allowShareTeacherRecordings: true,
+            }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        if (typeof callback === 'function') {
+          const isRecordings = refOrQuery?.path?.includes('lectureRecordings') ||
+                               refOrQuery?.args?.[0]?.path?.includes('lectureRecordings');
+          if (isRecordings) {
+            callback({
+              docs: [
+                {
+                  id: 'rec_auto_published',
+                  data: () => ({
+                    title: 'Auto-Published Architecture Lecture',
+                    topic: 'Microservices',
+                    durationSeconds: 2400,
+                    videoUrl: 'https://storage.googleapis.com/test/auto.webm',
+                    startedAt: '2026-09-12T10:00:00.000Z',
+                    isSharedWithStudents: false,
+                  }),
+                },
+              ],
+            });
+            return () => {};
+          }
+          callback({ docs: [] });
+        }
+        return () => {};
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Automatic Sharing Course/i).length).toBeGreaterThan(0);
+      });
+
+      const teacherTab = screen.getByRole('tab', { name: /Teacher Lectures/i });
+      fireEvent.click(teacherTab);
+
+      await waitFor(() => {
+        expect(screen.getByText('Auto-Published Architecture Lecture')).toBeInTheDocument();
+        expect(screen.getByText(/Microservices/i)).toBeInTheDocument();
+      });
     });
   });
 });

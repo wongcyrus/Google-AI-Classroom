@@ -30,6 +30,12 @@ vi.mock('firebase/firestore', () => ({
         storageQuota: 1073741824,
         aiQuota: 50,
         captureMode: 'dual',
+        schedule: {
+          startDate: '2026-01-01',
+          endDate: '2026-12-31',
+          timeZone: 'Asia/Hong_Kong',
+          timeSlots: [{ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], startTime: '00:00', endTime: '23:59' }],
+        },
       }),
     };
   }),
@@ -211,6 +217,84 @@ describe('TeacherView Component', () => {
       expect(screen.getByText('Total courses managed')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText('4 enrollments across 2 classes')).toBeInTheDocument();
+    });
+  });
+
+  it('renders composable tag filter bar, schedule toggles, and allows tag filtering', async () => {
+    const { onSnapshot, getDoc } = await import('firebase/firestore');
+    onSnapshot.mockImplementation((ref, cb) => {
+      cb({
+        exists: () => true,
+        data: () => ({ classes: ['class-alpha', 'class-beta'] }),
+      });
+      return vi.fn();
+    });
+
+    getDoc.mockImplementation(async (ref) => {
+      if (ref?.path === 'classes/class-alpha') {
+        return {
+          id: 'class-alpha',
+          exists: () => true,
+          data: () => ({
+            name: 'Alpha Cloud Course',
+            tags: ['Cloud', 'Year 1'],
+            schedule: {
+              startDate: '2026-10-01',
+              endDate: '2026-10-31',
+              timeZone: 'UTC',
+              timeSlots: [{ days: ['Fri'], startTime: '14:00', endTime: '17:00' }],
+            },
+          }),
+        };
+      }
+      if (ref?.path === 'classes/class-beta') {
+        return {
+          id: 'class-beta',
+          exists: () => true,
+          data: () => ({
+            name: 'Beta Security Course',
+            tags: ['Security', 'Year 2'],
+          }),
+        };
+      }
+      return { exists: () => false, data: () => ({}) };
+    });
+
+    render(
+      <BrowserRouter>
+        <TeacherView user={mockUser} />
+      </BrowserRouter>
+    );
+
+    // By default, schedule filter is 'Today'. Switch to 'All' to view all classes
+    const allToggleBtn = await screen.findByRole('button', { name: /^All/i });
+    fireEvent.click(allToggleBtn);
+
+    // Verify render shows both classes and filter bar
+    expect(await screen.findByText('Alpha Cloud Course')).toBeInTheDocument();
+    expect(await screen.findByText('Beta Security Course')).toBeInTheDocument();
+    expect(screen.getByText(/⚡ Smart Schedule/i)).toBeInTheDocument();
+
+    // Verify tag chips rendered
+    const cloudTagBtn = await screen.findByRole('button', { name: /^Cloud/i });
+    expect(cloudTagBtn).toBeInTheDocument();
+
+    // Click tag 'Cloud' -> should filter out Beta Security Course
+    fireEvent.click(cloudTagBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Cloud Course')).toBeInTheDocument();
+      expect(screen.queryByText('Beta Security Course')).not.toBeInTheDocument();
+      expect(screen.getByText(/with tags:/i)).toBeInTheDocument();
+    });
+
+    // Click 'Clear Filters' -> restores both classes
+    const clearFiltersBtn = screen.getByRole('button', { name: /Clear Filters/i });
+    fireEvent.click(clearFiltersBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Cloud Course')).toBeInTheDocument();
+      expect(screen.getByText('Beta Security Course')).toBeInTheDocument();
     });
   });
 });
