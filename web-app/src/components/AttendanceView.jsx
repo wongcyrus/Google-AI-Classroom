@@ -454,7 +454,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                   <thead>
                     <tr>
                       <th
-                        className={`sortable-header ${sortBy === 'name' ? 'is-sorted' : ''}`}
+                        className={`sortable-header col-student ${sortBy === 'name' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('name')}
                         title="Click to sort by student name"
                         tabIndex={0}
@@ -464,44 +464,48 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                         Student {renderSortIndicator('name')}
                       </th>
                       <th
-                        className={`sortable-header ${sortBy === 'screenMinutes' ? 'is-sorted' : ''}`}
+                        className={`sortable-header col-stat ${sortBy === 'screenMinutes' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('screenMinutes')}
                         title="Click to sort by screen share minutes"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenMinutes'); }}
                       >
-                        Screen Share Minutes {renderSortIndicator('screenMinutes')}
+                        <span className="th-compact-title">Share</span>
+                        <span className="th-compact-unit">(min) {renderSortIndicator('screenMinutes')}</span>
                       </th>
                       <th
-                        className={`sortable-header ${sortBy === 'screenPercentage' ? 'is-sorted' : ''}`}
+                        className={`sortable-header col-stat ${sortBy === 'screenPercentage' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('screenPercentage')}
                         title="Click to sort by screen share percentage"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenPercentage'); }}
                       >
-                        Screen Share Percentage {renderSortIndicator('screenPercentage')}
+                        <span className="th-compact-title">Share</span>
+                        <span className="th-compact-unit">% {renderSortIndicator('screenPercentage')}</span>
                       </th>
                       <th
-                        className={`sortable-header ${sortBy === 'workingMinutes' ? 'is-sorted' : ''}`}
+                        className={`sortable-header col-stat ${sortBy === 'workingMinutes' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('workingMinutes')}
                         title="Click to sort by AI estimated working minutes"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('workingMinutes'); }}
                       >
-                        AI Estimated Working Minutes {renderSortIndicator('workingMinutes')}
+                        <span className="th-compact-title">AI Work</span>
+                        <span className="th-compact-unit">(min) {renderSortIndicator('workingMinutes')}</span>
                       </th>
                       <th
-                        className={`sortable-header ${sortBy === 'workingPercentage' ? 'is-sorted' : ''}`}
+                        className={`sortable-header col-stat ${sortBy === 'workingPercentage' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('workingPercentage')}
                         title="Click to sort by AI estimated percentage"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('workingPercentage'); }}
                       >
-                        AI Estimated Percentage {renderSortIndicator('workingPercentage')}
+                        <span className="th-compact-title">AI Work</span>
+                        <span className="th-compact-unit">% {renderSortIndicator('workingPercentage')}</span>
                       </th>
                       {minuteKeys.map(minute => (
                         <th key={minute} style={{ minWidth: '25px', textAlign: 'center' }}>{minute}</th>
@@ -511,7 +515,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                   <tbody>
                     {filteredAndSortedData.map(student => (
                       <tr key={student.email} onClick={() => setSelectedStudent(student)}>
-                        <td>
+                        <td className="col-student">
                           <StudentBadge
                             student={{
                               email: student.email,
@@ -521,10 +525,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                             size="sm"
                           />
                         </td>
-                        <td>{student.totalMinutes ?? 'N/A'}</td>
-                        <td>{student.percentage ?? 'N/A'}</td>
-                        <td>{student.workingMinutes ?? 'N/A'}</td>
-                        <td>
+                        <td className="cell-stat">{student.totalMinutes ?? 'N/A'}</td>
+                        <td className="cell-stat">{student.percentage ?? 'N/A'}</td>
+                        <td className="cell-stat">{student.workingMinutes ?? 'N/A'}</td>
+                        <td className="cell-stat">
                           {student.workingMinutes && lessonDurationInMinutes > 0 ? `${((student.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2)}%` : 'N/A'}
                         </td>
                         {student.attendance.map((present, index) => {

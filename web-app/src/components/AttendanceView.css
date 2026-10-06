@@ -347,6 +347,58 @@
   color: var(--color-primary, #4338ca);
 }
 
+/* Student Column (1st Column) */
+.attendance-table th.col-student,
+.attendance-table td.col-student {
+  min-width: 170px;
+  max-width: 250px;
+  text-align: left;
+}
+
+/* Compact Metric Columns (2nd to 5th Columns) */
+.attendance-table th.col-stat,
+.attendance-table td.cell-stat {
+  width: 72px;
+  max-width: 82px;
+  min-width: 64px;
+  text-align: center;
+  padding: 6px 4px;
+  box-sizing: border-box;
+}
+
+.attendance-table th.col-stat {
+  line-height: 1.15;
+  font-size: 0.78rem;
+  vertical-align: middle;
+  padding: 6px 4px;
+}
+
+.th-compact-title {
+  display: block;
+  font-weight: 700;
+  color: var(--color-text-main, #1e293b);
+  white-space: nowrap;
+}
+
+.th-compact-unit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #64748b);
+  font-weight: 500;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.attendance-table td.cell-stat {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--color-text-main, #334155);
+  white-space: nowrap;
+}
+
 .sort-indicator-active {
   margin-left: 0.35rem;
   color: var(--color-primary, #4f46e5);
