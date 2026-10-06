@@ -53,7 +53,7 @@ The platform operates on a serverless, zero-maintenance Google Cloud and Firebas
 ```
 
 ### Key Infrastructure Components
-- **Gemini Enterprise Agent Platform / Google GenAI SDK:** Real-time multimodal analysis using Gemini 3 Series (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe-preview`).
+- **Gemini Enterprise Agent Platform / Google GenAI SDK:** Real-time multimodal analysis using Gemini 3 Series (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.5-transcribe-preview`).
 - **Cloud Functions for Firebase (Gen 2):** Eventarc, HTTPS callable, and scheduled triggers distributed across 7 isolated codebases running on Google Cloud Run.
 - **Cloud Tasks:** Serverless HTTP retry queue for Bingo presence retries with zero idle compute cost.
 - **Cloud Storage:** High-capacity object storage with automated lifecycle rules for screenshot and MP4 video retention.
@@ -314,7 +314,7 @@ flowchart TD
     subgraph Sinks ["3. Data Sinks & AI Foundation Models"]
         FS[("Cloud Firestore (Native)")]
         GCS[("Cloud Storage Buckets")]
-        VAI["Gemini Enterprise Agent Platform (Gemini 3.5 / 3.7 / 3.8)"]
+        VAI["Gemini Enterprise Agent Platform (Gemini 3.5 / 3.8)"]
     end
 
     HTTP --> CB1
@@ -351,7 +351,6 @@ Every 24 hours, Cloud Scheduler triggers `syncGeminiPricing` to ensure token cal
 | :--- | :--- | :--- | :--- |
 | `gemini-3.5-flash-lite` | **$0.075** | **$0.30** | Frame scanning, question generation, gaze fallbacks. |
 | `gemini-3.8-flash` | **$0.15** | **$0.60** | Automated rubric synthesis & video evaluation. |
-| `gemini-3.7-pro` | **$1.25** | **$5.00** | Deep reasoning for high-stakes exam incident investigation. |
 | `gemini-3.5-transcribe-preview` | **$0.002** (per audio minute) | — | Multi-speaker diarization and speech Speech Recognition. |
 
 ### Quota Enforcement

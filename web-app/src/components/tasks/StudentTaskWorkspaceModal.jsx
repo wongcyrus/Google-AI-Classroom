@@ -398,7 +398,7 @@ const StudentTaskWorkspaceModal = ({
               Submitting Task Attempt...
             </h3>
             <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              Uploading final buffers, compiling time-lapse video, and preparing for Gemini 3.7 Flash grading.
+              Uploading final buffers, compiling time-lapse video, and preparing for Gemini 3.8 Flash grading.
             </p>
           </div>
         )}

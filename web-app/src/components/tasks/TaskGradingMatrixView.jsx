@@ -475,7 +475,7 @@ const TaskGradingMatrixView = ({
           <div className="text-2xl font-black text-blue-600 mt-1">
             {stats.avgScore} <span className="text-sm font-normal text-gray-500">/ {task.maxScore || 100}</span>
           </div>
-          <span className="text-[11px] text-gray-500">Evaluated by Gemini 3.7 Flash</span>
+          <span className="text-[11px] text-gray-500">Evaluated by Gemini 3.8 Flash</span>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">

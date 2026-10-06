@@ -2588,7 +2588,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}>
             <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (High Accuracy & Multimodal Reasoning — $0.75 / $3.75 per 1M)</option>
             <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest & Ultra-Low Cost — $0.30 / $2.50 per 1M)</option>
-            <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro (Deep Reasoning & Analytics — $3.00 / $15.00 per 1M)</option>
           </select>
           <p className="input-hint">Default Gemini model used for live invigilation and video analyses for this class.</p>
         </div>

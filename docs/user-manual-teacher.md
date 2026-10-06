@@ -234,7 +234,6 @@ In **Class Settings (`⚙️ Settings`)**, configure the automated proctoring in
 - **Vision Model Selection:**
   - `gemini-3.5-flash-lite`: Lowest latency and lowest token cost ($0.075/1M tokens); ideal for continuous frame scanning.
   - `gemini-3.8-flash`: Balanced multi-modal model for nuanced screen and code reading.
-  - `gemini-3.7-pro`: Deep reasoning model for high-stakes exam integrity checks.
 
 ### Biometric Gaze & Face Tracking
 - **MediaPipe Monitoring Mode:** Choose `Hybrid (Client MediaPipe + Cloud Fallback)`, `Client Only`, `Cloud Only`, or `Disabled`.
@@ -768,7 +767,7 @@ Navigate to the **Video Analysis Jobs** subtab to run asynchronous rubric evalua
 ### Two-Stage Lab Task Prompt Synthesis
 Rather than writing grading rubrics by hand, let Gemini synthesize rubrics from actual student recordings:
 1. In the Video Analysis Jobs tab, click **`✨ Synthesize Task Prompt`**.
-2. Select your analysis engine: **Gemini 3.8 Flash** or **Gemini 3.7 Pro**.
+2. Select your analysis engine: **Gemini 3.8 Flash** or **Gemini 3.5 Flash-Lite**.
 3. Gemini inspects student video observations across the class cohort and generates:
    - Canonical task milestones (e.g., *Task 1: GitHub MFA Setup*, *Task 2: AWS CloudShell Execution*).
    - Expected technical tools and commands.
@@ -804,7 +803,7 @@ flowchart TD
     end
 
     subgraph Synthesis ["Stage 2A: Gemini Task Rubric Synthesis Studio"]
-        OBS --> G38["Gemini 3.8 Flash / 3.7 Pro Synthesizer"]
+        OBS --> G38["Gemini 3.8 Flash Synthesizer"]
         G38 --> SYN["Synthesized Output:
         - Canonical Milestones & Sub-tasks
         - Expected Commands & Software
@@ -901,7 +900,7 @@ Navigate to **`📊 Analytics` $\to$ `AI Cost`** ([`AiCostReportView.jsx`](file:
 - **Unit Economics:** Average cost per evaluated job (e.g., *$0.0034 / job*).
 
 ### Spend Distribution Graphs
-- **By Gemini Model:** Visual color bars tracking spend across `gemini-3.5-flash-lite`, `gemini-3.8-flash`, and `gemini-3.7-pro`.
+- **By Gemini Model:** Visual color bars tracking spend across `gemini-3.5-flash-lite` and `gemini-3.8-flash`.
 - **By Job Category:** Spend breakdown across single screenshots, multi-student grids, video screencasts, and audio transcription.
 
 ### Student AI Consumption Table
@@ -1003,7 +1002,7 @@ The **Practical Task & Lab Exam System** enables instructors to evaluate hands-o
 | :--- | :--- | :--- |
 | **Student card displays `🖥️ Not Sharing`** | Student stopped desktop share or minimized browser. | Click the **`🖥️ Screen`** nudge button in the student modal, or use the Intercom to remind the student to restore full-screen sharing. |
 | **False positive gaze warnings** | Student is seated at an angle or has multiple monitors. | Open the student's modal and click **`🎯 Calibrate View`** to reset their neutral gaze baseline. In Class Settings, increase the **Debounce Gate** to 5s. |
-| **High AI token consumption** | Continuous video analysis or Gemini 3.7 Pro usage. | In Class Settings, switch the Vision Model to `gemini-3.5-flash-lite`, increase the capture interval to 30s, and switch Bingo to **Question Bank Mode ($0)**. |
+| **High AI token consumption** | Continuous video analysis or high-frequency scanning. | In Class Settings, switch the Vision Model to `gemini-3.5-flash-lite`, increase the capture interval to 30s, and switch Bingo to **Question Bank Mode ($0)**. |
 | **Audio clips are missing** | Silence suppression is discarding quiet chunks. | This is normal behavior to save storage. If you require continuous audio, disable **Silence Suppression (VAD)** in Class Settings. |
 | **Student cannot see recordings** | An active exam window is currently open. | Recordings are deliberately withheld behind exam confidentiality shields. Once the exam window ends, recordings become visible to students automatically. |
 

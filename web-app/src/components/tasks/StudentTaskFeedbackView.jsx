@@ -63,7 +63,7 @@ const StudentTaskFeedbackView = ({
             <span>📋</span> {task.title}
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            Attempt #{submission.attemptsCount || 1} • Evaluated by Gemini 3.7 Flash
+            Attempt #{submission.attemptsCount || 1} • Evaluated by Gemini 3.8 Flash
           </p>
         </div>
 

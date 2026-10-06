@@ -384,7 +384,6 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
         const pricing = {
           'gemini-3.5-flash-lite': { input: 0.3, output: 2.5 },
           'gemini-3.8-flash': { input: 0.75, output: 3.75 },
-          'gemini-3.7-pro': { input: 3.0, output: 15.0 },
           'gemini-3.5-transcribe': { input: 0.5, output: 2.5 },
         };
         return pricing;

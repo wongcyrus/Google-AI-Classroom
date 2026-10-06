@@ -278,7 +278,7 @@ describe('VideoLibrary Full Component Suite', () => {
     fireEvent.change(promptInput, { target: { value: 'Full class analysis' } });
 
     const modelSelect = screen.getByDisplayValue(/Gemini 3.5 Flash-Lite/i);
-    fireEvent.change(modelSelect, { target: { value: 'gemini-3.7-pro' } });
+    fireEvent.change(modelSelect, { target: { value: 'gemini-3.8-flash' } });
 
     const wholeClassBtn = screen.getByRole('button', { name: /Request Analysis for the whole class/i });
     await act(async () => {

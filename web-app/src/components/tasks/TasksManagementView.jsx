@@ -247,7 +247,7 @@ const TasksManagementView = ({
             <span>📋</span> Practical Tasks & Homework
           </h2>
           <p className="text-xs text-gray-500 mt-1 max-w-2xl">
-            Create hands-on lab challenges with reference demo videos. Evaluate student screen recordings automatically with Gemini 3.7 Flash.
+            Create hands-on lab challenges with reference demo videos. Evaluate student screen recordings automatically with Gemini 3.8 Flash.
           </p>
         </div>
 

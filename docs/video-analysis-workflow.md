@@ -320,10 +320,10 @@ flowchart TD
     end
 
     subgraph MapPhase1 [Phase 1: MAP - Video Exploration & Activity Discovery]
-        M1[Gemini 3.7 Vision Worker A]
-        M2[Gemini 3.7 Vision Worker B]
-        M3[Gemini 3.7 Vision Worker C]
-        Mn[Gemini 3.7 Vision Worker N]
+        M1[Gemini 3.8 Vision Worker A]
+        M2[Gemini 3.8 Vision Worker B]
+        M3[Gemini 3.8 Vision Worker C]
+        Mn[Gemini 3.8 Vision Worker N]
 
         V1 --> M1
         V2 --> M2
@@ -417,7 +417,7 @@ sequenceDiagram
     actor Teacher
     participant UI as Web App (VideoAnalysisJobs.jsx)
     participant Syn as generateLabTaskPrompt (Callable Cloud Function)
-    participant AI as Gemini Enterprise Agent Platform (Gemini 3.7 / 3.8 Flash)
+    participant AI as Gemini Enterprise Agent Platform (Gemini 3.8 Flash)
     participant FS as Firestore (aiJobs & performanceMetrics)
     participant Runner as processVideoAnalysisJob (Firestore Trigger)
 
@@ -468,7 +468,7 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | **Primary Goal** | Ground-truth activity discovery from raw screen video | Synthesize objective rubric & milestones across cohort | Evaluate individual competencies against unified rubric |
 | **Target Dataset** | $N$ Student MP4 screen recordings | $N$ Text summaries from completed child `aiJobs` | $N$ Student MP4 screen recordings + Synthesized Rubric |
-| **Gemini Model** | `gemini-3.8-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.8-flash` or `gemini-3.7-pro` (Deep Multimodal Reasoning) |
+| **Gemini Model** | `gemini-3.8-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.8-flash` (Deep Multimodal Reasoning) |
 | **Execution Layer** | Cloud Run Function (`processVideoAnalysisJob`) | Callable Cloud Function (`generateLabTaskPrompt`) | Cloud Run Function (`processVideoAnalysisJob`) |
 | **Tool Calling** | Disabled or generic invigilation tools | None (Pure prompt engineering & reasoning) | Enabled: `recordTaskDuration` tool execution |
 | **Firestore Reads** | `videoJobs` collection | `aiJobs` sub-collection | `videoJobs` collection + synthesized prompt |

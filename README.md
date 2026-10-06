@@ -51,7 +51,7 @@ graph LR
     end
 
     subgraph "Multimodal AI"
-        GeminiPlatform["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.7 Pro / Flash<br/>• Gemini 3.8 Flash<br/>• Transcribe Preview"]
+        GeminiPlatform["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.8 Flash<br/>• Gemini 3.5 Flash-Lite<br/>• Transcribe Preview"]
     end
 
     Client <--> Auth

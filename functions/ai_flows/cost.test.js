@@ -25,15 +25,6 @@ describe('calculateCost', () => {
     expect(cost).toBeCloseTo(4.50, 4);
   });
 
-  it('should correctly compute exact USD cost for gemini-3.7-pro', () => {
-    const usage = {
-      promptTokenCount: 1000000, // 1M tokens @ $3.00
-      candidatesTokenCount: 1000000, // 1M tokens @ $15.00
-    };
-    const cost = calculateCost(usage, 'gemini-3.7-pro');
-    expect(cost).toBeCloseTo(18.00, 4);
-  });
-
   it('should handle small token amounts with high precision', () => {
     const usage = {
       promptTokenCount: 1000,
@@ -90,9 +81,9 @@ describe('estimateCost', () => {
     // (100 / 1M) * 0.30 = 0.000030
     expect(costLite).toBeCloseTo(0.000030, 7);
 
-    const costPro = estimateCost(prompt, [], 'gemini-3.7-pro');
-    // (100 / 1M) * 3.00 = 0.000300
-    expect(costPro).toBeCloseTo(0.000300, 7);
+    const costFlash = estimateCost(prompt, [], 'gemini-3.8-flash');
+    // (100 / 1M) * 0.75 = 0.000075
+    expect(costFlash).toBeCloseTo(0.000075, 7);
   });
 
   it('should estimate cost including multimodal image/video tokens', () => {

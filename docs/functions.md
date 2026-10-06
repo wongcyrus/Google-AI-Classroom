@@ -41,7 +41,7 @@ flowchart TD
     subgraph AIModule [ai_flows - Genkit AI Engine]
         T_Call -->|analyzeAudio| AA[Gemini 3.5 Transcribe Diarization]
         T_Call -->|analyzeFaceFallback| AFF[Gemini 3.5 Flash-Lite Gaze Estimation]
-        T_Call -->|analyzeImage / analyzeAll| AI[Gemini 3.7 Flash Multimodal Analysis]
+        T_Call -->|analyzeImage / analyzeAll| AI[Gemini 3.8 Flash Multimodal Analysis]
         T_Call -->|triggerBingoCheck| TBC[triggerBingoCheck: 3 FinOps Challenge Generator]
         T_Call -->|cancelActiveBingo| CAB[cancelActiveBingo: Class Check Cancellation]
         T_Call -->|submitBingoAnswer| SBA[submitBingoAnswer: 2-Strike State Machine & Penalties]

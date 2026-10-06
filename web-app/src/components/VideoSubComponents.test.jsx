@@ -155,7 +155,7 @@ describe('Video & AI Analysis Sub-components', () => {
       {
         id: 'job_1',
         studentEmail: 'alice@school.edu',
-        modelUsed: 'gemini-3.7-pro',
+        modelUsed: 'gemini-3.8-flash',
         status: 'completed',
         result: 'Student was attentive throughout.',
         timestamp: { toDate: () => new Date('2026-08-29T11:00:00Z') },
@@ -167,7 +167,7 @@ describe('Video & AI Analysis Sub-components', () => {
       const onPlayVideo = vi.fn();
       render(<AiJobsTable aiJobs={mockJobs} onPlayVideo={onPlayVideo} />);
       expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
-      expect(screen.getByText('gemini-3.7-pro')).toBeInTheDocument();
+      expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
       expect(screen.getByText('completed')).toBeInTheDocument();
       expect(screen.getByText('Student was attentive throughout.')).toBeInTheDocument();
     });

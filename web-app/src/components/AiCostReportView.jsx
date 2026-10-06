@@ -24,7 +24,6 @@ const JOB_TYPE_LABELS = {
 const MODEL_COLORS = {
   'gemini-3.5-flash-lite': '#0ea5e9',
   'gemini-3.8-flash': '#a855f7',
-  'gemini-3.7-pro': '#8b5cf6',
   'gemini-3.5-transcribe': '#10b981',
   'gemini-3.5-transcribe-live': '#f59e0b',
   'gemini-3.1-flash-live-preview': '#ef4444',
@@ -181,7 +180,6 @@ const AiCostReportView = ({
             <option value="all">All Models</option>
             <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
             <option value="gemini-3.8-flash">gemini-3.8-flash</option>
-            <option value="gemini-3.7-pro">gemini-3.7-pro</option>
             <option value="gemini-3.5-transcribe">gemini-3.5-transcribe</option>
             <option value="gemini-3.5-transcribe-live">gemini-3.5-transcribe-live</option>
           </select>
