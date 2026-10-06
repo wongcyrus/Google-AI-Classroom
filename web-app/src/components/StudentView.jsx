@@ -1050,6 +1050,38 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   }, [targetClasses, user]);
 
+  // Dedicated presence & sharing heartbeat: guarantees freshness in Firestore even if screenshots buffer offline or upload slowly
+  useEffect(() => {
+    if (!user?.uid || !isSharing) return;
+
+    const classesToHeartbeat = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
+    if (classesToHeartbeat.length === 0) return;
+
+    const sendHeartbeat = () => {
+      const activeStreams = [
+        ...(isScreenSharing ? ['screen'] : []),
+        ...(isWebcamSharing ? ['webcam'] : []),
+      ];
+      for (const cls of classesToHeartbeat) {
+        const statusRef = doc(db, 'classes', cls, 'status', user.uid);
+        setDoc(statusRef, {
+          isSharing: activeStreams.length > 0,
+          activeStreams,
+          displaySurface: isScreenSharing ? (displaySurfaceRef.current || 'monitor') : null,
+          email: user.email?.toLowerCase?.() || '',
+          name: user.displayName || user.email,
+          timestamp: serverTimestamp(),
+          lastHeartbeat: Date.now(),
+        }, { merge: true }).catch(err => console.debug('[StudentView] Heartbeat ping note:', err));
+      }
+    };
+
+    sendHeartbeat();
+    const heartbeatInterval = setInterval(sendHeartbeat, 12000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, activeClass, targetClasses]);
+
   const stopScreen = useCallback(async () => {
     displaySurfaceRef.current = null;
     if (screenStreamRef.current) {
@@ -1358,6 +1390,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   const isUploadingScreenRef = useRef(false);
   const isUploadingWebcamRef = useRef(false);
+  const screenUploadLockTimerRef = useRef(null);
+  const webcamUploadLockTimerRef = useRef(null);
 
   const captureVideoElement = useCallback(async (videoElement, channelName, targetClassesInput) => {
     if (!user || !user.uid) {
@@ -1387,19 +1421,33 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       return;
     }
 
-    // Guard: Prevent stacking/queuing uploads if previous upload is still in-flight
+    // Guard: Prevent stacking/queuing uploads if previous upload is still in-flight with safety timeout
     if (channelName === 'screen') {
       if (isUploadingScreenRef.current) {
         console.debug("[StudentView] Screen upload still in flight, skipping frame.");
         return;
       }
       isUploadingScreenRef.current = true;
+      if (screenUploadLockTimerRef.current) clearTimeout(screenUploadLockTimerRef.current);
+      screenUploadLockTimerRef.current = setTimeout(() => {
+        if (isUploadingScreenRef.current) {
+          console.warn("[StudentView] Screen upload safety timeout (15s) elapsed, unlocking.");
+          isUploadingScreenRef.current = false;
+        }
+      }, 15000);
     } else if (channelName === 'webcam') {
       if (isUploadingWebcamRef.current) {
         console.debug("[StudentView] Webcam upload still in flight, skipping frame.");
         return;
       }
       isUploadingWebcamRef.current = true;
+      if (webcamUploadLockTimerRef.current) clearTimeout(webcamUploadLockTimerRef.current);
+      webcamUploadLockTimerRef.current = setTimeout(() => {
+        if (isUploadingWebcamRef.current) {
+          console.warn("[StudentView] Webcam upload safety timeout (15s) elapsed, unlocking.");
+          isUploadingWebcamRef.current = false;
+        }
+      }, 15000);
     }
 
     try {
@@ -1477,7 +1525,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         const screenshotRef = ref(storage, screenshotPath);
         
         try {
-          await uploadBytes(screenshotRef, blob);
+          const uploadPromise = uploadBytes(screenshotRef, blob);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Screenshot upload timed out after 15s')), 15000)
+          );
+          await Promise.race([uploadPromise, timeoutPromise]);
           const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
 
           for (const cls of classes) {
@@ -1505,7 +1557,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 isSharing: true,
                 email: user.email.toLowerCase(),
                 name: user.displayName || user.email,
-                timestamp: serverTimestamp()
+                timestamp: serverTimestamp(),
+                lastHeartbeat: Date.now(),
               };
               if (channelName === 'screen') {
                 statusUpdate.latestScreenPath = screenshotRef.fullPath;
@@ -1535,6 +1588,19 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 ipAddress: ipAddress || null,
               },
             });
+            // Keep status fresh in Firestore even when screenshot upload is buffered offline
+            try {
+              const statusRef = doc(db, "classes", cls, "status", user.uid);
+              await setDoc(statusRef, {
+                isSharing: true,
+                email: user.email.toLowerCase(),
+                name: user.displayName || user.email,
+                timestamp: serverTimestamp(),
+                lastHeartbeat: Date.now(),
+              }, { merge: true });
+            } catch (statusErr) {
+              console.debug("Error updating status on offline buffer:", statusErr);
+            }
           }
           setOfflinePendingCount(c => c + 1);
         }
@@ -1543,8 +1609,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       console.error(`Error processing ${channelName} snapshot:`, err);
     } finally {
       if (channelName === 'screen') {
+        if (screenUploadLockTimerRef.current) clearTimeout(screenUploadLockTimerRef.current);
         isUploadingScreenRef.current = false;
       } else if (channelName === 'webcam') {
+        if (webcamUploadLockTimerRef.current) clearTimeout(webcamUploadLockTimerRef.current);
         isUploadingWebcamRef.current = false;
       }
     }
@@ -1960,71 +2028,51 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const shouldCapture = isSharing && (isCapturing || isExamActive) && activeClass;
 
     if (shouldCapture) {
-      const now = Date.now();
-      const rawStart = captureStartedAt || (isExamActive && myProperties?.examReadiness?.calibratedAt ? new Date(myProperties.examReadiness.calibratedAt) : null);
-      const startTime = rawStart ? (rawStart.toMillis ? rawStart.toMillis() : (rawStart.toDate ? rawStart.toDate().getTime() : (rawStart.getTime ? rawStart.getTime() : now))) : now;
-      const twoAndAHalfHours = 2.5 * 60 * 60 * 1000;
+      const intervalMs = Math.max(1, (frameRate || 15)) * 1000;
 
-      if (now - startTime < twoAndAHalfHours) {
-        const intervalMs = Math.max(1, (frameRate || 15)) * 1000;
+      // Perform capture if enough time has passed since last capture or on first run
+      if (Date.now() - lastCaptureTimeRef.current >= intervalMs) {
+        lastCaptureTimeRef.current = Date.now();
+        captureAndUploadAllChannelsRef.current(targetClasses);
+      }
 
-        // Perform capture if enough time has passed since last capture or on first run
-        if (now - lastCaptureTimeRef.current >= intervalMs) {
-          lastCaptureTimeRef.current = now;
-          captureAndUploadAllChannelsRef.current(targetClasses);
-        }
+      const handleTick = () => {
+        lastCaptureTimeRef.current = Date.now();
+        captureAndUploadAllChannelsRef.current(targetClasses);
+      };
 
-        const handleTick = () => {
-          lastCaptureTimeRef.current = Date.now();
-          captureAndUploadAllChannelsRef.current(targetClasses);
-        };
-
-        // Initialize inline Web Worker for throttling-free execution in background / minimized tabs
-        try {
-          if (typeof window !== 'undefined' && window.Worker && typeof Blob !== 'undefined') {
-            const blob = new Blob([`
-              let timerId = null;
-              self.onmessage = function(e) {
-                if (e.data && e.data.action === 'start') {
-                  if (timerId) clearInterval(timerId);
-                  timerId = setInterval(function() {
-                    self.postMessage('tick');
-                  }, e.data.interval);
-                } else if (e.data && e.data.action === 'stop') {
-                  if (timerId) {
-                    clearInterval(timerId);
-                    timerId = null;
-                  }
+      // Initialize inline Web Worker for throttling-free execution in background / minimized tabs
+      try {
+        if (typeof window !== 'undefined' && window.Worker && typeof Blob !== 'undefined') {
+          const blob = new Blob([`
+            let timerId = null;
+            self.onmessage = function(e) {
+              if (e.data && e.data.action === 'start') {
+                if (timerId) clearInterval(timerId);
+                timerId = setInterval(function() {
+                  self.postMessage('tick');
+                }, e.data.interval);
+              } else if (e.data && e.data.action === 'stop') {
+                if (timerId) {
+                  clearInterval(timerId);
+                  timerId = null;
                 }
-              };
-            `], { type: 'application/javascript' });
-            const blobUrl = URL.createObjectURL(blob);
-            worker = new Worker(blobUrl);
-            worker.onmessage = (e) => {
-              if (e.data === 'tick') {
-                handleTick();
               }
             };
-            worker.postMessage({ action: 'start', interval: intervalMs });
-          } else {
-            fallbackInterval = setInterval(handleTick, intervalMs);
-          }
-        } catch {
+          `], { type: 'application/javascript' });
+          const blobUrl = URL.createObjectURL(blob);
+          worker = new Worker(blobUrl);
+          worker.onmessage = (e) => {
+            if (e.data === 'tick') {
+              handleTick();
+            }
+          };
+          worker.postMessage({ action: 'start', interval: intervalMs });
+        } else {
           fallbackInterval = setInterval(handleTick, intervalMs);
         }
-      } else if (isCapturing && user?.uid) {
-        const classesToExpire = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
-        for (const cls of classesToExpire) {
-          const statusRef = doc(db, "classes", cls, "status", user.uid);
-          console.log(`Firestore: Capture time expired, updating status for ${user.uid} in ${cls}`);
-          setDoc(statusRef, { 
-              isCapturing: false,
-              reason: "Capture time limit reached."
-          }, { merge: true })
-            .catch(err => {
-              console.error(`Firestore: Failed to update student status for ${cls} after capture time expired:`, err);
-            });
-        }
+      } catch {
+        fallbackInterval = setInterval(handleTick, intervalMs);
       }
     }
 

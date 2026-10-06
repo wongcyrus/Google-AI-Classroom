@@ -300,6 +300,7 @@ const StudentRecordsView = ({ user }) => {
                 studentRecordingsReleaseDate: data.studentRecordingsReleaseDate || null,
                 teacherRecordingsPolicy: data.teacherRecordingsPolicy || (data.allowShareTeacherRecordings ? 'selective' : 'private'),
                 allowShareTeacherRecordings: Boolean(data.allowShareTeacherRecordings),
+                isCapturing: Boolean(data.isCapturing),
               });
             }
           });
@@ -435,6 +436,7 @@ const StudentRecordsView = ({ user }) => {
                   examPeriods: cData.examPeriods || [],
                   teacherRecordingsPolicy: cData.teacherRecordingsPolicy || (cData.allowShareTeacherRecordings ? 'selective' : 'private'),
                   allowShareTeacherRecordings: Boolean(cData.allowShareTeacherRecordings),
+                  isCapturing: Boolean(cData.isCapturing),
                 });
               }
             });
@@ -1482,6 +1484,8 @@ const StudentRecordsView = ({ user }) => {
               <div className="empty-state-text">
                 {excludedExamVideosCount > 0
                   ? `No accessible screen recordings. ${excludedExamVideosCount} recording(s) from exam or test periods are withheld to protect assessment questions.`
+                  : activeClassObj?.isCapturing
+                  ? `Class session is currently in progress. Screencasts will be compiled and available here once the teacher completes the session.`
                   : activeLesson
                   ? `No session recordings found for this lesson (${formatDate(activeLesson.startTime)}). Once your teacher compiles past classroom screencasts, they will appear here for review and revision.`
                   : 'No session recordings found for this selection. Once your teacher compiles past classroom screencasts, they will appear here for review and revision.'}
@@ -1535,8 +1539,9 @@ const StudentRecordsView = ({ user }) => {
                                   ? 'pill-danger'
                                   : 'pill-warning'
                               }`}
+                              title={video.error || (video.status === 'failed' ? 'No video frames were recorded in this session' : undefined)}
                             >
-                              {video.status || 'unknown'}
+                              {video.status === 'failed' ? '⚠️ No Frames Recorded' : (video.status || 'unknown')}
                             </span>
                           )}
                         </td>
@@ -1558,6 +1563,7 @@ const StudentRecordsView = ({ user }) => {
                                 className="action-btn-sm action-btn-primary"
                                 onClick={() => handlePlayVideo(video)}
                                 disabled={video.status !== 'completed' || !video.videoPath}
+                                title={video.status !== 'completed' ? (video.error || 'Video compilation not completed') : 'Watch recording'}
                               >
                                 ▶ Watch
                               </button>
@@ -1565,6 +1571,7 @@ const StudentRecordsView = ({ user }) => {
                                 className="action-btn-sm action-btn-secondary"
                                 onClick={() => handleDownloadVideo(video)}
                                 disabled={video.status !== 'completed' || !video.videoPath}
+                                title={video.status !== 'completed' ? (video.error || 'Video compilation not completed') : 'Download recording'}
                               >
                                 ⬇ Download
                               </button>

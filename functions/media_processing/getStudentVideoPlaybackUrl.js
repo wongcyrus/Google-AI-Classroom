@@ -136,7 +136,14 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
     throw new HttpsError('failed-precondition', 'Video path not available for this job.');
   }
 
-  const file = storage.bucket().file(jobData.videoPath);
+  const configuredBucket = process.env.STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || (process.env.GCLOUD_PROJECT ? `${process.env.GCLOUD_PROJECT}.firebasestorage.app` : undefined);
+  let bucket;
+  try {
+    bucket = storage.bucket(configuredBucket);
+  } catch {
+    bucket = storage.bucket();
+  }
+  const file = bucket.file(jobData.videoPath);
   const [exists] = await file.exists();
   if (!exists) {
     throw new HttpsError('not-found', 'Video file not found in storage.');
