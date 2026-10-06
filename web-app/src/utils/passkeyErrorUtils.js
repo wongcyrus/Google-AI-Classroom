@@ -9,6 +9,7 @@
  */
 
 import { isAndroidDevice, isIOSDevice, isHonorDevice, getBrowserName } from './browserDetection';
+import { detectDeviceBrand, getDeviceBrandGuide } from './deviceBrandUtils';
 
 /**
  * Checks if the user's platform has a user-verifying authenticator (biometrics / PIN / screen lock) available.
@@ -33,7 +34,7 @@ export const checkPlatformAuthenticatorAvailable = async () => {
  * Normalizes raw WebAuthn and backend error messages into actionable, student-friendly diagnostics.
  * 
  * @param {Error|string} error - The caught error
- * @param {Object} [context] - Environmental context (isAndroid, isIOS, isHonor, browserName)
+ * @param {Object} [context] - Environmental context (isAndroid, isIOS, isHonor, brand, browserName)
  * @returns {Object} Structured diagnostic information
  */
 export const normalizePasskeyError = (error, context = {}) => {
@@ -42,6 +43,9 @@ export const normalizePasskeyError = (error, context = {}) => {
   const isAndroid = context.isAndroid !== undefined ? context.isAndroid : isAndroidDevice();
   const isIOS = context.isIOS !== undefined ? context.isIOS : isIOSDevice();
   const isHonor = isAndroid && (context.isHonor !== undefined ? context.isHonor : isHonorDevice());
+  const rawBrand = context.brand || (isHonor ? 'honor' : (isIOS ? 'apple' : detectDeviceBrand()));
+  const detectedBrandId = rawBrand === 'unknown' ? 'android_generic' : rawBrand;
+  const brandGuide = getDeviceBrandGuide(detectedBrandId);
   const browser = context.browserName || getBrowserName();
 
   // 0. Phone Not Paired with Student Account (Student scanned without pre-registering)
@@ -50,6 +54,8 @@ export const normalizePasskeyError = (error, context = {}) => {
     return {
       type: 'phone_not_paired',
       title: 'Phone Not Paired with Account',
+      brandId: detectedBrandId,
+      brandName: brandGuide.brandName,
       message: 'This phone has not been registered as your classroom attendance passkey yet.',
       resolutionSteps: [
         'Log into the classroom portal on your laptop or lab PC.',
@@ -62,30 +68,27 @@ export const normalizePasskeyError = (error, context = {}) => {
     };
   }
 
-  // 1. Android Missing Biometrics / Screen Lock / Provider Not Found (including Honor MagicOS 8.0)
+  // 1. Android Missing Biometrics / Screen Lock / Provider Not Found (Vendor-Specific)
   const isProviderMissing = /provider not found|no credential provider|CreateCredentialNoProviderException|TYPE_NO_CREATE_OPTIONS/i.test(rawMsg);
   const isPlatformNotSupported = errName === 'NotSupportedError' || /the operation is not supported|cannot satisfy the requested requirements/i.test(rawMsg);
 
   if (isAndroid && (isProviderMissing || isPlatformNotSupported)) {
-    const steps = [
-      'Open your phone "Settings" > "Security & Privacy" (or "Lock screen").',
-      'Set up a Fingerprint, Face Unlock, or PIN / Pattern screen lock.',
-    ];
-
-    if (isHonor) {
-      steps.push('Honor / MagicOS 8.0: Open "Settings" > "Users & accounts" and turn ON "Google Play Services".');
-      steps.push('Under "Settings" > "System & updates" > "Language & input" > "Autofill service", select "Google".');
-    } else {
-      steps.push('Ensure "Google Password Manager" is enabled under "Settings" > "Passwords & Accounts" > "Autofill service".');
+    let title = 'Screen Lock & Biometrics Required';
+    if (detectedBrandId === 'honor') {
+      title = 'Honor / MagicOS Passkey Setup Required';
+    } else if (detectedBrandId !== 'android_generic') {
+      title = `${brandGuide.brandName} Passkey Setup Required`;
     }
 
     return {
       type: 'android_screen_lock_missing',
-      title: isHonor ? 'Honor / MagicOS Passkey Setup Required' : 'Screen Lock & Biometrics Required',
-      message: isHonor
+      title,
+      brandId: detectedBrandId,
+      brandName: brandGuide.brandName,
+      message: detectedBrandId === 'honor'
         ? 'MagicOS 8.0 requires Google Play Services and Google Password Manager to be enabled for WebAuthn passkeys.'
-        : 'Your Android phone needs a secure Screen Lock to register or use passkeys.',
-      resolutionSteps: steps,
+        : `Your ${brandGuide.brandName} needs a secure Screen Lock and Google Password Manager to register passkeys.`,
+      resolutionSteps: brandGuide.steps,
       action: 'enable_screen_lock',
       raw: rawMsg,
     };

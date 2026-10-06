@@ -22,16 +22,18 @@ flowchart LR
 
 ## 📱 Browser & Platform Matrix
 
-Before getting started, make sure you are using the correct browser for your device:
+Before getting started, make sure you are using a supported browser for your device:
 
-| Device | Required Browser | Why |
-| :--- | :--- | :--- |
-| **Lab Desktop PC** | **Google Chrome** (v120+) | Required for WebRTC screen capture, on-device LiteRT AI speech recognition, and proctoring. |
-| **Apple iPhone (iOS)** | **Mobile Safari** | Required for direct Apple Secure Enclave & Face ID hardware integration. Native iOS Camera always opens Safari. |
-| **Android Phone** | **Google Chrome for Android** | Required for Google Credential Manager & Fingerprint biometric sheet. |
+| Device | Permitted Browsers | Blocked Browsers | Why |
+| :--- | :--- | :--- | :--- |
+| **Lab Desktop PC** | **Google Chrome** (v120+) | Firefox, Edge, Safari | Required for WebRTC screen capture, on-device LiteRT AI speech recognition, and proctoring. |
+| **Apple iPhone (iOS 16+)** | **Apple Safari** or **Google Chrome for iOS** (`CriOS`) | Firefox on iOS, Edge on iOS, Opera, In-app WebViews | iOS mandates WebKit and Apple Credential Management (`ASAuthorizationController`). Passkeys sync across Safari and Chrome on iOS via iCloud Keychain. |
+| **Android Phone** | **Google Chrome for Android** | Samsung Internet, Firefox, Edge, Opera, UC Browser | Required for Google Credential Manager & Fingerprint biometric sheet. Non-Chrome browsers isolate credentials and do not sync with Google Password Manager. |
 
-> [!WARNING]
-> **iPhone Students:** Do **NOT** use Chrome for iOS, WeChat, or Teams to pair your phone. You **must use Apple Safari**. The native iOS Camera app always opens Safari; using Safari guarantees your pairing and camera QR scanning use the same browser storage.
+> [!TIP]
+> **Android Users Opening Samsung Internet:** If your phone camera opens Samsung Internet, tap the **`🚀 Open in Google Chrome`** button on screen to transfer the pairing link into Google Chrome with 1 tap.
+>
+> **iPhone Users with Microsoft Authenticator:** If you use Microsoft Authenticator, ensure **iCloud Passwords & Keychain** remains enabled in iPhone **Settings ➔ Passwords ➔ Password Options**. Microsoft Authenticator on iOS only supports Microsoft accounts; third-party passkeys require Apple Keychain.
 
 ---
 
@@ -191,10 +193,30 @@ You do not need a permanent exemption. Use the **Teacher Temporary Bypass**:
 
 ---
 
+### Q6: I have an Honor phone running MagicOS 8.0 and passkey fails with "provider not found"
+* **Root Cause:** Honor MagicOS 8.0 disables Google Play Services by default on several regional models, and sets the system autofill to Honor's built-in vault.
+* **Solution:**
+  1. Open **Settings (设置)** ➔ **Users & accounts (用户与账户)** ➔ toggle **Google Play Services (Google Play 服务)** to **ON**.
+  2. Open **Settings** ➔ **System & updates (系统和更新)** ➔ **Language & input (语言和输入法)** ➔ **Autofill service (自动填充服务)** ➔ select **Google (Google 密码管理器)**.
+  3. Ensure a **Screen Lock PIN** and **Fingerprint** are set in **Settings** ➔ **Biometrics & password**.
+  4. Open the link in **Google Chrome**.
+
+---
+
+### Q7: Can I just scan the live lecture attendance QR code without pre-registering?
+* **No, that is impossible.**
+* The lecture QR code only performs **verification** (`navigator.credentials.get`), not **registration**. If you have not paired your phone beforehand:
+  * Your phone will display *"No passkeys available"* or fail.
+  * The server has no public key for your account and will strictly reject the check-in with:
+    > `not-found`: *This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.*
+* **What you must do:** Log into the classroom portal on your laptop or lab PC, click **"Pair Mobile Phone"**, and scan your personal pairing QR code to enroll your biometrics first.
+
+---
+
 ## 🔒 Security Best Practices Summary
 
 * **Lab Desktop:** Always use **Google Chrome**.
-* **iPhone Students:** Always use **Apple Safari** (native Camera app).
-* **Android Students:** Always use **Google Chrome for Android**.
+* **iPhone Students:** Use **Apple Safari** or **Google Chrome for iOS** (ensure iCloud Keychain is ON).
+* **Android Students:** Always use **Google Chrome for Android** with a secure Screen Lock.
 * Never share your password or phone with anyone else.
 * If your phone is unavailable, use **Teacher Temporary Bypass** rather than trying to register public PC credentials.

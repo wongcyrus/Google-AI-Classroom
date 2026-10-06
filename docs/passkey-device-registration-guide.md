@@ -504,6 +504,97 @@ flowchart LR
 
 ---
 
+## 📱 Multi-OS & OEM Brand Support, Detection & Troubleshooting Guide
+
+Because students bring a wide variety of personal smartphone models and mobile operating systems to the classroom, the platform incorporates **Automated Brand Detection (`detectDeviceBrand()`)**, a **Strict Browser Whitelist (`isSupportedBrowser()`)**, and **Custom Diagnostic Normalization (`normalizePasskeyError()`)** to ensure seamless biometric enrollment.
+
+```mermaid
+flowchart TD
+    SCAN["📷 Student Scans QR Code on Phone"] --> DETECT["🔍 detectDeviceBrand() & isSupportedBrowser()"]
+    DETECT --> BROWSER_CHECK{"Whitelisted Browser?"}
+    
+    BROWSER_CHECK -->|No: Samsung Internet, Opera, Firefox| INTENT["🚫 Blocked Screen + 🚀 1-Tap 'Open in Google Chrome' Intent URI"]
+    BROWSER_CHECK -->|Yes: iOS Safari/Chrome or Android Chrome| BIO_PROMPT["🔐 Native OS Biometric Prompt"]
+    
+    BIO_PROMPT --> BIO_RESULT{"Biometric Assertion Status"}
+    BIO_RESULT -->|Success| AUTH_OK["🎉 Verified in < 2 Seconds"]
+    BIO_RESULT -->|Failure / Provider Error| NORMALIZE["⚙️ normalizePasskeyError(err, context)"]
+    
+    NORMALIZE --> BRAND_GUIDE["📋 Tailored Setup Steps for Detected Brand (Honor, Samsung, iOS, Xiaomi, etc.)"]
+```
+
+---
+
+### 1. Strict Browser Whitelist Policy
+
+Passkeys rely on cryptographic key storage managed by the underlying operating system authenticator:
+* **On Android**: Google Password Manager via Google Play Services (`androidx.credentials.CredentialManager`).
+* **On iOS**: Apple iCloud Keychain via Apple Credential Management (`ASAuthorizationController`).
+
+Because alternative mobile browsers (such as Samsung Internet, Firefox Mobile, Microsoft Edge, Opera, or UC Browser) isolate credentials in non-standard credential vaults or lack WebAuthn passkey synchronization with lab PCs, **the platform strictly permits only Google Chrome and Apple Safari**:
+
+| Operating System | Permitted Browsers | Blocked Browsers | Rationale & Recovery |
+| :--- | :--- | :--- | :--- |
+| **Android OS** | **Google Chrome** | Samsung Internet, Firefox, Edge, Opera, UC Browser | Alternative browsers isolate passkeys into proprietary silos (e.g., Samsung Pass / Knox) and do not sync with Google Password Manager. If opened in a non-Chrome browser, the student is presented with a 1-tap **`🚀 Open in Google Chrome`** intent button (`intent://...#Intent;scheme=https;package=com.android.chrome;end`) which immediately launches Chrome with the pairing token intact. |
+| **Apple iOS (iPhone / iPad)** | **Apple Safari** & **Google Chrome for iOS** (`CriOS`) | Firefox on iOS, Edge on iOS, Opera, In-app WebViews | On iOS 16+, Apple mandates that both Safari and Chrome use WebKit and delegate passkey operations to Apple's native Passkey system sheet (`ASAuthorizationController`). Passkeys stored in Apple iCloud Keychain are shared interoperably between Safari and Chrome on iOS. |
+
+---
+
+### 2. OEM Brand Detection & Settings Guide Matrix
+
+When a device fails registration (e.g. missing screen lock or provider not found), `normalizePasskeyError()` automatically inspects the User Agent via `detectDeviceBrand()` and outputs brand-tailored resolution instructions:
+
+| Brand / OS | Detection Heuristics | Common Failure Mode | Exact Settings Menu Resolution |
+| :--- | :--- | :--- | :--- |
+| **🍎 Apple iPhone** *(iOS 16+)* | `iPhone`, `iPad`, `iPod` | • Microsoft Authenticator set as default passkey provider without iCloud Keychain.<br>• Screen passcode or Face ID not configured. | 1. Open iPhone **Settings** ➔ **Passwords** ➔ **Password Options** (or *AutoFill Passwords and Passkeys*).<br>2. Ensure **iCloud Passwords & Keychain** (Apple Passwords) is turned **ON** (checked).<br>*(Note: MS Authenticator on iOS only supports Microsoft accounts; third-party website passkeys require Apple Keychain.)*<br>3. Ensure **Face ID** or **Touch ID** is set up in **Settings** ➔ **Face ID & Passcode**. |
+| **📱 Honor** *(MagicOS 8.0 / 7.0, Android 14)* | `Honor`, `MagicOS`, `HNR` | • Google Play Services (GMS) toggled OFF by default in regional/China ROM.<br>• Default autofill set to "Honor Password Vault" which lacks FIDO2 WebAuthn sync. | 1. **Enable Google Play Services**: Open **Settings (设置)** ➔ **Users & accounts (用户与账户)** ➔ toggle **Google Play Services (Google Play 服务)** to **ON**.<br>2. **Set Google Autofill Provider**: Open **Settings** ➔ **System & updates (系统和更新)** ➔ **Language & input (语言和输入法)** ➔ **Autofill service (自动填充服务)** ➔ select **Google (Google 密码管理器)**.<br>3. **Set Screen Lock**: Open **Settings** ➔ **Biometrics & password** ➔ set PIN and Fingerprint.<br>4. Always open the pairing link in **Google Chrome** (Honor built-in browser is unsupported). |
+| **📱 Samsung Galaxy** *(One UI, Android 12-15)* | `Samsung`, `SM-`, `Galaxy` | • QR code opened in Samsung Internet instead of Chrome, causing "wrong key" / credential mismatch.<br>• Screen lock set to "Swipe" or "None". | 1. Tap **`🚀 Open in Google Chrome`** (Samsung Internet isolates credentials in Knox / Samsung Pass).<br>2. Open **Settings** ➔ **Security and privacy** ➔ **Lock screen** ➔ enroll Fingerprint or PIN.<br>3. Open **Settings** ➔ **General management** ➔ **Passwords and autofill** ➔ set provider to **Google**. |
+| **📱 Xiaomi / Redmi / POCO** *(HyperOS / MIUI)* | `Xiaomi`, `Redmi`, `POCO`, `Mi ` | • "Basic Google services" disabled in regional ROMs.<br>• Autofill defaulted to Mi Cloud.<br>• Mi Browser opened instead of Chrome. | 1. Open **Settings** ➔ **Accounts & sync** ➔ toggle **Basic Google services** to **ON**.<br>2. Open **Settings** ➔ **Additional settings** ➔ **Languages & input** ➔ **Autofill service** ➔ select **Google**.<br>3. Open **Settings** ➔ **Passwords & security** ➔ set Fingerprint or PIN.<br>4. Open link exclusively in **Google Chrome**. |
+| **📱 OPPO / OnePlus / Realme** *(ColorOS / OxygenOS)* | `OPPO`, `OnePlus`, `Realme`, `CPH` | • Autofill set to HeyTap / ColorOS Password Book.<br>• Missing lock screen credential. | 1. Open **Settings** ➔ **Password & security** ➔ enroll Fingerprint and Lock Screen Password.<br>2. Open **Settings** ➔ **Additional settings** ➔ **Keyboard & input method** ➔ **Autofill service** ➔ select **Google**.<br>3. Open link in **Google Chrome**. |
+| **📱 Vivo / iQOO** *(OriginOS / FuntouchOS)* | `vivo`, `iQOO`, `V[0-9]{4}` | • Autofill set to Vivo Account Vault.<br>• Missing screen lock. | 1. Open **Settings** ➔ **Fingerprint, face and password** ➔ enroll Fingerprint.<br>2. Open **Settings** ➔ **More settings** (or *System management*) ➔ **Autofill service** ➔ select **Google**.<br>3. Open link in **Google Chrome**. |
+| **🤖 Google Pixel & Stock Android** | `Pixel`, `Android` | • Screen lock not enrolled.<br>• Google Password Manager synchronization paused. | 1. Open **Settings** ➔ **Security & privacy** ➔ **Device unlock** ➔ set Fingerprint or PIN.<br>2. Open **Settings** ➔ **Passwords & accounts** ➔ verify **Google Password Manager** is active.<br>3. Open link in **Google Chrome**. |
+| **📱 Huawei** *(HarmonyOS / EMUI)* | `Huawei`, `HarmonyOS` | • Devices without Google Play Services cannot register native WebAuthn credentials. | 1. If device supports GMS or microG, open link in Google Chrome with screen lock enabled.<br>2. If device physically lacks Google Play Services, student must inform instructor for a **Permanent Passkey Exemption (`[ 🛡️ Exempt ]`)** or temporary lesson bypass. |
+
+---
+
+### 3. Resolution of the 5 Real-World Failure Modes
+
+#### Failure 1: Android Samsung Internet ("Wrong Key" / Credential Mismatch)
+* **Root Cause**: Samsung Internet stores passkeys in Samsung Pass / Knox, whereas Chrome stores them in Google Password Manager. Furthermore, web storage and `deviceFingerprint` are siloed per browser. A student registering in Chrome and scanning in Samsung Internet (or vice-versa) triggers a credential and device fingerprint mismatch.
+* **Resolution**: All mobile passkey views detect Samsung Internet immediately, render an **Unsupported Browser** blocking screen, and provide an Android Intent URI button: **`🚀 Open in Google Chrome`**.
+
+#### Failure 2: Missing Screen Lock or "Provider Not Found" on Android
+* **Root Cause**: Modern Android Credential Manager throws `CreateCredentialNoProviderException` / *"provider not found"* when no secure lock screen (PIN, Pattern, Fingerprint) is configured, or when Google Password Manager is disabled.
+* **Resolution**: Intercepted by `normalizePasskeyError()`, which detects `android_screen_lock_missing` and guides the student to **Settings ➔ Security ➔ Screen Lock** to enroll a Fingerprint or PIN.
+
+#### Failure 3: iOS Microsoft Authenticator Overriding iCloud Keychain
+* **Root Cause**: Microsoft Authenticator on iOS registers as an AutoFill / Passkey provider, but only supports Microsoft Entra ID corporate passkeys. It rejects third-party WebAuthn domains. If Apple iCloud Keychain is toggled OFF, iOS has zero capable passkey providers and throws `NotSupportedError`.
+* **Resolution**: The system detects `ios_keychain_missing` and instructs the student to turn **ON** *iCloud Passwords & Keychain* under **Settings ➔ Passwords ➔ Password Options**.
+
+#### Failure 4: Honor MagicOS 8.0 Android 14 GMS & Autofill Silo
+* **Root Cause**: MagicOS 8.0 ships with Google Play Services toggled off by default in several regional models, and sets the system autofill provider to Honor's proprietary Password Vault.
+* **Resolution**: The diagnostic system detects Honor devices (`isHonorDevice()`) and explicitly renders MagicOS-specific steps: enable *Google Play Services* in **Settings ➔ Users & accounts**, and switch the *Autofill service* to *Google* in **Settings ➔ System & updates ➔ Language & input**.
+
+#### Failure 5: Unregistered Student Scanning Lecture Attendance QR Code
+* **Question**: *Can a student scan the live lecture QR code without pre-registering, create a passkey on the fly without logging in, and check in?*
+* **Answer**: **Cryptographically and architecturally impossible:**
+  1. The lecture attendance endpoint (`/lecture-verify`) executes `navigator.credentials.get()` (WebAuthn **assertion / authentication**). It never calls `navigator.credentials.create()` (**registration**). It is impossible for an authentication challenge to create a passkey.
+  2. Because the student never paired their phone, the device has no saved passkey for `it114115-2627.web.app`. The phone displays *"No passkeys found for this website"* and throws `NotAllowedError`.
+  3. The server checks the credential ID against `studentPasskeys`. If empty, it rejects the request:
+     > `not-found`: *This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.*
+  4. Passkey creation requires an authenticated student session to generate an encrypted `pairingToken`. Unauthenticated students cannot register credentials.
+* **Resolution**: The UI captures `phone_not_paired` and directs the student to log into the web portal on their PC/laptop, open **"Pair Mobile Phone"**, and scan their personal pairing QR code first.
+
+---
+
+### 4. Interactive In-App Brand Selector
+
+In [`PasskeyPairView`](file:///web-app/src/components/passkey/PasskeyPairView.jsx), [`PasskeyVerifyView`](file:///web-app/src/components/passkey/PasskeyVerifyView.jsx), and [`LecturePasskeyVerifyView`](file:///web-app/src/components/passkey/LecturePasskeyVerifyView.jsx), the troubleshooting accordion includes an interactive **"Select your smartphone brand"** dropdown:
+* Automatically defaults to the student's detected device brand (e.g. 🍎 iPhone, 📱 Honor, 📱 Samsung, etc.).
+* Allows any student to switch between brands with 1 tap to view the exact operating system settings paths for their specific phone.
+
+---
+
 ## 🛡️ Anti-Cheating & Security Analysis
 
 ### Passkey Exportability & Dual-Factor Hardware Binding Model

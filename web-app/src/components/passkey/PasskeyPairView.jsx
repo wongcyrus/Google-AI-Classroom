@@ -14,6 +14,10 @@ import {
   normalizePasskeyError,
   checkPlatformAuthenticatorAvailable,
 } from '../../utils/passkeyErrorUtils';
+import {
+  detectDeviceBrand,
+  DEVICE_BRAND_GUIDES,
+} from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -31,6 +35,8 @@ const PasskeyPairView = () => {
   const detectedBrowser = getBrowserName();
   const isAndroid = isAndroidDevice();
   const isIOS = isIOSDevice();
+  const detectedBrandId = isIOS ? 'apple' : detectDeviceBrand();
+  const [activeBrandId, setActiveBrandId] = useState(detectedBrandId === 'unknown' ? 'android_generic' : detectedBrandId);
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
 
   useEffect(() => {
@@ -311,24 +317,55 @@ const PasskeyPairView = () => {
               )}
             </button>
 
-            {/* Troubleshooting Guide */}
+            {/* Troubleshooting Guide with Brand Switcher */}
             <details style={{ marginTop: '1.25rem', textAlign: 'left', fontSize: '0.825rem', color: '#64748b', borderTop: '1px solid rgba(226, 232, 240, 0.3)', paddingTop: '0.85rem' }}>
               <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-                ❓ Troubleshooting Tips (Android & iPhone)
+                ❓ Troubleshooting Guide by Phone Brand
               </summary>
               <div style={{ background: 'rgba(15, 23, 42, 0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(226, 232, 240, 0.1)', lineHeight: 1.5 }}>
-                <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🤖 Android Requirements:</strong></p>
-                <ul style={{ margin: '0 0 0.65rem 1.25rem', padding: 0 }}>
-                  <li>Must use <strong>Google Chrome</strong> (Samsung Internet and other browsers are not supported).</li>
-                  <li>Must have a <strong>Screen Lock (Fingerprint, Face Unlock, or PIN)</strong> in Android Settings.</li>
-                  <li><strong>Honor / MagicOS 8.0:</strong> Go to Settings &gt; Users &amp; Accounts &gt; turn ON <strong>Google Play Services</strong>, and select <strong>Google</strong> in Settings &gt; System &amp; updates &gt; Language &amp; input &gt; Autofill service.</li>
-                  <li>Ensure <strong>Google Password Manager</strong> is enabled in Settings &gt; Passwords &amp; Accounts.</li>
-                </ul>
-                <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🍎 iPhone Requirements:</strong></p>
-                <ul style={{ margin: '0 0 1.25rem', padding: 0 }}>
-                  <li>Open in <strong>Apple Safari</strong> or <strong>Google Chrome</strong>.</li>
-                  <li>If you use <strong>Microsoft Authenticator</strong>, go to iOS Settings &gt; Passwords &gt; Password Options and ensure <strong>iCloud Passwords &amp; Keychain</strong> is turned ON.</li>
-                </ul>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label htmlFor="brand-select" style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
+                    Select your smartphone brand:
+                  </label>
+                  <select
+                    id="brand-select"
+                    value={activeBrandId}
+                    onChange={(e) => setActiveBrandId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.4rem 0.6rem',
+                      borderRadius: '0.375rem',
+                      background: '#1e293b',
+                      color: '#f8fafc',
+                      border: '1px solid #475569',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    <option value="apple">🍎 Apple iPhone (iOS)</option>
+                    <option value="honor">📱 Honor (MagicOS 8.0 / 7.0)</option>
+                    <option value="samsung">📱 Samsung Galaxy (One UI)</option>
+                    <option value="xiaomi">📱 Xiaomi / Redmi / POCO</option>
+                    <option value="oppo">📱 OPPO / OnePlus / Realme</option>
+                    <option value="vivo">📱 Vivo / iQOO</option>
+                    <option value="pixel">🤖 Google Pixel & Stock Android</option>
+                    <option value="huawei">📱 Huawei (HarmonyOS / EMUI)</option>
+                    <option value="android_generic">🤖 Other Android Device</option>
+                  </select>
+                </div>
+
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '0.65rem 0.75rem', borderRadius: '0.375rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <p style={{ margin: '0 0 0.35rem 0', color: '#38bdf8', fontWeight: 600, fontSize: '0.85rem' }}>
+                    {DEVICE_BRAND_GUIDES[activeBrandId]?.icon} {DEVICE_BRAND_GUIDES[activeBrandId]?.brandName}:
+                  </p>
+                  <p style={{ margin: '0 0 0.45rem 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                    Browser: <strong>{DEVICE_BRAND_GUIDES[activeBrandId]?.supportedBrowsers}</strong>
+                  </p>
+                  <ol style={{ margin: '0 0 0 1.15rem', padding: 0, fontSize: '0.8rem', color: '#cbd5e1' }}>
+                    {DEVICE_BRAND_GUIDES[activeBrandId]?.steps.map((st, i) => (
+                      <li key={i} style={{ marginBottom: '0.25rem' }}>{st}</li>
+                    ))}
+                  </ol>
+                </div>
               </div>
             </details>
           </>
