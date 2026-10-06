@@ -1,5 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { isGoogleChrome, getBrowserName, isMobileDevice, isTabletDevice, isHandheldPhone } from './browserDetection';
+import {
+  isGoogleChrome,
+  getBrowserName,
+  isMobileDevice,
+  isTabletDevice,
+  isHandheldPhone,
+  isAppleSafari,
+  isSupportedBrowser,
+  isAndroidDevice,
+  isIOSDevice,
+  getAndroidChromeIntentUrl,
+} from './browserDetection';
 
 describe('browserDetection Utility', () => {
   it('identifies genuine Google Chrome desktop and Android as Chrome', () => {
@@ -176,6 +186,87 @@ describe('browserDetection Utility', () => {
       // Desktop 1080p should not be mobile
       expect(isMobileDevice(desktopUA, 1920, 1080)).toBe(false);
       expect(isMobileDevice(desktopUA, 1280, 800)).toBe(false);
+    });
+  });
+
+  describe('isAppleSafari', () => {
+    const iphoneSafariUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+    const macSafariUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15';
+    const chromeIOSUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/128.0.6613.92 Mobile/15E148 Safari/604.1';
+    const chromeDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+    const samsungUA = 'Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.6261.119 Mobile Safari/537.36';
+    const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0';
+    const appleVendor = 'Apple Computer, Inc.';
+    const googleVendor = 'Google Inc.';
+
+    it('identifies genuine Apple Safari on iPhone and Mac', () => {
+      expect(isAppleSafari(iphoneSafariUA, appleVendor)).toBe(true);
+      expect(isAppleSafari(macSafariUA, appleVendor)).toBe(true);
+    });
+
+    it('rejects Google Chrome on iOS (CriOS) from being classified as Safari', () => {
+      expect(isAppleSafari(chromeIOSUA, appleVendor)).toBe(false);
+    });
+
+    it('rejects desktop Chrome, Samsung Internet, and Firefox from being classified as Safari', () => {
+      expect(isAppleSafari(chromeDesktopUA, googleVendor)).toBe(false);
+      expect(isAppleSafari(samsungUA, googleVendor)).toBe(false);
+      expect(isAppleSafari(firefoxUA, '')).toBe(false);
+    });
+  });
+
+  describe('isSupportedBrowser', () => {
+    const chromeDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+    const chromeIOSUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/128.0.6613.92 Mobile/15E148 Safari/604.1';
+    const iphoneSafariUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+    const samsungUA = 'Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.6261.119 Mobile Safari/537.36';
+    const edgeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.2739.42';
+    const firefoxUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0';
+
+    it('strictly supports only Google Chrome and Apple Safari', () => {
+      expect(isSupportedBrowser(chromeDesktopUA, 'Google Inc.')).toBe(true);
+      expect(isSupportedBrowser(chromeIOSUA, 'Apple Computer, Inc.')).toBe(true);
+      expect(isSupportedBrowser(iphoneSafariUA, 'Apple Computer, Inc.')).toBe(true);
+
+      // Rejects all other browsers
+      expect(isSupportedBrowser(samsungUA, 'Google Inc.')).toBe(false);
+      expect(isSupportedBrowser(edgeUA, 'Google Inc.')).toBe(false);
+      expect(isSupportedBrowser(firefoxUA, '')).toBe(false);
+      expect(isSupportedBrowser(chromeDesktopUA, 'Google Inc.', true)).toBe(false); // Brave
+    });
+  });
+
+  describe('isAndroidDevice and isIOSDevice', () => {
+    const androidUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36';
+    const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+    const windowsUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    it('identifies Android OS correctly', () => {
+      expect(isAndroidDevice(androidUA)).toBe(true);
+      expect(isAndroidDevice(iPhoneUA)).toBe(false);
+      expect(isAndroidDevice(windowsUA)).toBe(false);
+    });
+
+    it('identifies iOS / iPadOS correctly', () => {
+      expect(isIOSDevice(iPhoneUA, 5)).toBe(true);
+      expect(isIOSDevice(androidUA, 5)).toBe(false);
+      expect(isIOSDevice(windowsUA, 0)).toBe(false);
+    });
+  });
+
+  describe('getAndroidChromeIntentUrl', () => {
+    it('constructs correct Android Chrome Intent URI from URL string', () => {
+      const url = 'https://it114115-2627.web.app/pair-phone?token=test-token-123';
+      const intentUrl = getAndroidChromeIntentUrl(url);
+
+      expect(intentUrl).toBe('intent://it114115-2627.web.app/pair-phone?token=test-token-123#Intent;scheme=https;package=com.android.chrome;end');
+    });
+
+    it('preserves hash fragments and multiple query parameters', () => {
+      const url = 'https://it114115-2627.web.app/mobile-login?session=sess-123&token=tok-456#ready';
+      const intentUrl = getAndroidChromeIntentUrl(url);
+
+      expect(intentUrl).toBe('intent://it114115-2627.web.app/mobile-login?session=sess-123&token=tok-456#ready#Intent;scheme=https;package=com.android.chrome;end');
     });
   });
 });

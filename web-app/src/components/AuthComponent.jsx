@@ -412,6 +412,26 @@ const AuthComponent = ({ unverifiedUser }) => {
               </div>
             </div>
 
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '0.5rem',
+              padding: '0.5rem 0.75rem',
+              fontSize: '0.8rem',
+              color: '#64748b',
+              lineHeight: 1.4,
+              textAlign: 'left',
+              marginTop: '0.5rem',
+              marginBottom: '0.75rem',
+            }}>
+              <div style={{ marginBottom: '0.2rem' }}>
+                🤖 <strong>Android:</strong> Open with <strong>Google Chrome</strong> (Samsung Internet not supported).
+              </div>
+              <div>
+                🍎 <strong>iPhone:</strong> Open with <strong>Apple Safari</strong> (ensure iCloud Keychain is ON).
+              </div>
+            </div>
+
             <button
               type="button"
               className="auth-qr-switch-btn"

@@ -2,7 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isHandheldPhone } from '../../utils/browserDetection';
+import {
+  isHandheldPhone,
+  isSupportedBrowser,
+  getBrowserName,
+  isAndroidDevice,
+  isIOSDevice,
+  getAndroidChromeIntentUrl,
+} from '../../utils/browserDetection';
+import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import './passkey.css';
@@ -12,28 +20,48 @@ const PasskeyVerifyView = () => {
   const classId = searchParams.get('classId');
   const bingoId = searchParams.get('bingoId');
 
-  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked'
+  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser'
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorDetails, setErrorDetails] = useState(null);
   const [studentEmail, setStudentEmail] = useState('');
   const [latencySec, setLatencySec] = useState(null);
   const [alreadyVerified, setAlreadyVerified] = useState(false);
   const hasAutoStarted = useRef(false);
 
+  const detectedBrowser = getBrowserName();
+  const isAndroid = isAndroidDevice();
+  const isIOS = isIOSDevice();
+  const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
+
   useEffect(() => {
+    // 1. Handheld mobile phone enforcement
     if (!isHandheldPhone()) {
       setStatus('desktop_blocked');
       setErrorMessage('Mobile passkey attendance verification must be performed from your personal handheld smartphone. Shared desktop computers and tablets/iPads cannot be registered as mobile passkeys. Please scan the QR code displayed on your screen using your phone camera.');
       return;
     }
 
-    if (!browserSupportsWebAuthn()) {
-      setStatus('error');
-      setErrorMessage('This mobile browser or device does not support biometric passkeys. Please scan using Safari (iOS) or Chrome (Android).');
+    // 2. Strict Browser Whitelist: Only Google Chrome and Apple Safari supported
+    if (!isSupportedBrowser()) {
+      setStatus('unsupported_browser');
+      setErrorMessage(`This classroom assistant strictly supports Google Chrome and Apple Safari. Detected: ${detectedBrowser}.`);
       return;
     }
 
+    // 3. WebAuthn capability
+    if (!browserSupportsWebAuthn()) {
+      setStatus('error');
+      const diag = normalizePasskeyError('This mobile browser or device does not support biometric passkeys. Please scan using Safari (iOS) or Chrome (Android).');
+      setErrorDetails(diag);
+      setErrorMessage(diag.message);
+      return;
+    }
+
+    // 4. Challenge parameters presence
     if (!classId || !bingoId) {
       setStatus('error');
+      const diag = normalizePasskeyError('Missing attendance challenge parameters. Please scan the QR code on your lab PC screen.');
+      setErrorDetails(diag);
       setErrorMessage('Missing attendance challenge parameters. Please scan the QR code on your lab PC screen.');
       return;
     }
@@ -43,11 +71,12 @@ const PasskeyVerifyView = () => {
       hasAutoStarted.current = true;
       executeBiometricVerification();
     }
-  }, [classId, bingoId]);
+  }, [classId, bingoId, detectedBrowser]);
 
   const executeBiometricVerification = async () => {
     setStatus('authenticating');
     setErrorMessage('');
+    setErrorDetails(null);
     const startTime = Date.now();
 
     try {
@@ -68,7 +97,9 @@ const PasskeyVerifyView = () => {
 
       if (data.error === 'no_passkey') {
         setStatus('error');
-        setErrorMessage(data.message || 'No paired phone found for this student account. Please pair your phone first or notify your instructor for in-person check.');
+        const diag = normalizePasskeyError(data.message || 'No paired phone found for this student account. Please pair your phone first or notify your instructor for in-person check.', { isAndroid, isIOS });
+        setErrorDetails(diag);
+        setErrorMessage(diag.message);
         return;
       }
 
@@ -81,7 +112,8 @@ const PasskeyVerifyView = () => {
       try {
         assertionResponse = await startAuthentication({ optionsJSON: data.options });
       } catch (biometricErr) {
-        if (biometricErr.name === 'NotAllowedError') {
+        const diag = normalizePasskeyError(biometricErr, { isAndroid, isIOS, browserName: detectedBrowser });
+        if (diag.type === 'user_cancelled') {
           setStatus('ready');
           setErrorMessage('Biometric check was cancelled. Tap "Verify Biometric Passkey" to try again.');
           return;
@@ -113,14 +145,9 @@ const PasskeyVerifyView = () => {
     } catch (err) {
       console.error('[PasskeyVerifyView] Authentication error:', err);
       setStatus('error');
-      const msg = err.message || '';
-      if (msg.includes('Credential mismatch')) {
-        setErrorMessage('Credential mismatch: This phone does not belong to the student account active on the PC.');
-      } else if (msg.includes('not found')) {
-        setErrorMessage('This attendance challenge has already expired or ended.');
-      } else {
-        setErrorMessage(msg || 'Biometric verification failed. Please try again.');
-      }
+      const diag = normalizePasskeyError(err, { isAndroid, isIOS, browserName: detectedBrowser });
+      setErrorDetails(diag);
+      setErrorMessage(diag.message || 'Biometric verification failed. Please try again.');
     }
   };
 
@@ -147,6 +174,38 @@ const PasskeyVerifyView = () => {
                 <span className="passkey-info-value" style={{ color: '#ef4444' }}>Desktop Prohibited</span>
               </div>
             </div>
+          </>
+        ) : status === 'unsupported_browser' ? (
+          <>
+            <div className="passkey-icon-badge error">🌐</div>
+            <h1 className="passkey-title">Unsupported Browser</h1>
+            <p className="passkey-subtitle">
+              Detected: <strong>{detectedBrowser}</strong>
+            </p>
+            <div className="passkey-alert passkey-alert-error" style={{ textAlign: 'left', lineHeight: 1.5 }}>
+              Attendance verification strictly supports <strong>Google Chrome</strong> (Android / PC) and <strong>Apple Safari</strong> (iPhone / iOS). Other browsers (such as Samsung Internet, Firefox, Edge, Opera) do not match your paired passkeys.
+            </div>
+
+            {isAndroid && (
+              <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <a
+                  href={chromeIntentUrl}
+                  className="passkey-btn passkey-btn-primary"
+                  style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  🚀 Open in Google Chrome
+                </a>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, textAlign: 'center' }}>
+                  Tip: In Android Settings &gt; Apps &gt; Default apps, set Google Chrome as your Default Browser.
+                </p>
+              </div>
+            )}
+
+            {isIOS && (
+              <div className="passkey-alert passkey-alert-warning" style={{ marginTop: '1rem', textAlign: 'left', fontSize: '0.85rem' }}>
+                💡 Please open this page in <strong>Apple Safari</strong>. Tap the Share icon and choose <strong>Open in Safari</strong>.
+              </div>
+            )}
           </>
         ) : status === 'success' ? (
           <>
@@ -191,11 +250,36 @@ const PasskeyVerifyView = () => {
               Verify your physical lab attendance with Face ID or Fingerprint.
             </p>
 
-            {errorMessage && (
+            {errorDetails ? (
+              <div className="passkey-alert passkey-alert-error" style={{ textAlign: 'left', lineHeight: 1.5, marginBottom: '1.25rem' }}>
+                <strong style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.95rem' }}>
+                  ⚠️ {errorDetails.title}
+                </strong>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem' }}>{errorDetails.message}</p>
+                {errorDetails.resolutionSteps?.length > 0 && (
+                  <ol style={{ margin: '0.25rem 0 0 1.25rem', padding: 0, fontSize: '0.825rem' }}>
+                    {errorDetails.resolutionSteps.map((step, idx) => (
+                      <li key={idx} style={{ marginBottom: '0.25rem' }}>{step}</li>
+                    ))}
+                  </ol>
+                )}
+                {isAndroid && errorDetails.action === 'open_chrome' && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <a
+                      href={chromeIntentUrl}
+                      className="passkey-btn passkey-btn-primary"
+                      style={{ textDecoration: 'none', display: 'inline-flex', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                    >
+                      🚀 Open in Google Chrome
+                    </a>
+                  </div>
+                )}
+              </div>
+            ) : errorMessage ? (
               <div className="passkey-alert passkey-alert-error">
                 {errorMessage}
               </div>
-            )}
+            ) : null}
 
             <button
               type="button"
@@ -220,6 +304,25 @@ const PasskeyVerifyView = () => {
                 </>
               )}
             </button>
+
+            {/* Troubleshooting Guide */}
+            <details style={{ marginTop: '1.25rem', textAlign: 'left', fontSize: '0.825rem', color: '#64748b', borderTop: '1px solid rgba(226, 232, 240, 0.2)', paddingTop: '0.85rem' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
+                ❓ Having Trouble Verifying?
+              </summary>
+              <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(226, 232, 240, 0.1)', lineHeight: 1.5 }}>
+                <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🤖 Android Users:</strong></p>
+                <ul style={{ margin: '0 0 0.65rem 1.25rem', padding: 0 }}>
+                  <li>Ensure you open this link in <strong>Google Chrome</strong> (Samsung Internet is not supported).</li>
+                  <li>Ensure this phone is paired with your student account.</li>
+                </ul>
+                <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🍎 iPhone Users:</strong></p>
+                <ul style={{ margin: '0 0 0 1.25rem', padding: 0 }}>
+                  <li>Ensure you open this link in <strong>Apple Safari</strong>.</li>
+                  <li>If you have <strong>Microsoft Authenticator</strong>, make sure <strong>iCloud Passwords & Keychain</strong> is turned ON in iOS Settings &gt; Passwords &gt; Password Options.</li>
+                </ul>
+              </div>
+            </details>
           </>
         )}
       </div>

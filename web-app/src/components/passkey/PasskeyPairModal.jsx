@@ -3,7 +3,8 @@ import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
-import { isHandheldPhone } from '../../utils/browserDetection';
+import { isHandheldPhone, isAndroidDevice, isIOSDevice, getBrowserName } from '../../utils/browserDetection';
+import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { isTeacherEmail, isPasskeySharingWhitelisted } from '../../utils/domainConfig';
 import { functions, db } from '../../firebase-config';
@@ -178,12 +179,12 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
       }
     } catch (err) {
       console.error('[PasskeyPairModal] Direct registration error:', err);
-      const msg = err.message || '';
-      if (msg.includes('Hardware Lock') || msg.includes('already registered to another student') || msg.includes('already bound to student')) {
-        setError(msg.includes('Hardware Lock:') ? msg.replace(/^.*Hardware Lock:\s*/, '') : 'This physical mobile phone is already registered to another student. Devices cannot be shared.');
-      } else {
-        setError(msg || 'Failed to register biometric passkey.');
-      }
+      const diag = normalizePasskeyError(err, {
+        isAndroid: isAndroidDevice(),
+        isIOS: isIOSDevice(),
+        browserName: getBrowserName(),
+      });
+      setError(diag.message || 'Failed to register biometric passkey.');
     } finally {
       setRegistering(false);
     }
@@ -380,12 +381,30 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
                 <div className="passkey-qr-frame">
                   <img src={qrDataUrl} alt="Pair Phone QR Code" className="passkey-qr-image" />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
                   <span>1. Open Camera</span>
                   <span>•</span>
                   <span>2. Scan QR</span>
                   <span>•</span>
                   <span>3. Face ID / Fingerprint</span>
+                </div>
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.8rem',
+                  color: '#64748b',
+                  lineHeight: 1.4,
+                  textAlign: 'left',
+                  marginBottom: '1rem',
+                }}>
+                  <div style={{ marginBottom: '0.25rem' }}>
+                    🤖 <strong>Android:</strong> Open in <strong>Google Chrome</strong> (Samsung Internet is not supported).
+                  </div>
+                  <div>
+                    🍎 <strong>iPhone:</strong> Open in <strong>Apple Safari</strong> (ensure iCloud Keychain is ON).
+                  </div>
                 </div>
               </div>
             ) : null}

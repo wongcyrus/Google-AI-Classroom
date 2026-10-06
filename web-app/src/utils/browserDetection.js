@@ -90,6 +90,123 @@ export const getBrowserName = (customUserAgent, customVendor, isBraveFlag) => {
 };
 
 /**
+ * Detects whether the current browser environment is genuine Apple Safari.
+ * Excludes Google Chrome, Chrome on iOS, Microsoft Edge, Mozilla Firefox, Samsung Internet, etc.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {string} [customVendor] - Optional vendor string for testing
+ * @returns {boolean} True if genuine Apple Safari, false otherwise.
+ */
+export const isAppleSafari = (customUserAgent, customVendor) => {
+  if (typeof window === 'undefined' && customUserAgent === undefined) {
+    return false;
+  }
+
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+
+  const vendor = customVendor !== undefined
+    ? customVendor
+    : (typeof navigator !== 'undefined' ? navigator.vendor : '') || '';
+
+  if (customUserAgent === undefined && /jsdom/i.test(userAgent)) {
+    return false;
+  }
+
+  // Reject Chrome on iOS (CriOS), Firefox on iOS (FxiOS), Edge on iOS (EdgiOS), Opera (OPiOS/OPT), Brave, DuckDuckGo
+  if (/CriOS\/|FxiOS\/|EdgiOS\/|Edg\/|OPR\/|OPT\/|OPiOS\/|Opera\/|SamsungBrowser\/|UCBrowser\/|Vivaldi\/|YaBrowser\/|DuckDuckGo\//i.test(userAgent)) {
+    return false;
+  }
+
+  // Reject desktop Chrome, Chromium, Firefox
+  if (/Chrome\/|Chromium\/|Firefox\//i.test(userAgent)) {
+    return false;
+  }
+
+  // Must have Safari token
+  if (!/Safari\//i.test(userAgent)) {
+    return false;
+  }
+
+  // Must match Apple vendor or Apple OS (iPhone, iPad, iPod, Mac)
+  const isApple = /Apple Computer/i.test(vendor) || /iPhone|iPad|iPod|Macintosh/i.test(userAgent);
+  return Boolean(isApple);
+};
+
+/**
+ * Checks if the current browser is within the supported browser whitelist.
+ * STRICT POLICY: Only Google Chrome and Apple Safari are supported.
+ * All other browsers (Samsung Internet, Firefox, Edge, Opera, UC, etc.) return false.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {string} [customVendor] - Optional vendor string for testing
+ * @param {boolean} [isBraveFlag] - Optional flag for Brave
+ * @returns {boolean} True if Google Chrome or Apple Safari, false otherwise.
+ */
+export const isSupportedBrowser = (customUserAgent, customVendor, isBraveFlag) => {
+  return isGoogleChrome(customUserAgent, customVendor, isBraveFlag) || isAppleSafari(customUserAgent, customVendor);
+};
+
+/**
+ * Detects whether the current device is running Android OS.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @returns {boolean} True if Android OS, false otherwise.
+ */
+export const isAndroidDevice = (customUserAgent) => {
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+  return /Android/i.test(userAgent);
+};
+
+/**
+ * Detects whether the current device is running Apple iOS / iPadOS.
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @param {number} [customTouchPoints] - Optional maxTouchPoints for testing
+ * @returns {boolean} True if iOS / iPadOS device, false otherwise.
+ */
+export const isIOSDevice = (customUserAgent, customTouchPoints) => {
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+  const touchPoints = customTouchPoints !== undefined
+    ? customTouchPoints
+    : (typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0);
+
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return true;
+  // Modern iPadOS Safari in desktop mode reports as Macintosh with multi-touch
+  if (/Macintosh/i.test(userAgent) && touchPoints > 1) return true;
+  return false;
+};
+
+/**
+ * Generates an Android Chrome Intent URI from a target URL or current location.
+ * When opened in non-Chrome Android browsers (e.g. Samsung Internet),
+ * the Android OS directly launches Google Chrome to the exact same URL.
+ * 
+ * @param {string|Location} [targetUrl] - Target URL string or Location object
+ * @returns {string} Intent URI formatted for com.android.chrome
+ */
+export const getAndroidChromeIntentUrl = (targetUrl) => {
+  try {
+    const raw = typeof targetUrl === 'string'
+      ? targetUrl
+      : (typeof window !== 'undefined' ? window.location.href : 'https://it114115-2627.web.app');
+    const base = typeof window !== 'undefined' ? window.location.origin : 'https://it114115-2627.web.app';
+    const parsed = new URL(raw, base);
+    const hostAndPath = `${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    const scheme = parsed.protocol.replace(':', '') || 'https';
+    return `intent://${hostAndPath}#Intent;scheme=${scheme};package=com.android.chrome;end`;
+  } catch (err) {
+    console.warn('[getAndroidChromeIntentUrl] Error constructing intent URI:', err);
+    return typeof targetUrl === 'string' ? targetUrl : (typeof window !== 'undefined' ? window.location.href : '');
+  }
+};
+
+/**
  * Detects whether the current device is a tablet (iPad or Android tablet/pad).
  * 
  * @param {string} [customUserAgent] - Optional user agent string for testing

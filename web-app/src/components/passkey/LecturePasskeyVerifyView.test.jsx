@@ -21,6 +21,10 @@ vi.mock('../../firebase-config', () => ({
 const mockStartAuthentication = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
 const mockIsHandheldPhone = vi.fn(() => true);
+const mockIsSupportedBrowser = vi.fn(() => true);
+let mockBrowserName = 'Google Chrome';
+let mockIsAndroid = true;
+let mockIsIOS = false;
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: (...args) => mockStartAuthentication(...args),
@@ -30,6 +34,11 @@ vi.mock('@simplewebauthn/browser', () => ({
 vi.mock('../../utils/browserDetection', () => ({
   isHandheldPhone: () => mockIsHandheldPhone(),
   isMobileDevice: () => mockIsHandheldPhone(),
+  isSupportedBrowser: () => mockIsSupportedBrowser(),
+  getBrowserName: () => mockBrowserName,
+  isAndroidDevice: () => mockIsAndroid,
+  isIOSDevice: () => mockIsIOS,
+  getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/lecture-verify#Intent;scheme=https;package=com.android.chrome;end',
 }));
 
 import LecturePasskeyVerifyView from './LecturePasskeyVerifyView';
@@ -39,6 +48,10 @@ describe('LecturePasskeyVerifyView Component', () => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
     mockIsHandheldPhone.mockReturnValue(true);
+    mockIsSupportedBrowser.mockReturnValue(true);
+    mockBrowserName = 'Google Chrome';
+    mockIsAndroid = true;
+    mockIsIOS = false;
   });
 
   it('blocks desktop verification with clear mobile required notice', async () => {
@@ -55,6 +68,24 @@ describe('LecturePasskeyVerifyView Component', () => {
     expect(screen.getByText('Mobile Phone Required')).toBeInTheDocument();
     expect(screen.getByText(/Lecture hall attendance check-in must be performed from your personal handheld smartphone/i)).toBeInTheDocument();
     expect(mockGetOptions).not.toHaveBeenCalled();
+  });
+
+  it('blocks unsupported browsers like Samsung Internet and provides Open in Google Chrome button', async () => {
+    mockIsSupportedBrowser.mockReturnValue(false);
+    mockBrowserName = 'Samsung Internet';
+    mockIsAndroid = true;
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText('Unsupported Browser')).toBeInTheDocument();
+    expect(screen.getAllByText(/Samsung Internet/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /Open in Google Chrome/i })).toBeInTheDocument();
   });
 
   it('automatically triggers Face ID / Fingerprint on mount and shows success screen', async () => {
@@ -138,13 +169,13 @@ describe('LecturePasskeyVerifyView Component', () => {
 
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=valid_token_1234']}>
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
           <LecturePasskeyVerifyView />
         </MemoryRouter>
       );
     });
 
-    expect(screen.getByText(/Biometric check was cancelled/i)).toBeInTheDocument();
+    expect(screen.getByText(/Biometric check was cancelled\. Tap "Verify Biometric Passkey" below to try again\./i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Verify Biometric Passkey/i })).toBeInTheDocument();
   });
 });

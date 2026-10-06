@@ -21,6 +21,10 @@ vi.mock('../../firebase-config', () => ({
 const mockStartAuthentication = vi.fn();
 const mockBrowserSupportsWebAuthn = vi.fn(() => true);
 const mockIsHandheldPhone = vi.fn(() => true);
+const mockIsSupportedBrowser = vi.fn(() => true);
+let mockBrowserName = 'Google Chrome';
+let mockIsAndroid = true;
+let mockIsIOS = false;
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication: (...args) => mockStartAuthentication(...args),
@@ -30,6 +34,11 @@ vi.mock('@simplewebauthn/browser', () => ({
 vi.mock('../../utils/browserDetection', () => ({
   isHandheldPhone: () => mockIsHandheldPhone(),
   isMobileDevice: () => mockIsHandheldPhone(),
+  isSupportedBrowser: () => mockIsSupportedBrowser(),
+  getBrowserName: () => mockBrowserName,
+  isAndroidDevice: () => mockIsAndroid,
+  isIOSDevice: () => mockIsIOS,
+  getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/mobile-login#Intent;scheme=https;package=com.android.chrome;end',
 }));
 
 import PasskeyMobileLoginView from './PasskeyMobileLoginView';
@@ -39,6 +48,10 @@ describe('PasskeyMobileLoginView Component', () => {
     vi.clearAllMocks();
     mockBrowserSupportsWebAuthn.mockReturnValue(true);
     mockIsHandheldPhone.mockReturnValue(true);
+    mockIsSupportedBrowser.mockReturnValue(true);
+    mockBrowserName = 'Google Chrome';
+    mockIsAndroid = true;
+    mockIsIOS = false;
   });
 
   it('blocks desktop access with strict prohibition notice', () => {
@@ -55,6 +68,22 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getByText(/Desktop and tablet passkey logins are strictly prohibited/i)).toBeInTheDocument();
   });
 
+  it('blocks unsupported browsers like Samsung Internet and provides Open in Google Chrome button', () => {
+    mockIsSupportedBrowser.mockReturnValue(false);
+    mockBrowserName = 'Samsung Internet';
+    mockIsAndroid = true;
+
+    render(
+      <MemoryRouter initialEntries={['/mobile-login?session=test-session-123']}>
+        <PasskeyMobileLoginView />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Unsupported Browser')).toBeInTheDocument();
+    expect(screen.getAllByText(/Samsung Internet/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /Open in Google Chrome/i })).toBeInTheDocument();
+  });
+
   it('displays error if mobile browser lacks WebAuthn support', () => {
     mockBrowserSupportsWebAuthn.mockReturnValue(false);
 
@@ -68,7 +97,7 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getByText(/This mobile browser does not support biometric passkeys/i)).toBeInTheDocument();
   });
 
-  it('displays error when session parameter is missing', () => {
+  it('displays error if sessionId query param is missing', () => {
     render(
       <MemoryRouter initialEntries={['/mobile-login']}>
         <PasskeyMobileLoginView />
@@ -79,25 +108,25 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getByText(/Missing login session ID/i)).toBeInTheDocument();
   });
 
-  it('successfully executes biometric passkey login on mobile', async () => {
+  it('auto-executes login on load and displays success screen on valid biometric verify', async () => {
     mockGetOptions.mockResolvedValueOnce({
       data: {
-        options: { challenge: 'test-challenge', rpId: 'localhost' },
+        options: { challenge: 'server-challenge-xyz' },
       },
     });
 
     mockStartAuthentication.mockResolvedValueOnce({
       id: 'cred-123',
       rawId: 'cred-123',
-      response: { clientDataJSON: 'xyz', authenticatorData: 'abc' },
+      response: { clientDataJSON: 'mockData' },
       type: 'public-key',
     });
 
     mockVerify.mockResolvedValueOnce({
       data: {
         verified: true,
-        studentEmail: 'alex@vtc.edu.hk',
-        deviceModel: 'iPhone 15 Pro',
+        studentEmail: 'student@example.com',
+        deviceModel: 'Apple iPhone',
       },
     });
 
@@ -111,21 +140,19 @@ describe('PasskeyMobileLoginView Component', () => {
       expect(screen.getByText('Desktop Signed In!')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('alex@vtc.edu.hk')).toBeInTheDocument();
-    expect(screen.getByText('iPhone 15 Pro')).toBeInTheDocument();
+    expect(screen.getByText('student@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Apple iPhone')).toBeInTheDocument();
     expect(screen.getByText('Unlocked & Authorized')).toBeInTheDocument();
   });
 
   it('handles cancellation and allows manual retry', async () => {
     mockGetOptions.mockResolvedValueOnce({
-      data: {
-        options: { challenge: 'test-challenge' },
-      },
+      data: { options: { challenge: 'challenge-cancel' } },
     });
 
-    const notAllowedErr = new Error('User cancelled');
-    notAllowedErr.name = 'NotAllowedError';
-    mockStartAuthentication.mockRejectedValueOnce(notAllowedErr);
+    const cancelError = new Error('User cancelled');
+    cancelError.name = 'NotAllowedError';
+    mockStartAuthentication.mockRejectedValueOnce(cancelError);
 
     render(
       <MemoryRouter initialEntries={['/mobile-login?session=sess-cancel']}>
@@ -141,25 +168,23 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getByRole('button', { name: /Sign In with Biometrics/i })).toBeInTheDocument();
   });
 
-  it('forwards dynamic rotating token parameter to cloud functions', async () => {
+  it('passes dynamic token to getDesktopLoginPasskeyOptions and verifyDesktopLoginPasskey', async () => {
     mockGetOptions.mockResolvedValueOnce({
       data: {
-        options: { challenge: 'test-challenge', rpId: 'localhost' },
+        options: { challenge: 'dynamic-challenge' },
       },
     });
 
     mockStartAuthentication.mockResolvedValueOnce({
-      id: 'cred-123',
-      rawId: 'cred-123',
-      response: { clientDataJSON: 'xyz', authenticatorData: 'abc' },
+      id: 'cred-dynamic',
       type: 'public-key',
     });
 
     mockVerify.mockResolvedValueOnce({
       data: {
         verified: true,
-        studentEmail: 'bob@vtc.edu.hk',
-        deviceModel: 'Pixel 9',
+        studentEmail: 'dynamic@example.com',
+        deviceModel: 'Pixel 8',
       },
     });
 
@@ -170,18 +195,49 @@ describe('PasskeyMobileLoginView Component', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetOptions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: 'sess-dynamic',
-          token: 'tok1234567890abc',
-        })
-      );
-      expect(mockVerify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: 'sess-dynamic',
-          token: 'tok1234567890abc',
-        })
-      );
+      expect(screen.getByText('Desktop Signed In!')).toBeInTheDocument();
     });
+
+    expect(mockGetOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-dynamic',
+        token: 'tok1234567890abc',
+      })
+    );
+
+    expect(mockVerify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-dynamic',
+        token: 'tok1234567890abc',
+      })
+    );
+  });
+
+  it('translates credential mismatch ("wrong key") into clear browser/phone mismatch guidance', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: { options: { challenge: 'challenge-err' } },
+    });
+
+    mockStartAuthentication.mockResolvedValueOnce({
+      id: 'cred-mismatch',
+      type: 'public-key',
+    });
+
+    mockVerify.mockRejectedValueOnce(
+      new Error('No passkey found matching this mobile device. Please pair your phone first.')
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/mobile-login?session=sess-mismatch']}>
+        <PasskeyMobileLoginView />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-In Failed')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Browser or Phone Mismatch/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Google Chrome/i).length).toBeGreaterThan(0);
   });
 });
