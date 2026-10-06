@@ -366,15 +366,19 @@ const PasskeyMobileLoginView = () => {
             ❓ Having Trouble Signing In?
           </summary>
           <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(226, 232, 240, 0.1)', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 0.35rem 0', color: '#f59e0b' }}><strong>📱 Not Paired Yet?</strong></p>
+            <ul style={{ margin: '0 0 0.65rem 1.25rem', padding: 0 }}>
+              <li>If your phone is not paired yet, switch to the "Email &amp; Password" tab on your desktop screen to sign in. Once signed in, pair your phone from your student profile.</li>
+            </ul>
             <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🤖 Android Users:</strong></p>
             <ul style={{ margin: '0 0 0.65rem 1.25rem', padding: 0 }}>
-              <li>Ensure you open this link in <strong>Google Chrome</strong> (Samsung Internet is not supported).</li>
-              <li>Your phone must be paired with your account and have a secure Screen Lock.</li>
+              <li>Open this link in <strong>Google Chrome</strong> (Samsung Internet and other browsers are not supported).</li>
+              <li><strong>Honor / MagicOS 8.0:</strong> Go to Settings &gt; Users &amp; Accounts &gt; turn ON <strong>Google Play Services</strong>, and select <strong>Google</strong> as Autofill service in Settings &gt; System &amp; updates &gt; Language &amp; input.</li>
             </ul>
             <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🍎 iPhone Users:</strong></p>
-            <ul style={{ margin: '0 0 0 1.25rem', padding: 0 }}>
-              <li>Ensure you open this link in <strong>Apple Safari</strong>.</li>
-              <li>If you have <strong>Microsoft Authenticator</strong>, make sure <strong>iCloud Passwords & Keychain</strong> is turned ON in iOS Settings &gt; Passwords &gt; Password Options.</li>
+            <ul style={{ margin: '0 0 1.25rem', padding: 0 }}>
+              <li>Open this link in <strong>Apple Safari</strong> or <strong>Google Chrome</strong>.</li>
+              <li>If you use Microsoft Authenticator, ensure <strong>iCloud Passwords &amp; Keychain</strong> is turned ON in iOS Settings &gt; Passwords &gt; Password Options.</li>
             </ul>
           </div>
         </details>

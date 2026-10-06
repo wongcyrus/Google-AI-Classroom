@@ -8,6 +8,7 @@ import {
   isSupportedBrowser,
   isAndroidDevice,
   isIOSDevice,
+  isHonorDevice,
   getAndroidChromeIntentUrl,
 } from './browserDetection';
 
@@ -251,6 +252,23 @@ describe('browserDetection Utility', () => {
       expect(isIOSDevice(iPhoneUA, 5)).toBe(true);
       expect(isIOSDevice(androidUA, 5)).toBe(false);
       expect(isIOSDevice(windowsUA, 0)).toBe(false);
+    });
+  });
+
+  describe('isHonorDevice', () => {
+    const honorUA1 = 'Mozilla/5.0 (Linux; Android 14; HONOR ELP-AN00 Build/HONORELP-AN00) AppleWebKit/537.36 Chrome/120.0.6099.230 Mobile Safari/537.36';
+    const honorUA2 = 'Mozilla/5.0 (Linux; Android 14; MagicOS 8.0; ALK-AN00) AppleWebKit/537.36 Chrome/128.0.0.0 Mobile Safari/537.36';
+    const pixelUA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/128.0.0.0 Mobile Safari/537.36';
+    const iPhoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 CriOS/128.0.0.0 Mobile/15E148 Safari/604.1';
+
+    it('identifies Honor / MagicOS user agents correctly', () => {
+      expect(isHonorDevice(honorUA1)).toBe(true);
+      expect(isHonorDevice(honorUA2)).toBe(true);
+    });
+
+    it('returns false for non-Honor Android phones and iPhones', () => {
+      expect(isHonorDevice(pixelUA)).toBe(false);
+      expect(isHonorDevice(iPhoneUA)).toBe(false);
     });
   });
 

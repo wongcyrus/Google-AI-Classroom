@@ -16,11 +16,37 @@ describe('passkeyErrorUtils', () => {
       ]));
     });
 
-    it('translates Android CreateCredentialNoProviderException error', () => {
-      const err = new Error('android.credentials.CreateCredentialNoProviderException: TYPE_NO_CREATE_OPTIONS');
-      const res = normalizePasskeyError(err, { isAndroid: true, isIOS: false });
+    it('translates Honor MagicOS 8.0 Android 14 provider missing error into specific GMS setup steps', () => {
+      const err = new Error('CreateCredentialNoProviderException: TYPE_NO_CREATE_OPTIONS');
+      const res = normalizePasskeyError(err, { isAndroid: true, isHonor: true });
 
       expect(res.type).toBe('android_screen_lock_missing');
+      expect(res.title).toBe('Honor / MagicOS Passkey Setup Required');
+      expect(res.resolutionSteps).toEqual(expect.arrayContaining([
+        expect.stringContaining('Google Play Services'),
+        expect.stringContaining('MagicOS 8.0'),
+        expect.stringContaining('Autofill service'),
+      ]));
+    });
+
+    it('translates un-paired phone or unregistered student scanning lecture QR', () => {
+      const err = new Error('This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.');
+      const res = normalizePasskeyError(err);
+
+      expect(res.type).toBe('phone_not_paired');
+      expect(res.title).toBe('Phone Not Paired with Account');
+      expect(res.action).toBe('pair_first');
+      expect(res.resolutionSteps).toEqual(expect.arrayContaining([
+        expect.stringContaining('Pair Mobile Phone'),
+      ]));
+    });
+
+    it('translates browser "no passkey found" error into phone not paired guidance', () => {
+      const err = new Error('No passkey found for domain it114115-2627.web.app');
+      const res = normalizePasskeyError(err);
+
+      expect(res.type).toBe('phone_not_paired');
+      expect(res.title).toBe('Phone Not Paired with Account');
     });
 
     it('translates Android NotSupportedError into screen lock setup steps', () => {

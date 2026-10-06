@@ -8,7 +8,7 @@
  * 4. User cancellations and expired QR tokens.
  */
 
-import { isAndroidDevice, isIOSDevice, getBrowserName } from './browserDetection';
+import { isAndroidDevice, isIOSDevice, isHonorDevice, getBrowserName } from './browserDetection';
 
 /**
  * Checks if the user's platform has a user-verifying authenticator (biometrics / PIN / screen lock) available.
@@ -33,7 +33,7 @@ export const checkPlatformAuthenticatorAvailable = async () => {
  * Normalizes raw WebAuthn and backend error messages into actionable, student-friendly diagnostics.
  * 
  * @param {Error|string} error - The caught error
- * @param {Object} [context] - Environmental context (isAndroid, isIOS, browserName)
+ * @param {Object} [context] - Environmental context (isAndroid, isIOS, isHonor, browserName)
  * @returns {Object} Structured diagnostic information
  */
 export const normalizePasskeyError = (error, context = {}) => {
@@ -41,22 +41,51 @@ export const normalizePasskeyError = (error, context = {}) => {
   const errName = typeof error === 'object' && error?.name ? error.name : '';
   const isAndroid = context.isAndroid !== undefined ? context.isAndroid : isAndroidDevice();
   const isIOS = context.isIOS !== undefined ? context.isIOS : isIOSDevice();
+  const isHonor = isAndroid && (context.isHonor !== undefined ? context.isHonor : isHonorDevice());
   const browser = context.browserName || getBrowserName();
 
-  // 1. Android Missing Biometrics / Screen Lock / Provider Not Found
+  // 0. Phone Not Paired with Student Account (Student scanned without pre-registering)
+  const isNotPaired = /not paired with any student account|phone passkey is not paired|no paired phone|phone not registered|please pair your phone|no passkey found|no credentials available|no credentials found/i.test(rawMsg);
+  if (isNotPaired) {
+    return {
+      type: 'phone_not_paired',
+      title: 'Phone Not Paired with Account',
+      message: 'This phone has not been registered as your classroom attendance passkey yet.',
+      resolutionSteps: [
+        'Log into the classroom portal on your laptop or lab PC.',
+        'Click "Pair Mobile Phone" (or your Profile > Passkey) to display your personal Pairing QR code.',
+        'Scan that pairing QR code with this phone camera to enroll your biometrics.',
+        'Once paired, scan this lecture attendance code again to record your attendance.',
+      ],
+      action: 'pair_first',
+      raw: rawMsg,
+    };
+  }
+
+  // 1. Android Missing Biometrics / Screen Lock / Provider Not Found (including Honor MagicOS 8.0)
   const isProviderMissing = /provider not found|no credential provider|CreateCredentialNoProviderException|TYPE_NO_CREATE_OPTIONS/i.test(rawMsg);
   const isPlatformNotSupported = errName === 'NotSupportedError' || /the operation is not supported|cannot satisfy the requested requirements/i.test(rawMsg);
 
   if (isAndroid && (isProviderMissing || isPlatformNotSupported)) {
+    const steps = [
+      'Open your phone "Settings" > "Security & Privacy" (or "Lock screen").',
+      'Set up a Fingerprint, Face Unlock, or PIN / Pattern screen lock.',
+    ];
+
+    if (isHonor) {
+      steps.push('Honor / MagicOS 8.0: Open "Settings" > "Users & accounts" and turn ON "Google Play Services".');
+      steps.push('Under "Settings" > "System & updates" > "Language & input" > "Autofill service", select "Google".');
+    } else {
+      steps.push('Ensure "Google Password Manager" is enabled under "Settings" > "Passwords & Accounts" > "Autofill service".');
+    }
+
     return {
       type: 'android_screen_lock_missing',
-      title: 'Screen Lock & Biometrics Required',
-      message: 'Your Android phone needs a secure Screen Lock to register or use passkeys.',
-      resolutionSteps: [
-        'Open your phone "Settings" > "Security & Privacy" (or "Lock screen").',
-        'Set up a Fingerprint, Face Unlock, or PIN / Pattern screen lock.',
-        'Ensure "Google Password Manager" is enabled under "Settings" > "Passwords & Accounts" > "Autofill service".',
-      ],
+      title: isHonor ? 'Honor / MagicOS Passkey Setup Required' : 'Screen Lock & Biometrics Required',
+      message: isHonor
+        ? 'MagicOS 8.0 requires Google Play Services and Google Password Manager to be enabled for WebAuthn passkeys.'
+        : 'Your Android phone needs a secure Screen Lock to register or use passkeys.',
+      resolutionSteps: steps,
       action: 'enable_screen_lock',
       raw: rawMsg,
     };
@@ -73,7 +102,7 @@ export const normalizePasskeyError = (error, context = {}) => {
       resolutionSteps: [
         'Open iPhone "Settings" > "Passwords" > "Password Options" (or "AutoFill Passwords and Passkeys").',
         'Ensure "iCloud Passwords & Keychain" (Apple Passwords) is turned ON (checked).',
-        'Note: Microsoft Authenticator on iOS only supports Microsoft accounts; third-party website passkeys require Apple Keychain.',
+        'Note: Microsoft Authenticator on iOS does not support third-party website passkeys. Both Apple Safari and Google Chrome are supported once iCloud Keychain is enabled.',
       ],
       action: 'enable_keychain',
       raw: rawMsg,
@@ -92,17 +121,15 @@ export const normalizePasskeyError = (error, context = {}) => {
     };
   }
 
-  // 4. Credential Mismatch ("wrong key"), Device Mismatch, or No Passkey/Phone Found
+  // 4. Credential Mismatch ("wrong key"), Device Mismatch
   if (
-    /credential mismatch|wrong key|does not match the paired hardware key|does not belong to the student|no passkey found|no paired phone/i.test(rawMsg) ||
+    /credential mismatch|wrong key|does not match the paired hardware key|does not belong to the student/i.test(rawMsg) ||
     /device mismatch/i.test(rawMsg)
   ) {
     return {
       type: 'credential_mismatch',
       title: 'Browser or Phone Mismatch',
-      message: /no paired phone/i.test(rawMsg)
-        ? rawMsg
-        : 'This phone does not match the paired hardware passkey registered for this student account.',
+      message: 'This phone does not match the paired hardware passkey registered for this student account.',
       resolutionSteps: [
         isAndroid
           ? 'If you registered using Google Chrome, you must scan and open this link in Google Chrome (not Samsung Internet or another browser).'

@@ -38,6 +38,7 @@ vi.mock('../../utils/browserDetection', () => ({
   getBrowserName: () => mockBrowserName,
   isAndroidDevice: () => mockIsAndroid,
   isIOSDevice: () => mockIsIOS,
+  isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/pair-phone#Intent;scheme=https;package=com.android.chrome;end',
 }));
 

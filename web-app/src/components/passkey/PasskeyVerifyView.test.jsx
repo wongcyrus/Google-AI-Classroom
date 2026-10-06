@@ -38,6 +38,7 @@ vi.mock('../../utils/browserDetection', () => ({
   getBrowserName: () => mockBrowserName,
   isAndroidDevice: () => mockIsAndroid,
   isIOSDevice: () => mockIsIOS,
+  isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/verify-passkey#Intent;scheme=https;package=com.android.chrome;end',
 }));
 
@@ -167,8 +168,8 @@ describe('PasskeyVerifyView Component', () => {
       );
     });
 
-    expect(screen.getByText(/Browser or Phone Mismatch/i)).toBeInTheDocument();
-    expect(screen.getByText(/No paired phone found/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phone Not Paired with Account/i)).toBeInTheDocument();
+    expect(screen.getByText(/not been registered as your classroom attendance passkey/i)).toBeInTheDocument();
     expect(mockStartAuthentication).not.toHaveBeenCalled();
   });
 

@@ -38,6 +38,7 @@ vi.mock('../../utils/browserDetection', () => ({
   getBrowserName: () => mockBrowserName,
   isAndroidDevice: () => mockIsAndroid,
   isIOSDevice: () => mockIsIOS,
+  isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/mobile-login#Intent;scheme=https;package=com.android.chrome;end',
 }));
 
@@ -224,7 +225,7 @@ describe('PasskeyMobileLoginView Component', () => {
     });
 
     mockVerify.mockRejectedValueOnce(
-      new Error('No passkey found matching this mobile device. Please pair your phone first.')
+      new Error('Credential mismatch: This phone does not match the paired hardware key for this student.')
     );
 
     render(

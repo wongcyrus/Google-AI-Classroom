@@ -268,7 +268,7 @@ const PasskeyPairView = () => {
 
             {isIOSChrome && (
               <div className="passkey-alert passkey-alert-warning" style={{ textAlign: 'left', lineHeight: 1.4, fontSize: '0.82rem', marginBottom: '1rem', background: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.3)', color: '#fbbf24' }}>
-                💡 <strong>iPhone Notice:</strong> To ensure you can scan the lab PC QR code using your phone's Camera app, please open this page in <strong>Apple Safari</strong>.
+                💡 <strong>iPhone Notice:</strong> Open in <strong>Apple Safari</strong> or <strong>Google Chrome</strong> (ensure iCloud Keychain is ON).
               </div>
             )}
 
@@ -319,14 +319,15 @@ const PasskeyPairView = () => {
               <div style={{ background: 'rgba(15, 23, 42, 0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(226, 232, 240, 0.1)', lineHeight: 1.5 }}>
                 <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🤖 Android Requirements:</strong></p>
                 <ul style={{ margin: '0 0 0.65rem 1.25rem', padding: 0 }}>
-                  <li>Must use <strong>Google Chrome</strong> (Samsung Internet is not supported).</li>
+                  <li>Must use <strong>Google Chrome</strong> (Samsung Internet and other browsers are not supported).</li>
                   <li>Must have a <strong>Screen Lock (Fingerprint, Face Unlock, or PIN)</strong> in Android Settings.</li>
-                  <li>Ensure <strong>Google Password Manager</strong> is enabled in Settings &gt; Passwords & Accounts.</li>
+                  <li><strong>Honor / MagicOS 8.0:</strong> Go to Settings &gt; Users &amp; Accounts &gt; turn ON <strong>Google Play Services</strong>, and select <strong>Google</strong> in Settings &gt; System &amp; updates &gt; Language &amp; input &gt; Autofill service.</li>
+                  <li>Ensure <strong>Google Password Manager</strong> is enabled in Settings &gt; Passwords &amp; Accounts.</li>
                 </ul>
                 <p style={{ margin: '0 0 0.35rem 0', color: '#cbd5e1' }}><strong>🍎 iPhone Requirements:</strong></p>
-                <ul style={{ margin: '0 0 0 1.25rem', padding: 0 }}>
-                  <li>Must use <strong>Apple Safari</strong>.</li>
-                  <li>If you use <strong>Microsoft Authenticator</strong>, go to iOS Settings &gt; Passwords &gt; Password Options and ensure <strong>iCloud Passwords & Keychain</strong> is turned ON.</li>
+                <ul style={{ margin: '0 0 1.25rem', padding: 0 }}>
+                  <li>Open in <strong>Apple Safari</strong> or <strong>Google Chrome</strong>.</li>
+                  <li>If you use <strong>Microsoft Authenticator</strong>, go to iOS Settings &gt; Passwords &gt; Password Options and ensure <strong>iCloud Passwords &amp; Keychain</strong> is turned ON.</li>
                 </ul>
               </div>
             </details>

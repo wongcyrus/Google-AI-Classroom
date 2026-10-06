@@ -183,6 +183,19 @@ export const isIOSDevice = (customUserAgent, customTouchPoints) => {
 };
 
 /**
+ * Detects whether the current device is manufactured by Honor (running MagicOS).
+ * 
+ * @param {string} [customUserAgent] - Optional user agent string for testing
+ * @returns {boolean} True if Honor / MagicOS device, false otherwise.
+ */
+export const isHonorDevice = (customUserAgent) => {
+  const userAgent = customUserAgent !== undefined
+    ? customUserAgent
+    : (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+  return /Honor|MagicOS|HNR\b/i.test(userAgent);
+};
+
+/**
  * Generates an Android Chrome Intent URI from a target URL or current location.
  * When opened in non-Chrome Android browsers (e.g. Samsung Internet),
  * the Android OS directly launches Google Chrome to the exact same URL.

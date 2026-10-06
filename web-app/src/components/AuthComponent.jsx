@@ -425,10 +425,10 @@ const AuthComponent = ({ unverifiedUser }) => {
               marginBottom: '0.75rem',
             }}>
               <div style={{ marginBottom: '0.2rem' }}>
-                🤖 <strong>Android:</strong> Open with <strong>Google Chrome</strong> (Samsung Internet not supported).
+                🤖 <strong>Android:</strong> Open with <strong>Google Chrome</strong> (Honor/MagicOS: enable Google Play Services).
               </div>
               <div>
-                🍎 <strong>iPhone:</strong> Open with <strong>Apple Safari</strong> (ensure iCloud Keychain is ON).
+                🍎 <strong>iPhone:</strong> Open with <strong>Apple Safari</strong> or <strong>Google Chrome</strong> (ensure iCloud Keychain is ON).
               </div>
             </div>
 

@@ -400,10 +400,10 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
                   marginBottom: '1rem',
                 }}>
                   <div style={{ marginBottom: '0.25rem' }}>
-                    🤖 <strong>Android:</strong> Open in <strong>Google Chrome</strong> (Samsung Internet is not supported).
+                    🤖 <strong>Android:</strong> Open in <strong>Google Chrome</strong> (Honor/MagicOS: enable Google Play Services).
                   </div>
                   <div>
-                    🍎 <strong>iPhone:</strong> Open in <strong>Apple Safari</strong> (ensure iCloud Keychain is ON).
+                    🍎 <strong>iPhone:</strong> Open in <strong>Apple Safari</strong> or <strong>Google Chrome</strong> (ensure iCloud Keychain is ON).
                   </div>
                 </div>
               </div>
