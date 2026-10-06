@@ -17,7 +17,7 @@ const mockOnSnapshot = vi.fn((q, onNext, onError) => {
           studentUid: 'student_1',
           studentEmail: 'student1@school.edu',
           jobType: 'analyzeImage',
-          modelUsed: 'gemini-3.7-flash',
+          modelUsed: 'gemini-3.8-flash',
           status: 'completed',
           cost: 0.003,
           timestamp: new Date('2026-08-30T10:00:00Z'),
@@ -42,7 +42,7 @@ describe('AiCostReportView Component', () => {
       studentUid: 'student_1',
       studentEmail: 'student1@school.edu',
       jobType: 'analyzeImage',
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
       status: 'completed',
       cost: 0.005000,
       usage: { inputTokens: 4000, outputTokens: 500 },
@@ -110,7 +110,7 @@ describe('AiCostReportView Component', () => {
 
     // Filter by model
     const modelSelect = screen.getByLabelText(/Model/i);
-    fireEvent.change(modelSelect, { target: { value: 'gemini-3.7-flash' } });
+    fireEvent.change(modelSelect, { target: { value: 'gemini-3.8-flash' } });
     expect(within(screen.getByRole('table')).getByText('student1@school.edu')).toBeInTheDocument();
 
     // Filter by job type

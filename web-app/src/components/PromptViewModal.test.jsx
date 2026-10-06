@@ -19,7 +19,7 @@ describe('PromptViewModal Component', () => {
 
   const mockJob = {
     id: 'job_prompt_123',
-    modelUsed: 'gemini-3.7-flash',
+    modelUsed: 'gemini-3.8-flash',
     prompt: 'Evaluate student hand gestures and off-screen glances.',
     createdAt: { toDate: () => new Date('2026-08-30T10:00:00Z') },
   };
@@ -29,7 +29,7 @@ describe('PromptViewModal Component', () => {
     render(<PromptViewModal show={true} onClose={onClose} job={mockJob} />);
 
     expect(screen.getByText('job_prompt_123')).toBeInTheDocument();
-    expect(screen.getByText('gemini-3.7-flash')).toBeInTheDocument();
+    expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
     expect(screen.getByText(/Evaluate student hand gestures/i)).toBeInTheDocument();
 
     const closeBtns = screen.getAllByRole('button', { name: 'Close' });

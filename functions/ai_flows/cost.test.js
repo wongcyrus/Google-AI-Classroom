@@ -16,15 +16,6 @@ describe('calculateCost', () => {
     expect(cost).toBeCloseTo(2.80, 4);
   });
 
-  it('should correctly compute exact USD cost for gemini-3.7-flash', () => {
-    const usage = {
-      promptTokenCount: 1000000, // 1M tokens @ $0.75
-      candidatesTokenCount: 1000000, // 1M tokens @ $3.75
-    };
-    const cost = calculateCost(usage, 'gemini-3.7-flash');
-    expect(cost).toBeCloseTo(4.50, 4);
-  });
-
   it('should correctly compute exact USD cost for gemini-3.8-flash', () => {
     const usage = {
       promptTokenCount: 1000000, // 1M tokens @ $0.75
@@ -107,7 +98,7 @@ describe('estimateCost', () => {
   it('should estimate cost including multimodal image/video tokens', () => {
     const prompt = 'Analyze this video frame';
     const media = [{ url: 'gs://bucket/test.mp4' }, { url: 'gs://bucket/test2.mp4' }];
-    const cost = estimateCost(prompt, media, 'gemini-3.7-flash');
+    const cost = estimateCost(prompt, media, 'gemini-3.8-flash');
     expect(cost).toBeGreaterThan(0);
   });
 });

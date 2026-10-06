@@ -1622,18 +1622,15 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     });
 
     const gemini38Radio = screen.getByRole('radio', { name: /Gemini 3.8 Flash \(Recommended\)/i });
-    const gemini36Radio = screen.getByRole('radio', { name: /Gemini 3.6 Flash \(High Performance\)/i });
+    const gemini35Radio = screen.getByRole('radio', { name: /Gemini 3.5 Flash-Lite \(Economical\)/i });
 
     // Defaults to gemini-3.8-flash
     expect(gemini38Radio).toBeChecked();
-    expect(gemini36Radio).not.toBeChecked();
+    expect(gemini35Radio).not.toBeChecked();
 
-    // Verify 3.5 Flash-Lite is removed as an option for lecture transcription
-    expect(screen.queryByRole('radio', { name: /Gemini 3.5/i })).not.toBeInTheDocument();
-
-    // Select Gemini 3.6 Flash
-    fireEvent.click(gemini36Radio);
-    expect(gemini36Radio).toBeChecked();
+    // Select Gemini 3.5 Flash-Lite
+    fireEvent.click(gemini35Radio);
+    expect(gemini35Radio).toBeChecked();
     expect(gemini38Radio).not.toBeChecked();
 
     const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
@@ -1645,7 +1642,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(mockUpdateDoc).toHaveBeenCalled();
     });
 
-    expect(capturedUpdateData.lectureAiModel).toBe('gemini-3.6-flash');
+    expect(capturedUpdateData.lectureAiModel).toBe('gemini-3.5-flash-lite');
 
     // Switch back to Gemini 3.8 Flash
     fireEvent.click(gemini38Radio);

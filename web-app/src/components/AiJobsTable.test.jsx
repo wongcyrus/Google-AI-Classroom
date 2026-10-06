@@ -8,7 +8,7 @@ describe('AiJobsTable Component', () => {
     {
       id: 'ai_job_1',
       studentEmail: 'student1@school.edu',
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
       cost: 0.0042,
       status: 'completed',
       result: 'Normal classroom behavior observed throughout session.',
@@ -61,7 +61,7 @@ describe('AiJobsTable Component', () => {
 
     expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
     expect(screen.getByText('student2@school.edu')).toBeInTheDocument();
-    expect(screen.getByText('gemini-3.7-flash')).toBeInTheDocument();
+    expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
     expect(screen.getByText('completed')).toBeInTheDocument();
     expect(screen.getByText('failed')).toBeInTheDocument();
     expect(screen.getByText('processing')).toBeInTheDocument();

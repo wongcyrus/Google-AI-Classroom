@@ -137,7 +137,7 @@
    - At `temperature: 0.1` on long audio, `gemini-3.5-flash-lite` began repeating the same block (`"就畀你出卷嘅..."`) at cues 98, 198, 298, and 398.
 4. **The Solution**:
    - **Recommended Model (`gemini-3.8-flash`)**: High-horizon reasoning model with superior attention across long mixed Cantonese/English CS speech without repetition loops.
-   - **Class Settings Selector**: Teachers can configure `lectureAiModel` (`gemini-3.8-flash`, `gemini-3.6-flash`, or `gemini-3.5-flash-lite`) per class.
+   - **Class Settings Selector**: Teachers can configure `lectureAiModel` (`gemini-3.8-flash` or `gemini-3.5-flash-lite`) per class.
    - **Two-Layer Non-Zero Duration Guard**: Applied in both JSON parsing (`end = nextStart > start ? Math.min(nextStart, start + minDur) : start + minDur`) and WebVTT/SRT generators (`minDisplayDur = Math.max(1.8, Math.min(5.0, text.length * 0.25))`), ensuring 100% of cues remain visible in video players.
 
 ## 0.0.0.0.0.0.0.0 Unified Single-Pass Architecture: Removal of Gemini 3.5 Transcribe Chunking & Definitive Migration to Flash-Lite

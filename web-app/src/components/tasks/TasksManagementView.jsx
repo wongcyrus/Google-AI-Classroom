@@ -211,7 +211,7 @@ const TasksManagementView = ({
         studentUid,
         attemptNumber,
         rubricSteps: selectedTaskForGrading.rubricSteps || [],
-        model: selectedTaskForGrading.model || 'gemini-3.7-flash',
+        model: selectedTaskForGrading.model || 'gemini-3.8-flash',
       });
       return res.data;
     } catch (err) {

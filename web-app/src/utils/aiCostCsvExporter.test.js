@@ -17,7 +17,7 @@ describe('aiCostCsvExporter utility', () => {
       blockedJobs: 0,
       byModel: [
         {
-          model: 'gemini-3.7-flash',
+          model: 'gemini-3.8-flash',
           count: 2,
           inputTokens: 4500,
           outputTokens: 500,
@@ -61,7 +61,7 @@ describe('aiCostCsvExporter utility', () => {
           timestamp: new Date('2026-09-10T09:00:00Z'),
           studentEmail: 'student"one"@vtc.edu.hk',
           jobType: 'generateBingoQuestion',
-          modelUsed: 'gemini-3.7-flash',
+          modelUsed: 'gemini-3.8-flash',
           status: 'completed',
           usage: { inputTokens: 2000, outputTokens: 250 },
           cost: 0.0035,
@@ -71,7 +71,7 @@ describe('aiCostCsvExporter utility', () => {
           timestamp: { toDate: () => new Date('2026-09-10T10:00:00Z') },
           studentEmail: 'student"one"@vtc.edu.hk',
           jobType: 'analyzeImage',
-          modelUsed: 'gemini-3.7-flash',
+          modelUsed: 'gemini-3.8-flash',
           status: 'completed',
           usage: { promptTokenCount: 2500, candidatesTokenCount: 250 },
           cost: 0.0040,
@@ -92,7 +92,7 @@ describe('aiCostCsvExporter utility', () => {
     expect(csv).toContain('"Class Name","Cloud Computing ""Lab A"""');
     expect(csv).toContain('"Class ID","CLASS_TEST_101"');
     expect(csv).toContain('--- COST BREAKDOWN BY MODEL ---');
-    expect(csv).toContain('"gemini-3.7-flash",2,4500,500,5000');
+    expect(csv).toContain('"gemini-3.8-flash",2,4500,500,5000');
     expect(csv).toContain('--- COST BREAKDOWN BY JOB TYPE ---');
     expect(csv).toContain('"generateBingoQuestion",1,2000,250,2250');
     expect(csv).toContain('--- STUDENT USAGE BREAKDOWN ---');

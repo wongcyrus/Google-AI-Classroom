@@ -139,7 +139,7 @@ describe('evaluateTaskSubmission', () => {
         text: JSON.stringify(mockEvaluation),
         usage: { inputTokens: 800, outputTokens: 250 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
 
     mockAttemptsSnap.mockResolvedValueOnce([
@@ -192,7 +192,7 @@ describe('evaluateTaskSubmission', () => {
         text: 'This is invalid non-json string',
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
 
     mockAttemptsSnap.mockResolvedValueOnce([]);
@@ -230,7 +230,7 @@ describe('evaluateTaskSubmission', () => {
         text: '```json\n' + JSON.stringify(mockEval) + '\n```',
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
 
     mockAttemptsSnap.mockResolvedValueOnce([
@@ -266,7 +266,7 @@ describe('evaluateTaskSubmission', () => {
         text: JSON.stringify({ finalScore: 80, stepResults: [] }),
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
 
     mockAttemptsSnap.mockResolvedValueOnce([]);
@@ -302,7 +302,7 @@ describe('evaluateTaskSubmission', () => {
         text: JSON.stringify({ finalScore: 90, stepResults: [] }),
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
 
     mockAttemptsSnap.mockResolvedValueOnce([]);
@@ -357,7 +357,7 @@ describe('evaluateTaskSubmission', () => {
         text: JSON.stringify({ finalScore: 75, stepResults: [] }),
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
     mockAttemptsSnap.mockResolvedValueOnce([]);
 
@@ -383,7 +383,7 @@ describe('evaluateTaskSubmission', () => {
         text: JSON.stringify({ finalScore: 88, stepResults: [] }),
         usage: { inputTokens: 50, outputTokens: 20 },
       },
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
     });
     mockAttemptsSnap.mockResolvedValueOnce([]);
 

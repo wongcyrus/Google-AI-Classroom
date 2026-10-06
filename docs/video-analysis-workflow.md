@@ -289,7 +289,7 @@ The workflow mirrors the classic distributed computing MapReduce pattern across 
 
 1. **Map Phase 1 (Parallel Video Discovery & Observation)**:
    - **Input**: All student screen recording videos ($V_1, V_2, \dots, V_n$) recorded during a practical lab session.
-   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Gemini Enterprise Agent Platform Multimodal Vision API (`gemini-3.7-flash` or `gemini-3.5-flash-lite`).
+   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Gemini Enterprise Agent Platform Multimodal Vision API (`gemini-3.8-flash` or `gemini-3.5-flash-lite`).
    - **Output**: Each video is processed independently, extracting qualitative student observations, terminal commands executed, error messages encountered, and milestone attempts into structured text summaries saved in `aiJobs`.
 
 2. **Reduce Phase (Cross-Student Intelligence Aggregation & Prompt Synthesis)**:
@@ -468,7 +468,7 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | **Primary Goal** | Ground-truth activity discovery from raw screen video | Synthesize objective rubric & milestones across cohort | Evaluate individual competencies against unified rubric |
 | **Target Dataset** | $N$ Student MP4 screen recordings | $N$ Text summaries from completed child `aiJobs` | $N$ Student MP4 screen recordings + Synthesized Rubric |
-| **Gemini Model** | `gemini-3.7-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.7-flash` (Deep Multimodal Reasoning) |
+| **Gemini Model** | `gemini-3.8-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.8-flash` or `gemini-3.7-pro` (Deep Multimodal Reasoning) |
 | **Execution Layer** | Cloud Run Function (`processVideoAnalysisJob`) | Callable Cloud Function (`generateLabTaskPrompt`) | Cloud Run Function (`processVideoAnalysisJob`) |
 | **Tool Calling** | Disabled or generic invigilation tools | None (Pure prompt engineering & reasoning) | Enabled: `recordTaskDuration` tool execution |
 | **Firestore Reads** | `videoJobs` collection | `aiJobs` sub-collection | `videoJobs` collection + synthesized prompt |

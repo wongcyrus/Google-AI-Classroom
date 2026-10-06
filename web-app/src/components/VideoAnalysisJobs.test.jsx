@@ -43,7 +43,7 @@ const mockJobs = [
   {
     id: 'job_v1',
     status: 'completed',
-    modelUsed: 'gemini-3.7-flash',
+    modelUsed: 'gemini-3.8-flash',
     prompt: 'Detect abnormal behavior',
     promptText: 'Detect abnormal behavior',
     aiJobIds: ['ai_sub_1', 'ai_sub_2'],
@@ -88,7 +88,7 @@ vi.mock('firebase/firestore', () => ({
     data: () => ({
       id: 'job_v1',
       status: 'completed',
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
       prompt: 'Detect abnormal behavior',
       promptText: 'Detect abnormal behavior',
       aiJobIds: ['ai_sub_1', 'ai_sub_2'],

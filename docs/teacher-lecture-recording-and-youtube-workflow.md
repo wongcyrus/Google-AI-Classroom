@@ -786,7 +786,6 @@ Classrooms can configure their preferred lecture transcription and subtitle AI m
 | AI Model | Recommended Scenario | Strengths & Characteristics | FinOps Cost (1-Hr Audio) |
 | :--- | :--- | :--- | :--- |
 | **`gemini-3.8-flash`** *(Recommended Default)* | 30–90 min technical CS lectures code-switching between Cantonese & English | Flagship multimodal model. Superior long-context attention; eliminates repetition loops; state-of-the-art recognition of CS keywords (DynamoDB, Partition Keys, Consistency, AZ). | ~$0.15 – $0.25 |
-| **`gemini-3.6-flash`** *(High Performance)* | Standard lectures & lab tutorials | High token efficiency, reliable multimodal grounding, excellent code keyword retention. | ~$0.10 – $0.18 |
 | **`gemini-3.5-flash-lite`** *(Economical)* | Short clips (< 15 mins) & budget-constrained classes | Ultra-low latency, lowest token cost. Note: can experience repetition on 30+ min mixed audio at low temperatures. | ~$0.05 – $0.09 |
 
 ### 11.1 Why `gemini-3.5-transcribe-preview` Was Replaced

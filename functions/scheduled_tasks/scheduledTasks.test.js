@@ -277,7 +277,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
           'gemini-3.5-flash-lite': expect.any(Object),
-          'gemini-3.7-flash': expect.any(Object),
+          'gemini-3.8-flash': expect.any(Object),
           'cloud-storage': expect.objectContaining({
             unit: 'GiB/month',
             ratePerGibMonth: 0.023,
@@ -383,7 +383,6 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       const parseBillingSkus = (skus) => {
         const pricing = {
           'gemini-3.5-flash-lite': { input: 0.3, output: 2.5 },
-          'gemini-3.7-flash': { input: 0.75, output: 3.75 },
           'gemini-3.8-flash': { input: 0.75, output: 3.75 },
           'gemini-3.7-pro': { input: 3.0, output: 15.0 },
           'gemini-3.5-transcribe': { input: 0.5, output: 2.5 },
@@ -393,7 +392,6 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       const rates = parseBillingSkus([]);
       expect(rates['gemini-3.5-flash-lite'].input).toBe(0.3);
-      expect(rates['gemini-3.7-flash'].output).toBe(3.75);
       expect(rates['gemini-3.8-flash'].output).toBe(3.75);
       expect(rates['gemini-3.5-transcribe'].input).toBe(0.5);
     });

@@ -7,7 +7,7 @@ describe('VideoAnalysisJobsTable Component', () => {
   const mockJobs = [
     {
       id: 'job_1',
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
       createdAt: { toDate: () => new Date('2026-08-30T10:00:00Z') },
       videos: ['v1', 'v2'],
       status: 'completed',

@@ -28,7 +28,7 @@ describe('aiCostAggregator utility', () => {
         studentUid: 'student_1',
         studentEmail: 's1@school.edu',
         jobType: 'analyzeImage',
-        modelUsed: 'gemini-3.7-flash',
+        modelUsed: 'gemini-3.8-flash',
         status: 'completed',
         cost: 0.005,
         usage: { inputTokens: 4000, outputTokens: 500 },
@@ -50,7 +50,7 @@ describe('aiCostAggregator utility', () => {
         studentUid: 'student_1',
         studentEmail: 's1@school.edu',
         jobType: 'generateBingoQuestion',
-        modelUsed: 'gemini-3.7-flash',
+        modelUsed: 'gemini-3.8-flash',
         status: 'completed',
         cost: 0.001,
         usage: { promptTokens: 1000, completionTokens: 200 },
@@ -91,7 +91,7 @@ describe('aiCostAggregator utility', () => {
 
     // Verify breakdown by model
     expect(summary.byModel).toHaveLength(3);
-    expect(summary.byModel[0].model).toBe('gemini-3.7-flash');
+    expect(summary.byModel[0].model).toBe('gemini-3.8-flash');
     expect(summary.byModel[0].count).toBe(2);
     expect(summary.byModel[0].cost).toBe(0.006);
 
@@ -119,7 +119,7 @@ describe('aiCostAggregator utility', () => {
         id: 'job_1',
         studentUid: 'student_1',
         jobType: 'analyzeImage',
-        modelUsed: 'gemini-3.7-flash',
+        modelUsed: 'gemini-3.5-flash-lite',
         status: 'completed',
         cost: 0.01,
         timestamp: '2026-09-01T12:00:00Z',
@@ -128,7 +128,7 @@ describe('aiCostAggregator utility', () => {
         id: 'job_2',
         studentUid: 'student_2',
         jobType: 'analyzeImage',
-        modelUsed: 'gemini-3.7-flash',
+        modelUsed: 'gemini-3.5-flash-lite',
         status: 'completed',
         cost: 0.02,
         timestamp: '2026-09-02T12:00:00Z',

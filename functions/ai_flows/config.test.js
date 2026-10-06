@@ -28,7 +28,7 @@ describe('functions/ai_flows/config.js Suite', () => {
     expect(AI_MODEL).toBe('gemini-3.5-flash-lite');
     expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe-preview');
     expect(DEFAULT_LECTURE_AI_MODEL).toBe('gemini-3.8-flash');
-    expect(SUPPORTED_LECTURE_AI_MODELS).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash']);
+    expect(SUPPORTED_LECTURE_AI_MODELS).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
     expect(VERTEX_AI_LOCATION).toBe('global');
     expect(AI_TEMPERATURE).toBe(0);
     expect(AI_TOP_P).toBe(0.1);

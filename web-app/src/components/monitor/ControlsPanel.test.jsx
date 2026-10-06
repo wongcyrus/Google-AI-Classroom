@@ -877,7 +877,7 @@ describe('ControlsPanel Full Component Suite', () => {
 
     // Change Gemini Vision Model
     const visionModelSelect = screen.getByDisplayValue(/Gemini 3.5 Flash-Lite/i);
-    fireEvent.change(visionModelSelect, { target: { value: 'gemini-3.7-flash' } });
+    fireEvent.change(visionModelSelect, { target: { value: 'gemini-3.8-flash' } });
 
     // Select preset sampling rate button (e.g. 5r)
     const preset5Btn = screen.getByRole('button', { name: /5r/i });

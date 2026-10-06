@@ -225,7 +225,7 @@ sequenceDiagram
   - `lectureRecordingPrompt`: Custom or library prompt (`{ id, name, promptText }`).
   - `isLectureSubtitlesEnabled`: Boolean toggle to enable/disable automated Gemini Speech Recognition & CC synthesis.
   - `lectureTargetLanguages`: Array of target language codes (`['en', 'zh-Hant', 'zh-Hans']`, etc.).
-  - `lectureAiModel`: Gemini model for full-session Speech Recognition (`gemini-3.8-flash` or `gemini-3.6-flash`).
+  - `lectureAiModel`: Gemini model for full-session Speech Recognition (`gemini-3.8-flash` or `gemini-3.5-flash-lite`).
 - **Configuration Surfaces**:
   1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8 (*Lecture Recording, Subtitles & AI multilingual captioning*).
   2. [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx) via **"Regenerate Subtitles (CC)"** on-demand modal.

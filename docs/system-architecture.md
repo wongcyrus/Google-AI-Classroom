@@ -26,7 +26,7 @@ The Google AI Classroom is engineered as a **100% serverless, zero-maintenance, 
 
 1. **Edge Intelligence First**: Lightweight machine learning models (MediaPipe Iris/Face Mesh, LiteRT Whisper Speech Engine, and LiteRT Gemma 4 E2B) execute directly in student browser Web Workers on the client's local CPU/GPU.
 2. **Event-Driven Cloud Backplane**: Google Cloud Functions Gen 2 (running on Google Cloud Run) ingest asynchronous signals, manage multi-speaker transcription healing, execute two-strike active presence checks via Google Cloud Tasks, and orchestrate map-reduce-map video synthesis.
-3. **Multimodal Frontier Reasoning**: Google Gemini Enterprise Agent Platform (formerly Vertex AI) and the Gemini 3 suite (`gemini-3.7-pro`, `gemini-3.7-flash`, `gemini-3.8-flash`, and `gemini-3.5-transcribe-preview`) provide deep multimodal reasoning and rubric synthesis only when targeted intervention or assessment auditing is required.
+3. **Multimodal Frontier Reasoning**: Google Gemini Enterprise Agent Platform (formerly Vertex AI) and the Gemini 3 suite (`gemini-3.7-pro`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`, and `gemini-3.5-transcribe-preview`) provide deep multimodal reasoning and rubric synthesis only when targeted intervention or assessment auditing is required.
 
 ---
 

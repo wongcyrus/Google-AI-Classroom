@@ -135,11 +135,10 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   **Strict Audio-Only Ingestion**: Video frames are **never** sent into Gemini for captions, eliminating up to 90% token waste and preventing context exhaustion. If a legacy recording only has a video file, the backend automatically demuxes the audio track using FFmpeg (`-vn -c:a copy`) into `lecture_audio.webm`.
         -   Records `transcriptionSource: 'audio_only'` into Firestore.
         -   Constructs `gs://${bucket.name}/${audioStoragePath}` and passes it to Gemini via `generateWithResilience` with `{ media: { url: gsUri, contentType: 'audio/webm' } }` and `config: { maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } }`.
-    -   **Unified Single-Pass Architecture (`gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`)**:
+    -   **Unified Single-Pass Architecture (`gemini-3.8-flash`, `gemini-3.5-flash-lite`)**:
         -   **Configurable Model Selection**: Teachers can configure `lectureAiModel` at the class level via **Class Management -> Settings**:
             1. **`gemini-3.8-flash` (Recommended)**: Google's flagship Flash model. Provides the highest accuracy for mixed Cantonese/English CS jargon (DynamoDB, Partition Keys, AZ, Consistency) and long-horizon audio attention without repetition loops.
-            2. **`gemini-3.6-flash` (Balanced)**: High token efficiency and strong multimodal grounding.
-            3. **`gemini-3.5-flash-lite` (Economical)**: Minimal token cost for short recordings.
+            2. **`gemini-3.5-flash-lite` (Economical)**: Minimal token cost for short recordings.
         -   **Why `gemini-3.5-transcribe-preview` Was Removed**: During empirical evaluation on real Hong Kong lectures (e.g. 37-minute test recording `rec_1790924043417_ausm5my`), the transcribe preview model failed due to:
             1. **45,000 Audio Token Ceiling**: Unary limit of 45k tokens (~30m) rejects whole-lecture audio with `400 Bad Request`.
             2. **Turn-Based VAD Premature Cutoff**: Mistook natural 5-15s classroom teacher pauses (writing code or board drawing) as end-of-speech, halting early (`finishReason: STOP`) and losing 75%+ of the lecture.

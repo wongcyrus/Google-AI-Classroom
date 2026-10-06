@@ -2356,8 +2356,8 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                   gap: '8px',
                   padding: '8px 12px',
                   borderRadius: '6px',
-                  border: regenModel === 'gemini-3.6-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
-                  background: regenModel === 'gemini-3.6-flash' ? '#eff6ff' : '#ffffff',
+                  border: regenModel === 'gemini-3.5-flash-lite' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                  background: regenModel === 'gemini-3.5-flash-lite' ? '#eff6ff' : '#ffffff',
                   cursor: 'pointer',
                   fontSize: '0.85rem',
                 }}
@@ -2365,14 +2365,14 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                 <input
                   type="radio"
                   name="regenModel"
-                  value="gemini-3.6-flash"
-                  checked={regenModel === 'gemini-3.6-flash'}
-                  onChange={() => setRegenModel('gemini-3.6-flash')}
+                  value="gemini-3.5-flash-lite"
+                  checked={regenModel === 'gemini-3.5-flash-lite'}
+                  onChange={() => setRegenModel('gemini-3.5-flash-lite')}
                   style={{ accentColor: '#3b82f6' }}
                 />
                 <div>
-                  <div style={{ fontWeight: 600 }}>⚡ Gemini 3.6 Flash</div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>High Performance &amp; Fast Token Output</div>
+                  <div style={{ fontWeight: 600 }}>🚀 Gemini 3.5 Flash-Lite</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Economical &amp; Fast Multimodal Output</div>
                 </div>
               </label>
             </div>

@@ -443,7 +443,6 @@ flowchart TD
 - **Capture Mode Selector:** `Dual (Screen + Webcam)`, `Screen Only`, or `Webcam Only`.
 - **Gemini Vision Model Dropdown:**
   - `gemini-3.5-flash-lite` (Fastest / Lowest Cost)
-  - `gemini-3.7-flash`
   - `gemini-3.8-flash` (Balanced)
   - `gemini-3.7-pro` (Deep Reasoning)
 - **Require Entire Screen Toggle:** Enforces full desktop capture; rejects single tabs.
@@ -589,7 +588,7 @@ flowchart TD
 - **Video Selection Checkboxes:** Select individual videos or `Select All on Page`.
 - **`📦 Request Selected as ZIP` Button:** Submits background archive job for selected recordings.
 - **`📦 Request All as ZIP` Button:** Submits background archive job for all class videos in range.
-- **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`), and trigger analysis for selected videos or the whole class.
+- **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.7-pro`), and trigger analysis for selected videos or the whole class.
 - **`📥 Export Video Manifest (Excel)` Button:** Exports video metadata (IDs, student display names, emails, cohorts, timestamps, storage paths) to `.xlsx`.
 - **Google Drive Archival Toolbar:**
   - **Base Folder Name Input:** Textbox allowing custom Google Drive archive root directory (defaults to `Classroom Archives`), persisted in `localStorage`.
@@ -770,7 +769,7 @@ flowchart TD
 ### Filter Toolbar
 - **Student Dropdown:** Filter by individual student (rendered with resolved display name and cohort) or `All Students`.
 - **Job Type Dropdown:** Single Screenshot Analysis, Multi-Student Grid Analysis, Video Screencast Inspection, Cloud Gaze Fallback, Audio Speech Recognition & Diarization.
-- **Model Dropdown:** Filter by specific Gemini model (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.7-pro`).
+- **Model Dropdown:** Filter by specific Gemini model (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.7-pro`).
 - **Date Range Pickers:** `From Date` and `To Date`.
 - **`Reset Filters` Button:** Clears all active filters.
 - **`📥 Export Excel Report` Button:** Downloads comprehensive FinOps audit spreadsheet in OpenXML `.xlsx` format with full student profile enrichment across all sheets.

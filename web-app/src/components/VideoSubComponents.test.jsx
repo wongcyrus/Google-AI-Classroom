@@ -177,7 +177,7 @@ describe('Video & AI Analysis Sub-components', () => {
     const mockJobs = [
       {
         id: 'analysis_101',
-        modelUsed: 'gemini-3.7-flash',
+        modelUsed: 'gemini-3.8-flash',
         createdAt: { toDate: () => new Date('2026-08-29T11:30:00Z') },
         status: 'completed',
         prompt: 'Check compliance with exam rules',
@@ -199,7 +199,7 @@ describe('Video & AI Analysis Sub-components', () => {
       );
 
       expect(screen.getByText('analysis_101')).toBeInTheDocument();
-      expect(screen.getByText('gemini-3.7-flash')).toBeInTheDocument();
+      expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
       expect(screen.queryByText('Actions')).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByText('analysis_101'));

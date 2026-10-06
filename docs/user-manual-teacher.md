@@ -233,7 +233,7 @@ In **Class Settings (`⚙️ Settings`)**, configure the automated proctoring in
   - `Webcam Only`: For oral presentations or interviews.
 - **Vision Model Selection:**
   - `gemini-3.5-flash-lite`: Lowest latency and lowest token cost ($0.075/1M tokens); ideal for continuous frame scanning.
-  - `gemini-3.7-flash` / `gemini-3.8-flash`: Balanced multi-modal models for nuanced screen and code reading.
+  - `gemini-3.8-flash`: Balanced multi-modal model for nuanced screen and code reading.
   - `gemini-3.7-pro`: Deep reasoning model for high-stakes exam integrity checks.
 
 ### Biometric Gaze & Face Tracking
@@ -901,7 +901,7 @@ Navigate to **`📊 Analytics` $\to$ `AI Cost`** ([`AiCostReportView.jsx`](file:
 - **Unit Economics:** Average cost per evaluated job (e.g., *$0.0034 / job*).
 
 ### Spend Distribution Graphs
-- **By Gemini Model:** Visual color bars tracking spend across `gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.8-flash`, and `gemini-3.7-pro`.
+- **By Gemini Model:** Visual color bars tracking spend across `gemini-3.5-flash-lite`, `gemini-3.8-flash`, and `gemini-3.7-pro`.
 - **By Job Category:** Spend breakdown across single screenshots, multi-student grids, video screencasts, and audio transcription.
 
 ### Student AI Consumption Table

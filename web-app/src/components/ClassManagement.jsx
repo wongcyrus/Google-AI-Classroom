@@ -2586,9 +2586,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         <div className="form-group">
           <label>Preferred Gemini AI Model</label>
           <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}>
-            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest & Most Economical — $0.30 / $2.50 per 1M)</option>
-            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash (High Accuracy & Balanced — $0.75 / $3.75 per 1M)</option>
-            <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash (Latest Next-Gen — $0.75 / $3.75 per 1M)</option>
+            <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (High Accuracy & Multimodal Reasoning — $0.75 / $3.75 per 1M)</option>
+            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest & Ultra-Low Cost — $0.30 / $2.50 per 1M)</option>
             <option value="gemini-3.7-pro">🔬 Gemini 3.7 Pro (Deep Reasoning & Analytics — $3.00 / $15.00 per 1M)</option>
           </select>
           <p className="input-hint">Default Gemini model used for live invigilation and video analyses for this class.</p>
@@ -3516,25 +3515,25 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 gap: '10px',
                 padding: '12px',
                 borderRadius: '8px',
-                border: lectureAiModel === 'gemini-3.6-flash' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
-                backgroundColor: lectureAiModel === 'gemini-3.6-flash' ? '#eff6ff' : '#ffffff',
+                border: lectureAiModel === 'gemini-3.5-flash-lite' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: lectureAiModel === 'gemini-3.5-flash-lite' ? '#eff6ff' : '#ffffff',
                 cursor: 'pointer',
               }}
             >
               <input
                 type="radio"
                 name="lectureAiModel"
-                value="gemini-3.6-flash"
-                checked={lectureAiModel === 'gemini-3.6-flash'}
-                onChange={() => setLectureAiModel('gemini-3.6-flash')}
+                value="gemini-3.5-flash-lite"
+                checked={lectureAiModel === 'gemini-3.5-flash-lite'}
+                onChange={() => setLectureAiModel('gemini-3.5-flash-lite')}
                 style={{ marginTop: '3px', accentColor: '#3b82f6' }}
               />
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
-                  ⚡ Gemini 3.6 Flash (High Performance)
+                  🚀 Gemini 3.5 Flash-Lite (Economical)
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                  Fast multimodal processing with high token efficiency and strong technical speech recognition.
+                  Ultra-low cost high-throughput multimodal processing with solid speech recognition accuracy.
                 </div>
               </div>
             </label>

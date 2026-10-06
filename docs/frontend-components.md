@@ -247,7 +247,7 @@ flowchart TD
 *   **`exportUtils.js` (Utility)**: Centralized browser export engine implementing genuine Microsoft Excel OpenXML (`.xlsx`) generation via `write-excel-file` and parsing via `read-excel-file` with 100% Unicode Chinese character support, bold headers, auto column widths, formatted JSON blob generation, and plain-text file downloads.
 *   **`AiCostReportView.jsx`**: An interactive financial and token audit dashboard for teachers and administrators. Features:
   * **KPI Metric Cards**: Total spend vs class budget limit, token breakdown (input vs output), total job volume with reliability percentages, and unit economics (cost per job).
-  * **Breakdown by Gemini Model**: Dynamic visual distribution bars for models (`gemini-3.5-flash-lite`, `gemini-3.7-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`).
+  * **Breakdown by Gemini Model**: Dynamic visual distribution bars for models (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.7-pro`, `gemini-3.5-transcribe`).
   * **Breakdown by Job Category**: Screenshot analysis, multi-student grid analysis, video inspection, audio Speech Recognition/diarization, and cloud gaze fallback.
   * **Student AI Consumption Matrix**: Per-student audit table displaying job counts, input/output tokens, total spend, and percentage share of class budget, enriched with student display names and cohorts.
   * **Filter Toolbar & Excel Export**: Real-time filtering by student, job category, model, and date range, with OpenXML `.xlsx` export.

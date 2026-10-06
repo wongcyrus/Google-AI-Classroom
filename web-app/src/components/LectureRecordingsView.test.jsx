@@ -1210,10 +1210,10 @@ describe('LectureRecordingsView Component', () => {
       expect(screen.getByText(/Select Gemini AI Model/i)).toBeInTheDocument();
       expect(screen.getByText(/Target Subtitle & CC Languages/i)).toBeInTheDocument();
 
-      // Switch model to Gemini 3.6 Flash
-      const gemini36Radio = screen.getByRole('radio', { name: /Gemini 3.6 Flash/i });
-      fireEvent.click(gemini36Radio);
-      expect(gemini36Radio).toBeChecked();
+      // Switch model to Gemini 3.5 Flash-Lite
+      const gemini35Radio = screen.getByRole('radio', { name: /Gemini 3.5 Flash-Lite/i });
+      fireEvent.click(gemini35Radio);
+      expect(gemini35Radio).toBeChecked();
 
       // Enter custom prompt in the textarea
       const promptTextarea = screen.getByPlaceholderText(/Select a lecture recording prompt|Select a translation prompt/i);
@@ -1232,7 +1232,7 @@ describe('LectureRecordingsView Component', () => {
           classId: 'test_class',
           sessionId: 'rec_regen_test',
           isManualTrigger: true,
-          preferredModel: 'gemini-3.6-flash',
+          preferredModel: 'gemini-3.5-flash-lite',
           customPrompt: 'Translate Computer Science and Vue.js terms carefully with Cantonese slang.',
           targetLanguages: expect.arrayContaining(['en', 'zh-Hant']),
         })

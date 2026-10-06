@@ -739,7 +739,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
               >
                 <option value="gemini-3.8-flash">gemini-3.8-flash (Standard Multimodal)</option>
                 <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Cost-Optimized)</option>
-                <option value="gemini-3.7-flash">gemini-3.7-flash (Advanced Reasoning)</option>
+                <option value="gemini-3.7-pro">gemini-3.7-pro (Deep Reasoning & Analytics)</option>
               </select>
 
               <div style={{ marginTop: '10px' }}>
