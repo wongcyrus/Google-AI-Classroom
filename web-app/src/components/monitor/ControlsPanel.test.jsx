@@ -1017,5 +1017,48 @@ describe('ControlsPanel Full Component Suite', () => {
     fireEvent.click(visionCopyBtn);
     expect(writeTextSpy).toHaveBeenCalledWith('Classroom activity analysis');
   });
+
+  it('updates inspection interval preset in real-time and persists samplingRate upon saving', async () => {
+    const handleSaveAiSettings = vi.fn().mockResolvedValue();
+    const setSamplingRate = vi.fn();
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        classId="class-test-101"
+        frameRate={10}
+        samplingRate={5}
+        setSamplingRate={setSamplingRate}
+        handleSaveAiSettings={handleSaveAiSettings}
+      />
+    );
+
+    // Open Config Modal
+    fireEvent.click(screen.getByRole('button', { name: /Configure AI Suite/i }));
+
+    // Switch to Screen & Vision
+    fireEvent.click(screen.getByRole('button', { name: /Screen & Vision/i }));
+
+    // Verify initial display: 5 rounds (~50s)
+    expect(screen.getByText(/Every 5 rounds \(~50s\)/i)).toBeInTheDocument();
+
+    // Click 2r (20s) preset button
+    const preset2Btn = screen.getByRole('button', { name: /2r/i });
+    fireEvent.click(preset2Btn);
+
+    // Verify immediate call to setSamplingRate
+    expect(setSamplingRate).toHaveBeenCalledWith(2);
+
+    // Verify updated header and feedback toast
+    expect(screen.getByText(/^Every 2 rounds \(~20s\)$/i)).toBeInTheDocument();
+    expect(screen.getByText(/✓ Frequency set to every 2 rounds \(~20s\)/i)).toBeInTheDocument();
+
+    // Save & Apply to Live Class
+    fireEvent.click(screen.getByRole('button', { name: /Save & Apply to Live Class/i }));
+
+    expect(handleSaveAiSettings).toHaveBeenCalledWith(expect.objectContaining({
+      samplingRate: 2,
+    }));
+  });
 });
 

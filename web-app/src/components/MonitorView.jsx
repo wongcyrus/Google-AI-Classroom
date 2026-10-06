@@ -535,6 +535,12 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         setSelectedAiModel(settings.selectedAiModel);
       }
 
+      if (settings.samplingRate !== undefined) {
+        const parsedSamplingRate = parseInt(settings.samplingRate, 10) || 5;
+        payload.samplingRate = parsedSamplingRate;
+        setSamplingRate(parsedSamplingRate);
+      }
+
       setAiMonitoringMode(payload.aiMonitoringMode);
       setEnableClientAi(payload.enableClientAi);
       setGazeSensitivity(payload.gazeSensitivity);
@@ -686,6 +692,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           const newRate = data.frameRate || 15;
           return newRate === prevRate ? prevRate : newRate;
         });
+        if (data.samplingRate !== undefined) {
+          const loadedSamplingRate = parseInt(data.samplingRate, 10) || 5;
+          setSamplingRate(loadedSamplingRate);
+        }
         setMaxImageSize(prevSize => {
           const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
           return newSize === prevSize ? prevSize : newSize;

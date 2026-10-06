@@ -268,12 +268,27 @@ const ControlsPanel = ({
     const [modalEditableVoicePromptText, setModalEditableVoicePromptText] = useState('');
     const [modalSelectedAiModel, setModalSelectedAiModel] = useState('gemini-3.5-flash-lite');
     const [modalSamplingRate, setModalSamplingRate] = useState(5);
+    const [intervalFeedback, setIntervalFeedback] = useState(null);
     const [modalSelectedVisionPrompt, setModalSelectedVisionPrompt] = useState(null);
     const [modalEditablePromptText, setModalEditablePromptText] = useState('');
     const [copiedVoicePrompt, setCopiedVoicePrompt] = useState(false);
     const [copiedVisionPrompt, setCopiedVisionPrompt] = useState(false);
     const [showVoicePromptModal, setShowVoicePromptModal] = useState(false);
     const [showVisionPromptModal, setShowVisionPromptModal] = useState(false);
+
+    const handleSelectSamplingRate = (val) => {
+      const num = Math.max(1, Math.min(10, Number(val) || 1));
+      setModalSamplingRate(num);
+      if (setSamplingRate) {
+        setSamplingRate(num);
+      }
+      const roundText = num === 1 ? '1 round' : `${num} rounds`;
+      const secs = num * (frameRate || 15);
+      setIntervalFeedback(`✓ Frequency set to every ${roundText} (~${secs}s)`);
+      setTimeout(() => {
+        setIntervalFeedback(null);
+      }, 3500);
+    };
 
     const selectedVisionPromptId = useMemo(() => {
       const activePrompt = modalSelectedVisionPrompt || selectedPrompt || liveImagePrompt;
@@ -343,6 +358,7 @@ const ControlsPanel = ({
 
       setModalSelectedAiModel(selectedAiModel || 'gemini-3.5-flash-lite');
       setModalSamplingRate(samplingRate || 5);
+      setIntervalFeedback(null);
 
       // Vision prompt hydration
       let currentVisionPrompt = selectedPrompt || liveImagePrompt || null;
@@ -438,6 +454,7 @@ const ControlsPanel = ({
           liveAudioPrompt: finalLiveAudioPrompt,
           // Screen / Cloud Model
           selectedAiModel: modalSelectedAiModel,
+          samplingRate: modalSamplingRate,
           liveImagePrompt: finalLiveImagePrompt,
         });
       } else {
@@ -746,7 +763,7 @@ const ControlsPanel = ({
               {/* Modality 2: 🎙️ Voice & Speech Intelligence (Whisper + Gemma) */}
               <div style={{ paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>🎙️ VOICE (Whisper STT):</span>
+                  <span>🎙️ VOICE (Whisper Audio):</span>
                   <span style={{
                     fontSize: '0.7rem',
                     padding: '1px 6px',
@@ -762,7 +779,7 @@ const ControlsPanel = ({
                   </span>
                 </div>
                 <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                  {currentVoiceMode === 'disabled' ? 'Voice STT is deactivated.' : `Stride: ${audioMovingWindowStride || 15}s / ${audioSegmentDuration || 30}s (VAD: ${vadSensitivity || 15}%)`}
+                  {currentVoiceMode === 'disabled' ? 'Voice recognition is deactivated.' : `Stride: ${audioMovingWindowStride || 15}s / ${audioSegmentDuration || 30}s (VAD: ${vadSensitivity || 15}%)`}
                 </div>
               </div>
 
@@ -1801,31 +1818,74 @@ const ControlsPanel = ({
                       min="1"
                       max="10"
                       value={modalSamplingRate}
-                      onChange={(e) => setModalSamplingRate(Number(e.target.value))}
+                      onChange={(e) => handleSelectSamplingRate(Number(e.target.value))}
                       style={{ width: '100%', accentColor: '#4f46e5' }}
+                      aria-label="Inspection Interval Slider"
                     />
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                      {[1, 2, 3, 5, 10].map(val => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setModalSamplingRate(val)}
-                          style={{
-                            flex: 1,
-                            padding: '4px 0',
-                            fontSize: '0.75rem',
-                            borderRadius: '4px',
-                            border: modalSamplingRate === val ? '1px solid #4f46e5' : '1px solid #cbd5e1',
-                            background: modalSamplingRate === val ? '#ede9fe' : '#ffffff',
-                            color: modalSamplingRate === val ? '#4338ca' : '#475569',
-                            fontWeight: modalSamplingRate === val ? 700 : 500,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {val}r ({val * (frameRate || 15)}s)
-                        </button>
-                      ))}
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                      {[1, 2, 3, 5, 10].map(val => {
+                        const isSelected = modalSamplingRate === val;
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => handleSelectSamplingRate(val)}
+                            aria-pressed={isSelected}
+                            style={{
+                              flex: 1,
+                              padding: '6px 2px',
+                              fontSize: '0.75rem',
+                              borderRadius: '6px',
+                              border: isSelected ? '2px solid #4f46e5' : '1px solid #cbd5e1',
+                              background: isSelected ? '#4f46e5' : '#ffffff',
+                              color: isSelected ? '#ffffff' : '#334155',
+                              fontWeight: isSelected ? 700 : 500,
+                              cursor: 'pointer',
+                              boxShadow: isSelected ? '0 2px 4px rgba(79, 70, 229, 0.25)' : 'none',
+                              transition: 'all 0.15s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '2px'
+                            }}
+                          >
+                            {isSelected ? '✓ ' : ''}{val}r ({val * (frameRate || 15)}s)
+                          </button>
+                        );
+                      })}
                     </div>
+                    {intervalFeedback && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        color: '#065f46',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <span>{intervalFeedback}</span>
+                      </div>
+                    )}
+                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: '#64748b' }}>
+                      <span>
+                        {isPerImageAnalysisRunning || isAllImagesAnalysisRunning ? (
+                          <strong style={{ color: '#16a34a' }}>🟢 Active Stream: Inspecting every {modalSamplingRate * (frameRate || 15)}s</strong>
+                        ) : (
+                          <span>⚪ Stream Status: <strong>Idle</strong> (Audits run every {modalSamplingRate * (frameRate || 15)}s when started)</span>
+                        )}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 600 }}>
+                        ⚡ Real-time synced
+                      </span>
+                    </div>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4, borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
+                      💡 <strong>Client-Side Live Stream:</strong> AI inspections run in real time from your active instructor dashboard during class. Leaving this page or stopping the stream halts inspections immediately to prevent unintended cloud AI charges.
+                    </p>
                   </div>
 
                   {/* Prompt Selection & Read-Only Preview */}
@@ -1983,7 +2043,15 @@ const ControlsPanel = ({
                   </div>
 
                   {/* Stream & Run Trigger Controls */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#1e293b' }}>
+                        ⚡ Live Stream & Audit Actions:
+                      </label>
+                      <span style={{ fontSize: '0.74rem', color: '#4f46e5', fontWeight: 600 }}>
+                        Interval: Every {modalSamplingRate * (frameRate || 15)}s
+                      </span>
+                    </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         type="button"
