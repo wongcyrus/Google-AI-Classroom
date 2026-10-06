@@ -8,6 +8,7 @@ import {
   formatTimeShort,
   formatDateBrief,
   isSameCalendarDay,
+  isDemoClass,
 } from './classRankingUtils';
 
 describe('classRankingUtils', () => {
@@ -285,4 +286,47 @@ describe('classRankingUtils', () => {
       expect(defaultRes.map((c) => c.id)).toEqual(['c_live', 'c_today']);
     });
   });
+
+  describe('isDemoClass', () => {
+    it('returns true when id or name contains demo (case-insensitive)', () => {
+      expect(isDemoClass({ id: 'IT114115-Demo', name: 'IT114115 Demo Class' })).toBe(true);
+      expect(isDemoClass({ id: 'demo-class-123', name: 'Programming 101' })).toBe(true);
+      expect(isDemoClass({ id: 'real-class', name: 'My DEMO Session' })).toBe(true);
+    });
+
+    it('returns true when isDemo or isDemoClass flag is true', () => {
+      expect(isDemoClass({ id: 'c1', name: 'Course 1', isDemo: true })).toBe(true);
+      expect(isDemoClass({ id: 'c2', name: 'Course 2', isDemoClass: true })).toBe(true);
+    });
+
+    it('returns true when class has 24/7 all-day schedule (00:00 - 23:59)', () => {
+      expect(isDemoClass({
+        id: 'sandbox-1',
+        name: 'Sandbox Environment',
+        _scheduleStatus: { timeStr: '00:00 - 23:59' },
+      })).toBe(true);
+
+      expect(isDemoClass({
+        id: 'sandbox-2',
+        name: 'Always On Testing Room',
+        schedule: {
+          timeSlots: [{ startTime: '00:00', endTime: '23:59', days: ['Mon', 'Tue'] }],
+        },
+      })).toBe(true);
+    });
+
+    it('returns false for real classes with regular timetables', () => {
+      expect(isDemoClass({ id: 'it114115-2026-s1-ite3101-1c', name: 'Introduction to Programming C' })).toBe(false);
+      expect(isDemoClass({
+        id: 'it114115-2026-s1-ite3101-1c',
+        name: 'Introduction to Programming C',
+        _scheduleStatus: { timeStr: '09:30 - 11:30' },
+        schedule: {
+          timeSlots: [{ startTime: '09:30', endTime: '11:30', days: ['Mon'] }],
+        },
+      })).toBe(false);
+      expect(isDemoClass(null)).toBe(false);
+    });
+  });
 });
+

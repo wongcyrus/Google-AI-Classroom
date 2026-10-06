@@ -3,6 +3,7 @@ import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
 import { auth } from '../firebase-config';
 import PresentationQrModal from './broadcast/PresentationQrModal';
+import { isDemoClass } from '../utils/classRankingUtils';
 import './TeacherScreenBroadcastModal.css';
 
 const RESOLUTION_OPTIONS = [
@@ -432,7 +433,7 @@ export default function TeacherScreenBroadcastModal({
           </div>
 
           {/* Schedule Mismatch Warning Banner if another class is live now */}
-          {activeLiveClass && activeLiveClass.id !== classId && (
+          {activeLiveClass && activeLiveClass.id !== classId && !isDemoClass(activeLiveClass) && (
             <div className="broadcast-schedule-warning-banner" role="alert">
               <div className="broadcast-schedule-warning-icon">⚠️</div>
               <div className="broadcast-schedule-warning-content">
@@ -1186,7 +1187,7 @@ export default function TeacherScreenBroadcastModal({
           </button>
         </div>
 
-        {activeLiveClass && activeLiveClass.id !== classId && (
+        {activeLiveClass && activeLiveClass.id !== classId && !isDemoClass(activeLiveClass) && (
           <div className="broadcast-schedule-warning-banner" role="alert" style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
             <div className="broadcast-schedule-warning-icon">⚠️</div>
             <div className="broadcast-schedule-warning-content">

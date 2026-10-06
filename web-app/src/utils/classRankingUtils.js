@@ -447,3 +447,24 @@ export const filterAndSortClasses = (classes = [], {
 
   return sorted;
 };
+
+/**
+ * Checks if a class is a sandbox/demo class or has an artificial 24/7 all-day schedule.
+ * Demo classes should never trigger active live class warning banners or timetable switch alerts.
+ * 
+ * @param {Object} cls
+ * @returns {boolean}
+ */
+export const isDemoClass = (cls) => {
+  if (!cls) return false;
+  const id = (cls.id || '').toLowerCase();
+  const name = (cls.name || '').toLowerCase();
+  if (id.includes('demo') || name.includes('demo')) return true;
+  if (cls.isDemo || cls.isDemoClass) return true;
+  const timeStr = cls._scheduleStatus?.timeStr || '';
+  if (timeStr.includes('00:00 - 23:59')) return true;
+  const slots = cls.schedule?.timeSlots;
+  if (Array.isArray(slots) && slots.some((s) => s.startTime === '00:00' && s.endTime === '23:59')) return true;
+  return false;
+};
+

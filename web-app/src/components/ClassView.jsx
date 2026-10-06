@@ -5,7 +5,7 @@ import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/fire
 
 // Refactored Imports
 import { useClassSchedule } from '../hooks/useClassSchedule';
-import { compareClassesBySchedule, getClassScheduleStatus } from '../utils/classRankingUtils';
+import { compareClassesBySchedule, getClassScheduleStatus, isDemoClass } from '../utils/classRankingUtils';
 import DateRangeFilter from './DateRangeFilter';
 
 // Component Imports
@@ -140,7 +140,7 @@ const ClassView = ({ user }) => {
     }).catch(err => console.error('Error fetching teacher classes:', err));
   }, [user, currentTime]);
 
-  // Alert when current open class is NOT live, but another enrolled class IS actively Live Now
+  // Alert when current open class is NOT live, but another enrolled class IS actively Live Now (excluding demo classes)
   const liveClassWarning = useMemo(() => {
     if (!classId || teacherClasses.length <= 1) return null;
     const currentClass = teacherClasses.find((c) => c.id === classId);
@@ -148,7 +148,7 @@ const ClassView = ({ user }) => {
     if (isCurrentLive) return null;
 
     const liveOtherClass = teacherClasses.find(
-      (c) => c.id !== classId && c._scheduleStatus?.tier === 1
+      (c) => c.id !== classId && c._scheduleStatus?.tier === 1 && !isDemoClass(c)
     );
     if (liveOtherClass && liveOtherClass.id !== dismissedLiveClassId) {
       return liveOtherClass;
