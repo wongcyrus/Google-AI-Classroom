@@ -700,7 +700,14 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           const newSize = data.maxImageSize || 0.1 * 1024 * 1024;
           return newSize === prevSize ? prevSize : newSize;
         });
-        setIsCapturing(data.isCapturing || false);
+        setIsCapturing(prev => {
+          const serverCapturing = Boolean(data.isCapturing);
+          if (prev && !serverCapturing) {
+            setIsPerImageAnalysisRunning(false);
+            setIsAllImagesAnalysisRunning(false);
+          }
+          return serverCapturing;
+        });
         if (data.aiMonitoringMode !== undefined) {
           setAiMonitoringMode(data.aiMonitoringMode);
         }
@@ -1149,7 +1156,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   // Decoupled Per-Image AI Analysis Effect
   useEffect(() => {
-    if (!isPerImageAnalysisRunning || isPaused || reviewTime || studentStatuses.length === 0) return;
+    if (!isCapturing || !isPerImageAnalysisRunning || isPaused || reviewTime || studentStatuses.length === 0) return;
 
     const currentNow = Date.now();
     const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
@@ -1202,10 +1209,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
       }
     }
-  }, [studentStatuses, screenshots, isPerImageAnalysisRunning, isPaused, reviewTime, frameRate, samplingRate, editablePromptText, selectedPrompt, selectedAiModel, uidToEmailMap, runPerImageAnalysis]);
+  }, [isCapturing, studentStatuses, screenshots, isPerImageAnalysisRunning, isPaused, reviewTime, frameRate, samplingRate, editablePromptText, selectedPrompt, selectedAiModel, uidToEmailMap, runPerImageAnalysis]);
 
   useEffect(() => {
-    if (!isAllImagesAnalysisRunning) {
+    if (!isCapturing || !isAllImagesAnalysisRunning) {
       lastAllImagesRunTimeRef.current = 0;
       return;
     }
@@ -1268,7 +1275,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     const intervalId = setInterval(performAllImagesAnalysis, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedPrompt, selectedAiModel]);
+  }, [isCapturing, isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedPrompt, selectedAiModel]);
 
   const handleSendMessage = async (customText = null) => {
     const textToSend = typeof customText === 'string' ? customText : message;
@@ -1429,6 +1436,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       });
 
       if (!newIsCapturing) {
+        setIsPerImageAnalysisRunning(false);
+        setIsAllImagesAnalysisRunning(false);
         // Teacher stopped capture: immediately clean up active bingo and pending retries
         try {
           const cancelFn = httpsCallable(functions, 'cancelActiveBingo');
