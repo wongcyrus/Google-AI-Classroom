@@ -12,6 +12,7 @@ import {
   getLessonId,
   mergeAttendanceData,
 } from '../utils/attendanceUtils';
+import './AttendanceView.css';
 
 const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, timezone }) => {
   const [attendanceData, setAttendanceData] = useState([]);
@@ -39,6 +40,120 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     const lessonStudents = lessonData?.students || [];
     return mergeAttendanceData(attendanceData, lessonStudents, lessonDurationInMinutes);
   }, [attendanceData, lessonData, lessonDurationInMinutes]);
+
+  // Client-side search, filtering, and sorting state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'present' | 'absent' | 'deducted'
+  const [sortBy, setSortBy] = useState('name'); // 'name' | 'email' | 'screenMinutes' | 'screenPercentage' | 'workingMinutes' | 'workingPercentage'
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
+
+  const statusCounts = useMemo(() => {
+    let presentCount = 0;
+    let absentCount = 0;
+    let deductedCount = 0;
+    for (const s of combinedData) {
+      if ((s.totalMinutes ?? 0) > 0) presentCount++;
+      else absentCount++;
+      if (Array.isArray(s.attendance) && s.attendance.includes(2)) deductedCount++;
+    }
+    return {
+      all: combinedData.length,
+      present: presentCount,
+      absent: absentCount,
+      deducted: deductedCount,
+    };
+  }, [combinedData]);
+
+  const filteredAndSortedData = useMemo(() => {
+    let list = [...combinedData];
+
+    // 1. Text Search Filter (Display Name, Email, Student Class, Programme)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((s) => {
+        const prof = getStudentProfile(s.email, studentProfiles);
+        const displayName = getStudentDisplayName(s.email, studentProfiles);
+        return (
+          (displayName && displayName.toLowerCase().includes(q)) ||
+          (s.email && s.email.toLowerCase().includes(q)) ||
+          (prof?.studentClass && prof.studentClass.toLowerCase().includes(q)) ||
+          (prof?.programme && prof.programme.toLowerCase().includes(q))
+        );
+      });
+    }
+
+    // 2. Attendance Status Filter
+    if (statusFilter === 'present') {
+      list = list.filter((s) => (s.totalMinutes ?? 0) > 0);
+    } else if (statusFilter === 'absent') {
+      list = list.filter((s) => (s.totalMinutes ?? 0) === 0);
+    } else if (statusFilter === 'deducted') {
+      list = list.filter((s) => Array.isArray(s.attendance) && s.attendance.includes(2));
+    }
+
+    // 3. Sorting
+    list.sort((a, b) => {
+      if (sortBy === 'name') {
+        const nameA = (getStudentDisplayName(a.email, studentProfiles) || a.email || '').toLowerCase();
+        const nameB = (getStudentDisplayName(b.email, studentProfiles) || b.email || '').toLowerCase();
+        const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      if (sortBy === 'email') {
+        const emailA = (a.email || '').toLowerCase();
+        const emailB = (b.email || '').toLowerCase();
+        const cmp = emailA.localeCompare(emailB, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      let diff = 0;
+      if (sortBy === 'screenMinutes') {
+        const minA = a.totalMinutes ?? -1;
+        const minB = b.totalMinutes ?? -1;
+        diff = minA - minB;
+      } else if (sortBy === 'screenPercentage') {
+        const pctA = parseFloat(a.percentage) || 0;
+        const pctB = parseFloat(b.percentage) || 0;
+        diff = pctA - pctB;
+      } else if (sortBy === 'workingMinutes') {
+        const workA = a.workingMinutes ?? -1;
+        const workB = b.workingMinutes ?? -1;
+        diff = workA - workB;
+      } else if (sortBy === 'workingPercentage') {
+        const workPctA = a.workingMinutes != null && lessonDurationInMinutes > 0 ? (a.workingMinutes / lessonDurationInMinutes) : -1;
+        const workPctB = b.workingMinutes != null && lessonDurationInMinutes > 0 ? (b.workingMinutes / lessonDurationInMinutes) : -1;
+        diff = workPctA - workPctB;
+      }
+
+      return sortDirection === 'asc' ? diff : -diff;
+    });
+
+    return list;
+  }, [combinedData, searchQuery, statusFilter, sortBy, sortDirection, studentProfiles, lessonDurationInMinutes]);
+
+  const handleSortClick = (columnKey) => {
+    if (sortBy === columnKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(columnKey);
+      setSortDirection(columnKey === 'name' || columnKey === 'email' ? 'asc' : 'desc');
+    }
+  };
+
+  const renderSortIndicator = (columnKey) => {
+    if (sortBy !== columnKey) {
+      return <span className="sort-indicator-inactive" aria-hidden="true">⇅</span>;
+    }
+    return <span className="sort-indicator-active" aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>;
+  };
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setSortBy('name');
+    setSortDirection('asc');
+  };
 
   const filename = `attendance-${classId}-${formatFilenameDate(effectiveStart)}-${formatFilenameDate(effectiveEnd)}.xlsx`;
 
@@ -137,7 +252,8 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   }, [selectedLesson, classId, effectiveStart, effectiveEnd, lessonDurationInMinutes, timezone]);
 
   const handleExportToExcel = async () => {
-    if (combinedData.length === 0) return;
+    const targetData = filteredAndSortedData.length > 0 ? filteredAndSortedData : combinedData;
+    if (targetData.length === 0) return;
 
     const headers = [
       "Student Display Name",
@@ -155,7 +271,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
       ...Array.from({ length: lessonDurationInMinutes }, (_, i) => `Min ${i + 1}`)
     ];
 
-    const rows = combinedData.map(studentData => {
+    const rows = targetData.map(studentData => {
       const prof = getStudentProfile(studentData.email, studentProfiles);
       const displayName = getStudentDisplayName(studentData.email, studentProfiles);
       const row = [
@@ -185,113 +301,272 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   const minuteKeys = lessonDurationInMinutes > 0 ? Array.from({ length: lessonDurationInMinutes }, (_, i) => i + 1) : [];
 
   return (
-    <div style={{ height: 'calc(100vh - 200px)', width: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flexShrink: 0 }}>
-        <h2>
-          Attendance & AI Analysis
-          <button onClick={handleFetchAttendance} style={{ marginLeft: '20px' }} disabled={loadingAttendance}>
+    <div className="attendance-view-container">
+      <div className="attendance-header-card">
+        <h2 className="attendance-title">
+          <span>📅</span> Attendance & AI Analysis
+        </h2>
+        <div className="attendance-actions">
+          <button
+            type="button"
+            className="attendance-btn attendance-btn-primary"
+            onClick={handleFetchAttendance}
+            disabled={loadingAttendance}
+          >
             {loadingAttendance ? 'Calculating...' : 'Calculate Live Attendance'}
           </button>
-          <button onClick={handleExportToExcel} style={{ marginLeft: '10px' }} disabled={combinedData.length === 0}>Export to Excel</button>
-        </h2>
+          <button
+            type="button"
+            className="attendance-btn attendance-btn-secondary"
+            onClick={handleExportToExcel}
+            disabled={combinedData.length === 0}
+          >
+            Export to Excel
+          </button>
+        </div>
       </div>
-      <div style={{ flexGrow: 1, overflowY: 'auto' }}>
-        {(loadingAttendance || loadingLessonData) && <p>Loading data...</p>}
-        {combinedData.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 600 }}>Legend:</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#2ECC71', borderRadius: '2px' }}></span>
-                Present (Verified)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#f97316', borderRadius: '2px' }}></span>
-                Deducted (Failed Bingo Checks)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ display: 'inline-block', width: '14px', height: '14px', background: '#FADBD8', borderRadius: '2px' }}></span>
-                Absent (No Screen Share)
-              </span>
-              <a
-                href={`/class/${classId}?tab=analytics&sub=bingo`}
-                style={{
-                  marginLeft: 'auto',
-                  fontSize: '0.82rem',
-                  color: '#2563eb',
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                }}
-                title="Review questions, student choices, and answer latency"
-              >
-                <span>🎲</span> View Bingo Presence Report &rarr;
-              </a>
-            </div>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Student</th>
-                  <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Screen Share Minutes</th>
-                  <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>Screen Share Percentage</th>
-                  <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>AI Estimated Working Minutes</th>
-                  <th style={{ border: '1px solid #ddd', padding: '8px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>AI Estimated Percentage</th>
-                  {minuteKeys.map(minute => (
-                    <th key={minute} style={{ border: '1px solid #ddd', padding: '8px', minWidth: '25px', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>{minute}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {combinedData.map(student => (
-                  <tr key={student.email} onClick={() => setSelectedStudent(student)} style={{ cursor: 'pointer' }}>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                      <StudentBadge
-                        student={{
-                          email: student.email,
-                          ...(studentProfiles[student.email?.toLowerCase()] || {})
-                        }}
-                        showEmail={true}
-                        size="sm"
-                      />
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.totalMinutes ?? 'N/A'}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.percentage ?? 'N/A'}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>{student.workingMinutes ?? 'N/A'}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '8px' }}>
-                      {student.workingMinutes && lessonDurationInMinutes > 0 ? `${((student.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2)}%` : 'N/A'}
-                    </td>
-                    {student.attendance.map((present, index) => {
-                      const isPresent = present === 1;
-                      const isVoided = present === 2;
-                      const bg = isPresent ? '#2ECC71' : isVoided ? '#f97316' : '#FADBD8';
-                      const titleText = isPresent
-                        ? `Min ${index + 1}: Present (Verified)`
-                        : isVoided
-                        ? `Min ${index + 1}: Deducted (Failed consecutive Bingo checks)`
-                        : `Min ${index + 1}: Absent (No screen share)`;
 
-                      return (
-                        <td
-                          key={index}
-                          title={titleText}
-                          style={{
-                            border: '1px solid #ddd',
-                            backgroundColor: bg,
-                            backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
-                            width: '25px',
-                            height: '25px',
-                          }}
-                        ></td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : !(loadingAttendance || loadingLessonData) && <p>Click the button to calculate live attendance. No data available.</p>}
+      <div className="attendance-content-card">
+        {(loadingAttendance || loadingLessonData) && <p className="attendance-loading-notice">Loading data...</p>}
+        {combinedData.length > 0 ? (
+          <>
+            <div className="attendance-toolbar">
+              <div className="attendance-filter-row">
+                <div className="attendance-search-wrapper">
+                  <span className="attendance-search-icon">🔍</span>
+                  <input
+                    type="text"
+                    className="attendance-search-input"
+                    placeholder="Search student name, email, class..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      className="attendance-search-clear"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="attendance-status-pills">
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    All ({statusCounts.all})
+                  </button>
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'present' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('present')}
+                  >
+                    <span className="attendance-legend-color" style={{ background: '#2ECC71' }}></span>
+                    Present ({statusCounts.present})
+                  </button>
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'absent' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('absent')}
+                  >
+                    <span className="attendance-legend-color" style={{ background: '#FADBD8' }}></span>
+                    Absent ({statusCounts.absent})
+                  </button>
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'deducted' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('deducted')}
+                  >
+                    <span className="attendance-legend-color" style={{ background: '#f97316' }}></span>
+                    Deducted ({statusCounts.deducted})
+                  </button>
+                </div>
+              </div>
+
+              <div className="attendance-sort-row">
+                <div className="attendance-sort-controls">
+                  <label htmlFor="attendance-sort-select" className="attendance-sort-label">Sort by:</label>
+                  <select
+                    id="attendance-sort-select"
+                    className="attendance-sort-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                  >
+                    <option value="name">Student Name</option>
+                    <option value="email">Email</option>
+                    <option value="screenMinutes">Screen Share Minutes</option>
+                    <option value="screenPercentage">Screen Share %</option>
+                    <option value="workingMinutes">AI Working Minutes</option>
+                    <option value="workingPercentage">AI Working %</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="attendance-direction-btn"
+                    onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    title={`Current: ${sortDirection === 'asc' ? 'Ascending (A-Z or Low-High)' : 'Descending (Z-A or High-Low)'}. Click to toggle.`}
+                  >
+                    {sortDirection === 'asc' ? '↑ Asc' : '↓ Desc'}
+                  </button>
+                </div>
+
+                <div className="attendance-count-badge">
+                  <span>Showing <strong>{filteredAndSortedData.length}</strong> of <strong>{combinedData.length}</strong> students</span>
+                  {(searchQuery || statusFilter !== 'all' || sortBy !== 'name' || sortDirection !== 'asc') && (
+                    <button type="button" className="attendance-reset-link" onClick={handleResetFilters}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="attendance-table-container">
+              <div className="attendance-legend-bar">
+                <span style={{ fontWeight: 600 }}>Legend:</span>
+                <span className="attendance-legend-item">
+                  <span className="attendance-legend-color" style={{ background: '#2ECC71' }}></span>
+                  Present (Verified)
+                </span>
+                <span className="attendance-legend-item">
+                  <span className="attendance-legend-color" style={{ background: '#f97316' }}></span>
+                  Deducted (Failed Bingo Checks)
+                </span>
+                <span className="attendance-legend-item">
+                  <span className="attendance-legend-color" style={{ background: '#FADBD8' }}></span>
+                  Absent (No Screen Share)
+                </span>
+                <a
+                  href={`/class/${classId}?tab=analytics&sub=bingo`}
+                  className="attendance-bingo-link"
+                  title="Review questions, student choices, and answer latency"
+                >
+                  <span>🎲</span> View Bingo Presence Report &rarr;
+                </a>
+              </div>
+
+              {filteredAndSortedData.length > 0 ? (
+                <table className="attendance-table">
+                  <thead>
+                    <tr>
+                      <th
+                        className={`sortable-header ${sortBy === 'name' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('name')}
+                        title="Click to sort by student name"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('name'); }}
+                      >
+                        Student {renderSortIndicator('name')}
+                      </th>
+                      <th
+                        className={`sortable-header ${sortBy === 'screenMinutes' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('screenMinutes')}
+                        title="Click to sort by screen share minutes"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenMinutes'); }}
+                      >
+                        Screen Share Minutes {renderSortIndicator('screenMinutes')}
+                      </th>
+                      <th
+                        className={`sortable-header ${sortBy === 'screenPercentage' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('screenPercentage')}
+                        title="Click to sort by screen share percentage"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenPercentage'); }}
+                      >
+                        Screen Share Percentage {renderSortIndicator('screenPercentage')}
+                      </th>
+                      <th
+                        className={`sortable-header ${sortBy === 'workingMinutes' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('workingMinutes')}
+                        title="Click to sort by AI estimated working minutes"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('workingMinutes'); }}
+                      >
+                        AI Estimated Working Minutes {renderSortIndicator('workingMinutes')}
+                      </th>
+                      <th
+                        className={`sortable-header ${sortBy === 'workingPercentage' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('workingPercentage')}
+                        title="Click to sort by AI estimated percentage"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('workingPercentage'); }}
+                      >
+                        AI Estimated Percentage {renderSortIndicator('workingPercentage')}
+                      </th>
+                      {minuteKeys.map(minute => (
+                        <th key={minute} style={{ minWidth: '25px', textAlign: 'center' }}>{minute}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedData.map(student => (
+                      <tr key={student.email} onClick={() => setSelectedStudent(student)}>
+                        <td>
+                          <StudentBadge
+                            student={{
+                              email: student.email,
+                              ...(studentProfiles[student.email?.toLowerCase()] || {})
+                            }}
+                            showEmail={true}
+                            size="sm"
+                          />
+                        </td>
+                        <td>{student.totalMinutes ?? 'N/A'}</td>
+                        <td>{student.percentage ?? 'N/A'}</td>
+                        <td>{student.workingMinutes ?? 'N/A'}</td>
+                        <td>
+                          {student.workingMinutes && lessonDurationInMinutes > 0 ? `${((student.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2)}%` : 'N/A'}
+                        </td>
+                        {student.attendance.map((present, index) => {
+                          const isPresent = present === 1;
+                          const isVoided = present === 2;
+                          const bg = isPresent ? '#2ECC71' : isVoided ? '#f97316' : '#FADBD8';
+                          const titleText = isPresent
+                            ? `Min ${index + 1}: Present (Verified)`
+                            : isVoided
+                            ? `Min ${index + 1}: Deducted (Failed consecutive Bingo checks)`
+                            : `Min ${index + 1}: Absent (No screen share)`;
+
+                          return (
+                            <td
+                              key={index}
+                              title={titleText}
+                              style={{
+                                backgroundColor: bg,
+                                backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
+                                width: '25px',
+                                height: '25px',
+                                minWidth: '25px',
+                                padding: 0,
+                              }}
+                            ></td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="attendance-empty-notice">
+                  <p>No students match your filter or search criteria.</p>
+                  <button type="button" className="attendance-btn attendance-btn-secondary" onClick={handleResetFilters} style={{ marginTop: '0.5rem' }}>
+                    Reset Filters
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        ) : !(loadingAttendance || loadingLessonData) && <p className="attendance-empty-notice">Click the button to calculate live attendance. No data available.</p>}
       </div>
 
       <Modal show={!!selectedStudent} onClose={() => setSelectedStudent(null)} title={`AI Analysis for ${getStudentDisplayName(selectedStudent?.email, studentProfiles)}`}>

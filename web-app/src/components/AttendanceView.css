@@ -1,0 +1,377 @@
+/* AttendanceView.css */
+
+.attendance-view-container {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.attendance-header-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background-color: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  padding: 0.85rem 1.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.attendance-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-main, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attendance-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.attendance-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.attendance-btn-primary {
+  background: var(--color-primary, #4f46e5);
+  color: #ffffff;
+}
+
+.attendance-btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover, #4338ca);
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+}
+
+.attendance-btn-secondary {
+  background: var(--color-surface, #ffffff);
+  border-color: var(--color-border, #cbd5e1);
+  color: var(--color-text-main, #334155);
+}
+
+.attendance-btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover, #f8fafc);
+  border-color: #94a3b8;
+}
+
+.attendance-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.attendance-content-card {
+  background-color: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* Attendance Toolbar (Filter & Sort) */
+.attendance-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.attendance-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.attendance-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 240px;
+  max-width: 380px;
+}
+
+.attendance-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #94a3b8);
+  pointer-events: none;
+}
+
+.attendance-search-input {
+  width: 100%;
+  padding: 0.45rem 2rem 0.45rem 2.2rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #0f172a);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.attendance-search-input:focus {
+  border-color: var(--color-primary, #4f46e5);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.attendance-search-clear {
+  position: absolute;
+  right: 0.6rem;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 0.2rem;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.attendance-search-clear:hover {
+  color: var(--color-text-main, #0f172a);
+}
+
+.attendance-status-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.attendance-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-text-muted, #475569);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.attendance-filter-pill:hover {
+  background: var(--color-surface-hover, #f8fafc);
+  border-color: #94a3b8;
+  color: var(--color-text-main, #0f172a);
+}
+
+.attendance-filter-pill.active {
+  background: var(--color-primary-light, #ede9fe);
+  border-color: var(--color-primary, #6366f1);
+  color: var(--color-primary, #4338ca);
+  font-weight: 600;
+}
+
+.attendance-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+
+.attendance-sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.attendance-sort-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+}
+
+.attendance-sort-select {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #0f172a);
+  outline: none;
+  cursor: pointer;
+}
+
+.attendance-sort-select:focus {
+  border-color: var(--color-primary, #4f46e5);
+}
+
+.attendance-direction-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-border, #cbd5e1);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-text-main, #334155);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.attendance-direction-btn:hover {
+  background: var(--color-surface-hover, #f8fafc);
+  border-color: #94a3b8;
+}
+
+.attendance-count-badge {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.attendance-reset-link {
+  color: var(--color-primary, #4f46e5);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.attendance-legend-bar {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.attendance-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  color: var(--color-text-main, #334155);
+}
+
+.attendance-legend-color {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.attendance-bingo-link {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.attendance-bingo-link:hover {
+  text-decoration: underline;
+}
+
+.attendance-table-container {
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.attendance-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.attendance-table th,
+.attendance-table td {
+  border: 1px solid var(--color-border, #e2e8f0);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.attendance-table th {
+  background-color: var(--color-surface-hover, #f8fafc);
+  font-weight: 600;
+  color: var(--color-text-main, #1e293b);
+  white-space: nowrap;
+}
+
+/* Clickable Table Header Sort Styling */
+.attendance-table th.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s ease;
+}
+
+.attendance-table th.sortable-header:hover {
+  background-color: #ede9fe;
+  color: var(--color-primary, #4338ca);
+}
+
+.attendance-table th.sortable-header.is-sorted {
+  background-color: #ede9fe;
+  color: var(--color-primary, #4338ca);
+}
+
+.sort-indicator-active {
+  margin-left: 0.35rem;
+  color: var(--color-primary, #4f46e5);
+  font-size: 0.75rem;
+}
+
+.sort-indicator-inactive {
+  margin-left: 0.35rem;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+}
+
+.attendance-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.attendance-table tbody tr:hover {
+  background-color: var(--color-surface-hover, #f8fafc);
+}
+
+.attendance-empty-notice,
+.attendance-loading-notice {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--color-text-muted, #64748b);
+  font-size: 0.95rem;
+}

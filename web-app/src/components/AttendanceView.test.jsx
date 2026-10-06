@@ -195,4 +195,144 @@ describe('AttendanceView Component Suite', () => {
     expect(screen.getByText(/Deducted \(Failed Bingo Checks\)/i)).toBeInTheDocument();
     expect(screen.getByTitle('Min 2: Deducted (Failed consecutive Bingo checks)')).toBeInTheDocument();
   });
+
+  it('supports client-side search filtering by student name or email', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u1: { sharedScreenMinutes: 40, workingMinutes: 30, attendance: [1, 1, 0] },
+            u2: { sharedScreenMinutes: 0, workingMinutes: 0, attendance: [0, 0, 0] },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u1: 'alice@school.edu', u2: 'bob@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00"
+        endTime="2026-08-30T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Search student name, email, class/i);
+    fireEvent.change(searchInput, { target: { value: 'alice' } });
+
+    expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+    expect(screen.queryByText('bob@school.edu')).not.toBeInTheDocument();
+
+    const clearBtn = screen.getByRole('button', { name: /Clear search/i });
+    fireEvent.click(clearBtn);
+
+    expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+  });
+
+  it('supports filtering by status pills (Present vs Absent)', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u1: { sharedScreenMinutes: 40, workingMinutes: 30, attendance: [1, 1, 0] },
+            u2: { sharedScreenMinutes: 0, workingMinutes: 0, attendance: [0, 0, 0] },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u1: 'alice@school.edu', u2: 'bob@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00"
+        endTime="2026-08-30T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    });
+
+    // Click Absent pill
+    const absentPill = screen.getByRole('button', { name: /Absent/i });
+    fireEvent.click(absentPill);
+
+    expect(screen.queryByText('alice@school.edu')).not.toBeInTheDocument();
+    expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+
+    // Click Present pill
+    const presentPill = screen.getByRole('button', { name: /Present/i });
+    fireEvent.click(presentPill);
+
+    expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+    expect(screen.queryByText('bob@school.edu')).not.toBeInTheDocument();
+  });
+
+  it('supports sorting when clicking sortable table headers', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u1: { sharedScreenMinutes: 10, workingMinutes: 10, attendance: [1, 0, 0] },
+            u2: { sharedScreenMinutes: 50, workingMinutes: 45, attendance: [1, 1, 1] },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u1: 'alice@school.edu', u2: 'bob@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00"
+        endTime="2026-08-30T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    });
+
+    // Click Screen Share Minutes header
+    const screenMinutesTh = screen.getByTitle(/Click to sort by screen share minutes/i);
+    fireEvent.click(screenMinutesTh);
+
+    const rows = screen.getAllByRole('row');
+    // First data row (index 1) should now be bob (50 min > 10 min)
+    expect(rows[1]).toHaveTextContent('bob@school.edu');
+    expect(rows[2]).toHaveTextContent('alice@school.edu');
+
+    // Click again to toggle ascending
+    fireEvent.click(screenMinutesTh);
+    const toggledRows = screen.getAllByRole('row');
+    expect(toggledRows[1]).toHaveTextContent('alice@school.edu');
+    expect(toggledRows[2]).toHaveTextContent('bob@school.edu');
+  });
 });
