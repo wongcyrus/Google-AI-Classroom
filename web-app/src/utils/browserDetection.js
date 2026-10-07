@@ -220,6 +220,18 @@ export const getAndroidChromeIntentUrl = (targetUrl) => {
 };
 
 /**
+ * Generates an Android Camera Intent URI to launch the device's native camera app.
+ * In Android Chrome, navigating to or tapping an intent with action STILL_IMAGE_CAMERA
+ * directly opens the default camera application in photo/scan mode so the student
+ * can scan the active live QR code displayed on the classroom screen.
+ * 
+ * @returns {string} Intent URI formatted for android.media.action.STILL_IMAGE_CAMERA
+ */
+export const getAndroidCameraAppIntentUrl = () => {
+  return 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end';
+};
+
+/**
  * Detects whether the current device is a tablet (iPad or Android tablet/pad).
  * 
  * @param {string} [customUserAgent] - Optional user agent string for testing

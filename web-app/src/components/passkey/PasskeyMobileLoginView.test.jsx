@@ -40,6 +40,7 @@ vi.mock('../../utils/browserDetection', () => ({
   isIOSDevice: () => mockIsIOS,
   isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/mobile-login#Intent;scheme=https;package=com.android.chrome;end',
+  getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
 }));
 
 import PasskeyMobileLoginView from './PasskeyMobileLoginView';
@@ -240,5 +241,50 @@ describe('PasskeyMobileLoginView Component', () => {
 
     expect(screen.getByText(/Browser or Phone Mismatch/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Google Chrome/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders Open Camera App to Rescan button on Android error screen', async () => {
+    mockIsAndroid = true;
+    mockIsIOS = false;
+
+    mockGetOptions.mockRejectedValueOnce(new Error('This QR code has expired or was already used.'));
+
+    render(
+      <MemoryRouter initialEntries={['/mobile-login?session=sess-expired&token=old-tok']}>
+        <PasskeyMobileLoginView />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-In Failed')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('QR Code Expired')).toBeInTheDocument();
+    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
+    expect(cameraLink).toBeInTheDocument();
+    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
+
+    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
+  });
+
+  it('renders Scan QR Code with Camera on iOS error screen', async () => {
+    mockIsAndroid = false;
+    mockIsIOS = true;
+
+    mockGetOptions.mockRejectedValueOnce(new Error('This QR code has expired or was already used.'));
+
+    render(
+      <MemoryRouter initialEntries={['/mobile-login?session=sess-expired-ios&token=old-tok']}>
+        <PasskeyMobileLoginView />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Sign-In Failed')).toBeInTheDocument();
+    });
+
+    const scanBtn = screen.getByRole('button', { name: /Scan QR Code with Camera/i });
+    expect(scanBtn).toBeInTheDocument();
+    expect(screen.getByText(/swipe up to Home/i)).toBeInTheDocument();
   });
 });

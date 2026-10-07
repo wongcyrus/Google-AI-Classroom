@@ -9,6 +9,7 @@ import {
   isAndroidDevice,
   isIOSDevice,
   getAndroidChromeIntentUrl,
+  getAndroidCameraAppIntentUrl,
 } from '../../utils/browserDetection';
 import {
   normalizePasskeyError,
@@ -20,6 +21,7 @@ import {
 } from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
+import CameraQrScannerModal from './CameraQrScannerModal';
 import './passkey.css';
 
 const PasskeyPairView = () => {
@@ -38,6 +40,38 @@ const PasskeyPairView = () => {
   const detectedBrandId = isIOS ? 'apple' : detectDeviceBrand();
   const [activeBrandId, setActiveBrandId] = useState(detectedBrandId === 'unknown' ? 'android_generic' : detectedBrandId);
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
+  const cameraAppIntentUrl = getAndroidCameraAppIntentUrl();
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  const isTokenExpiredOrInvalid =
+    errorDetails?.type === 'token_expired' ||
+    errorDetails?.action === 'refresh_qr' ||
+    /expired|already been used|invalid qr|invalid pairing token/i.test(errorMessage);
+
+  const handleQrScanned = (scannedUrl) => {
+    setIsCameraScannerOpen(false);
+    if (!scannedUrl) return;
+
+    try {
+      let parsedUrl;
+      if (scannedUrl.startsWith('http://') || scannedUrl.startsWith('https://')) {
+        parsedUrl = new URL(scannedUrl);
+      } else if (scannedUrl.startsWith('/')) {
+        parsedUrl = new URL(scannedUrl, window.location.origin);
+      }
+
+      if (parsedUrl) {
+        window.location.href = parsedUrl.href;
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (scannedUrl.includes('http')) {
+      window.location.href = scannedUrl;
+    }
+  };
 
   useEffect(() => {
     // 1. Strict mobile handheld enforcement
@@ -293,29 +327,84 @@ const PasskeyPairView = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="passkey-btn passkey-btn-primary"
-              onClick={handlePairDevice}
-              disabled={status === 'prompting' || status === 'verifying' || !isSupported}
-            >
-              {status === 'prompting' ? (
-                <>
-                  <span className="passkey-spinner" />
-                  <span>Verify Face ID / Fingerprint...</span>
-                </>
-              ) : status === 'verifying' ? (
-                <>
-                  <span className="passkey-spinner" />
-                  <span>Securing Hardware Key...</span>
-                </>
+            {isTokenExpiredOrInvalid && (
+              <div style={{ marginTop: '0.25rem', marginBottom: '1rem', padding: '1rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px dashed rgba(245, 158, 11, 0.3)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', marginBottom: '0.35rem' }}>📸</div>
+                <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                  QR Code Expired
+                </div>
+                <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                  This pairing link or QR code has expired. Please scan the live pairing QR code on your computer screen.
+                </p>
+              </div>
+            )}
+
+            {isTokenExpiredOrInvalid ? (
+              isAndroid ? (
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <a
+                    href={cameraAppIntentUrl}
+                    className="passkey-btn passkey-btn-primary"
+                    style={{
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    📷 Open Camera App to Rescan
+                  </a>
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-secondary"
+                    onClick={() => setIsCameraScannerOpen(true)}
+                  >
+                    🔍 Scan with Camera in Browser
+                  </button>
+                </div>
               ) : (
-                <>
-                  <span>🔐</span>
-                  <span>Pair This Phone</span>
-                </>
-              )}
-            </button>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-primary"
+                    onClick={() => setIsCameraScannerOpen(true)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    📷 Scan QR Code with Camera
+                  </button>
+                  {isIOS && (
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                      💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong>.
+                    </p>
+                  )}
+                </div>
+              )
+            ) : (
+              <button
+                type="button"
+                className="passkey-btn passkey-btn-primary"
+                onClick={handlePairDevice}
+                disabled={status === 'prompting' || status === 'verifying' || !isSupported}
+              >
+                {status === 'prompting' ? (
+                  <>
+                    <span className="passkey-spinner" />
+                    <span>Verify Face ID / Fingerprint...</span>
+                  </>
+                ) : status === 'verifying' ? (
+                  <>
+                    <span className="passkey-spinner" />
+                    <span>Securing Hardware Key...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔐</span>
+                    <span>Pair This Phone</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Troubleshooting Guide with Brand Switcher */}
             <details style={{ marginTop: '1.25rem', textAlign: 'left', fontSize: '0.825rem', color: '#64748b', borderTop: '1px solid rgba(226, 232, 240, 0.3)', paddingTop: '0.85rem' }}>
@@ -371,6 +460,15 @@ const PasskeyPairView = () => {
           </>
         )}
       </div>
+
+      {/* In-Browser Live Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onScan={handleQrScanned}
+        onClose={() => setIsCameraScannerOpen(false)}
+        title="Scan Pairing QR Code"
+        instructions="Point camera at the pairing QR code displayed on your desktop screen."
+      />
     </div>
   );
 };

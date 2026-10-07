@@ -10,6 +10,7 @@ import {
   isIOSDevice,
   isHonorDevice,
   getAndroidChromeIntentUrl,
+  getAndroidCameraAppIntentUrl,
 } from './browserDetection';
 
 describe('browserDetection Utility', () => {
@@ -285,6 +286,12 @@ describe('browserDetection Utility', () => {
       const intentUrl = getAndroidChromeIntentUrl(url);
 
       expect(intentUrl).toBe('intent://it114115-2627.web.app/mobile-login?session=sess-123&token=tok-456#ready#Intent;scheme=https;package=com.android.chrome;end');
+    });
+  });
+
+  describe('getAndroidCameraAppIntentUrl', () => {
+    it('returns the standard Android STILL_IMAGE_CAMERA Intent URI', () => {
+      expect(getAndroidCameraAppIntentUrl()).toBe('intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
     });
   });
 });

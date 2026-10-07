@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
 import ImagePromptSelector from './ImagePromptSelector';
@@ -52,6 +52,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [studentBypassesMap, setStudentBypassesMap] = useState({});
   const [grantingBypass, setGrantingBypass] = useState({});
   const [bypassSuccessMsg, setBypassSuccessMsg] = useState('');
+  const bypassTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (bypassTimeoutRef.current) clearTimeout(bypassTimeoutRef.current);
+    };
+  }, []);
   const [passwordWhitelistSet, setPasswordWhitelistSet] = useState(new Set());
   const [togglingExemption, setTogglingExemption] = useState({});
   const [exemptionSuccessMsg, setExemptionSuccessMsg] = useState('');
@@ -901,7 +908,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       });
 
       setBypassSuccessMsg(`Emergency bypass granted for ${targetLabel} (${durationMin} min).`);
-      setTimeout(() => setBypassSuccessMsg(''), 6000);
+      if (bypassTimeoutRef.current) clearTimeout(bypassTimeoutRef.current);
+      bypassTimeoutRef.current = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          setBypassSuccessMsg('');
+        }
+      }, 6000);
     } catch (err) {
       console.error('Failed to grant emergency bypass:', err);
       alert(`Failed to grant bypass: ${err.message || 'Unknown error'}`);

@@ -9,12 +9,14 @@ import {
   isAndroidDevice,
   isIOSDevice,
   getAndroidChromeIntentUrl,
+  getAndroidCameraAppIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { detectDeviceBrand, DEVICE_BRAND_GUIDES } from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
+import CameraQrScannerModal from './CameraQrScannerModal';
 import './passkey.css';
 
 const PasskeyVerifyView = () => {
@@ -36,6 +38,38 @@ const PasskeyVerifyView = () => {
   const detectedBrandId = isIOS ? 'apple' : detectDeviceBrand();
   const [activeBrandId, setActiveBrandId] = useState(detectedBrandId === 'unknown' ? 'android_generic' : detectedBrandId);
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
+  const cameraAppIntentUrl = getAndroidCameraAppIntentUrl();
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  const isTokenExpiredOrInvalid =
+    errorDetails?.type === 'token_expired' ||
+    errorDetails?.action === 'refresh_qr' ||
+    /expired|already been used|invalid qr/i.test(errorMessage);
+
+  const handleQrScanned = (scannedUrl) => {
+    setIsCameraScannerOpen(false);
+    if (!scannedUrl) return;
+
+    try {
+      let parsedUrl;
+      if (scannedUrl.startsWith('http://') || scannedUrl.startsWith('https://')) {
+        parsedUrl = new URL(scannedUrl);
+      } else if (scannedUrl.startsWith('/')) {
+        parsedUrl = new URL(scannedUrl, window.location.origin);
+      }
+
+      if (parsedUrl) {
+        window.location.href = parsedUrl.href;
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (scannedUrl.includes('http')) {
+      window.location.href = scannedUrl;
+    }
+  };
 
   useEffect(() => {
     // 1. Handheld mobile phone enforcement
@@ -309,29 +343,84 @@ const PasskeyVerifyView = () => {
               </div>
             ) : null}
 
-            <button
-              type="button"
-              className="passkey-btn passkey-btn-primary"
-              onClick={executeBiometricVerification}
-              disabled={status === 'authenticating' || status === 'submitting'}
-            >
-              {status === 'authenticating' ? (
-                <>
-                  <span className="passkey-spinner" />
-                  <span>Scanning Face ID / Fingerprint...</span>
-                </>
-              ) : status === 'submitting' ? (
-                <>
-                  <span className="passkey-spinner" />
-                  <span>Verifying Attendance...</span>
-                </>
+            {isTokenExpiredOrInvalid && (
+              <div style={{ marginTop: '0.25rem', marginBottom: '1rem', padding: '1rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px dashed rgba(245, 158, 11, 0.3)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', marginBottom: '0.35rem' }}>📸</div>
+                <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                  QR Code Expired
+                </div>
+                <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                  Please point your phone camera at the classroom screen to scan the active live QR code.
+                </p>
+              </div>
+            )}
+
+            {isTokenExpiredOrInvalid ? (
+              isAndroid ? (
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <a
+                    href={cameraAppIntentUrl}
+                    className="passkey-btn passkey-btn-primary"
+                    style={{
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    📷 Open Camera App to Rescan
+                  </a>
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-secondary"
+                    onClick={() => setIsCameraScannerOpen(true)}
+                  >
+                    🔍 Scan with Camera in Browser
+                  </button>
+                </div>
               ) : (
-                <>
-                  <span>🔐</span>
-                  <span>Verify Biometric Passkey</span>
-                </>
-              )}
-            </button>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-primary"
+                    onClick={() => setIsCameraScannerOpen(true)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    📷 Scan QR Code with Camera
+                  </button>
+                  {isIOS && (
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                      💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong>.
+                    </p>
+                  )}
+                </div>
+              )
+            ) : (
+              <button
+                type="button"
+                className="passkey-btn passkey-btn-primary"
+                onClick={executeBiometricVerification}
+                disabled={status === 'authenticating' || status === 'submitting'}
+              >
+                {status === 'authenticating' ? (
+                  <>
+                    <span className="passkey-spinner" />
+                    <span>Scanning Face ID / Fingerprint...</span>
+                  </>
+                ) : status === 'submitting' ? (
+                  <>
+                    <span className="passkey-spinner" />
+                    <span>Verifying Attendance...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔐</span>
+                    <span>Verify Biometric Passkey</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               type="button"
@@ -407,6 +496,15 @@ const PasskeyVerifyView = () => {
           </>
         )}
       </div>
+
+      {/* In-Browser Live Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onScan={handleQrScanned}
+        onClose={() => setIsCameraScannerOpen(false)}
+        title="Scan Attendance QR Code"
+        instructions="Point camera at the active live attendance QR code on the screen."
+      />
     </div>
   );
 };

@@ -9,12 +9,14 @@ import {
   isAndroidDevice,
   isIOSDevice,
   getAndroidChromeIntentUrl,
+  getAndroidCameraAppIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { detectDeviceBrand, DEVICE_BRAND_GUIDES } from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
+import CameraQrScannerModal from './CameraQrScannerModal';
 import './passkey.css';
 
 export default function LecturePasskeyVerifyView() {
@@ -38,6 +40,33 @@ export default function LecturePasskeyVerifyView() {
   const detectedBrandId = isIOS ? 'apple' : detectDeviceBrand();
   const [activeBrandId, setActiveBrandId] = useState(detectedBrandId === 'unknown' ? 'android_generic' : detectedBrandId);
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
+  const cameraAppIntentUrl = getAndroidCameraAppIntentUrl();
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  const handleQrScanned = (scannedUrl) => {
+    setIsCameraScannerOpen(false);
+    if (!scannedUrl) return;
+
+    try {
+      let parsedUrl;
+      if (scannedUrl.startsWith('http://') || scannedUrl.startsWith('https://')) {
+        parsedUrl = new URL(scannedUrl);
+      } else if (scannedUrl.startsWith('/')) {
+        parsedUrl = new URL(scannedUrl, window.location.origin);
+      }
+
+      if (parsedUrl) {
+        window.location.href = parsedUrl.href;
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (scannedUrl.includes('http')) {
+      window.location.href = scannedUrl;
+    }
+  };
 
   useEffect(() => {
     // 1. Mobile phone handheld enforcement
@@ -322,9 +351,50 @@ export default function LecturePasskeyVerifyView() {
                 <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem', marginBottom: '0.35rem' }}>
                   QR Code Expired
                 </div>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                <p style={{ margin: '0 0 1rem 0', color: '#64748b', fontSize: '0.82rem', lineHeight: 1.4 }}>
                   Please point your phone camera at the projector screen to scan the active live QR code.
                 </p>
+
+                {isAndroid ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <a
+                      href={cameraAppIntentUrl}
+                      className="passkey-btn passkey-btn-primary"
+                      style={{
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                      }}
+                    >
+                      📷 Open Camera App to Rescan
+                    </a>
+                    <button
+                      type="button"
+                      className="passkey-btn passkey-btn-secondary"
+                      onClick={() => setIsCameraScannerOpen(true)}
+                    >
+                      🔍 Scan with Camera in Browser
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="passkey-btn passkey-btn-primary"
+                      onClick={() => setIsCameraScannerOpen(true)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                    >
+                      📷 Scan QR Code with Camera
+                    </button>
+                    {isIOS && (
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                        💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong>.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <button
@@ -428,6 +498,15 @@ export default function LecturePasskeyVerifyView() {
           </>
         )}
       </div>
+
+      {/* In-Browser Live Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onScan={handleQrScanned}
+        onClose={() => setIsCameraScannerOpen(false)}
+        title="Scan Lecture QR Code"
+        instructions="Point camera at the active live QR code displayed on the lecture hall screen."
+      />
     </div>
   );
 }

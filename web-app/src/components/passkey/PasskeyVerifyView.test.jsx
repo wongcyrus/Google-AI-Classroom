@@ -40,6 +40,7 @@ vi.mock('../../utils/browserDetection', () => ({
   isIOSDevice: () => mockIsIOS,
   isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/verify-passkey#Intent;scheme=https;package=com.android.chrome;end',
+  getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
 }));
 
 import PasskeyVerifyView from './PasskeyVerifyView';
@@ -266,6 +267,10 @@ describe('PasskeyVerifyView Component', () => {
       );
     });
 
-    expect(screen.getByText(/QR Code Expired/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/QR Code Expired/i).length).toBeGreaterThan(0);
+    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
+    expect(cameraLink).toBeInTheDocument();
+    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
+    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
   });
 });

@@ -9,11 +9,13 @@ import {
   isAndroidDevice,
   isIOSDevice,
   getAndroidChromeIntentUrl,
+  getAndroidCameraAppIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
+import CameraQrScannerModal from './CameraQrScannerModal';
 import './passkey.css';
 
 const PasskeyMobileLoginView = () => {
@@ -32,6 +34,38 @@ const PasskeyMobileLoginView = () => {
   const isAndroid = isAndroidDevice();
   const isIOS = isIOSDevice();
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
+  const cameraAppIntentUrl = getAndroidCameraAppIntentUrl();
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  const isTokenExpiredOrInvalid =
+    errorDetails?.type === 'token_expired' ||
+    errorDetails?.action === 'refresh_qr' ||
+    /expired|already been used|invalid qr|invalid session/i.test(errorMessage);
+
+  const handleQrScanned = (scannedUrl) => {
+    setIsCameraScannerOpen(false);
+    if (!scannedUrl) return;
+
+    try {
+      let parsedUrl;
+      if (scannedUrl.startsWith('http://') || scannedUrl.startsWith('https://')) {
+        parsedUrl = new URL(scannedUrl);
+      } else if (scannedUrl.startsWith('/')) {
+        parsedUrl = new URL(scannedUrl, window.location.origin);
+      }
+
+      if (parsedUrl) {
+        window.location.href = parsedUrl.href;
+        return;
+      }
+    } catch (e) {
+      console.warn('[PasskeyMobileLoginView] Error parsing scanned QR URL:', e);
+    }
+
+    if (scannedUrl.includes('http')) {
+      window.location.href = scannedUrl;
+    }
+  };
 
   useEffect(() => {
     // 1. Strict anti-desktop & anti-tablet enforcement: Handheld smartphone hardware only
@@ -386,13 +420,79 @@ const PasskeyMobileLoginView = () => {
               </div>
             )}
 
-            <button
-              type="button"
-              className="passkey-btn primary"
-              onClick={executePasskeyLogin}
-            >
-              🔄 Try Again
-            </button>
+            {isTokenExpiredOrInvalid && (
+              <div style={{ marginTop: '0.25rem', marginBottom: '1rem', padding: '1rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px dashed rgba(245, 158, 11, 0.3)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', marginBottom: '0.35rem' }}>📸</div>
+                <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                  QR Code Expired
+                </div>
+                <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.4 }}>
+                  Desktop login QR codes rotate every 15 seconds. Please scan the active live QR code currently on the screen.
+                </p>
+              </div>
+            )}
+
+            {/* Rescan / Try Again Action Buttons */}
+            {isAndroid ? (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <a
+                  href={cameraAppIntentUrl}
+                  className="passkey-btn passkey-btn-primary"
+                  style={{
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  📷 Open Camera App to Rescan
+                </a>
+                <button
+                  type="button"
+                  className="passkey-btn passkey-btn-secondary"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  🔍 Scan with Camera in Browser
+                </button>
+                {!isTokenExpiredOrInvalid && (
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-secondary"
+                    onClick={executePasskeyLogin}
+                  >
+                    🔄 Retry Biometrics (Same QR)
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="passkey-btn passkey-btn-primary"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  📷 Scan QR Code with Camera
+                </button>
+                {!isTokenExpiredOrInvalid && (
+                  <button
+                    type="button"
+                    className="passkey-btn passkey-btn-secondary"
+                    onClick={executePasskeyLogin}
+                  >
+                    🔄 Retry Biometrics (Same QR)
+                  </button>
+                )}
+                {isIOS && (
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                    💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong> to scan the desktop screen.
+                  </p>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
               className="passkey-btn passkey-btn-secondary"
@@ -434,6 +534,15 @@ const PasskeyMobileLoginView = () => {
           </div>
         </details>
       </div>
+
+      {/* In-Browser Live Camera QR Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onScan={handleQrScanned}
+        onClose={() => setIsCameraScannerOpen(false)}
+        title="Scan Desktop Login QR"
+        instructions="Point camera at the rotating QR code on your desktop screen to rescan."
+      />
     </div>
   );
 };

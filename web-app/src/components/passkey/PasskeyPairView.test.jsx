@@ -40,6 +40,7 @@ vi.mock('../../utils/browserDetection', () => ({
   isIOSDevice: () => mockIsIOS,
   isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/pair-phone#Intent;scheme=https;package=com.android.chrome;end',
+  getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
 }));
 
 import PasskeyPairView from './PasskeyPairView';

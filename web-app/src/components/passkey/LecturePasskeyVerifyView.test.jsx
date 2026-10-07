@@ -40,6 +40,7 @@ vi.mock('../../utils/browserDetection', () => ({
   isIOSDevice: () => mockIsIOS,
   isHonorDevice: () => false,
   getAndroidChromeIntentUrl: (url) => 'intent://it114115-2627.web.app/lecture-verify#Intent;scheme=https;package=com.android.chrome;end',
+  getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
 }));
 
 import LecturePasskeyVerifyView from './LecturePasskeyVerifyView';
@@ -232,5 +233,26 @@ describe('LecturePasskeyVerifyView Component', () => {
 
     expect(screen.getByText('Set Up Lecture Passkey')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Log In & Confirm Attendance/i })).toBeInTheDocument();
+  });
+
+  it('renders Open Camera App to Rescan button when lecture QR code expires on Android', async () => {
+    mockIsAndroid = true;
+    mockIsIOS = false;
+
+    mockGetOptions.mockRejectedValueOnce(new Error('This QR code has expired or was already used.'));
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=expired-tok']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText('QR Code Expired')).toBeInTheDocument();
+    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
+    expect(cameraLink).toBeInTheDocument();
+    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
+    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
   });
 });
