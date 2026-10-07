@@ -572,8 +572,8 @@ export const mergeLectureRecordings = onCall(
   {
     region: FUNCTION_REGION,
     cors: CORS_ORIGINS,
-    memory: '2GiB',
-    timeoutSeconds: 300,
+    memory: '4GiB',
+    timeoutSeconds: 540,
   },
   async (request) => {
     return executeMergeLectureRecordings({
@@ -594,8 +594,8 @@ export const processLectureMergeJob = onDocumentCreated(
   {
     document: 'lectureMergeJobs/{jobId}',
     region: FUNCTION_REGION,
-    memory: '2GiB',
-    timeoutSeconds: 300,
+    memory: '4GiB',
+    timeoutSeconds: 540,
   },
   async (event) => {
     const jobSnap = event.data;

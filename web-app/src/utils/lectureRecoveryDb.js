@@ -6,8 +6,9 @@
  */
 
 const DB_NAME = 'ClassroomLectureRecoveryDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'recovery_sessions';
+const SEGMENTS_STORE = 'pending_segments';
 
 function openDB() {
   if (typeof window === 'undefined' || typeof window.indexedDB === 'undefined') {
@@ -21,6 +22,9 @@ function openDB() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'sessionId' });
+      }
+      if (!db.objectStoreNames.contains(SEGMENTS_STORE)) {
+        db.createObjectStore(SEGMENTS_STORE, { keyPath: 'sessionId' });
       }
     };
 
@@ -129,5 +133,107 @@ export async function clearRecoverySession(sessionId) {
     });
   } catch (err) {
     console.debug('[lectureRecoveryDb] Failed to clear session:', err.message);
+  }
+}
+
+/**
+ * Persists an entire finalized 1-minute video/audio segment to the offline buffer.
+ * If the network drops or is unstable, this segment remains safe until uploaded.
+ */
+export async function persistPendingSegment({
+  sessionId,
+  classId,
+  sessionGroupId,
+  segmentIndex,
+  duration,
+  blob,
+  audioBlob,
+  mimeType,
+  audioMimeType,
+  title,
+  topic,
+  targetLanguages,
+  teacherEmail,
+}) {
+  if (!sessionId || !blob) return;
+  try {
+    const db = await openDB();
+    if (!db) return;
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SEGMENTS_STORE, 'readwrite');
+      const store = tx.objectStore(SEGMENTS_STORE);
+      const record = {
+        sessionId,
+        classId,
+        sessionGroupId,
+        segmentIndex: segmentIndex || 1,
+        duration: duration || 60,
+        blob,
+        audioBlob: audioBlob || null,
+        mimeType: mimeType || 'video/webm',
+        audioMimeType: audioMimeType || 'audio/webm',
+        title: title || '',
+        topic: topic || '',
+        targetLanguages: targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
+        teacherEmail: teacherEmail || '',
+        createdAt: Date.now(),
+      };
+      const req = store.put(record);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.debug('[lectureRecoveryDb] Failed to persist pending segment:', err.message);
+  }
+}
+
+/**
+ * Lists all pending 1-minute segment uploads waiting for network transmission.
+ */
+export async function getPendingSegments(filterClassId = null) {
+  try {
+    const db = await openDB();
+    if (!db) return [];
+
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(SEGMENTS_STORE, 'readonly');
+      const store = tx.objectStore(SEGMENTS_STORE);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const segments = request.result || [];
+        if (filterClassId) {
+          resolve(segments.filter((s) => s.classId === filterClassId));
+        } else {
+          resolve(segments);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.debug('[lectureRecoveryDb] Failed to list pending segments:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Deletes a finalized segment from the offline buffer once Cloud Storage confirms receipt.
+ */
+export async function clearPendingSegment(sessionId) {
+  if (!sessionId) return;
+  try {
+    const db = await openDB();
+    if (!db) return;
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SEGMENTS_STORE, 'readwrite');
+      const store = tx.objectStore(SEGMENTS_STORE);
+      const request = store.delete(sessionId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.debug('[lectureRecoveryDb] Failed to clear pending segment:', err.message);
   }
 }

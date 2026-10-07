@@ -3,6 +3,9 @@ import {
   persistRecoveryChunk,
   getPendingRecoverySessions,
   clearRecoverySession,
+  persistPendingSegment,
+  getPendingSegments,
+  clearPendingSegment,
 } from './lectureRecoveryDb';
 
 describe('lectureRecoveryDb Utility', () => {
@@ -169,5 +172,31 @@ describe('lectureRecoveryDb Utility', () => {
     await expect(persistRecoveryChunk({ sessionId: 's1', chunk: new Blob(['x']) })).resolves.toBeUndefined();
     await expect(getPendingRecoverySessions()).resolves.toEqual([]);
     await expect(clearRecoverySession('s1')).resolves.toBeUndefined();
+  });
+
+  it('persists, retrieves, and clears pending 1-minute segments', async () => {
+    const dummyBlob = new Blob(['video-segment-data'], { type: 'video/webm' });
+    const dummyAudioBlob = new Blob(['audio-segment-data'], { type: 'audio/webm' });
+
+    await persistPendingSegment({
+      sessionId: 'seg_1',
+      classId: 'class_a',
+      sessionGroupId: 'group_1',
+      segmentIndex: 1,
+      duration: 60,
+      blob: dummyBlob,
+      audioBlob: dummyAudioBlob,
+      title: 'Math Lecture Pt 1',
+    });
+
+    expect(mockStore.data.has('seg_1')).toBe(true);
+
+    const segments = await getPendingSegments('class_a');
+    expect(segments).toHaveLength(1);
+    expect(segments[0].sessionId).toBe('seg_1');
+    expect(segments[0].segmentIndex).toBe(1);
+
+    await clearPendingSegment('seg_1');
+    expect(mockStore.data.has('seg_1')).toBe(false);
   });
 });

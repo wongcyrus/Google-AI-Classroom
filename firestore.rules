@@ -298,6 +298,10 @@ service cloud.firestore {
       allow read, update, delete: if isTeacher() && resource.data.requesterUid == request.auth.uid;
     }
 
+    match /lectureMergeJobs/{jobId} {
+      allow create, read, update, delete: if isTeacher();
+    }
+
     match /mails/{mailId} {
       allow read, update: if isTeacher() && request.auth.token.email == resource.data.to;
     }

@@ -5,6 +5,7 @@ import useLectureRecorder, {
   getSupportedMimeType,
   getSupportedAudioMimeType,
   injectWebmDuration,
+  DEFAULT_SEGMENT_DURATION_SECONDS,
 } from './useLectureRecorder';
 
 vi.mock('../firebase-config', () => ({
@@ -21,10 +22,17 @@ vi.mock('firebase/functions', () => ({
 const mockClearRecoverySession = vi.fn().mockResolvedValue();
 const mockPersistRecoveryChunk = vi.fn().mockResolvedValue();
 const mockGetPendingRecoverySessions = vi.fn().mockResolvedValue([]);
+const mockPersistPendingSegment = vi.fn().mockResolvedValue();
+const mockGetPendingSegments = vi.fn().mockResolvedValue([]);
+const mockClearPendingSegment = vi.fn().mockResolvedValue();
+
 vi.mock('../utils/lectureRecoveryDb', () => ({
   clearRecoverySession: (...args) => mockClearRecoverySession(...args),
   persistRecoveryChunk: (...args) => mockPersistRecoveryChunk(...args),
   getPendingRecoverySessions: (...args) => mockGetPendingRecoverySessions(...args),
+  persistPendingSegment: (...args) => mockPersistPendingSegment(...args),
+  getPendingSegments: (...args) => mockGetPendingSegments(...args),
+  clearPendingSegment: (...args) => mockClearPendingSegment(...args),
 }));
 
 vi.mock('fix-webm-duration', () => ({
@@ -612,4 +620,166 @@ describe('useLectureRecorder Hook & Utilities', () => {
       expect(resultBlob).toBeDefined();
     });
   });
+
+  describe('1-Minute Rolling Segments & Offline Network Resilience', () => {
+    it('sets default segment duration to 60 seconds (1 minute)', () => {
+      expect(DEFAULT_SEGMENT_DURATION_SECONDS).toBe(60);
+    });
+
+    it('seamlessly rolls over at 60s, persists segment to IndexedDB, and triggers cloud merge on completion', async () => {
+      const { result } = renderHook(() =>
+        useLectureRecorder({
+          classId: 'test_class',
+          teacherUid: 'teacher_1',
+          teacherEmail: 'teacher@school.edu',
+          segmentDurationSeconds: 60,
+        })
+      );
+
+      await act(async () => {
+        await result.current.startRecording({ title: 'Continuous Lab' });
+      });
+
+      // Provide chunk data for segment 1
+      act(() => {
+        mockMediaRecorderInstances.forEach((inst) => {
+          if (inst.ondataavailable) {
+            inst.ondataavailable({ data: new Blob(['seg1_chunk'], { type: inst.mimeType }) });
+          }
+        });
+      });
+
+      // Advance by 60 seconds to trigger 1-minute rollover
+      await act(async () => {
+        vi.advanceTimersByTime(60000);
+      });
+
+      // Verify segment 1 was saved to IndexedDB pending_segments
+      expect(mockPersistPendingSegment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'test_class',
+          segmentIndex: 1,
+          duration: 60,
+        })
+      );
+
+      // Verify active session shifted to seg2
+      expect(result.current.activeSessionId).toContain('_seg2');
+
+      // Provide chunk data for segment 2
+      act(() => {
+        mockMediaRecorderInstances.forEach((inst) => {
+          if (inst.ondataavailable) {
+            inst.ondataavailable({ data: new Blob(['seg2_chunk'], { type: inst.mimeType }) });
+          }
+        });
+      });
+
+      // Advance by another 30s and stop recording
+      act(() => {
+        vi.advanceTimersByTime(30000);
+      });
+
+      let stopResult;
+      await act(async () => {
+        stopResult = await result.current.stopRecording();
+      });
+
+      expect(result.current.recordingState).toBe('completed');
+      expect(stopResult).toBeDefined();
+      expect(stopResult.segmentsCount).toBe(2);
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: expect.stringContaining('lectureMergeJobs') }),
+        expect.objectContaining({
+          classId: 'test_class',
+          status: 'pending',
+          segmentsCount: 2,
+        })
+      );
+    });
+
+    it('buffers segments in IndexedDB when network drops and auto-drains upon reconnect', async () => {
+      const originalOnLine = navigator.onLine;
+      try {
+        // Simulate sudden network disconnect during class
+        Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+
+        const { result } = renderHook(() =>
+          useLectureRecorder({
+            classId: 'test_class',
+            teacherUid: 'teacher_1',
+            segmentDurationSeconds: 60,
+          })
+        );
+
+        await act(async () => {
+          await result.current.startRecording({ title: 'Offline Test' });
+        });
+
+        // Add chunk
+        act(() => {
+          mockMediaRecorderInstances.forEach((inst) => {
+            if (inst.ondataavailable) {
+              inst.ondataavailable({ data: new Blob(['offline_chunk'], { type: inst.mimeType }) });
+            }
+          });
+        });
+
+        // Rollover at 60s while offline
+        await act(async () => {
+          vi.advanceTimersByTime(60000);
+        });
+
+        // Segment MUST be saved into IndexedDB offline buffer
+        expect(mockPersistPendingSegment).toHaveBeenCalledWith(
+          expect.objectContaining({
+            classId: 'test_class',
+            segmentIndex: 1,
+          })
+        );
+
+        // While offline, clearPendingSegment was NOT called (data is preserved!)
+        expect(mockClearPendingSegment).not.toHaveBeenCalled();
+
+        // Simulate network restoration
+        Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+        await act(async () => {
+          window.dispatchEvent(new Event('online'));
+        });
+
+        // After online event, the queue drained and segment was cleared from offline buffer
+        expect(mockClearPendingSegment).toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(navigator, 'onLine', { value: originalOnLine, configurable: true });
+      }
+    });
+
+    it('auto-drains offline buffered segments found on hook mount', async () => {
+      mockGetPendingSegments.mockResolvedValueOnce([
+        {
+          sessionId: 'seg_mount_offline_1',
+          classId: 'class_mount_test',
+          segmentIndex: 1,
+          duration: 60,
+          blob: new Blob(['cached_video']),
+          mimeType: 'video/webm',
+        },
+      ]);
+
+      renderHook(() =>
+        useLectureRecorder({
+          classId: 'class_mount_test',
+          teacherUid: 'teacher_1',
+        })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockGetPendingSegments).toHaveBeenCalledWith('class_mount_test');
+      expect(mockClearPendingSegment).toHaveBeenCalledWith('seg_mount_offline_1');
+    });
+  });
 });
+
