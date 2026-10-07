@@ -844,7 +844,7 @@ export default function useLectureRecorder({
             isRecoveredAfterCrash: 'true',
           },
         });
-        const downloadUrl = await getDownloadURL(uploadTask.ref);
+        const downloadUrl = await getDownloadURL(fileRef);
 
         const sessionDocRef = doc(db, `classes/${targetClassId}/lectureRecordings/${sessionId}`);
         await setDoc(

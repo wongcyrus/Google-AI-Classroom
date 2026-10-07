@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { db, functions } from '../firebase-config';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, setDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { db, functions, storage } from '../firebase-config';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
+import { getPendingRecoverySessions, clearRecoverySession } from '../utils/lectureRecoveryDb';
 import JSZip from 'jszip';
 import { formatDuration } from '../hooks/useLectureRecorder';
 import { useGoogleDrive } from '../hooks/useGoogleDrive';
@@ -80,6 +82,14 @@ export default function LectureRecordingsView({
   const [isReconciling, setIsReconciling] = useState(false);
   const [reconcileFeedback, setReconcileFeedback] = useState('');
   const hasAutoReconciledRef = useRef(false);
+
+  // Client-Side Browser Recovery (IndexedDB) state
+  const [localRecoverySessions, setLocalRecoverySessions] = useState([]);
+  const [isRecoveringLocal, setIsRecoveringLocal] = useState(false);
+  const [localRecoveryProgress, setLocalRecoveryProgress] = useState(0);
+  const [localRecoveryFeedback, setLocalRecoveryFeedback] = useState('');
+  const [isManualUploading, setIsManualUploading] = useState(false);
+  const manualFileInputRef = useRef(null);
 
   // Phase 1 YouTube & Dual Player state
   const [activePlayerMode, setActivePlayerMode] = useState('cloud'); // 'youtube' | 'drive' | 'cloud'
@@ -170,6 +180,193 @@ export default function LectureRecordingsView({
       setReconcileFeedback(`Recovery notice: ${err.message}`);
     } finally {
       setIsReconciling(false);
+    }
+  };
+
+  // Refresh pending recovery sessions stored in local IndexedDB
+  const refreshLocalRecoverySessions = useCallback(async () => {
+    if (!classId) return;
+    try {
+      const allSessions = await getPendingRecoverySessions();
+      if (Array.isArray(allSessions)) {
+        const matching = allSessions.filter(
+          (s) => s.classId === classId && Array.isArray(s.chunks) && s.chunks.length > 0
+        );
+        setLocalRecoverySessions(matching);
+      }
+    } catch (err) {
+      console.debug('[LectureRecordingsView] IndexedDB recovery check notice:', err);
+    }
+  }, [classId]);
+
+  useEffect(() => {
+    refreshLocalRecoverySessions();
+  }, [refreshLocalRecoverySessions]);
+
+  // Upload and restore crash recovery chunks saved in current browser's IndexedDB
+  const handleRecoverFromBrowser = async (recSession) => {
+    if (!recSession || !recSession.chunks?.length) return;
+    const { sessionId, mimeType, chunks, title, topic, targetLanguages, sessionGroupId } = recSession;
+    setIsRecoveringLocal(true);
+    setLocalRecoveryFeedback('Assembling local video chunks from browser IndexedDB...');
+    setLocalRecoveryProgress(0);
+    try {
+      const finalMimeType = mimeType || 'video/webm';
+      const ext = finalMimeType.includes('mp4') ? 'mp4' : 'webm';
+      const rawBlob = new Blob(chunks, { type: finalMimeType });
+
+      if (rawBlob.size === 0) {
+        await clearRecoverySession(sessionId);
+        await refreshLocalRecoverySessions();
+        setLocalRecoveryFeedback('Local cache was empty and has been cleared.');
+        setIsRecoveringLocal(false);
+        return;
+      }
+
+      setLocalRecoveryFeedback(`Uploading ${formatFileSize(rawBlob.size)} of recovered video...`);
+      const filePath = `recordings/${classId}/${sessionId}/lecture.${ext}`;
+      const fileRef = storageRef(storage, filePath);
+      const uploadTask = uploadBytesResumable(fileRef, rawBlob, {
+        contentType: finalMimeType,
+        customMetadata: {
+          classId,
+          sessionId,
+          isRecoveredAfterCrash: 'true',
+        },
+      });
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setLocalRecoveryProgress(progress);
+        },
+        (uploadErr) => {
+          console.error('[LectureRecordingsView] Local recovery upload error:', uploadErr);
+          setLocalRecoveryFeedback(`Upload failed: ${uploadErr.message}`);
+          setIsRecoveringLocal(false);
+        },
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(fileRef);
+            const sessionDocRef = doc(db, `classes/${classId}/lectureRecordings/${sessionId}`);
+            await setDoc(
+              sessionDocRef,
+              {
+                title: title || `Recovered Lecture (${new Date().toLocaleDateString()})`,
+                topic: topic || '',
+                targetLanguages: targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
+                status: 'ready',
+                isRecoveredAfterCrash: true,
+                interruptedReason: null,
+                videoUrl: downloadUrl,
+                storagePath: filePath,
+                fileSize: rawBlob.size,
+                sessionGroupId: sessionGroupId || null,
+                endedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+            await clearRecoverySession(sessionId);
+            await refreshLocalRecoverySessions();
+            setLocalRecoveryFeedback(`🎉 Successfully recovered and uploaded lecture recording (${formatFileSize(rawBlob.size)}) from this browser!`);
+
+            // Automatically trigger subtitles if enabled
+            try {
+              const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
+              callSubtitles({
+                classId,
+                sessionId,
+                storagePath: filePath,
+                title: title || 'Lecture Recording',
+              }).catch(() => {});
+            } catch (_) {}
+          } catch (finalizeErr) {
+            console.error('[LectureRecordingsView] Finalize recovery error:', finalizeErr);
+            setLocalRecoveryFeedback(`Failed to update database: ${finalizeErr.message}`);
+          } finally {
+            setIsRecoveringLocal(false);
+          }
+        }
+      );
+    } catch (err) {
+      console.error('[LectureRecordingsView] Error during browser recovery:', err);
+      setLocalRecoveryFeedback(`Recovery failed: ${err.message}`);
+      setIsRecoveringLocal(false);
+    }
+  };
+
+  const handleDiscardLocalRecovery = async (sessionId) => {
+    if (!sessionId) return;
+    if (window.confirm('Are you sure you want to discard these locally cached recording chunks?')) {
+      await clearRecoverySession(sessionId);
+      await refreshLocalRecoverySessions();
+      setLocalRecoveryFeedback('Locally cached video chunks discarded.');
+    }
+  };
+
+  const handleManualVideoUpload = async (event, targetSessionId) => {
+    const file = event.target.files?.[0];
+    if (!file || !targetSessionId) return;
+    setIsManualUploading(true);
+    setLocalRecoveryFeedback(`Uploading ${file.name} (${formatFileSize(file.size)})...`);
+    setLocalRecoveryProgress(0);
+    try {
+      const ext = file.name.endsWith('.mp4') ? 'mp4' : 'webm';
+      const filePath = `recordings/${classId}/${targetSessionId}/lecture.${ext}`;
+      const fileRef = storageRef(storage, filePath);
+      const uploadTask = uploadBytesResumable(fileRef, file, {
+        contentType: file.type || 'video/webm',
+        customMetadata: {
+          classId,
+          sessionId: targetSessionId,
+          isManualUploaded: 'true',
+        },
+      });
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setLocalRecoveryProgress(progress);
+        },
+        (uploadErr) => {
+          console.error('[LectureRecordingsView] Manual upload error:', uploadErr);
+          setLocalRecoveryFeedback(`Manual upload failed: ${uploadErr.message}`);
+          setIsManualUploading(false);
+        },
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(fileRef);
+            const sessionDocRef = doc(db, `classes/${classId}/lectureRecordings/${targetSessionId}`);
+            await updateDoc(sessionDocRef, {
+              status: 'ready',
+              videoUrl: downloadUrl,
+              storagePath: filePath,
+              fileSize: file.size,
+              interruptedReason: null,
+              endedAt: serverTimestamp(),
+            });
+            setLocalRecoveryFeedback(`🎉 Video successfully uploaded and linked to this lecture!`);
+            try {
+              const callSubtitles = httpsCallable(functions, 'processLectureSubtitles');
+              callSubtitles({
+                classId,
+                sessionId: targetSessionId,
+                storagePath: filePath,
+              }).catch(() => {});
+            } catch (_) {}
+          } catch (finErr) {
+            setLocalRecoveryFeedback(`Failed to update database: ${finErr.message}`);
+          } finally {
+            setIsManualUploading(false);
+          }
+        }
+      );
+    } catch (err) {
+      setLocalRecoveryFeedback(`Upload error: ${err.message}`);
+      setIsManualUploading(false);
     }
   };
 
@@ -781,6 +978,10 @@ export default function LectureRecordingsView({
       : 0;
     const isStaleRecording = status === 'recording' && startedMs && (Date.now() - startedMs > 2 * 3600 * 1000);
 
+    if (localRecoverySessions.some((s) => s.sessionId === rec?.id)) {
+      return <span className="recording-status-badge status-ready" style={{ background: '#dcfce7', color: '#166534', borderColor: '#86efac', fontWeight: 600 }}>💾 Recoverable in Browser</span>;
+    }
+
     if (isStaleRecording && !rec?.videoUrl) {
       return <span className="recording-status-badge status-failed">⚠️ Incomplete / Interrupted</span>;
     }
@@ -803,6 +1004,8 @@ export default function LectureRecordingsView({
         return <span className="recording-status-badge status-processing">🤖 Gemini Transcribing...</span>;
       case 'recording':
         return <span className="recording-status-badge status-recording">🔴 Live Recording</span>;
+      case 'interrupted':
+        return <span className="recording-status-badge status-failed" style={{ background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }}>⚠️ Interrupted</span>;
       case 'subtitles_failed':
         return <span className="recording-status-badge status-failed">⚠️ CC Needs Retry</span>;
       default:
@@ -1694,38 +1897,148 @@ export default function LectureRecordingsView({
                 </div>
               ) : (
                 <div className="empty-state" style={{ padding: '2rem 1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  {selectedRecording.status === 'recording' || !selectedRecording.videoUrl ? (
-                    <div>
-                      <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>⚠️</div>
-                      <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: '1.05rem' }}>Unfinalized / Processing Recording Session</h4>
-                      <p style={{ color: '#64748b', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto 16px', lineHeight: 1.5 }}>
-                        This recording is waiting for final video synchronization or was interrupted while uploading. If media files exist in Cloud Storage, click below to automatically recover them.
-                      </p>
-                      {reconcileFeedback && (
-                        <div style={{ color: '#15803d', fontWeight: 600, fontSize: '0.88rem', marginBottom: '14px' }}>
-                          ✅ {reconcileFeedback}
+                  {selectedRecording.status === 'recording' || selectedRecording.status === 'interrupted' || !selectedRecording.videoUrl ? (() => {
+                    const matchingLocalSession = localRecoverySessions.find((s) => s.sessionId === selectedRecording.id);
+                    const totalLocalChunkBytes = matchingLocalSession?.chunks?.reduce((acc, c) => acc + (c.size || 0), 0) || 0;
+
+                    if (matchingLocalSession) {
+                      return (
+                        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', padding: '1.25rem', textAlign: 'left' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '2rem' }}>💾</span>
+                            <div>
+                              <h4 style={{ margin: 0, color: '#166534', fontSize: '1.1rem', fontWeight: 700 }}>
+                                Local Crash Recovery Chunks Found in This Browser!
+                              </h4>
+                              <p style={{ margin: '4px 0 0', color: '#15803d', fontSize: '0.88rem' }}>
+                                Found <strong>{matchingLocalSession.chunks.length} video chunks</strong> (~{formatFileSize(totalLocalChunkBytes)}) saved locally in IndexedDB before the browser closed or interrupted.
+                              </p>
+                            </div>
+                          </div>
+
+                          {localRecoveryFeedback && (
+                            <div style={{ background: '#dcfce7', color: '#166534', padding: '8px 12px', borderRadius: '6px', fontSize: '0.88rem', fontWeight: 600, marginBottom: '10px' }}>
+                              {localRecoveryFeedback}
+                            </div>
+                          )}
+
+                          {isRecoveringLocal && (
+                            <div style={{ marginBottom: '10px' }}>
+                              <div style={{ background: '#bbf7d0', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{ width: `${localRecoveryProgress}%`, background: '#16a34a', height: '100%', transition: 'width 0.3s' }} />
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#15803d', marginTop: '4px', textAlign: 'right' }}>
+                                {localRecoveryProgress}% uploaded
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn-primary"
+                              onClick={() => handleRecoverFromBrowser(matchingLocalSession)}
+                              disabled={isRecoveringLocal}
+                              style={{ background: '#16a34a', borderColor: '#15803d', fontWeight: 600 }}
+                            >
+                              {isRecoveringLocal ? '⏳ Uploading...' : '🚀 Upload & Restore from This Browser'}
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              onClick={() => handleDiscardLocalRecovery(matchingLocalSession.sessionId)}
+                              disabled={isRecoveringLocal}
+                              style={{ color: '#dc2626' }}
+                            >
+                              Discard Local Cache
+                            </button>
+                          </div>
                         </div>
-                      )}
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button
-                          className="btn-secondary"
-                          onClick={handleAutoReconcile}
-                          disabled={isReconciling}
-                          style={{ margin: '0', background: '#e0e7ff', color: '#3730a3', borderColor: '#c7d2fe', fontWeight: 600 }}
-                        >
-                          {isReconciling ? '⏳ Checking Cloud Storage...' : '🔄 Auto-Recover from Cloud Storage'}
-                        </button>
-                        <button
-                          className="btn-delete-recording"
-                          onClick={() => handleDeleteRecording(selectedRecording.id)}
-                          disabled={isDeleting}
-                          style={{ margin: '0' }}
-                        >
-                          {isDeleting ? '🗑️ Removing...' : '🗑️ Remove Incomplete Entry'}
-                        </button>
+                      );
+                    }
+
+                    return (
+                      <div>
+                        <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>⚠️</div>
+                        <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: '1.05rem' }}>
+                          {selectedRecording.status === 'interrupted' ? 'Recording Session Interrupted' : 'Unfinalized Recording Session'}
+                        </h4>
+
+                        {selectedRecording.interruptedReason && (
+                          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '8px 12px', color: '#991b1b', fontSize: '0.85rem', maxWidth: '580px', margin: '0 auto 12px', textAlign: 'left' }}>
+                            <strong>Diagnosis:</strong> {selectedRecording.interruptedReason}
+                          </div>
+                        )}
+
+                        <div style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px 14px', fontSize: '0.86rem', color: '#334155', maxWidth: '580px', margin: '0 auto 16px', textAlign: 'left', lineHeight: 1.5 }}>
+                          <strong style={{ display: 'block', color: '#0f172a', marginBottom: '4px' }}>📍 How to Recover This Lecture:</strong>
+                          <p style={{ margin: '0 0 8px' }}>
+                            Because recordings are captured locally from the teacher's screen, un-uploaded video chunks reside in the browser storage (IndexedDB) of the <strong>computer used during the recording</strong>{selectedRecording.teacherEmail ? ` (${selectedRecording.teacherEmail})` : ''}.
+                          </p>
+                          <ul style={{ margin: '0', paddingLeft: '18px' }}>
+                            <li style={{ marginBottom: '4px' }}><strong>Recommended:</strong> Open this exact URL on the computer and browser where the lecture was recorded. That browser will detect the local cached video and allow you to restore it with one click.</li>
+                            <li><strong>Alternatively:</strong> If you saved or exported the video file locally, you can upload it directly below.</li>
+                          </ul>
+                        </div>
+
+                        {localRecoveryFeedback && (
+                          <div style={{ color: '#15803d', fontWeight: 600, fontSize: '0.88rem', marginBottom: '14px' }}>
+                            {localRecoveryFeedback}
+                          </div>
+                        )}
+
+                        {isManualUploading && (
+                          <div style={{ maxWidth: '400px', margin: '0 auto 12px' }}>
+                            <div style={{ background: '#e2e8f0', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${localRecoveryProgress}%`, background: '#2563eb', height: '100%', transition: 'width 0.3s' }} />
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '4px' }}>
+                              {localRecoveryProgress}% uploaded
+                            </div>
+                          </div>
+                        )}
+
+                        {reconcileFeedback && (
+                          <div style={{ color: '#15803d', fontWeight: 600, fontSize: '0.88rem', marginBottom: '14px' }}>
+                            ✅ {reconcileFeedback}
+                          </div>
+                        )}
+
+                        <input
+                          type="file"
+                          accept="video/webm,video/mp4"
+                          ref={manualFileInputRef}
+                          style={{ display: 'none' }}
+                          onChange={(e) => handleManualVideoUpload(e, selectedRecording.id)}
+                        />
+
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            className="btn-primary"
+                            onClick={() => manualFileInputRef.current?.click()}
+                            disabled={isManualUploading || isReconciling}
+                            style={{ margin: '0', background: '#2563eb' }}
+                          >
+                            {isManualUploading ? '⏳ Uploading Video...' : '📁 Upload Video File Manually (.webm / .mp4)'}
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={handleAutoReconcile}
+                            disabled={isReconciling || isManualUploading}
+                            style={{ margin: '0', background: '#e0e7ff', color: '#3730a3', borderColor: '#c7d2fe', fontWeight: 600 }}
+                          >
+                            {isReconciling ? '⏳ Checking Cloud Storage...' : '🔄 Check Cloud Storage'}
+                          </button>
+                          <button
+                            className="btn-delete-recording"
+                            onClick={() => handleDeleteRecording(selectedRecording.id)}
+                            disabled={isDeleting || isManualUploading}
+                            style={{ margin: '0' }}
+                          >
+                            {isDeleting ? '🗑️ Removing...' : '🗑️ Remove Incomplete Entry'}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
+                    );
+                  })() : (
                     <div>Video upload in progress or unavailable.</div>
                   )}
                 </div>

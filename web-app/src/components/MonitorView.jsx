@@ -335,26 +335,26 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setSynchronizedAudioStream(null);
 
     if (lectureRecorder && (lectureRecorder.isRecording || lectureRecorder.isPaused)) {
-      lectureRecorder.stopRecording();
-    }
-
-    // Automatically check if multiple recordings exist for this broadcast session and merge them
-    if (broadcastSessionIdToMerge && lectureRecorder?.mergeSessionRecordings) {
-      setTimeout(() => {
-        const cleanGroupId = broadcastSessionIdToMerge.startsWith('bcast_')
-          ? broadcastSessionIdToMerge
-          : `bcast_${broadcastSessionIdToMerge}`;
-        lectureRecorder
-          .mergeSessionRecordings({ sessionGroupId: cleanGroupId })
-          .then((res) => {
-            if (res?.success) {
-              console.info('[MonitorView] Automatically merged lecture session:', res.combinedSessionId);
+      lectureRecorder
+        .stopRecording()
+        .then(async () => {
+          if (broadcastSessionIdToMerge && lectureRecorder?.mergeSessionRecordings) {
+            const cleanGroupId = broadcastSessionIdToMerge.startsWith('bcast_')
+              ? broadcastSessionIdToMerge
+              : `bcast_${broadcastSessionIdToMerge}`;
+            try {
+              const res = await lectureRecorder.mergeSessionRecordings({ sessionGroupId: cleanGroupId });
+              if (res?.success) {
+                console.info('[MonitorView] Automatically merged lecture session:', res.combinedSessionId);
+              }
+            } catch (err) {
+              console.debug('[MonitorView] Automatic merge check status:', err.message);
             }
-          })
-          .catch((err) => {
-            console.debug('[MonitorView] Automatic merge check status:', err.message);
-          });
-      }, 2500);
+          }
+        })
+        .catch((err) => {
+          console.warn('[MonitorView] Stop lecture recording notice:', err.message);
+        });
     }
 
     if (activeBroadcastStreamsRef.current) {
@@ -2523,6 +2523,70 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           totalStudentsCount={classList?.length || 0}
           onViewResults={() => setShowBingoModal(true)}
         />
+      )}
+
+      {/* High-Visibility Lecture Recording Upload Progress Modal */}
+      {lectureRecorder.isUploading && (
+        <div
+          data-testid="lecture-upload-modal"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '2.25rem',
+              maxWidth: '480px',
+              width: '90%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>💾</div>
+            <h3 style={{ margin: '0 0 0.5rem', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>
+              Uploading Lecture Recording to Cloud
+            </h3>
+            <p style={{ margin: '0 0 1.25rem', color: '#475569', fontSize: '0.92rem', lineHeight: 1.5 }}>
+              Securing video and audio to Google Cloud Storage. <strong>Please do not close this browser tab or shut down your computer</strong> until upload completes.
+            </p>
+            <div
+              style={{
+                backgroundColor: '#e2e8f0',
+                borderRadius: '9999px',
+                height: '14px',
+                overflow: 'hidden',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: '#2563eb',
+                  height: '100%',
+                  width: `${lectureRecorder.uploadProgress}%`,
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1d4ed8', marginBottom: '0.75rem' }}>
+              {lectureRecorder.uploadProgress}%
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              ⚡ Automatic Gemini audio transcription and search indexing will begin automatically when upload finishes.
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

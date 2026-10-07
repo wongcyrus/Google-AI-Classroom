@@ -16,9 +16,34 @@ const mockDeleteDoc = vi.fn().mockResolvedValue();
 const mockUpdateDoc = vi.fn().mockResolvedValue();
 const mockSetDoc = vi.fn().mockResolvedValue();
 
+const mockServerTimestamp = vi.fn(() => ({ _seconds: 12345, _nanoseconds: 0 }));
+
 vi.mock('../firebase-config', () => ({
   db: {},
   functions: {},
+  storage: {},
+}));
+
+const mockUploadTask = {
+  on: vi.fn((event, onProgress, onError, onComplete) => {
+    if (onProgress) onProgress({ bytesTransferred: 50, totalBytes: 100 });
+    if (onComplete) onComplete();
+  }),
+};
+const mockUploadBytesResumable = vi.fn(() => mockUploadTask);
+const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage.googleapis.com/recovered.webm');
+
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn(() => ({})),
+  uploadBytesResumable: (...args) => mockUploadBytesResumable(...args),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+}));
+
+const mockGetPendingRecoverySessions = vi.fn().mockResolvedValue([]);
+const mockClearRecoverySession = vi.fn().mockResolvedValue();
+vi.mock('../utils/lectureRecoveryDb', () => ({
+  getPendingRecoverySessions: () => mockGetPendingRecoverySessions(),
+  clearRecoverySession: (...args) => mockClearRecoverySession(...args),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -27,6 +52,7 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: (...args) => mockDeleteDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   setDoc: (...args) => mockSetDoc(...args),
+  serverTimestamp: () => mockServerTimestamp(),
   query: vi.fn((collRef) => collRef),
   orderBy: vi.fn(),
   where: vi.fn(),
@@ -1662,6 +1688,86 @@ describe('LectureRecordingsView Component', () => {
         recordingIds: ['clip_1', 'clip_2'],
       })
     );
+  });
+
+  it('detects local crash recovery chunks in IndexedDB and allows one-click restore', async () => {
+    mockGetPendingRecoverySessions.mockResolvedValue([
+      {
+        sessionId: 'rec_interrupted_1',
+        classId: 'test_class',
+        mimeType: 'video/webm',
+        title: 'Interrupted Today Class',
+        chunks: [new Blob(['chunk1'], { type: 'video/webm' }), new Blob(['chunk2'], { type: 'video/webm' })],
+      },
+    ]);
+
+    render(<LectureRecordingsView classId="test_class" />);
+
+    const mockDocs = [
+      {
+        id: 'rec_interrupted_1',
+        data: () => ({
+          title: 'Interrupted Today Class',
+          status: 'interrupted',
+          startedAt: { seconds: 1791334826, nanoseconds: 0 },
+          interruptedReason: 'No media files found in Cloud Storage.',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    expect(await screen.findByText(/Local Crash Recovery Chunks Found in This Browser!/i)).toBeInTheDocument();
+    expect(screen.getByText(/video chunks/i)).toBeInTheDocument();
+
+    const recoverBtn = screen.getByRole('button', { name: /Upload & Restore from This Browser/i });
+    expect(recoverBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(recoverBtn);
+    });
+
+    expect(mockUploadBytesResumable).toHaveBeenCalled();
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class/lectureRecordings/rec_interrupted_1' }),
+      expect.objectContaining({
+        status: 'ready',
+        isRecoveredAfterCrash: true,
+        videoUrl: 'https://storage.googleapis.com/recovered.webm',
+      }),
+      { merge: true }
+    );
+    expect(mockClearRecoverySession).toHaveBeenCalledWith('rec_interrupted_1');
+  });
+
+  it('shows clear recovery instructions and manual upload option when no local chunks exist', async () => {
+    mockGetPendingRecoverySessions.mockResolvedValue([]);
+
+    render(<LectureRecordingsView classId="test_class" />);
+
+    const mockDocs = [
+      {
+        id: 'rec_other_device',
+        data: () => ({
+          title: 'Remote Device Lecture',
+          status: 'interrupted',
+          teacherEmail: 'teacher@school.edu',
+          startedAt: { seconds: 1791334826, nanoseconds: 0 },
+          interruptedReason: 'No media files found in Cloud Storage. The browser may have closed or crashed before upload completed.',
+        }),
+      },
+    ];
+
+    await act(async () => {
+      snapshotCallback({ docs: mockDocs });
+    });
+
+    expect(await screen.findByText(/Recording Session Interrupted/i)).toBeInTheDocument();
+    expect(screen.getByText(/Diagnosis:/i)).toBeInTheDocument();
+    expect(screen.getByText(/How to Recover This Lecture:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Upload Video File Manually/i)).toBeInTheDocument();
   });
 });
 

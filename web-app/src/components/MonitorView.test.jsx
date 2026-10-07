@@ -144,6 +144,31 @@ vi.mock('../hooks/useAnalysis', () => ({
   })),
 }));
 
+const defaultLectureRecorderState = {
+  recordingState: 'idle',
+  isRecording: false,
+  isPaused: false,
+  isUploading: false,
+  isCompleted: false,
+  durationSeconds: 0,
+  durationFormatted: '00:00',
+  uploadProgress: 0,
+  error: null,
+  activeSessionId: null,
+  startRecording: vi.fn(),
+  pauseRecording: vi.fn(),
+  resumeRecording: vi.fn(),
+  stopRecording: vi.fn(),
+  discardRecording: vi.fn(),
+  mergeSessionRecordings: vi.fn(),
+};
+
+let currentLectureRecorderState = { ...defaultLectureRecorderState };
+
+vi.mock('../hooks/useLectureRecorder', () => ({
+  default: () => currentLectureRecorderState,
+}));
+
 vi.mock('./BingoResultsView', () => ({
   default: ({ classId, isModal, studentStatuses }) => (
     <div data-testid="mock-bingo-results-modal">
@@ -171,6 +196,7 @@ describe('MonitorView Component Suite', () => {
 
   beforeEach(() => {
     currentExamActive = false;
+    currentLectureRecorderState = { ...defaultLectureRecorderState };
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(fixedDate);
@@ -832,6 +858,26 @@ describe('MonitorView Component Suite', () => {
         expect.objectContaining({ captureMode: 'screen' })
       );
     }
+  });
+
+  it('renders high-visibility upload progress modal when lecture recording is uploading', async () => {
+    currentLectureRecorderState = {
+      ...defaultLectureRecorderState,
+      recordingState: 'uploading',
+      isUploading: true,
+      durationSeconds: 120,
+      durationFormatted: '02:00',
+      uploadProgress: 68,
+      activeSessionId: 'rec_test_123',
+    };
+
+    render(<MonitorView {...defaultProps} />);
+
+    const uploadModal = screen.getByTestId('lecture-upload-modal');
+    expect(uploadModal).toBeInTheDocument();
+    expect(screen.getByText(/Uploading Lecture Recording to Cloud/i)).toBeInTheDocument();
+    expect(screen.getByText('68%')).toBeInTheDocument();
+    expect(screen.getByText(/Please do not close this browser tab or shut down your computer/i)).toBeInTheDocument();
   });
 });
 
