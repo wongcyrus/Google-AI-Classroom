@@ -64,7 +64,7 @@
 **Status**: Implemented, Verified with Probed Media Durations, Deployed to Production  
 **Primary Files**:
 - Backend Functions: [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js), [`functions/ai_flows/processLectureSubtitles.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.test.js), [`functions/ai_flows/analysisFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/analysisFlows.js)
-- Admin Maintenance Scripts: [`admin/scripts/calibrate_lecture_subtitles.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/calibrate_lecture_subtitles.mjs), [`admin/scripts/trigger_reprocess_subtitles.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/trigger_reprocess_subtitles.mjs)
+- Admin Maintenance Scripts: [`admin/scripts/calibrate_lecture_subtitles.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/calibrate_lecture_subtitles.mjs)
 - Documentation: [`docs/teacher-lecture-recording-and-youtube-workflow.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/teacher-lecture-recording-and-youtube-workflow.md), [`docs/functions.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/functions.md)
 
 ### Technical Analysis: Root Cause of Subtitle Timeline Acceleration ("CC Faster / Out of Sync")
@@ -123,9 +123,7 @@
 **Primary Files**:
 - Backend Functions: [`functions/config.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/config.js), [`functions/ai_flows/processLectureSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/processLectureSubtitles.js), [`functions/ai_flows/cost.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/cost.js)
 - Frontend Settings & Badges: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
-- Admin Scripts: [`admin/scripts/trigger_reprocess_subtitles.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/trigger_reprocess_subtitles.mjs)
 - Documentation: [`docs/teacher-lecture-recording-and-youtube-workflow.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/teacher-lecture-recording-and-youtube-workflow.md), [`docs/functions.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/functions.md)
-
 ### Technical Analysis: Root Cause of "Only 6 Mins CC" in Browser Player
 1. **Output Was NOT Truncated by Tokens**:
    - `maxOutputTokens: 65536` was configured; the model successfully returned 414 cues spanning up to `00:48:46`.
