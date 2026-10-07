@@ -481,6 +481,7 @@ export default function useLectureRecorder({
         ...metadataRef.current,
         title: `${metadataRef.current?.title || 'Lecture'} (Part ${nextSegIdx})`,
         segmentIndex: nextSegIdx,
+        isRollingSegment: true,
         status: 'recording',
         startedAt: serverTimestamp(),
       };
@@ -783,6 +784,7 @@ export default function useLectureRecorder({
           classId,
           sessionGroupId: effectiveSessionGroupId,
           segmentIndex: 1,
+          isRollingSegment: true,
           broadcastSessionId: broadcastSessionId || null,
         };
         metadataRef.current = sessionMeta;

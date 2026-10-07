@@ -514,13 +514,20 @@ export default function LectureRecordingsView({
   }, [classId]);
 
   // Filter recordings by lesson when a specific lesson is selected
+  // Automatically exclude merged fragments and secondary rolling segments so UI does not show 45 individual 1-min clips
   const filteredRecordings = useMemo(() => {
+    let list = recordings.filter((r) => {
+      if (r.isFragment || r.mergedIntoSessionId || r.isSegmentDeleted) return false;
+      if (r.isRollingSegment && r.segmentIndex > 1) return false;
+      return true;
+    });
+
     if (selectedLessonFilter === 'all' || !lessons || lessons.length === 0) {
-      return recordings;
+      return list;
     }
     const lesson = lessons.find((l) => (l.id || l.lessonId) === selectedLessonFilter);
-    if (!lesson) return recordings;
-    return recordings.filter((r) => isRecordInLesson(r, lesson));
+    if (!lesson) return list;
+    return list.filter((r) => isRecordInLesson(r, lesson));
   }, [recordings, selectedLessonFilter, lessons]);
 
   // Automatically select the newest recording in filtered list if none selected or removed
@@ -561,6 +568,8 @@ export default function LectureRecordingsView({
           (r) =>
             !r.isCombined &&
             !r.mergedIntoSessionId &&
+            !r.isSegmentDeleted &&
+            !r.isRollingSegment &&
             (r.storagePath || r.videoUrl) &&
             r.status !== 'recording' &&
             r.status !== 'discarded'
@@ -572,6 +581,8 @@ export default function LectureRecordingsView({
           (r) =>
             !r.isCombined &&
             !r.mergedIntoSessionId &&
+            !r.isSegmentDeleted &&
+            !r.isRollingSegment &&
             (r.storagePath || r.videoUrl) &&
             r.status !== 'recording' &&
             r.status !== 'discarded'
@@ -1385,6 +1396,10 @@ export default function LectureRecordingsView({
                             {rec.fileSize ? <span>• 📦 {formatFileSize(rec.fileSize)}</span> : null}
                             {rec.isCombined ? (
                               <span className="badge-pill-combined">🌟 Combined Full Lecture</span>
+                            ) : rec.isRollingSegment ? (
+                              <span className="badge-pill-combined" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                                🔴 Live Class Lecture (1-min auto-rolling)
+                              </span>
                             ) : rec.isFragment ? (
                               <span className="badge-pill-fragment">✂️ Part {rec.fragmentIndex || 1}</span>
                             ) : rec.durationSeconds >= 600 ? (

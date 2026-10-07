@@ -493,7 +493,33 @@ export async function executeMergeLectureRecordings(
       classId,
     });
 
-    // 12. Mark individual source clips as merged fragments & clean up dangling stubs
+    // 12. Delete raw 1-minute intermediate segment files from Cloud Storage to reclaim storage quota
+    if (bucket) {
+      for (const rec of recordingsToMerge) {
+        if (rec.storagePath && rec.storagePath !== destVideoPath) {
+          try {
+            const f = bucket.file(rec.storagePath);
+            if (typeof f?.delete === 'function') {
+              await f.delete({ ignoreNotFound: true });
+            }
+          } catch (delErr) {
+            console.warn(`[mergeLectureRecordings] Notice deleting intermediate segment ${rec.storagePath}:`, delErr.message);
+          }
+        }
+        if (rec.audioStoragePath && rec.audioStoragePath !== destAudioPath && rec.audioStoragePath !== destNormalizedAudioPath) {
+          try {
+            const af = bucket.file(rec.audioStoragePath);
+            if (typeof af?.delete === 'function') {
+              await af.delete({ ignoreNotFound: true });
+            }
+          } catch (delAudioErr) {
+            console.warn(`[mergeLectureRecordings] Notice deleting intermediate audio ${rec.audioStoragePath}:`, delAudioErr.message);
+          }
+        }
+      }
+    }
+
+    // Mark individual source clips as merged fragments & clean up dangling stubs
     const batch = currentDb.batch();
     for (let idx = 0; idx < recordingsToMerge.length; idx++) {
       const rec = recordingsToMerge[idx];
@@ -503,6 +529,7 @@ export async function executeMergeLectureRecordings(
         fragmentIndex: idx + 1,
         totalFragments: recordingsToMerge.length,
         mergedIntoSessionId: combinedSessionId,
+        isSegmentDeleted: true,
       });
     }
 
