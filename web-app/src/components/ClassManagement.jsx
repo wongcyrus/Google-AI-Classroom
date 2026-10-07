@@ -2931,9 +2931,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               checked={automaticCombine}
               onChange={(e) => setAutomaticCombine(e.target.checked)}
             />
-            <span>Automatic Video Compilation</span>
+            <span>Automatic Video Compilation (Student Screens)</span>
           </label>
-          <p className="input-hint">Generates a session video recording for each student when the class concludes.</p>
+          <p className="input-hint">
+            Generates an invigilation video recording for each student when the class concludes.
+            (Teacher lecture recordings are always automatically combined across all classes without needing any settings.)
+          </p>
         </div>
 
         <ClassPromptField

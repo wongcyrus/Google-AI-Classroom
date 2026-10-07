@@ -164,192 +164,233 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
   logger.info(`handleAutomaticVideoCombination triggered at ${now.toISOString()}`);
 
   const classesRef = db.collection('classes');
-  const snapshot = await classesRef.where('automaticCombine', '==', true).get();
+  const snapshot = await classesRef.get();
 
-  if (snapshot.empty) {
-    logger.info('No classes with automaticCombine enabled.');
+  if (!snapshot || snapshot.empty) {
+    logger.info('No classes found in Firestore.');
     return;
   }
 
-  logger.info(`Found ${snapshot.size} classes with automaticCombine enabled.`);
+  logger.info(`Found ${snapshot.size} classes to check for student video jobs and teacher lecture combination.`);
 
   const jobCreationPromises = [];
   const notificationsToCreate = new Map(); // Use a map to avoid duplicate notifications per class
 
   for (const doc of snapshot.docs) {
-    const classData = doc.data();
+    const classData = doc.data() || {};
     const classId = doc.id;
     const { schedule, students, teachers } = classData;
     const studentUids = Object.keys(students || {});
     const teacherUids = Object.keys(teachers || {});
 
-    if (!schedule || !schedule.timeZone || !schedule.timeSlots || !studentUids || studentUids.length === 0) {
-      logger.warn(`Skipping class ${classId} due to incomplete configuration (schedule, timeZone, timeSlots, or students missing).`);
-      continue; // Skip if not properly configured
-    }
+    // 1. STUDENT SCREEN VIDEO COMBINATION:
+    // Only applies if the class explicitly has automaticCombine === true, and has schedule + students
+    if (classData.automaticCombine === true && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
+      const { timeZone } = schedule;
+      const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
+      const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
+      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
 
-    const { timeZone } = schedule;
-    const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
-    const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
-    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      logger.info(`Checking student screen video jobs for class '${classId}'. Current time in ${timeZone}: ${localDay} ${localTime}.`);
 
-    logger.info(`Checking class '${classId}'. Current time in ${timeZone}: ${localDay} ${localTime}.`);
-    let slotFound = false;
-
-    for (const slot of schedule.timeSlots) {
-      if (!slot.days.includes(localDay)) {
-        continue; // Not scheduled for today
-      }
-
-      const offset = format(now, 'XXX', { timeZone });
-      const lessonEndDateTimeStr = `${todayStr}T${slot.endTime}:00${offset}`;
-      const lessonEndDateTimeInZone = new Date(lessonEndDateTimeStr);
-
-      // Check if the lesson ended within the last 30 minutes
-      if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
-        slotFound = true;
-        const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
-
-        // Check if this lesson overlaps with any defined exam/test periods
-        const isExamSession = (classData.examPeriods || []).some(period => {
-          if (!period || !period.startDate || !period.endDate) return false;
-          const pStart = new Date(period.startDate).getTime();
-          const pEnd = new Date(period.endDate).getTime();
-          const lStart = lessonStartDateTimeInZone.getTime();
-          const lEnd = lessonEndDateTimeInZone.getTime();
-          return (lStart >= pStart && lStart <= pEnd) || (lEnd >= pStart && lEnd <= pEnd) || (pStart >= lStart && pEnd <= lEnd);
-        }) || Boolean(slot.isExam || slot.type === 'exam');
-
-        logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}, isExam=${isExamSession}). Triggering video combination.`);
-
-        if (!notificationsToCreate.has(classId)) {
-          notificationsToCreate.set(classId, teacherUids || []);
+      for (const slot of schedule.timeSlots) {
+        if (!slot.days.includes(localDay)) {
+          continue; // Not scheduled for today
         }
 
-        for (const studentUid of studentUids) {
-          const videoJobsRef = db.collection('videoJobs');
-          const q = videoJobsRef
-            .where('classId', '==', classId)
-            .where('studentUid', '==', studentUid)
-            .where('startTime', '==', lessonStartDateTimeInZone)
-            .where('endTime', '==', lessonEndDateTimeInZone);
+        const offset = format(now, 'XXX', { timeZone });
+        const lessonEndDateTimeStr = `${todayStr}T${slot.endTime}:00${offset}`;
+        const lessonEndDateTimeInZone = new Date(lessonEndDateTimeStr);
 
-          const jobPromise = q.get().then(async (existingJobs) => {
-            if (existingJobs.empty) {
-              try {
-                const userRecord = await adminAuth.getUser(studentUid);
-                const studentEmail = userRecord.email;
+        // Check if the lesson ended within the last 30 minutes
+        if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
+          const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
 
-                if (!studentEmail) {
-                  logger.error(`Student with UID ${studentUid} has no email. Cannot create video job.`);
-                  return;
+          // Check if this lesson overlaps with any defined exam/test periods
+          const isExamSession = (classData.examPeriods || []).some(period => {
+            if (!period || !period.startDate || !period.endDate) return false;
+            const pStart = new Date(period.startDate).getTime();
+            const pEnd = new Date(period.endDate).getTime();
+            const lStart = lessonStartDateTimeInZone.getTime();
+            const lEnd = lessonEndDateTimeInZone.getTime();
+            return (lStart >= pStart && lStart <= pEnd) || (lEnd >= pStart && lEnd <= pEnd) || (pStart >= lStart && pEnd <= lEnd);
+          }) || Boolean(slot.isExam || slot.type === 'exam');
+
+          logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}, isExam=${isExamSession}). Triggering student video combination.`);
+
+          if (!notificationsToCreate.has(classId)) {
+            notificationsToCreate.set(classId, teacherUids || []);
+          }
+
+          for (const studentUid of studentUids) {
+            const videoJobsRef = db.collection('videoJobs');
+            const q = videoJobsRef
+              .where('classId', '==', classId)
+              .where('studentUid', '==', studentUid)
+              .where('startTime', '==', lessonStartDateTimeInZone)
+              .where('endTime', '==', lessonEndDateTimeInZone);
+
+            const jobPromise = q.get().then(async (existingJobs) => {
+              if (existingJobs.empty) {
+                try {
+                  const userRecord = await adminAuth.getUser(studentUid);
+                  const studentEmail = userRecord.email;
+
+                  if (!studentEmail) {
+                    logger.error(`Student with UID ${studentUid} has no email. Cannot create video job.`);
+                    return;
+                  }
+
+                  const videoRetentionDays = classData.videoRetentionDays || classData.retentionDays || 90;
+                  const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
+
+                  const newDocRef = videoJobsRef.doc();
+                  logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId} (isExam=${isExamSession})`);
+                  return newDocRef.set({
+                    jobId: newDocRef.id,
+                    classId: classId,
+                    studentUid: studentUid,
+                    studentEmail: studentEmail,
+                    startTime: lessonStartDateTimeInZone,
+                    endTime: lessonEndDateTimeInZone,
+                    status: 'pending',
+                    isExam: isExamSession,
+                    createdAt: FieldValue.serverTimestamp(),
+                    expireAt: videoExpireAt,
+                  });
+                } catch (e) {
+                  logger.error(`Failed to get user record for UID ${studentUid}`, e);
                 }
-
-                const videoRetentionDays = classData.videoRetentionDays || classData.retentionDays || 90;
-                const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
-
-                const newDocRef = videoJobsRef.doc();
-                logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId} (isExam=${isExamSession})`);
-                return newDocRef.set({
-                  jobId: newDocRef.id,
-                  classId: classId,
-                  studentUid: studentUid,
-                  studentEmail: studentEmail,
-                  startTime: lessonStartDateTimeInZone,
-                  endTime: lessonEndDateTimeInZone,
-                  status: 'pending',
-                  isExam: isExamSession,
-                  createdAt: FieldValue.serverTimestamp(),
-                  expireAt: videoExpireAt,
-                });
-              } catch (e) {
-                logger.error(`Failed to get user record for UID ${studentUid}`, e);
-              }
-            } else {
-              logger.info(`Video job already exists for student ${studentUid} in class ${classId}, skipping.`);
-            }
-          });
-          jobCreationPromises.push(jobPromise);
-        }
-
-        // Also check for unmerged teacher lecture clips from this ended lesson slot
-        const cleanStart = (slot.startTime || '').replace(':', '');
-        const cleanEnd = (slot.endTime || '').replace(':', '');
-        const expectedSlotSessionGroupId = `${classId}_${todayStr}_slot_${cleanStart}_${cleanEnd}`;
-        const slotStartMs = lessonStartDateTimeInZone.getTime() - 45 * 60 * 1000;
-        const slotEndMs = lessonEndDateTimeInZone.getTime() + 15 * 60 * 1000;
-
-        const lectureMergePromise = (async () => {
-          try {
-            const lectureRecsRef = db.collection(`classes/${classId}/lectureRecordings`);
-            const lectureSnap = await lectureRecsRef.get();
-            if (!lectureSnap || lectureSnap.empty) return;
-
-            const unmergedClips = [];
-            lectureSnap.forEach((recDoc) => {
-              const r = recDoc.data() || {};
-              if (r.isCombined || r.mergedIntoSessionId) return;
-              if (r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
-              if (!r.storagePath && !r.videoUrl) return;
-
-              const rStartMs = r.startedAt?.toMillis ? r.startedAt.toMillis() : (r.startedAt ? new Date(r.startedAt).getTime() : 0);
-              // Must be at least 2 minutes old to ensure upload is completely finalized
-              if (rStartMs && Date.now() - rStartMs < 2 * 60 * 1000) return;
-
-              const matchesSlotId = r.sessionGroupId === expectedSlotSessionGroupId;
-              const matchesTimeWindow = rStartMs >= slotStartMs && rStartMs <= slotEndMs;
-
-              if (matchesSlotId || matchesTimeWindow) {
-                unmergedClips.push({ id: recDoc.id, ...r });
+              } else {
+                logger.info(`Video job already exists for student ${studentUid} in class ${classId}, skipping.`);
               }
             });
-
-            if (unmergedClips.length >= 2) {
-              const mergeJobId = `merge_${classId}_${cleanStart}_${cleanEnd}_${todayStr}`;
-              const mergeJobRef = db.collection('lectureMergeJobs').doc(mergeJobId);
-              const existingMergeJob = await mergeJobRef.get();
-
-              if (!existingMergeJob || !existingMergeJob.exists) {
-                logger.info(`Creating automatic lecture merge job '${mergeJobId}' for ${unmergedClips.length} clips in class ${classId}`);
-                await mergeJobRef.set({
-                  jobId: mergeJobId,
-                  classId,
-                  recordingIds: unmergedClips.map((c) => c.id),
-                  sessionGroupId: expectedSlotSessionGroupId,
-                  customTitle: `Combined Full Lecture - ${todayStr}`,
-                  status: 'pending',
-                  createdAt: FieldValue.serverTimestamp(),
-                });
-              }
-            } else if (unmergedClips.length === 1 && unmergedClips[0].status === 'processing_subtitles') {
-              const singleClip = unmergedClips[0];
-              const subtitleJobId = `sub_${classId}_${singleClip.id}`;
-              const subJobRef = db.collection('lectureSubtitleJobs').doc(subtitleJobId);
-              const existingSubJob = await subJobRef.get();
-              if (!existingSubJob || !existingSubJob.exists) {
-                logger.info(`Enqueuing subtitle job for unfinalized single clip ${singleClip.id} in class ${classId}`);
-                await subJobRef.set({
-                  jobId: subtitleJobId,
-                  classId,
-                  sessionId: singleClip.id,
-                  storagePath: singleClip.storagePath,
-                  audioStoragePath: singleClip.normalizedAudioStoragePath || singleClip.audioStoragePath,
-                  title: singleClip.title,
-                  status: 'pending',
-                  createdAt: FieldValue.serverTimestamp(),
-                });
-              }
-            }
-          } catch (lecErr) {
-            logger.warn(`Automatic lecture combination check for class ${classId} skipped: ${lecErr.message}`);
+            jobCreationPromises.push(jobPromise);
           }
-        })();
-        jobCreationPromises.push(lectureMergePromise);
+        }
       }
     }
-    if (!slotFound) {
-      logger.info(`No recently ended lesson slots found for class '${classId}'.`);
-    }
+
+    // 2. TEACHER LECTURE RECORDING COMBINATION:
+    // ALWAYS enabled across ALL classes unconditionally (ZERO special settings required!)
+    // Scans classes/{classId}/lectureRecordings for unmerged rolling clips or fragments after class.
+    const lectureMergePromise = (async () => {
+      try {
+        const lectureRecsRef = db.collection(`classes/${classId}/lectureRecordings`);
+        const lectureSnap = await lectureRecsRef.get();
+        if (!lectureSnap || lectureSnap.empty || !lectureSnap.forEach) return;
+
+        const unmergedClips = [];
+        lectureSnap.forEach((recDoc) => {
+          const r = recDoc.data() || {};
+          if (r.isCombined || r.mergedIntoSessionId || r.isSegmentDeleted) return;
+          if (r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
+          if (!r.storagePath && !r.videoUrl) return;
+
+          const rStartMs = r.startedAt?.toMillis ? r.startedAt.toMillis() : (r.startedAt ? new Date(r.startedAt).getTime() : 0);
+          // Must be at least 2 minutes old to ensure chunk upload is completely finalized
+          if (rStartMs && Date.now() - rStartMs < 2 * 60 * 1000) return;
+
+          unmergedClips.push({ id: recDoc.id, ...r, rStartMs });
+        });
+
+        if (unmergedClips.length === 0) return;
+
+        // Group unmerged clips by sessionGroupId (or date/session prefix)
+        const groups = new Map();
+        for (const clip of unmergedClips) {
+          const groupId = clip.sessionGroupId || clip.sessionId || `session_${clip.rStartMs ? new Date(clip.rStartMs).toISOString().slice(0, 10) : 'default'}`;
+          if (!groups.has(groupId)) {
+            groups.set(groupId, []);
+          }
+          groups.get(groupId).push(clip);
+        }
+
+        // Check if a timetable slot recently ended for this class (if timetable exists)
+        let activeSlot = null;
+        let todayStr = new Date().toISOString().slice(0, 10);
+        if (schedule?.timeZone && Array.isArray(schedule.timeSlots)) {
+          const { timeZone, timeSlots } = schedule;
+          const { localDay } = getLocalTimeInfo(now, timeZone);
+          todayStr = format(now, 'yyyy-MM-dd', { timeZone });
+          const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
+          for (const slot of timeSlots) {
+            if (!slot.days.includes(localDay)) continue;
+            const offset = format(now, 'XXX', { timeZone });
+            const slotEnd = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
+            if (slotEnd > thirtyMinutesAgo && slotEnd <= now) {
+              activeSlot = slot;
+              break;
+            }
+          }
+        }
+
+        for (const [groupId, clips] of groups.entries()) {
+          // A recording session is concluded and ready to combine after class if:
+          // 1) An active timetable slot just concluded, OR
+          // 2) Any clip in this group is marked ready/completed, OR
+          // 3) The most recent clip in this group is >= 5 minutes old (meaning continuous 1-min rolling recording has stopped)
+          const latestClipMs = Math.max(...clips.map((c) => c.rStartMs || 0));
+          const isPastSession = latestClipMs > 0 && (Date.now() - latestClipMs >= 5 * 60 * 1000);
+          const isConcluded = activeSlot || isPastSession || clips.some((c) => c.status === 'ready' || c.status === 'completed');
+
+          if (!isConcluded) {
+            // Lecture is actively recording rolling segments right now during class; do not prematurely combine until class concludes
+            continue;
+          }
+
+          if (clips.length >= 2) {
+            let mergeJobId;
+            if (activeSlot) {
+              const cleanStart = (activeSlot.startTime || '').replace(':', '');
+              const cleanEnd = (activeSlot.endTime || '').replace(':', '');
+              mergeJobId = `merge_${classId}_${cleanStart}_${cleanEnd}_${todayStr}`;
+            } else {
+              const cleanGroupId = groupId.replace(/[^a-zA-Z0-9_-]/g, '_');
+              mergeJobId = `merge_${classId}_${cleanGroupId}`;
+            }
+
+            const mergeJobRef = db.collection('lectureMergeJobs').doc(mergeJobId);
+            const existingMergeJob = await mergeJobRef.get();
+
+            if (!existingMergeJob || !existingMergeJob.exists || existingMergeJob.data()?.status === 'failed') {
+              logger.info(`Creating automatic lecture merge job '${mergeJobId}' for ${clips.length} clips in class ${classId} (zero special settings required)`);
+              await mergeJobRef.set({
+                jobId: mergeJobId,
+                classId,
+                recordingIds: clips.map((c) => c.id),
+                sessionGroupId: groupId,
+                customTitle: `Combined Full Lecture - ${todayStr}`,
+                status: 'pending',
+                createdAt: FieldValue.serverTimestamp(),
+              });
+            }
+          } else if (clips.length === 1 && clips[0].status === 'processing_subtitles') {
+            const singleClip = clips[0];
+            const subtitleJobId = `sub_${classId}_${singleClip.id}`;
+            const subJobRef = db.collection('lectureSubtitleJobs').doc(subtitleJobId);
+            const existingSubJob = await subJobRef.get();
+            if (!existingSubJob || !existingSubJob.exists) {
+              logger.info(`Enqueuing subtitle job for unfinalized single clip ${singleClip.id} in class ${classId}`);
+              await subJobRef.set({
+                jobId: subtitleJobId,
+                classId,
+                sessionId: singleClip.id,
+                storagePath: singleClip.storagePath,
+                audioStoragePath: singleClip.normalizedAudioStoragePath || singleClip.audioStoragePath,
+                title: singleClip.title,
+                status: 'pending',
+                createdAt: FieldValue.serverTimestamp(),
+              });
+            }
+          }
+        }
+      } catch (lecErr) {
+        logger.warn(`Automatic lecture combination check for class ${classId} skipped: ${lecErr.message}`);
+      }
+    })();
+    jobCreationPromises.push(lectureMergePromise);
   }
 
   await Promise.all(jobCreationPromises);

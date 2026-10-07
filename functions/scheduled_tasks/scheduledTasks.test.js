@@ -265,6 +265,70 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       vi.useRealTimers();
     });
+
+    it('creates lectureMergeJobs even when automaticCombine is false and no students exist (zero special settings required)', async () => {
+      const fixedTime = new Date('2026-09-14T11:00:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      const classDocNoSettings = {
+        id: 'class_zero_settings',
+        data: () => ({
+          automaticCombine: false, // NO special settings!
+          students: {}, // NO students needed!
+          teachers: { 'teacher-zero-1': 'teacher0@vtc.edu.hk' },
+        }),
+      };
+
+      const clip1 = {
+        id: 'zero_clip_1',
+        data: () => ({
+          storagePath: 'recordings/class_zero_settings/zero_clip_1/lecture.webm',
+          sessionGroupId: 'session_group_123',
+          startedAt: { toMillis: () => new Date('2026-09-14T10:00:00Z').getTime() },
+          status: 'ready',
+        }),
+      };
+      const clip2 = {
+        id: 'zero_clip_2',
+        data: () => ({
+          storagePath: 'recordings/class_zero_settings/zero_clip_2/lecture.webm',
+          sessionGroupId: 'session_group_123',
+          startedAt: { toMillis: () => new Date('2026-09-14T10:01:00Z').getTime() },
+          status: 'ready',
+        }),
+      };
+
+      mockDoc.get.mockResolvedValue({ exists: false });
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [classDocNoSettings],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          forEach: (cb) => {
+            cb(clip1);
+            cb(clip2);
+          },
+        });
+
+      await handleAutomaticVideoCombination();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'merge_class_zero_settings_session_group_123',
+          classId: 'class_zero_settings',
+          recordingIds: ['zero_clip_1', 'zero_clip_2'],
+          sessionGroupId: 'session_group_123',
+          status: 'pending',
+        })
+      );
+
+      vi.useRealTimers();
+    });
   });
 
   describe('syncGeminiPricing Scheduled Function', () => {
