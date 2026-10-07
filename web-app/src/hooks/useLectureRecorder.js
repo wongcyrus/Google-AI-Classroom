@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { db, storage, functions } from '../firebase-config';
-import { collection, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import fixWebmDuration from 'fix-webm-duration';
@@ -400,6 +400,13 @@ export default function useLectureRecorder({
     isRollingOverRef.current = true;
 
     try {
+      if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
+        try { audioRecorderRef.current.requestData(); } catch {}
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try { mediaRecorderRef.current.requestData(); } catch {}
+      }
+
       const curSegmentIdx = segmentIndexRef.current;
       const curSegSessionId = activeSessionIdRef.current;
       const curSegDuration = currentSegmentDurationRef.current || 60;
@@ -899,18 +906,37 @@ export default function useLectureRecorder({
     const finalSegDuration = currentSegmentDurationRef.current || durationRef.current || 1;
     const totalDuration = durationRef.current;
 
+    const activeMediaRec = mediaRecorderRef.current;
+    const activeAudioRec = audioRecorderRef.current;
+    const videoMime = activeMediaRec?.mimeType || 'video/webm';
+    const audioMime = activeAudioRec?.mimeType || 'audio/webm';
+
+    // Flush active media recorders
+    if (activeAudioRec && activeAudioRec.state === 'recording') {
+      try { activeAudioRec.requestData(); } catch {}
+    }
+    if (activeMediaRec && activeMediaRec.state === 'recording') {
+      try { activeMediaRec.requestData(); } catch {}
+    }
+
+    // Stop active media recorders and wait for final chunks to flush
+    const stopPromises = [];
+    if (activeAudioRec && activeAudioRec.state !== 'inactive') {
+      stopPromises.push(new Promise((resolve) => {
+        activeAudioRec.addEventListener('stop', () => resolve(), { once: true });
+        try { activeAudioRec.stop(); } catch { resolve(); }
+      }));
+    }
+    if (activeMediaRec && activeMediaRec.state !== 'inactive') {
+      stopPromises.push(new Promise((resolve) => {
+        activeMediaRec.addEventListener('stop', () => resolve(), { once: true });
+        try { activeMediaRec.stop(); } catch { resolve(); }
+      }));
+    }
+    await Promise.all(stopPromises);
+
     const curVideoChunks = [...recordedChunksRef.current];
     const curAudioChunks = [...audioRecordedChunksRef.current];
-    const videoMime = mediaRecorderRef.current?.mimeType || 'video/webm';
-    const audioMime = audioRecorderRef.current?.mimeType || 'audio/webm';
-
-    // Stop active media recorders
-    if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
-      try { audioRecorderRef.current.stop(); } catch {}
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch {}
-    }
 
     cleanupStreams();
 
@@ -918,6 +944,16 @@ export default function useLectureRecorder({
       const rawBlob = new Blob(curVideoChunks, { type: videoMime });
       if (rawBlob.size === 0 && recordedSegmentsRef.current.length === 0 && uploadQueueRef.current.length === 0) {
         throw new Error('Recorded lecture file is empty.');
+      }
+
+      if (rawBlob.size === 0) {
+        // If final segment stub has 0 bytes (e.g. stopped right after a rollover), clean up stub doc from Firestore
+        if (finalSegSessionId && finalSegmentIdx > 1) {
+          try {
+            const stubRef = doc(db, `classes/${classId}/lectureRecordings/${finalSegSessionId}`);
+            deleteDoc(stubRef).catch(() => {});
+          } catch {}
+        }
       }
 
       if (rawBlob.size > 0) {

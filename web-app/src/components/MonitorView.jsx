@@ -335,26 +335,11 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setSynchronizedAudioStream(null);
 
     if (lectureRecorder && (lectureRecorder.isRecording || lectureRecorder.isPaused)) {
-      lectureRecorder
-        .stopRecording()
-        .then(async () => {
-          if (broadcastSessionIdToMerge && lectureRecorder?.mergeSessionRecordings) {
-            const cleanGroupId = broadcastSessionIdToMerge.startsWith('bcast_')
-              ? broadcastSessionIdToMerge
-              : `bcast_${broadcastSessionIdToMerge}`;
-            try {
-              const res = await lectureRecorder.mergeSessionRecordings({ sessionGroupId: cleanGroupId });
-              if (res?.success) {
-                console.info('[MonitorView] Automatically merged lecture session:', res.combinedSessionId);
-              }
-            } catch (err) {
-              console.debug('[MonitorView] Automatic merge check status:', err.message);
-            }
-          }
-        })
-        .catch((err) => {
-          console.warn('[MonitorView] Stop lecture recording notice:', err.message);
-        });
+      try {
+        await lectureRecorder.stopRecording();
+      } catch (err) {
+        console.warn('[MonitorView] Stop lecture recording notice:', err.message);
+      }
     }
 
     if (activeBroadcastStreamsRef.current) {

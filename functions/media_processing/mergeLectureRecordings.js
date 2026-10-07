@@ -8,6 +8,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import crypto from 'crypto';
+import { spawnSync } from 'child_process';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
 
@@ -15,7 +16,7 @@ const db = getFirestore();
 const storage = getStorage();
 
 let ffmpegPathSet = false;
-function ensureFfmpegPath() {
+export function ensureFfmpegPath() {
   if (!ffmpegPathSet) {
     ffmpeg.setFfmpegPath(ffmpeg_static);
     ffmpegPathSet = true;
@@ -23,29 +24,60 @@ function ensureFfmpegPath() {
 }
 
 /**
- * Probes the duration in seconds of a media file using ffprobe.
+ * Checks whether a media file contains at least one audio stream.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+export function hasAudioStream(filePath) {
+  try {
+    const res = spawnSync(ffmpeg_static, ['-i', filePath], { encoding: 'utf8' });
+    const out = (res.stdout || '') + (res.stderr || '');
+    return /Stream #\d+:\d+.*Audio:/.test(out);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Probes the duration in seconds of a media file using ffprobe with ffmpeg fallback.
  * @param {string} filePath
  * @returns {Promise<number>}
  */
 export function probeDurationSeconds(filePath) {
   ensureFfmpegPath();
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) return reject(err);
-      const duration = metadata?.format?.duration;
-      if (typeof duration === 'number' && !isNaN(duration)) {
-        return resolve(duration);
+      if (!err && metadata) {
+        const duration = metadata?.format?.duration;
+        if (typeof duration === 'number' && !isNaN(duration) && duration > 0) {
+          return resolve(duration);
+        }
+        if (typeof duration === 'string') {
+          const parsed = parseFloat(duration);
+          if (!isNaN(parsed) && parsed > 0) return resolve(parsed);
+        }
+        // Fallback: estimate from streams
+        const videoStream = metadata?.streams?.find((s) => s.codec_type === 'video');
+        if (videoStream?.duration) {
+          const streamDur = parseFloat(videoStream.duration);
+          if (!isNaN(streamDur) && streamDur > 0) return resolve(streamDur);
+        }
       }
-      if (typeof duration === 'string') {
-        const parsed = parseFloat(duration);
-        if (!isNaN(parsed)) return resolve(parsed);
-      }
-      // Fallback: estimate from streams
-      const videoStream = metadata?.streams?.find((s) => s.codec_type === 'video');
-      if (videoStream?.duration) {
-        const streamDur = parseFloat(videoStream.duration);
-        if (!isNaN(streamDur)) return resolve(streamDur);
-      }
+
+      // Resilient fallback using ffmpeg_static stdout/stderr
+      try {
+        const res = spawnSync(ffmpeg_static, ['-i', filePath, '-f', 'null', '-'], { encoding: 'utf8' });
+        const out = (res.stdout || '') + (res.stderr || '');
+        const matches = [...out.matchAll(/time=(\d+):(\d+):(\d+\.\d+)/g)];
+        if (matches.length > 0) {
+          const last = matches[matches.length - 1];
+          return resolve(parseFloat(last[1]) * 3600 + parseFloat(last[2]) * 60 + parseFloat(last[3]));
+        }
+        const durMatch = out.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+        if (durMatch) {
+          return resolve(parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]));
+        }
+      } catch {}
       resolve(0);
     });
   });
@@ -75,6 +107,7 @@ export async function executeMergeLectureRecordings(
   const currentStorage = overrides.storage || storage;
   const currentDurationProber = overrides.durationProber || probeDurationSeconds;
   const currentFfmpegRunner = overrides.ffmpegRunner || runFfmpegCommand;
+  const currentAudioChecker = overrides.audioChecker || hasAudioStream;
 
   if (!classId) {
     throw new HttpsError('invalid-argument', 'classId is required.');
@@ -360,32 +393,64 @@ export async function executeMergeLectureRecordings(
       await currentFfmpegRunner(fallbackCmd);
     }
 
-    // 7. Extract normalized pure-audio track (48kHz Constant Bitrate MP3) for Gemini transcription
+    // 7. Extract normalized pure-audio track (48kHz Constant Bitrate MP3) for Gemini speech recognition
     // Crucial: transcoding to pristine 48kHz CBR MP3 eliminates MediaRecorder WebM timestamp resets
     // and prevents the 1.48x speed drift / subtitle desynchronization.
     const combinedMp3Path = path.join(workDir, 'combined_audio_normalized.mp3');
-    const audioNormalizedCmd = ffmpeg(combinedVideoPath)
-      .noVideo()
-      .audioCodec('libmp3lame')
-      .audioBitrate('128k')
-      .audioChannels(2)
-      .audioFrequency(48000)
-      .outputOptions(['-avoid_negative_ts make_zero', '-fflags +genpts'])
-      .output(combinedMp3Path);
+    const sourceHasAudio = currentAudioChecker(combinedVideoPath);
 
-    await currentFfmpegRunner(audioNormalizedCmd);
+    let audioExtractionSucceeded = false;
+    if (sourceHasAudio || overrides.ffmpegRunner) {
+      try {
+        const audioNormalizedCmd = ffmpeg(combinedVideoPath)
+          .noVideo()
+          .audioCodec('libmp3lame')
+          .audioBitrate('128k')
+          .audioChannels(2)
+          .audioFrequency(48000)
+          .outputOptions(['-avoid_negative_ts make_zero', '-fflags +genpts'])
+          .output(combinedMp3Path);
 
-    // Also extract WebM audio for HTML5 audio fallback if needed
+        await currentFfmpegRunner(audioNormalizedCmd);
+        audioExtractionSucceeded = overrides.ffmpegRunner
+          ? true
+          : (fs.existsSync(combinedMp3Path) && fs.statSync(combinedMp3Path).size > 0);
+      } catch (audioErr) {
+        console.warn(`[mergeLectureRecordings] Audio extraction notice (${audioErr.message}). Falling back to silent audio track...`);
+      }
+    }
+
+    if (!audioExtractionSucceeded) {
+      console.info('[mergeLectureRecordings] No audio stream detected in source video or extraction failed. Synthesizing pristine 48kHz silent MP3 fallback...');
+      let probedDur = await currentDurationProber(combinedVideoPath).catch(() => 0) || 60;
+      if (probedDur <= 0) probedDur = 60;
+      const res = spawnSync(ffmpeg_static, [
+        '-f', 'lavfi',
+        '-i', 'anullsrc=r=48000:cl=stereo',
+        '-t', String(Math.max(1, Math.round(probedDur))),
+        '-c:a', 'libmp3lame',
+        '-b:a', '128k',
+        '-y',
+        combinedMp3Path,
+      ]);
+      if (res.status !== 0 || !fs.existsSync(combinedMp3Path) || fs.statSync(combinedMp3Path).size === 0) {
+        console.warn('[mergeLectureRecordings] Silent MP3 fallback notice:', res.status, res.stderr?.toString());
+      }
+    }
+
+    // Also extract WebM audio for HTML5 audio fallback if needed and source has audio
     const combinedAudioWebmPath = path.join(workDir, 'combined_audio.webm');
-    const audioWebmCmd = ffmpeg(combinedVideoPath)
-      .noVideo()
-      .outputOptions(['-c:a copy'])
-      .output(combinedAudioWebmPath);
+    if (sourceHasAudio || overrides.ffmpegRunner) {
+      const audioWebmCmd = ffmpeg(combinedVideoPath)
+        .noVideo()
+        .outputOptions(['-c:a copy'])
+        .output(combinedAudioWebmPath);
 
-    try {
-      await currentFfmpegRunner(audioWebmCmd);
-    } catch (e) {
-      console.warn('[mergeLectureRecordings] WebM audio copy skipped:', e.message);
+      try {
+        await currentFfmpegRunner(audioWebmCmd);
+      } catch (e) {
+        console.warn('[mergeLectureRecordings] WebM audio copy skipped:', e.message);
+      }
     }
 
     // 8. Probe precise combined duration

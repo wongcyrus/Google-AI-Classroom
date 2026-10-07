@@ -491,4 +491,42 @@ describe('mergeLectureRecordings Cloud Function', () => {
     // At least 3 ffmpeg calls: 1 (stream copy failed) + 2 (fallback transcode) + 3 (normalized mp3 extraction)
     expect(callCount).toBeGreaterThanOrEqual(3);
   });
+
+  it('synthesizes silent 48kHz MP3 fallback when source video has no audio track', async () => {
+    const recordings = [
+      {
+        id: 'rec_noaudio_1',
+        storagePath: 'recordings/CLASS-1/rec_noaudio_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711000 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+      {
+        id: 'rec_noaudio_2',
+        storagePath: 'recordings/CLASS-1/rec_noaudio_2/lecture.webm',
+        startedAt: { toMillis: () => 1789957771000 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+    const audioChecker = vi.fn().mockReturnValue(false);
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_noaudio_1', 'rec_noaudio_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner, audioChecker }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.clipCount).toBe(2);
+    expect(result.normalizedAudioStoragePath).toContain('lecture_audio_normalized.mp3');
+  });
 });
