@@ -12,7 +12,8 @@
     "test:security": "node tests/security_rules.test.mjs",
     "test:integration": "npm run test:admin && npm run test:smoke && npm run test:security",
     "test:coverage": "npm --prefix web-app run test:coverage && npm --prefix functions/ai_flows run test:coverage && npm --prefix functions/media_processing run test:coverage && npm --prefix functions/auth_triggers run test:coverage && npm --prefix functions/storage_triggers run test:coverage && npm --prefix functions/scheduled_tasks run test:coverage && npm --prefix functions/attendance run test:coverage && npm run test:integration",
-    "reset:env": "node admin/scripts/reset_environment.mjs"
+    "reset:env": "node admin/scripts/reset_environment.mjs",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "firebase": "^12.18.0",
