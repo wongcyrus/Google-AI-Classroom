@@ -368,9 +368,42 @@ export async function executeMergeLectureRecordings(
       downloadedFiles.push(localVideoPath);
     }
 
+    // 4b. Stream alignment across clips:
+    // If some clips have audio tracks and others do not (e.g. mic connected/disconnected mid-lecture),
+    // pad the silent clips with a silent Opus track so FFmpeg concat demuxer preserves audio sync across the whole lecture.
+    const clipsWithAudio = downloadedFiles.map((f) => currentAudioChecker(f));
+    const anyHasAudio = clipsWithAudio.some(Boolean);
+    const allHaveAudio = clipsWithAudio.every(Boolean);
+
+    const alignedFiles = [];
+    if (anyHasAudio && !allHaveAudio && !overrides.ffmpegRunner) {
+      console.info('[mergeLectureRecordings] Detected mixed audio/no-audio segments. Aligning audio streams across all clips...');
+      for (let i = 0; i < downloadedFiles.length; i++) {
+        const filePath = downloadedFiles[i];
+        if (!clipsWithAudio[i]) {
+          const paddedPath = path.join(workDir, `clip_${i}_padded.webm`);
+          const padRes = spawnSync(ffmpeg_static, [
+            '-i', filePath,
+            '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+            '-c:v', 'copy',
+            '-c:a', 'libopus',
+            '-shortest',
+            '-y', paddedPath,
+          ]);
+          if (padRes.status === 0 && fs.existsSync(paddedPath)) {
+            alignedFiles.push(paddedPath);
+            continue;
+          }
+        }
+        alignedFiles.push(filePath);
+      }
+    } else {
+      alignedFiles.push(...downloadedFiles);
+    }
+
     // 5. Generate ffmpeg concat list file
     const concatListPath = path.join(workDir, 'concat_list.txt');
-    const concatContent = downloadedFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
+    const concatContent = alignedFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent, 'utf-8');
 
     // 6. Concatenate videos via stream copy (-c copy) with monotonic DTS/PTS generation

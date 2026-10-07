@@ -906,41 +906,61 @@ export default function useLectureRecorder({
     const finalSegDuration = currentSegmentDurationRef.current || durationRef.current || 1;
     const totalDuration = durationRef.current;
 
-    const activeMediaRec = mediaRecorderRef.current;
-    const activeAudioRec = audioRecorderRef.current;
-    const videoMime = activeMediaRec?.mimeType || 'video/webm';
-    const audioMime = activeAudioRec?.mimeType || 'audio/webm';
-
-    // Flush active media recorders
-    if (activeAudioRec && activeAudioRec.state === 'recording') {
-      try { activeAudioRec.requestData(); } catch {}
-    }
-    if (activeMediaRec && activeMediaRec.state === 'recording') {
-      try { activeMediaRec.requestData(); } catch {}
-    }
-
-    // Stop active media recorders and wait for final chunks to flush
-    const stopPromises = [];
-    if (activeAudioRec && activeAudioRec.state !== 'inactive') {
-      stopPromises.push(new Promise((resolve) => {
-        activeAudioRec.addEventListener('stop', () => resolve(), { once: true });
-        try { activeAudioRec.stop(); } catch { resolve(); }
-      }));
-    }
-    if (activeMediaRec && activeMediaRec.state !== 'inactive') {
-      stopPromises.push(new Promise((resolve) => {
-        activeMediaRec.addEventListener('stop', () => resolve(), { once: true });
-        try { activeMediaRec.stop(); } catch { resolve(); }
-      }));
-    }
-    await Promise.all(stopPromises);
-
-    const curVideoChunks = [...recordedChunksRef.current];
-    const curAudioChunks = [...audioRecordedChunksRef.current];
-
-    cleanupStreams();
-
     try {
+      const activeMediaRec = mediaRecorderRef.current;
+      const activeAudioRec = audioRecorderRef.current;
+      const videoMime = activeMediaRec?.mimeType || 'video/webm';
+      const audioMime = activeAudioRec?.mimeType || 'audio/webm';
+
+      // Flush active media recorders
+      if (activeAudioRec && activeAudioRec.state === 'recording') {
+        try { activeAudioRec.requestData(); } catch {}
+      }
+      if (activeMediaRec && activeMediaRec.state === 'recording') {
+        try { activeMediaRec.requestData(); } catch {}
+      }
+
+      // Stop active media recorders and wait for final chunks to flush
+      const stopPromises = [];
+      if (activeAudioRec && activeAudioRec.state !== 'inactive') {
+        stopPromises.push(new Promise((resolve) => {
+          if (typeof activeAudioRec.addEventListener === 'function') {
+            activeAudioRec.addEventListener('stop', () => resolve(), { once: true });
+          } else if ('onstop' in activeAudioRec) {
+            const prev = activeAudioRec.onstop;
+            activeAudioRec.onstop = (e) => {
+              if (typeof prev === 'function') prev(e);
+              resolve();
+            };
+          } else {
+            resolve();
+          }
+          try { activeAudioRec.stop(); } catch { resolve(); }
+        }));
+      }
+      if (activeMediaRec && activeMediaRec.state !== 'inactive') {
+        stopPromises.push(new Promise((resolve) => {
+          if (typeof activeMediaRec.addEventListener === 'function') {
+            activeMediaRec.addEventListener('stop', () => resolve(), { once: true });
+          } else if ('onstop' in activeMediaRec) {
+            const prev = activeMediaRec.onstop;
+            activeMediaRec.onstop = (e) => {
+              if (typeof prev === 'function') prev(e);
+              resolve();
+            };
+          } else {
+            resolve();
+          }
+          try { activeMediaRec.stop(); } catch { resolve(); }
+        }));
+      }
+      await Promise.all(stopPromises);
+
+      const curVideoChunks = [...recordedChunksRef.current];
+      const curAudioChunks = [...audioRecordedChunksRef.current];
+
+      cleanupStreams();
+
       const rawBlob = new Blob(curVideoChunks, { type: videoMime });
       if (rawBlob.size === 0 && recordedSegmentsRef.current.length === 0 && uploadQueueRef.current.length === 0) {
         throw new Error('Recorded lecture file is empty.');

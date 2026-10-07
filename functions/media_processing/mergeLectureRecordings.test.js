@@ -529,4 +529,45 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(result.clipCount).toBe(2);
     expect(result.normalizedAudioStoragePath).toContain('lecture_audio_normalized.mp3');
   });
+
+  it('aligns and merges mixed clips when some clips have audio and others are muted/video-only', async () => {
+    const recordings = [
+      {
+        id: 'rec_with_audio_1',
+        storagePath: 'recordings/CLASS-1/rec_with_audio_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711000 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+      {
+        id: 'rec_muted_2',
+        storagePath: 'recordings/CLASS-1/rec_muted_2/lecture.webm',
+        startedAt: { toMillis: () => 1789957771000 },
+        durationSeconds: 60,
+        status: 'ready',
+      },
+    ];
+
+    const db = createMockDb({ recordings });
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+    // First clip has audio, second clip is muted/video-only
+    const audioChecker = vi.fn().mockImplementation((filePath) => {
+      return String(filePath).includes('clip_0');
+    });
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_with_audio_1', 'rec_muted_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner, audioChecker }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.clipCount).toBe(2);
+    expect(result.normalizedAudioStoragePath).toContain('lecture_audio_normalized.mp3');
+  });
 });
