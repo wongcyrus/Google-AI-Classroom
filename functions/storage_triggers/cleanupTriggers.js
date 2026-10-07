@@ -181,7 +181,9 @@ export const onClassDocDeleted = onDocumentDeleted({
     'videoAnalysisJobs',
     'irregularities',
     'progress',
-    'propertyUploadJobs'
+    'propertyUploadJobs',
+    'lectureMergeJobs',
+    'lectureSubtitleJobs'
   ];
 
   for (const col of collectionsToClean) {
