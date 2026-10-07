@@ -353,4 +353,142 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(jobPayload.status).toBe('pending');
     expect(jobPayload.audioStoragePath).toContain('lecture_audio_normalized.mp3');
   });
+
+  it('does not delete segments if ffmpeg merge fails and preserves original source files', async () => {
+    const recordings = [
+      {
+        id: 'rec_fail_1',
+        storagePath: 'recordings/CLASS-1/rec_fail_1/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_fail_2',
+        storagePath: 'recordings/CLASS-1/rec_fail_2/lecture.webm',
+        startedAt: { toMillis: () => 1700000060000 },
+        durationSeconds: 60,
+      },
+    ];
+
+    const deleteSpy = vi.fn().mockResolvedValue({});
+    const storage = {
+      bucket: vi.fn(() => ({
+        name: 'test-bucket',
+        file: vi.fn(() => ({
+          download: vi.fn().mockResolvedValue({}),
+          delete: deleteSpy,
+        })),
+        upload: vi.fn().mockResolvedValue({}),
+      })),
+    };
+
+    const db = createMockDb({ recordings });
+    const ffmpegRunner = vi.fn().mockRejectedValue(new Error('Fatal FFmpeg error on concat'));
+
+    await expect(
+      executeMergeLectureRecordings(
+        {
+          classId: 'CLASS-1',
+          recordingIds: ['rec_fail_1', 'rec_fail_2'],
+          auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+        },
+        { db, storage, ffmpegRunner }
+      )
+    ).rejects.toThrow('Fatal FFmpeg error on concat');
+
+    // Crucial: verify intermediate segment deletion was NOT called!
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('aborts segment deletion if integrity check fails when merged file is missing from storage', async () => {
+    const recordings = [
+      {
+        id: 'rec_chk_1',
+        storagePath: 'recordings/CLASS-1/rec_chk_1/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_chk_2',
+        storagePath: 'recordings/CLASS-1/rec_chk_2/lecture.webm',
+        startedAt: { toMillis: () => 1700000060000 },
+        durationSeconds: 60,
+      },
+    ];
+
+    const deleteSpy = vi.fn().mockResolvedValue({});
+    const storage = {
+      bucket: vi.fn(() => ({
+        name: 'test-bucket',
+        upload: vi.fn().mockResolvedValue({}),
+        file: vi.fn((path) => ({
+          download: vi.fn().mockResolvedValue({}),
+          exists: vi.fn().mockResolvedValue(path && path.includes('combined') ? [false] : [true]), // combined file reported missing!
+          delete: deleteSpy,
+        })),
+      })),
+    };
+
+    const db = createMockDb({ recordings });
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    await expect(
+      executeMergeLectureRecordings(
+        {
+          classId: 'CLASS-1',
+          recordingIds: ['rec_chk_1', 'rec_chk_2'],
+          auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+        },
+        { db, storage, durationProber, ffmpegRunner }
+      )
+    ).rejects.toThrow(/Integrity check failed: merged video.*does not exist/);
+
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to re-encoding concat when fast stream-copy encounters error', async () => {
+    const recordings = [
+      {
+        id: 'rec_fb_1',
+        storagePath: 'recordings/CLASS-1/rec_fb_1/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_fb_2',
+        storagePath: 'recordings/CLASS-1/rec_fb_2/lecture.webm',
+        startedAt: { toMillis: () => 1700000060000 },
+        durationSeconds: 60,
+      },
+    ];
+
+    const storage = createMockStorage();
+    const db = createMockDb({ recordings });
+    const durationProber = vi.fn().mockResolvedValue(120);
+
+    let callCount = 0;
+    const ffmpegRunner = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // First stream copy attempt fails with non-monotonic DTS error
+        return Promise.reject(new Error('Non-monotonic DTS in output stream'));
+      }
+      // Second attempt (fallback transcode) succeeds
+      return Promise.resolve();
+    });
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_fb_1', 'rec_fb_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    // At least 3 ffmpeg calls: 1 (stream copy failed) + 2 (fallback transcode) + 3 (normalized mp3 extraction)
+    expect(callCount).toBeGreaterThanOrEqual(3);
+  });
 });

@@ -348,7 +348,17 @@ export async function executeMergeLectureRecordings(
       .outputOptions(['-c copy', '-avoid_negative_ts make_zero', '-fflags +genpts'])
       .output(combinedVideoPath);
 
-    await currentFfmpegRunner(concatCmd);
+    try {
+      await currentFfmpegRunner(concatCmd);
+    } catch (concatErr) {
+      console.warn(`[mergeLectureRecordings] Fast stream copy concat failed (${concatErr.message}). Attempting robust re-encoding fallback...`);
+      const fallbackCmd = ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f concat', '-safe 0'])
+        .outputOptions(['-c:v libvpx', '-b:v 1500k', '-c:a libopus', '-b:a 128k', '-avoid_negative_ts make_zero', '-fflags +genpts'])
+        .output(combinedVideoPath);
+      await currentFfmpegRunner(fallbackCmd);
+    }
 
     // 7. Extract normalized pure-audio track (48kHz Constant Bitrate MP3) for Gemini transcription
     // Crucial: transcoding to pristine 48kHz CBR MP3 eliminates MediaRecorder WebM timestamp resets
@@ -493,7 +503,36 @@ export async function executeMergeLectureRecordings(
       classId,
     });
 
-    // 12. Delete raw 1-minute intermediate segment files from Cloud Storage to reclaim storage quota
+    // 12. Pre-Deletion Integrity Verification Gate:
+    // Strictly verify that the combined master file was uploaded to Cloud Storage, has non-zero size,
+    // has valid duration, and the master Firestore record exists.
+    // If ANY check fails, abort immediately so intermediate segments are NEVER deleted!
+    if (bucket && typeof bucket.file === 'function') {
+      const destVideoFile = bucket.file(destVideoPath);
+      if (typeof destVideoFile.exists === 'function') {
+        const [destExists] = await destVideoFile.exists();
+        if (!destExists) {
+          throw new Error(`Integrity check failed: merged video '${destVideoPath}' does not exist in Cloud Storage. Segment deletion aborted.`);
+        }
+      }
+      if (typeof destVideoFile.getMetadata === 'function') {
+        try {
+          const [metadata] = await destVideoFile.getMetadata();
+          const remoteSize = Number(metadata?.size || 0);
+          if (remoteSize > 0 && remoteSize < 1024) {
+            throw new Error(`Integrity check failed: merged video in Cloud Storage is suspiciously small (${remoteSize} bytes). Segment deletion aborted.`);
+          }
+        } catch (metaErr) {
+          if (metaErr.message?.includes('Integrity check failed')) throw metaErr;
+        }
+      }
+    }
+
+    if (durationSeconds <= 0 && videoStats.size < 1024) {
+      throw new Error('Integrity check failed: merged video has 0 duration and invalid size. Segment deletion aborted.');
+    }
+
+    // 13. Delete raw 1-minute intermediate segment files from Cloud Storage to reclaim storage quota
     if (bucket) {
       for (const rec of recordingsToMerge) {
         if (rec.storagePath && rec.storagePath !== destVideoPath) {

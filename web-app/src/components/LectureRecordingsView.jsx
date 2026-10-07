@@ -79,6 +79,7 @@ export default function LectureRecordingsView({
   const [mergeFeedback, setMergeFeedback] = useState('');
   const [selectedIdsToMerge, setSelectedIdsToMerge] = useState([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [showRawSegments, setShowRawSegments] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
   const [reconcileFeedback, setReconcileFeedback] = useState('');
   const hasAutoReconciledRef = useRef(false);
@@ -515,10 +516,11 @@ export default function LectureRecordingsView({
 
   // Filter recordings by lesson when a specific lesson is selected
   // Automatically exclude merged fragments and secondary rolling segments so UI does not show 45 individual 1-min clips
+  // If teacher toggles showRawSegments, allow inspecting every individual segment for playback or download
   const filteredRecordings = useMemo(() => {
     let list = recordings.filter((r) => {
       if (r.isFragment || r.mergedIntoSessionId || r.isSegmentDeleted) return false;
-      if (r.isRollingSegment && r.segmentIndex > 1) return false;
+      if (!showRawSegments && r.isRollingSegment && r.segmentIndex > 1) return false;
       return true;
     });
 
@@ -528,7 +530,7 @@ export default function LectureRecordingsView({
     const lesson = lessons.find((l) => (l.id || l.lessonId) === selectedLessonFilter);
     if (!lesson) return list;
     return list.filter((r) => isRecordInLesson(r, lesson));
-  }, [recordings, selectedLessonFilter, lessons]);
+  }, [recordings, selectedLessonFilter, lessons, showRawSegments]);
 
   // Automatically select the newest recording in filtered list if none selected or removed
   useEffect(() => {
@@ -564,12 +566,22 @@ export default function LectureRecordingsView({
     return Object.values(groups)
       .filter((grp) => {
         const hasCombined = grp.items.some((r) => r.isCombined);
+        // A rolling session is considered concluded if the latest clip is > 5 minutes old or marked completed
+        const latestMs = Math.max(
+          ...grp.items.map((r) =>
+            r.startedAt?.toDate
+              ? r.startedAt.toDate().getTime()
+              : (r.startedAt ? new Date(r.startedAt).getTime() : 0)
+          )
+        );
+        const isConcluded = latestMs > 0 && (Date.now() - latestMs >= 5 * 60 * 1000 || grp.items.some((r) => r.status === 'completed'));
+
         const unmergedClips = grp.items.filter(
           (r) =>
             !r.isCombined &&
             !r.mergedIntoSessionId &&
             !r.isSegmentDeleted &&
-            !r.isRollingSegment &&
+            (!r.isRollingSegment || isConcluded) &&
             (r.storagePath || r.videoUrl) &&
             r.status !== 'recording' &&
             r.status !== 'discarded'
@@ -577,12 +589,21 @@ export default function LectureRecordingsView({
         return !hasCombined && unmergedClips.length >= 2;
       })
       .map((grp) => {
+        const latestMs = Math.max(
+          ...grp.items.map((r) =>
+            r.startedAt?.toDate
+              ? r.startedAt.toDate().getTime()
+              : (r.startedAt ? new Date(r.startedAt).getTime() : 0)
+          )
+        );
+        const isConcluded = latestMs > 0 && (Date.now() - latestMs >= 5 * 60 * 1000 || grp.items.some((r) => r.status === 'completed'));
+
         const unmergedClips = grp.items.filter(
           (r) =>
             !r.isCombined &&
             !r.mergedIntoSessionId &&
             !r.isSegmentDeleted &&
-            !r.isRollingSegment &&
+            (!r.isRollingSegment || isConcluded) &&
             (r.storagePath || r.videoUrl) &&
             r.status !== 'recording' &&
             r.status !== 'discarded'
@@ -594,6 +615,7 @@ export default function LectureRecordingsView({
           count: unmergedClips.length,
           totalDuration: totalSecs,
           dateLabel: grp.dateKey,
+          isRollingGroup: grp.items.some((r) => r.isRollingSegment),
         };
       });
   }, [recordings]);
@@ -1179,13 +1201,25 @@ export default function LectureRecordingsView({
                   </div>
                 </div>
               </div>
-              <button
-                className="btn-merge-action"
-                onClick={() => handleMergeClips(grp.groupId, grp.clips.map((c) => c.id))}
-                disabled={isMerging}
-              >
-                {isMerging ? '⏳ Merging clips with ffmpeg...' : '🔗 Merge into Full Lecture'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  className="btn-merge-action"
+                  onClick={() => handleMergeClips(grp.groupId, grp.clips.map((c) => c.id))}
+                  disabled={isMerging}
+                >
+                  {isMerging ? '⏳ Merging clips with ffmpeg...' : '🔗 Merge into Full Lecture'}
+                </button>
+                {grp.isRollingGroup && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '0.82rem', padding: '6px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    onClick={() => setShowRawSegments((prev) => !prev)}
+                  >
+                    {showRawSegments ? '👁️ Hide Raw Clips' : '📂 View Raw Clips'}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
