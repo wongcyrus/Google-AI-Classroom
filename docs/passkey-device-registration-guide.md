@@ -11,8 +11,8 @@ In academic computer labs without webcams or hardware biometric readers on deskt
 To eliminate proxy attendance without requiring expensive lab hardware upgrades or invasive software installs, the **Google AI Classroom Platform** incorporates **Mobile Passkey Biometric Verification (FIDO2 / WebAuthn)**.
 
 ### Key Architectural Guarantees:
-- **Zero Passwords on Mobile**: Students never type emails or passwords on their smartphones. Pairing is authorized via an encrypted, single-use token on their already-authenticated lab PC.
-- **1-Phone = 1-Student Hardware Lock**: The platform authenticator's public credential ID is bound directly to the student's UID. The server cryptographically rejects attempts to register the same physical smartphone to multiple student accounts (with controlled multi-role exemptions for faculty/testing).
+- **Zero Friction Onboarding & In-Situ Password Fallback**: When students scan an attendance QR code (routine lab PC or lecture hall projector) or desktop login QR on an unpaired phone, they are never met with a dead end. The screen dynamically offers the **In-Situ Password Fallback Form** (`PasskeyPasswordFallbackForm`), letting them authenticate once with their password, enroll their phone's Face ID / Fingerprint passkey, and complete attendance immediately without re-scanning.
+- **1-Phone = 1-Student Hardware Lock**: The platform authenticator's public credential ID and persistent device fingerprint are bound directly to the student's UID. The server cryptographically rejects attempts to register the same physical smartphone to multiple student accounts (with controlled multi-role exemptions for faculty/testing).
 - **Fast Attendance (< 2 Seconds)**: Routine in-class attendance requires only pointing the phone camera at the PC screen and touching the biometric sensor (Face ID, Touch ID, or Android Fingerprint).
 - **Teacher Mobile Passkey Login**: Instructors can scan the desktop login QR code on shared lab PCs to log in with zero keyboard password entry, avoiding keylogger risks while retaining 100% password login capability.
 - **Strict Anti-Proxy Device Locking & Instructor Resets**: Regular students cannot self-unlink or rotate phones at will, ensuring that a present student cannot bounce phones between absent peers. When a student replaces their phone, their course instructor performs a 1-click reset via the Live Attendance Podium or Class Management Roster. Instructors and whitelisted testing accounts retain self-unlinking capabilities.
@@ -575,15 +575,19 @@ When a device fails registration (e.g. missing screen lock or provider not found
 * **Root Cause**: MagicOS 8.0 ships with Google Play Services toggled off by default in several regional models, and sets the system autofill provider to Honor's proprietary Password Vault.
 * **Resolution**: The diagnostic system detects Honor devices (`isHonorDevice()`) and explicitly renders MagicOS-specific steps: enable *Google Play Services* in **Settings ➔ Users & accounts**, and switch the *Autofill service* to *Google* in **Settings ➔ System & updates ➔ Language & input**.
 
-#### Failure 5: Unregistered Student Scanning Lecture Attendance QR Code
-* **Question**: *Can a student scan the live lecture QR code without pre-registering, create a passkey on the fly without logging in, and check in?*
-* **Answer**: **Cryptographically and architecturally impossible:**
-  1. The lecture attendance endpoint (`/lecture-verify`) executes `navigator.credentials.get()` (WebAuthn **assertion / authentication**). It never calls `navigator.credentials.create()` (**registration**). It is impossible for an authentication challenge to create a passkey.
-  2. Because the student never paired their phone, the device has no saved passkey for `it114115-2627.web.app`. The phone displays *"No passkeys found for this website"* and throws `NotAllowedError`.
-  3. The server checks the credential ID against `studentPasskeys`. If empty, it rejects the request:
-     > `not-found`: *This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.*
-  4. Passkey creation requires an authenticated student session to generate an encrypted `pairingToken`. Unauthenticated students cannot register credentials.
-* **Resolution**: The UI captures `phone_not_paired` and directs the student to log into the web portal on their PC/laptop, open **"Pair Mobile Phone"**, and scan their personal pairing QR code first.
+#### Failure 5: Unregistered or Unpaired Student Scanning Attendance QR Code
+* **Question**: *What happens if a student scans the classroom attendance QR code (lab PC or lecture hall screen) on a phone where no passkey has been registered yet?*
+* **Previous Behavior (Dead End)**: Previously, WebAuthn assertion failed with `NotFoundError` ("No passkey found for this website") or server returned `no_passkey`, displaying an error box instructing students to log into a laptop to generate a pairing token. Students had no way to resolve the issue on mobile during class.
+* **Modern In-Situ Resolution (Zero-Friction Fallback)**:
+  1. The mobile verification view captures `error === 'no_passkey'`, WebAuthn `NotFoundError`, or `phone_not_paired`, and seamlessly transitions to the **In-Situ Password Fallback Card** ([`PasskeyPasswordFallbackForm.jsx`](file:///web-app/src/components/passkey/PasskeyPasswordFallbackForm.jsx)).
+  2. If the student email is known from the session or routine bingo challenge, it is pre-filled automatically.
+  3. The student types their classroom account password and taps **`[ 🔑 Log In & Register Passkey ]`**.
+  4. Firebase Auth authenticates the student (`signInWithEmailAndPassword`), establishing an authorized session (`request.auth.uid`).
+  5. The client invokes Cloud Function `getPasskeyRegistrationOptions` using direct Firebase Auth authentication, generating a transient registration challenge stored in `passkeyRegistrationChallenges/{studentUid}` (bypassing the need for an out-of-band desktop pairing token).
+  6. The smartphone triggers native WebAuthn enrollment (`startRegistration()`), creating a biometric passkey in the phone's Secure Enclave.
+  7. Cloud Function `verifyPasskeyRegistration` verifies the attestation response and enforces the **1-Phone = 1-Student Hardware Lock** (`deviceFingerprint`).
+  8. Once the passkey is registered, the view **automatically invokes the attendance check** (`verifyPasskeyAuth` for lab PC or `verifyLecturePasskeyAuth` for lecture hall) using the current rotating challenge. Server-side token validation tolerates challenge creation timestamps, ensuring rotating QR tokens don't expire mid-login.
+  9. **Result**: The student's attendance is confirmed on the spot without requiring a re-scan, and future attendance checks take under 2 seconds via biometric tap!
 
 ---
 

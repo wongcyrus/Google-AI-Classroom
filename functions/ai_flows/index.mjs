@@ -270,12 +270,19 @@ export const requestPasskeyPairingToken = onCall(callOptions, async (request) =>
 
 export const getPasskeyRegistrationOptions = onCall(callOptions, async (request) => {
   const { pairingToken, clientRpId } = request.data || {};
-  return await handleGetPasskeyRegistrationOptions({ pairingToken, clientRpId });
+  return await handleGetPasskeyRegistrationOptions({ pairingToken, clientRpId, auth: request.auth });
 });
 
 export const verifyPasskeyRegistration = onCall(callOptions, async (request) => {
   const { pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint } = request.data || {};
-  return await handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint });
+  return await handleVerifyPasskeyRegistration({
+    pairingToken,
+    attestationResponse,
+    clientRpId,
+    deviceModel,
+    deviceFingerprint,
+    auth: request.auth,
+  });
 });
 
 export const getPasskeyAuthOptions = onCall(callOptions, async (request) => {

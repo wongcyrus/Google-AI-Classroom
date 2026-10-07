@@ -155,9 +155,9 @@ describe('PasskeyVerifyView Component', () => {
     expect(mockStartAuthentication).not.toHaveBeenCalled();
   });
 
-  it('shows error if student account has no paired passkey', async () => {
+  it('seamlessly transitions to password fallback form if student account has no paired passkey', async () => {
     mockGetAuthOptions.mockResolvedValueOnce({
-      data: { error: 'no_passkey', message: 'No paired phone found for this student account.' },
+      data: { error: 'no_passkey', studentEmail: 'student1@stu.vtc.edu.hk', message: 'No paired phone found for this student account.' },
     });
 
     await act(async () => {
@@ -168,8 +168,9 @@ describe('PasskeyVerifyView Component', () => {
       );
     });
 
-    expect(screen.getByText(/Phone Not Paired with Account/i)).toBeInTheDocument();
-    expect(screen.getByText(/not been registered as your classroom attendance passkey/i)).toBeInTheDocument();
+    expect(screen.getByText('Set Up Attendance Passkey')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('student1@stu.vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Log In & Verify Attendance/i })).toBeInTheDocument();
     expect(mockStartAuthentication).not.toHaveBeenCalled();
   });
 

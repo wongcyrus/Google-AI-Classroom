@@ -203,13 +203,15 @@ You do not need a permanent exemption. Use the **Teacher Temporary Bypass**:
 
 ---
 
-### Q7: Can I just scan the live lecture attendance QR code without pre-registering?
-* **No, that is impossible.**
-* The lecture QR code only performs **verification** (`navigator.credentials.get`), not **registration**. If you have not paired your phone beforehand:
-  * Your phone will display *"No passkeys available"* or fail.
-  * The server has no public key for your account and will strictly reject the check-in with:
-    > `not-found`: *This phone passkey is not paired with any student account in the system. Please pair your phone with your account first.*
-* **What you must do:** Log into the classroom portal on your laptop or lab PC, click **"Pair Mobile Phone"**, and scan your personal pairing QR code to enroll your biometrics first.
+### Q7: What happens if I scan an attendance QR code on a new or unpaired phone?
+* **Zero Friction In-Situ Setup:** You do NOT need to panic or find a computer!
+* When you scan an attendance QR code (routine lab PC attendance or lecture hall screen QR) or desktop login QR code on a phone without a pre-registered passkey:
+  1. The page detects that no passkey exists on this phone and displays the **In-Situ Password Fallback Card** (`Set Up Attendance Passkey`).
+  2. If your student email is associated with the challenge, it is pre-filled automatically.
+  3. Simply enter your classroom account password and tap **`[ 🔑 Log In & Register Passkey ]`**.
+  4. Your phone prompts you to save a biometric passkey (Face ID, Fingerprint, or Screen Lock). Confirm on your phone.
+  5. The platform binds your phone's hardware credential to your account (enforcing the 1-Phone = 1-Student hardware lock) and **instantly completes your attendance verification** without requiring you to re-scan!
+  6. For all future classes, you can simply tap the biometric sensor in under 2 seconds!
 
 ---
 

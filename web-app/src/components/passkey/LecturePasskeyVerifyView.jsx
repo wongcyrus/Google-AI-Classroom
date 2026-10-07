@@ -11,12 +11,10 @@ import {
   getAndroidChromeIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
-import {
-  detectDeviceBrand,
-  DEVICE_BRAND_GUIDES,
-} from '../../utils/deviceBrandUtils';
+import { detectDeviceBrand, DEVICE_BRAND_GUIDES } from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
+import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
 import './passkey.css';
 
 export default function LecturePasskeyVerifyView() {
@@ -25,7 +23,7 @@ export default function LecturePasskeyVerifyView() {
   const bingoId = searchParams.get('bingoId');
   const token = searchParams.get('token');
 
-  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser'
+  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser' | 'password_fallback'
   const [errorMessage, setErrorMessage] = useState('');
   const [errorDetails, setErrorDetails] = useState(null);
   const [studentEmail, setStudentEmail] = useState('');
@@ -113,6 +111,10 @@ export default function LecturePasskeyVerifyView() {
           setErrorMessage('Biometric check was cancelled. Tap "Verify Biometric Passkey" below to try again.');
           return;
         }
+        if (diag.type === 'phone_not_paired' || biometricErr?.name === 'NotFoundError') {
+          setStatus('password_fallback');
+          return;
+        }
         throw biometricErr;
       }
 
@@ -145,8 +147,12 @@ export default function LecturePasskeyVerifyView() {
       }
     } catch (err) {
       console.error('[LecturePasskeyVerifyView] Authentication error:', err);
-      setStatus('error');
       const diag = normalizePasskeyError(err, { isAndroid, isIOS, browserName: detectedBrowser });
+      if (diag.type === 'phone_not_paired' || err?.name === 'NotFoundError') {
+        setStatus('password_fallback');
+        return;
+      }
+      setStatus('error');
       setErrorDetails(diag);
       const msg = err.message || '';
       if (msg.includes('Expired or invalid QR code') || msg.includes('token has expired') || msg.toLowerCase().includes('expired')) {
@@ -169,7 +175,23 @@ export default function LecturePasskeyVerifyView() {
   return (
     <div className="passkey-container">
       <div className="passkey-card">
-        {status === 'desktop_blocked' ? (
+        {status === 'password_fallback' ? (
+          <PasskeyPasswordFallbackForm
+            initialEmail={studentEmail}
+            title="Set Up Lecture Passkey"
+            subtitle="No passkey detected on this phone. Enter your account password once to activate Face ID / Fingerprint on this device and confirm attendance."
+            submitLabel="Log In & Confirm Attendance"
+            onSuccess={async ({ studentEmail: verifiedEmail }) => {
+              if (verifiedEmail) setStudentEmail(verifiedEmail);
+              await executeLectureBiometricAuth();
+            }}
+            onCancel={() => {
+              setStatus('ready');
+              setErrorMessage('');
+              setErrorDetails(null);
+            }}
+          />
+        ) : status === 'desktop_blocked' ? (
           <>
             <div className="passkey-icon-badge error">🚫</div>
             <h1 className="passkey-title">Mobile Phone Required</h1>
@@ -327,6 +349,21 @@ export default function LecturePasskeyVerifyView() {
                     <span>Verify Biometric Passkey</span>
                   </>
                 )}
+              </button>
+            )}
+
+            {!isTokenExpiredOrInvalid && (
+              <button
+                type="button"
+                className="passkey-btn passkey-btn-secondary"
+                onClick={() => {
+                  setStatus('password_fallback');
+                  setErrorMessage('');
+                  setErrorDetails(null);
+                }}
+                style={{ marginTop: '0.75rem' }}
+              >
+                🔑 First time on this phone? Set up with password
               </button>
             )}
 

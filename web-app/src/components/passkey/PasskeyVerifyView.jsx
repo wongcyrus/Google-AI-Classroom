@@ -11,12 +11,10 @@ import {
   getAndroidChromeIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
-import {
-  detectDeviceBrand,
-  DEVICE_BRAND_GUIDES,
-} from '../../utils/deviceBrandUtils';
+import { detectDeviceBrand, DEVICE_BRAND_GUIDES } from '../../utils/deviceBrandUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
+import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
 import './passkey.css';
 
 const PasskeyVerifyView = () => {
@@ -24,7 +22,7 @@ const PasskeyVerifyView = () => {
   const classId = searchParams.get('classId');
   const bingoId = searchParams.get('bingoId');
 
-  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser'
+  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser' | 'password_fallback'
   const [errorMessage, setErrorMessage] = useState('');
   const [errorDetails, setErrorDetails] = useState(null);
   const [studentEmail, setStudentEmail] = useState('');
@@ -102,10 +100,10 @@ const PasskeyVerifyView = () => {
       }
 
       if (data.error === 'no_passkey') {
-        setStatus('error');
-        const diag = normalizePasskeyError(data.message || 'No paired phone found for this student account. Please pair your phone first or notify your instructor for in-person check.', { isAndroid, isIOS });
-        setErrorDetails(diag);
-        setErrorMessage(diag.message);
+        if (data.studentEmail) {
+          setStudentEmail(data.studentEmail);
+        }
+        setStatus('password_fallback');
         return;
       }
 
@@ -122,6 +120,10 @@ const PasskeyVerifyView = () => {
         if (diag.type === 'user_cancelled') {
           setStatus('ready');
           setErrorMessage('Biometric check was cancelled. Tap "Verify Biometric Passkey" to try again.');
+          return;
+        }
+        if (diag.type === 'phone_not_paired' || biometricErr?.name === 'NotFoundError') {
+          setStatus('password_fallback');
           return;
         }
         throw biometricErr;
@@ -150,8 +152,12 @@ const PasskeyVerifyView = () => {
       }
     } catch (err) {
       console.error('[PasskeyVerifyView] Authentication error:', err);
-      setStatus('error');
       const diag = normalizePasskeyError(err, { isAndroid, isIOS, browserName: detectedBrowser });
+      if (diag.type === 'phone_not_paired' || err?.name === 'NotFoundError') {
+        setStatus('password_fallback');
+        return;
+      }
+      setStatus('error');
       setErrorDetails(diag);
       setErrorMessage(diag.message || 'Biometric verification failed. Please try again.');
     }
@@ -160,7 +166,23 @@ const PasskeyVerifyView = () => {
   return (
     <div className="passkey-container">
       <div className="passkey-card">
-        {status === 'desktop_blocked' ? (
+        {status === 'password_fallback' ? (
+          <PasskeyPasswordFallbackForm
+            initialEmail={studentEmail}
+            title="Set Up Attendance Passkey"
+            subtitle="No passkey detected on this phone. Enter your account password once to activate Face ID / Fingerprint on this device and confirm attendance."
+            submitLabel="Log In & Verify Attendance"
+            onSuccess={async ({ studentEmail: verifiedEmail }) => {
+              if (verifiedEmail) setStudentEmail(verifiedEmail);
+              await executeBiometricVerification();
+            }}
+            onCancel={() => {
+              setStatus('ready');
+              setErrorMessage('');
+              setErrorDetails(null);
+            }}
+          />
+        ) : status === 'desktop_blocked' ? (
           <>
             <div className="passkey-icon-badge error">🚫</div>
             <h1 className="passkey-title">Mobile Phone Required</h1>
@@ -309,6 +331,19 @@ const PasskeyVerifyView = () => {
                   <span>Verify Biometric Passkey</span>
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-secondary"
+              onClick={() => {
+                setStatus('password_fallback');
+                setErrorMessage('');
+                setErrorDetails(null);
+              }}
+              style={{ marginTop: '0.75rem' }}
+            >
+              🔑 First time on this phone? Set up with password
             </button>
 
             {/* Troubleshooting Guide */}

@@ -320,10 +320,16 @@ In computer labs without webcams, your instructor may use **Mobile Passkey Verif
    - When the teacher triggers a Passkey Bingo check, a dynamic QR code appears on your Lab PC.
    - Scan the QR code with your paired phone and confirm biometrics.
    - Your Lab PC instantly turns green with **"📱 Passkey Verified!"** and records your attendance.
-4. **If You Replaced Your Phone**:
+4. **First-Time / Unpaired Phone In-Situ Password Fallback**:
+   - If you scan an attendance QR code (Lab PC or lecture hall projector screen) or desktop login QR on a new or unpaired smartphone, you will **never be stuck at a dead end**.
+   - The screen automatically switches to the **In-Situ Password Fallback Form** (`Set Up Attendance Passkey`).
+   - Your student email is pre-filled if known. Enter your classroom account password and tap **`[ 🔑 Log In & Register Passkey ]`**.
+   - Confirm your smartphone's native Face ID / Fingerprint prompt to enroll your phone's biometric passkey.
+   - Once enrolled, your attendance is **immediately confirmed** on the spot without requiring you to re-scan!
+5. **If You Replaced Your Phone**:
    - Ask your teacher to click **`[ 🔄 Reset ]`** next to your name in their podium view or class roster.
-   - Once reset, scan the pairing QR code on your Lab PC to bind your new smartphone.
-5. **Signing into Shared Lab PCs via Mobile QR Code**:
+   - Once reset, scan the pairing QR code on your Lab PC (or scan an attendance QR and use the password fallback) to bind your new smartphone.
+6. **Signing into Shared Lab PCs via Mobile QR Code**:
    - On the desktop login screen (`/login`), click **`📱 Scan QR Code`**.
    - Point your phone camera at the 15-second dynamic rotating QR code with live countdown.
    - Confirm with Face ID or Fingerprint on your phone to log into the desktop workspace without typing passwords on public keyboards.

@@ -82,42 +82,54 @@ export async function handleRequestPasskeyPairingToken({ studentUid, studentEmai
 }
 
 /**
- * 2. Get Passkey Registration Options (Mobile Phone via Scanned QR)
+ * 2. Get Passkey Registration Options (Mobile Phone via Scanned QR or Authenticated Session)
  */
-export async function handleGetPasskeyRegistrationOptions({ pairingToken, clientRpId }) {
-  if (!pairingToken) {
-    throw new HttpsError('invalid-argument', 'Missing pairing token.');
-  }
+export async function handleGetPasskeyRegistrationOptions({ pairingToken, clientRpId, auth }) {
+  let studentUid;
+  let studentEmail;
+  let userRole;
+  let tokenRef = null;
 
-  const tokenRef = db.doc(`passkeyPairingTokens/${pairingToken}`);
-  const tokenDoc = await tokenRef.get();
+  if (pairingToken) {
+    tokenRef = db.doc(`passkeyPairingTokens/${pairingToken}`);
+    const tokenDoc = await tokenRef.get();
 
-  if (!tokenDoc.exists) {
-    throw new HttpsError('not-found', 'Invalid pairing token.');
-  }
+    if (!tokenDoc.exists) {
+      throw new HttpsError('not-found', 'Invalid pairing token.');
+    }
 
-  const tokenData = tokenDoc.data();
-  if (tokenData.used) {
-    throw new HttpsError('failed-precondition', 'This pairing token has already been used.');
-  }
+    const tokenData = tokenDoc.data();
+    if (tokenData.used) {
+      throw new HttpsError('failed-precondition', 'This pairing token has already been used.');
+    }
 
-  if (Date.now() > tokenData.expiresAtMillis) {
-    throw new HttpsError('deadline-exceeded', 'This pairing token has expired. Please refresh the QR code on your PC.');
+    if (Date.now() > tokenData.expiresAtMillis) {
+      throw new HttpsError('deadline-exceeded', 'This pairing token has expired. Please refresh the QR code on your PC.');
+    }
+
+    studentUid = tokenData.studentUid;
+    studentEmail = tokenData.studentEmail;
+    userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
+  } else if (auth && auth.uid) {
+    studentUid = auth.uid;
+    studentEmail = auth.token?.email || '';
+    userRole = auth.token?.role || deriveUserRole(studentEmail) || 'student';
+  } else {
+    throw new HttpsError('invalid-argument', 'Missing pairing token or authenticated user session.');
   }
 
   const rpID = resolveRpId(clientRpId);
-  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
   const roleLabel = userRole === 'teacher' ? 'Teacher' : 'Student';
-  const userDisplayName = tokenData.studentEmail
-    ? `${tokenData.studentEmail.split('@')[0]} (${roleLabel})`
+  const userDisplayName = studentEmail
+    ? `${studentEmail.split('@')[0]} (${roleLabel})`
     : roleLabel;
 
   // Generate WebAuthn options for registering biometric passkey
   const options = await generateRegistrationOptions({
     rpName: RP_NAME,
     rpID,
-    userID: new Uint8Array(Buffer.from(tokenData.studentUid)),
-    userName: tokenData.studentEmail || tokenData.studentUid,
+    userID: new Uint8Array(Buffer.from(studentUid)),
+    userName: studentEmail || studentUid,
     userDisplayName,
     attestationType: 'none',
     authenticatorSelection: {
@@ -127,11 +139,24 @@ export async function handleGetPasskeyRegistrationOptions({ pairingToken, client
     },
   });
 
-  // Save the registration challenge onto the pairing token document
-  await tokenRef.update({
-    currentChallenge: options.challenge,
-    rpIdUsed: rpID,
-  });
+  if (tokenRef) {
+    // Save the registration challenge onto the pairing token document
+    await tokenRef.update({
+      currentChallenge: options.challenge,
+      rpIdUsed: rpID,
+    });
+  } else {
+    // Save the registration challenge onto a temporary challenge document for authenticated user
+    await db.doc(`passkeyRegistrationChallenges/${studentUid}`).set({
+      studentUid,
+      studentEmail,
+      role: userRole,
+      currentChallenge: options.challenge,
+      rpIdUsed: rpID,
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAtMillis: Date.now() + 2 * 60 * 1000,
+    });
+  }
 
   return options;
 }
@@ -140,33 +165,68 @@ export async function handleGetPasskeyRegistrationOptions({ pairingToken, client
  * 3. Verify Passkey Registration (Mobile Phone)
  * Enforces 1-PHONE = 1-STUDENT Hardware Lock!
  */
-export async function handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint }) {
-  if (!pairingToken || !attestationResponse) {
-    throw new HttpsError('invalid-argument', 'Missing pairing token or attestation response.');
+export async function handleVerifyPasskeyRegistration({ pairingToken, attestationResponse, clientRpId, deviceModel, deviceFingerprint, auth }) {
+  if (!attestationResponse) {
+    throw new HttpsError('invalid-argument', 'Missing attestation response.');
   }
 
-  const tokenRef = db.doc(`passkeyPairingTokens/${pairingToken}`);
-  const tokenDoc = await tokenRef.get();
+  let studentUid;
+  let studentEmail;
+  let userRole;
+  let expectedChallenge;
+  let rpIdUsed;
+  let tokenRef = null;
+  let challengeRef = null;
 
-  if (!tokenDoc.exists) {
-    throw new HttpsError('not-found', 'Invalid pairing token.');
+  if (pairingToken) {
+    tokenRef = db.doc(`passkeyPairingTokens/${pairingToken}`);
+    const tokenDoc = await tokenRef.get();
+
+    if (!tokenDoc.exists) {
+      throw new HttpsError('not-found', 'Invalid pairing token.');
+    }
+
+    const tokenData = tokenDoc.data();
+    if (tokenData.used) {
+      throw new HttpsError('failed-precondition', 'This pairing token has already been used.');
+    }
+
+    if (Date.now() > tokenData.expiresAtMillis) {
+      throw new HttpsError('deadline-exceeded', 'Pairing token expired.');
+    }
+
+    expectedChallenge = tokenData.currentChallenge;
+    rpIdUsed = tokenData.rpIdUsed;
+    studentUid = tokenData.studentUid;
+    studentEmail = tokenData.studentEmail;
+    userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
+  } else if (auth && auth.uid) {
+    studentUid = auth.uid;
+    challengeRef = db.doc(`passkeyRegistrationChallenges/${studentUid}`);
+    const challengeDoc = await challengeRef.get();
+
+    if (!challengeDoc.exists) {
+      throw new HttpsError('failed-precondition', 'Registration challenge expired or not found. Please try again.');
+    }
+
+    const challengeData = challengeDoc.data();
+    if (Date.now() > challengeData.expiresAtMillis) {
+      throw new HttpsError('deadline-exceeded', 'Registration challenge expired.');
+    }
+
+    expectedChallenge = challengeData.currentChallenge;
+    rpIdUsed = challengeData.rpIdUsed;
+    studentEmail = challengeData.studentEmail || auth.token?.email || '';
+    userRole = challengeData.role || auth.token?.role || deriveUserRole(studentEmail) || 'student';
+  } else {
+    throw new HttpsError('invalid-argument', 'Missing pairing token or authenticated user session.');
   }
 
-  const tokenData = tokenDoc.data();
-  if (tokenData.used) {
-    throw new HttpsError('failed-precondition', 'This pairing token has already been used.');
-  }
-
-  if (Date.now() > tokenData.expiresAtMillis) {
-    throw new HttpsError('deadline-exceeded', 'Pairing token expired.');
-  }
-
-  const expectedChallenge = tokenData.currentChallenge;
   if (!expectedChallenge) {
-    throw new HttpsError('failed-precondition', 'No registration challenge found for this token.');
+    throw new HttpsError('failed-precondition', 'No registration challenge found.');
   }
 
-  const rpID = resolveRpId(clientRpId || tokenData.rpIdUsed);
+  const rpID = resolveRpId(clientRpId || rpIdUsed);
 
   let verification;
   try {
@@ -195,8 +255,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
   //    EXCEPTION: Teachers and whitelisted testing accounts can share devices across roles.
   // 2. Check WebAuthn credentialID: Credential cannot be shared across multiple students!
   // =========================================================================
-  const userRole = tokenData.role || deriveUserRole(tokenData.studentEmail) || 'student';
-  const isIncomingWhitelisted = userRole === 'teacher' || isPasskeySharingWhitelisted(tokenData.studentEmail);
+  const isIncomingWhitelisted = userRole === 'teacher' || isPasskeySharingWhitelisted(studentEmail);
 
   if (deviceFingerprint) {
     const existingDeviceSnap = await db.collection('studentPasskeys')
@@ -205,7 +264,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
 
     if (!existingDeviceSnap.empty) {
       for (const doc of existingDeviceSnap.docs) {
-        if (doc.id !== tokenData.studentUid) {
+        if (doc.id !== studentUid) {
           const existingData = doc.data() || {};
           const boundEmail = existingData.studentEmail || doc.id;
           const existingRole = existingData.role || deriveUserRole(boundEmail) || 'student';
@@ -219,7 +278,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
               `Hardware Lock: This physical phone is already bound to student account (${boundEmail}). Each mobile phone can only be used by one student.`
             );
           } else {
-            console.info(`[verifyPasskeyRegistration] Multi-role device sharing permitted for phone ${deviceFingerprint} between ${boundEmail} and ${tokenData.studentEmail}`);
+            console.info(`[verifyPasskeyRegistration] Multi-role device sharing permitted for phone ${deviceFingerprint} between ${boundEmail} and ${studentEmail}`);
           }
         }
       }
@@ -232,7 +291,7 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
 
   if (!existingSnap.empty) {
     for (const doc of existingSnap.docs) {
-      if (doc.id !== tokenData.studentUid) {
+      if (doc.id !== studentUid) {
         console.warn(`[verifyPasskeyRegistration] Hardware collision detected! Phone credential ${credentialID} already registered to student ${doc.id}`);
         throw new HttpsError(
           'already-exists',
@@ -246,9 +305,9 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
   const transports = credential.transports || attestationResponse.response?.transports || ['internal'];
 
   // Save the passkey with persistent hardware device fingerprint and role
-  await db.doc(`studentPasskeys/${tokenData.studentUid}`).set({
-    studentUid: tokenData.studentUid,
-    studentEmail: tokenData.studentEmail,
+  await db.doc(`studentPasskeys/${studentUid}`).set({
+    studentUid,
+    studentEmail,
     role: userRole,
     credentialID,
     credentialPublicKey,
@@ -260,15 +319,20 @@ export async function handleVerifyPasskeyRegistration({ pairingToken, attestatio
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  // Mark token as used
-  await tokenRef.update({
-    used: true,
-    completedAt: FieldValue.serverTimestamp(),
-  });
+  if (tokenRef) {
+    // Mark pairing token as used
+    await tokenRef.update({
+      used: true,
+      completedAt: FieldValue.serverTimestamp(),
+    });
+  } else if (challengeRef) {
+    // Clean up temporary challenge doc
+    await challengeRef.delete().catch(() => {});
+  }
 
   return {
     verified: true,
-    studentUid: tokenData.studentUid,
+    studentUid,
     role: userRole,
     deviceModel: deviceModel || 'Mobile Device',
   };
@@ -304,7 +368,8 @@ export async function handleGetPasskeyAuthOptions({ classId, bingoId, clientRpId
     return {
       error: 'no_passkey',
       studentEmail: bingoData.studentEmail,
-      message: 'No paired phone found for this student account. Please pair phone from your lab PC screen or request in-person teacher verification.',
+      canRegisterWithPassword: true,
+      message: 'No paired phone found for this student account. Please log in with your password to register your phone passkey.',
     };
   }
 
@@ -1374,7 +1439,15 @@ export async function handleVerifyLecturePasskeyAuth({
   // Validate token if provided or stored in challenge
   const tokenToVerify = token || challengeData.token;
   const rotationIntervalMs = bingoData.rotationIntervalMs || (bingoData.rotationIntervalSeconds ? bingoData.rotationIntervalSeconds * 1000 : DEFAULT_LECTURE_QR_ROTATION_INTERVAL_MS);
-  if (!isValidLectureQrToken(bingoData.sessionSecret, tokenToVerify, Date.now(), rotationIntervalMs)) {
+  const challengeCreatedAtMillis = typeof challengeData.createdAt?.toMillis === 'function'
+    ? challengeData.createdAt.toMillis()
+    : (challengeData.expiresAtMillis ? challengeData.expiresAtMillis - 2 * 60 * 1000 : Date.now());
+  const isTokenCurrentlyValid = isValidLectureQrToken(bingoData.sessionSecret, tokenToVerify, Date.now(), rotationIntervalMs);
+  const isTokenValidAtChallengeCreation = challengeCreatedAtMillis
+    ? isValidLectureQrToken(bingoData.sessionSecret, tokenToVerify, challengeCreatedAtMillis, rotationIntervalMs)
+    : false;
+
+  if (!isTokenCurrentlyValid && !isTokenValidAtChallengeCreation) {
     throw new HttpsError(
       'invalid-argument',
       'The scanned QR token has expired. Please scan the current code on the screen.'

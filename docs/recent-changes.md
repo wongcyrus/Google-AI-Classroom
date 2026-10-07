@@ -4,6 +4,52 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.2 Mobile Passkey In-Situ Password Fallback & Automated Lecture Merge Decoupling
+
+**Date**: October 7, 2026  
+**Status**: Implemented, Verified with 100% Passing Test Suites, Ready for Deployment  
+**Primary Files**:
+- Passkey UI & Fallback: [`web-app/src/components/passkey/PasskeyPasswordFallbackForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyPasswordFallbackForm.jsx), [`web-app/src/components/passkey/PasskeyPasswordFallbackForm.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyPasswordFallbackForm.test.jsx), [`web-app/src/components/passkey/passkey.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/passkey.css)
+- Attendance Views: [`web-app/src/components/passkey/PasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyVerifyView.jsx), [`web-app/src/components/passkey/LecturePasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/LecturePasskeyVerifyView.jsx), [`web-app/src/components/passkey/PasskeyMobileLoginView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyMobileLoginView.jsx)
+- Passkey Backend Functions: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js)
+- Lecture Architecture & Documentation: [`docs/teacher-lecture-recording-and-youtube-workflow.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/teacher-lecture-recording-and-youtube-workflow.md), [`docs/passkey-device-registration-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/passkey-device-registration-guide.md), [`docs/student-registration-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/student-registration-guide.md), [`docs/functions.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/functions.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/user-manual-student.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-student.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **In-Situ Password Fallback & Biometric Passkey Enrollment**:
+   - **Problem & Root Cause**: Previously, when students scanned classroom attendance QR codes (Routine Lab PC or Lecture Hall Projector) on their smartphones without having pre-registered a passkey on that device, the client encountered `NotFoundError`, `no_passkey`, or `phone_not_paired`. The UI displayed an opaque error message requiring students to abort attendance, navigate to desktop account settings, generate a pairing QR code, and re-scan, causing severe classroom friction and abandonment during attendance windows.
+   - **Zero-Friction In-Situ Onboarding (`PasskeyPasswordFallbackForm`)**:
+     - Embedded directly inside [`PasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyVerifyView.jsx), [`LecturePasskeyVerifyView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/LecturePasskeyVerifyView.jsx), and [`PasskeyMobileLoginView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyMobileLoginView.jsx).
+     - Automatically renders when `canRegisterWithPassword: true` is returned or when WebAuthn raises `NotFoundError`.
+     - Automatically pre-fills the student's email (from URL params or resolved token) and presents a password input with an eye toggle for visibility.
+     - Student authenticates using standard Firebase Auth (`signInWithEmailAndPassword`) directly on their mobile device.
+     - Automatically invokes `getPasskeyRegistrationOptions` using direct Firebase Auth session credentials (`request.auth.uid`), which generates a transient challenge stored in `passkeyRegistrationChallenges/{studentUid}` with a 2-minute TTL without needing an out-of-band desktop pairing token.
+     - Calls `@simplewebauthn/browser`'s `startRegistration()`, prompting native iOS Face ID / Touch ID or Android Biometrics.
+     - Passes attestation credentials to `verifyPasskeyRegistration`, enforcing the 1-Phone = 1-Student hardware lock (`deviceFingerprint`), rejecting duplicate bindings, and persisting `studentPasskeys/{studentUid}`.
+     - **Auto-Completion**: Upon successful enrollment, automatically completes attendance (Routine Lab Bingo attendance marked, Lecture Hall Leaderboard verified, or Desktop session unlocked) without requiring the student to re-scan the QR code.
+   - **Lecture QR Rotating Token Timestamp Tolerance**:
+     - Lecture Hall QR codes rotate security tokens every 15 seconds to prevent token sharing. Unregistered students typing their password and enrolling biometrics typically take 30–60 seconds.
+     - Updated `verifyLecturePasskeyAuth` in [`passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js) to evaluate `isTokenValidAtChallengeCreation`.
+     - Validates that the rotating token was valid when the student initiated the challenge (`challengeDoc.createdAt`), allowing students the full 2-minute challenge window while maintaining high anti-proxy physical proximity security.
+
+2. **Lecture Recording Architecture & Post-Class Decoupled Merging**:
+   - **Continuous 1-Minute Segment Rotation**:
+     - While a lecture is in progress, MediaRecorder continuously captures rolling 1-minute video segments (`/recordings/{classId}/{groupId}/{segmentId}.webm`) and uploads them directly to Cloud Storage.
+     - Segments are recorded independently to prevent catastrophic data loss from browser crashes, accidental tab closures, or network drops.
+   - **Post-Class Automated Decoupled Merge**:
+     - Clarified architectural boundary: clips are NOT prematurely merged mid-lecture while teaching is ongoing.
+     - Merging of all 1-minute segments into a unified master recording (`lecture.webm`) is automatically triggered upon lecture conclusion (broadcast stop / class end event) or manually initiated by the instructor via the Recordings management interface.
+   - **5-Point Pre-Deletion Verification Gate**:
+     - Raw 1-minute segments are NEVER deleted immediately after FFmpeg concatenation. To prevent unrecoverable data loss, `mergeLectureRecordings` executes a 5-point verification gate before pruning individual segments:
+       1. **Master Artifact Existence**: Validates that `lecture.webm` exists in Cloud Storage with non-zero byte size.
+       2. **Duration & Audio Parity**: Probes the merged file using `ffprobe` to verify audio stream existence and validate duration matches the cumulative sum of segments within a ±2 second tolerance.
+       3. **Container & Codec Integrity**: Verifies valid WebM container headers and decodable VP8/VP9/AV1/Opus bitstreams without FFmpeg demuxer errors.
+       4. **Firestore Lifecycle State**: Confirms the parent recording document in `classes/{classId}/lectureRecordings/{recId}` is set to status `'ready'`.
+       5. **Playback Health Check**: Verifies that the signed download URL returns HTTP 200/206 streaming ranges.
+     - If any verification step fails, segments are preserved intact in Cloud Storage, the recording document is flagged as `'merge_failed'`, and the teacher/admin is notified.
+   - **Raw Clips Inspector**:
+     - Instructors and administrators can view all individual raw segments with timestamps, durations, and upload statuses, allowing manual re-merging or recovery if network anomalies occur during post-class processing.
+
 ## 0.0.0.0.0.0.0.0.0.0.0.1 Lecture Recordings Custom Merge Selection & Lesson Filter Count Fix
 
 **Date**: October 5, 2026  

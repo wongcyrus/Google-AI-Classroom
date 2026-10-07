@@ -645,7 +645,10 @@ In computer labs lacking webcams where students may share login credentials, tea
    - Each student account is cryptographically bound to one physical phone via WebAuthn platform authenticators (Apple Secure Enclave, Android Titan).
    - If a student tries to pair a friend's phone to answer on their behalf, registration is blocked with a hardware collision error.
    - Regular students cannot self-unlink or rotate phones at will. This eliminates student phone-bouncing and proxy attendance. Only course instructors and whitelisted faculty testing accounts can unlink devices.
-2. **Emergency Passkey Bypasses for Dead / Forgotten Phones**:
+2. **Zero-Friction In-Situ Password Fallback on Attendance Scans**:
+   - Students who scan an attendance QR code (routine lab PC or lecture hall projector screen) without a pre-registered passkey are **no longer stuck**.
+   - The phone screen immediately offers the **In-Situ Password Fallback Form**: the student enters their classroom account password once, enrolls their smartphone's native Face ID / Fingerprint passkey, and their attendance is confirmed immediately on the spot without requiring a re-scan.
+3. **Emergency Passkey Bypasses for Dead / Forgotten Phones**:
    - **Podium Remote Approval**: When a student encounters the desktop gate with a dead phone, they click `🙋 Request Teacher Bypass`. An amber alert banner surfaces on the teacher's `MonitorView` HUD showing the student's name, seat, and timestamp. The teacher clicks **`[ ✅ Grant Session Bypass ]`** (default 90–180 minutes) to unlock the desktop immediately.
    - **Emergency 6-Digit Class PIN**: If the teacher is assisting other students, the student can select `🔑 Enter Emergency Teacher PIN` on their desktop and type the 6-digit PIN displayed on the teacher's live monitor (`classes/{classId}.teacherBypassPin`).
    - **Proactive Roster Pre-Granting**: Teachers can pre-grant emergency bypasses in advance from the Class Management Roster or Enrolled Roster Modal (`[ ⚡ Temp Bypass ]`), specifying custom validity (e.g. 90 minutes). The gate unlocks instantly across all enrolled classes.
@@ -688,9 +691,12 @@ Teachers can review their own screen/microphone lecture recordings, play them wi
 1. **How to Access:**
    - **Main Class Navigation:** Go to **`🎬 Video Archive & AI Analysis`** tab ➔ **`🎥 Teacher Lecture Recordings`** sub-tab (`/class/:classId?tab=video&sub=recordings`).
    - **Screen Broadcast HUD:** When screen broadcasting, click the **`View Past Recordings`** link in the floating recording HUD.
-2. **Automated Lecture Concatenation & Multi-Clip Merging:**
-   - **Automated Broadcast Auto-Merge:** If you pause, stop, or restart screen sharing during a lecture, multiple recording clips are generated. When you click **"Stop Sharing"** in the monitor view, the system automatically runs a serverless stream-copy merge in the background.
-   - **Fuzzy Timetable Tolerance:** If you start recording up to 45 minutes before class begins (e.g. 10:28 AM for a 10:30 AM class) or overrun by up to 60 minutes after class ends, all clips are automatically clustered into the same session group.
+2. **Rolling 1-Minute Segment Rotation & Zero-Data-Loss Architecture:**
+   - **Continuous 1-Minute Segment Uploads:** To eliminate the risk of losing up to 90 minutes of lecture if a browser closes or network drops, `useLectureRecorder` cuts recordings into rolling 1-minute segments that upload immediately to Cloud Storage in the background (`raw_clips/clip_{index}.webm`).
+   - **Guaranteed Post-Class Automated Concatenation:** Combining lecture clips after class is **completely decoupled** from student analysis toggles (`classData.automaticCombine`). Lecture recording merging operates unconditionally as a scheduled background job when class ends—no special settings or checkboxes required!
+   - **5-Point Pre-Deletion Verification Gate:** Before any raw segment clips are purged, the system strictly verifies: (1) Output file exists and has non-zero size, (2) ffprobe stream codec validation, (3) Merged duration is >= 80% of raw duration, (4) Atomic transaction, and (5) Fail-safe preservation: if concatenation fails or cannot be verified, the raw clips are **strictly kept in `raw_clips/` and never deleted**!
+   - **🔍 Raw Clips Inspector Drawer:** Click "Show Raw 1-Min Segments" in `LectureRecordingsView` to review, audit, or download individual 1-minute segment clips directly.
+   - **Fuzzy Timetable Tolerance:** If you start recording up to 45 minutes before class begins or overrun by up to 60 minutes after class ends, all clips are automatically clustered into the same session group.
    - **Smart Detection Alert Banner:** If unmerged clips exist from the same class period, a blue alert banner appears:
      > 💡 **2 separate recording clips detected from 9/21/2026** (53m 5s total). Would you like to merge them into a single continuous full lecture? `[ 🔗 Merge into Full Lecture ]`
    - **🔗 Custom Merge:** Click "Custom Merge" to select specific clips with checkboxes and merge them on demand.

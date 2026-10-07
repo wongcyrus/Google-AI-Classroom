@@ -579,37 +579,35 @@ flowchart TD
 - When recording or uploading, `useLectureRecorder.js` registers a native browser `beforeunload` listener.
 - If the teacher clicks close or navigates away, the browser prompts: *"A lecture recording is currently active or uploading. Leaving now will discard the current recording segment. Are you sure you want to leave?"*
 
-#### Tier 2: Persistent 10-Second Disk Buffering (`lectureRecoveryDb.js`)
-- Traditional Web browsers hold `MediaRecorder` chunks in volatile JavaScript memory. A browser crash would lose all un-uploaded memory chunks.
-- Our recording hook streams every 10-second chunk into browser **IndexedDB (`ClassroomLectureRecoveryDB`)**.
-- On app launch, `useLectureRecorder` queries `getPendingRecoverySessions()`. If an interrupted session from before the crash is discovered, it automatically:
-  1. Assembles the persistent chunks into a WebM container.
-  2. Uploads the salvaged video to Cloud Storage (`isRecoveredAfterCrash: true`).
-  3. Updates the Firestore document with `status: 'ready'`.
-  4. Deletes the local IndexedDB storage.
-  5. Triggers `mergeSessionRecordings` to merge the salvaged pre-crash segment with any subsequent clips.
+#### Tier 2: Rolling 1-Minute Segment Uploads & Persistent Local Disk Buffering (`lectureRecoveryDb.js`)
+- **Continuous 1-Minute Segment Rotation**: Rather than buffering an entire 90-minute lecture in memory until class ends (which risks total data loss if the browser closes or the PC crashes), `useLectureRecorder.js` rotates recording chunks into rolling 1-minute segments (`60000ms`).
+- **Immediate Background Upload**: Each 1-minute segment is uploaded to Cloud Storage immediately upon completion (`raw_clips/clip_{index}.webm`). If network issues or browser crashes occur at minute 47, minutes 0–46 are already permanently preserved in the cloud.
+- **10-Second IndexedDB Chunk Buffering**: Within each active segment, un-uploaded chunks stream every 10 seconds into browser **IndexedDB (`ClassroomLectureRecoveryDB`)**. On app restart, any unfinalized pre-crash segment is recovered, uploaded (`isRecoveredAfterCrash: true`), and queued for session merging.
 
 #### Tier 3: 3-Hour Auto-Stop Safety Limit (`maxDurationSeconds`)
 - If an instructor forgets to stop recording and leaves the computer running over the weekend, continuous recording would eventually exhaust memory or inflate file sizes.
 - `useLectureRecorder.js` enforces `DEFAULT_MAX_RECORDING_SECONDS = 3 * 3600` (3 hours).
 - If continuous recording reaches 3 hours, the hook automatically stops recording safely, finalizes the WebM blob, uploads it to Cloud Storage, and triggers Gemini transcription.
 
-#### Tier 4: Serverless Crash-Tolerant Concatenation & Gap Remarking (`mergeLectureRecordings.js`)
-When `mergeLectureRecordings` executes, it handles all crash and interruption edge cases:
-1. **Surviving Single Clip Handling (`1 valid clip + 1+ crashed clips`)**:
-   - Previously, the function aborted with `single_valid_clip`, halting the pipeline.
-   - Now: It preserves the surviving valid clip, calculates the lost time from the crashed stub, stamps `hasMissingSegment: true` and `interruptionRemarks`, marks the crashed stub as `status: 'interrupted'`, and returns `success: true`. The calling pipeline automatically continues into `processLectureSubtitles`!
-2. **Multiple Clips with Gaps (`>= 2 valid clips`)**:
-   - Calculates exact time gaps between clips (`nextStart - currEnd > 15s`).
-   - Computes `totalLostSeconds` and formats readable remarks (e.g., `~2.5 min gap between 10:25 AM and 10:27 AM`).
-   - Staves `gapDetails`, `hasMissingSegment: true`, and `lostDurationSeconds` onto the master record.
-3. **Continuous Automation**:
-   - Automatically chains into `processLectureSubtitles`.
-   - Gemini receives the `RECORDING DISCONTINUITY NOTICE` in its prompt context, allowing it to bridge audio jumps smoothly without throwing hallucination errors or halting transcription.
+#### Tier 4: Decoupled Scheduled Post-Class Concatenation (`scheduledTasks.js`)
+- **Always-On After-Class Merging**: Teacher lecture video merging is completely decoupled from the student video analysis toggle (`classData.automaticCombine`). Lecture recordings require no special settings or toggles—the scheduled background worker (`checkAndCombineClipsTask`) automatically initiates serverless concatenation once the class timetable ends.
+- **On-Demand & Real-Time Triggers**: Teachers can also click **"Stop Sharing"** or tap **"Merge into Full Lecture"** at any time to combine clips immediately.
 
-#### Tier 5: Clear UI Alerts for Teachers and Students (`LectureRecordingsView.jsx`)
-- Recordings with missing segments display a prominent status badge: `⚠️ Combined (Gap Remarked)` or `⚠️ Rest Preserved`.
-- A dedicated **Lecture Interruption & Crash Recovery Notice** appears above the video player, explaining precisely which minutes were lost and confirming that the remaining lecture content was preserved and captioned.
+#### Tier 5: 5-Point Pre-Deletion Integrity Verification Gate & Multi-Tier Fallback (`mergeLectureRecordings.js`)
+Before any raw 1-minute segment clips are purged or archived, `mergeLectureRecordings.js` strictly enforces a 5-point verification gate:
+1. **Target File Existence & Non-Zero Size**: The concatenated output file (`lecture.webm`) must exist in Cloud Storage with size > 100 KB.
+2. **Audio/Video Stream Codec Validation (`ffprobe`)**: ffprobe inspects the combined output to verify healthy video (VP8/VP9/AV1) and audio (Opus/Vorbis) streams with zero container corruption.
+3. **Combined Duration Sanity Threshold (>= 80% Rule)**: The combined duration must equal at least 80% of the sum of the raw segment clips. If duration drops below 80% (e.g. truncated concatenation), verification fails.
+4. **Multi-Tier Concatenation Fallback**:
+   - Tier 1: Fast serverless stream-copy (`-c copy`) concatenation.
+   - Tier 2: Container re-wrapping with header rebuilding if stream-copy reports timestamp discontinuity.
+   - Tier 3: Complete re-encode fallback via software transcode if raw codecs diverge.
+5. **Fail-Safe Clip Preservation**: If concatenation or verification fails for any reason, the raw 1-minute segment clips are **strictly kept in `raw_clips/` and NEVER deleted**. The master recording is flagged with `mergeWarning: true`, and teachers can inspect or play individual clips. Only when all 5 verification points pass are the raw segments archived or cleaned up.
+
+#### Tier 6: Raw Clips Inspection & Teacher UI Controls (`LectureRecordingsView.jsx`)
+- Teachers can expand the **"🔍 Inspect Raw 1-Min Segment Clips"** drawer in `LectureRecordingsView` to review individual 1-minute segments, check upload timestamps, and verify segment integrity.
+- Combined master lectures display `🌟 Combined Full Lecture`.
+- Recordings with missing segments or detected network gaps display `⚠️ Combined (Gap Remarked)` with precise gap times and lost durations.
 
 ---
 

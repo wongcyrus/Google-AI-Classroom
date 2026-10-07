@@ -383,6 +383,59 @@ describe('WebAuthn Passkey Flows Backend', () => {
         })
       );
     });
+
+    it('generates registration options with direct auth user session when pairingToken is omitted', async () => {
+      const res = await handleGetPasskeyRegistrationOptions({
+        auth: { uid: 'auth_student_99', token: { email: 'student99@stu.vtc.edu.hk', role: 'student' } },
+        clientRpId: 'localhost',
+      });
+
+      expect(res).toBeDefined();
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 'auth_student_99',
+          studentEmail: 'student99@stu.vtc.edu.hk',
+          role: 'student',
+        })
+      );
+    });
+
+    it('verifies passkey registration with direct auth user session and creates studentPasskeys record', async () => {
+      // 1. Challenge doc exists
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'auth_student_99',
+          studentEmail: 'student99@stu.vtc.edu.hk',
+          role: 'student',
+          currentChallenge: 'mock-reg-challenge',
+          expiresAtMillis: Date.now() + 600000,
+        }),
+      });
+
+      // 2. deviceFingerprint query: empty (unbound)
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+      // 3. credentialID query: empty (unbound)
+      mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+      const res = await handleVerifyPasskeyRegistration({
+        attestationResponse: { id: 'hardware-cred-direct-auth', response: {} },
+        deviceModel: 'Samsung Galaxy S24',
+        deviceFingerprint: 'mdev_samsung_s24',
+        auth: { uid: 'auth_student_99', token: { email: 'student99@stu.vtc.edu.hk', role: 'student' } },
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.studentUid).toBe('auth_student_99');
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentUid: 'auth_student_99',
+          studentEmail: 'student99@stu.vtc.edu.hk',
+          credentialID: 'hardware-cred-abc',
+          deviceFingerprint: 'mdev_samsung_s24',
+        })
+      );
+    });
   });
 
   describe('handleGetPasskeyAuthOptions', () => {

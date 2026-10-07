@@ -162,16 +162,22 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Description**: Invoked on the logged-in student Lab PC to initiate passwordless mobile phone pairing. Issues an ephemeral 10-minute session document in `passkeyPairingTokens/{tokenId}` with UUID `tokenId`. Renders as a QR code on the student desktop for camera scanning.
 -   **`getPasskeyRegistrationOptions`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Invoked by the mobile phone upon scanning the pairing QR code. Validates token freshness and unexpired state. Generates WebAuthn platform registration options via `@simplewebauthn/server` (`generateRegistrationOptions`), targeting platform authenticators (Apple Secure Enclave, Android Titan/StrongBox) with `preferred` user verification. Stores cryptographic challenge on the token document.
+    -   **Description**: Invoked by a mobile phone during initial pairing or during in-situ password fallback. Accepts either an out-of-band `pairingToken` (desktop pairing modal) OR an authenticated user session (`request.auth.uid`, used during in-situ mobile onboarding). Generates WebAuthn platform registration options via `@simplewebauthn/server` (`generateRegistrationOptions`), targeting platform authenticators (Apple Secure Enclave, Android Titan/StrongBox) with `preferred` user verification. Stores cryptographic challenge on the token document or in `passkeyRegistrationChallenges/{studentUid}` with a 2-minute TTL.
 -   **`verifyPasskeyRegistration`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Verifies the attestation response from the phone's native biometric prompt. **Enforces 1-Phone = 1-Student Hardware Lock**: queries `studentPasskeys` to verify that `credentialID` is not already bound to another student UID. If a hardware collision is detected, registration throws `already-exists` to block human proxy attendance. Whitelisted accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`) and instructors are exempted to support dual-role device testing. On success, writes `studentPasskeys/{studentUid}` and consumes the pairing token (`used = true`).
+    -   **Description**: Verifies the attestation response from the phone's native biometric prompt. Accepts either `pairingToken` or authenticated user session (`request.auth`). **Enforces 1-Phone = 1-Student Hardware Lock**: queries `studentPasskeys` to verify that `credentialID` and `deviceFingerprint` are not already bound to another student UID. If a hardware collision is detected, registration throws `already-exists` to block human proxy attendance. Whitelisted accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`) and instructors are exempted to support dual-role device testing. On success, writes `studentPasskeys/{studentUid}` and consumes the pairing token or challenge document.
 -   **`getPasskeyAuthOptions`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Generates WebAuthn assertion options (`generateAuthenticationOptions`) for routine in-class attendance verification when a student scans the dynamic Bingo passkey QR code.
+    -   **Description**: Generates WebAuthn assertion options (`generateAuthenticationOptions`) for routine in-class attendance verification when a student scans the dynamic Bingo passkey QR code. If the student has not yet registered a passkey, returns `{ error: 'no_passkey', studentEmail, canRegisterWithPassword: true }`, prompting the client to smoothly present the in-situ password fallback form.
 -   **`verifyPasskeyAuth`**:
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Validates the cryptographic biometric signature from the student's phone. Verifies counter increment, calculates completion latency (typically ~1.8s), updates `classes/{classId}/bingoRecords/{bingoId}` with `result = 'passed'`, `passkeyVerified = true`, and awards full attendance points.
+-   **`getLecturePasskeyAuthOptions`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Generates WebAuthn assertion options with `allowCredentials: []` for shared lecture projector QR codes. Validates the rotating HMAC token against the active lecture session secret and creates a challenge document with 2-minute validity.
+-   **`verifyLecturePasskeyAuth`**:
+    -   **Trigger**: Callable `onCall`.
+    -   **Description**: Validates resident biometric assertions from lecture hall students. Verifies the signature against the registered student passkey, enforces the 1-phone hardware lock, updates lecture responses with live ranking and latency, and records individual attendance. **Challenge Creation Tolerance**: Accepts tokens valid at the challenge creation timestamp, ensuring students completing the in-situ password fallback are not rejected due to intervening QR token rotations.
 -   **`claimInPersonAttendance`**:
     -   **Trigger**: Callable `onCall`.
     -   **Description**: Student fallback on Lab PC (`🙋 I don't have my phone today`) when phone battery is dead or device is broken. Marks `inPersonClaim = true` on the active Bingo challenge and alerts the instructor's podium view.
@@ -390,6 +396,13 @@ This directory contains Cloud Functions responsible for handling media-related t
     -   **Configuration**: `region: asia-east2`, `memory: 2GiB`, `cpu: 2`, `timeoutSeconds: 540`.
     -   **Security & Authorization**: Requires authenticated caller verified as a teacher in the class (`isTeacherInClass(classId)` or global teacher claim).
     -   **Parameters**: `classId` (string), `sessionGroupId` (optional string), `recordingIds` (optional array of strings), `customTitle` (optional string).
+    -   **Decoupled Scheduled Execution**: Automated lecture combining triggers unconditionally after class ends via `checkAndCombineClipsTask`, decoupled from student video analysis toggles (`classData.automaticCombine`).
+    -   **5-Point Pre-Deletion Integrity Verification Gate**:
+        1. **Existence & Non-Zero Byte Check**: Target file (`lecture.webm`) must exist in Cloud Storage with size > 100 KB.
+        2. **Stream Codec Inspection (`ffprobe`)**: Verifies valid video and audio stream codecs with zero container corruption.
+        3. **Duration Sanity Check (>= 80% Rule)**: Combined video duration must equal at least 80% of the sum of the raw segment clips.
+        4. **Multi-Tier Concat Fallback**: Fast stream-copy (`-c copy`), container re-wrapping, and software re-encode fallback.
+        5. **Strict Fail-Safe Preservation**: If verification fails for any reason, raw 1-minute segment clips are strictly preserved in `raw_clips/` and never deleted!
     -   **Crash Tolerance & Gap Detection Pipeline**:
         -   Fetches source clips matching `recordingIds` or `sessionGroupId` from `classes/{classId}/lectureRecordings`.
         -   Audits Cloud Storage to salvage any partial recordings before classifying as invalid.

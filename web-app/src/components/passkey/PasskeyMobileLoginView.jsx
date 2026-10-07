@@ -13,6 +13,7 @@ import {
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
+import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
 import './passkey.css';
 
 const PasskeyMobileLoginView = () => {
@@ -20,7 +21,7 @@ const PasskeyMobileLoginView = () => {
   const sessionId = searchParams.get('session') || searchParams.get('sessionId');
   const token = searchParams.get('token') || '';
 
-  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser'
+  const [status, setStatus] = useState('initializing'); // 'initializing' | 'ready' | 'authenticating' | 'submitting' | 'success' | 'error' | 'desktop_blocked' | 'unsupported_browser' | 'password_fallback'
   const [errorMessage, setErrorMessage] = useState('');
   const [errorDetails, setErrorDetails] = useState(null);
   const [studentEmail, setStudentEmail] = useState('');
@@ -112,6 +113,10 @@ const PasskeyMobileLoginView = () => {
           setErrorMessage('Biometric scan was cancelled. Tap the button below to try again.');
           return;
         }
+        if (diag.type === 'phone_not_paired' || authErr?.name === 'NotFoundError') {
+          setStatus('password_fallback');
+          return;
+        }
         throw authErr;
       }
 
@@ -137,8 +142,12 @@ const PasskeyMobileLoginView = () => {
       }
     } catch (err) {
       console.error('[PasskeyMobileLoginView] Verification failed:', err);
-      setStatus('error');
       const diag = normalizePasskeyError(err, { isAndroid, isIOS, browserName: detectedBrowser });
+      if (diag.type === 'phone_not_paired' || err?.name === 'NotFoundError') {
+        setStatus('password_fallback');
+        return;
+      }
+      setStatus('error');
       setErrorDetails(diag);
       setErrorMessage(diag.message || 'Passkey login failed. Please ensure this phone was paired with your student account.');
     }
@@ -147,6 +156,24 @@ const PasskeyMobileLoginView = () => {
   return (
     <div className="passkey-container">
       <div className="passkey-card">
+        {status === 'password_fallback' && (
+          <PasskeyPasswordFallbackForm
+            initialEmail={studentEmail}
+            title="Set Up Desktop Passkey"
+            subtitle="No passkey detected on this phone. Enter your account password once to activate Face ID / Fingerprint on this device and unlock desktop."
+            submitLabel="Log In & Unlock Desktop"
+            onSuccess={async ({ studentEmail: verifiedEmail }) => {
+              if (verifiedEmail) setStudentEmail(verifiedEmail);
+              await executePasskeyLogin();
+            }}
+            onCancel={() => {
+              setStatus('ready');
+              setErrorMessage('');
+              setErrorDetails(null);
+            }}
+          />
+        )}
+
         {status === 'initializing' && (
           <>
             <div className="passkey-icon-badge">📱</div>
@@ -252,6 +279,18 @@ const PasskeyMobileLoginView = () => {
             >
               📱 Sign In with Biometrics
             </button>
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-secondary"
+              onClick={() => {
+                setStatus('password_fallback');
+                setErrorMessage('');
+                setErrorDetails(null);
+              }}
+              style={{ marginTop: '0.75rem' }}
+            >
+              🔑 First time on this phone? Set up with password
+            </button>
           </>
         )}
 
@@ -353,6 +392,18 @@ const PasskeyMobileLoginView = () => {
               onClick={executePasskeyLogin}
             >
               🔄 Try Again
+            </button>
+            <button
+              type="button"
+              className="passkey-btn passkey-btn-secondary"
+              onClick={() => {
+                setStatus('password_fallback');
+                setErrorMessage('');
+                setErrorDetails(null);
+              }}
+              style={{ marginTop: '0.75rem' }}
+            >
+              🔑 First time on this phone? Set up with password
             </button>
             <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '1rem' }}>
               If your phone has not been paired yet, or if you replaced your device, ask your teacher to grant a temporary bypass or reset your passkey lock.

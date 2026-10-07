@@ -179,4 +179,58 @@ describe('LecturePasskeyVerifyView Component', () => {
     expect(screen.getByText(/Biometric check was cancelled\. Tap "Verify Biometric Passkey" below to try again\./i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Verify Biometric Passkey/i })).toBeInTheDocument();
   });
+
+  it('seamlessly transitions to password fallback form when phone has no resident passkey (NotFoundError)', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: {
+        options: { challenge: 'lecture-challenge-123' },
+        challengeId: 'chal_99',
+      },
+    });
+
+    const notFoundErr = new Error('No credentials found on this device');
+    notFoundErr.name = 'NotFoundError';
+    mockStartAuthentication.mockRejectedValueOnce(notFoundErr);
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    expect(screen.getByText('Set Up Lecture Passkey')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Enter your classroom password/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Log In & Confirm Attendance/i })).toBeInTheDocument();
+  });
+
+  it('allows manual transition to password setup form when button is clicked', async () => {
+    mockGetOptions.mockResolvedValueOnce({
+      data: {
+        options: { challenge: 'lecture-challenge-123' },
+        challengeId: 'chal_99',
+      },
+    });
+
+    const notAllowedErr = new Error('User cancelled');
+    notAllowedErr.name = 'NotAllowedError';
+    mockStartAuthentication.mockRejectedValueOnce(notAllowedErr);
+
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={['/lecture-verify?classId=c1&bingoId=b1&token=tok1234567890123']}>
+          <LecturePasskeyVerifyView />
+        </MemoryRouter>
+      );
+    });
+
+    const setupBtn = screen.getByRole('button', { name: /First time on this phone\? Set up with password/i });
+    await act(async () => {
+      setupBtn.click();
+    });
+
+    expect(screen.getByText('Set Up Lecture Passkey')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Log In & Confirm Attendance/i })).toBeInTheDocument();
+  });
 });
