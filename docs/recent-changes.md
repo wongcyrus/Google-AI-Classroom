@@ -4,6 +4,56 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.3 Class Creation Concept Templates, Dashboard Tag Filtering, and Student Custom Properties Management
+
+**Date**: October 8–9, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Deployed to Dev & Prod  
+**Primary Files**:
+- Concept Templates & Tags: [`web-app/src/constants/classTemplates.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/constants/classTemplates.js), [`web-app/src/constants/classTemplates.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/constants/classTemplates.test.js)
+- Class Creation & Settings: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/ClassManagement.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.css), [`web-app/src/components/ClassManagement.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.test.jsx)
+- Dashboard Ranking & Tag Filtering: [`web-app/src/utils/classRankingUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/classRankingUtils.js), [`web-app/src/utils/classRankingUtils.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/classRankingUtils.test.js), [`web-app/src/components/TeacherView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherView.jsx), [`web-app/src/components/TeacherView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherView.css), [`web-app/src/components/TeacherViews.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherViews.test.jsx)
+- Custom Properties Processing & Removal: [`functions/property_processing/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/property_processing/index.mjs), [`functions/property_processing/index.test.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/property_processing/index.test.mjs), [`web-app/src/components/CustomPropertiesManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.jsx), [`web-app/src/components/CustomPropertiesManager.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.test.jsx), [`web-app/src/utils/exportUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/exportUtils.js), [`web-app/src/utils/exportUtils.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/exportUtils.test.js)
+- Verification & Smoke Tests: [`admin/scripts/smoke_test.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/smoke_test.mjs)
+
+### Technical Analysis & Implementation Details:
+
+1. **Concept Templates with 1-Click Sensible Defaults (`Lecture`, `Lab`, `Lecture in Lab`)**:
+   - **Problem & Motivation**: Class creation had grown overly complex with over 30 granular toggles (AI proctoring mode, dual-channel capture, gaze thresholds, full-screen mandates, Bingo intervals, lecture recording, subtitle generation, translation target languages, recording share policies). Instructors felt overwhelmed setting up routine classes.
+   - **Hero Template Selector**:
+     - Introduced 3 concept templates defined in `classTemplates.js`:
+       - **🏛️ Lecture**: Screen capture only, full AI proctoring disabled, auto lecture recording and multi-lingual subtitles enabled, recording policy internal.
+       - **💻 Lab**: Dual-channel capture (Screen + Webcam), full-screen required, hybrid on-device face/gaze AI active, automated Bingo presence checks enabled every 20 minutes.
+       - **🖥️🎧 Lecture in Lab**: Dual-channel capture and lightweight AI tracking to ensure students attend to the instructor rather than surfing the web on lab PCs; automated Bingo popups disabled to minimize classroom disruption.
+     - **Pre-Population vs Locking**: Selecting a template populates recommended baseline values across all form fields without restricting any configuration.
+
+2. **Collapsible Advanced Configuration Accordion (Sections 5 – 10)**:
+   - During class creation, Sections 1–4 (Basic Info, Timetable, Student Roster, Teaching Team) remain prominent.
+   - Sections 5–10 (Automation & Prompts, Audio & STT, Passkey Policies, Exam Lockdowns, Teacher Studio, Archival) are collapsed inside a clear accordion banner: `⚙️ Advanced Configuration & Parameter Overrides (Sections 5 – 10)`.
+   - Teachers can expand the accordion at any time with 1 click to customize every fine-grained option before creating the class.
+   - For existing classes, the accordion is expanded by default to ensure immediate access to all course settings.
+
+3. **Auto-Sync Concept Template Filter Tags (`#Lecture`, `#Lab`, `#Lecture in Lab`) & Dashboard Quick Filters**:
+   - Choosing a concept template automatically synchronizes its tag (`#Lecture`, `#Lab`, or `#Lecture in Lab`) into the class's `tags` array while preserving custom cohort tags (e.g. `#HD-IT`, `#Year 1`).
+   - A 1-click template tag preset row (`🏷️ Template Filter Tag: [ ✓ #Lecture in Lab ] [ + #Lecture ] [ + #Lab ]`) allows quick toggling directly inside the tag chips editor.
+   - On the Teacher Dashboard, `classRankingUtils.extractClassTags` and `classMatchesTags` dynamically extract and match template tags and `classType` retroactively for both newly created and existing classes.
+   - Class cards display interactive template badges (e.g., `🖥️🎧 #Lecture in Lab`) that immediately filter the dashboard view with one click.
+
+4. **Student-Specific Custom Properties Removal & Synchronization**:
+   - **Problem**: When teachers uploaded an updated student properties spreadsheet with deleted columns or removed a custom property, the backend previously merged new keys but had no mechanism to prune deleted attributes, leaving obsolete properties permanently attached to students in Firestore.
+   - **Spreadsheet Column Deletion (Sync Mode)**:
+     - The property import engine compares active uploaded column headers against existing property keys in the class.
+     - Any omitted non-internal property keys are dynamically deleted using `FieldValue.delete()` across all student property documents in `classes/{classId}/studentProperties/{studentUid}`.
+     - System-internal keys (`studentName`, `email`, `nickname`, `programme`, `studentClass`, `passkeyBypass`, `strikeNumber`, etc.) are protected from inadvertent deletion via `isInternalPropertyKey()`.
+   - **In-Situ UI Removal (`CustomPropertiesManager`)**:
+     - Teachers can review all registered custom property columns in the UI and click `🗑️ Remove Property` with explicit modal confirmation.
+     - The function instantly deletes the property attribute across all enrolled students in the class.
+
+5. **Multi-Environment Deployment & Verification**:
+   - Deployed cleanly to both **Development** (`it114115-dev-2026.web.app`) and **Production** (`it114115-2627.web.app`).
+   - 100% test pass across all frontend suites (149 test files, 1,588 tests), cloud functions (381 tests), smoke tests (35 tests), and security rules (75 tests).
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.2 Mobile Passkey In-Situ Password Fallback & Automated Lecture Merge Decoupling
 
 **Date**: October 7, 2026  

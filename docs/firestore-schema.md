@@ -57,6 +57,8 @@ erDiagram
 
     classes {
         string classId PK
+        string classType "lecture | lab | lecture_in_lab"
+        array tags "categorization and template filter tags"
         map students "uid:email map"
         map teachers "uid:email map"
         array studentEmails "enrolled student emails"
@@ -506,6 +508,8 @@ Stores information about each class.
 
 *   **Document ID**: `classId` (string)
 *   **Fields**:
+    *   `classType`: (string) The concept template applied to the class (`'lecture'`, `'lab'`, `'lecture_in_lab'`). Automatically set upon class creation and determines template baseline defaults.
+    *   `tags`: (array of strings) Categorization and filter tags applied to the class (e.g. `['Lecture in Lab', 'HD-IT', 'Year 1']`). Auto-synchronized with template filter tags and dynamically matched in dashboard tag filters.
     *   `studentEmails`: (array) An array of student emails used for enrollment.
     *   `teacherEmails`: (array) An array of teacher emails used for enrollment.
     *   `students`: (map) A map of student UIDs to their email addresses (`{ <studentUid>: <studentEmail> }`).
@@ -747,6 +751,7 @@ Stores information about each class.
             *   `passkeyBypass`: (object | null) Active lesson-level bypass status (`{ active: true, classId, grantedBy, grantedAt, expiresAt, expiresAtMillis, durationMinutes, method: 'teacher_monitor_approval' | 'roster_pregrant' | 'emergency_pin' }`).
             *   `passkeyPermanentExempt`: (object | null) Permanent passkey exemption status for incompatible hardware (`{ exempt: true | false, updatedAt: timestamp, updatedBy: string, reason: string }`).
             *   `isRegistered`: (boolean | null) Cached boolean indicating whether the student has registered a hardware passkey.
+            *   *Custom Dynamic Properties*: (arbitrary key-value pairs) Custom columns uploaded by instructors via spreadsheet or managed in UI (e.g., `AssignedSeat`, `AccommodationTier`, `LabGroup`). Injected into AI prompt evaluations. When an instructor deletes a column from the spreadsheet or clicks `🗑️ Remove Property` in the UI, omitted keys are deleted across all student documents using `FieldValue.delete()`, while system internal keys (`isInternalPropertyKey`) remain safeguarded.
     *   **`classes/{classId}/lectureQrSession`**: Real-time broadcast coordination document for lecture-wide dynamic rotating QR code attendance check-ins.
         *   **Document `active`** (`classes/{classId}/lectureQrSession/active`):
             *   `bingoId`: (string) Active challenge ID referenced in `bingoRecords`.

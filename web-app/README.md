@@ -12,7 +12,7 @@ The frontend client of **Google AI Classroom Assistant** is a high-performance R
 - 📘 **[Comprehensive UI Controls & Features Catalog (19 Domains)](../docs/comprehensive-ui-controls-and-features-catalog.md)**
 - 👨‍🏫 **[Instructor & TA User Manual](../docs/user-manual-teacher.md)**
 - 🧑‍🎓 **[Student User Manual & Guide](../docs/user-manual-student.md)**
-- 🧪 **[Frontend Test Suite (1,184 Tests across 126 Suites)](../docs/testing-strategy-and-coverage.md#1-frontend-component--hook-suite-web-appsrc)**
+- 🧪 **[Frontend Test Suite (1,588 Tests across 149 Suites)](../docs/testing-strategy-and-coverage.md#1-frontend-component--hook-suite-web-appsrc)**
 
 ## 🚀 Local Development
 

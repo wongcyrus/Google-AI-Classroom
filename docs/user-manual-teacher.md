@@ -94,18 +94,61 @@ flowchart TD
     ActiveLesson --> PostLesson
 ```
 
----
-
 ## 2. Classroom Setup & Timetable Configuration
 
-### Creating a New Class
-1. On the Teacher Dashboard, click the **`+ Create Class`** button.
-2. Fill in the **Basic Class Information**:
-   - **Class ID:** A unique alphanumeric identifier (e.g., `IT114115-2026-A`).
-   - **Display Name:** Friendly course title (e.g., *DevOps & Cloud Computing Laboratory*).
-   - **Storage Quota:** Select `5 GB`, `10 GB`, `20 GB`, or `Unlimited`. Each class is pre-allocated 5 GB by default with a $10.00 AI token budget cap.
-   - **Screenshot Retention:** Choose how long raw student frame snapshots are retained before automatic deletion (`7` to `365` days).
-   - **Video Retention:** Choose how long compiled MP4 videos are kept (`14` to `730` days).
+### Creating a New Class with Concept Templates
+
+To streamline course setup, class creation is powered by **Concept Templates**. Instead of configuring dozens of proctoring and recording toggles manually, you select a pre-configured template that instantly applies recommended, field-tested defaults:
+
+#### 1. The Three Concept Templates
+- **🏛️ Lecture**: Designed for standard theory, auditorium, and presentation sessions.
+  - Prioritizes teacher screen broadcast and audio lecture capture with automated multi-lingual subtitles.
+  - Minimizes intrusive student background capture and leaves computer usage unrestricted.
+- **💻 Lab**: Designed for hands-on programming, software exercises, and practical assessment labs.
+  - Enforces dual-channel capture (Screen + Webcam) and full-screen sharing to maintain integrity.
+  - Activates hybrid on-device face & gaze tracking and periodic Bingo active presence checks.
+- **🖥️🎧 Lecture in Lab**: Designed for classroom delivery inside computer labs where students should focus on the lecturer rather than browsing or playing on lab PCs.
+  - Activates teacher broadcast, dual-channel capture, and lightweight AI focus tracking.
+  - Disables distracting automated Bingo popups so students stay engaged with the lecture.
+
+#### 2. Default Configuration Comparison Table
+
+| Configuration Feature | 🏛️ Lecture | 💻 Lab | 🖥️🎧 Lecture in Lab |
+| :--- | :--- | :--- | :--- |
+| **Concept Template Tag** | `#Lecture` | `#Lab` | `#Lecture in Lab` |
+| **Capture Mode** | Screen Only | Dual (Screen + Webcam) | Dual (Screen + Webcam) |
+| **Require Entire Screen** | No | Yes (Enforces desktop share) | Yes (Prevents window isolation) |
+| **AI Proctoring Mode** | Disabled | Hybrid (MediaPipe + Cloud) | Hybrid (MediaPipe + Cloud) |
+| **AI Gaze Sensitivity** | Normal | Strict | Normal |
+| **Audio Capture** | Disabled | Enabled (Real-time voice check) | Disabled |
+| **Teacher Lecture Studio** | Enabled (Auto-record broadcast) | Disabled | Enabled (Auto-record broadcast) |
+| **Lecture Subtitles & STT** | Enabled (`gemini-3.8-flash`) | Disabled | Enabled (`gemini-3.8-flash`) |
+| **Teacher Video Consolidation** | Enabled (Unified lesson MP4) | Disabled | Enabled (Unified lesson MP4) |
+| **Teacher Recording Policy** | Internal (All enrolled students) | Private | Internal (All enrolled students) |
+| **Bingo Presence Checks** | Disabled | Enabled (Every 20 mins) | Disabled |
+| **Student Recording Policy** | Always Enabled | Always Enabled | Always Enabled |
+
+#### 3. Automatic Template Filtering & Tag Synchronization
+- When selecting a template card, its corresponding tag (`#Lecture`, `#Lab`, or `#Lecture in Lab`) is **automatically attached** to the class tags.
+- Teachers can easily add custom cohort tags (e.g. `#HD-IT`, `#Year 1`, `#Room 302`) in Section 1 using the tag chips editor.
+- **1-Click Dashboard Filtering**: On the Teacher Dashboard, the **`🏷️ Filter Tags:`** bar automatically shows `#Lecture`, `#Lab`, and `#Lecture in Lab` pills. Clicking any tag instantly filters your class list. Each class card also displays an interactive template badge that filters classes in one click.
+
+#### 4. Collapsible Advanced Configuration (Sections 5 – 10)
+> [!TIP]
+> Selecting a concept template **only pre-populates default values**—it never locks or restricts your settings!
+> 
+> Below Section 4 (Teaching Team), click the **`⚙️ Advanced Configuration & Parameter Overrides (Sections 5 – 10)`** accordion banner at any time. When expanded, you have 100% full control to fine-tune AI proctoring, vision models, Gemini prompt overrides, passkey enforcement, exam lockdown periods, and recording policies before saving. All settings remain fully editable in **Class Settings** at any time.
+
+1. On the Teacher Dashboard, click **`+ Create Class`**.
+2. Select your desired **Concept Template Card** (`Lecture`, `Lab`, or `Lecture in Lab`).
+3. Fill in the **Basic Information**:
+   - **Class ID:** Unique lowercase alphanumeric identifier (e.g., `it114115-2026-s1`).
+   - **Display Name:** Friendly course title (e.g., *Cloud Architecture Lab*).
+   - **Tags:** Adjust or add cohort tags as needed.
+   - **Storage Quota:** Select `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
+   - **Retention Periods:** Screenshot retention (`7`–`365` days) and Video retention (`14`–`730` days).
+4. (Optional) Expand **Advanced Configuration** to customize fine-grained parameters.
+5. Click **Create Class**.
 
 ### Timetable & Schedule Builder
 Open the **Settings** tab in your class workspace and locate the **Timetable & Schedule** panel:
@@ -214,11 +257,21 @@ To enforce anti-proxy attendance, student accounts are bound 1-to-1 to physical 
 
 ### Custom Properties & AI Injection
 The platform supports passing contextual variables directly into Gemini prompts:
-- **Class-wide Properties:** Define key-value pairs (e.g., `ProjectRepo: github.com/school/lab1`, `OperatingSystem: Ubuntu 24.04`). These keys are automatically available in all video and vision evaluation prompts.
+- **Class-wide Properties:** Define class-wide key-value pairs (e.g., `ProjectRepo: github.com/school/lab1`, `OperatingSystem: Ubuntu 24.04`). These keys are automatically available in all video and vision evaluation prompts.
 - **Student-Specific Properties:**
-  1. Click **`📥 Export / Download Existing Excel`** in the Custom Properties Manager.
-  2. Populate columns for each student (e.g., `AssignedSeat: Lab-302-A`, `AccommodationTier: ExtendedTime`).
-  3. Click **`📤 Choose Excel (.xlsx) to Upload`**. Cloud Functions asynchronously parse and link these attributes to individual student UIDs.
+  1. Click **`📥 Export / Download Existing Excel`** in the **Custom Properties Manager** to download the pre-filled spreadsheet containing current student emails and any existing custom attributes.
+  2. Populate or edit custom property columns for each student (e.g., `AssignedSeat: Lab-302-A`, `AccommodationTier: ExtendedTime`, `TeamNumber: Alpha`).
+  3. Click **`📤 Choose Excel (.xlsx) to Upload`**. Cloud Functions asynchronously parse and link these attributes to individual student UIDs in `classes/{classId}/studentProperties/{studentUid}`.
+
+#### Removing & Deleting Custom Student Properties
+When custom property columns are no longer needed (e.g., a temporary workshop seating assignment or completed project group):
+1. **Method 1: Spreadsheet Column Deletion (Sync Mode)**:
+   - In your exported Excel spreadsheet, simply delete the column(s) you wish to remove.
+   - Re-upload the spreadsheet. The backend comparison engine recognizes which custom properties were omitted, issues `FieldValue.delete()` calls for those removed keys across all student records in the class, and preserves protected student identity fields (`studentName`, `email`, `nickname`, `programme`, `studentClass`).
+2. **Method 2: 1-Click UI Removal**:
+   - In the **Custom Properties Manager** panel under Class Settings, all active custom properties are displayed in a properties list.
+   - Click the red **`🗑️ Remove Property`** button next to any property name.
+   - Confirm the deletion prompt. The attribute is permanently purged from all enrolled students' property documents immediately.
 
 ---
 

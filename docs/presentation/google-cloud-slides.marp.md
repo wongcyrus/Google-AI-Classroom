@@ -539,6 +539,31 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Batch Media Processing: Decoupled Lecture Video Concatenation & 5-Point Safety Gate
+### Rolling 1-Minute Chunk Ingestion, FFmpeg Concat Demuxer & Zero-Data-Loss Verification
+
+![bg right:60% 95%](images/slide_batch_lecture_video_pipeline.png)
+
+- **Resilient Rolling Ingestion (Zero Crash Loss):**
+  - Continuous 1–3 hour lectures recorded in rolling 1-minute WebM segments (`/recordings/{classId}/{groupId}/{segmentId}.webm`).
+  - Independent chunk uploads prevent catastrophic data loss from browser tab crashes or network drops.
+- **Decoupled Asynchronous Batch Pipeline (`mergeLectureRecordings.js`):**
+  - Concatenation is decoupled from live instruction; triggered post-class or on-demand without classroom overhead.
+  - FFmpeg concat demuxer (`-f concat -safe 0 -c copy`) performs instant, lossless stream-copy concatenation across dozens of clips in seconds with zero re-encoding artifacts.
+- **5-Point Pre-Deletion Verification Gate:**
+  - Raw 1-minute segments are NEVER deleted immediately after merging. System verifies 5 strict gates:
+    1. **Master Artifact Existence**: Master `lecture.webm` exists in GCS with non-zero byte size.
+    2. **Duration & Audio Parity**: Probes with `ffprobe` to verify audio stream and confirm duration matches cumulative sum of clips within $\pm 2\text{s}$.
+    3. **Container Integrity**: Checks valid container headers and decodable bitstreams without demuxer errors.
+    4. **Firestore Lifecycle State**: Parent document status in `classes/{classId}/lectureRecordings` verified as `'ready'`.
+    5. **Playback Range Check**: Validates signed streaming URL returns HTTP 200/206 byte-range responses.
+- **Fail-Safe Retention & Raw Clips Inspector:**
+  - If any check fails, segments remain 100% intact, recording flags `'merge_failed'`, and instructor can inspect or re-trigger raw clips.
+- **Automated Screencast Batch Pipeline:**
+  - Post-lesson student screencasts queued in **Google Cloud Tasks** (throttled to 4 concurrent workers, 2 dispatches/sec), compiling H.264 MP4 timelapses with 40px SVG security overlays.
+
+---
+
 ## YouTube-Style Desktop Student Hub & Screen Modes
 ### Cinematic Player Stage, Yellow CC Cues, Auto-Transcript & Ironclad Bingo
 
@@ -590,6 +615,7 @@ const processFrame = async (now, metadata) => {
 - **1-Click Targeted Nudge:** Press `N` keyboard shortcut to display a gentle focus alert on the student's screen.
 - **Offline Resilience:** If a student disconnects, their tile caches the last known frame and displays `(Offline)`.
 - **Integrated Video Peek:** Instant one-click jump to full-screen peer-to-peer live stream.
+- **Concept Templates & 1-Click Filter Tags:** 1-click class setup (**🏛️ Lecture**, **💻 Lab**, **🖥️🎧 Lecture in Lab**) with sensible defaults, collapsible advanced overrides, and auto-syncing tags for 1-click dashboard filtering.
 
 ---
 

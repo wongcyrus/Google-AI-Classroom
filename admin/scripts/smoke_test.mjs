@@ -42,6 +42,8 @@ async function runSmokeTests() {
     await classRef.set({
       name: 'Smoke Test Class',
       classId: testClassId,
+      classType: 'lecture_in_lab',
+      tags: ['Lecture in Lab', 'SmokeTest'],
       retentionDays: 14,
       videoRetentionDays: 60,
       frameRate: 10,
@@ -55,6 +57,8 @@ async function runSmokeTests() {
 
     const classSnap = await classRef.get();
     assert(classSnap.exists, 'Class document created successfully');
+    assert(classSnap.data().classType === 'lecture_in_lab', 'classType correctly saved as lecture_in_lab');
+    assert(Array.isArray(classSnap.data().tags) && classSnap.data().tags.includes('Lecture in Lab'), 'tags correctly contain template tag Lecture in Lab');
     assert(classSnap.data().retentionDays === 14, 'retentionDays correctly saved as 14');
     assert(classSnap.data().videoRetentionDays === 60, 'videoRetentionDays correctly saved as 60');
     assert(classSnap.data().captureMode === 'dual', 'captureMode correctly saved as dual');
@@ -231,9 +235,35 @@ async function runSmokeTests() {
     assert(pricingSnap.data()['gemini-3.5-transcribe']?.input === 0.50, 'Gemini 3.5 Transcribe input rate properly configured');
 
     // ----------------------------------------------------
-    // TEST 9: Cascading Class Deletion Execution & Isolation
+    // TEST 9: Student-Specific Custom Properties & Dynamic Key Deletion
     // ----------------------------------------------------
-    console.log(`\n▶ Test 9: Cascading Class Deletion & Isolation Verification`);
+    console.log(`\n▶ Test 9: Student-Specific Custom Properties & Dynamic Key Deletion`);
+    const studentPropRef = db.collection('classes').doc(testClassId).collection('studentProperties').doc(testStudentUid);
+    await studentPropRef.set({
+      StudentEmail: testStudentEmail,
+      SeatNumber: 'B12',
+      LabGroup: 'Alpha',
+      TemporaryNote: 'Needs headphones',
+    });
+
+    let propSnap = await studentPropRef.get();
+    assert(propSnap.exists, 'Student properties document created successfully');
+    assert(propSnap.data().SeatNumber === 'B12', 'SeatNumber property correctly saved');
+    assert(propSnap.data().TemporaryNote === 'Needs headphones', 'TemporaryNote property correctly saved');
+
+    // Remove TemporaryNote property column (simulating spreadsheet column deletion)
+    await studentPropRef.update({
+      TemporaryNote: FieldValue.delete(),
+    });
+
+    propSnap = await studentPropRef.get();
+    assert(propSnap.data().TemporaryNote === undefined, 'TemporaryNote property column deleted successfully via FieldValue.delete()');
+    assert(propSnap.data().SeatNumber === 'B12', 'Other property columns (SeatNumber) remain intact');
+
+    // ----------------------------------------------------
+    // TEST 10: Cascading Class Deletion Execution & Isolation
+    // ----------------------------------------------------
+    console.log(`\n▶ Test 10: Cascading Class Deletion & Isolation Verification`);
     
     // Simulate onClassDocDeleted logic directly
     await classRef.delete();
@@ -251,6 +281,7 @@ async function runSmokeTests() {
     remainingAudio.docs.forEach(doc => batch.delete(doc.ref));
     remainingIrregs.docs.forEach(doc => batch.delete(doc.ref));
     batch.delete(auditRef);
+    batch.delete(studentPropRef);
     await batch.commit();
 
     // Remove class from student profile

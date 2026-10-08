@@ -473,7 +473,36 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 43:30 – 45:00 | Slide 24: YouTube-Style Desktop Student Hub & Screen Modes
+### 43:30 – 45:00 | Slide 24: Batch Media Processing: Decoupled Lecture Video Concatenation & 5-Point Safety Gate
+*Visual: `slide_batch_lecture_video_pipeline.png`*
+
+> **Cyrus Wong:**  
+> "Now let's examine a critical engineering problem that every university IT department faces: **how do you handle heavy batch media jobs like 2-hour lecture video recordings without crashing student browsers or overwhelming serverless cloud functions?**
+>
+> In real-world higher education, a single lecture lasts anywhere from 60 to 180 minutes. If you attempt to record a 3-hour video into a single continuous browser memory buffer, any accidental tab closure, browser memory exhaustion, or campus Wi-Fi hiccup will catastrophically destroy the entire recording.
+>
+> To solve this, we architected an **Asynchronous Decoupled Batch Media Pipeline**:
+> 1. **Rolling 1-Minute Segment Ingestion (Zero Crash Loss):**
+>    - During live instruction, the browser's `MediaRecorder` continuously cuts independent 1-minute rolling chunks (`.webm`) and streams them asynchronously directly to Google Cloud Storage.
+>    - Even if a lecturer's laptop suddenly reboots or battery dies at minute 89, the previous 88 minutes are already safe and sound in Cloud Storage!
+> 2. **Post-Class Decoupled Merging (`mergeLectureRecordings.js`):**
+>    - Merging is completely decoupled from live teaching. We NEVER run heavy video processing while class is in session.
+>    - When class concludes, Cloud Run / Cloud Functions Gen 2 triggers a batch worker.
+>    - Using the **FFmpeg Concat Demuxer** (`-f concat -safe 0 -c copy`), the worker stitches dozens of 1-minute WebM segments into a seamless master lesson video in mere seconds, with zero re-encoding artifacts and minimal CPU overhead.
+> 3. **The 5-Point Pre-Deletion Verification Gate:**
+>    - Crucially, how do we prevent accidental cloud data loss? We enforce a strict **5-Point Pre-Deletion Verification Gate** before a single raw segment is ever pruned:
+>      - **Gate 1**: Master artifact existence and non-zero byte size in Cloud Storage.
+>      - **Gate 2**: Duration and audio parity check using `ffprobe`—validating that duration matches the sum of individual clips within $\pm 2$ seconds and that an uncorrupted audio stream is present.
+>      - **Gate 3**: Demuxer container and bitstream integrity inspection.
+>      - **Gate 4**: Firestore document lifecycle status verified as `'ready'`.
+>      - **Gate 5**: HTTP 200/206 byte-range streaming test.
+>    - If *any* gate fails, the raw segments are preserved 100% intact, the job flags `'merge_failed'`, and the teacher has access to an in-app Raw Clips Inspector to review or re-merge.
+> 4. **Automated Screencast Batch Jobs via Cloud Tasks:**
+>    - The same decoupled principle governs student lab screencasts: post-lesson compilation for 50 students is dispatched across Google Cloud Tasks with concurrency throttling (4 workers, 2 dispatches/sec), producing H.264 MP4 videos with 40px SVG security overlays without Cloud Run cold start thrashing!"
+
+---
+
+### 45:00 – 46:30 | Slide 25: YouTube-Style Desktop Student Hub & Screen Modes
 *Visual: `slide_student_desktop_youtube.png`*
 
 > **Cyrus Wong:**  

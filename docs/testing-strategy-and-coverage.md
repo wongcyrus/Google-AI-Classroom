@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >1,760 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,070 Passing Tests & Assertions]
         direction TB
-        L4[Level 4: Live E2E & System Smoke Suite - 28 Assertions]
-        L3[Level 3: Real-Token Security Rules Verification - 42 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 343+ Tests in ai_flows, media_processing & Other Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,351 Tests across 135 Suites]
+        L4[Level 4: Live E2E & System Smoke Suite - 35 Assertions]
+        L3[Level 3: Real-Token Security Rules Verification - 75 Assertions]
+        L2[Level 2: Backend Cloud Functions Logic - 381 Tests across 7 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,588 Tests across 149 Suites]
         
         L4 --> L3 --> L2 --> L1
     end

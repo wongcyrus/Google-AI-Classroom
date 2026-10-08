@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockDocGet,
   mockDocUpdate,
+  mockDocSet,
   mockDocRef,
   mockCollectionGet,
   mockCollectionRef,
@@ -21,9 +22,11 @@ const {
 } = vi.hoisted(() => {
   const mockDocGet = vi.fn();
   const mockDocUpdate = vi.fn();
+  const mockDocSet = vi.fn().mockResolvedValue();
   const mockDocRef = vi.fn(() => ({
     get: mockDocGet,
     update: mockDocUpdate,
+    set: mockDocSet,
   }));
   const mockCollectionGet = vi.fn();
   const mockCollectionRef = vi.fn(() => ({
@@ -57,6 +60,7 @@ const {
   return {
     mockDocGet,
     mockDocUpdate,
+    mockDocSet,
     mockDocRef,
     mockCollectionGet,
     mockCollectionRef,

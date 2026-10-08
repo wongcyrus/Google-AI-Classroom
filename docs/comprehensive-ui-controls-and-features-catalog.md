@@ -138,9 +138,13 @@ flowchart TD
 ## 2. Teacher Dashboard & Command Center
 **Primary Source:** [`TeacherView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherView.jsx)
 
-### Class Overview Cards
-- **Create Class Button (`+ Create Class`):** Launches modal to initialize a new classroom instance with custom ID, display name, schedule, and AI quota.
+### Class Overview Cards & Tag Filter Bar
+- **Create Class Button (`+ Create Class`):** Launches the class creation workspace initialized with Concept Template selectors.
+- **🏷️ Filter Tags Bar (`filter-tags-bar`):**
+  - Displays all extracted class tags including preset Concept Template tags (`#Lecture`, `#Lab`, `#Lecture in Lab`) and custom cohort tags (`#HD-IT`, `#Year 1`).
+  - Clicking any tag pill toggles active filtering on the class grid in real-time.
 - **Class Card Grid:**
+  - **Concept Template Badge:** Shows the active template type pill (e.g. `🏛️ #Lecture`, `💻 #Lab`, or `🖥️🎧 #Lecture in Lab`). Clicking the badge on any card immediately activates that tag filter on the dashboard.
   - **Live Status Indicator:** Real-time green pulsating badge (`🟢 Active Now`) if the current timestamp falls within a scheduled lesson window.
   - **Enrolled Student Counter:** Displays active roster size (`N Students enrolled`).
   - **Quick Action Buttons:**
@@ -390,11 +394,22 @@ flowchart TD
 ---
 
 ## 8. Class Configuration, Schedule & Security Administration
-**Primary Sources:** [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`CustomPropertiesManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.jsx), [`ScheduleManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleManager.jsx)
+**Primary Sources:** [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`CustomPropertiesManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.jsx), [`ScheduleManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ScheduleManager.jsx), [`classTemplates.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/constants/classTemplates.js)
 
-### Section 1: Basic Information & Storage Quotas
+### Concept Template Hero Selector (Class Creation)
+- **Concept Template Cards Grid:**
+  - **🏛️ Lecture Card:** One-click defaults for presentation-focused classes (Screen only, AI proctoring disabled, auto lecture recording and subtitles enabled).
+  - **💻 Lab Card:** One-click defaults for coding/assessment labs (Dual capture, full screen enforced, hybrid MediaPipe gaze AI, automated 20-minute Bingo presence checks).
+  - **🖥️🎧 Lecture in Lab Card:** One-click defaults for computer lab lectures (Dual capture, focus tracking, automated Bingo disabled to minimize student disruption).
+  - *Non-Locking Design*: Picking any template populates form defaults while keeping all fields 100% customizable.
+
+### Section 1: Basic Information, Tags & Storage Quotas
 - **Class ID Input:** Unique course identifier.
 - **Display Name Input:** Human-readable course title.
+- **Class Tags Chips Editor:**
+  - Dynamic chip list displaying active tags with ✕ removal buttons.
+  - **🏷️ Template Filter Tag Row:** 1-click preset pills (`[✓ #Lecture in Lab]`, `[+ #Lecture]`, `[+ #Lab]`) to quickly toggle template tags.
+  - Tag input field with keyboard Enter support and auto-suggestions from other classes.
 - **Storage Quota Limit Dropdown:** `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
 - **Screenshot Retention Days Dropdown:** `7`, `14`, `30`, `60`, `90`, `180`, or `365` days.
 - **Video Retention Days Dropdown:** `14`, `30`, `60`, `90`, `180`, `365`, or `730` days.
@@ -431,13 +446,18 @@ flowchart TD
   - **Header Status Chips:** Real-time summary chips displaying total roster count, profile metadata, linked passkeys, directory auto-fills, and dynamic chips for `🛡️ N Exempt` and `⚡ N Temp Bypass`.
   - **`[ 🔄 Reset ]` Passkey Button:** Securely unlinks a student's paired phone upon legitimate hardware loss/replacement and logs to `passkeyAuditLogs`.
 - **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
-- **Student-Specific Custom Properties Excel Tool:**
+- **Student-Specific Custom Properties Tool & Column Removal:**
   - `📥 Export / Download Existing Excel`: Generates `.xlsx` spreadsheet with `StudentEmail` and existing custom property columns.
-  - `📤 Choose Excel (.xlsx) to Upload`: Dispatches background job (`propertyUploadJobs`) mapping student metadata (e.g., accommodation needs, seat numbers).
+  - `📤 Choose Excel (.xlsx) to Upload`: Dispatches background job (`propertyUploadJobs`) mapping student metadata. Deleting a column in the spreadsheet dynamically prunes that property via `FieldValue.delete()` across all students.
+  - **`🗑️ Remove Property` UI Button:** Located next to each custom property in the registered properties list; prompts for confirmation and permanently deletes the attribute from all student documents.
 
 ### Section 4: Teaching Team
 - **Co-Teacher Email Textarea:** Shared access permissions for teaching assistants and co-instructors.
 - **Import / Export Actions:** Team management with email parsing and verification.
+
+### ⚙️ Collapsible Advanced Configuration Accordion (Sections 5 – 10)
+- **Interactive Accordion Toggle Button:** Displays current mode (`Pre-configured by "Template Name" template` or `Configuring custom overrides`).
+- **One-Click Expansion:** Clicking unfolds Sections 5 through 10 during class creation; automatically unfolded when editing an existing class.
 
 ### Section 5: AI & Automation Parameters
 - **Capture Mode Selector:** `Dual (Screen + Webcam)`, `Screen Only`, or `Webcam Only`.
