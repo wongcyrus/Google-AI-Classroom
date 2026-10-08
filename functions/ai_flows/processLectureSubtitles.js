@@ -466,7 +466,10 @@ export function buildLectureTranslationPrompt({
     baseInstructions = template
       .replace(/\{\{classId\}\}/g, classId)
       .replace(/\{\{courseContext\}\}/g, subjectDomain)
-      .replace(/\{\{targetLanguage\}\}/g, targetLangDisplay);
+      .replace(/\{\{subjectDomain\}\}/g, subjectDomain)
+      .replace(/\{\{targetLanguage\}\}/g, targetLangDisplay)
+      .replace(/\{\{spokenLanguage\}\}/g, 'Cantonese / English')
+      .replace(/\{\{speechText\}\}/g, '[Transcribed lecture speech segments]');
   } else {
     baseInstructions = `# Lecture Subtitle & Terminology Translator
 You are an expert multilingual subtitle translator specializing in Hong Kong bilingual Computer Science and Higher Education lectures.

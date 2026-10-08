@@ -22,6 +22,7 @@ import { isRecordInLesson } from './StudentRecordsView';
 import Modal from './Modal';
 import AudioPromptSelector from './AudioPromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
+import { getPromptTypeByApplyTo } from '../constants/promptRegistry';
 import { formatAiCost } from '../utils/formatters';
 import './LectureRecordingsView.css';
 
@@ -863,17 +864,29 @@ export default function LectureRecordingsView({
     setTimeout(() => setCopyFeedback(''), 2500);
   };
 
+  const ALLOWED_REGEN_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+
   // Open modal to configure prompt, languages, and model for subtitle generation
   const handleOpenRegenModal = (rec = selectedRecording) => {
     if (!rec) return;
-    const initialStt = rec.lectureSttPrompt || rec.lectureRecordingPrompt || classInfo?.lectureSttPrompt || classInfo?.lectureRecordingPrompt || null;
+    const initialStt =
+      rec.lectureSttPrompt ||
+      rec.lectureRecordingPrompt ||
+      (rec.sttPromptId ? { id: rec.sttPromptId, name: rec.sttPromptName || rec.subtitlesPromptName || 'Saved STT Prompt', promptText: rec.customSttPrompt || '' } : null) ||
+      classInfo?.lectureSttPrompt ||
+      classInfo?.lectureRecordingPrompt ||
+      null;
     const initialSttText = rec.customSttPrompt || rec.customPrompt || initialStt?.promptText || '';
     setRegenSttPrompt(initialStt);
     setRegenSttPromptText(initialSttText);
     setRegenPrompt(initialStt);
     setRegenPromptText(initialSttText);
 
-    const initialTrans = rec.lectureTranslationPrompt || classInfo?.lectureTranslationPrompt || null;
+    const initialTrans =
+      rec.lectureTranslationPrompt ||
+      (rec.translationPromptId ? { id: rec.translationPromptId, name: rec.translationPromptName || 'Saved Translation Prompt', promptText: rec.customTranslationPrompt || '' } : null) ||
+      classInfo?.lectureTranslationPrompt ||
+      null;
     const initialTransText = rec.customTranslationPrompt || initialTrans?.promptText || '';
     setRegenTransPrompt(initialTrans);
     setRegenTransPromptText(initialTransText);
@@ -886,9 +899,31 @@ export default function LectureRecordingsView({
     setRegenLanguages(initialLangs);
 
     const candidateModel = rec.aiModelUsed || classInfo?.lectureAiModel || 'gemini-3.8-flash';
-    const initialModel = (candidateModel && !candidateModel.includes('2.5')) ? candidateModel : 'gemini-3.8-flash';
+    const initialModel = ALLOWED_REGEN_MODELS.includes(candidateModel) ? candidateModel : 'gemini-3.8-flash';
     setRegenModel(initialModel);
     setShowRegenModal(true);
+  };
+
+  const handleSelectRegenSttPrompt = (p) => {
+    setRegenSttPrompt(p);
+    setRegenSttPromptText(p ? p.promptText : '');
+    setRegenPrompt(p);
+    setRegenPromptText(p ? p.promptText : '');
+    const pType = getPromptTypeByApplyTo(p?.applyTo);
+    const recModel = p?.recommendedModel || pType?.recommendedModel;
+    if (recModel && ALLOWED_REGEN_MODELS.includes(recModel)) {
+      setRegenModel(recModel);
+    }
+  };
+
+  const handleSelectRegenTranslationPrompt = (p) => {
+    setRegenTransPrompt(p);
+    setRegenTransPromptText(p ? p.promptText : '');
+    const pType = getPromptTypeByApplyTo(p?.applyTo);
+    const recModel = p?.recommendedModel || pType?.recommendedModel;
+    if (recModel && ALLOWED_REGEN_MODELS.includes(recModel)) {
+      setRegenModel(recModel);
+    }
   };
 
   const handleExecuteRegenSubtitles = async () => {
@@ -2680,8 +2715,36 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
         show={showRegenModal}
         onClose={() => setShowRegenModal(false)}
         title="🔄 Re-generate Multilingual Subtitles & CC"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', width: '100%' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowRegenModal(false)}
+              disabled={isRetryingSubtitles}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleExecuteRegenSubtitles}
+              disabled={isRetryingSubtitles || regenLanguages.length === 0}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.5rem 1.25rem',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: isRetryingSubtitles || regenLanguages.length === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isRetryingSubtitles ? '🤖 Processing...' : '🚀 Start AI Generation'}
+            </button>
+          </div>
+        }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', paddingRight: '4px' }}>
           {selectedRecording && (
             <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
               <div><strong>Lecture:</strong> {selectedRecording.title || 'Untitled Session'}</div>
@@ -2704,6 +2767,7 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
               <label
+                onClick={() => setRegenModel('gemini-3.8-flash')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2731,6 +2795,7 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
               </label>
 
               <label
+                onClick={() => setRegenModel('gemini-3.5-flash-lite')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2861,12 +2926,8 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                 user={user}
                 applyToFilter="Lecture STT & Chapters"
                 selectedPrompt={regenSttPrompt || regenPrompt}
-                onSelectPrompt={(p) => {
-                  setRegenSttPrompt(p);
-                  setRegenSttPromptText(p ? p.promptText : '');
-                  setRegenPrompt(p);
-                  setRegenPromptText(p ? p.promptText : '');
-                }}
+                readOnly={false}
+                onSelectPrompt={handleSelectRegenSttPrompt}
                 promptText={regenSttPromptText !== undefined ? regenSttPromptText : regenPromptText}
                 onTextChange={(val) => {
                   setRegenSttPromptText(val);
@@ -2910,42 +2971,13 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                 user={user}
                 applyToFilter="Lecture Subtitle Translation"
                 selectedPrompt={regenTransPrompt}
-                onSelectPrompt={(p) => {
-                  setRegenTransPrompt(p);
-                  setRegenTransPromptText(p ? p.promptText : '');
-                }}
+                readOnly={false}
+                onSelectPrompt={handleSelectRegenTranslationPrompt}
                 promptText={regenTransPromptText}
                 onTextChange={setRegenTransPromptText}
               />
             </div>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowRegenModal(false)}
-            disabled={isRetryingSubtitles}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleExecuteRegenSubtitles}
-            disabled={isRetryingSubtitles || regenLanguages.length === 0}
-            style={{
-              backgroundColor: '#3b82f6',
-              color: '#ffffff',
-              border: 'none',
-              padding: '0.5rem 1.25rem',
-              borderRadius: '6px',
-              fontWeight: 600,
-              cursor: isRetryingSubtitles || regenLanguages.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isRetryingSubtitles ? '🤖 Processing...' : '🚀 Start AI Generation'}
-          </button>
         </div>
       </Modal>
     </div>

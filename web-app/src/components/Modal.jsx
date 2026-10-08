@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Modal = ({ show, onClose, title, children }) => {
+const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false, children }) => {
     if (!show) return null;
     return (
         <div 
@@ -61,11 +61,15 @@ const Modal = ({ show, onClose, title, children }) => {
                     {children}
                 </div>
                 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #e2e8f0)' }}>
-                    <button onClick={onClose} className="secondary-btn" style={{ width: 'auto' }}>
-                        Close
-                    </button>
-                </div>
+                {(footer || !hideDefaultFooter) && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #e2e8f0)', flexShrink: 0 }}>
+                        {footer ? footer : (
+                            <button onClick={onClose} className="secondary-btn" style={{ width: 'auto' }}>
+                                Close
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1268,6 +1268,53 @@ describe('LectureRecordingsView Component', () => {
       );
     });
 
+    it('preserves modal structure and updates model state when selecting prompts in the regen modal', async () => {
+      render(<LectureRecordingsView classId="test_class" user={{ uid: 'teacher_1' }} />);
+
+      const mockDocs = [
+        {
+          id: 'rec_prompt_select_test',
+          data: () => ({
+            title: 'Cloud DevOps Lecture',
+            durationSeconds: 900,
+            status: 'ready',
+            storagePath: 'recordings/test_class/rec_prompt_select_test/lecture.webm',
+            videoUrl: 'https://storage.googleapis.com/test/devops.webm',
+            targetLanguages: ['en', 'zh-Hant'],
+            aiModelUsed: 'gemini-3.8-flash',
+          }),
+        },
+      ];
+
+      await act(async () => {
+        snapshotCallback({ docs: mockDocs });
+      });
+
+      const regenBtn = screen.getAllByRole('button', { name: /Re-generate Subtitles & CC/i })[0];
+      await act(async () => {
+        fireEvent.click(regenBtn);
+      });
+
+      // Verify modal header and pinned action footer buttons
+      expect(screen.getByText(/Re-generate Multilingual Subtitles & CC/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Start AI Generation/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
+
+      // Model cards are clickable
+      const liteRadio = screen.getByRole('radio', { name: /Gemini 3.5 Flash-Lite/i });
+      const flashRadio = screen.getByRole('radio', { name: /Gemini 3.8 Flash/i });
+      expect(flashRadio).toBeChecked();
+
+      fireEvent.click(liteRadio);
+      expect(liteRadio).toBeChecked();
+      expect(flashRadio).not.toBeChecked();
+
+      // Trigger cancel
+      const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
+      fireEvent.click(cancelBtn);
+      expect(screen.queryByText(/Select Gemini AI Model/i)).not.toBeInTheDocument();
+    });
+
     it('handles deadline-exceeded gracefully without popping an alert when subtitle generation takes long', async () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
       const deadlineError = new Error('deadline-exceeded');

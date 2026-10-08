@@ -21,11 +21,15 @@ export const useTranslationPrompts = (user, applyToFilter = null) => {
       let filtered;
       if (applyToFilter === 'Lecture Subtitle Translation' || applyToFilter === 'Lecture Subtitles & Chapters') {
         filtered = unique.filter(p =>
-          p.category === 'translations' && (
+          p.category === 'translations' &&
+          !p.name?.toLowerCase().includes('live') &&
+          !p.name?.toLowerCase().includes('real-time') &&
+          !p.name?.toLowerCase().includes('rolling') &&
+          (
             p.applyTo?.includes('Lecture Subtitle Translation') ||
             p.applyTo?.includes('Lecture Subtitles & Chapters') ||
-            p.name?.includes('Lecture Subtitle') ||
-            p.name?.includes('Translator')
+            p.name?.toLowerCase().includes('lecture subtitle') ||
+            p.name?.toLowerCase().includes('lecture translation')
           )
         );
       } else if (applyToFilter === 'Live Subtitles & Translation') {
