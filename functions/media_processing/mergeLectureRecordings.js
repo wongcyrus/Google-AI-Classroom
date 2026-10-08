@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { spawnSync } from 'child_process';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
+import { parsePeriodDateMs } from './examPeriodUtils.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -501,6 +502,23 @@ export async function executeMergeLectureRecordings(
     const timestampMs = firstClip.startedAt?.toMillis ? firstClip.startedAt.toMillis() : Date.now();
     const combinedSessionId = `rec_combined_${timestampMs}_full`;
 
+    const classTimeZone = classData.schedule?.timeZone || 'Asia/Hong_Kong';
+    const firstStartMs = firstClip.startedAt?.toMillis ? firstClip.startedAt.toMillis() : (firstClip.startedAt ? new Date(firstClip.startedAt).getTime() : timestampMs);
+    const lastEndMs = lastClip.endedAt?.toMillis ? lastClip.endedAt.toMillis() : (lastClip.endedAt ? new Date(lastClip.endedAt).getTime() : (firstStartMs + durationSeconds * 1000));
+
+    const isExamSession = Boolean(
+      recordingsToMerge.some((r) => r.isExam || r.isExamPeriod) ||
+      (Array.isArray(classData.examPeriods) && classData.examPeriods.some((p) => {
+        if (!p?.startDate || !p?.endDate) return false;
+        const pStart = parsePeriodDateMs(p.startDate, classTimeZone);
+        const pEnd = parsePeriodDateMs(p.endDate, classTimeZone);
+        if (isNaN(pStart) || isNaN(pEnd)) return false;
+        return (firstStartMs >= pStart && firstStartMs <= pEnd) ||
+               (lastEndMs >= pStart && lastEndMs <= pEnd) ||
+               (firstStartMs <= pStart && lastEndMs >= pEnd);
+      }))
+    );
+
     const destVideoPath = `recordings/${classId}/${combinedSessionId}/lecture.webm`;
     const destNormalizedAudioPath = `recordings/${classId}/${combinedSessionId}/lecture_audio_normalized.mp3`;
     const destAudioPath = fs.existsSync(combinedAudioWebmPath)
@@ -522,6 +540,7 @@ export async function executeMergeLectureRecordings(
           durationSeconds: String(Math.round(durationSeconds)),
           isCombined: 'true',
           hasCuesIndex: 'true',
+          isExam: isExamSession ? 'true' : 'false',
         },
       },
     });
@@ -536,6 +555,7 @@ export async function executeMergeLectureRecordings(
           sessionId: combinedSessionId,
           durationSeconds: String(Math.round(durationSeconds)),
           isCombined: 'true',
+          isExam: isExamSession ? 'true' : 'false',
         },
       },
     });
@@ -647,6 +667,9 @@ export async function executeMergeLectureRecordings(
       teacherUid: callerUid,
       teacherEmail: callerEmail,
       classId,
+      isExam: isExamSession,
+      isExamPeriod: isExamSession,
+      isSharedWithStudents: isExamSession ? false : false,
     });
 
     // 12. Pre-Deletion Integrity Verification Gate:

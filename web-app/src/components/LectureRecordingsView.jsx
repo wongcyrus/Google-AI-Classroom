@@ -18,7 +18,7 @@ import {
   fixWebmPlaybackDuration,
   handleVideoEndedGuard,
 } from '../utils/videoSubtitleUtils';
-import { isRecordInLesson } from './StudentRecordsView';
+import { isRecordInLesson, isExamRecord } from './StudentRecordsView';
 import Modal from './Modal';
 import AudioPromptSelector from './AudioPromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
@@ -433,9 +433,20 @@ export default function LectureRecordingsView({
     }
   }, [selectedLesson]);
 
+  // Checks if a recording falls within an exam period or is stamped as exam material
+  const isExamRecording = useCallback((rec) => {
+    if (!rec) return false;
+    return Boolean(rec.isExamPeriod || rec.isExam || isExamRecord(rec, classInfo));
+  }, [classInfo]);
+
   // Handle toggling manual share with students for a specific recording
   const handleToggleShareWithStudents = async (recordingId, currentSharedState) => {
     if (!classId || !recordingId) return;
+    const targetRec = recordings.find((r) => r.id === recordingId);
+    if (isExamRecording(targetRec)) {
+      alert('This recording was captured during a designated Exam / Test period. Recordings from exam periods are confidential and cannot be shared with students to protect assessment questions.');
+      return;
+    }
     setIsSharingToggling(true);
     setShareFeedback('');
     try {
@@ -1509,7 +1520,15 @@ export default function LectureRecordingsView({
                                 💰 {formatAiCost(rec.aiCost)}
                               </span>
                             )}
-                            {classPolicy === 'always_shared' || rec.isSharedWithStudents ? (
+                            {isExamRecording(rec) ? (
+                              <span
+                                className="badge-pill-private"
+                                style={{ background: '#fff1f2', color: '#9f1239', border: '1px solid #fecdd3', fontSize: '0.72rem', fontWeight: 600 }}
+                                title="Recorded during an official exam or test period. Confidential to instructor."
+                              >
+                                🔒 Exam Material (Restricted)
+                              </span>
+                            ) : classPolicy === 'always_shared' || rec.isSharedWithStudents ? (
                               <span className="badge-pill-shared" title="Enrolled students can view this video">
                                 👥 Shared
                               </span>
@@ -1578,15 +1597,27 @@ export default function LectureRecordingsView({
                     <span>🔄</span>
                     <span>{isRetryingSubtitles ? 'Invoking Gemini...' : 'Re-generate Subtitles & CC'}</span>
                   </button>
-                  <button
-                    type="button"
-                    className={`btn-share-recording ${selectedRecording.isSharedWithStudents ? 'is-shared' : ''}`}
-                    onClick={() => handleToggleShareWithStudents(selectedRecording.id, selectedRecording.isSharedWithStudents)}
-                    disabled={isSharingToggling}
-                    title={selectedRecording.isSharedWithStudents ? 'Click to revoke student access for this lecture' : 'Click to share this lecture with enrolled students'}
-                  >
-                    {isSharingToggling ? '⏳ Updating...' : selectedRecording.isSharedWithStudents ? '👥 Shared with Students' : '📢 Share with Students'}
-                  </button>
+                  {isExamRecording(selectedRecording) ? (
+                    <button
+                      type="button"
+                      className="btn-share-recording"
+                      style={{ background: '#fff1f2', color: '#9f1239', border: '1px solid #fecdd3', cursor: 'not-allowed', opacity: 0.9 }}
+                      disabled={true}
+                      title="Lecture recordings from exam and test periods are confidential to protect assessment questions and cannot be shared with students."
+                    >
+                      🔒 Exam Material (Protected)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`btn-share-recording ${selectedRecording.isSharedWithStudents ? 'is-shared' : ''}`}
+                      onClick={() => handleToggleShareWithStudents(selectedRecording.id, selectedRecording.isSharedWithStudents)}
+                      disabled={isSharingToggling}
+                      title={selectedRecording.isSharedWithStudents ? 'Click to revoke student access for this lecture' : 'Click to share this lecture with enrolled students'}
+                    >
+                      {isSharingToggling ? '⏳ Updating...' : selectedRecording.isSharedWithStudents ? '👥 Shared with Students' : '📢 Share with Students'}
+                    </button>
+                  )}
                   <button
                     className="btn-delete-recording"
                     onClick={() => handleDeleteRecording(selectedRecording.id)}
@@ -1617,7 +1648,11 @@ export default function LectureRecordingsView({
                       {selectedRecording.aiModelUsed && ` (${selectedRecording.aiModelUsed})`}
                     </span>
                   )}
-                  {classPolicy === 'always_shared' ? (
+                  {isExamRecording(selectedRecording) ? (
+                    <span style={{ color: '#9f1239', fontWeight: 600 }}>
+                      🔒 Official Exam / Test Material: Strictly restricted from students to protect assessment questions.
+                    </span>
+                  ) : classPolicy === 'always_shared' ? (
                     <span style={{ color: '#16a34a', fontWeight: 600 }}>
                       🌐 Automatically shared with enrolled students (Class Policy: Always Share)
                     </span>

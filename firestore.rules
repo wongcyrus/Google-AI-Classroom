@@ -139,6 +139,8 @@ service cloud.firestore {
       match /lectureRecordings/{sessionId} {
         allow read: if isTeacherInClass(classId) || 
           (isStudentInClass(classId) && 
+           resource.data.get('isExamPeriod', false) == false &&
+           resource.data.get('isExam', false) == false &&
            (
              get(/databases/$(database)/documents/classes/$(classId)).data.get('teacherRecordingsPolicy', '') == 'always_shared' ||
              (

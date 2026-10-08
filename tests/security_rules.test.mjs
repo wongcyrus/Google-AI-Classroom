@@ -673,6 +673,16 @@ async function runSecurityRulesSuite() {
       createdAt: FieldValue.serverTimestamp()
     });
 
+    const recExamId = `rec-exam-${timestamp}`;
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recExamId).set({
+      title: 'Exam Period Lecture Recording',
+      status: 'ready',
+      subtitlesStatus: 'ready',
+      isSharedWithStudents: true,
+      isExamPeriod: true,
+      createdAt: FieldValue.serverTimestamp()
+    });
+
     // Sign in as Teacher
     await signInWithEmailAndPassword(clientAuth, teacherEmail, defaultPassword);
 
@@ -776,6 +786,12 @@ async function runSecurityRulesSuite() {
       'Student CAN read shared lecture recording in enrolled class'
     );
 
+    // Student CANNOT read exam period lecture recording even if marked isSharedWithStudents: true
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'lectureRecordings', recExamId)),
+      'Student CANNOT read exam period lecture recording'
+    );
+
     // Student CANNOT create prompts
     await expectPermissionDenied(
       setDoc(doc(clientDb, 'prompts', `student-prompt-${timestamp}`), {
@@ -792,6 +808,7 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('prompts').doc(teacherCustomPromptId).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recPrivateId).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recSharedId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recExamId).delete().catch(() => {});
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users

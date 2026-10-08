@@ -2,11 +2,36 @@ import { getAuth } from 'firebase-admin/auth';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { format } from 'date-fns-tz';
+import { format, fromZonedTime } from 'date-fns-tz';
 import { FUNCTION_REGION } from './config.js';
 
 const db = getFirestore();
 const adminAuth = getAuth();
+
+/**
+ * Safely parses date strings into millisecond timestamps.
+ * If the string contains an explicit timezone (Z or offset), it is parsed as standard ISO.
+ * If naive (e.g. "YYYY-MM-DDTHH:mm" from datetime-local input), it is interpreted in the class timezone.
+ */
+export function parsePeriodDateMs(dateStr, timeZone = 'Asia/Hong_Kong') {
+  if (!dateStr) return NaN;
+  if (typeof dateStr.toMillis === 'function') return dateStr.toMillis();
+  if (dateStr instanceof Date) return dateStr.getTime();
+  if (typeof dateStr === 'number') return dateStr;
+  if (typeof dateStr !== 'string') return NaN;
+
+  if (/Z$|[+-]\d{2}(?::?\d{2})?$/i.test(dateStr.trim())) {
+    return new Date(dateStr).getTime();
+  }
+
+  try {
+    const zoned = fromZonedTime(dateStr, timeZone);
+    const ms = zoned.getTime();
+    if (!isNaN(ms)) return ms;
+  } catch {}
+
+  return new Date(dateStr).getTime();
+}
 
 // Helper to get local time, day, and date in a specific timezone
 export function getLocalTimeAndDay(date, timeZone) {
@@ -209,8 +234,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
           // Check if this lesson overlaps with any defined exam/test periods
           const isExamSession = (classData.examPeriods || []).some(period => {
             if (!period || !period.startDate || !period.endDate) return false;
-            const pStart = new Date(period.startDate).getTime();
-            const pEnd = new Date(period.endDate).getTime();
+            const pStart = parsePeriodDateMs(period.startDate, timeZone);
+            const pEnd = parsePeriodDateMs(period.endDate, timeZone);
+            if (isNaN(pStart) || isNaN(pEnd)) return false;
             const lStart = lessonStartDateTimeInZone.getTime();
             const lEnd = lessonEndDateTimeInZone.getTime();
             return (lStart >= pStart && lStart <= pEnd) || (lEnd >= pStart && lEnd <= pEnd) || (pStart >= lStart && pEnd <= lEnd);

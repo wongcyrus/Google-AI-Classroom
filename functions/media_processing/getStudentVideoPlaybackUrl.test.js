@@ -60,6 +60,24 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       expect(isTimestampInExamPeriods(new Date(), [])).toBe(false);
       expect(isTimestampInExamPeriods(null, examPeriods)).toBe(false);
     });
+
+    it('handles naive datetime-local strings with class timezone without shift errors', () => {
+      const naivePeriods = [
+        {
+          id: 'ep_naive',
+          name: 'Midterm Local Input',
+          startDate: '2026-10-25T14:00', // naive 14:00 in Asia/Hong_Kong (UTC+8) -> 06:00 UTC
+          endDate: '2026-10-25T16:00',   // naive 16:00 in Asia/Hong_Kong (UTC+8) -> 08:00 UTC
+        },
+      ];
+      // 14:30 HKT is 06:30 UTC
+      const withinExam = new Date('2026-10-25T06:30:00.000Z');
+      expect(isTimestampInExamPeriods(withinExam, naivePeriods, 'Asia/Hong_Kong')).toBe(true);
+
+      // 13:30 HKT is 05:30 UTC (before exam)
+      const beforeExam = new Date('2026-10-25T05:30:00.000Z');
+      expect(isTimestampInExamPeriods(beforeExam, naivePeriods, 'Asia/Hong_Kong')).toBe(false);
+    });
   });
 
   describe('evaluateStudentRecordingsAccess rules', () => {

@@ -10,6 +10,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import ffmpeg_static from 'ffmpeg-static';
 import { formatInTimeZone } from 'date-fns-tz';
 import sharp from 'sharp';
+import { parsePeriodDateMs } from './examPeriodUtils.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -31,16 +32,16 @@ const retry = async (fn, retries = 3, delay = 2000, finalErr = 'Failed after mul
   }
 };
 
-export const isExamTimeRange = (startTime, endTime, examPeriods = []) => {
+export const isExamTimeRange = (startTime, endTime, examPeriods = [], timeZone = 'Asia/Hong_Kong') => {
   if (!examPeriods || !Array.isArray(examPeriods) || examPeriods.length === 0) return false;
-  const jobStartMs = new Date(startTime).getTime();
-  const jobEndMs = new Date(endTime).getTime();
+  const jobStartMs = parsePeriodDateMs(startTime, timeZone);
+  const jobEndMs = parsePeriodDateMs(endTime, timeZone);
   if (isNaN(jobStartMs) && isNaN(jobEndMs)) return false;
 
   return examPeriods.some((p) => {
     if (!p?.startDate || !p?.endDate) return false;
-    const pStartMs = new Date(p.startDate).getTime();
-    const pEndMs = new Date(p.endDate).getTime();
+    const pStartMs = parsePeriodDateMs(p.startDate, timeZone);
+    const pEndMs = parsePeriodDateMs(p.endDate, timeZone);
     if (isNaN(pStartMs) || isNaN(pEndMs)) return false;
 
     const start = isNaN(jobStartMs) ? jobEndMs : jobStartMs;
@@ -223,7 +224,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
     const isExamSession = Boolean(
       jobData.isExam ||
-      isExamTimeRange(startTime, endTime, classData?.examPeriods)
+      isExamTimeRange(startTime, endTime, classData?.examPeriods, timezone)
     );
 
     const isTaskSubmission = Boolean(jobData.isTaskSubmission);

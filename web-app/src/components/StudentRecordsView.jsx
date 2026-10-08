@@ -18,6 +18,7 @@ import {
   fixWebmPlaybackDuration,
   handleVideoEndedGuard,
 } from '../utils/videoSubtitleUtils';
+import { parsePeriodDateMs } from '../utils/examPeriodUtils';
 import './StudentRecordsView.css';
 
 export const formatDuration = (totalSeconds) => {
@@ -118,7 +119,7 @@ export const isRecordInLesson = (record, lesson) => {
 
 export const isExamRecord = (record, classObj) => {
   if (!record) return false;
-  if (Boolean(record.isExam) || record.lessonType === 'exam') return true;
+  if (Boolean(record.isExam) || Boolean(record.isExamPeriod) || record.lessonType === 'exam') return true;
   if (!classObj?.examPeriods || !Array.isArray(classObj.examPeriods)) return false;
 
   const timeMs = parseTimeMs(record.startTime) ||
@@ -127,10 +128,12 @@ export const isExamRecord = (record, classObj) => {
                  parseTimeMs(record.createdAt);
   if (isNaN(timeMs)) return false;
 
+  const tz = classObj.schedule?.timeZone || classObj.timeZone || 'Asia/Hong_Kong';
   return classObj.examPeriods.some((period) => {
     if (!period?.startDate || !period?.endDate) return false;
-    const startMs = new Date(period.startDate).getTime();
-    const endMs = new Date(period.endDate).getTime();
+    const startMs = parsePeriodDateMs(period.startDate, tz);
+    const endMs = parsePeriodDateMs(period.endDate, tz);
+    if (isNaN(startMs) || isNaN(endMs)) return false;
     return timeMs >= startMs && timeMs <= endMs;
   });
 };
@@ -722,7 +725,9 @@ const StudentRecordsView = ({ user }) => {
       q,
       (snapshot) => {
         const rawDocs = (snapshot?.docs || []).map((d) => ({ id: d.id, ...d.data() }));
-        const docs = rawDocs.filter((r) => !r.discarded && r.status !== 'discarded');
+        const docs = rawDocs
+          .filter((r) => !r.discarded && r.status !== 'discarded')
+          .filter((r) => !isExamRecord(r, activeClassObj) && !r.isExamPeriod && !r.isExam);
         docs.sort((a, b) => {
           const timeA = a.startedAt?.toDate ? a.startedAt.toDate() : new Date(a.startedAt || a.createdAt || 0);
           const timeB = b.startedAt?.toDate ? b.startedAt.toDate() : new Date(b.startedAt || b.createdAt || 0);
@@ -741,15 +746,18 @@ const StudentRecordsView = ({ user }) => {
     return () => {
       if (typeof unsub === 'function') unsub();
     };
-  }, [selectedClassId, activeClassObj?.teacherRecordingsPolicy, activeClassObj?.allowShareTeacherRecordings]);
+  }, [selectedClassId, activeClassObj?.teacherRecordingsPolicy, activeClassObj?.allowShareTeacherRecordings, activeClassObj?.examPeriods]);
 
-  // Filtered teacher recordings scoped to active lesson when applicable
+  // Filtered teacher recordings scoped to active lesson when applicable (excluding exam material)
   const filteredTeacherRecordings = useMemo(() => {
+    const nonExamRecordings = teacherRecordings.filter(
+      (rec) => !isExamRecord(rec, activeClassObj) && !rec.isExamPeriod && !rec.isExam
+    );
     if (!activeLesson || selectedLessonId === 'all') {
-      return teacherRecordings;
+      return nonExamRecordings;
     }
-    return teacherRecordings.filter((rec) => isRecordInLesson(rec, activeLesson));
-  }, [teacherRecordings, activeLesson, selectedLessonId]);
+    return nonExamRecordings.filter((rec) => isRecordInLesson(rec, activeLesson));
+  }, [teacherRecordings, activeLesson, selectedLessonId, activeClassObj]);
 
   const filteredMetrics = useMemo(() => {
     if (!selectedClassId) return [];

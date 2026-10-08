@@ -3,11 +3,14 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getStorage, getDownloadURL } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
 import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
+import { parsePeriodDateMs } from './examPeriodUtils.js';
+
+export { parsePeriodDateMs };
 
 /**
  * Checks whether a given timestamp falls within any defined exam periods.
  */
-export function isTimestampInExamPeriods(timestamp, examPeriods = []) {
+export function isTimestampInExamPeriods(timestamp, examPeriods = [], timeZone = 'Asia/Hong_Kong') {
   if (!timestamp || !Array.isArray(examPeriods) || examPeriods.length === 0) return false;
   let timeMs = NaN;
   if (typeof timestamp.toMillis === 'function') {
@@ -26,8 +29,9 @@ export function isTimestampInExamPeriods(timestamp, examPeriods = []) {
 
   return examPeriods.some(period => {
     if (!period || !period.startDate || !period.endDate) return false;
-    const startMs = new Date(period.startDate).getTime();
-    const endMs = new Date(period.endDate).getTime();
+    const startMs = parsePeriodDateMs(period.startDate, timeZone);
+    const endMs = parsePeriodDateMs(period.endDate, timeZone);
+    if (isNaN(startMs) || isNaN(endMs)) return false;
     return timeMs >= startMs && timeMs <= endMs;
   });
 }
@@ -41,13 +45,14 @@ export function evaluateStudentRecordingsAccess({
   policy = 'always_enabled',
   releaseDate = null,
   jobData = {},
+  timeZone = 'Asia/Hong_Kong',
 }) {
   // Recordings for exam/test periods or stamped as exam are strictly confidential and not shared
   const isExam = Boolean(
     jobData.isExam ||
     jobData.lessonType === 'exam' ||
-    isTimestampInExamPeriods(jobData.startTime, examPeriods) ||
-    isTimestampInExamPeriods(jobData.createdAt, examPeriods)
+    isTimestampInExamPeriods(jobData.startTime, examPeriods, timeZone) ||
+    isTimestampInExamPeriods(jobData.createdAt, examPeriods, timeZone)
   );
 
   if (isExam) {
@@ -125,6 +130,7 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
       policy: classData.studentRecordingsPolicy || 'always_enabled',
       releaseDate: classData.studentRecordingsReleaseDate || null,
       jobData,
+      timeZone: classData.schedule?.timeZone || 'Asia/Hong_Kong',
     });
 
     if (!accessCheck.allowed) {
