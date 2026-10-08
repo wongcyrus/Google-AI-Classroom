@@ -1831,6 +1831,159 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(mockDeleteDoc).toHaveBeenCalled();
     expect(window.alert).toHaveBeenCalledWith('Class deleted successfully.');
   });
+
+  describe('Class Concept Templates (Lecture, Lab, Lecture in Lab)', () => {
+    it('renders the concept template selector hero cards with all 3 templates', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      expect(screen.getByText(/Select Class Concept Template/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 4, name: 'Lecture' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 4, name: 'Lab' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 4, name: 'Lecture in Lab' })).toBeInTheDocument();
+
+      expect(screen.getByText(/Auditorium \/ Classroom Lecture/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hands-on Computer Lab/i)).toBeInTheDocument();
+      expect(screen.getByText(/Anti-Distraction Focus Mode/i)).toBeInTheDocument();
+    });
+
+    it('applies Lecture presets: disables capture & proctoring, enables lecture studio', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      const lectureCard = screen.getByRole('heading', { level: 4, name: 'Lecture' }).closest('.template-card');
+      expect(lectureCard).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(lectureCard);
+      });
+
+      const captureCheckbox = screen.getByLabelText(/Automatic Live Capture/i);
+      const fullScreenCheckbox = screen.getByLabelText(/Require Entire Screen/i);
+      const autoBingoCheckbox = screen.getByLabelText(/Enable Automated Periodic Bingo/i);
+
+      expect(captureCheckbox).not.toBeChecked();
+      expect(fullScreenCheckbox).not.toBeChecked();
+      expect(autoBingoCheckbox).not.toBeChecked();
+    });
+
+    it('applies Lecture in Lab presets: enforces anti-distraction fullscreen lock & 5-min bingo', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      // First click Lecture to alter state
+      const lectureCard = screen.getByRole('heading', { level: 4, name: 'Lecture' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(lectureCard);
+      });
+
+      // Now click Lecture in Lab
+      const lectureInLabCard = screen.getByRole('heading', { level: 4, name: 'Lecture in Lab' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(lectureInLabCard);
+      });
+
+      const captureCheckbox = screen.getByLabelText(/Automatic Live Capture/i);
+      const fullScreenCheckbox = screen.getByLabelText(/Require Entire Screen/i);
+      const autoBingoCheckbox = screen.getByLabelText(/Enable Automated Periodic Bingo/i);
+
+      expect(captureCheckbox).toBeChecked();
+      expect(fullScreenCheckbox).toBeChecked();
+      expect(autoBingoCheckbox).toBeChecked();
+    });
+
+    it('applies Lab presets: enables dual-screen capture and relaxes fullscreen lock', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      const labCard = screen.getByRole('heading', { level: 4, name: 'Lab' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(labCard);
+      });
+
+      const captureCheckbox = screen.getByLabelText(/Automatic Live Capture/i);
+      const fullScreenCheckbox = screen.getByLabelText(/Require Entire Screen/i);
+
+      expect(captureCheckbox).toBeChecked();
+      expect(fullScreenCheckbox).not.toBeChecked(); // relaxed for multi-window coding
+    });
+
+    it('toggles the advanced configuration accordion', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      const accordionBtn = screen.getByRole('button', { name: /Advanced Configuration & Parameter Overrides/i });
+      expect(accordionBtn).toHaveAttribute('aria-expanded', 'false');
+
+      await act(async () => {
+        fireEvent.click(accordionBtn);
+      });
+      expect(accordionBtn).toHaveAttribute('aria-expanded', 'true');
+
+      await act(async () => {
+        fireEvent.click(accordionBtn);
+      });
+      expect(accordionBtn).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('saves selected template classType in Firestore when creating a class', async () => {
+      mockGetDoc.mockImplementation(() =>
+        Promise.resolve({
+          exists: () => false,
+        })
+      );
+
+      render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+
+      // Select Lecture template
+      const lectureCard = screen.getByRole('heading', { level: 4, name: 'Lecture' }).closest('.template-card');
+      fireEvent.click(lectureCard);
+
+      const classIdInput = screen.getByPlaceholderText(/e\.g\. it114115-2026-s1/i);
+      fireEvent.change(classIdInput, { target: { value: 'lecture_cs101' } });
+
+      const classNameInput = screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i);
+      fireEvent.change(classNameInput, { target: { value: 'CS101 Lecture' } });
+
+      const dateInputs = document.querySelectorAll('input[type="date"]');
+      if (dateInputs.length >= 2) {
+        fireEvent.change(dateInputs[0], { target: { value: '2026-09-01' } });
+        fireEvent.change(dateInputs[1], { target: { value: '2026-12-31' } });
+      }
+
+      const selects = screen.getAllByRole('combobox');
+      const startTimeSelect = selects.find(s => s.querySelector('option[value="09:00"]'));
+      if (startTimeSelect) {
+        fireEvent.change(startTimeSelect, { target: { value: '09:00' } });
+      }
+
+      const dayCheckbox = screen.getByLabelText(/^Mon$/i);
+      fireEvent.click(dayCheckbox);
+
+      const addScheduleBtn = screen.getByRole('button', { name: /Add Schedule/i });
+      fireEvent.click(addScheduleBtn);
+
+      const createBtn = screen.getByRole('button', { name: /Create Class/i });
+      await act(async () => {
+        fireEvent.click(createBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            classType: 'lecture',
+            automaticCapture: false,
+          })
+        );
+      });
+    });
+  });
 });
 
 

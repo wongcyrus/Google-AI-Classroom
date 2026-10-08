@@ -31,6 +31,12 @@ import {
   DEFAULT_LECTURE_STT_PROMPT,
   DEFAULT_LECTURE_TRANSLATION_PROMPT,
 } from '../constants/promptRegistry';
+import {
+  CLASS_TEMPLATES,
+  DEFAULT_CLASS_TEMPLATE_ID,
+  getClassTemplate,
+  getTemplateSettings,
+} from '../constants/classTemplates';
 
 const AVAILABLE_SUBTITLE_LANGUAGES = SUBTITLE_LANGUAGES.filter((l) => l.code !== 'original');
 
@@ -179,6 +185,45 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [modalTranslationPrompt, setModalTranslationPrompt] = useState(null);
   const [modalTranslationPromptText, setModalTranslationPromptText] = useState('');
   const [lectureTargetLanguages, setLectureTargetLanguages] = useState(['en', 'zh-Hant', 'zh-Hans']);
+
+  // Concept Template State
+  const [selectedTemplate, setSelectedTemplate] = useState(DEFAULT_CLASS_TEMPLATE_ID);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(Boolean(embeddedClassId));
+
+  const handleSelectTemplate = (templateId) => {
+    setSelectedTemplate(templateId);
+    const settings = getTemplateSettings(templateId);
+
+    // Screen & Proctoring
+    setAutomaticCapture(settings.automaticCapture);
+    setCaptureMode(settings.captureMode);
+    setAutomaticCombine(settings.automaticCombine);
+    setRequireFullScreenOnly(settings.requireFullScreenOnly);
+    setAiMonitoringMode(settings.aiMonitoringMode);
+    setEnableClientAi(settings.enableClientAi);
+    setEnableCloudFallback(settings.enableCloudFallback);
+    setGazeSensitivity(settings.gazeSensitivity);
+    setFaceDebounceSeconds(settings.faceDebounceSeconds);
+
+    // Audio Monitoring
+    setEnableAudioCapture(settings.enableAudioCapture);
+
+    // Lecture Studio & Broadcast
+    setDefaultLectureRecording(settings.defaultLectureRecording);
+    setIsLectureSubtitlesEnabled(settings.isLectureSubtitlesEnabled);
+    setTeacherRecordingsPolicy(settings.teacherRecordingsPolicy);
+    setAllowShareTeacherRecordings(settings.allowShareTeacherRecordings);
+    setConsolidateLessonVideo(settings.consolidateLessonVideo);
+    setLectureAiModel(settings.lectureAiModel);
+
+    // Bingo Presence
+    setAutoBingoEnabled(settings.autoBingoEnabled);
+    setAutoBingoIntervalMinutes(settings.autoBingoIntervalMinutes);
+    setAutoBingoMode(settings.autoBingoMode);
+
+    // Student Recordings Policy
+    setStudentRecordingsPolicy(settings.studentRecordingsPolicy);
+  };
 
   useEffect(() => {
     if (embeddedClassId) {
@@ -510,6 +555,19 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             ? classData.lectureTargetLanguages
             : ['en', 'zh-Hant', 'zh-Hans'];
           setLectureTargetLanguages(targetLangs);
+
+          let template = classData.classType;
+          if (!template) {
+            if (classData.requireFullScreenOnly === true && classData.automaticCapture !== false) {
+              template = 'lecture_in_lab';
+            } else if (classData.automaticCapture === false) {
+              template = 'lecture';
+            } else {
+              template = 'lab';
+            }
+          }
+          setSelectedTemplate(template);
+          setShowAdvancedSettings(true);
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);
@@ -584,6 +642,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           speedBonusMaxPoints: 50,
           rankBonus: { 1: 50, 2: 30, 3: 20 },
         });
+        setSelectedTemplate(DEFAULT_CLASS_TEMPLATE_ID);
+        setShowAdvancedSettings(false);
       }
     };
     fetchClassDetails();
@@ -1016,6 +1076,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     const uniqueTeachers = [...new Set(updatedTeachers.map((e) => e.trim().toLowerCase()).filter(Boolean))];
 
     const updateData = {
+      classType: selectedTemplate || DEFAULT_CLASS_TEMPLATE_ID,
       name: className.trim() || targetClassId,
       tags: classTags,
       storageQuota: storageQuotaBytes,
@@ -1328,6 +1389,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         };
 
         await setDoc(classRef, {
+          classType: selectedTemplate || DEFAULT_CLASS_TEMPLATE_ID,
           name: className.trim() || targetClassId,
           tags: classTags,
           teacherEmails: uniqueTeachers,
@@ -1809,6 +1871,73 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
       {error && <div className="error-message">⚠️ {error}</div>}
       {successMessage && <div className="success-message">✓ {successMessage}</div>}
+
+      {/* Concept Template Selector */}
+      <div className="template-selector-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🎯</span> Select Class Concept Template
+            </h3>
+            <p style={{ margin: '0.25rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+              Choose a pedagogical template to automatically preset recommended screen capture, anti-distraction, recording studio, and proctoring settings.
+            </p>
+          </div>
+          {selectedTemplate && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+              onClick={() => handleSelectTemplate(selectedTemplate)}
+              title="Reset all settings below to the defaults for this template"
+            >
+              🔄 Re-apply Presets
+            </button>
+          )}
+        </div>
+
+        <div className="template-grid">
+          {Object.values(CLASS_TEMPLATES).map((tmpl) => {
+            const isSelected = selectedTemplate === tmpl.id;
+            return (
+              <div
+                key={tmpl.id}
+                role="button"
+                tabIndex={0}
+                className={`template-card ${isSelected ? 'active' : ''}`}
+                onClick={() => handleSelectTemplate(tmpl.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelectTemplate(tmpl.id);
+                  }
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.75rem' }}>{tmpl.icon}</span>
+                    <span className="template-badge">{tmpl.badge}</span>
+                  </div>
+                  <h4 style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '1.1rem', color: isSelected ? 'var(--color-primary)' : 'inherit' }}>
+                    {tmpl.name}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: '1.4' }}>
+                    {tmpl.description}
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #cbd5e1)' }}>
+                  <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--color-text-secondary, #475569)' }}>
+                    {tmpl.highlights.map((h, i) => (
+                      <li key={i} style={{ marginBottom: '0.2rem' }}>{h}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Section 1: Basic Information & Storage */}
       <div className="settings-section-card">
@@ -2595,8 +2724,32 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
       </div>
 
-      {/* Section 5: Automation & AI Video Prompts */}
-      <div className="settings-section-card">
+      {/* Advanced Settings Accordion Toggle */}
+      <button
+        type="button"
+        className="advanced-accordion-toggle"
+        onClick={() => setShowAdvancedSettings((prev) => !prev)}
+        aria-expanded={showAdvancedSettings}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <span>⚙️</span>
+          <span>Advanced Configuration &amp; Parameter Overrides (Sections 5 – 10)</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--color-text-muted)' }}>
+            — {showAdvancedSettings ? 'Configuring custom overrides' : `Pre-configured by "${getClassTemplate(selectedTemplate).name}" template`}
+          </span>
+        </span>
+        <span style={{ fontSize: '1.1rem', transform: showAdvancedSettings ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease-in-out' }}>
+          ▼
+        </span>
+      </button>
+
+      {/* Advanced Settings Container (Sections 5 - 10) */}
+      <div
+        className="advanced-settings-container"
+        style={{ display: showAdvancedSettings ? 'block' : 'none' }}
+      >
+        {/* Section 5: Automation & AI Video Prompts */}
+        <div className="settings-section-card">
         <h3>🤖 5. Automation & AI Prompts</h3>
         <div className="form-group">
           <label>Default Capture Mode</label>
@@ -3820,6 +3973,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           />
           <p className="input-hint">Optional. If set, students can only log in from these approved IP addresses during scheduled hours.</p>
         </div>
+      </div>
       </div>
 
       {/* Save Actions Bar */}
