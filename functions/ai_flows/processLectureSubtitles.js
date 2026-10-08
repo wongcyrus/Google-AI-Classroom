@@ -17,6 +17,74 @@ import { logJob } from './jobLogger.js';
 const db = getFirestore();
 const storage = getStorage();
 
+export const DEFAULT_LECTURE_STT_PROMPT_TEXT = `# Lecture Audio Speech-to-Text & Chapters
+
+You are an expert real-time and post-lecture speech-to-text audio transcriber and chaptering assistant specializing in Hong Kong bilingual Computer Science and Higher Education lectures.
+The speaker code-switches between Cantonese and English technical terminology (e.g. Docker, useState, React, Express, API, route, parameter, database, PostgreSQL, DynamoDB, AZ, hardware, copy, eventual consistency, partition key, item, query).
+
+## Instructions & Critical Guidelines
+1. **Verbatim Audio Transcription**:
+   - Transcribe the entire speech in this audio recording verbatim with accurate start and end timestamps (in seconds as floats) spanning across the full lecture.
+   - Segment speech into natural, sentence-level subtitle cues (each 2 to 6 seconds long).
+   - Ensure every cue's 'end' timestamp is strictly greater than its 'start' timestamp (minimum duration 1.5 seconds).
+   - Strictly output the transcribed speech in its original spoken language (\`original\`). Do NOT translate into other languages in this stage.
+
+2. **Technical Terminology & Code-Switching Preservation**:
+   - Retain all standard English technical jargon, framework names, programming keywords, CLI commands, and database concepts verbatim in English (e.g. \`Docker\`, \`useState\`, \`React\`, \`Express\`, \`PostgreSQL\`, \`DynamoDB\`, \`partition key\`, \`sort key\`, \`RCU\`, \`WCU\`, \`ACID\`, \`global table\`).
+   - Do NOT translate code keywords, terminal commands, or variable names into unnatural colloquial or literal Chinese phrases.
+
+3. **YouTube Video Milestone Chapters**:
+   - Extract 4 to 10 meaningful, monotonically increasing chapter milestones with timestamps (in seconds as integers) suitable for a YouTube video description.
+   - The first chapter MUST start at 0 seconds (\`timeSeconds: 0\`).
+   - Chapter titles must be concise, informative, and reflect actual technical topics introduced during that portion of the lecture.
+
+## Output Schema
+Output MUST be valid JSON with this exact schema:
+{
+  "chapters": [
+    { "timeSeconds": 0, "title": "Introduction & Overview" },
+    { "timeSeconds": 180, "title": "Topic Setup" }
+  ],
+  "segments": [
+    {
+      "start": 0.5,
+      "end": 4.2,
+      "original": "..."
+    }
+  ]
+}`;
+
+export const DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT = `# Lecture Subtitle & Terminology Translator
+
+You are an expert real-time and post-lecture multilingual subtitle translator specializing in Hong Kong bilingual Computer Science and Higher Education lectures.
+Your objective is to translate an input array of transcribed lecture sentences into the specified target language (\`{{targetLanguage}}\`), one sentence at a time.
+
+## Course & Session Context
+- Class / Course ID: {{classId}}
+- Academic Subject Domain Context: {{courseContext}}
+- Target Subtitle Language: {{targetLanguage}}
+
+## Instructions & Critical Guidelines
+1. **Target Language Standards**:
+   - **Traditional Chinese (\`zh-Hant\`)**: Convert spoken Cantonese colloquialisms (e.g. 呢個, 點解, 咁樣, 睇下, 搞掂) into clean, formal written Chinese (書面語), while strictly retaining English technical terms.
+   - **Simplified Chinese (\`zh-Hans\`)**: Clean, standard technical Chinese explanations, preserving English technical terms.
+   - **English (\`en\`)**: Fluent, natural, idiomatic English explanations without Cantonese grammatical calques.
+   - **Japanese (\`ja\`)**: Natural, polite technical Japanese (です/ます form) preserving English technical terms in Katakana or standard Latin alphabet.
+   - **Other Languages (e.g. \`ko\`, \`es\`, \`fr\`, \`de\`)**: Natural, grammatically correct technical translations.
+
+2. **Technical Terminology & Code-Switching Preservation**:
+   - Retain all standard English technical jargon, framework names, programming keywords, CLI commands, and database concepts verbatim in standard English (e.g. \`Docker\`, \`useState\`, \`React\`, \`Express\`, \`PostgreSQL\`, \`DynamoDB\`, \`partition key\`, \`sort key\`, \`RCU\`, \`WCU\`, \`ACID\`, \`global table\`).
+   - Do NOT translate code keywords, variable names, or terminal commands into unnatural colloquial or literal phrases.
+
+3. **Output Format**:
+   - The input is a JSON array of strings containing transcribed sentence cues.
+   - The output MUST be a valid JSON array of translated strings with the exact same length.
+   - Do NOT include markdown code blocks or explanations outside the JSON array.
+
+Example:
+Input: ["今日我哋會講 React state 同埋 useState hook。", "大家請打開 VS Code 準備。"]
+Output: ["Today we will discuss React state and the useState hook.", "Everyone please open VS Code and get ready."]`;
+
 /**
  * Probes the precise duration in seconds of a media file via ffmpeg.
  */
@@ -839,6 +907,61 @@ export async function handleProcessLectureSubtitles(data = {}, context = {}) {
         resolvedTranslationPrompt = classData.lectureTranslationPrompt.promptText;
         resolvedTranslationPromptName = classData.lectureTranslationPrompt.name || null;
       }
+    }
+
+    if (!resolvedSttPrompt) {
+      resolvedSttPrompt = DEFAULT_LECTURE_STT_PROMPT_TEXT;
+      resolvedSttPromptName = 'Lecture Audio Speech-to-Text & Chapters';
+    }
+
+    if (!resolvedTranslationPrompt) {
+      resolvedTranslationPrompt = DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT;
+      resolvedTranslationPromptName = 'Lecture Subtitle & Terminology Translator';
+    }
+
+    // Auto-backfill class document if it was an older class missing default paired prompts
+    if (classId && (!classData.lectureSttPrompt || !classData.lectureTranslationPrompt || classData.isLectureSubtitlesEnabled === undefined)) {
+      db.doc(`classes/${classId}`).set({
+        isLectureSubtitlesEnabled: classData.isLectureSubtitlesEnabled !== false,
+        lectureSttPrompt: classData.lectureSttPrompt || classData.lectureRecordingPrompt || {
+          id: 'system_lecture_stt_default',
+          name: 'Lecture Audio Speech-to-Text & Chapters',
+          category: 'audios',
+          applyTo: ['Lecture STT & Chapters'],
+          promptText: DEFAULT_LECTURE_STT_PROMPT_TEXT,
+          isSystem: true,
+          accessLevel: 'public',
+          owner: 'system',
+          recommendedModel: 'gemini-3.8-flash',
+        },
+        lectureRecordingPrompt: classData.lectureRecordingPrompt || classData.lectureSttPrompt || {
+          id: 'system_lecture_stt_default',
+          name: 'Lecture Audio Speech-to-Text & Chapters',
+          category: 'audios',
+          applyTo: ['Lecture STT & Chapters'],
+          promptText: DEFAULT_LECTURE_STT_PROMPT_TEXT,
+          isSystem: true,
+          accessLevel: 'public',
+          owner: 'system',
+          recommendedModel: 'gemini-3.8-flash',
+        },
+        lectureTranslationPrompt: classData.lectureTranslationPrompt || {
+          id: 'system_lecture_translation_default',
+          name: 'Lecture Subtitle & Terminology Translator',
+          category: 'translations',
+          applyTo: ['Lecture Subtitle Translation', 'Lecture Subtitles & Chapters'],
+          promptText: DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT,
+          isSystem: true,
+          accessLevel: 'public',
+          owner: 'system',
+          recommendedModel: 'gemini-3.8-flash',
+        },
+        lectureTargetLanguages: (Array.isArray(classData.lectureTargetLanguages) && classData.lectureTargetLanguages.length > 0)
+          ? classData.lectureTargetLanguages
+          : ['en', 'zh-Hant', 'zh-Hans'],
+      }, { merge: true }).catch((err) => {
+        console.warn(`[processLectureSubtitles] Could not auto-backfill class prompts for ${classId}:`, err.message);
+      });
     }
 
     // Backwards compatibility alias

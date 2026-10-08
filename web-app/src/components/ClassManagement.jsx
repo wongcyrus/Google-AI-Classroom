@@ -502,14 +502,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
           setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
           const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
+          const loadedTransPrompt = classData.lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT;
           setLectureSttPrompt(loadedSttPrompt);
           setLectureRecordingPrompt(loadedSttPrompt);
-          setLectureTranslationPrompt(classData.lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT);
-          setLectureTargetLanguages(
-            Array.isArray(classData.lectureTargetLanguages) && classData.lectureTargetLanguages.length > 0
-              ? classData.lectureTargetLanguages
-              : ['en', 'zh-Hant', 'zh-Hans']
-          );
+          setLectureTranslationPrompt(loadedTransPrompt);
+          const targetLangs = Array.isArray(classData.lectureTargetLanguages) && classData.lectureTargetLanguages.length > 0
+            ? classData.lectureTargetLanguages
+            : ['en', 'zh-Hant', 'zh-Hans'];
+          setLectureTargetLanguages(targetLangs);
         } else {
           if (!embeddedClassId) {
             alert(`Could not find data for class: ${activeId}.`);

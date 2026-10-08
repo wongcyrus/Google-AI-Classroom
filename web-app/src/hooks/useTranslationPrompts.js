@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { DEFAULT_LECTURE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
 
 export const useTranslationPrompts = (user, applyToFilter = null) => {
   const [translationPrompts, setTranslationPrompts] = useState([]);
@@ -18,6 +19,11 @@ export const useTranslationPrompts = (user, applyToFilter = null) => {
     const combineAndSetPrompts = () => {
       const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
       const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
+      if (applyToFilter === 'Lecture Subtitle Translation' || applyToFilter === 'Lecture Subtitles & Chapters') {
+        if (!unique.some(p => p.id === DEFAULT_LECTURE_TRANSLATION_PROMPT.id || p.name === DEFAULT_LECTURE_TRANSLATION_PROMPT.name)) {
+          unique.unshift(DEFAULT_LECTURE_TRANSLATION_PROMPT);
+        }
+      }
       let filtered;
       if (applyToFilter === 'Lecture Subtitle Translation' || applyToFilter === 'Lecture Subtitles & Chapters') {
         filtered = unique.filter(p =>

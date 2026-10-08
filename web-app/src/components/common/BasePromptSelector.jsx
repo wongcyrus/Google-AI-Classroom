@@ -159,6 +159,11 @@ const BasePromptSelector = ({
         aria-label={computedSelectAriaLabel}
       >
         <option value="">{getDropdownPlaceholderForSelector(category, applyToFilter)}</option>
+        {selectedPrompt && !filteredPrompts.some((p) => p.id === selectedPromptId || p.name === selectedPrompt.name) && (
+          <option value={selectedPromptId || selectedPrompt.id}>
+            {selectedPrompt.name || 'Selected Prompt'}
+          </option>
+        )}
         {filteredPrompts.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}

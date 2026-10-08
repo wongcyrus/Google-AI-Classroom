@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { DEFAULT_LECTURE_STT_PROMPT } from '../constants/promptRegistry';
 
 export const useAudioPrompts = (user, applyToFilter = null) => {
   const [audioPrompts, setAudioPrompts] = useState([]);
@@ -17,6 +18,11 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
     const combineAndSetPrompts = () => {
       const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
       const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
+      if (applyToFilter === 'Lecture STT & Chapters') {
+        if (!unique.some(p => p.id === DEFAULT_LECTURE_STT_PROMPT.id || p.name === DEFAULT_LECTURE_STT_PROMPT.name)) {
+          unique.unshift(DEFAULT_LECTURE_STT_PROMPT);
+        }
+      }
       let filtered;
       if (applyToFilter === 'Lecture STT & Chapters') {
         filtered = unique.filter(p =>
