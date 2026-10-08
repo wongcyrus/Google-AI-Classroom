@@ -17,20 +17,36 @@ import readXlsxFile from 'read-excel-file/universal';
  */
 export function escapeCsvField(val) {
   if (val === null || val === undefined) return '""';
+  if (val instanceof Date) return `"${val.toISOString()}"`;
   const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
   return `"${str.replace(/"/g, '""')}"`;
 }
 
 /**
  * Generates an RFC 4180 compliant CSV string with UTF-8 BOM.
+ * Filters empty header columns and pads rows to ensure column alignment.
  * 
  * @param {Array<string>} headers - Header column names
  * @param {Array<Array<*>>} rows - 2D array of rows
  * @returns {string} Complete CSV string with BOM
  */
 export function generateCsvContent(headers, rows) {
-  const headerLine = headers.map(h => escapeCsvField(h)).join(",");
-  const rowLines = rows.map(row => row.map(cell => escapeCsvField(cell)).join(","));
+  // Filter out empty or whitespace-only header columns and track valid indices
+  const validIndices = [];
+  const cleanHeaders = [];
+  (headers || []).forEach((h, idx) => {
+    const name = String(h ?? '').trim();
+    if (name) {
+      validIndices.push(idx);
+      cleanHeaders.push(name);
+    }
+  });
+
+  const headerLine = cleanHeaders.map(h => escapeCsvField(h)).join(",");
+  const rowLines = (rows || []).map(row => {
+    const rowCells = validIndices.map(idx => (row && row[idx] !== undefined && row[idx] !== null ? row[idx] : ''));
+    return rowCells.map(cell => escapeCsvField(cell)).join(",");
+  });
   return "\uFEFF" + [headerLine, ...rowLines].join("\r\n");
 }
 

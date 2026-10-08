@@ -2,7 +2,8 @@
   "name": "property-processing",
   "main": "index.mjs",
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test index.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^14.3.0",

@@ -46,8 +46,9 @@ describe("exportUtils Unit Tests", () => {
       expect(escapeCsvField('She said "Hello"')).toBe('"She said ""Hello"""');
     });
 
-    it("serializes nested objects to JSON string before escaping", () => {
-      expect(escapeCsvField({ a: 1 })).toBe('"{""a"":1}"');
+    it("escapes Date instances as ISO strings", () => {
+      const date = new Date("2026-10-08T12:00:00.000Z");
+      expect(escapeCsvField(date)).toBe('"2026-10-08T12:00:00.000Z"');
     });
   });
 
@@ -58,6 +59,18 @@ describe("exportUtils Unit Tests", () => {
       const csv = generateCsvContent(headers, rows);
       expect(csv.startsWith("\uFEFF")).toBe(true);
       expect(csv).toContain('"Name","Score"\r\n"Alice","95"\r\n"Bob, Jr.","88"');
+    });
+
+    it("filters out empty header columns and pads short rows to maintain alignment", () => {
+      const headers = ["StudentEmail", "", null, "Group", "DeskId"];
+      // Row 1 only has 2 elements (omits trailing DeskId)
+      // Row 2 has null/empty for Group
+      const rows = [
+        ["alice@school.edu", "ignore1", "ignore2", "GroupA"],
+        ["bob@school.edu", "ignore1", "ignore2", null, "Desk5"],
+      ];
+      const csv = generateCsvContent(headers, rows);
+      expect(csv).toContain('"StudentEmail","Group","DeskId"\r\n"alice@school.edu","GroupA",""\r\n"bob@school.edu","","Desk5"');
     });
   });
 

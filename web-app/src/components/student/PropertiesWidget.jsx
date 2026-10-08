@@ -38,6 +38,14 @@ export const isInternalPropertyKey = (key) => {
     'status',
     'updatedat',
     'createdat',
+    'studentname',
+    'nickname',
+    'programme',
+    'program',
+    'studentclass',
+    'cohort',
+    'email',
+    'studentemail',
   ]);
   if (exactInternalKeys.has(lower)) {
     return true;

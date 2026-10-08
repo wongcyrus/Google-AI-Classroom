@@ -1,116 +1,170 @@
-import { useState, useEffect } from 'react';
-import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, serverTimestamp, orderBy, limit, getDocs } from 'firebase/firestore';
+import { useState, useEffect, useCallback } from 'react';
+import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, serverTimestamp, orderBy, limit, getDocs, deleteField } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { isInternalPropertyKey } from './student/PropertiesWidget';
-import { readTextFileWithEncoding } from '../utils/studentDisplayUtils';
 import { exportToExcel, readExcelFile, generateCsvContent } from '../utils/exportUtils';
 import './ClassManagement.css';
+
+const getSnapshotDocs = (snap) => {
+  if (!snap) return [];
+  if (Array.isArray(snap)) return snap;
+  if (Array.isArray(snap.docs)) return snap.docs;
+  const list = [];
+  if (typeof snap.forEach === 'function') {
+    snap.forEach(d => list.push(d));
+  }
+  return list;
+};
+
+const getDocData = (docSnap) => (typeof docSnap?.data === 'function' ? docSnap.data() : (docSnap?.data || {}));
 
 const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   const [classProperties, setClassProperties] = useState([{ key: '', value: '' }]);
 
   const [propertyUploadJobs, setPropertyUploadJobs] = useState([]);
+  const [detectedStudentProperties, setDetectedStudentProperties] = useState([]);
+  const [loadingProperties, setLoadingProperties] = useState(false);
+  const [syncMode, setSyncMode] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Fetch detected custom properties for enrolled students
+  const fetchStudentPropertiesStats = useCallback(async (classId) => {
+    if (!classId) {
+      setDetectedStudentProperties([]);
+      return;
+    }
+    setLoadingProperties(true);
+    try {
+      const propertiesCollectionRef = collection(db, 'classes', classId, 'studentProperties');
+      const propertiesSnapshot = await getDocs(propertiesCollectionRef);
+      const keyCounts = {};
+
+      getSnapshotDocs(propertiesSnapshot).forEach(docSnap => {
+        const data = getDocData(docSnap);
+        Object.entries(data).forEach(([key, val]) => {
+          if (!isInternalPropertyKey(key) && val !== undefined && val !== null && String(val).trim() !== '') {
+            keyCounts[key] = (keyCounts[key] || 0) + 1;
+          }
+        });
+      });
+
+      const stats = Object.entries(keyCounts)
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => a.key.localeCompare(b.key));
+
+      setDetectedStudentProperties(stats);
+    } catch (err) {
+      console.warn('[CustomPropertiesManager] Failed to fetch student property stats:', err);
+    } finally {
+      setLoadingProperties(false);
+    }
+  }, []);
+
   useEffect(() => {
     const fetchClassProperties = async () => {
-        if (selectedClass) {
-            const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-            const classPropsSnap = await getDoc(classPropsRef);
-            if (classPropsSnap.exists()) {
-                const propsData = classPropsSnap.data();
-                const propsArray = Object.entries(propsData).map(([key, value]) => ({ key, value }));
-                setClassProperties(propsArray.length > 0 ? propsArray : [{ key: '', value: '' }]);
-            } else {
-                setClassProperties([{ key: '', value: '' }]);
-            }
+      if (selectedClass) {
+        const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
+        const classPropsSnap = await getDoc(classPropsRef);
+        if (classPropsSnap.exists()) {
+          const propsData = classPropsSnap.data();
+          const propsArray = Object.entries(propsData).map(([key, value]) => ({ key, value }));
+          setClassProperties(propsArray.length > 0 ? propsArray : [{ key: '', value: '' }]);
         } else {
-            setClassProperties([{ key: '', value: '' }]);
+          setClassProperties([{ key: '', value: '' }]);
         }
-    }
+        fetchStudentPropertiesStats(selectedClass);
+      } else {
+        setClassProperties([{ key: '', value: '' }]);
+        setDetectedStudentProperties([]);
+      }
+    };
     fetchClassProperties();
-  }, [selectedClass]);
+  }, [selectedClass, fetchStudentPropertiesStats]);
 
   // Listen for property upload jobs
   useEffect(() => {
-      if (!selectedClass) {
-          setPropertyUploadJobs([]);
-          return;
+    if (!selectedClass) {
+      setPropertyUploadJobs([]);
+      return;
+    }
+
+    const jobsRef = collection(db, 'propertyUploadJobs');
+    const q = query(jobsRef, where('classId', '==', selectedClass), orderBy('createdAt', 'desc'), limit(5));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPropertyUploadJobs(jobs);
+      if (jobs.some(j => j.status === 'completed' || j.status === 'completed_with_errors')) {
+        fetchStudentPropertiesStats(selectedClass);
       }
+    }, (err) => {
+      console.warn('[CustomPropertiesManager] Error subscribing to upload jobs:', err);
+    });
 
-      const jobsRef = collection(db, 'propertyUploadJobs');
-      const q = query(jobsRef, where('classId', '==', selectedClass), orderBy('createdAt', 'desc'), limit(5));
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setPropertyUploadJobs(jobs);
-      });
-
-      return () => unsubscribe();
-  }, [selectedClass]);
+    return () => unsubscribe();
+  }, [selectedClass, fetchStudentPropertiesStats]);
 
   const handleDownloadStudentTemplate = async () => {
     if (!selectedClass) {
-        alert("Please select a class first.");
-        return;
+      alert("Please select a class first.");
+      return;
     }
 
     try {
-        // Fetch the class document to get the student list (UID -> email map)
-        const classRef = doc(db, 'classes', selectedClass);
-        const classSnap = await getDoc(classRef);
-        if (!classSnap.exists()) {
-            throw new Error("Could not find the selected class data.");
-        }
-        const classData = classSnap.data();
-        const studentsMap = classData.students || {};
+      // Fetch the class document to get the student list (UID -> email map)
+      const classRef = doc(db, 'classes', selectedClass);
+      const classSnap = await getDoc(classRef);
+      if (!classSnap.exists()) {
+        throw new Error("Could not find the selected class data.");
+      }
+      const classData = classSnap.data();
+      const studentsMap = classData.students || {};
 
-        // If no students are enrolled, download a template with just the StudentEmail header.
-        if (Object.keys(studentsMap).length === 0) {
-            const studentEmailList = studentEmails.split(/[\n,]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
-            const headers = ['StudentEmail'];
-            const rows = studentEmailList.map(email => [email]);
-            await exportToExcel(headers, rows, `${selectedClass}-student-properties.xlsx`);
-            return;
-        }
-
-        // If students are enrolled, download their existing, student-specific properties.
-        // 1. Fetch all student-specific properties
-        const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
-        const propertiesSnapshot = await getDocs(propertiesCollectionRef);
-        const studentPropertiesData = {}; // uid -> {prop: value}
-        propertiesSnapshot.forEach(doc => {
-            studentPropertiesData[doc.id.trim()] = doc.data();
-        });
-
-        // 2. Determine all possible property keys for headers ONLY from student-specific properties.
-        const allPropertyKeys = new Set();
-        Object.values(studentPropertiesData).forEach(props => {
-            Object.keys(props).forEach(key => {
-                if (!isInternalPropertyKey(key)) {
-                    allPropertyKeys.add(key);
-                }
-            });
-        });
-
-        const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];
-
-        // 3. Build rows for each student using only their specific properties.
-        const sortedEntries = Object.entries(studentsMap).sort((a, b) => (a[1] || '').localeCompare(b[1] || ''));
-        const rows = sortedEntries.map(([uid, email]) => {
-            const studentProps = studentPropertiesData[uid.trim()] || {};
-            return headers.map(header => {
-                if (header === 'StudentEmail') return email;
-                return studentProps[header] ?? '';
-            });
-        });
-
+      // If no students are enrolled, download a template with just the StudentEmail header.
+      if (Object.keys(studentsMap).length === 0) {
+        const studentEmailList = (studentEmails || '').split(/[\n,]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+        const headers = ['StudentEmail'];
+        const rows = studentEmailList.map(email => [email]);
         await exportToExcel(headers, rows, `${selectedClass}-student-properties.xlsx`);
+        return;
+      }
+
+      // If students are enrolled, download their existing, student-specific properties.
+      const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
+      const propertiesSnapshot = await getDocs(propertiesCollectionRef);
+      const studentPropertiesData = {}; // uid -> {prop: value}
+      getSnapshotDocs(propertiesSnapshot).forEach(doc => {
+        studentPropertiesData[doc.id.trim()] = getDocData(doc);
+      });
+
+      // Determine all possible property keys for headers ONLY from non-internal student-specific properties.
+      const allPropertyKeys = new Set();
+      Object.values(studentPropertiesData).forEach(props => {
+        Object.keys(props).forEach(key => {
+          if (!isInternalPropertyKey(key)) {
+            allPropertyKeys.add(key);
+          }
+        });
+      });
+
+      const headers = ['StudentEmail', ...Array.from(allPropertyKeys).sort()];
+
+      // Build rows for each student using only their specific properties.
+      const sortedEntries = Object.entries(studentsMap).sort((a, b) => (a[1] || '').localeCompare(b[1] || ''));
+      const rows = sortedEntries.map(([uid, email]) => {
+        const studentProps = studentPropertiesData[uid.trim()] || {};
+        return headers.map(header => {
+          if (header === 'StudentEmail') return email;
+          return studentProps[header] ?? '';
+        });
+      });
+
+      await exportToExcel(headers, rows, `${selectedClass}-student-properties.xlsx`);
 
     } catch (err) {
-        console.error("Error preparing student properties for download:", err);
-        alert("Failed to prepare student properties for download: " + err.message);
+      console.error("Error preparing student properties for download:", err);
+      alert("Failed to prepare student properties for download: " + err.message);
     }
   };
 
@@ -130,31 +184,129 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
 
   const handleSaveProperties = async () => {
     if (!selectedClass) {
-        setError("Please select a class first.");
-        return;
+      setError("Please select a class first.");
+      return;
     }
     setError(null);
     setSuccessMessage('');
 
     try {
-        const batch = writeBatch(db);
+      const batch = writeBatch(db);
 
-        // Save class-wide properties
-        const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-        const classPropsMap = classProperties.reduce((acc, prop) => {
-            if (prop.key.trim()) {
-                acc[prop.key.trim()] = prop.value;
-            }
-            return acc;
-        }, {});
-        batch.set(classPropsRef, classPropsMap);
+      // Save class-wide properties
+      const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
+      const classPropsMap = classProperties.reduce((acc, prop) => {
+        if (prop.key.trim()) {
+          acc[prop.key.trim()] = prop.value;
+        }
+        return acc;
+      }, {});
+      batch.set(classPropsRef, classPropsMap);
 
-        await batch.commit();
-        setSuccessMessage("Successfully saved properties!");
+      await batch.commit();
+      setSuccessMessage("Successfully saved class-wide properties!");
 
     } catch (err) {
-        setError("Failed to save properties: " + err.message);
-        console.error(err);
+      setError("Failed to save properties: " + err.message);
+      console.error(err);
+    }
+  };
+
+  // Direct deletion of an individual custom property across all students in the class
+  const handleDeleteStudentPropertyKey = async (propKey) => {
+    if (!selectedClass || !propKey) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the custom property "${propKey}" from all students in class ${selectedClass}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setError(null);
+    setSuccessMessage('');
+    try {
+      const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
+      const propertiesSnapshot = await getDocs(propertiesCollectionRef);
+
+      const docsToUpdate = [];
+      getSnapshotDocs(propertiesSnapshot).forEach(docSnap => {
+        const data = getDocData(docSnap);
+        if (data[propKey] !== undefined) {
+          docsToUpdate.push(docSnap.id);
+        }
+      });
+
+      if (docsToUpdate.length === 0) {
+        setSuccessMessage(`No students had property "${propKey}".`);
+        await fetchStudentPropertiesStats(selectedClass);
+        return;
+      }
+
+      const BATCH_SIZE = 450;
+      for (let i = 0; i < docsToUpdate.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = docsToUpdate.slice(i, i + BATCH_SIZE);
+        chunk.forEach(uid => {
+          const docRef = doc(db, 'classes', selectedClass, 'studentProperties', uid);
+          batch.update(docRef, { [propKey]: deleteField() });
+        });
+        await batch.commit();
+      }
+
+      setSuccessMessage(`Successfully deleted custom property "${propKey}" from ${docsToUpdate.length} student(s)!`);
+      await fetchStudentPropertiesStats(selectedClass);
+    } catch (err) {
+      console.error('Failed to delete property:', err);
+      setError(`Failed to delete property "${propKey}": ` + err.message);
+    }
+  };
+
+  // Clear all student-specific custom properties across all students in the class
+  const handleClearAllStudentProperties = async () => {
+    if (!selectedClass) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to remove ALL student-specific custom properties for class ${selectedClass}? Internal system data (exam readiness, passkey status) will NOT be affected.`
+    );
+    if (!confirmed) return;
+
+    setError(null);
+    setSuccessMessage('');
+    try {
+      const propertiesCollectionRef = collection(db, 'classes', selectedClass, 'studentProperties');
+      const propertiesSnapshot = await getDocs(propertiesCollectionRef);
+
+      const updates = [];
+      getSnapshotDocs(propertiesSnapshot).forEach(docSnap => {
+        const data = getDocData(docSnap);
+        const keysToDelete = Object.keys(data).filter(k => !isInternalPropertyKey(k));
+        if (keysToDelete.length > 0) {
+          updates.push({ id: docSnap.id, keysToDelete });
+        }
+      });
+
+      if (updates.length === 0) {
+        setSuccessMessage('No custom properties to clear.');
+        return;
+      }
+
+      const BATCH_SIZE = 450;
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = updates.slice(i, i + BATCH_SIZE);
+        chunk.forEach(({ id, keysToDelete }) => {
+          const docRef = doc(db, 'classes', selectedClass, 'studentProperties', id);
+          const payload = {};
+          keysToDelete.forEach(k => {
+            payload[k] = deleteField();
+          });
+          batch.update(docRef, payload);
+        });
+        await batch.commit();
+      }
+
+      setSuccessMessage(`Successfully cleared all custom properties across ${updates.length} student(s)!`);
+      await fetchStudentPropertiesStats(selectedClass);
+    } catch (err) {
+      console.error('Failed to clear properties:', err);
+      setError('Failed to clear custom properties: ' + err.message);
     }
   };
 
@@ -188,11 +340,12 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
       await addDoc(jobsRef, {
         classId: selectedClass,
         csvData,
+        mode: syncMode ? 'sync' : 'merge',
         requesterUid: auth.currentUser.uid,
         status: 'pending',
         createdAt: serverTimestamp(),
       });
-      setSuccessMessage("Properties file uploaded for processing. Properties will be updated in the background.");
+      setSuccessMessage("Properties file uploaded for processing. Removed columns and empty cells will be updated in the background.");
     } catch (err) {
       setError("Failed to upload file for processing. " + err.message);
     }
@@ -268,6 +421,84 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         <p className="input-hint" style={{ marginBottom: '0.75rem' }}>
           Upload an Excel spreadsheet with <code>StudentEmail</code> as the first column header to assign custom properties per student (e.g. <code>Group</code>, <code>DeskId</code>, <code>SpecialNeeds</code>).
         </p>
+
+        {/* Active Student Properties List */}
+        <div style={{ marginTop: '0.5rem', marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'var(--color-surface, #ffffff)', borderRadius: '6px', border: '1px solid var(--color-border, #e2e8f0)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main, #1e293b)' }}>
+              Active Student Custom Properties ({detectedStudentProperties.length})
+            </span>
+            {detectedStudentProperties.length > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                onClick={handleClearAllStudentProperties}
+                title="Remove all custom properties across all students in this class"
+              >
+                🗑️ Clear All Student Properties
+              </button>
+            )}
+          </div>
+
+          {detectedStudentProperties.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {detectedStudentProperties.map(({ key, count }) => (
+                <div
+                  key={key}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: 'var(--color-bg-secondary, #f1f5f9)',
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '16px',
+                    fontSize: '0.82rem',
+                    border: '1px solid var(--color-border, #cbd5e1)'
+                  }}
+                >
+                  <span style={{ fontWeight: 600, color: 'var(--color-text-main, #334155)' }}>{key}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted, #64748b)' }}>({count} student{count > 1 ? 's' : ''})</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStudentPropertyKey(key)}
+                    title={`Delete property "${key}" from all students`}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '0 2px',
+                      color: '#ef4444',
+                      fontSize: '0.85rem',
+                      display: 'inline-flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-muted, #94a3b8)' }}>
+              {loadingProperties ? 'Loading active student properties...' : 'No student-specific custom properties currently assigned.'}
+            </p>
+          )}
+        </div>
+
+        {/* Sync Mode Toggle */}
+        <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="checkbox"
+            id="sync-mode-checkbox"
+            checked={syncMode}
+            onChange={(e) => setSyncMode(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          <label htmlFor="sync-mode-checkbox" style={{ fontSize: '0.82rem', color: 'var(--color-text-main, #334155)', cursor: 'pointer' }}>
+            <strong>Replace & Sync mode:</strong> Automatically delete columns removed from spreadsheet and clear blank cells.
+          </label>
+        </div>
         
         <div className="csv-buttons" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
@@ -305,6 +536,10 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
             />
           </label>
         </div>
+
+        <p className="input-hint" style={{ marginTop: '0.6rem', marginBottom: '0.75rem' }}>
+          💡 <em>Tip: To remove a property, delete its column from the downloaded Excel spreadsheet and upload it back, or click 🗑️ next to any property above.</em>
+        </p>
 
         {/* Recent Upload Jobs */}
         <div style={{ marginTop: '1rem', borderTop: '1px dashed var(--color-border, #cbd5e1)', paddingTop: '0.75rem' }}>

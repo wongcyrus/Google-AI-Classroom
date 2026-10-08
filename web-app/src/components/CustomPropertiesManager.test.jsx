@@ -8,6 +8,7 @@ const mockGetDocs = vi.fn();
 const mockSetDoc = vi.fn().mockResolvedValue();
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'job_1' });
 const mockCommit = vi.fn().mockResolvedValue();
+const mockBatchUpdate = vi.fn();
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -29,10 +30,12 @@ vi.mock('firebase/firestore', () => ({
   limit: vi.fn(),
   writeBatch: () => ({
     set: vi.fn(),
+    update: mockBatchUpdate,
     commit: mockCommit,
   }),
   addDoc: (...args) => mockAddDoc(...args),
   serverTimestamp: vi.fn(),
+  deleteField: vi.fn(() => '__DELETE_FIELD__'),
 }));
 
 vi.mock('../utils/exportUtils', async (importOriginal) => {
@@ -185,5 +188,88 @@ describe('CustomPropertiesManager Component', () => {
     await waitFor(() => {
       expect(screen.getByText(/Failed to save properties/i)).toBeInTheDocument();
     });
+  });
+
+  it('handles deleting an individual student property key across all students', async () => {
+    mockGetDoc.mockResolvedValue({ exists: () => false });
+    mockGetDocs.mockResolvedValue([
+      { id: 's1', data: () => ({ ExtraTime: '15m' }) },
+      { id: 's2', data: () => ({ ExtraTime: '30m' }) },
+    ]);
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <CustomPropertiesManager
+        selectedClass="CLASS_101"
+        studentEmails="alice@school.edu, bob@school.edu"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('ExtraTime')).toBeInTheDocument();
+      expect(screen.getByText('(2 students)')).toBeInTheDocument();
+    });
+
+    const deleteBtn = screen.getByTitle(/Delete property "ExtraTime" from all students/i);
+    await act(async () => {
+      fireEvent.click(deleteBtn);
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
+      expect(mockCommit).toHaveBeenCalled();
+      expect(screen.getByText(/Successfully deleted custom property "ExtraTime"/i)).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('handles clearing all student-specific custom properties', async () => {
+    mockGetDoc.mockResolvedValue({ exists: () => false });
+    mockGetDocs.mockResolvedValue([
+      { id: 's1', data: () => ({ Key: 'key_1', CheckMark: 'check_1', examReadiness: { isReady: true } }) },
+    ]);
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <CustomPropertiesManager
+        selectedClass="CLASS_101"
+        studentEmails="alice@school.edu"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Key')).toBeInTheDocument();
+      expect(screen.getByText('CheckMark')).toBeInTheDocument();
+      // Internal examReadiness must NOT be displayed
+      expect(screen.queryByText('examReadiness')).not.toBeInTheDocument();
+    });
+
+    const clearAllBtn = screen.getByRole('button', { name: /Clear All Student Properties/i });
+    await act(async () => {
+      fireEvent.click(clearAllBtn);
+    });
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockBatchUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          Key: '__DELETE_FIELD__',
+          CheckMark: '__DELETE_FIELD__',
+        })
+      );
+      // examReadiness should NEVER be in the delete payload
+      const calls = mockBatchUpdate.mock.calls;
+      const lastPayload = calls[calls.length - 1][1];
+      expect(lastPayload.examReadiness).toBeUndefined();
+      expect(mockCommit).toHaveBeenCalled();
+      expect(screen.getByText(/Successfully cleared all custom properties/i)).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
   });
 });
