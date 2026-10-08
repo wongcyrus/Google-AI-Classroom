@@ -901,6 +901,48 @@ describe('ClassManagement Full Component Test Suite', () => {
     });
   });
 
+  it('configures, toggles, and saves consolidateLessonVideo policy in class settings', async () => {
+    mockGetDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        ...mockClassData,
+        consolidateLessonVideo: true,
+      }),
+    });
+
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Lesson Video Consolidation/i)).toBeInTheDocument();
+    });
+
+    const consolidateRadio = screen.getByRole('radio', { name: /1 Video per Lesson Slot/i });
+    const separateRadio = screen.getByRole('radio', { name: /Separate Videos per Broadcast/i });
+
+    expect(consolidateRadio).toBeChecked();
+    expect(separateRadio).not.toBeChecked();
+
+    // Toggle to separate
+    fireEvent.click(separateRadio);
+    expect(separateRadio).toBeChecked();
+    expect(consolidateRadio).not.toBeChecked();
+
+    // Save settings
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          consolidateLessonVideo: false,
+        })
+      );
+    });
+  });
+
   it('supports batch student roster upload, previews identities, and saves studentProfiles', async () => {
     let capturedUpdateData = null;
     mockUpdateDoc.mockImplementationOnce((ref, data) => {

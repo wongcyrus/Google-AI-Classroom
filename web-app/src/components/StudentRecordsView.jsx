@@ -1691,6 +1691,15 @@ const StudentRecordsView = ({ user }) => {
                         <td>{formatDuration(recording.durationSeconds || 0)}</td>
                         <td>
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {recording.recordingSegmentsCount ? (
+                              <span
+                                className="pill-badge"
+                                style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}
+                                title={`${recording.recordingSegmentsCount} physical recording segments consolidated`}
+                              >
+                                📹 {recording.recordingSegmentsCount} segs
+                              </span>
+                            ) : null}
                             {recording.isCombined ? (
                               <span className="pill-badge pill-success">🌟 Full Lecture</span>
                             ) : recording.isFragment ? (

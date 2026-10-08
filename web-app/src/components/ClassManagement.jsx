@@ -165,6 +165,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [defaultLectureRecording, setDefaultLectureRecording] = useState(true);
   const [allowShareTeacherRecordings, setAllowShareTeacherRecordings] = useState(false);
   const [teacherRecordingsPolicy, setTeacherRecordingsPolicy] = useState('private');
+  const [consolidateLessonVideo, setConsolidateLessonVideo] = useState(true);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
   const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(null);
@@ -493,6 +494,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           const tPolicy = classData.teacherRecordingsPolicy || (classData.allowShareTeacherRecordings ? 'selective' : 'private');
           setTeacherRecordingsPolicy(tPolicy);
           setAllowShareTeacherRecordings(tPolicy !== 'private');
+          setConsolidateLessonVideo(classData.consolidateLessonVideo !== false);
           setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
           setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
           const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || null;
@@ -561,6 +563,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setDefaultLectureRecording(true);
         setAllowShareTeacherRecordings(false);
         setTeacherRecordingsPolicy('private');
+        setConsolidateLessonVideo(true);
         setLectureAiModel('gemini-3.8-flash');
         setIsLectureSubtitlesEnabled(true);
         setLectureRecordingPrompt(null);
@@ -1066,6 +1069,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       defaultLectureRecording: defaultLectureRecording !== false,
       teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
       allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
+      consolidateLessonVideo: consolidateLessonVideo !== false,
       lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
       isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
       lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
@@ -1375,6 +1379,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           defaultLectureRecording: defaultLectureRecording !== false,
           teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
           allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
+          consolidateLessonVideo: consolidateLessonVideo !== false,
           lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
           isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
           lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
@@ -3729,6 +3734,76 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
                   Automatically shares all lecture recordings with enrolled students. No manual per-video approval needed in the video view UI.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* 7. Lesson Video Consolidation */}
+        <div className="form-group" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🎞️</span>
+            <span>Lesson Video Consolidation (One Video per Lesson Slot)</span>
+          </label>
+          <p className="input-hint">
+            Controls how recording clips and rolling chunks during a scheduled lesson are compiled into finalized videos.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', marginTop: '8px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: consolidateLessonVideo ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: consolidateLessonVideo ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="consolidateLessonVideo"
+                checked={consolidateLessonVideo === true}
+                onChange={() => setConsolidateLessonVideo(true)}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🎞️ 1 Video per Lesson Slot (Recommended - Default)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Automatically combines all recordings and segments captured during the same lesson slot into a single unified video. Even if the stream disconnects or restarts, students and teachers see one continuous lecture.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: !consolidateLessonVideo ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: !consolidateLessonVideo ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="consolidateLessonVideo"
+                checked={consolidateLessonVideo === false}
+                onChange={() => setConsolidateLessonVideo(false)}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  ✂️ Separate Videos per Broadcast
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Creates separate video archives whenever the teacher stops and restarts broadcasting.
                 </div>
               </div>
             </label>

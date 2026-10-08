@@ -568,6 +568,50 @@ export async function executeMergeLectureRecordings(
     const formattedDate = firstClipDate.toLocaleDateString('en-US');
     const finalTitle = customTitle || `Combined Full Lecture - ${formattedDate}`;
 
+    // 10b. Build Recording Segments Audit & Breakdown
+    const actualRecordingSegments = [];
+    for (let idx = 0; idx < recordingsToMerge.length; idx++) {
+      const rec = recordingsToMerge[idx];
+      if (Array.isArray(rec.actualRecordingSegments) && rec.actualRecordingSegments.length > 0) {
+        actualRecordingSegments.push(...rec.actualRecordingSegments);
+      } else if (Array.isArray(rec.sourceRecordingIds) && rec.sourceRecordingIds.length > 0) {
+        for (let sIdx = 0; sIdx < rec.sourceRecordingIds.length; sIdx++) {
+          const srcId = rec.sourceRecordingIds[sIdx];
+          actualRecordingSegments.push({
+            segmentId: srcId,
+            segmentIndex: actualRecordingSegments.length + 1,
+            sessionGroupId: rec.sessionGroupId || null,
+            durationSeconds: 60,
+          });
+        }
+      } else {
+        actualRecordingSegments.push({
+          segmentId: rec.id,
+          segmentIndex: rec.segmentIndex || (idx + 1),
+          sessionGroupId: rec.sessionGroupId || null,
+          startedAt: rec.startedAt || null,
+          endedAt: rec.endedAt || null,
+          durationSeconds: Math.round(rec.durationSeconds || 60),
+          fileSizeBytes: rec.fileSize || 0,
+        });
+      }
+    }
+
+    const recordingSegmentsCount = actualRecordingSegments.length;
+    const distinctSessions = new Set(
+      recordingsToMerge.map((r) => r.sessionGroupId).filter(Boolean)
+    );
+    const sessionsCount = Math.max(1, distinctSessions.size);
+
+    const recordingAudit = {
+      totalSegments: recordingSegmentsCount,
+      durationSeconds: Math.round(durationSeconds),
+      sessionsCount,
+      lostDurationSeconds: totalLostSeconds,
+      gapDetails: gaps || [],
+      hasMissingSegment: Boolean(hasMissingSegment),
+    };
+
     // 11. Create master combined recording in Firestore
     const combinedDocRef = recordingsRef.doc(combinedSessionId);
     await combinedDocRef.set({
@@ -582,6 +626,10 @@ export async function executeMergeLectureRecordings(
       lostDurationSeconds: totalLostSeconds,
       gapDetails: gaps,
       sourceRecordingIds: recordingsToMerge.map((r) => r.id),
+      recordingSegmentsCount,
+      actualRecordingSegments,
+      sessionsCount,
+      recordingAudit,
       sessionGroupId: (sessionGroupId && sessionGroupId !== 'custom' && !sessionGroupId.startsWith('date_'))
         ? sessionGroupId
         : (firstClip.sessionGroupId || null),
@@ -660,6 +708,7 @@ export async function executeMergeLectureRecordings(
     const batch = currentDb.batch();
     for (let idx = 0; idx < recordingsToMerge.length; idx++) {
       const rec = recordingsToMerge[idx];
+      if (rec.id === combinedSessionId) continue;
       const recDocRef = recordingsRef.doc(rec.id);
       batch.update(recDocRef, {
         isFragment: true,

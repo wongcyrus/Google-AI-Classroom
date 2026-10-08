@@ -280,35 +280,41 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
         const lectureSnap = await lectureRecsRef.get();
         if (!lectureSnap || lectureSnap.empty || !lectureSnap.forEach) return;
 
+        const consolidateLessonVideo = classData.consolidateLessonVideo !== false;
+
         const unmergedClips = [];
+        const existingCombinedClips = [];
         lectureSnap.forEach((recDoc) => {
           const r = recDoc.data() || {};
-          if (r.isCombined || r.mergedIntoSessionId || r.isSegmentDeleted) return;
-          if (r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
+          if (r.isSegmentDeleted || r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
           if (!r.storagePath && !r.videoUrl) return;
 
           const rStartMs = r.startedAt?.toMillis ? r.startedAt.toMillis() : (r.startedAt ? new Date(r.startedAt).getTime() : 0);
+
+          if (r.isCombined) {
+            if (!r.mergedIntoSessionId) {
+              existingCombinedClips.push({ id: recDoc.id, ...r, rStartMs });
+            }
+            return;
+          }
+
+          if (r.mergedIntoSessionId) return;
+
           // Must be at least 2 minutes old to ensure chunk upload is completely finalized
           if (rStartMs && Date.now() - rStartMs < 2 * 60 * 1000) return;
 
           unmergedClips.push({ id: recDoc.id, ...r, rStartMs });
         });
 
-        if (unmergedClips.length === 0) return;
+        if (unmergedClips.length === 0 && (!consolidateLessonVideo || existingCombinedClips.length < 2)) return;
 
-        // Group unmerged clips by sessionGroupId (or date/session prefix)
-        const groups = new Map();
-        for (const clip of unmergedClips) {
-          const groupId = clip.sessionGroupId || clip.sessionId || `session_${clip.rStartMs ? new Date(clip.rStartMs).toISOString().slice(0, 10) : 'default'}`;
-          if (!groups.has(groupId)) {
-            groups.set(groupId, []);
-          }
-          groups.get(groupId).push(clip);
-        }
-
-        // Check if a timetable slot recently ended for this class (if timetable exists)
+        // Check if a timetable slot is active, ongoing, or recently ended for this class (if timetable exists)
         let activeSlot = null;
+        let isSlotOngoing = false;
         let todayStr = new Date().toISOString().slice(0, 10);
+        let slotStartMs = 0;
+        let slotEndMs = 0;
+
         if (schedule?.timeZone && Array.isArray(schedule.timeSlots)) {
           const { timeZone, timeSlots } = schedule;
           const { localDay } = getLocalTimeInfo(now, timeZone);
@@ -318,22 +324,107 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
           for (const slot of timeSlots) {
             if (!slot.days.includes(localDay)) continue;
             const offset = format(now, 'XXX', { timeZone });
-            const slotEnd = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
-            if (slotEnd > thirtyMinutesAgo && slotEnd <= now) {
+            const sStart = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
+            const sEnd = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
+            if (sEnd > thirtyMinutesAgo && sEnd <= now) {
               activeSlot = slot;
+              slotStartMs = sStart.getTime();
+              slotEndMs = sEnd.getTime();
               break;
+            }
+            if (sStart <= now && sEnd > now) {
+              isSlotOngoing = true;
+              slotStartMs = sStart.getTime();
+              slotEndMs = sEnd.getTime();
             }
           }
         }
 
+        // Handle Consolidation for Scheduled Active Slot:
+        // When a scheduled lesson slot has concluded and consolidateLessonVideo !== false,
+        // gather all unmerged segments AND any existing partial combined recordings belonging to that slot
+        // into a single unified master merge job.
+        if (activeSlot && consolidateLessonVideo) {
+          const cleanStart = (activeSlot.startTime || '').replace(':', '');
+          const cleanEnd = (activeSlot.endTime || '').replace(':', '');
+          const mergeJobId = `merge_${classId}_${cleanStart}_${cleanEnd}_${todayStr}`;
+
+          // Find all unmerged clips and existing combined clips that fall within this lesson slot (with a 15-minute buffer)
+          const bufferMs = 15 * 60 * 1000;
+          const slotClips = unmergedClips.filter(
+            (c) => c.rStartMs >= (slotStartMs - bufferMs) && c.rStartMs <= (slotEndMs + bufferMs)
+          );
+          const slotCombined = existingCombinedClips.filter(
+            (c) => c.rStartMs >= (slotStartMs - bufferMs) && c.rStartMs <= (slotEndMs + bufferMs)
+          );
+
+          const itemsToConsolidate = [...slotCombined, ...slotClips];
+          if (itemsToConsolidate.length >= 2 || (slotCombined.length >= 1 && slotClips.length >= 1)) {
+            const mergeJobRef = db.collection('lectureMergeJobs').doc(mergeJobId);
+            const existingMergeJob = await mergeJobRef.get();
+            const existingJobData = existingMergeJob.exists ? existingMergeJob.data() : null;
+            const existingIds = new Set(existingJobData?.recordingIds || []);
+            const hasNewItems = itemsToConsolidate.some((item) => !existingIds.has(item.id));
+
+            if (!existingMergeJob.exists || existingJobData?.status === 'failed' || (hasNewItems && existingJobData?.status === 'completed')) {
+              const effectiveJobId = (!existingMergeJob.exists || existingJobData?.status !== 'completed')
+                ? mergeJobId
+                : `${mergeJobId}_recombine_${Date.now()}`;
+
+              const targetDocRef = (!existingMergeJob.exists || existingJobData?.status !== 'completed')
+                ? mergeJobRef
+                : db.collection('lectureMergeJobs').doc(effectiveJobId);
+
+              logger.info(`Creating consolidated lesson merge job '${effectiveJobId}' for ${itemsToConsolidate.length} items (${slotCombined.length} previous combined, ${slotClips.length} segments) in class ${classId}`);
+              await targetDocRef.set({
+                jobId: effectiveJobId,
+                classId,
+                recordingIds: itemsToConsolidate.map((c) => c.id),
+                sessionGroupId: `slot_${cleanStart}_${cleanEnd}`,
+                customTitle: `Combined Full Lecture - ${todayStr}`,
+                status: 'pending',
+                createdAt: FieldValue.serverTimestamp(),
+              });
+
+              // Mark these clips as handled so they aren't processed again in the group loop below
+              const handledIds = new Set(itemsToConsolidate.map((i) => i.id));
+              for (let i = unmergedClips.length - 1; i >= 0; i--) {
+                if (handledIds.has(unmergedClips[i].id)) {
+                  unmergedClips.splice(i, 1);
+                }
+              }
+            }
+          }
+        }
+
+        // Group any remaining unmerged clips by sessionGroupId (or date/session prefix)
+        const groups = new Map();
+        for (const clip of unmergedClips) {
+          const groupId = clip.sessionGroupId || clip.sessionId || `session_${clip.rStartMs ? new Date(clip.rStartMs).toISOString().slice(0, 10) : 'default'}`;
+          if (!groups.has(groupId)) {
+            groups.set(groupId, []);
+          }
+          groups.get(groupId).push(clip);
+        }
+
         for (const [groupId, clips] of groups.entries()) {
-          // A recording session is concluded and ready to combine after class if:
-          // 1) An active timetable slot just concluded, OR
-          // 2) Any clip in this group is marked ready/completed, OR
-          // 3) The most recent clip in this group is >= 5 minutes old (meaning continuous 1-min rolling recording has stopped)
+          const isRolling = clips.some((c) => c.isRollingSegment);
           const latestClipMs = Math.max(...clips.map((c) => c.rStartMs || 0));
-          const isPastSession = latestClipMs > 0 && (Date.now() - latestClipMs >= 5 * 60 * 1000);
-          const isConcluded = activeSlot || isPastSession || clips.some((c) => c.status === 'ready' || c.status === 'completed');
+          // If rolling segments, session timeout requires 10 minutes of inactivity
+          const isPastSession = latestClipMs > 0 && (Date.now() - latestClipMs >= (isRolling ? 10 * 60 * 1000 : 5 * 60 * 1000));
+
+          let isConcluded = false;
+          if (isSlotOngoing && isRolling) {
+            // Lecture is actively recording rolling segments right now during scheduled class time;
+            // DO NOT prematurely combine until class concludes!
+            isConcluded = false;
+          } else if (activeSlot) {
+            isConcluded = true;
+          } else if (isPastSession) {
+            isConcluded = true;
+          } else if (!isRolling && clips.some((c) => c.status === 'ready' || c.status === 'completed')) {
+            isConcluded = true;
+          }
 
           if (!isConcluded) {
             // Lecture is actively recording rolling segments right now during class; do not prematurely combine until class concludes

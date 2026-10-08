@@ -570,4 +570,96 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(result.clipCount).toBe(2);
     expect(result.normalizedAudioStoragePath).toContain('lecture_audio_normalized.mp3');
   });
+
+  it('computes and saves recordingSegmentsCount, actualRecordingSegments, sessionsCount and recordingAudit on combined master record', async () => {
+    const recordings = [
+      {
+        id: 'rec_seg_1',
+        segmentIndex: 1,
+        sessionGroupId: 'grp_1',
+        storagePath: 'recordings/CLASS-1/rec_seg_1/lecture.webm',
+        startedAt: { toMillis: () => 1700000000000 },
+        endedAt: { toMillis: () => 1700000060000 },
+        durationSeconds: 60,
+        fileSize: 10240,
+      },
+      {
+        id: 'rec_seg_2',
+        segmentIndex: 2,
+        sessionGroupId: 'grp_1',
+        storagePath: 'recordings/CLASS-1/rec_seg_2/lecture.webm',
+        startedAt: { toMillis: () => 1700000060000 },
+        endedAt: { toMillis: () => 1700000120000 },
+        durationSeconds: 60,
+        fileSize: 10400,
+      },
+    ];
+
+    const masterSetSpy = vi.fn().mockResolvedValue({});
+    const baseDb = createMockDb({ recordings });
+    const db = {
+      ...baseDb,
+      collection: vi.fn((colName) => {
+        const baseCol = baseDb.collection(colName);
+        return {
+          ...baseCol,
+          doc: vi.fn((docId) => {
+            const baseDoc = baseCol.doc(docId);
+            return {
+              ...baseDoc,
+              set: (data) => {
+                masterSetSpy(docId, data);
+                return baseDoc.set(data);
+              },
+            };
+          }),
+        };
+      }),
+    };
+
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_seg_1', 'rec_seg_2'],
+        sessionGroupId: 'grp_1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    expect(masterSetSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^rec_combined_/),
+      expect.objectContaining({
+        recordingSegmentsCount: 2,
+        sessionsCount: 1,
+        actualRecordingSegments: expect.arrayContaining([
+          expect.objectContaining({
+            segmentId: 'rec_seg_1',
+            segmentIndex: 1,
+            durationSeconds: 60,
+            fileSizeBytes: 10240,
+          }),
+          expect.objectContaining({
+            segmentId: 'rec_seg_2',
+            segmentIndex: 2,
+            durationSeconds: 60,
+            fileSizeBytes: 10400,
+          }),
+        ]),
+        recordingAudit: expect.objectContaining({
+          totalSegments: 2,
+          durationSeconds: 120,
+          sessionsCount: 1,
+          lostDurationSeconds: 0,
+          hasMissingSegment: false,
+        }),
+      })
+    );
+  });
 });
+

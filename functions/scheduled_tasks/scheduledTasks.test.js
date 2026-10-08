@@ -329,6 +329,142 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       vi.useRealTimers();
     });
+
+    it('does NOT prematurely merge rolling recordings while lesson slot is ongoing even if status is ready', async () => {
+      // Simulate mid-class time: class is 08:30 - 09:30 UTC, current time is 08:45:10 UTC (minute 15 of class)
+      const midClassTime = new Date('2026-10-08T08:45:10Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(midClassTime);
+
+      const ongoingClassDoc = {
+        id: 'itp4120-l',
+        data: () => ({
+          consolidateLessonVideo: true,
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [
+              { days: ['Thu'], startTime: '08:30', endTime: '09:30' },
+            ],
+          },
+        }),
+      };
+
+      // 9 rolling segments have uploaded and are marked 'ready'
+      const clip1 = {
+        id: 'rec_seg_1',
+        data: () => ({
+          storagePath: 'recordings/itp4120-l/rec_seg_1/lecture.webm',
+          sessionGroupId: 'slot_0830_0930',
+          startedAt: { toMillis: () => new Date('2026-10-08T08:35:00Z').getTime() },
+          isRollingSegment: true,
+          status: 'ready',
+        }),
+      };
+      const clip9 = {
+        id: 'rec_seg_9',
+        data: () => ({
+          storagePath: 'recordings/itp4120-l/rec_seg_9/lecture.webm',
+          sessionGroupId: 'slot_0830_0930',
+          startedAt: { toMillis: () => new Date('2026-10-08T08:43:00Z').getTime() },
+          isRollingSegment: true,
+          status: 'ready',
+        }),
+      };
+
+      mockDoc.get.mockResolvedValue({ exists: false });
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [ongoingClassDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          forEach: (cb) => {
+            cb(clip1);
+            cb(clip9);
+          },
+        });
+
+      await handleAutomaticVideoCombination();
+
+      // Ensure NO merge job was created during class!
+      expect(mockDoc.set).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('consolidates previous combined video and remaining clips into 1 unified video when slot ends', async () => {
+      // Simulate post-class time: class was 08:30 - 09:30 UTC, current time is 09:45:10 UTC (slot ended 15 min ago)
+      const postClassTime = new Date('2026-10-08T09:45:10Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(postClassTime);
+
+      const endedClassDoc = {
+        id: 'itp4120-l',
+        data: () => ({
+          consolidateLessonVideo: true,
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [
+              { days: ['Thu'], startTime: '08:30', endTime: '09:30' },
+            ],
+          },
+        }),
+      };
+
+      // Prior partial combined video (e.g. segments 1-9)
+      const prevCombined = {
+        id: 'rec_combined_part1',
+        data: () => ({
+          storagePath: 'recordings/itp4120-l/rec_combined_part1/lecture.webm',
+          startedAt: { toMillis: () => new Date('2026-10-08T08:35:00Z').getTime() },
+          isCombined: true,
+          status: 'ready',
+        }),
+      };
+      // Remaining segment from 08:44
+      const clip10 = {
+        id: 'rec_seg_10',
+        data: () => ({
+          storagePath: 'recordings/itp4120-l/rec_seg_10/lecture.webm',
+          startedAt: { toMillis: () => new Date('2026-10-08T08:44:00Z').getTime() },
+          isRollingSegment: true,
+          status: 'ready',
+        }),
+      };
+
+      mockDoc.get.mockResolvedValue({ exists: false });
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [endedClassDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          forEach: (cb) => {
+            cb(prevCombined);
+            cb(clip10);
+          },
+        });
+
+      await handleAutomaticVideoCombination();
+
+      // Merges previous combined video AND remaining clips into 1 single consolidated video!
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'merge_itp4120-l_0830_0930_2026-10-08',
+          classId: 'itp4120-l',
+          recordingIds: ['rec_combined_part1', 'rec_seg_10'],
+          status: 'pending',
+        })
+      );
+
+      vi.useRealTimers();
+    });
   });
 
   describe('syncGeminiPricing Scheduled Function', () => {

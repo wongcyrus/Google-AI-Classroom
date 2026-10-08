@@ -1301,7 +1301,7 @@ export default function LectureRecordingsView({
                     className="btn-select-all-toggle"
                     onClick={() => {
                       const mergeableClips = filteredRecordings.filter(
-                        (r) => !r.isCombined && (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
+                        (r) => (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
                       );
                       const mergeableIds = mergeableClips.map((r) => r.id);
                       if (selectedIdsToMerge.length === mergeableIds.length && mergeableIds.length > 0) {
@@ -1313,7 +1313,7 @@ export default function LectureRecordingsView({
                   >
                     {selectedIdsToMerge.length > 0 &&
                      selectedIdsToMerge.length === filteredRecordings.filter(
-                       (r) => !r.isCombined && (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
+                       (r) => (r.storagePath || r.videoUrl) && r.status !== 'recording' && r.status !== 'discarded'
                      ).length
                       ? '✕ Deselect All'
                       : '✓ Select All Mergeable'}
@@ -1354,7 +1354,7 @@ export default function LectureRecordingsView({
                   : 'Recent';
 
                 const isChecked = selectedIdsToMerge.includes(rec.id);
-                const isMergeable = !rec.isCombined && (rec.storagePath || rec.videoUrl) && rec.status !== 'recording' && rec.status !== 'discarded';
+                const isMergeable = (rec.storagePath || rec.videoUrl) && rec.status !== 'recording' && rec.status !== 'discarded';
 
                 return (
                   <div
@@ -1390,7 +1390,7 @@ export default function LectureRecordingsView({
                           className="recording-checkbox"
                           checked={isChecked}
                           disabled={!isMergeable}
-                          title={rec.isCombined ? 'Already a combined full lecture' : (!rec.storagePath && !rec.videoUrl) ? 'Recording media not available' : 'Select clip to merge'}
+                          title={(!rec.storagePath && !rec.videoUrl) ? 'Recording media not available' : 'Select recording to merge'}
                           aria-label={`Select ${rec.title || 'recording'} for merge`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1428,6 +1428,15 @@ export default function LectureRecordingsView({
                           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <span>⏱️ {formatDuration(rec.durationSeconds || 0)}</span>
                             {rec.fileSize ? <span>• 📦 {formatFileSize(rec.fileSize)}</span> : null}
+                            {rec.recordingSegmentsCount ? (
+                              <span
+                                className="badge-pill-clip"
+                                style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.72rem', fontWeight: 600 }}
+                                title={`${rec.recordingSegmentsCount} physical recording segments consolidated`}
+                              >
+                                📹 {rec.recordingSegmentsCount} segments
+                              </span>
+                            ) : null}
                             {rec.isCombined ? (
                               <span className="badge-pill-combined">🌟 Combined Full Lecture</span>
                             ) : rec.isRollingSegment ? (
@@ -1624,6 +1633,16 @@ export default function LectureRecordingsView({
                     📦 Video Size: <strong>{formatFileSize(selectedRecording.fileSize)}</strong>
                   </span>
                 )}
+                {selectedRecording.recordingSegmentsCount ? (
+                  <span
+                    className="filesize-pill"
+                    style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}
+                    title={`Physical recording chunks consolidated into this master video (${selectedRecording.sessionsCount || 1} broadcast session${selectedRecording.sessionsCount > 1 ? 's' : ''})`}
+                  >
+                    📹 <strong>{selectedRecording.recordingSegmentsCount}</strong> Recording Segments
+                    {selectedRecording.sessionsCount > 1 ? ` (${selectedRecording.sessionsCount} sessions)` : ''}
+                  </span>
+                ) : null}
                 {selectedRecording.durationSeconds >= 600 ? (
                   <span className="badge-pill-full">🌟 Full Lecture Session</span>
                 ) : (

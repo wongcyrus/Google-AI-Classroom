@@ -124,6 +124,7 @@ describe('LectureRecordingsView Component', () => {
           title: 'Introduction to React & State',
           topic: 'React Hooks',
           durationSeconds: 125,
+          recordingSegmentsCount: 57,
           status: 'ready',
           videoUrl: 'https://storage.googleapis.com/test/lecture1.webm',
           vttUrls: {
@@ -151,6 +152,8 @@ describe('LectureRecordingsView Component', () => {
     });
 
     expect(screen.getAllByText(/02:05/).length).toBeGreaterThan(0); // Duration format check
+    expect(screen.getByText(/57 segments/i)).toBeInTheDocument(); // Segment audit card badge
+    expect(screen.getByText(/Recording Segments/i)).toBeInTheDocument(); // Detail banner pill
     expect(screen.getByText(/Ready \(Multi-CC\)/i)).toBeInTheDocument();
     expect(screen.getByText(/YouTube Studio & Publishing/i)).toBeInTheDocument();
     expect(screen.getByText('test_class - Introduction to React & State')).toBeInTheDocument();
@@ -1380,6 +1383,15 @@ describe('LectureRecordingsView Component', () => {
             status: 'ready',
           }),
         },
+        {
+          id: 'rec_in_progress',
+          data: () => ({
+            title: 'Recording In Progress',
+            startedAt: { seconds: 1789958000, nanoseconds: 0 },
+            durationSeconds: 10,
+            status: 'recording',
+          }),
+        },
       ];
 
       await act(async () => {
@@ -1397,9 +1409,10 @@ describe('LectureRecordingsView Component', () => {
 
       // 1b. Verify clicking checkbox directly selects and unselects clips
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes.length).toBe(3);
+      expect(checkboxes.length).toBe(4);
       expect(checkboxes[0]).not.toBeChecked();
-      expect(checkboxes[2]).toBeDisabled(); // rec_already_combined is non-mergeable
+      expect(checkboxes[2]).not.toBeDisabled(); // previously combined recordings CAN now be merged in Custom Merge
+      expect(checkboxes[3]).toBeDisabled(); // actively recording clip is non-mergeable
 
       // Click directly on the checkbox of clip 1
       await act(async () => {
@@ -1450,11 +1463,11 @@ describe('LectureRecordingsView Component', () => {
         fireEvent.click(selectAllBtn);
       });
 
-      // Only the 2 uncombined clips should be selected
-      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 2 clips');
+      // All 3 mergeable completed recordings should be selected (rec_clip_1, rec_clip_2, rec_already_combined)
+      expect(screen.getByText(/Selected:/i).textContent).toContain('Selected: 3 clips');
 
-      // 3. Click Merge Selected (2)
-      const mergeActionBtn = screen.getByRole('button', { name: /Merge Selected \(2\)/i });
+      // 3. Click Merge Selected (3)
+      const mergeActionBtn = screen.getByRole('button', { name: /Merge Selected \(3\)/i });
       expect(mergeActionBtn).not.toBeDisabled();
 
       await act(async () => {
@@ -1464,7 +1477,7 @@ describe('LectureRecordingsView Component', () => {
       expect(mockHttpsCallable).toHaveBeenCalledWith(
         expect.objectContaining({
           classId: 'test_class',
-          recordingIds: expect.arrayContaining(['rec_clip_1', 'rec_clip_2']),
+          recordingIds: expect.arrayContaining(['rec_clip_1', 'rec_clip_2', 'rec_already_combined']),
         })
       );
     });
