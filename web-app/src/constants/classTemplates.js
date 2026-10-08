@@ -11,6 +11,7 @@ export const CLASS_TEMPLATES = {
   lecture: {
     id: 'lecture',
     name: 'Lecture',
+    tag: 'Lecture',
     icon: '🏛️',
     badge: 'Auditorium / Classroom Lecture',
     description: 'Optimized for instructor presentations. Auto-records the whole lecture with bilingual AI subtitles (CC), broadcast slides, and audio translation. Student screen recording and proctoring are turned off.',
@@ -48,6 +49,7 @@ export const CLASS_TEMPLATES = {
   lab: {
     id: 'lab',
     name: 'Lab',
+    tag: 'Lab',
     icon: '💻',
     badge: 'Hands-on Computer Lab',
     description: 'Optimized for computer laboratory sessions. Students actively code, complete lab tasks, and practice exercises. Dual-screen capture & live grid monitoring help instructors supervise and assist students.',
@@ -85,6 +87,7 @@ export const CLASS_TEMPLATES = {
   lecture_in_lab: {
     id: 'lecture_in_lab',
     name: 'Lecture in Lab',
+    tag: 'Lecture in Lab',
     icon: '🖥️🎧',
     badge: 'Anti-Distraction Focus Mode',
     description: 'Designed specifically for lecturing inside a computer lab. Keeps students focused on listening and watching the demonstration rather than getting distracted by games, social media, or other apps on their monitors.',
@@ -122,12 +125,22 @@ export const CLASS_TEMPLATES = {
 };
 
 export const DEFAULT_CLASS_TEMPLATE_ID = 'lecture_in_lab';
+export const TEMPLATE_TAG_NAMES = ['Lecture', 'Lab', 'Lecture in Lab'];
 
 /**
  * Returns the template definition for a given template ID, with fallback.
  */
 export function getClassTemplate(templateId) {
   return CLASS_TEMPLATES[templateId] || CLASS_TEMPLATES[DEFAULT_CLASS_TEMPLATE_ID];
+}
+
+/**
+ * Returns the template definition that matches a given tag string (if any).
+ */
+export function getTemplateByTag(tag) {
+  if (!tag || typeof tag !== 'string') return null;
+  const clean = tag.trim().toLowerCase();
+  return Object.values(CLASS_TEMPLATES).find((t) => (t.tag && t.tag.toLowerCase() === clean) || t.name.toLowerCase() === clean) || null;
 }
 
 /**

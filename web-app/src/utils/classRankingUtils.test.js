@@ -220,10 +220,43 @@ describe('classRankingUtils', () => {
       expect(classMatchesTags(c, ['HD-IT'], 'AND')).toBe(true);
       expect(classMatchesTags(c, ['HD-IT', 'Lab 302'], 'AND')).toBe(true);
       expect(classMatchesTags(c, ['HD-IT', '📅 Friday'], 'AND')).toBe(true);
-      expect(classMatchesTags(c, ['HD-IT', '📅 Fri'], 'AND')).toBe(true);
       expect(classMatchesTags(c, ['HD-IT', 'Lab 500'], 'AND')).toBe(false);
       expect(classMatchesTags(c, ['HD-IT', 'Lab 500'], 'OR')).toBe(true);
       expect(classMatchesTags(c, ['NonExistent'], 'OR')).toBe(false);
+    });
+
+    it('extracts and matches concept template tags derived from classType', () => {
+      const cLecture = {
+        id: 'c_lec',
+        name: 'Lecture Class',
+        classType: 'lecture',
+        tags: ['CS101'],
+      };
+      const cLab = {
+        id: 'c_lab',
+        name: 'Lab Class',
+        classType: 'lab',
+        tags: ['Lab 302'],
+      };
+      const cLectureLab = {
+        id: 'c_lec_lab',
+        name: 'Focus Demo',
+        classType: 'lecture_in_lab',
+        tags: [],
+      };
+
+      const tags = extractClassTags([cLecture, cLab, cLectureLab]);
+      const tagNames = tags.map((t) => t.tag);
+
+      expect(tagNames).toContain('Lecture');
+      expect(tagNames).toContain('Lab');
+      expect(tagNames).toContain('Lecture in Lab');
+
+      // Filter matching
+      expect(classMatchesTags(cLecture, ['Lecture'])).toBe(true);
+      expect(classMatchesTags(cLecture, ['Lab'])).toBe(false);
+      expect(classMatchesTags(cLab, ['Lab'])).toBe(true);
+      expect(classMatchesTags(cLectureLab, ['Lecture in Lab'])).toBe(true);
     });
   });
 

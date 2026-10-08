@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   CLASS_TEMPLATES,
   DEFAULT_CLASS_TEMPLATE_ID,
+  TEMPLATE_TAG_NAMES,
   getClassTemplate,
+  getTemplateByTag,
   getTemplateSettings,
 } from './classTemplates';
 
@@ -69,6 +71,14 @@ describe('classTemplates constants and helpers', () => {
       labSettings.captureMode = 'single';
       // Ensure original is not mutated
       expect(CLASS_TEMPLATES.lab.settings.captureMode).toBe('dual');
+    });
+
+    it('exports TEMPLATE_TAG_NAMES and provides getTemplateByTag helper', () => {
+      expect(TEMPLATE_TAG_NAMES).toEqual(['Lecture', 'Lab', 'Lecture in Lab']);
+      expect(getTemplateByTag('Lecture').id).toBe('lecture');
+      expect(getTemplateByTag('lab').id).toBe('lab');
+      expect(getTemplateByTag('Lecture in Lab').id).toBe('lecture_in_lab');
+      expect(getTemplateByTag('nonexistent')).toBeNull();
     });
   });
 });

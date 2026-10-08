@@ -651,4 +651,22 @@
   border-color: var(--color-primary);
 }
 
+.card-tag-pill.template-tag-pill {
+  font-weight: 600;
+  border-color: #c7d2fe;
+  background-color: #eef2ff;
+  color: #3730a3;
+}
+
+.card-tag-pill.template-tag-pill:hover {
+  background-color: #e0e7ff;
+  border-color: #6366f1;
+}
+
+.card-tag-pill.template-tag-pill.active {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+}
+
 

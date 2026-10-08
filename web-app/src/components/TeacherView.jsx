@@ -10,6 +10,10 @@ import {
   extractClassTags,
   filterAndSortClasses,
 } from '../utils/classRankingUtils';
+import {
+  getClassTemplate,
+  getTemplateByTag,
+} from '../constants/classTemplates';
 
 const TeacherView = ({ user }) => {
   const [classes, setClasses] = useState([]);
@@ -441,7 +445,32 @@ const TeacherView = ({ user }) => {
 
                 <div className="class-card-header">
                   <div>
-                    <h3 className="class-card-title">{c.name || c.id}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <h3 className="class-card-title">{c.name || c.id}</h3>
+                      {c.classType && (
+                        <span
+                          className="template-card-badge"
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            backgroundColor: '#e0e7ff',
+                            color: '#3730a3',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const tmpl = getClassTemplate(c.classType);
+                            toggleTag(tmpl?.tag || tmpl?.name || c.classType);
+                          }}
+                          title={`Click to filter by ${getClassTemplate(c.classType).name} classes`}
+                        >
+                          {getClassTemplate(c.classType).icon} {getClassTemplate(c.classType).name}
+                        </span>
+                      )}
+                    </div>
                     <small style={{ color: '#64748b', fontSize: '0.8rem' }}>ID: {c.id}</small>
                   </div>
                   <span className="student-count-badge">
@@ -452,20 +481,23 @@ const TeacherView = ({ user }) => {
                 {/* Custom Tags Pill List */}
                 {Array.isArray(c.tags) && c.tags.length > 0 && (
                   <div className="card-tags-list">
-                    {c.tags.map(t => (
-                      <span
-                        key={t}
-                        className={`card-tag-pill ${selectedTags.includes(t) ? 'active' : ''}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggleTag(t);
-                        }}
-                        title={`Filter by tag #${t}`}
-                      >
-                        #{t}
-                      </span>
-                    ))}
+                    {c.tags.map(t => {
+                      const tmpl = getTemplateByTag(t);
+                      return (
+                        <span
+                          key={t}
+                          className={`card-tag-pill ${selectedTags.includes(t) ? 'active' : ''} ${tmpl ? 'template-tag-pill' : ''}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleTag(t);
+                          }}
+                          title={`Filter by tag #${t}`}
+                        >
+                          {tmpl ? `${tmpl.icon} #${t}` : `#${t}`}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
 

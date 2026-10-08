@@ -298,7 +298,18 @@ export const extractClassTags = (classes = [], now = new Date()) => {
       });
     }
 
-    // 2. Auto-derived Timetable Weekdays (e.g. "📅 Friday")
+    // 2. Concept Template Tag (derived from c.classType if set)
+    if (c.classType) {
+      const templateTag = c.classType === 'lecture' ? 'Lecture'
+        : c.classType === 'lab' ? 'Lab'
+        : c.classType === 'lecture_in_lab' ? 'Lecture in Lab'
+        : null;
+      if (templateTag) {
+        classTags.add(templateTag);
+      }
+    }
+
+    // 3. Auto-derived Timetable Weekdays (e.g. "📅 Friday")
     if (c.schedule?.timeSlots && Array.isArray(c.schedule.timeSlots)) {
       c.schedule.timeSlots.forEach((slot) => {
         if (Array.isArray(slot.days)) {
@@ -359,6 +370,17 @@ export const classMatchesTags = (classObj, selectedTags = [], mode = 'AND') => {
 
   // Build the full set of tags for this class
   const classTagSet = new Set(Array.isArray(classObj.tags) ? classObj.tags.map((t) => t.trim()) : []);
+
+  // Include concept template tag if set
+  if (classObj.classType) {
+    const templateTag = classObj.classType === 'lecture' ? 'Lecture'
+      : classObj.classType === 'lab' ? 'Lab'
+      : classObj.classType === 'lecture_in_lab' ? 'Lecture in Lab'
+      : null;
+    if (templateTag) {
+      classTagSet.add(templateTag);
+    }
+  }
 
   // Include weekday tags (both normalized full day and abbreviation for compatibility)
   if (classObj.schedule?.timeSlots && Array.isArray(classObj.schedule.timeSlots)) {

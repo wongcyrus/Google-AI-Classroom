@@ -34,6 +34,7 @@ import {
 import {
   CLASS_TEMPLATES,
   DEFAULT_CLASS_TEMPLATE_ID,
+  TEMPLATE_TAG_NAMES,
   getClassTemplate,
   getTemplateSettings,
 } from '../constants/classTemplates';
@@ -193,6 +194,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const handleSelectTemplate = (templateId) => {
     setSelectedTemplate(templateId);
     const settings = getTemplateSettings(templateId);
+
+    // Auto-sync template tag for dashboard filtering
+    const templateTag = getClassTemplate(templateId)?.tag || getClassTemplate(templateId)?.name;
+    if (templateTag) {
+      setClassTags((prevTags) => {
+        const otherTags = prevTags.filter((t) => !TEMPLATE_TAG_NAMES.includes(t));
+        return [templateTag, ...otherTags];
+      });
+    }
 
     // Screen & Proctoring
     setAutomaticCapture(settings.automaticCapture);
@@ -1914,9 +1924,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 }}
               >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '4px' }}>
                     <span style={{ fontSize: '1.75rem' }}>{tmpl.icon}</span>
-                    <span className="template-badge">{tmpl.badge}</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span className="template-badge">{tmpl.badge}</span>
+                      <span style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 7px', borderRadius: '4px', fontWeight: 600 }}>
+                        #{tmpl.tag || tmpl.name}
+                      </span>
+                    </div>
                   </div>
                   <h4 style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '1.1rem', color: isSelected ? 'var(--color-primary)' : 'inherit' }}>
                     {tmpl.name}
@@ -1989,6 +2004,36 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 ))}
               </div>
             )}
+            {/* Quick Template Filter Tags */}
+            <div className="template-tags-presets-row" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary, #475569)' }}>
+                🏷️ Template Filter Tag:
+              </span>
+              {Object.values(CLASS_TEMPLATES).map((tmpl) => {
+                const tagValue = tmpl.tag || tmpl.name;
+                const isTagApplied = classTags.includes(tagValue);
+                return (
+                  <button
+                    key={tmpl.id}
+                    type="button"
+                    className={`suggestion-tag-pill ${isTagApplied ? 'active-template-tag' : ''}`}
+                    style={isTagApplied ? { backgroundColor: 'var(--color-primary, #6366f1)', color: '#ffffff', borderColor: 'var(--color-primary, #6366f1)', fontWeight: 600 } : {}}
+                    onClick={() => {
+                      if (isTagApplied) {
+                        handleRemoveTag(tagValue);
+                      } else {
+                        const otherTemplateTags = Object.values(CLASS_TEMPLATES).map(t => t.tag || t.name);
+                        setClassTags(prev => [tagValue, ...prev.filter(t => !otherTemplateTags.includes(t))]);
+                      }
+                    }}
+                    title={`Click to ${isTagApplied ? 'remove' : 'apply'} #${tagValue} tag for Teacher Dashboard filtering`}
+                  >
+                    {isTagApplied ? `✓ #${tagValue}` : `+ #${tagValue}`}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="tag-input-row">
               <input
                 id="class-tags-input"

@@ -1979,9 +1979,52 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
           expect.objectContaining({
             classType: 'lecture',
             automaticCapture: false,
+            tags: expect.arrayContaining(['Lecture']),
           })
         );
       });
+    });
+
+    it('auto-synchronizes template tag and supports quick template filter tag pills', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      // 1. Initial template tag should be Lecture in Lab when selecting template
+      const labCard = screen.getByRole('heading', { level: 4, name: 'Lab' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(labCard);
+      });
+
+      // Verify #Lab chip is displayed in chips list
+      const getChipsList = () => document.querySelector('.class-tags-chips-list');
+      expect(getChipsList()).toHaveTextContent('#Lab');
+
+      // 2. Add custom tag 'Cohort-A'
+      const tagInput = screen.getByPlaceholderText(/Type tag/i);
+      fireEvent.change(tagInput, { target: { value: 'Cohort-A' } });
+      fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+      expect(getChipsList()).toHaveTextContent('#Cohort-A');
+
+      // 3. Switch to Lecture template -> #Lab should be replaced by #Lecture, but #Cohort-A remains
+      const lectureCard = screen.getByRole('heading', { level: 4, name: 'Lecture' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(lectureCard);
+      });
+
+      expect(getChipsList()).toHaveTextContent('#Lecture');
+      expect(getChipsList()).toHaveTextContent('#Cohort-A');
+      expect(getChipsList()).not.toHaveTextContent('#Lab');
+
+      // 4. Quick template tag pill toggle
+      const quickLabBtn = screen.getByRole('button', { name: /\+ #Lab/i });
+      await act(async () => {
+        fireEvent.click(quickLabBtn);
+      });
+
+      expect(getChipsList()).toHaveTextContent('#Lab');
+      expect(getChipsList()).not.toHaveTextContent('#Lecture');
+      expect(getChipsList()).toHaveTextContent('#Cohort-A');
     });
   });
 });
