@@ -9,7 +9,6 @@ import {
   isAndroidDevice,
   isIOSDevice,
   getAndroidChromeIntentUrl,
-  getAndroidCameraAppIntentUrl,
 } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
 import { detectDeviceBrand, DEVICE_BRAND_GUIDES } from '../../utils/deviceBrandUtils';
@@ -17,6 +16,7 @@ import { getOrCreateDeviceFingerprint } from '../../utils/deviceFingerprint';
 import { functions } from '../../firebase-config';
 import PasskeyPasswordFallbackForm from './PasskeyPasswordFallbackForm';
 import CameraQrScannerModal from './CameraQrScannerModal';
+import { decodeQrFromImageFile } from '../../utils/qrCodeDecoder';
 import './passkey.css';
 
 const PasskeyVerifyView = () => {
@@ -31,6 +31,9 @@ const PasskeyVerifyView = () => {
   const [latencySec, setLatencySec] = useState(null);
   const [alreadyVerified, setAlreadyVerified] = useState(false);
   const hasAutoStarted = useRef(false);
+  const nativeCameraInputRef = useRef(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   const detectedBrowser = getBrowserName();
   const isAndroid = isAndroidDevice();
@@ -38,13 +41,35 @@ const PasskeyVerifyView = () => {
   const detectedBrandId = isIOS ? 'apple' : detectDeviceBrand();
   const [activeBrandId, setActiveBrandId] = useState(detectedBrandId === 'unknown' ? 'android_generic' : detectedBrandId);
   const chromeIntentUrl = typeof window !== 'undefined' ? getAndroidChromeIntentUrl(window.location.href) : '';
-  const cameraAppIntentUrl = getAndroidCameraAppIntentUrl();
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
   const isTokenExpiredOrInvalid =
     errorDetails?.type === 'token_expired' ||
     errorDetails?.action === 'refresh_qr' ||
     /expired|already been used|invalid qr/i.test(errorMessage);
+
+  const handleNativeCameraPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    setPhotoError('');
+
+    try {
+      const decoded = await decodeQrFromImageFile(file);
+      if (decoded) {
+        handleQrScanned(decoded);
+      } else {
+        setPhotoError('Could not detect a QR code in the captured photo. Please try snapping closer to the screen or use the live camera scanner.');
+      }
+    } catch (err) {
+      console.warn('[PasskeyVerifyView] Error processing photo QR:', err);
+      setPhotoError('Unable to process the photo. Please try using the live camera scanner.');
+    } finally {
+      setIsProcessingPhoto(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
   const handleQrScanned = (scannedUrl) => {
     setIsCameraScannerOpen(false);
@@ -355,47 +380,58 @@ const PasskeyVerifyView = () => {
               </div>
             )}
 
+            {photoError && (
+              <div style={{ width: '100%', marginBottom: '0.75rem', padding: '0.6rem 0.85rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', fontSize: '0.825rem', color: '#fca5a5', lineHeight: 1.4, textAlign: 'left' }}>
+                ⚠️ {photoError}
+              </div>
+            )}
+
+            {/* Hidden file input for native Camera App capture */}
+            <input
+              ref={nativeCameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={handleNativeCameraPhoto}
+              data-testid="native-camera-input"
+            />
+
             {isTokenExpiredOrInvalid ? (
-              isAndroid ? (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  <a
-                    href={cameraAppIntentUrl}
-                    className="passkey-btn passkey-btn-primary"
-                    style={{
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    📷 Open Camera App to Rescan
-                  </a>
-                  <button
-                    type="button"
-                    className="passkey-btn passkey-btn-secondary"
-                    onClick={() => setIsCameraScannerOpen(true)}
-                  >
-                    🔍 Scan with Camera in Browser
-                  </button>
-                </div>
-              ) : (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  <button
-                    type="button"
-                    className="passkey-btn passkey-btn-primary"
-                    onClick={() => setIsCameraScannerOpen(true)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    📷 Scan QR Code with Camera
-                  </button>
-                  {isIOS && (
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
-                      💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong>.
-                    </p>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="passkey-btn passkey-btn-primary"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  📷 Scan QR Code (Live Camera)
+                </button>
+                <button
+                  type="button"
+                  className="passkey-btn passkey-btn-secondary"
+                  onClick={() => nativeCameraInputRef.current?.click()}
+                  disabled={isProcessingPhoto}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  {isProcessingPhoto ? (
+                    <>
+                      <span className="passkey-spinner" style={{ width: 14, height: 14 }} />
+                      <span>Scanning Photo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📸</span>
+                      <span>Open Camera App to Rescan</span>
+                    </>
                   )}
-                </div>
-              )
+                </button>
+                {isIOS && (
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                    💡 On iPhone: You can also swipe up to Home and use the <strong>Camera app</strong>.
+                  </p>
+                )}
+              </div>
             ) : (
               <button
                 type="button"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -268,9 +268,20 @@ describe('PasskeyVerifyView Component', () => {
     });
 
     expect(screen.getAllByText(/QR Code Expired/i).length).toBeGreaterThan(0);
-    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
-    expect(cameraLink).toBeInTheDocument();
-    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
-    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
+    const cameraBtn = screen.getByRole('button', { name: /Open Camera App to Rescan/i });
+    expect(cameraBtn).toBeInTheDocument();
+
+    const liveScanBtn = screen.getByRole('button', { name: /Scan QR Code \(Live Camera\)/i });
+    expect(liveScanBtn).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('native-camera-input');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(cameraBtn);
+    expect(clickSpy).toHaveBeenCalled();
   });
 });

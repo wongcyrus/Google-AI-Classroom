@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -235,7 +235,7 @@ describe('LecturePasskeyVerifyView Component', () => {
     expect(screen.getByRole('button', { name: /Log In & Confirm Attendance/i })).toBeInTheDocument();
   });
 
-  it('renders Open Camera App to Rescan button when lecture QR code expires on Android', async () => {
+  it('renders Open Camera App to Rescan button and Live Scanner button when lecture QR code expires', async () => {
     mockIsAndroid = true;
     mockIsIOS = false;
 
@@ -250,9 +250,20 @@ describe('LecturePasskeyVerifyView Component', () => {
     });
 
     expect(screen.getByText('QR Code Expired')).toBeInTheDocument();
-    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
-    expect(cameraLink).toBeInTheDocument();
-    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
-    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
+    const cameraBtn = screen.getByRole('button', { name: /Open Camera App to Rescan/i });
+    expect(cameraBtn).toBeInTheDocument();
+
+    const liveScanBtn = screen.getByRole('button', { name: /Scan QR Code \(Live Camera\)/i });
+    expect(liveScanBtn).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('native-camera-input');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(cameraBtn);
+    expect(clickSpy).toHaveBeenCalled();
   });
 });

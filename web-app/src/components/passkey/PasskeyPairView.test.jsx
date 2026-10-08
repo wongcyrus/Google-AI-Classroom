@@ -233,4 +233,39 @@ describe('PasskeyPairView Component', () => {
     expect(screen.getAllByText(/Microsoft Authenticator/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/iCloud Passwords & Keychain/i).length).toBeGreaterThan(0);
   });
+
+  it('renders Open Camera App to Rescan button and Live Scanner button when pairing token expires', async () => {
+    mockIsAndroid = true;
+    mockIsIOS = false;
+
+    mockGetOptions.mockRejectedValueOnce(new Error('This pairing token has expired or is invalid.'));
+
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=token-expired']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    const pairBtn = screen.getByRole('button', { name: /Pair This Phone/i });
+    await act(async () => {
+      fireEvent.click(pairBtn);
+    });
+
+    expect(screen.getByText('QR Code Expired')).toBeInTheDocument();
+    const cameraBtn = screen.getByRole('button', { name: /Open Camera App to Rescan/i });
+    expect(cameraBtn).toBeInTheDocument();
+
+    const liveScanBtn = screen.getByRole('button', { name: /Scan QR Code \(Live Camera\)/i });
+    expect(liveScanBtn).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('native-camera-input');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(cameraBtn);
+    expect(clickSpy).toHaveBeenCalled();
+  });
 });

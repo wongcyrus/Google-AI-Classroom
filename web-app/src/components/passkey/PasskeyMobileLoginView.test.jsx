@@ -243,7 +243,7 @@ describe('PasskeyMobileLoginView Component', () => {
     expect(screen.getAllByText(/Google Chrome/i).length).toBeGreaterThan(0);
   });
 
-  it('renders Open Camera App to Rescan button on Android error screen', async () => {
+  it('renders Open Camera App to Rescan button and Live Scanner button on error screen', async () => {
     mockIsAndroid = true;
     mockIsIOS = false;
 
@@ -260,14 +260,25 @@ describe('PasskeyMobileLoginView Component', () => {
     });
 
     expect(screen.getByText('QR Code Expired')).toBeInTheDocument();
-    const cameraLink = screen.getByRole('link', { name: /Open Camera App to Rescan/i });
-    expect(cameraLink).toBeInTheDocument();
-    expect(cameraLink).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
+    const cameraBtn = screen.getByRole('button', { name: /Open Camera App to Rescan/i });
+    expect(cameraBtn).toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: /Scan with Camera in Browser/i })).toBeInTheDocument();
+    const liveScanBtn = screen.getByRole('button', { name: /Scan QR Code \(Live Camera\)/i });
+    expect(liveScanBtn).toBeInTheDocument();
+
+    const fileInput = screen.getByTestId('native-camera-input');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+
+    // Clicking Open Camera App clicks the hidden native camera input
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(cameraBtn);
+    expect(clickSpy).toHaveBeenCalled();
   });
 
-  it('renders Scan QR Code with Camera on iOS error screen', async () => {
+  it('renders Scan QR Code with Camera and iOS hint on iOS error screen', async () => {
     mockIsAndroid = false;
     mockIsIOS = true;
 
@@ -283,8 +294,10 @@ describe('PasskeyMobileLoginView Component', () => {
       expect(screen.getByText('Sign-In Failed')).toBeInTheDocument();
     });
 
-    const scanBtn = screen.getByRole('button', { name: /Scan QR Code with Camera/i });
-    expect(scanBtn).toBeInTheDocument();
+    const liveScanBtn = screen.getByRole('button', { name: /Scan QR Code \(Live Camera\)/i });
+    expect(liveScanBtn).toBeInTheDocument();
+    const cameraBtn = screen.getByRole('button', { name: /Open Camera App to Rescan/i });
+    expect(cameraBtn).toBeInTheDocument();
     expect(screen.getByText(/swipe up to Home/i)).toBeInTheDocument();
   });
 });

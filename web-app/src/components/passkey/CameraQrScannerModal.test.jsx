@@ -3,13 +3,9 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CameraQrScannerModal from './CameraQrScannerModal';
 
-let mockIsAndroid = false;
-let mockIsIOS = false;
-
-vi.mock('../../utils/browserDetection', () => ({
-  isAndroidDevice: () => mockIsAndroid,
-  isIOSDevice: () => mockIsIOS,
-  getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
+vi.mock('../../utils/qrCodeDecoder', () => ({
+  decodeQrFromElement: vi.fn().mockResolvedValue(null),
+  decodeQrFromImageFile: vi.fn().mockResolvedValue('https://example.com/decoded-qr'),
 }));
 
 describe('CameraQrScannerModal Component', () => {
@@ -19,8 +15,6 @@ describe('CameraQrScannerModal Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsAndroid = false;
-    mockIsIOS = false;
 
     mockStopTrack = vi.fn();
     mockStream = {
@@ -93,7 +87,7 @@ describe('CameraQrScannerModal Component', () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it('displays permission denied error if camera is blocked', async () => {
+  it('displays permission denied error and photo capture button if camera is blocked', async () => {
     const permErr = new Error('Permission denied');
     permErr.name = 'NotAllowedError';
     mockGetUserMedia.mockRejectedValueOnce(permErr);
@@ -107,16 +101,14 @@ describe('CameraQrScannerModal Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Camera access was denied/i)).toBeInTheDocument();
+      expect(screen.getByText(/Camera permission was blocked/i)).toBeInTheDocument();
     });
+
+    const photoButtons = screen.getAllByRole('button', { name: /Camera App/i });
+    expect(photoButtons.length).toBeGreaterThan(0);
   });
 
-  it('displays Open Phone Camera App button on Android when camera error occurs', async () => {
-    mockIsAndroid = true;
-    const permErr = new Error('Permission denied');
-    permErr.name = 'NotAllowedError';
-    mockGetUserMedia.mockRejectedValueOnce(permErr);
-
+  it('renders file input with capture="environment" for native camera app fallback', async () => {
     render(
       <CameraQrScannerModal
         isOpen={true}
@@ -125,10 +117,32 @@ describe('CameraQrScannerModal Component', () => {
       />
     );
 
+    const fileInput = screen.getByTestId('camera-file-input');
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput).toHaveAttribute('type', 'file');
+    expect(fileInput).toHaveAttribute('accept', 'image/*');
+    expect(fileInput).toHaveAttribute('capture', 'environment');
+  });
+
+  it('calls onScan when photo is selected via camera capture input', async () => {
+    const handleScan = vi.fn();
+    render(
+      <CameraQrScannerModal
+        isOpen={true}
+        onScan={handleScan}
+        onClose={vi.fn()}
+      />
+    );
+
+    const fileInput = screen.getByTestId('camera-file-input');
+    const dummyFile = new File(['dummy'], 'photo.jpg', { type: 'image/jpeg' });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [dummyFile] } });
+    });
+
     await waitFor(() => {
-      const androidLinks = screen.getAllByRole('link', { name: /Camera App/i });
-      expect(androidLinks.length).toBeGreaterThan(0);
-      expect(androidLinks[0]).toHaveAttribute('href', 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end');
+      expect(handleScan).toHaveBeenCalledWith('https://example.com/decoded-qr');
     });
   });
 

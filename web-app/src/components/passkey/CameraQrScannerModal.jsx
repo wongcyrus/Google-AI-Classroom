@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import jsQR from 'jsqr';
-import { isAndroidDevice, isIOSDevice, getAndroidCameraAppIntentUrl } from '../../utils/browserDetection';
+import { decodeQrFromElement, decodeQrFromImageFile } from '../../utils/qrCodeDecoder';
 
 /**
  * CameraQrScannerModal
- * Provides in-browser live camera QR scanning with fallback to native Android Camera App.
+ * Provides in-browser live camera QR scanning with fallback to native Camera App photo capture.
  * Automatically cleans up camera tracks when closed or unmounted.
  *
  * @param {Object} props
@@ -24,16 +23,14 @@ export default function CameraQrScannerModal({
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanLoopRef = useRef(null);
-  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const [cameraState, setCameraState] = useState('initializing'); // 'initializing' | 'active' | 'error' | 'scanned'
   const [errorMessage, setErrorMessage] = useState('');
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
-
-  const isAndroid = isAndroidDevice();
-  const isIOS = isIOSDevice();
-  const cameraIntentUrl = getAndroidCameraAppIntentUrl();
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   const stopCamera = useCallback(() => {
     if (scanLoopRef.current) {
@@ -69,78 +66,57 @@ export default function CameraQrScannerModal({
     onScan(qrData);
   }, [onScan, stopCamera]);
 
-  // Scan loop using BarcodeDetector if available, falling back to jsQR
-  const startScanningLoop = useCallback((video) => {
-    let hasBarcodeDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window;
-    let detector = null;
+  // Handle native Camera App snapshot via file input capture="environment"
+  const handlePhotoCaptured = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (hasBarcodeDetector) {
-      try {
-        detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-      } catch {
-        hasBarcodeDetector = false;
-        detector = null;
+    setIsProcessingPhoto(true);
+    setPhotoError('');
+
+    try {
+      const decoded = await decodeQrFromImageFile(file);
+      if (decoded) {
+        handleQrDetected(decoded);
+      } else {
+        setPhotoError('Could not detect a QR code in the captured photo. Please try snapping closer to the screen.');
       }
+    } catch (err) {
+      console.warn('[CameraQrScannerModal] Photo decode error:', err);
+      setPhotoError('Unable to process the photo. Please try again.');
+    } finally {
+      setIsProcessingPhoto(false);
+      if (e.target) e.target.value = '';
     }
+  };
+
+  // Continuous frame scanning loop
+  const startScanningLoop = useCallback((video) => {
+    let isScanning = true;
 
     const tick = async () => {
+      if (!isScanning) return;
+
       if (!video || video.readyState < 2) {
         scanLoopRef.current = requestAnimationFrame(tick);
         return;
       }
 
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-
-      if (videoWidth > 0 && videoHeight > 0) {
-        // Method A: Native BarcodeDetector (Chrome Android / Safari 17+)
-        if (detector) {
-          try {
-            const barcodes = await detector.detect(video);
-            if (barcodes && barcodes.length > 0) {
-              const detected = barcodes[0]?.rawValue;
-              if (detected) {
-                handleQrDetected(detected);
-                return;
-              }
-            }
-          } catch {
-            // If detector throws, fall through to jsQR
-          }
-        }
-
-        // Method B: jsQR pure JS decoder
-        if (!canvasRef.current) {
-          canvasRef.current = document.createElement('canvas');
-        }
-        const canvas = canvasRef.current;
-        if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
-          canvas.width = videoWidth;
-          canvas.height = videoHeight;
-        }
-
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-          try {
-            const imgData = ctx.getImageData(0, 0, videoWidth, videoHeight);
-            const code = jsQR(imgData.data, imgData.width, imgData.height, {
-              inversionAttempts: 'dontInvert',
-            });
-            if (code && code.data) {
-              handleQrDetected(code.data);
-              return;
-            }
-          } catch {
-            // ignore scan frame exceptions
-          }
-        }
+      const decoded = await decodeQrFromElement(video);
+      if (decoded) {
+        isScanning = false;
+        handleQrDetected(decoded);
+        return;
       }
 
       scanLoopRef.current = requestAnimationFrame(tick);
     };
 
     scanLoopRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      isScanning = false;
+    };
   }, [handleQrDetected]);
 
   // Initialize camera stream when open
@@ -149,12 +125,14 @@ export default function CameraQrScannerModal({
       stopCamera();
       setCameraState('initializing');
       setErrorMessage('');
+      setPhotoError('');
       return;
     }
 
     let isMounted = true;
     setCameraState('initializing');
     setErrorMessage('');
+    setPhotoError('');
 
     const startCamera = async () => {
       try {
@@ -205,9 +183,9 @@ export default function CameraQrScannerModal({
         if (!isMounted) return;
         setCameraState('error');
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setErrorMessage('Camera access was denied. Please allow camera permissions in your browser settings.');
+          setErrorMessage('Camera permission was blocked. You can still use your native Camera App to snap a photo below.');
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-          setErrorMessage('No camera found on this device.');
+          setErrorMessage('No camera found on this device. Use your Camera App to take a photo of the QR code.');
         } else {
           setErrorMessage(err.message || 'Unable to start camera.');
         }
@@ -257,6 +235,17 @@ export default function CameraQrScannerModal({
         color: '#f8fafc',
       }}
     >
+      {/* Hidden file input for native Camera App capture */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handlePhotoCaptured}
+        data-testid="camera-file-input"
+      />
+
       {/* Header */}
       <div style={{ width: '100%', maxWidth: '440px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ textAlign: 'left' }}>
@@ -264,7 +253,7 @@ export default function CameraQrScannerModal({
             {title}
           </h2>
           <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-            Scan the rotating QR code on screen
+            Scan the live rotating QR code on screen
           </p>
         </div>
         <button
@@ -383,31 +372,36 @@ export default function CameraQrScannerModal({
         {cameraState === 'error' && (
           <div style={{ padding: '1.5rem', textAlign: 'center', color: '#fca5a5' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🚫</div>
-            <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', lineHeight: 1.4 }}>
+            <p style={{ margin: '0 0 0.85rem 0', fontSize: '0.9rem', lineHeight: 1.4 }}>
               {errorMessage}
             </p>
-            {isAndroid && (
-              <a
-                href={cameraIntentUrl}
-                className="passkey-btn passkey-btn-primary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  textDecoration: 'none',
-                  fontSize: '0.85rem',
-                  padding: '0.5rem 1rem',
-                }}
-              >
-                📷 Open Phone Camera App
-              </a>
-            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="passkey-btn passkey-btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.85rem',
+                padding: '0.55rem 1rem',
+              }}
+              disabled={isProcessingPhoto}
+            >
+              {isProcessingPhoto ? 'Scanning photo...' : '📸 Open Camera App to Snap Photo'}
+            </button>
           </div>
         )}
       </div>
 
       {/* Footer Controls & Instructions */}
       <div style={{ width: '100%', maxWidth: '380px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {photoError && (
+          <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#fca5a5', lineHeight: 1.4 }}>
+            ⚠️ {photoError}
+          </div>
+        )}
+
         <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.4, textAlign: 'center' }}>
           {instructions}
         </p>
@@ -418,37 +412,40 @@ export default function CameraQrScannerModal({
               type="button"
               onClick={toggleTorch}
               className="passkey-btn passkey-btn-secondary"
-              style={{ flex: 1, padding: '0.6rem 1rem', fontSize: '0.85rem' }}
+              style={{ flex: 1, padding: '0.6rem 0.75rem', fontSize: '0.85rem' }}
             >
               {torchOn ? '🔦 Flashlight Off' : '💡 Flashlight On'}
             </button>
           )}
 
-          {isAndroid && (
-            <a
-              href={cameraIntentUrl}
-              className="passkey-btn passkey-btn-secondary"
-              style={{
-                flex: 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.4rem',
-                textDecoration: 'none',
-                padding: '0.6rem 1rem',
-                fontSize: '0.85rem',
-              }}
-            >
-              📱 Camera App
-            </a>
-          )}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="passkey-btn passkey-btn-secondary"
+            style={{
+              flex: 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 0.75rem',
+              fontSize: '0.85rem',
+            }}
+            disabled={isProcessingPhoto}
+          >
+            {isProcessingPhoto ? (
+              <>
+                <span className="passkey-spinner" style={{ width: 14, height: 14 }} />
+                <span>Reading...</span>
+              </>
+            ) : (
+              <>
+                <span>📸</span>
+                <span>Camera App (Photo)</span>
+              </>
+            )}
+          </button>
         </div>
-
-        {isIOS && (
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#94a3b8', textAlign: 'center' }}>
-            💡 Tip: You can also swipe up to your Home Screen and use the built-in iPhone Camera app to scan the code.
-          </p>
-        )}
 
         <button
           type="button"
