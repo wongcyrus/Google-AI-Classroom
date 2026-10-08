@@ -27,6 +27,10 @@ import { exportToExcel, readExcelFile } from '../utils/exportUtils';
 import useCloudPricing from '../hooks/useCloudPricing';
 import { formatStorageCost } from '../utils/formatters';
 import { SUBTITLE_LANGUAGES } from '../utils/videoSubtitleUtils';
+import {
+  DEFAULT_LECTURE_STT_PROMPT,
+  DEFAULT_LECTURE_TRANSLATION_PROMPT,
+} from '../constants/promptRegistry';
 
 const AVAILABLE_SUBTITLE_LANGUAGES = SUBTITLE_LANGUAGES.filter((l) => l.code !== 'original');
 
@@ -168,9 +172,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [consolidateLessonVideo, setConsolidateLessonVideo] = useState(true);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
-  const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(null);
-  const [lectureSttPrompt, setLectureSttPrompt] = useState(null);
-  const [lectureTranslationPrompt, setLectureTranslationPrompt] = useState(null);
+  const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
+  const [lectureSttPrompt, setLectureSttPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
+  const [lectureTranslationPrompt, setLectureTranslationPrompt] = useState(DEFAULT_LECTURE_TRANSLATION_PROMPT);
   const [showTranslationPromptModal, setShowTranslationPromptModal] = useState(false);
   const [modalTranslationPrompt, setModalTranslationPrompt] = useState(null);
   const [modalTranslationPromptText, setModalTranslationPromptText] = useState('');
@@ -497,10 +501,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setConsolidateLessonVideo(classData.consolidateLessonVideo !== false);
           setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
           setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
-          const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || null;
+          const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
           setLectureSttPrompt(loadedSttPrompt);
           setLectureRecordingPrompt(loadedSttPrompt);
-          setLectureTranslationPrompt(classData.lectureTranslationPrompt || null);
+          setLectureTranslationPrompt(classData.lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT);
           setLectureTargetLanguages(
             Array.isArray(classData.lectureTargetLanguages) && classData.lectureTargetLanguages.length > 0
               ? classData.lectureTargetLanguages
@@ -566,7 +570,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setConsolidateLessonVideo(true);
         setLectureAiModel('gemini-3.8-flash');
         setIsLectureSubtitlesEnabled(true);
-        setLectureRecordingPrompt(null);
+        setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
+        setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
+        setLectureTranslationPrompt(DEFAULT_LECTURE_TRANSLATION_PROMPT);
         setLectureTargetLanguages(['en', 'zh-Hant', 'zh-Hans']);
         setBingoTimeLimitSeconds(30);
         setAutoBingoEnabled(false);
@@ -1072,9 +1078,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       consolidateLessonVideo: consolidateLessonVideo !== false,
       lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
       isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
-      lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
-      lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
-      lectureTranslationPrompt: lectureTranslationPrompt || null,
+      lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
+      lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
+      lectureTranslationPrompt: lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT,
       lectureTargetLanguages: Array.isArray(lectureTargetLanguages) && lectureTargetLanguages.length > 0 ? lectureTargetLanguages : ['en', 'zh-Hant', 'zh-Hans'],
     };
 
@@ -1382,9 +1388,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           consolidateLessonVideo: consolidateLessonVideo !== false,
           lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
           isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
-          lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
-          lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || null,
-          lectureTranslationPrompt: lectureTranslationPrompt || null,
+          lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
+          lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
+          lectureTranslationPrompt: lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT,
           lectureTargetLanguages: Array.isArray(lectureTargetLanguages) && lectureTargetLanguages.length > 0 ? lectureTargetLanguages : ['en', 'zh-Hant', 'zh-Hans'],
           aiQuota: 50,
           aiUsedQuota: 0,
@@ -1495,7 +1501,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     else if (type === 'session_audio') target = sessionAudioPrompt;
     else if (type === 'gemma_intent') target = gemmaIntentPrompt;
     else if (type === 'subtitle') target = subtitlePrompt;
-    else if (type === 'lecture_recording') target = lectureSttPrompt || lectureRecordingPrompt;
+    else if (type === 'lecture_recording') target = lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
 
     setModalAudioPrompt(target);
     setModalAudioPromptText(target ? (target.promptText || '') : '');
@@ -1532,15 +1538,17 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     } else if (audioPromptModalType === 'subtitle') {
       setSubtitlePrompt(finalPrompt);
     } else if (audioPromptModalType === 'lecture_recording') {
-      setLectureSttPrompt(finalPrompt);
-      setLectureRecordingPrompt(finalPrompt);
+      const promptToSet = finalPrompt || DEFAULT_LECTURE_STT_PROMPT;
+      setLectureSttPrompt(promptToSet);
+      setLectureRecordingPrompt(promptToSet);
     }
     setShowAudioPromptModal(false);
   };
 
   const handleOpenTranslationPromptModal = () => {
-    setModalTranslationPrompt(lectureTranslationPrompt);
-    setModalTranslationPromptText(lectureTranslationPrompt ? (lectureTranslationPrompt.promptText || '') : '');
+    const target = lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT;
+    setModalTranslationPrompt(target);
+    setModalTranslationPromptText(target ? (target.promptText || '') : '');
     setShowTranslationPromptModal(true);
   };
 
@@ -1566,7 +1574,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       };
     }
 
-    setLectureTranslationPrompt(finalPrompt);
+    setLectureTranslationPrompt(finalPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT);
     setShowTranslationPromptModal(false);
   };
 
@@ -1679,13 +1687,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
               else if (audioPromptModalType === 'subtitle') setSubtitlePrompt(null);
               else if (audioPromptModalType === 'lecture_recording') {
-                setLectureSttPrompt(null);
-                setLectureRecordingPrompt(null);
+                setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
+                setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
               }
               setShowAudioPromptModal(false);
             }}
           >
-            Clear Prompt
+            {audioPromptModalType === 'lecture_recording' ? 'Reset to Default' : 'Clear Prompt'}
           </button>
           <button type="button" onClick={handleSetAudioPrompt}>
             Save Prompt Selection
@@ -1715,11 +1723,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             type="button"
             className="secondary-btn"
             onClick={() => {
-              setLectureTranslationPrompt(null);
+              setLectureTranslationPrompt(DEFAULT_LECTURE_TRANSLATION_PROMPT);
               setShowTranslationPromptModal(false);
             }}
           >
-            Clear Prompt
+            Reset to Default
           </button>
           <button type="button" onClick={handleSetTranslationPrompt}>
             Save Prompt Selection
@@ -2982,38 +2990,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           selectButtonText="Select Gemma Intent Prompt"
           hint="Custom system prompt and taxonomy rules evaluated locally on student machines in real time."
         />
-
-        {/* Quick shortcut to Whole-Lecture Recording Studio Prompts */}
-        <div className="form-group" style={{ marginTop: '1.25rem', padding: '14px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#1e293b' }}>
-                🎬 Whole-Lecture Recording AI Prompts (STT &amp; Translation)
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
-                Separate speech-to-text verbatim transcription and multi-language translation rules configured in Section 5 below.
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => handleOpenAudioPromptModal('lecture_recording')}
-                style={{ fontSize: '0.85rem' }}
-              >
-                {lectureSttPrompt ? `STT: ${lectureSttPrompt.name || 'Custom'}` : 'Select STT Prompt'}
-              </button>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleOpenTranslationPromptModal}
-                style={{ fontSize: '0.85rem' }}
-              >
-                {lectureTranslationPrompt ? `Trans: ${lectureTranslationPrompt.name || 'Custom'}` : 'Select Translation Prompt'}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Section 6: Exam & Test Periods (Restricted from Students) */}
@@ -3375,46 +3351,66 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px' }}>
-            {/* Stage 1: Speech-to-Text & Milestone Chapters */}
-            <ClassPromptField
-              cardStyle
-              label="🎙️ Stage 1: Speech-to-Text (STT) &amp; Chapters"
-              labelColor="#1e40af"
-              prompt={lectureSttPrompt || lectureRecordingPrompt}
-              badgeText="Customized STT Active"
-              badgeBg="#dbeafe"
-              badgeColor="#1e40af"
-              hint="Instruct Gemini on verbatim audio speech recognition, Cantonese-English code switching, technical keywords, and YouTube milestone chapter rules."
-              onOpenModal={() => handleOpenAudioPromptModal('lecture_recording')}
-              onReset={() => {
-                setLectureSttPrompt(null);
-                setLectureRecordingPrompt(null);
-              }}
-              selectButtonText="🔍 Select STT Prompt from Library"
-              selectButtonStyle={{ border: '1.5px solid #3b82f6', color: '#1d4ed8' }}
-              resetButtonText="Reset to Default System Prompt"
-              previewLength={180}
-            />
+          {(() => {
+            const activeStt = lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
+            const isCustomStt = Boolean(
+              activeStt && (
+                activeStt.id !== DEFAULT_LECTURE_STT_PROMPT.id ||
+                (activeStt.promptText && activeStt.promptText.trim() !== DEFAULT_LECTURE_STT_PROMPT.promptText.trim())
+              )
+            );
 
-            {/* Stage 2: Multilingual Subtitle Translation */}
-            <ClassPromptField
-              cardStyle
-              label="🌐 Stage 2: Multilingual Subtitle Translation"
-              labelColor="#15803d"
-              prompt={lectureTranslationPrompt}
-              badgeText="Customized Translation Active"
-              badgeBg="#dcfce7"
-              badgeColor="#166534"
-              hint="Instruct Gemini on language-by-language subtitle translation, Cantonese-to-書面語 conversion, and domain terminology preservation."
-              onOpenModal={handleOpenTranslationPromptModal}
-              onReset={() => setLectureTranslationPrompt(null)}
-              selectButtonText="🌐 Select Translation Prompt from Library"
-              selectButtonStyle={{ border: '1.5px solid #16a34a', color: '#15803d' }}
-              resetButtonText="Reset to Default System Prompt"
-              previewLength={180}
-            />
-          </div>
+            const activeTrans = lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT;
+            const isCustomTrans = Boolean(
+              activeTrans && (
+                activeTrans.id !== DEFAULT_LECTURE_TRANSLATION_PROMPT.id ||
+                (activeTrans.promptText && activeTrans.promptText.trim() !== DEFAULT_LECTURE_TRANSLATION_PROMPT.promptText.trim())
+              )
+            );
+
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px' }}>
+                {/* Stage 1: Speech-to-Text & Milestone Chapters */}
+                <ClassPromptField
+                  cardStyle
+                  label="🎙️ Stage 1: Speech-to-Text (STT) &amp; Chapters"
+                  labelColor="#1e40af"
+                  prompt={activeStt}
+                  badgeText={isCustomStt ? 'Customized STT Active' : 'Default STT Active'}
+                  badgeBg={isCustomStt ? '#dbeafe' : '#e0f2fe'}
+                  badgeColor={isCustomStt ? '#1e40af' : '#0369a1'}
+                  hint="Instruct Gemini on verbatim audio speech recognition, Cantonese-English code switching, technical keywords, and YouTube milestone chapter rules."
+                  onOpenModal={() => handleOpenAudioPromptModal('lecture_recording')}
+                  onReset={isCustomStt ? () => {
+                    setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
+                    setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
+                  } : null}
+                  selectButtonText="🔍 Select STT Prompt from Library"
+                  selectButtonStyle={{ border: '1.5px solid #3b82f6', color: '#1d4ed8' }}
+                  resetButtonText="Reset to Default System Prompt"
+                  previewLength={180}
+                />
+
+                {/* Stage 2: Multilingual Subtitle Translation */}
+                <ClassPromptField
+                  cardStyle
+                  label="🌐 Stage 2: Multilingual Subtitle Translation"
+                  labelColor="#15803d"
+                  prompt={activeTrans}
+                  badgeText={isCustomTrans ? 'Customized Translation Active' : 'Default Translation Active'}
+                  badgeBg={isCustomTrans ? '#dcfce7' : '#ecfdf5'}
+                  badgeColor={isCustomTrans ? '#166534' : '#047857'}
+                  hint="Instruct Gemini on language-by-language subtitle translation, Cantonese-to-書面語 conversion, and domain terminology preservation."
+                  onOpenModal={handleOpenTranslationPromptModal}
+                  onReset={isCustomTrans ? () => setLectureTranslationPrompt(DEFAULT_LECTURE_TRANSLATION_PROMPT) : null}
+                  selectButtonText="🌐 Select Translation Prompt from Library"
+                  selectButtonStyle={{ border: '1.5px solid #16a34a', color: '#15803d' }}
+                  resetButtonText="Reset to Default System Prompt"
+                  previewLength={180}
+                />
+              </div>
+            );
+          })()}
         </div>
 
         {/* 3. Subtitle Translation Target Languages */}

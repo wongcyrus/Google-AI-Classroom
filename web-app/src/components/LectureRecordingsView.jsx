@@ -22,7 +22,11 @@ import { isRecordInLesson } from './StudentRecordsView';
 import Modal from './Modal';
 import AudioPromptSelector from './AudioPromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
-import { getPromptTypeByApplyTo } from '../constants/promptRegistry';
+import {
+  getPromptTypeByApplyTo,
+  DEFAULT_LECTURE_STT_PROMPT,
+  DEFAULT_LECTURE_TRANSLATION_PROMPT,
+} from '../constants/promptRegistry';
 import { formatAiCost } from '../utils/formatters';
 import './LectureRecordingsView.css';
 
@@ -875,8 +879,8 @@ export default function LectureRecordingsView({
       (rec.sttPromptId ? { id: rec.sttPromptId, name: rec.sttPromptName || rec.subtitlesPromptName || 'Saved STT Prompt', promptText: rec.customSttPrompt || '' } : null) ||
       classInfo?.lectureSttPrompt ||
       classInfo?.lectureRecordingPrompt ||
-      null;
-    const initialSttText = rec.customSttPrompt || rec.customPrompt || initialStt?.promptText || '';
+      DEFAULT_LECTURE_STT_PROMPT;
+    const initialSttText = rec.customSttPrompt || rec.customPrompt || initialStt?.promptText || DEFAULT_LECTURE_STT_PROMPT.promptText;
     setRegenSttPrompt(initialStt);
     setRegenSttPromptText(initialSttText);
     setRegenPrompt(initialStt);
@@ -886,8 +890,8 @@ export default function LectureRecordingsView({
       rec.lectureTranslationPrompt ||
       (rec.translationPromptId ? { id: rec.translationPromptId, name: rec.translationPromptName || 'Saved Translation Prompt', promptText: rec.customTranslationPrompt || '' } : null) ||
       classInfo?.lectureTranslationPrompt ||
-      null;
-    const initialTransText = rec.customTranslationPrompt || initialTrans?.promptText || '';
+      DEFAULT_LECTURE_TRANSLATION_PROMPT;
+    const initialTransText = rec.customTranslationPrompt || initialTrans?.promptText || DEFAULT_LECTURE_TRANSLATION_PROMPT.promptText;
     setRegenTransPrompt(initialTrans);
     setRegenTransPromptText(initialTransText);
 
@@ -2899,11 +2903,11 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
               <button
                 type="button"
                 onClick={() => {
-                  const defaultStt = classInfo?.lectureSttPrompt || classInfo?.lectureRecordingPrompt || null;
+                  const defaultStt = classInfo?.lectureSttPrompt || classInfo?.lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
                   setRegenSttPrompt(defaultStt);
-                  setRegenSttPromptText(defaultStt?.promptText || '');
+                  setRegenSttPromptText(defaultStt?.promptText || DEFAULT_LECTURE_STT_PROMPT.promptText);
                   setRegenPrompt(defaultStt);
-                  setRegenPromptText(defaultStt?.promptText || '');
+                  setRegenPromptText(defaultStt?.promptText || DEFAULT_LECTURE_STT_PROMPT.promptText);
                 }}
                 style={{
                   background: 'none',
@@ -2946,9 +2950,9 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
               <button
                 type="button"
                 onClick={() => {
-                  const defaultTrans = classInfo?.lectureTranslationPrompt || null;
+                  const defaultTrans = classInfo?.lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT;
                   setRegenTransPrompt(defaultTrans);
-                  setRegenTransPromptText(defaultTrans?.promptText || '');
+                  setRegenTransPromptText(defaultTrans?.promptText || DEFAULT_LECTURE_TRANSLATION_PROMPT.promptText);
                 }}
                 style={{
                   background: 'none',

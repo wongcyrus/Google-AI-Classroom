@@ -368,8 +368,15 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(subtitleCheckbox);
     expect(subtitleCheckbox).not.toBeChecked();
 
+    // Verify duplicate block from Section 5 is removed
+    expect(screen.queryByText(/configured in Section 5 below/i)).not.toBeInTheDocument();
+
+    // Verify default prompts active badges in Section 9
+    expect(screen.getByText(/Default STT Active/i)).toBeInTheDocument();
+    expect(screen.getByText(/Default Translation Active/i)).toBeInTheDocument();
+
     // Check STT prompt selector button
-    const promptBtn = screen.getByRole('button', { name: /Select STT Prompt from Library/i });
+    const promptBtn = screen.getByRole('button', { name: /Lecture Audio Speech-to-Text/i });
     expect(promptBtn).toBeInTheDocument();
     fireEvent.click(promptBtn);
 
@@ -380,7 +387,7 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(savePromptBtn);
 
     // Check Translation prompt selector button
-    const transPromptBtn = screen.getByRole('button', { name: /Select Translation Prompt from Library/i });
+    const transPromptBtn = screen.getByRole('button', { name: /Lecture Subtitle & Terminology Translator/i });
     expect(transPromptBtn).toBeInTheDocument();
     fireEvent.click(transPromptBtn);
 
@@ -1794,7 +1801,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     fireEvent.click(saveSubtitle[saveSubtitle.length - 1]);
 
     // 8. Lecture STT prompt modal
-    const selectSttBtn = screen.getByRole('button', { name: /^Select STT Prompt$/i });
+    const selectSttBtn = screen.getByRole('button', { name: /Lecture Audio Speech-to-Text/i });
     fireEvent.click(selectSttBtn);
     expect(screen.getByText('Select Lecture Audio Speech-to-Text & Chapters Prompt')).toBeInTheDocument();
     const saveStt = screen.getAllByRole('button', { name: /Save Prompt Selection/i });

@@ -10,6 +10,10 @@ import {
   getPlaceholderTextForSelector,
   getDropdownPlaceholderForSelector,
   validatePrompt,
+  DEFAULT_LECTURE_STT_PROMPT,
+  DEFAULT_LECTURE_TRANSLATION_PROMPT,
+  DEFAULT_LECTURE_STT_PROMPT_TEXT,
+  DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT,
 } from './promptRegistry';
 
 describe('promptRegistry Constants & Helper Utilities', () => {
@@ -170,4 +174,25 @@ describe('promptRegistry Constants & Helper Utilities', () => {
       expect(res.missingPlaceholders).toHaveLength(0);
     });
   });
+
+  describe('Default Whole-Lecture Recording Studio Prompts', () => {
+    it('exports complete default STT and translation prompt objects and texts', () => {
+      expect(DEFAULT_LECTURE_STT_PROMPT).toBeDefined();
+      expect(DEFAULT_LECTURE_STT_PROMPT.name).toBe('Lecture Audio Speech-to-Text & Chapters');
+      expect(DEFAULT_LECTURE_STT_PROMPT.category).toBe('audios');
+      expect(DEFAULT_LECTURE_STT_PROMPT.isSystem).toBe(true);
+      expect(DEFAULT_LECTURE_STT_PROMPT.promptText).toBe(DEFAULT_LECTURE_STT_PROMPT_TEXT);
+      expect(DEFAULT_LECTURE_STT_PROMPT_TEXT).toContain('Lecture Audio Speech-to-Text & Chapters');
+      expect(DEFAULT_LECTURE_STT_PROMPT_TEXT).toContain('YouTube Video Milestone Chapters');
+
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT).toBeDefined();
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT.name).toBe('Lecture Subtitle & Terminology Translator');
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT.category).toBe('translations');
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT.isSystem).toBe(true);
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT.promptText).toBe(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT);
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT).toContain('Lecture Subtitle & Terminology Translator');
+      expect(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT).toContain('{{targetLanguage}}');
+    });
+  });
 });
+
