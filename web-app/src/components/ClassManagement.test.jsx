@@ -2014,6 +2014,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
             classType: 'lecture',
             automaticCapture: false,
             tags: expect.arrayContaining(['Lecture']),
+            purgeScreenshotsAfterVideoCombine: true,
           })
         );
       });

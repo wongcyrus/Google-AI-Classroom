@@ -177,7 +177,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [allowShareTeacherRecordings, setAllowShareTeacherRecordings] = useState(false);
   const [teacherRecordingsPolicy, setTeacherRecordingsPolicy] = useState('private');
   const [consolidateLessonVideo, setConsolidateLessonVideo] = useState(true);
-  const [purgeScreenshotsAfterVideoCombine, setPurgeScreenshotsAfterVideoCombine] = useState(false);
+  const [purgeScreenshotsAfterVideoCombine, setPurgeScreenshotsAfterVideoCombine] = useState(true);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
   const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
@@ -231,6 +231,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setTeacherRecordingsPolicy(settings.teacherRecordingsPolicy);
     setAllowShareTeacherRecordings(settings.allowShareTeacherRecordings);
     setConsolidateLessonVideo(settings.consolidateLessonVideo);
+    setPurgeScreenshotsAfterVideoCombine(settings.purgeScreenshotsAfterVideoCombine !== undefined ? settings.purgeScreenshotsAfterVideoCombine : true);
     setLectureAiModel(settings.lectureAiModel);
 
     // Bingo Presence
@@ -644,7 +645,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAllowShareTeacherRecordings(false);
         setTeacherRecordingsPolicy('private');
         setConsolidateLessonVideo(true);
-        setPurgeScreenshotsAfterVideoCombine(false);
+        setPurgeScreenshotsAfterVideoCombine(true);
         setLectureAiModel('gemini-3.8-flash');
         setIsLectureSubtitlesEnabled(true);
         setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);

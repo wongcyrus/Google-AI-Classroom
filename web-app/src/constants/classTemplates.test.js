@@ -25,6 +25,7 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.defaultLectureRecording).toBe(true);
       expect(settings.isLectureSubtitlesEnabled).toBe(true);
       expect(settings.allowShareTeacherRecordings).toBe(true);
+      expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
     });
   });
 
@@ -38,6 +39,7 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.requireFullScreenOnly).toBe(false); // relaxed for multi-window
       expect(settings.defaultLectureRecording).toBe(false);
       expect(settings.isLectureSubtitlesEnabled).toBe(false);
+      expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
     });
   });
 
@@ -55,6 +57,7 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.autoBingoIntervalMinutes).toBe(5);
       expect(settings.defaultLectureRecording).toBe(true);
       expect(settings.isLectureSubtitlesEnabled).toBe(true);
+      expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
     });
   });
 
