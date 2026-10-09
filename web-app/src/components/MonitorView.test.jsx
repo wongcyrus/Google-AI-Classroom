@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import MonitorView from './MonitorView';
 
@@ -944,16 +944,18 @@ describe('MonitorView Component Suite', () => {
 
       render(<MonitorView {...defaultProps} />);
 
-      expect(screen.getByText(/⚠️ Passkey Bypass Claims \(1 Active • 15m Auto-Expire\)/i)).toBeInTheDocument();
-      expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
-      expect(screen.getByText('(Desk #12)')).toBeInTheDocument();
-      expect(screen.getByText(/Reason:/i)).toBeInTheDocument();
-      expect(screen.getByText(/Phone battery dead/i)).toBeInTheDocument();
-      expect(screen.getByText(/⏳ 10m 00s left/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Grant 1-Class Session Bypass/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Deny/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /✕ Dismiss$/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /✕ Dismiss All/i })).toBeInTheDocument();
+      const banner = screen.getByRole('alert');
+      expect(banner).toBeInTheDocument();
+      expect(within(banner).getByText(/⚠️ Passkey Bypass Claims \(1 Active • 15m Auto-Expire\)/i)).toBeInTheDocument();
+      expect(within(banner).getByText('student1@school.edu')).toBeInTheDocument();
+      expect(within(banner).getByText('(Desk #12)')).toBeInTheDocument();
+      expect(within(banner).getByText(/Reason:/i)).toBeInTheDocument();
+      expect(within(banner).getByText(/Phone battery dead/i)).toBeInTheDocument();
+      expect(within(banner).getByText(/⏳ 10m 00s left/i)).toBeInTheDocument();
+      expect(within(banner).getByRole('button', { name: /Grant 1-Class Session Bypass/i })).toBeInTheDocument();
+      expect(within(banner).getByRole('button', { name: /Deny/i })).toBeInTheDocument();
+      expect(within(banner).getByRole('button', { name: /✕ Dismiss$/i })).toBeInTheDocument();
+      expect(within(banner).getByRole('button', { name: /✕ Dismiss All/i })).toBeInTheDocument();
     });
 
     it('grants 1-class session bypass when Grant button is clicked', async () => {
