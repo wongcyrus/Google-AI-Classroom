@@ -4,6 +4,33 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.5 Class Concept Templates Creation-Only Guard and Edit-Mode Overwrite Protection
+
+**Date**: October 9, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Ready for Deployment  
+**Primary Files**:
+- Class Management: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/ClassManagement.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.test.jsx)
+- Documentation: [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/recent-changes.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/recent-changes.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Strict Creation-Only Restriction for Concept Templates**:
+   - **Rationale**: Concept templates (`🏛️ Lecture`, `💻 Lab`, `🖥️🎧 Lecture in Lab`) are designed to accelerate initial class onboarding by populating recommended baseline parameters. In edit mode (`selectedClass` or `embeddedClassId`), classes already have tailored proctoring sensitivities, audio permissions, recording policies, and timetable configurations. Allowing template re-selection during editing posed a severe risk of accidentally clobbering fine-tuned settings.
+   - **Hero Cards Conditional Rendering**: Wrapped the `.template-selector-card` container in `{!selectedClass && !embeddedClassId && ( ... )}` so that the template selection hero cards and the "Re-apply Presets" button are completely hidden when editing an existing class.
+   - **Runtime Handler Guard**: Added an explicit guard in `handleSelectTemplate`:
+     ```javascript
+     if (selectedClass || embeddedClassId) {
+       console.warn('[ClassManagement] Concept templates can only be applied during class creation.');
+       return;
+     }
+     ```
+   - **Accordion Subtitle State Indication**: Updated the Section 5–10 Advanced Configuration toggle label to show `— Configured parameters` when viewing an existing class (or `— Configuring custom overrides` when open), reserving `Pre-configured by "<name>" template` solely for new class creation.
+
+2. **Dashboard Filtering Tags Preservation in Section 1**:
+   - While template presets are locked during edit mode, instructors can still safely add or toggle template category tags (`#Lecture`, `#Lab`, `#Lecture in Lab`) in Section 1 via quick tag pills without altering any underlying capture or proctoring parameters.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.4 Passkey Bypass Claims Transient Expiration, Live Countdown Ticker, and HUD Dismissal Controls
 
 **Date**: October 9, 2026  

@@ -135,9 +135,12 @@ To streamline course setup, class creation is powered by **Concept Templates**. 
 
 #### 4. Collapsible Advanced Configuration (Sections 5 – 10)
 > [!TIP]
-> Selecting a concept template **only pre-populates default values**—it never locks or restricts your settings!
+> Selecting a concept template **only pre-populates default values** during class creation—it never locks or restricts your settings!
 > 
-> Below Section 4 (Teaching Team), click the **`⚙️ Advanced Configuration & Parameter Overrides (Sections 5 – 10)`** accordion banner at any time. When expanded, you have 100% full control to fine-tune AI proctoring, vision models, Gemini prompt overrides, passkey enforcement, exam lockdown periods, and recording policies before saving. All settings remain fully editable in **Class Settings** at any time.
+> Below Section 4 (Teaching Team), click the **`⚙️ Advanced Configuration & Parameter Overrides (Sections 5 – 10)`** accordion banner at any time. When expanded, you have 100% full control to fine-tune AI proctoring, vision models, Gemini prompt overrides, passkey enforcement, exam lockdown periods, and recording policies before saving.
+>
+> **Templates are Exclusively Active During Class Creation**:
+> Concept templates are pedagogical starting points designed to accelerate initial class setup. When editing an existing class, template selector cards are intentionally hidden to prevent accidental overrides of customized proctoring, capture, or recording configurations. Teachers can still adjust category tags (`#Lecture`, `#Lab`, `#Lecture in Lab`) anytime in Section 1 for dashboard filtering without modifying proctoring rules.
 
 1. On the Teacher Dashboard, click **`+ Create Class`**.
 2. Select your desired **Concept Template Card** (`Lecture`, `Lab`, or `Lecture in Lab`).

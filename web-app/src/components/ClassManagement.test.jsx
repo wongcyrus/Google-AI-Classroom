@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import ClassManagement from './ClassManagement';
 import { exportStudentRosterExcel } from '../utils/studentDisplayUtils';
 
@@ -2025,6 +2025,53 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(getChipsList()).toHaveTextContent('#Lab');
       expect(getChipsList()).not.toHaveTextContent('#Lecture');
       expect(getChipsList()).toHaveTextContent('#Cohort-A');
+    });
+
+    it('does not render template selector cards when editing an existing class via embeddedClassId', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
+      });
+
+      // Template selector hero cards must NOT be displayed when editing
+      expect(screen.queryByText(/Select Class Concept Template/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 4, name: 'Lecture' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 4, name: 'Lab' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 4, name: 'Lecture in Lab' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Re-apply Presets/i })).not.toBeInTheDocument();
+
+      // Quick filter tag pills in Section 1 should still exist for classification without settings overwrite
+      expect(screen.getByText(/Template Filter Tag:/i)).toBeInTheDocument();
+      const presetRow = document.querySelector('.template-tags-presets-row');
+      expect(presetRow).toBeInTheDocument();
+      expect(within(presetRow).getByRole('button', { name: /^\+ #Lecture$/i })).toBeInTheDocument();
+    });
+
+    it('does not render template selector cards when editing an existing class via selectedClass dropdown', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      // Initially in creation mode, template selector is visible
+      expect(screen.getByText(/Select Class Concept Template/i)).toBeInTheDocument();
+
+      // Select an existing class from dropdown
+      const selectClassDropdown = screen.getByLabelText(/Select a Class to Edit or Configure/i);
+      await act(async () => {
+        fireEvent.change(selectClassDropdown, { target: { value: 'CLASS_101' } });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
+      });
+
+      // Template selector hero cards must now be hidden in edit mode
+      expect(screen.queryByText(/Select Class Concept Template/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { level: 4, name: 'Lecture' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Re-apply Presets/i })).not.toBeInTheDocument();
     });
   });
 });

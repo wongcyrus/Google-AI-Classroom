@@ -192,6 +192,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(Boolean(embeddedClassId));
 
   const handleSelectTemplate = (templateId) => {
+    // Concept templates are strictly for initial class creation; prevent overriding an existing class
+    if (selectedClass || embeddedClassId) {
+      console.warn('[ClassManagement] Concept templates can only be applied during class creation.');
+      return;
+    }
+
     setSelectedTemplate(templateId);
     const settings = getTemplateSettings(templateId);
 
@@ -1882,77 +1888,79 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       {error && <div className="error-message">⚠️ {error}</div>}
       {successMessage && <div className="success-message">✓ {successMessage}</div>}
 
-      {/* Concept Template Selector */}
-      <div className="template-selector-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🎯</span> Select Class Concept Template
-            </h3>
-            <p style={{ margin: '0.25rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-              Choose a pedagogical template to automatically preset recommended screen capture, anti-distraction, recording studio, and proctoring settings.
-            </p>
-          </div>
-          {selectedTemplate && (
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-              onClick={() => handleSelectTemplate(selectedTemplate)}
-              title="Reset all settings below to the defaults for this template"
-            >
-              🔄 Re-apply Presets
-            </button>
-          )}
-        </div>
-
-        <div className="template-grid">
-          {Object.values(CLASS_TEMPLATES).map((tmpl) => {
-            const isSelected = selectedTemplate === tmpl.id;
-            return (
-              <div
-                key={tmpl.id}
-                role="button"
-                tabIndex={0}
-                className={`template-card ${isSelected ? 'active' : ''}`}
-                onClick={() => handleSelectTemplate(tmpl.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleSelectTemplate(tmpl.id);
-                  }
-                }}
+      {/* Concept Template Selector - strictly for creating a new class */}
+      {!selectedClass && !embeddedClassId && (
+        <div className="template-selector-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>🎯</span> Select Class Concept Template
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                Choose a pedagogical template to automatically preset recommended screen capture, anti-distraction, recording studio, and proctoring settings.
+              </p>
+            </div>
+            {selectedTemplate && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                onClick={() => handleSelectTemplate(selectedTemplate)}
+                title="Reset all settings below to the defaults for this template"
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '4px' }}>
-                    <span style={{ fontSize: '1.75rem' }}>{tmpl.icon}</span>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span className="template-badge">{tmpl.badge}</span>
-                      <span style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 7px', borderRadius: '4px', fontWeight: 600 }}>
-                        #{tmpl.tag || tmpl.name}
-                      </span>
-                    </div>
-                  </div>
-                  <h4 style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '1.1rem', color: isSelected ? 'var(--color-primary)' : 'inherit' }}>
-                    {tmpl.name}
-                  </h4>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: '1.4' }}>
-                    {tmpl.description}
-                  </p>
-                </div>
+                🔄 Re-apply Presets
+              </button>
+            )}
+          </div>
 
-                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #cbd5e1)' }}>
-                  <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--color-text-secondary, #475569)' }}>
-                    {tmpl.highlights.map((h, i) => (
-                      <li key={i} style={{ marginBottom: '0.2rem' }}>{h}</li>
-                    ))}
-                  </ul>
+          <div className="template-grid">
+            {Object.values(CLASS_TEMPLATES).map((tmpl) => {
+              const isSelected = selectedTemplate === tmpl.id;
+              return (
+                <div
+                  key={tmpl.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`template-card ${isSelected ? 'active' : ''}`}
+                  onClick={() => handleSelectTemplate(tmpl.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelectTemplate(tmpl.id);
+                    }
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '4px' }}>
+                      <span style={{ fontSize: '1.75rem' }}>{tmpl.icon}</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="template-badge">{tmpl.badge}</span>
+                        <span style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', padding: '2px 7px', borderRadius: '4px', fontWeight: 600 }}>
+                          #{tmpl.tag || tmpl.name}
+                        </span>
+                      </div>
+                    </div>
+                    <h4 style={{ margin: '0.25rem 0 0.5rem 0', fontSize: '1.1rem', color: isSelected ? 'var(--color-primary)' : 'inherit' }}>
+                      {tmpl.name}
+                    </h4>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: '1.4' }}>
+                      {tmpl.description}
+                    </p>
+                  </div>
+
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border, #cbd5e1)' }}>
+                    <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--color-text-secondary, #475569)' }}>
+                      {tmpl.highlights.map((h, i) => (
+                        <li key={i} style={{ marginBottom: '0.2rem' }}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Section 1: Basic Information & Storage */}
       <div className="settings-section-card">
@@ -2780,7 +2788,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <span>⚙️</span>
           <span>Advanced Configuration &amp; Parameter Overrides (Sections 5 – 10)</span>
           <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--color-text-muted)' }}>
-            — {showAdvancedSettings ? 'Configuring custom overrides' : `Pre-configured by "${getClassTemplate(selectedTemplate).name}" template`}
+            — {showAdvancedSettings ? 'Configuring custom overrides' : (selectedClass || embeddedClassId ? 'Configured parameters' : `Pre-configured by "${getClassTemplate(selectedTemplate).name}" template`)}
           </span>
         </span>
         <span style={{ fontSize: '1.1rem', transform: showAdvancedSettings ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease-in-out' }}>
