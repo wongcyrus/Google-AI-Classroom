@@ -144,6 +144,44 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [classSchedule, setClassSchedule] = useState(null);
   const [pendingBypassRequests, setPendingBypassRequests] = useState([]);
   const [classEmergencyPin, setClassEmergencyPin] = useState('');
+  const [bypassTickerTime, setBypassTickerTime] = useState(() => Date.now());
+
+  // Real-time countdown & auto-expiration ticker
+  useEffect(() => {
+    if (pendingBypassRequests.length === 0) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setBypassTickerTime(now);
+
+      // Auto-expire requests that cross the expiration mark while viewing
+      const expiredNow = pendingBypassRequests.filter((req) => {
+        const expiry = req.expiresAtMillis || 0;
+        return expiry > 0 && expiry <= now;
+      });
+
+      if (expiredNow.length > 0 && classId) {
+        expiredNow.forEach((r) => {
+          updateDoc(doc(db, 'classes', classId, 'passkeyBypassRequests', r.id), {
+            status: 'expired',
+            expiredAt: serverTimestamp(),
+          }).catch((err) => console.warn('[MonitorView] Error auto-expiring claim:', r.id, err));
+        });
+        setPendingBypassRequests((prev) => prev.filter((r) => !expiredNow.some((exp) => exp.id === r.id)));
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [pendingBypassRequests, classId]);
+
+  // Derived active unexpired claims
+  const activeBypassRequests = useMemo(() => {
+    return pendingBypassRequests.filter((req) => {
+      if (req.status && req.status !== 'pending') return false;
+      const expiry = req.expiresAtMillis;
+      if (!expiry) return false;
+      return expiry > bypassTickerTime;
+    });
+  }, [pendingBypassRequests, bypassTickerTime]);
 
   const handleSelectMicDeviceId = (newId) => {
     setSelectedMicDeviceId(newId);
@@ -848,12 +886,46 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       );
       unsubscribeBypass = onSnapshot(bypassQuery, (snapshot) => {
         const requests = [];
+        const now = Date.now();
+        const expiredToUpdate = [];
+
         if (snapshot && typeof snapshot.forEach === 'function') {
           snapshot.forEach((docSnap) => {
-            requests.push({ id: docSnap.id, ...docSnap.data() });
+            const data = docSnap.data() || {};
+            const id = docSnap.id;
+            let expiresAt = data.expiresAtMillis;
+            if (!expiresAt) {
+              const reqTime = data.requestedAt?.toMillis ? data.requestedAt.toMillis()
+                : (data.requestedAt?.seconds ? data.requestedAt.seconds * 1000
+                : (data.requestedAt ? new Date(data.requestedAt).getTime() : 0));
+              if (reqTime > 0) {
+                expiresAt = reqTime + 15 * 60 * 1000;
+              }
+            }
+
+            // Exclude already expired claims and mark them expired in Firestore
+            if (expiresAt && expiresAt <= now) {
+              expiredToUpdate.push(id);
+            } else {
+              requests.push({
+                id,
+                ...data,
+                expiresAtMillis: expiresAt || (now + 15 * 60 * 1000),
+              });
+            }
           });
         }
         setPendingBypassRequests(requests);
+
+        // Auto-mark expired in Firestore in the background so queries won't fetch them again
+        if (expiredToUpdate.length > 0) {
+          expiredToUpdate.forEach((expId) => {
+            updateDoc(doc(db, 'classes', classId, 'passkeyBypassRequests', expId), {
+              status: 'expired',
+              expiredAt: serverTimestamp(),
+            }).catch((err) => console.warn('[MonitorView] Could not expire request:', expId, err));
+          });
+        }
       }, (err) => {
         console.warn('[MonitorView] Bypass listener notice:', err);
       });
@@ -872,6 +944,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const handleResolveBypass = async (requestId, studentUid, studentEmail, approved) => {
     if (!classId) return;
+    // Optimistic removal from UI
+    setPendingBypassRequests((prev) => prev.filter((r) => r.id !== requestId));
     try {
       const approveFn = httpsCallable(functions, 'approveTeacherPasskeyBypass');
       await approveFn({
@@ -884,7 +958,53 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       });
     } catch (err) {
       console.error('[MonitorView] Error resolving bypass request:', err);
+      // Fallback: If rejection fails on Cloud Function, directly mark request as rejected in Firestore
+      if (!approved && requestId) {
+        try {
+          await updateDoc(doc(db, 'classes', classId, 'passkeyBypassRequests', requestId), {
+            status: 'rejected',
+            resolvedAt: serverTimestamp(),
+            resolvedBy: auth.currentUser?.email || 'teacher',
+          });
+          return;
+        } catch (innerErr) {
+          console.warn('[MonitorView] Fallback reject also failed:', innerErr);
+        }
+      }
       alert('Failed to resolve passkey bypass: ' + (err.message || 'Error'));
+    }
+  };
+
+  const handleDismissBypass = async (requestId) => {
+    if (!classId || !requestId) return;
+    setPendingBypassRequests((prev) => prev.filter((r) => r.id !== requestId));
+    try {
+      await updateDoc(doc(db, 'classes', classId, 'passkeyBypassRequests', requestId), {
+        status: 'dismissed',
+        dismissedAt: serverTimestamp(),
+        dismissedBy: auth.currentUser?.email || 'teacher',
+      });
+    } catch (err) {
+      console.error('[MonitorView] Error dismissing bypass request:', err);
+    }
+  };
+
+  const handleDismissAllBypasses = async () => {
+    if (!classId || activeBypassRequests.length === 0) return;
+    const toDismiss = [...activeBypassRequests];
+    setPendingBypassRequests([]);
+    try {
+      await Promise.all(
+        toDismiss.map((req) =>
+          updateDoc(doc(db, 'classes', classId, 'passkeyBypassRequests', req.id), {
+            status: 'dismissed',
+            dismissedAt: serverTimestamp(),
+            dismissedBy: auth.currentUser?.email || 'teacher',
+          })
+        )
+      );
+    } catch (err) {
+      console.error('[MonitorView] Error dismissing all bypass requests:', err);
     }
   };
 
@@ -1926,7 +2046,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>
-        {pendingBypassRequests.length > 0 && (
+        {activeBypassRequests.length > 0 && (
           <div className="passkey-bypass-podium-banner" role="alert" style={{
             background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
             border: '1px solid #6366f1',
@@ -1940,70 +2060,139 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
             boxShadow: '0 4px 14px rgba(99, 102, 241, 0.3)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                ⚠️ Passkey Bypass Claims ({pendingBypassRequests.length} Pending)
-              </span>
-              {classEmergencyPin && (
-                <span style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', color: '#c7d2fe' }}>
-                  🔑 Teacher Aisle PIN: <strong style={{ color: '#ffffff', letterSpacing: '1px' }}>{classEmergencyPin}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ⚠️ Passkey Bypass Claims ({activeBypassRequests.length} Active &bull; 15m Auto-Expire)
                 </span>
-              )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {classEmergencyPin && (
+                  <span style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', color: '#c7d2fe' }}>
+                    🔑 Teacher Aisle PIN: <strong style={{ color: '#ffffff', letterSpacing: '1px' }}>{classEmergencyPin}</strong>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDismissAllBypasses}
+                  className="dismiss-all-bypass-btn"
+                  title="Dismiss all pending bypass claims"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.25)',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    color: '#fca5a5',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  ✕ Dismiss All
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {pendingBypassRequests.map((req) => (
-                <div key={req.id} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: 'rgba(15, 23, 42, 0.65)',
-                  borderRadius: '8px',
-                  padding: '8px 14px',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                }}>
-                  <div>
-                    <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>{req.studentEmail}</strong>
-                    <span style={{ color: '#94a3b8', fontSize: '0.82rem', marginLeft: '8px' }}>({req.deskNumber || 'Lab PC'})</span>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: '2px' }}>
-                      Reason: <em>{req.reason}</em>
+              {activeBypassRequests.map((req) => {
+                const expiry = req.expiresAtMillis || 0;
+                const remainingSec = Math.max(0, Math.floor((expiry - bypassTickerTime) / 1000));
+                const remainingMin = Math.floor(remainingSec / 60);
+                const secPart = remainingSec % 60;
+                const timeBadgeText = `${remainingMin}m ${secPart < 10 ? '0' : ''}${secPart}s left`;
+                const isUrgent = remainingMin < 3;
+
+                return (
+                  <div key={req.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                    border: isUrgent ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid transparent',
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>{req.studentEmail}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>({req.deskNumber || 'Lab PC'})</span>
+                        <span style={{
+                          background: isUrgent ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.2)',
+                          color: isUrgent ? '#fca5a5' : '#fcd34d',
+                          border: isUrgent ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid rgba(245, 158, 11, 0.4)',
+                          padding: '1px 7px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}>
+                          ⏳ {timeBadgeText}
+                        </span>
+                      </div>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: '2px' }}>
+                        Reason: <em>{req.reason}</em>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, true)}
+                        style={{
+                          background: '#10b981',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ✅ Grant 1-Class Session Bypass
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, false)}
+                        style={{
+                          background: '#ef4444',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ❌ Deny
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDismissBypass(req.id)}
+                        style={{
+                          background: 'rgba(148, 163, 184, 0.15)',
+                          color: '#cbd5e1',
+                          border: '1px solid rgba(148, 163, 184, 0.3)',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                        title="Dismiss this claim without granting or rejecting"
+                      >
+                        ✕ Dismiss
+                      </button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, true)}
-                      style={{
-                        background: '#10b981',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '6px 14px',
-                        borderRadius: '6px',
-                        fontSize: '0.82rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ✅ Grant 1-Class Session Bypass
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleResolveBypass(req.id, req.studentUid, req.studentEmail, false)}
-                      style={{
-                        background: '#ef4444',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '0.82rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ❌ Deny
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

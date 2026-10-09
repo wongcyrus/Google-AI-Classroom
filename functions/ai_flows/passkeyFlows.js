@@ -984,6 +984,38 @@ export async function handleRequestTeacherPasskeyBypass({ studentUid, studentEma
 
   const requestId = crypto.randomUUID();
   const normalizedEmail = (studentEmail || '').toLowerCase();
+  const now = Date.now();
+  const expiresAtMillis = now + 15 * 60 * 1000; // 15 min TTL
+  const expireAt = new Date(now + 24 * 60 * 60 * 1000); // 24h TTL policy for Firestore
+
+  // Supersede any older pending requests from this student in this class
+  try {
+    const existingSnap = await db.collection(`classes/${classId}/passkeyBypassRequests`)
+      .where('status', '==', 'pending')
+      .get();
+
+    if (existingSnap && !existingSnap.empty && typeof existingSnap.forEach === 'function') {
+      const updates = [];
+      existingSnap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const matchEmail = normalizedEmail && (d.studentEmail || '').toLowerCase() === normalizedEmail;
+        const matchUid = studentUid && d.studentUid === studentUid;
+        if (matchEmail || matchUid) {
+          if (docSnap.ref && typeof docSnap.ref.update === 'function') {
+            updates.push(docSnap.ref.update({
+              status: 'superseded',
+              supersededAt: FieldValue.serverTimestamp(),
+            }));
+          }
+        }
+      });
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
+    }
+  } catch (err) {
+    console.warn(`[handleRequestTeacherPasskeyBypass] Could not supersede previous requests:`, err.message);
+  }
 
   await db.doc(`classes/${classId}/passkeyBypassRequests/${requestId}`).set({
     requestId,
@@ -994,7 +1026,8 @@ export async function handleRequestTeacherPasskeyBypass({ studentUid, studentEma
     reason: reason || 'Phone unavailable',
     status: 'pending',
     requestedAt: FieldValue.serverTimestamp(),
-    expiresAtMillis: Date.now() + 15 * 60 * 1000, // 15 min TTL
+    expiresAtMillis, // 15 min TTL
+    expireAt, // 24h TTL policy
   });
 
   // Also log the request
@@ -1029,6 +1062,7 @@ export async function handleApproveTeacherPasskeyBypass({
   teacherEmail,
   bypassDurationMinutes = 180,
   approved = true,
+  action,
 }) {
   if (!classId) {
     throw new HttpsError('invalid-argument', 'Missing classId.');
@@ -1046,12 +1080,43 @@ export async function handleApproveTeacherPasskeyBypass({
       if (!targetUid && requestData.studentUid) targetUid = requestData.studentUid;
       if (!targetEmail && requestData.studentEmail) targetEmail = requestData.studentEmail;
 
+      const newStatus = action === 'dismiss' ? 'dismissed' : (approved ? 'approved' : 'rejected');
       await reqRef.update({
-        status: approved ? 'approved' : 'rejected',
+        status: newStatus,
         resolvedAt: FieldValue.serverTimestamp(),
         resolvedBy: teacherEmail || 'teacher',
       });
     }
+  }
+
+  // Handle explicit dismissal action
+  if (action === 'dismiss') {
+    return {
+      success: true,
+      dismissed: true,
+      message: 'Bypass request dismissed.',
+    };
+  }
+
+  // Handle rejection without requiring targetUid to be resolvable
+  if (!approved) {
+    if (targetUid || targetEmail) {
+      await db.collection('passkeyAuditLogs').add({
+        action: 'TEACHER_BYPASS_REJECTED',
+        studentUid: targetUid || null,
+        studentEmail: targetEmail || null,
+        classId,
+        teacherUid: teacherUid || null,
+        teacherEmail: teacherEmail || 'teacher',
+        reason: requestData?.reason || 'Teacher Rejected',
+        timestamp: FieldValue.serverTimestamp(),
+      });
+    }
+    return {
+      success: true,
+      approved: false,
+      message: 'Bypass request rejected.',
+    };
   }
 
   if (!targetUid && targetEmail) {
@@ -1102,52 +1167,38 @@ export async function handleApproveTeacherPasskeyBypass({
   const durationMin = Number(bypassDurationMinutes) || 180;
   const expiresAtMillis = Date.now() + durationMin * 60 * 1000;
 
-  if (approved) {
-    // Set bypass in studentProperties
-    await db.doc(`classes/${classId}/studentProperties/${targetUid}`).set({
-      passkeyBypass: {
-        active: true,
-        grantedAt: FieldValue.serverTimestamp(),
-        expiresAtMillis,
-        expiresAt: new Date(expiresAtMillis).toISOString(),
-        grantedBy: teacherEmail || 'teacher',
-        teacherUid: teacherUid || null,
-        reason: requestData?.reason || 'Teacher Podium Approval',
-        deskNumber: requestData?.deskNumber || null,
-        scope: 'current_lesson',
-      },
-    }, { merge: true });
-
-    // Record audit log
-    await db.collection('passkeyAuditLogs').add({
-      action: 'TEACHER_BYPASS_GRANTED',
-      studentUid: targetUid,
-      studentEmail: targetEmail || null,
-      classId,
+  // Set bypass in studentProperties
+  await db.doc(`classes/${classId}/studentProperties/${targetUid}`).set({
+    passkeyBypass: {
+      active: true,
+      grantedAt: FieldValue.serverTimestamp(),
+      expiresAtMillis,
+      expiresAt: new Date(expiresAtMillis).toISOString(),
+      grantedBy: teacherEmail || 'teacher',
       teacherUid: teacherUid || null,
-      teacherEmail: teacherEmail || 'teacher',
       reason: requestData?.reason || 'Teacher Podium Approval',
       deskNumber: requestData?.deskNumber || null,
-      expiresAtMillis,
-      timestamp: FieldValue.serverTimestamp(),
-    });
-  } else {
-    // If rejected
-    await db.collection('passkeyAuditLogs').add({
-      action: 'TEACHER_BYPASS_REJECTED',
-      studentUid: targetUid,
-      studentEmail: targetEmail || null,
-      classId,
-      teacherUid: teacherUid || null,
-      teacherEmail: teacherEmail || 'teacher',
-      reason: requestData?.reason || 'Teacher Rejected',
-      timestamp: FieldValue.serverTimestamp(),
-    });
-  }
+      scope: 'current_lesson',
+    },
+  }, { merge: true });
+
+  // Record audit log
+  await db.collection('passkeyAuditLogs').add({
+    action: 'TEACHER_BYPASS_GRANTED',
+    studentUid: targetUid,
+    studentEmail: targetEmail || null,
+    classId,
+    teacherUid: teacherUid || null,
+    teacherEmail: teacherEmail || 'teacher',
+    reason: requestData?.reason || 'Teacher Podium Approval',
+    deskNumber: requestData?.deskNumber || null,
+    expiresAtMillis,
+    timestamp: FieldValue.serverTimestamp(),
+  });
 
   return {
     success: true,
-    approved,
+    approved: true,
     studentUid: targetUid,
     expiresAtMillis: approved ? expiresAtMillis : null,
     message: approved

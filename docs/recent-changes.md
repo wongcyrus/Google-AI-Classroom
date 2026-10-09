@@ -4,6 +4,41 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.4 Passkey Bypass Claims Transient Expiration, Live Countdown Ticker, and HUD Dismissal Controls
+
+**Date**: October 9, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Ready for Deployment  
+**Primary Files**:
+- Teacher Podium HUD: [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`web-app/src/components/MonitorView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.css), [`web-app/src/components/MonitorView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.test.jsx)
+- Passkey Cloud Flows: [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs), [`functions/ai_flows/passkeyFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.test.js)
+- Documentation: [`docs/passkey-device-registration-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/passkey-device-registration-guide.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Transient 15-Minute Expiration & Real-Time Elimination of "Forever Claims"**:
+   - **Root Cause**: Previously, `handleRequestTeacherPasskeyBypass` wrote passkey bypass claims with `expiresAtMillis: Date.now() + 15 * 60 * 1000`, but `MonitorView.jsx` queried Firestore with `where('status', '==', 'pending')` without client-side expiration checks or background transition to `status: 'expired'`. If a teacher did not click "Grant" or "Deny", old pending claims from previous lessons remained pending indefinitely and displayed on the teacher's podium HUD forever.
+   - **Real-Time Client Filtering (`activeBypassRequests`)**:
+     - `MonitorView.jsx` now filters snapshot data on arrival, excluding any claim where `expiresAtMillis <= Date.now()`.
+     - A 3-second live ticker (`useEffect`) re-evaluates in-memory claims against the current time. When a claim crosses the 15-minute mark, it automatically and dynamically vanishes from the teacher's view without requiring a manual page refresh.
+   - **Automated Firestore Self-Healing**:
+     - Stale claims identified during snapshot ingestion or during the live ticker are automatically transitioned to `status: 'expired'` with an `expiredAt: serverTimestamp()` record in Firestore, permanently preventing them from returning in future queries.
+     - On the backend, `handleRequestTeacherPasskeyBypass` now adds an `expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000)` timestamp, enabling Firestore native TTL policies to auto-purge old bypass claims after 24 hours.
+
+2. **Per-Student Request Deduplication & Superseding**:
+   - When a student submits a new passkey bypass request via `handleRequestTeacherPasskeyBypass`, the Cloud Function automatically identifies any existing pending claims for that student in the class and transitions them to `status: 'superseded'`.
+   - This prevents duplicate claim accumulation if a student clicks the submit button multiple times.
+
+3. **Live Countdown Badge & Visual Urgency**:
+   - Each claim card displays a real-time countdown badge (e.g., `⏳ 14m 20s left`).
+   - When fewer than 3 minutes remain, the badge automatically turns red with subtle border highlighting (`⏳ 02m 45s left`) to warn the instructor before the claim auto-expires.
+
+4. **1-Click Individual & Global Dismissal Controls**:
+   - **`✕ Dismiss` (Per Claim)**: Instructors can dismiss an individual claim with 1 click without granting a bypass or recording a disciplinary rejection. Optimistically disappears from the UI and updates Firestore to `status: 'dismissed'`.
+   - **`✕ Dismiss All` (Header)**: Added to the podium banner header next to the Teacher Aisle PIN, allowing instructors to clear all active claims across the classroom with a single click.
+   - **Robust Error Fallbacks**: Cloud Function `handleApproveTeacherPasskeyBypass` now supports `action: 'dismiss'` and tolerates missing or unresolvable student UIDs during rejection/dismissal without throwing runtime errors.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.3 Class Creation Concept Templates, Dashboard Tag Filtering, and Student Custom Properties Management
 
 **Date**: October 8–9, 2026  

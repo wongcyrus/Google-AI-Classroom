@@ -198,13 +198,13 @@ In computer lab environments, edge cases such as dead phone batteries, forgotten
 When a student arrives at a lab PC without a usable smartphone:
 
 ```
-  Desktop Lab PC (Student)                    Teacher Podium HUD (MonitorView)
-┌────────────────────────────┐              ┌─────────────────────────────────────────────────────────┐
-│ Passkey Enforcement Gate   │              │ ⚠️ Passkey Remote Bypass Requests (1 Pending)           │
-│ [🙋 Request Teacher Bypass]│──Firestore──►│ • Chan Tai Man (student1@stu.vtc.edu.hk)                │
-│ "Phone battery dead"       │              │   Reason: Phone battery depleted (14:02)                │
-│                            │              │   [ ✅ Grant 1-Class Session Bypass ]   [ ❌ Deny ]     │
-└────────────────────────────┘              └─────────────────────────────────────────────────────────┘
+  Desktop Lab PC (Student)                            Teacher Podium HUD (MonitorView)
+┌────────────────────────────┐              ┌─────────────────────────────────────────────────────────────────┐
+│ Passkey Enforcement Gate   │              │ ⚠️ Passkey Bypass Claims (1 Active • 15m Auto-Expire) [✕ All]   │
+│ [🙋 Request Teacher Bypass]│──Firestore──►│ • student1@school.edu (Desk #14)  ⏳ 14m 20s left               │
+│ "Phone battery dead"       │              │   Reason: Phone battery dead                                    │
+│                            │              │   [ ✅ Grant 1-Class Session Bypass ] [ ❌ Deny ] [ ✕ Dismiss ] │
+└────────────────────────────┘              └─────────────────────────────────────────────────────────────────┘
               ▲                                                           │
               │                                                Cloud Function onCall
               │                                            handleApproveTeacherPasskeyBypass
@@ -217,8 +217,15 @@ When a student arrives at a lab PC without a usable smartphone:
    - The student clicks **`🙋 Request Teacher Remote Bypass`** on the desktop gate.
    - **Automatic Schedule Detection**: `PasskeyEnforcementGate` automatically detects the current class session using `useStudentClassSchedule(user)`. If the student is enrolled in multiple classes, an intuitive classroom session selector allows them to choose the intended session, eliminating "Class ID is required" errors.
    - The student selects a reason (e.g., "Phone battery dead" or "Left phone at home") and submits.
-2. **Instant Podium Notification**: A high-visibility alert banner appears in real time on the teacher's `MonitorView` HUD showing the student's name, email, and timestamp.
-3. **1-Click Authorization**: The teacher glances across the lab to verify the student's identity and clicks **`[ ✅ Grant 1-Class Session Bypass ]`**.
+   - **Request Deduplication & Superseding**: If a student submits again, any previous pending requests for that student in the class are automatically marked `status: 'superseded'`, ensuring clean single-claim state.
+2. **Instant Podium Notification with 15-Minute Auto-Expire Ticker**:
+   - A high-visibility alert banner appears in real time on the teacher's `MonitorView` HUD showing the student's email, desk number, reason, and a live countdown badge (`⏳ 14m 20s left`).
+   - **Transient Lifecycle (No "Forever Claims")**: Bypass claims carry an automated 15-minute TTL. `MonitorView` features a live 3-second ticker; when a claim expires, it automatically and dynamically vanishes from the teacher's screen and is auto-marked `status: 'expired'` in Firestore. Expired claims are never reloaded on future visits.
+3. **1-Click Authorization, Denial, or Dismissal**:
+   - **Grant**: The teacher glances across the lab to verify the student's identity and clicks **`[ ✅ Grant 1-Class Session Bypass ]`**.
+   - **Deny**: Rejects the claim and logs the rejection in `passkeyAuditLogs`.
+   - **Dismiss (`✕ Dismiss`)**: Instructors can dismiss an individual claim immediately without granting or logging a disciplinary rejection.
+   - **Dismiss All (`✕ Dismiss All`)**: Located in the banner header next to the Teacher Aisle PIN, allowing instructors to dismiss all pending claims in 1 click.
 4. **Cloud Execution**: `handleApproveTeacherPasskeyBypass` grants a bypass window (default 90–180 minutes) in `classes/{classId}/studentProperties/{studentUid}.passkeyBypass` and writes an immutable audit entry to `passkeyAuditLogs`.
 5. **Zero-Latency Multi-Class Gate Unlock**: `PasskeyEnforcementGate` listens simultaneously across all student-enrolled class properties (`classes/${cid}/studentProperties/${uid}`). When the bypass flag is detected in any class, the desktop PC unlocks instantly and transitions straight into the classroom workspace without requiring a page reload.
 

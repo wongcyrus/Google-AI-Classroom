@@ -418,6 +418,15 @@
   }
 }
 
+/* ==========================================================================
+   Passkey Bypass Podium Banner & Controls
+   ========================================================================== */
+.passkey-bypass-podium-banner {
+  transition: all 0.25s ease-in-out;
+}
 
-
-
+.dismiss-all-bypass-btn:hover {
+  background: rgba(239, 68, 68, 0.4) !important;
+  border-color: rgba(239, 68, 68, 0.8) !important;
+  color: #ffffff !important;
+}

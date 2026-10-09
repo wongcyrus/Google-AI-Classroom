@@ -1246,6 +1246,55 @@ describe('WebAuthn Passkey Flows Backend', () => {
       );
     });
 
+    it('dismisses bypass request cleanly when action is dismiss', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentEmail: 'unknown@vtc.edu.hk',
+          reason: 'Test claim',
+        }),
+      });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        requestId: 'req_dismiss',
+        classId: 'class_it101',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        action: 'dismiss',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.dismissed).toBe(true);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'dismissed',
+        })
+      );
+    });
+
+    it('gracefully handles rejection when targetUid cannot be resolved', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          reason: 'Unknown student',
+        }),
+      });
+
+      const res = await handleApproveTeacherPasskeyBypass({
+        requestId: 'req_rej_unknown',
+        classId: 'class_it101',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        approved: false,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.approved).toBe(false);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'rejected',
+        })
+      );
+    });
+
     it('resolves studentUid from class doc students map when student has no passkey doc', async () => {
       mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
       mockDocGet.mockImplementation((path) => {

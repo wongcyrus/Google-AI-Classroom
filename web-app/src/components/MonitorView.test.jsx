@@ -7,8 +7,16 @@ const mockAddDoc = vi.fn().mockResolvedValue({ id: 'msg_1' });
 const mockUpdateDoc = vi.fn().mockResolvedValue();
 let currentExamActive = false;
 const fixedDate = new Date('2026-08-30T08:30:00Z');
+let mockBypassDocs = [];
 
 const mockOnSnapshot = vi.fn((ref, cb) => {
+  if (ref?.path?.includes('passkeyBypassRequests')) {
+    cb({
+      forEach: (fn) => mockBypassDocs.forEach(fn),
+      docs: mockBypassDocs,
+    });
+    return () => {};
+  }
   // Return sample student data
   cb({
     exists: () => true,
@@ -74,7 +82,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn((db, ...args) => ({ path: args.join('/') })),
   doc: vi.fn((db, ...args) => ({ path: args.join('/'), id: args[args.length - 1] })),
-  query: vi.fn(),
+  query: vi.fn((coll, ...args) => ({ ...(coll || {}), isQuery: true, queryArgs: args })),
   where: vi.fn(),
   orderBy: vi.fn(),
   limit: vi.fn(),
@@ -197,6 +205,7 @@ describe('MonitorView Component Suite', () => {
   beforeEach(() => {
     currentExamActive = false;
     currentLectureRecorderState = { ...defaultLectureRecorderState };
+    mockBypassDocs = [];
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(fixedDate);
@@ -878,6 +887,223 @@ describe('MonitorView Component Suite', () => {
     expect(screen.getByText(/Uploading Lecture Recording to Cloud/i)).toBeInTheDocument();
     expect(screen.getByText('68%')).toBeInTheDocument();
     expect(screen.getByText(/Please do not close this browser tab or shut down your computer/i)).toBeInTheDocument();
+  });
+
+  describe('Passkey Bypass Claims Banner & Expiration', () => {
+    it('does not render bypass claims banner when there are no requests', () => {
+      mockBypassDocs = [];
+      render(<MonitorView {...defaultProps} />);
+      expect(screen.queryByText(/Passkey Bypass Claims/i)).not.toBeInTheDocument();
+    });
+
+    it('filters out expired claims and marks them expired in Firestore without showing them', async () => {
+      mockBypassDocs = [
+        {
+          id: 'req_stale',
+          data: () => ({
+            requestId: 'req_stale',
+            studentUid: 's_old',
+            studentEmail: 'stale@school.edu',
+            deskNumber: 'Desk #99',
+            reason: 'Old request from yesterday',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() - 10 * 60 * 1000, // expired 10 min ago
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      // Banner should NOT show expired claims
+      expect(screen.queryByText(/Passkey Bypass Claims/i)).not.toBeInTheDocument();
+
+      // Expired doc should be marked as expired in Firestore
+      await waitFor(() => {
+        expect(mockUpdateDoc).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ status: 'expired' })
+        );
+      });
+    });
+
+    it('renders active bypass claims with countdown badge and auto-expire indicator', () => {
+      mockBypassDocs = [
+        {
+          id: 'req_active',
+          data: () => ({
+            requestId: 'req_active',
+            studentUid: 's_1',
+            studentEmail: 'student1@school.edu',
+            deskNumber: 'Desk #12',
+            reason: 'Phone battery dead',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 10 * 60 * 1000, // 10 min left
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      expect(screen.getByText(/⚠️ Passkey Bypass Claims \(1 Active • 15m Auto-Expire\)/i)).toBeInTheDocument();
+      expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('(Desk #12)')).toBeInTheDocument();
+      expect(screen.getByText(/Reason:/i)).toBeInTheDocument();
+      expect(screen.getByText(/Phone battery dead/i)).toBeInTheDocument();
+      expect(screen.getByText(/⏳ 10m 00s left/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Grant 1-Class Session Bypass/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Deny/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /✕ Dismiss$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /✕ Dismiss All/i })).toBeInTheDocument();
+    });
+
+    it('grants 1-class session bypass when Grant button is clicked', async () => {
+      mockBypassDocs = [
+        {
+          id: 'req_active_1',
+          data: () => ({
+            requestId: 'req_active_1',
+            studentUid: 's_1',
+            studentEmail: 'student1@school.edu',
+            deskNumber: 'Desk #12',
+            reason: 'Phone battery dead',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 8 * 60 * 1000,
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      const grantBtn = screen.getByRole('button', { name: /Grant 1-Class Session Bypass/i });
+      await act(async () => {
+        fireEvent.click(grantBtn);
+      });
+
+      expect(mockCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: 'req_active_1',
+          classId: 'CLASS_101',
+          studentUid: 's_1',
+          studentEmail: 'student1@school.edu',
+          approved: true,
+          bypassDurationMinutes: 180,
+        })
+      );
+    });
+
+    it('denies bypass when Deny button is clicked', async () => {
+      mockBypassDocs = [
+        {
+          id: 'req_deny_1',
+          data: () => ({
+            requestId: 'req_deny_1',
+            studentUid: 's_1',
+            studentEmail: 'student1@school.edu',
+            deskNumber: 'Desk #12',
+            reason: 'Unknown issue',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 8 * 60 * 1000,
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      const denyBtn = screen.getByRole('button', { name: /Deny/i });
+      await act(async () => {
+        fireEvent.click(denyBtn);
+      });
+
+      expect(mockCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: 'req_deny_1',
+          classId: 'CLASS_101',
+          studentUid: 's_1',
+          studentEmail: 'student1@school.edu',
+          approved: false,
+        })
+      );
+    });
+
+    it('dismisses individual bypass claim and updates status to dismissed in Firestore', async () => {
+      mockBypassDocs = [
+        {
+          id: 'req_dismiss_single',
+          data: () => ({
+            requestId: 'req_dismiss_single',
+            studentUid: 's_1',
+            studentEmail: 'student1@school.edu',
+            deskNumber: 'Desk #12',
+            reason: 'Student left room',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 8 * 60 * 1000,
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      const dismissBtn = screen.getByRole('button', { name: /✕ Dismiss$/i });
+      await act(async () => {
+        fireEvent.click(dismissBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: 'dismissed',
+        })
+      );
+      // Immediately removes from view
+      expect(screen.queryByText(/Passkey Bypass Claims/i)).not.toBeInTheDocument();
+    });
+
+    it('dismisses all bypass claims when Dismiss All button is clicked', async () => {
+      mockBypassDocs = [
+        {
+          id: 'req_dismiss_1',
+          data: () => ({
+            requestId: 'req_dismiss_1',
+            studentUid: 's_1',
+            studentEmail: 'student1@school.edu',
+            deskNumber: 'Desk #1',
+            reason: 'Claim 1',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 12 * 60 * 1000,
+          }),
+        },
+        {
+          id: 'req_dismiss_2',
+          data: () => ({
+            requestId: 'req_dismiss_2',
+            studentUid: 's_2',
+            studentEmail: 'student2@school.edu',
+            deskNumber: 'Desk #2',
+            reason: 'Claim 2',
+            status: 'pending',
+            expiresAtMillis: fixedDate.getTime() + 11 * 60 * 1000,
+          }),
+        },
+      ];
+
+      render(<MonitorView {...defaultProps} />);
+
+      expect(screen.getByText(/⚠️ Passkey Bypass Claims \(2 Active • 15m Auto-Expire\)/i)).toBeInTheDocument();
+
+      const dismissAllBtn = screen.getByRole('button', { name: /✕ Dismiss All/i });
+      await act(async () => {
+        fireEvent.click(dismissAllBtn);
+      });
+
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: 'dismissed',
+        })
+      );
+      // Optimistically hides banner
+      expect(screen.queryByText(/Passkey Bypass Claims/i)).not.toBeInTheDocument();
+    });
   });
 });
 

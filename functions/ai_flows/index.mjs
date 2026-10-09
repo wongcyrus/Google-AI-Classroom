@@ -421,7 +421,7 @@ export const approveTeacherPasskeyBypass = onCall(callOptions, async (request) =
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
   let isTeacher = request.auth?.token?.role === 'teacher';
-  const { requestId, classId, studentUid, studentEmail, bypassDurationMinutes, approved } = request.data || {};
+  const { requestId, classId, studentUid, studentEmail, bypassDurationMinutes, approved, action } = request.data || {};
 
   if (!isTeacher && classId) {
     try {
@@ -451,6 +451,7 @@ export const approveTeacherPasskeyBypass = onCall(callOptions, async (request) =
     teacherEmail: request.auth.token?.email || 'teacher',
     bypassDurationMinutes,
     approved: approved !== false,
+    action,
   });
 });
 
