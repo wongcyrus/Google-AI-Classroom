@@ -180,6 +180,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [purgeScreenshotsAfterVideoCombine, setPurgeScreenshotsAfterVideoCombine] = useState(true);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
+  const [isSweepingScreenshots, setIsSweepingScreenshots] = useState(false);
+  const [sweepResultMessage, setSweepResultMessage] = useState('');
   const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
   const [lectureSttPrompt, setLectureSttPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
   const [lectureTranslationPrompt, setLectureTranslationPrompt] = useState(DEFAULT_LECTURE_TRANSLATION_PROMPT);
@@ -1547,6 +1549,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     }
   };
 
+  const handleSweepCombinedScreenshots = async () => {
+    const targetId = embeddedClassId || selectedClass;
+    if (!targetId) return;
+    const confirmMsg = `Sweep and purge raw screenshots for completed videos in class "${targetId}"?\n\nThis will permanently delete routine interval screenshots that have already been compiled into MP4 videos to free up storage space. All anti-cheating alerts, proctoring violations, and incident evidence will be preserved.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsSweepingScreenshots(true);
+    setSweepResultMessage('');
+    try {
+      const sweepCallable = httpsCallable(functions, 'purgeCombinedScreenshotsForClass');
+      const res = await sweepCallable({ classId: targetId });
+      setSweepResultMessage(res.data?.message || 'Successfully swept combined screenshots.');
+    } catch (err) {
+      console.error('[ClassManagement] Sweep combined screenshots error:', err);
+      alert(`Failed to sweep combined screenshots: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsSweepingScreenshots(false);
+    }
+  };
+
   const handleOpenPromptModal = () => {
     setModalPrompt(afterClassVideoPrompt);
     setModalPromptText(afterClassVideoPrompt ? (afterClassVideoPrompt.promptText || '') : '');
@@ -2143,6 +2165,26 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <p className="input-hint" style={{ margin: '0.35rem 0 0 1.75rem', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
             Reclaims ~80%+ storage space by automatically purging routine raw interval screenshots once their session MP4 video has been successfully compiled and verified. Irregularities, anti-cheating flags, and proctoring evidence are always preserved.
           </p>
+
+          {(selectedClass || embeddedClassId) && (
+            <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                id="btn-sweep-combined-screenshots"
+                style={{ fontSize: '0.82rem', padding: '0.35rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                onClick={handleSweepCombinedScreenshots}
+                disabled={isSweepingScreenshots}
+              >
+                {isSweepingScreenshots ? '⏳ Sweeping Videos...' : '🧹 Sweep & Purge Existing Combined Screenshots'}
+              </button>
+              {sweepResultMessage && (
+                <span className="sweep-result-message" style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
+                  {sweepResultMessage}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

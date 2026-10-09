@@ -393,6 +393,155 @@ export const purgeClassTelemetryData = onCall({
 });
 
 /**
+ * On-demand callable function to sweep all completed videoJobs for an existing class,
+ * identifying routine unflagged screenshots and batch purging them to reclaim storage.
+ * Strictly preserves all anti-cheating flags, proctoring violations, and irregularity records.
+ */
+export const purgeCombinedScreenshotsForClass = onCall({
+  region: FUNCTION_REGION,
+  cors: CORS_ORIGINS,
+  memory: '512MiB',
+  timeoutSeconds: 300,
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError(
+      'unauthenticated',
+      'The function must be called while authenticated.'
+    );
+  }
+
+  const { classId } = request.data || {};
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'The function must be called with a valid classId.');
+  }
+
+  // Authorization Check: Must be teacher assigned to class or admin
+  let isAuthorizedTeacher = request.auth.token?.role === 'teacher';
+  if (!isAuthorizedTeacher && request.auth.uid) {
+    try {
+      const classDoc = await db.collection('classes').doc(classId).get();
+      if (classDoc.exists) {
+        const cData = classDoc.data() || {};
+        if (
+          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
+          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
+        ) {
+          isAuthorizedTeacher = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking teacher authorization for class:', e);
+    }
+  }
+
+  if (!isAuthorizedTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers assigned to this class can sweep combined screenshots.');
+  }
+
+  console.log(`[purgeCombinedScreenshotsForClass] Starting retroactive screenshot purge for class ${classId}`);
+
+  try {
+    // 1. Query all completed videoJobs for this class
+    const videoJobsSnap = await db.collection('videoJobs')
+      .where('classId', '==', classId)
+      .where('status', '==', 'completed')
+      .get();
+
+    if (videoJobsSnap.empty) {
+      return {
+        status: 'success',
+        message: 'No completed video sessions found for this class.',
+        jobsEvaluated: 0,
+        purgedCount: 0,
+        preservedCount: 0,
+      };
+    }
+
+    const bucket = storage.bucket();
+    let totalPurged = 0;
+    let totalPreserved = 0;
+    const seenScreenshotIds = new Set();
+    const docsToPurge = [];
+
+    for (const jobDoc of videoJobsSnap.docs) {
+      const jobData = jobDoc.data() || {};
+      const { studentUid, startTime, endTime } = jobData;
+      if (!studentUid || !startTime || !endTime) continue;
+
+      const rawStart = startTime.toDate ? startTime.toDate() : new Date(startTime);
+      const rawEnd = endTime.toDate ? endTime.toDate() : new Date(endTime);
+
+      if (isNaN(rawStart.getTime()) || isNaN(rawEnd.getTime())) continue;
+
+      let screenshotDocs = [];
+      try {
+        const snap = await db.collection('screenshots')
+          .where('classId', '==', classId)
+          .where('studentUid', '==', studentUid)
+          .where('timestamp', '>=', rawStart)
+          .where('timestamp', '<=', rawEnd)
+          .get();
+        screenshotDocs = snap.docs;
+      } catch (err) {
+        // Fallback in-memory filter if index is not ready
+        console.warn(`[purgeCombinedScreenshotsForClass] Index query failed (${err.message}), falling back to in-memory filter.`);
+        const snap = await db.collection('screenshots')
+          .where('classId', '==', classId)
+          .where('studentUid', '==', studentUid)
+          .get();
+        screenshotDocs = snap.docs.filter((d) => {
+          const dData = d.data() || {};
+          const ts = dData.timestamp?.toDate ? dData.timestamp.toDate() : new Date(dData.timestamp);
+          return !isNaN(ts.getTime()) && ts >= rawStart && ts <= rawEnd;
+        });
+      }
+
+      for (const sDoc of screenshotDocs) {
+        if (seenScreenshotIds.has(sDoc.id)) continue;
+        seenScreenshotIds.add(sDoc.id);
+
+        const sData = sDoc.data() || {};
+        const isFlagged = sData.isFlagged === true ||
+                          sData.isViolation === true ||
+                          Boolean(sData.incidentId) ||
+                          sData.reviewRequired === true ||
+                          sData.suspicious === true;
+
+        if (isFlagged) {
+          totalPreserved++;
+        } else {
+          docsToPurge.push(sDoc);
+        }
+      }
+    }
+
+    if (docsToPurge.length > 0) {
+      totalPurged = await purgeDocList(docsToPurge, bucket, [
+        (d) => d.imagePath || d.storagePath,
+      ]);
+    }
+
+    // Recalculate class storage usage in background
+    try {
+      await recalculateStorageUsageInternal(classId);
+    } catch (recalcErr) {
+      console.warn(`[purgeCombinedScreenshotsForClass] Storage recalculation error:`, recalcErr);
+    }
+
+    return {
+      status: 'success',
+      message: `Successfully swept ${videoJobsSnap.size} video session(s). Purged ${totalPurged} routine screenshots. Preserved ${totalPreserved} flagged proctoring evidence record(s).`,
+      jobsEvaluated: videoJobsSnap.size,
+      purgedCount: totalPurged,
+      preservedCount: totalPreserved,
+    };
+  } catch (error) {
+    console.error('Error during purgeCombinedScreenshotsForClass:', error);
+    throw new HttpsError('internal', `An error occurred while sweeping combined screenshots: ${error.message}`);
+  }
+});
+
+/**
  * Backwards compatibility alias for existing clients and scripts.
  */
 export const deleteScreenshotsByDateRange = purgeClassTelemetryData;

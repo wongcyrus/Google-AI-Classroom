@@ -151,8 +151,9 @@ To streamline course setup, class creation is powered by **Concept Templates**. 
    - **Storage Quota:** Select `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
    - **Retention Periods:** Screenshot retention (`7`–`365` days) and Video retention (`14`–`730` days).
    - **📸 Auto-Delete Raw Screenshots Once Combined into Video:** (Optional storage optimization) Automatically batch purges routine interval raw screenshots once their session MP4 time-lapse video has been successfully generated and verified. Reclaims ~80%+ storage while strictly preserving all anti-cheating alerts, proctoring violations, and irregularity evidence.
+   - **🧹 Sweep & Purge Existing Combined Screenshots Button:** When editing an existing class in Section 1, click this maintenance button to retroactively sweep all completed video jobs, purge routine raw screenshots within those completed video periods, and immediately reclaim storage quota while safeguarding all irregularities and proctoring evidence.
 4. (Optional) Expand **Advanced Configuration** to customize fine-grained parameters.
-5. Click **Create Class**.
+5. Click **Create Class** (or **Save Class Settings**).
 
 ### Timetable & Schedule Builder
 Open the **Settings** tab in your class workspace and locate the **Timetable & Schedule** panel:

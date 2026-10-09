@@ -15,24 +15,58 @@ vi.mock('../firebase-config', () => ({
   functions: {},
 }));
 
-const mockGetAllSystemStudentEmails = vi.fn().mockResolvedValue({
-  data: {
-    studentEmails: ['alice@school.edu', 'bob@school.edu', 'charlie@school.edu'],
-    total: 3,
-  },
-});
+const {
+  mockGetAllSystemStudentEmails,
+  mockResetStudentPasskey,
+  mockApproveTeacherPasskeyBypass,
+  mockToggleStudentExemption,
+  mockPurgeCombinedScreenshotsForClass,
+  mockHttpsCallable,
+  defaultHttpsCallableImpl,
+} = vi.hoisted(() => {
+  const mockGetAllSystemStudentEmails = vi.fn().mockResolvedValue({
+    data: {
+      studentEmails: ['alice@school.edu', 'bob@school.edu', 'charlie@school.edu'],
+      total: 3,
+    },
+  });
 
-const mockResetStudentPasskey = vi.fn().mockResolvedValue({ data: { success: true } });
-const mockApproveTeacherPasskeyBypass = vi.fn().mockResolvedValue({ data: { success: true } });
-const mockToggleStudentExemption = vi.fn().mockResolvedValue({ data: { success: true } });
+  const mockResetStudentPasskey = vi.fn().mockResolvedValue({ data: { success: true } });
+  const mockApproveTeacherPasskeyBypass = vi.fn().mockResolvedValue({ data: { success: true } });
+  const mockToggleStudentExemption = vi.fn().mockResolvedValue({ data: { success: true } });
+  const mockPurgeCombinedScreenshotsForClass = vi.fn().mockResolvedValue({
+    data: {
+      status: 'success',
+      jobsEvaluated: 2,
+      purgedCount: 45,
+      preservedCount: 3,
+      message: 'Successfully purged 45 raw routine screenshot(s) across 2 completed video job(s). Preserved 3 flagged evidence screenshot(s).',
+    },
+  });
 
-vi.mock('firebase/functions', () => ({
-  httpsCallable: vi.fn((_functions, name) => {
+  const defaultHttpsCallableImpl = (_functions, name) => {
     if (name === 'resetStudentPasskey') return mockResetStudentPasskey;
     if (name === 'approveTeacherPasskeyBypass') return mockApproveTeacherPasskeyBypass;
     if (name === 'toggleStudentExemption') return mockToggleStudentExemption;
+    if (name === 'purgeCombinedScreenshotsForClass') return mockPurgeCombinedScreenshotsForClass;
     return mockGetAllSystemStudentEmails;
-  }),
+  };
+
+  const mockHttpsCallable = vi.fn(defaultHttpsCallableImpl);
+
+  return {
+    mockGetAllSystemStudentEmails,
+    mockResetStudentPasskey,
+    mockApproveTeacherPasskeyBypass,
+    mockToggleStudentExemption,
+    mockPurgeCombinedScreenshotsForClass,
+    mockHttpsCallable,
+    defaultHttpsCallableImpl,
+  };
+});
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: mockHttpsCallable,
 }));
 
 const mockSetDoc = vi.fn().mockResolvedValue({});
@@ -216,6 +250,7 @@ vi.mock('firebase/firestore', () => ({
 describe('ClassManagement Full Component Test Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockHttpsCallable.mockImplementation(defaultHttpsCallableImpl);
     mockGetDoc.mockImplementation(() =>
       Promise.resolve({
         exists: () => true,
@@ -2107,6 +2142,65 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(screen.queryByText(/Select Class Concept Template/i)).not.toBeInTheDocument();
       expect(screen.queryByRole('heading', { level: 4, name: 'Lecture' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Re-apply Presets/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Sweep Existing Combined Screenshots', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.spyOn(window, 'confirm').mockImplementation(() => true);
+    });
+
+    it('does not render sweep button during new class creation mode', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      expect(screen.queryByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i })).not.toBeInTheDocument();
+    });
+
+    it('renders sweep button in edit mode and triggers purgeCombinedScreenshotsForClass callable on click', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
+      });
+
+      const sweepBtn = screen.getByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i });
+      expect(sweepBtn).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(sweepBtn);
+      });
+
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Sweep and purge raw screenshots for completed videos in class "CLASS_101"?'));
+      expect(mockPurgeCombinedScreenshotsForClass).toHaveBeenCalledWith({ classId: 'CLASS_101' });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Successfully purged 45 raw routine screenshot\(s\)/i)).toBeInTheDocument();
+      });
+    });
+
+    it('does not invoke callable if teacher cancels confirmation prompt', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
+      });
+
+      const sweepBtn = screen.getByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i });
+      await act(async () => {
+        fireEvent.click(sweepBtn);
+      });
+
+      expect(window.confirm).toHaveBeenCalled();
+      expect(mockPurgeCombinedScreenshotsForClass).not.toHaveBeenCalled();
     });
   });
 });

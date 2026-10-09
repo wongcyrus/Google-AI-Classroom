@@ -74,7 +74,7 @@ vi.mock('firebase-functions/v2/storage', () => ({
   onObjectDeleted: vi.fn((opts, handler) => handler),
 }));
 
-import { purgeClassTelemetryData, deleteScreenshotsByDateRange } from './screenshotManagement.js';
+import { purgeClassTelemetryData, deleteScreenshotsByDateRange, purgeCombinedScreenshotsForClass } from './screenshotManagement.js';
 
 describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
   beforeEach(() => {
@@ -378,5 +378,144 @@ describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
     expect(result.irregularitiesCount).toBe(1);
     expect(result.totalPurged).toBe(1);
     expect(mockBatch.delete).toHaveBeenCalled();
+  });
+});
+
+describe('purgeCombinedScreenshotsForClass Callable Function', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rejects unauthenticated requests', async () => {
+    await expect(
+      purgeCombinedScreenshotsForClass({
+        auth: null,
+        data: { classId: 'CLASS_1' },
+      })
+    ).rejects.toThrow('The function must be called while authenticated.');
+  });
+
+  it('rejects requests without classId', async () => {
+    await expect(
+      purgeCombinedScreenshotsForClass({
+        auth: { uid: 'teacher1', token: { role: 'teacher' } },
+        data: {},
+      })
+    ).rejects.toThrow('The function must be called with a valid classId.');
+  });
+
+  it('rejects unauthorized students with permission-denied', async () => {
+    mockDoc.exists = true;
+    mockDoc.data.mockReturnValue({ teacherEmails: ['teacher@school.edu'], teachers: {} });
+
+    await expect(
+      purgeCombinedScreenshotsForClass({
+        auth: { uid: 'student1', token: { role: 'student', email: 'student@school.edu' } },
+        data: { classId: 'CLASS_1' },
+      })
+    ).rejects.toThrow('Only teachers assigned to this class can sweep combined screenshots.');
+  });
+
+  it('returns zero counts when no completed video jobs exist', async () => {
+    mockDb.collection.mockImplementation((col) => {
+      if (col === 'videoJobs') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeCombinedScreenshotsForClass({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: { classId: 'CLASS_1' },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.jobsEvaluated).toBe(0);
+    expect(result.purgedCount).toBe(0);
+  });
+
+  it('sweeps completed video jobs, deletes unflagged routine screenshots, and preserves flagged evidence', async () => {
+    const mockVideoJobs = [
+      {
+        id: 'job1',
+        data: () => ({
+          studentUid: 's1',
+          startTime: new Date('2026-08-01T09:00:00Z'),
+          endTime: new Date('2026-08-01T11:00:00Z'),
+          status: 'completed',
+        }),
+      },
+    ];
+
+    const routineDoc1 = {
+      id: 'shot1',
+      data: () => ({
+        imagePath: 'screenshots/CLASS_1/s1/shot1.jpg',
+        timestamp: new Date('2026-08-01T09:15:00Z'),
+      }),
+      ref: { id: 'shot1' },
+    };
+
+    const flaggedDocCheating = {
+      id: 'shot2_cheating',
+      data: () => ({
+        imagePath: 'screenshots/CLASS_1/s1/shot2_flagged.jpg',
+        timestamp: new Date('2026-08-01T09:30:00Z'),
+        isFlagged: true,
+        incidentId: 'inc_gaze_123',
+      }),
+      ref: { id: 'shot2_cheating' },
+    };
+
+    const routineDoc2 = {
+      id: 'shot3',
+      data: () => ({
+        imagePath: 'screenshots/CLASS_1/s1/shot3.jpg',
+        timestamp: new Date('2026-08-01T10:00:00Z'),
+      }),
+      ref: { id: 'shot3' },
+    };
+
+    mockDb.collection.mockImplementation((col) => {
+      if (col === 'videoJobs') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({ empty: false, size: 1, docs: mockVideoJobs }),
+        };
+      }
+      if (col === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            docs: [routineDoc1, flaggedDocCheating, routineDoc2],
+          }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeCombinedScreenshotsForClass({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: { classId: 'CLASS_1' },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.jobsEvaluated).toBe(1);
+    expect(result.purgedCount).toBe(2);
+    expect(result.preservedCount).toBe(1);
+    expect(mockBatch.delete).toHaveBeenCalledTimes(2);
+    expect(mockBatch.commit).toHaveBeenCalled();
   });
 });

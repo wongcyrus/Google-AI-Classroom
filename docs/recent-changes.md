@@ -4,6 +4,32 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.7 Retroactive 1-Click Sweep & Purge for Completed Videos in Existing Classes
+
+**Date**: October 9, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Ready for Deployment  
+**Primary Files**:
+- Cloud Functions: [`functions/storage_triggers/screenshotManagement.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/screenshotManagement.js), [`functions/storage_triggers/screenshotManagement.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/screenshotManagement.test.js)
+- Class Management UI: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/ClassManagement.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.test.jsx)
+- Documentation: [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/recent-changes.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/recent-changes.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Retroactive Sweep for Existing Classes**:
+   - For classes created before the `purgeScreenshotsAfterVideoCombine` feature or where past session videos have already been compiled, teachers need a simple way to purge redundant routine raw screenshots without needing to recreate or re-record classes.
+   - Added `purgeCombinedScreenshotsForClass` callable Cloud Function that authenticates teachers/admins, queries all completed video jobs for the given `classId`, collects routine raw screenshots within the corresponding session time intervals, and batch-deletes them.
+
+2. **Strict Evidence Safeguard & Quota Synchronization**:
+   - Any screenshot document containing `isFlagged: true`, `isViolation: true`, `incidentId != null`, `reviewRequired: true`, or `suspicious: true` is strictly filtered out and preserved.
+   - Irregularities and incident documents remain untouched in the independent `/irregularities` collection.
+   - The function automatically triggers `recalculateStorageUsageInternal(classId)` so the teacher dashboard and storage bar reflect reclaimed space immediately.
+
+3. **1-Click Teacher UI in Class Management**:
+   - In Section 1 (Basic Information & Storage Quota), when editing an existing class, a **`🧹 Sweep & Purge Existing Combined Screenshots`** action button is displayed next to the auto-delete checkbox.
+   - Features confirmation dialog, spinner loading state, error handling, and clean success feedback messages indicating how many routine images were purged and how many evidence files were preserved.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.6 Auto-Purge Raw Screenshots on Verified Video Compilation with Irregularity & Anti-Cheating Safeguards
 
 **Date**: October 9, 2026  
