@@ -177,6 +177,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [allowShareTeacherRecordings, setAllowShareTeacherRecordings] = useState(false);
   const [teacherRecordingsPolicy, setTeacherRecordingsPolicy] = useState('private');
   const [consolidateLessonVideo, setConsolidateLessonVideo] = useState(true);
+  const [purgeScreenshotsAfterVideoCombine, setPurgeScreenshotsAfterVideoCombine] = useState(false);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
   const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
@@ -560,6 +561,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setTeacherRecordingsPolicy(tPolicy);
           setAllowShareTeacherRecordings(tPolicy !== 'private');
           setConsolidateLessonVideo(classData.consolidateLessonVideo !== false);
+          setPurgeScreenshotsAfterVideoCombine(Boolean(classData.purgeScreenshotsAfterVideoCombine));
           setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
           setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
           const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
@@ -642,6 +644,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setAllowShareTeacherRecordings(false);
         setTeacherRecordingsPolicy('private');
         setConsolidateLessonVideo(true);
+        setPurgeScreenshotsAfterVideoCombine(false);
         setLectureAiModel('gemini-3.8-flash');
         setIsLectureSubtitlesEnabled(true);
         setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
@@ -1153,6 +1156,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
       allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
       consolidateLessonVideo: consolidateLessonVideo !== false,
+      purgeScreenshotsAfterVideoCombine: Boolean(purgeScreenshotsAfterVideoCombine),
       lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
       isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
       lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
@@ -1464,6 +1468,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
           allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
           consolidateLessonVideo: consolidateLessonVideo !== false,
+          purgeScreenshotsAfterVideoCombine: Boolean(purgeScreenshotsAfterVideoCombine),
           lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
           isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
           lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
@@ -2121,6 +2126,22 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             </select>
             <p className="input-hint">Compiled lesson playback videos (.mp4) retention period.</p>
           </div>
+        </div>
+
+        <div className="form-group" style={{ marginTop: '1rem', padding: '0.85rem 1rem', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '8px', border: '1px solid var(--color-border, #e2e8f0)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', margin: 0, fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              id="purge-screenshots-after-video-combine"
+              checked={purgeScreenshotsAfterVideoCombine}
+              onChange={(e) => setPurgeScreenshotsAfterVideoCombine(e.target.checked)}
+              style={{ width: '1.15rem', height: '1.15rem', cursor: 'pointer' }}
+            />
+            <span>📸 Auto-Delete Raw Screenshots Once Combined into Video</span>
+          </label>
+          <p className="input-hint" style={{ margin: '0.35rem 0 0 1.75rem', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
+            Reclaims ~80%+ storage space by automatically purging routine raw interval screenshots once their session MP4 video has been successfully compiled and verified. Irregularities, anti-cheating flags, and proctoring evidence are always preserved.
+          </p>
         </div>
       </div>
 

@@ -1655,6 +1655,40 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(capturedUpdateData.allowShareTeacherRecordings).toBe(false);
   });
 
+  it('configures, toggles, and saves purgeScreenshotsAfterVideoCombine in class settings', async () => {
+    let capturedUpdateData = null;
+    mockUpdateDoc.mockImplementation(async (ref, data) => {
+      capturedUpdateData = data;
+      return {};
+    });
+
+    await act(async () => {
+      render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Auto-Delete Raw Screenshots Once Combined into Video/i)).toBeInTheDocument();
+    });
+
+    const purgeCheckbox = screen.getByLabelText(/Auto-Delete Raw Screenshots Once Combined into Video/i);
+    expect(purgeCheckbox).not.toBeChecked();
+
+    // Toggle on
+    fireEvent.click(purgeCheckbox);
+    expect(purgeCheckbox).toBeChecked();
+
+    const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    expect(capturedUpdateData.purgeScreenshotsAfterVideoCombine).toBe(true);
+  });
+
   it('configures, selects, and saves lectureAiModel in class settings', async () => {
     let capturedUpdateData = null;
     mockUpdateDoc.mockImplementation(async (ref, data) => {

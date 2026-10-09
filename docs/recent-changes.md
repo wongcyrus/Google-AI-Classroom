@@ -4,6 +4,40 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.6 Auto-Purge Raw Screenshots on Verified Video Compilation with Irregularity & Anti-Cheating Safeguards
+
+**Date**: October 9, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Ready for Deployment  
+**Primary Files**:
+- Video Processing: [`functions/media_processing/processVideoJob.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJob.js), [`functions/media_processing/processVideoJobExecution.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJobExecution.test.js)
+- Class Management: [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), [`web-app/src/components/ClassManagement.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.test.jsx)
+- Storage & Cleanup Triggers: [`functions/storage_triggers/cleanupTriggers.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/cleanupTriggers.js)
+- Documentation: [`docs/firestore-schema.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/firestore-schema.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/recent-changes.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/recent-changes.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Storage Optimization Challenge**:
+   - Continuous interval capture generates hundreds of MBs of raw `.jpg` screenshot files per student per session, creating significant storage overhead over a multi-month semester.
+   - Once screenshots are compiled into a timestamped MP4 time-lapse video (`processVideoJob`), keeping routine individual image files is redundant.
+
+2. **5-Point Verification Gate Before Cleanup**:
+   - Zero raw screenshots are deleted unless the video compilation is 100% complete and validated:
+     1. FFmpeg exits cleanly with code 0.
+     2. `ffprobe` validates format, duration > 0, and size > 0.
+     3. Cloud Storage upload to `videos/{classId}/{jobId}.mp4` finishes with matching size.
+     4. Firestore `videoJobs/{jobId}` document status transitions to `status: 'completed'`.
+     5. If any failure occurs during download, processing, encoding, or upload, the job fails gracefully, and all screenshots are preserved without deletion.
+
+3. **Anti-Cheating & Evidence Preservation ("Treating" / Incident Review)**:
+   - Proctored behavioral alerts, gaze violations, speech flags, and suspicious activities are stored under the independent `/irregularities` collection and `irregularities/` storage prefix, completely unaffected by routine screenshot purges.
+   - Any screenshot document containing `isFlagged: true`, `isViolation: true`, `incidentId != null`, `reviewRequired: true`, or `suspicious: true` is strictly filtered out and preserved during the post-video batch sweep.
+
+4. **Classroom Configuration & Integration**:
+   - Added class-level setting `purgeScreenshotsAfterVideoCombine` (boolean) configurable in Section 1 (Basic Information & Storage Quota).
+   - Routine screenshots are batch deleted in Firestore (400 items per batch), triggering `onScreenshotDocDeleted` to asynchronously delete physical Cloud Storage blobs and update storage quotas automatically.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.5 Class Concept Templates Creation-Only Guard and Edit-Mode Overwrite Protection
 
 **Date**: October 9, 2026  

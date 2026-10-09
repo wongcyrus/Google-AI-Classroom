@@ -293,6 +293,34 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.unlinkSync(outputVideoPath);
 
+    // Optional post-processing: Auto-delete routine screenshots once combined into video
+    if (classData?.purgeScreenshotsAfterVideoCombine === true) {
+      try {
+        console.log(`[processVideoJob] Class ${classId} has purgeScreenshotsAfterVideoCombine enabled. Checking unflagged routine screenshots...`);
+        const docsToPurge = querySnapshot.docs.filter((docSnap) => {
+          const sData = docSnap.data() || {};
+          const isFlagged = sData.isFlagged === true ||
+                            sData.isViolation === true ||
+                            Boolean(sData.incidentId) ||
+                            sData.reviewRequired === true ||
+                            sData.suspicious === true;
+          return !isFlagged;
+        });
+
+        if (docsToPurge.length > 0) {
+          console.log(`[processVideoJob] Purging ${docsToPurge.length} routine screenshots for student ${studentUid} in class ${classId} (preserved ${querySnapshot.docs.length - docsToPurge.length} flagged records).`);
+          const BATCH_SIZE = 400;
+          for (let i = 0; i < docsToPurge.length; i += BATCH_SIZE) {
+            const batch = db.batch();
+            docsToPurge.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+          }
+        }
+      } catch (purgeErr) {
+        console.warn(`[processVideoJob] Failed to purge routine screenshots after video compilation:`, purgeErr);
+      }
+    }
+
     console.log(`Job ${jobId} completed successfully.`);
 
   } catch (error) {

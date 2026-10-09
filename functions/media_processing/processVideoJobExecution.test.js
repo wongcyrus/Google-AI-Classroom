@@ -11,6 +11,9 @@ const {
   mockSharpInstance,
   mockFfmpegCommand,
   mockFfprobe,
+  mockBatch,
+  mockBatchDelete,
+  mockBatchCommit,
   setFfmpegShouldFail,
 } = vi.hoisted(() => {
   const mockDocGet = vi.fn();
@@ -19,6 +22,12 @@ const {
   }));
   const mockJobUpdate = vi.fn().mockResolvedValue();
   const mockCollection = vi.fn();
+  const mockBatchDelete = vi.fn();
+  const mockBatchCommit = vi.fn().mockResolvedValue();
+  const mockBatch = vi.fn(() => ({
+    delete: mockBatchDelete,
+    commit: mockBatchCommit,
+  }));
 
   const mockBucketFile = vi.fn(() => ({
     download: vi.fn().mockResolvedValue(),
@@ -70,6 +79,9 @@ const {
     mockSharpInstance,
     mockFfmpegCommand,
     mockFfprobe,
+    mockBatch,
+    mockBatchDelete,
+    mockBatchCommit,
     setFfmpegShouldFail: (val) => {
       ffmpegShouldFail = val;
     },
@@ -92,6 +104,7 @@ vi.mock('sharp', () => ({
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
     collection: mockCollection,
+    batch: mockBatch,
   }),
 }));
 
@@ -313,5 +326,147 @@ describe('processVideoJob Cloud Function Execution', () => {
         ffmpegError: 'Corrupt frames',
       })
     );
+    expect(mockBatchDelete).not.toHaveBeenCalled();
+  });
+
+  it('purges unflagged routine screenshots when purgeScreenshotsAfterVideoCombine is enabled, while preserving flagged/irregularity evidence', async () => {
+    const mockSnap = {
+      data: () => ({
+        jobId: 'j-purge-test',
+        status: 'pending',
+        classId: 'c1',
+        studentUid: 's1',
+        studentEmail: 's1@test.com',
+        startTime: new Date('2026-09-19T09:00:00Z'),
+        endTime: new Date('2026-09-19T10:00:00Z'),
+      }),
+      ref: { update: mockJobUpdate },
+    };
+
+    const routineDoc1 = {
+      ref: { path: 'screenshots/doc1' },
+      data: () => ({
+        imagePath: 'screenshots/c1/s1/img1.jpg',
+        timestamp: { toDate: () => new Date('2026-09-19T09:10:00Z') },
+      }),
+    };
+
+    const flaggedDocCheating = {
+      ref: { path: 'screenshots/doc2_flagged' },
+      data: () => ({
+        imagePath: 'screenshots/c1/s1/img2_cheating.jpg',
+        timestamp: { toDate: () => new Date('2026-09-19T09:20:00Z') },
+        isFlagged: true,
+        incidentId: 'inc_gaze_violation',
+      }),
+    };
+
+    const routineDoc2 = {
+      ref: { path: 'screenshots/doc3' },
+      data: () => ({
+        imagePath: 'screenshots/c1/s1/img3.jpg',
+        timestamp: { toDate: () => new Date('2026-09-19T09:30:00Z') },
+      }),
+    };
+
+    mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              data: () => ({
+                schedule: { timeZone: 'Asia/Hong_Kong' },
+                purgeScreenshotsAfterVideoCombine: true,
+              }),
+            }),
+          }),
+        };
+      }
+      if (name === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            docs: [routineDoc1, flaggedDocCheating, routineDoc2],
+          }),
+        };
+      }
+      return { doc: vi.fn() };
+    });
+
+    await processVideoJob({ data: mockSnap });
+
+    expect(mockJobUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+      })
+    );
+
+    // Only unflagged routine docs (routineDoc1, routineDoc2) should be deleted
+    expect(mockBatchDelete).toHaveBeenCalledTimes(2);
+    expect(mockBatchDelete).toHaveBeenCalledWith(routineDoc1.ref);
+    expect(mockBatchDelete).toHaveBeenCalledWith(routineDoc2.ref);
+    expect(mockBatchDelete).not.toHaveBeenCalledWith(flaggedDocCheating.ref);
+    expect(mockBatchCommit).toHaveBeenCalled();
+  });
+
+  it('retains all screenshots when purgeScreenshotsAfterVideoCombine is false', async () => {
+    const mockSnap = {
+      data: () => ({
+        jobId: 'j-keep-test',
+        status: 'pending',
+        classId: 'c1',
+        studentUid: 's1',
+        studentEmail: 's1@test.com',
+        startTime: new Date('2026-09-19T09:00:00Z'),
+        endTime: new Date('2026-09-19T10:00:00Z'),
+      }),
+      ref: { update: mockJobUpdate },
+    };
+
+    const routineDoc = {
+      ref: { path: 'screenshots/doc1' },
+      data: () => ({
+        imagePath: 'screenshots/c1/s1/img1.jpg',
+        timestamp: { toDate: () => new Date('2026-09-19T09:10:00Z') },
+      }),
+    };
+
+    mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              data: () => ({
+                schedule: { timeZone: 'Asia/Hong_Kong' },
+                purgeScreenshotsAfterVideoCombine: false,
+              }),
+            }),
+          }),
+        };
+      }
+      if (name === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            docs: [routineDoc],
+          }),
+        };
+      }
+      return { doc: vi.fn() };
+    });
+
+    await processVideoJob({ data: mockSnap });
+
+    expect(mockJobUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+      })
+    );
+
+    expect(mockBatchDelete).not.toHaveBeenCalled();
   });
 });
