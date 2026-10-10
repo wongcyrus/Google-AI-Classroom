@@ -136,6 +136,20 @@ Across the repository's **34+ Markdown files** and Marp presentation slide decks
 
 ---
 
+#### `docs/bingo-and-batch-pipeline-design.md`
+- **Path**: [`docs/bingo-and-batch-pipeline-design.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/bingo-and-batch-pipeline-design.md)
+- **Status**: `[IN-SYNC]`
+
+| Section / Paragraph / Diagram | Description & Semantic Scope | Related Code Implementation | Sync Status | Notes & Discrepancies |
+| :--- | :--- | :--- | :---: | :--- |
+| Section 2: Interactive Bingo Architecture | Unified challenge engine: single source of truth (`generateBingoChallenge`) across on-demand teacher click, periodic scheduler, and Strike 2 retry queue. | [`functions/ai_flows/bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js), [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js), [`web-app/src/components/monitor/ControlsPanel.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/ControlsPanel.jsx) | `[IN-SYNC]` | Eliminates architectural confusion; demonstrates zero divergence between manual and automated paths. |
+| Section 2.3: 5-Minute Minimum Interval Rationale | Classroom pedagogy, Two-Strike grace period alignment, FinOps / Gemini token budgets, and signaling bandwidth bounds. | [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js), [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) | `[IN-SYNC]` | Explains `min={5}` frontend and backend clamping. |
+| Section 2.4: 1-Minute Cron Frequency & Free Tier Audit | Rationale for `* * * * *` resolution for arbitrary class start times and custom intervals; zero cost within GCP free tier. | [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) | `[IN-SYNC]` | Documented FinOps safety and early-exit (~50ms) execution. |
+| Section 3: Unified Media Processing & AI Batch Architecture | 7-point standardized pipeline across teacher video merge, student audio merge, screencast compilation, and AI rubric batch jobs. | [`functions/media_processing/`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/), [`functions/ai_flows/`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/) | `[IN-SYNC]` | Temp isolation, 5-point verification, fail-safe retention. |
+| Section 4: Scheduled Cloud Functions Catalog | 4 centralized, non-duplicated cron functions (`handleAutomaticCapture`, `handleAutomaticVideoCombination`, `handleAutomaticBingo`, `syncGeminiPricing`). | [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) | `[IN-SYNC]` | Demonstrates zero duplicate schedules. |
+
+---
+
 #### `docs/data-retention-and-storage-lifecycle.md`
 - **Path**: [`docs/data-retention-and-storage-lifecycle.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/data-retention-and-storage-lifecycle.md)
 - **Status**: `[IN-SYNC (RECONCILED)]`

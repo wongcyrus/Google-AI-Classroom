@@ -589,11 +589,14 @@ Open **`📚 Bingo Question Bank`** in the controls panel:
 3. **Mode 3: Student Individual Screens:** Gemini reviews each student's current coding screen to verify active task work.
 
 ### Launching a Class-Wide Bingo Check & Auto-Bingo
+> 📖 **Architecture & Design Reference**: For a complete deep-dive into how manual on-demand triggers, background scheduler cron tasks, and Cloud Tasks retry queues converge on a single unified challenge engine, see **[🎯 Interactive Bingo & Media Batch Pipeline Architecture](./bingo-and-batch-pipeline-design.md)**.
+
 1. **Manual Bingo Dispatch:** On the live monitor controls bar, click **`🎯 Call Bingo (All Students)`**. Every student receives an audio chime and an urgent 45-to-60 second countdown popup with 4 multiple-choice options.
-2. **Auto-Dispatch Bingo:** Enable the **`🔄 Auto-Dispatch Bingo`** switch in the controls sidebar to schedule automatic presence checks. Use the slider to set intervals between 5 and 30 minutes (with 5-min minimum interval to avoid classroom fatigue).
+2. **Auto-Dispatch Bingo:** Enable the **`🔄 Auto-Dispatch Bingo`** switch in the controls sidebar to schedule automatic presence checks. Use the slider to set intervals between 5 and 30 minutes (with a strict 5-min minimum interval to avoid student fatigue, protect Gemini token budgets, and align with the Two-Strike grace retry timeline).
 3. **Fail-Safe Auto-Stop Guarantees:**
    - **Capture Dependency:** Auto-Bingo *never* fires if class capture is inactive (`isCapturing == false`), even if a scheduled lesson timetable is running.
    - **Screen Share Dependency:** Auto-Bingo strictly requires the teacher to be actively sharing their screen (`isBroadcasting === true`). If screen sharing stops, scheduled jobs automatically skip.
+   - **Unified Challenge Path**: Manual on-demand clicks and background scheduled rounds execute through the exact same backend engine (`generateBingoChallenge`), ensuring identical question generation, Fisher-Yates answer shuffling, and gradebook recording.
 4. **Instant Cancellation & Abort:**
    - Click the **`⏹️ Cancel`** button beside **`🎯 Call Bingo`** at any time to immediately dismiss pending challenges on all student screens and abort scheduled retries.
    - Stopping class capture or toggling Auto-Bingo off automatically triggers `cancelActiveBingo`, ensuring no orphan challenges remain when a session ends.

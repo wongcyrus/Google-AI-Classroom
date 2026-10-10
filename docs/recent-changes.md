@@ -4,6 +4,41 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.1.0 Architecture & Design Reference: Unified Bingo Engine, 5-Minute Minimum Interval & Media Processing Pipelines
+
+**Date**: October 10, 2026  
+**Status**: Formalized in Core Architecture Documentation, Verified with 100% Passing Tests, Deployed  
+**Primary Files**:
+- Architecture Reference: [`docs/bingo-and-batch-pipeline-design.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/bingo-and-batch-pipeline-design.md)
+- User Manual: [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md)
+- Master Code Index: [`docs/documentation-code-index.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/documentation-code-index.md)
+- Backend Engine: [`functions/ai_flows/bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js), [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Unified Bingo Challenge Pipeline**:
+   - Explicitly documented the single backend pipeline (`generateBingoChallenge` in `functions/ai_flows/bingoFlows.js`) shared across all 3 trigger pathways:
+     1. Path A: On-demand teacher click (`triggerBingoCheck`).
+     2. Path B: Background automated periodic cron (`handleAutomaticBingo` $\to$ `onBingoJobCreated`).
+     3. Path C: Two-Strike AFK retry queue (`dispatchBingoRetryTask` via Cloud Tasks).
+   - Confirmed that there is zero algorithmic divergence between manual and automated paths: both use the exact same question sourcing, Fisher-Yates answer shuffling, Firestore `bingoRecords` output, and student modal delivery.
+
+2. **5-Minute Minimum Interval Rationale**:
+   - Formally documented why `min={5}` is strictly clamped across frontend and backend:
+     - Classroom pedagogy / anti-fatigue: prevents disruption during lecture & lab exercises.
+     - Two-Strike grace period alignment: guarantees the 1–3 minute retry settles before next class round.
+     - FinOps token protection: bounds Gemini multimodal reasoning costs to $\approx \$0.0015$/hr.
+     - Signaling bandwidth: prevents WebSocket / Firestore listener congestion.
+
+3. **Scheduled Cloud Functions Audit & Cron Resolution**:
+   - Audited all 4 centralized, non-duplicated cron tasks (`handleAutomaticCapture`, `handleAutomaticVideoCombination`, `handleAutomaticBingo`, `syncGeminiPricing`).
+   - Detailed why `* * * * *` provides zero-lag resolution for arbitrary class start times while staying 100% within Google Cloud free tiers.
+
+4. **Unified Media Processing 7-Point Framework**:
+   - Standardized architectural matrix comparing Teacher Lecture Video Combine, Student Session Audio Combine, Student Screencast Compilation, and AI Video Analysis Batch Jobs.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.9 Student Voice Recording Playback, Sequential Playlist & 1-Click Backend Lesson Audio Concatenation (.m4a)
 
 **Date**: October 10, 2026  
