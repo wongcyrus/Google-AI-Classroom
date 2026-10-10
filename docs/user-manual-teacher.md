@@ -590,7 +590,7 @@ Open **`📚 Bingo Question Bank`** in the controls panel:
 
 ### Launching a Class-Wide Bingo Check & Auto-Bingo
 1. **Manual Bingo Dispatch:** On the live monitor controls bar, click **`🎯 Call Bingo (All Students)`**. Every student receives an audio chime and an urgent 45-to-60 second countdown popup with 4 multiple-choice options.
-2. **Auto-Dispatch Bingo:** Enable the **`🔄 Auto-Dispatch Bingo`** switch in the controls sidebar to schedule automatic presence checks. Use the slider to set intervals between 1 and 30 minutes (with 1-min Fast Test available for rapid verification).
+2. **Auto-Dispatch Bingo:** Enable the **`🔄 Auto-Dispatch Bingo`** switch in the controls sidebar to schedule automatic presence checks. Use the slider to set intervals between 5 and 30 minutes (with 5-min minimum interval to avoid classroom fatigue).
 3. **Fail-Safe Auto-Stop Guarantees:**
    - **Capture Dependency:** Auto-Bingo *never* fires if class capture is inactive (`isCapturing == false`), even if a scheduled lesson timetable is running.
    - **Screen Share Dependency:** Auto-Bingo strictly requires the teacher to be actively sharing their screen (`isBroadcasting === true`). If screen sharing stops, scheduled jobs automatically skip.
