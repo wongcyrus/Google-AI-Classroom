@@ -54,7 +54,7 @@ vi.mock('firebase-functions/v2/storage', () => ({
   onObjectDeleted: vi.fn((opts, handler) => handler),
 }));
 
-import { updateStorageUsageOnUpload, updateStorageUsageOnDelete } from './storageQuota.js';
+import { updateStorageUsageOnUpload, updateStorageUsageOnDelete, getStorageCategoryAndClass } from './storageQuota.js';
 
 describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js)', () => {
   beforeEach(() => {
@@ -62,34 +62,20 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
     mockDoc.collection.mockReturnValue(mockCollection);
   });
 
-  it('correctly categorizes tracked storage folders and usage fields', () => {
-    const getUsageField = (filePath) => {
-      if (filePath.startsWith('screenshots/')) return 'storageUsageScreenShots';
-      if (filePath.startsWith('videos/')) return 'storageUsageVideos';
-      if (filePath.startsWith('zips/')) return 'storageUsageZips';
-      if (filePath.startsWith('audio/')) return 'storageUsageAudio';
-      if (filePath.startsWith('recordings/')) return 'storageUsageRecordings';
-      return null;
-    };
-
-    expect(getUsageField('screenshots/CLASS_1/s1/img.jpg')).toBe('storageUsageScreenShots');
-    expect(getUsageField('videos/CLASS_1/s1/rec.mp4')).toBe('storageUsageVideos');
-    expect(getUsageField('zips/CLASS_1/archive.zip')).toBe('storageUsageZips');
-    expect(getUsageField('audio/CLASS_1/s1/audio.webm')).toBe('storageUsageAudio');
-    expect(getUsageField('recordings/CLASS_1/sess1/lecture.webm')).toBe('storageUsageRecordings');
-    expect(getUsageField('untracked/file.txt')).toBeNull();
-  });
-
-  it('correctly extracts classId from valid storage file paths', () => {
-    const extractClassId = (filePath) => {
-      const parts = filePath.split('/');
-      if (parts.length < 3) return null;
-      return parts[1];
-    };
-
-    expect(extractClassId('screenshots/CLASS_IT114115/s1/img.jpg')).toBe('CLASS_IT114115');
-    expect(extractClassId('audio/CLASS_MATH101/s2/rec.webm')).toBe('CLASS_MATH101');
-    expect(extractClassId('root_file.jpg')).toBeNull();
+  it('correctly categorizes tracked storage folders and usage fields for all data types', () => {
+    expect(getStorageCategoryAndClass('screenshots/CLASS_1/s1/img.jpg')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageScreenShots' });
+    expect(getStorageCategoryAndClass('videos/CLASS_1/s1/rec.mp4')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageVideos' });
+    expect(getStorageCategoryAndClass('zips/CLASS_1/archive.zip')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageZips' });
+    expect(getStorageCategoryAndClass('audio/CLASS_1/s1/audio.webm')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageAudio' });
+    expect(getStorageCategoryAndClass('recordings/CLASS_1/sess1/lecture.webm')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageRecordings' });
+    expect(getStorageCategoryAndClass('subtitles/CLASS_1/sess1/subtitles_en.srt')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageRecordings' });
+    expect(getStorageCategoryAndClass('irregularities/CLASS_1/incident/proof.jpg')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageIrregularities' });
+    expect(getStorageCategoryAndClass('classes/CLASS_1/tasks/demos/intro.mp4')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageTasks' });
+    expect(getStorageCategoryAndClass('tasks/CLASS_1/task1/material.pdf')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageTasks' });
+    expect(getStorageCategoryAndClass('submissions/CLASS_1/task1/student1/work.zip')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageTasks' });
+    expect(getStorageCategoryAndClass('reports/CLASS_1/job1/dossier.docx')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageReports' });
+    expect(getStorageCategoryAndClass('untracked/file.txt')).toBeNull();
+    expect(getStorageCategoryAndClass('screenshots/only_two_parts.jpg')).toBeNull();
   });
 
   it('determines if storage quota is exceeded', () => {

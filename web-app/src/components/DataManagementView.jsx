@@ -241,13 +241,17 @@ const DataManagementView = ({
   };
 
   // Compute breakdown percentages safely
-  const totalUsage = Math.max(0, Number(storageData?.storageUsage) || 0);
   const usageShots = Math.max(0, Number(storageData?.storageUsageScreenShots) || 0);
   const usageAudio = Math.max(0, Number(storageData?.storageUsageAudio) || 0);
   const usageVideos = Math.max(0, Number(storageData?.storageUsageVideos) || 0);
   const usageRecordings = Math.max(0, Number(storageData?.storageUsageRecordings) || 0);
   const usageZips = Math.max(0, Number(storageData?.storageUsageZips) || 0);
   const usageIrregularities = Math.max(0, Number(storageData?.storageUsageIrregularities) || 0);
+  const usageTasks = Math.max(0, Number(storageData?.storageUsageTasks) || 0);
+  const usageReports = Math.max(0, Number(storageData?.storageUsageReports) || 0);
+
+  const categorySum = usageShots + usageAudio + usageVideos + usageRecordings + usageZips + usageIrregularities + usageTasks + usageReports;
+  const totalUsage = Math.max(0, Number(storageData?.storageUsage) || 0, categorySum);
 
   const effectiveQuota = Number(classQuotaBytes) > 0 ? Number(classQuotaBytes) : (5 * 1024 * 1024 * 1024);
   const quotaPercent = Math.min(100, Math.max(0, (totalUsage / effectiveQuota) * 100)).toFixed(1);
@@ -259,6 +263,8 @@ const DataManagementView = ({
   const pRecordings = Math.min(100, Math.max(0, (usageRecordings / effectiveQuota) * 100));
   const pZips = Math.min(100, Math.max(0, (usageZips / effectiveQuota) * 100));
   const pIrregularities = Math.min(100, Math.max(0, (usageIrregularities / effectiveQuota) * 100));
+  const pTasks = Math.min(100, Math.max(0, (usageTasks / effectiveQuota) * 100));
+  const pReports = Math.min(100, Math.max(0, (usageReports / effectiveQuota) * 100));
 
   return (
     <div className="view-container">
@@ -307,6 +313,8 @@ const DataManagementView = ({
           <div className="storage-segment recordings" style={{ width: `${pRecordings}%` }} title={`Lecture Recordings: ${formatBytes(usageRecordings)} (~${formatStorageCost(usageRecordings, storageRatePerGibMonth)}/mo)`} />
           <div className="storage-segment zips" style={{ width: `${pZips}%` }} title={`ZIP Archives: ${formatBytes(usageZips)} (~${formatStorageCost(usageZips, storageRatePerGibMonth)}/mo)`} />
           <div className="storage-segment irregularities" style={{ width: `${pIrregularities}%` }} title={`Irregularities: ${formatBytes(usageIrregularities)} (~${formatStorageCost(usageIrregularities, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment tasks" style={{ width: `${pTasks}%` }} title={`Tasks & Submissions: ${formatBytes(usageTasks)} (~${formatStorageCost(usageTasks, storageRatePerGibMonth)}/mo)`} />
+          <div className="storage-segment reports" style={{ width: `${pReports}%` }} title={`Dossier Reports: ${formatBytes(usageReports)} (~${formatStorageCost(usageReports, storageRatePerGibMonth)}/mo)`} />
         </div>
 
         {/* Legend Grid */}
@@ -334,6 +342,14 @@ const DataManagementView = ({
           <div className="storage-legend-item">
             <span className="legend-dot" style={{ background: '#ef4444' }}></span>
             <span>⚠️ Irregularities: <strong>{formatBytes(usageIrregularities)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageIrregularities, storageRatePerGibMonth)}/mo)</small></span>
+          </div>
+          <div className="storage-legend-item">
+            <span className="legend-dot" style={{ background: '#6366f1' }}></span>
+            <span>📝 Tasks: <strong>{formatBytes(usageTasks)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageTasks, storageRatePerGibMonth)}/mo)</small></span>
+          </div>
+          <div className="storage-legend-item">
+            <span className="legend-dot" style={{ background: '#ec4899' }}></span>
+            <span>📑 Reports: <strong>{formatBytes(usageReports)}</strong> <small style={{ color: '#64748b' }}>(~{formatStorageCost(usageReports, storageRatePerGibMonth)}/mo)</small></span>
           </div>
         </div>
 

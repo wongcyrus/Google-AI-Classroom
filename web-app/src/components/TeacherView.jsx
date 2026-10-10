@@ -142,8 +142,18 @@ const TeacherView = ({ user }) => {
         ? classStudents.size
         : (c.students ? Object.keys(c.students).length : (c.studentEmails?.length || 0));
 
+      const catSum = Math.max(0, c.storageUsageScreenShots || 0) +
+                     Math.max(0, c.storageUsageVideos || 0) +
+                     Math.max(0, c.storageUsageRecordings || 0) +
+                     Math.max(0, c.storageUsageAudio || 0) +
+                     Math.max(0, c.storageUsageZips || 0) +
+                     Math.max(0, c.storageUsageIrregularities || 0) +
+                     Math.max(0, c.storageUsageTasks || 0) +
+                     Math.max(0, c.storageUsageReports || 0);
+      const classUsage = Math.max(0, Number(c.storageUsage) || 0, catSum);
+
       totalEnrollments += count;
-      totalStorageUsed += (c.storageUsage || 0);
+      totalStorageUsed += classUsage;
       totalStorageQuota += (c.storageQuota || 0);
       totalAiUsed += (c.aiUsedQuota || 0);
       totalAiQuota += (c.aiQuota || 10);
@@ -412,7 +422,15 @@ const TeacherView = ({ user }) => {
       {filteredClasses.length > 0 ? (
         <div className="class-card-list">
           {filteredClasses.map(c => {
-            const usage = Math.max(0, Number(c.storageUsage) || 0);
+            const catSum = Math.max(0, c.storageUsageScreenShots || 0) +
+                           Math.max(0, c.storageUsageVideos || 0) +
+                           Math.max(0, c.storageUsageRecordings || 0) +
+                           Math.max(0, c.storageUsageAudio || 0) +
+                           Math.max(0, c.storageUsageZips || 0) +
+                           Math.max(0, c.storageUsageIrregularities || 0) +
+                           Math.max(0, c.storageUsageTasks || 0) +
+                           Math.max(0, c.storageUsageReports || 0);
+            const usage = Math.max(0, Number(c.storageUsage) || 0, catSum);
             const quota = Number(c.storageQuota) > 0 ? Number(c.storageQuota) : (5 * 1024 * 1024 * 1024);
             const storagePercent = Math.min(100, Math.max(0, (usage / quota) * 100));
 
@@ -521,8 +539,9 @@ const TeacherView = ({ user }) => {
                       <div className="meter-fill storage" style={{ width: `${storagePercent}%` }} />
                     </div>
                     <div className="meter-breakdown">
-                      <span>Screens: {formatBytes(c.storageUsageScreenShots || 0)}</span>
-                      <span>Vids: {formatBytes(c.storageUsageVideos || 0)}</span>
+                      <span>Screens: {formatBytes(Math.max(0, c.storageUsageScreenShots || 0))}</span>
+                      <span>Vids: {formatBytes(Math.max(0, c.storageUsageVideos || 0))}</span>
+                      {c.storageUsageRecordings > 0 && <span>Recs: {formatBytes(c.storageUsageRecordings)}</span>}
                     </div>
                   </div>
 

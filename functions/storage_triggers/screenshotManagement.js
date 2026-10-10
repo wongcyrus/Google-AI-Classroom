@@ -251,15 +251,18 @@ export const purgeClassTelemetryData = onCall({
         for (const lDoc of lectureDocs) {
           totalRecordings++;
           const prefix = `recordings/${classId}/${lDoc.id}/`;
+          const subPrefix = `subtitles/${classId}/${lDoc.id}/`;
           await bucket.deleteFiles({ prefix, force: true }).catch((err) => {
             console.warn(`Could not delete lecture recording folder ${prefix}:`, err);
           });
+          await bucket.deleteFiles({ prefix: subPrefix, force: true }).catch(() => {});
           await lDoc.ref.delete();
         }
       } catch (lErr) {
         console.warn('Error purging lecture recordings in range:', lErr);
       }
       const orphanRecordings = await purgeOrphanedStorageFiles(bucket, `recordings/${classId}/`, start, end);
+      await purgeOrphanedStorageFiles(bucket, `subtitles/${classId}/`, start, end);
       totalRecordings += orphanRecordings;
     }
 

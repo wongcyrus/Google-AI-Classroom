@@ -8,6 +8,46 @@ import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
 const db = getFirestore();
 const adminStorage = getStorage();
 
+/**
+ * Resolves the class ID and the quota usage field for any Storage file path.
+ * Supports all classroom assets: screenshots, student videos, lecture recordings,
+ * subtitles, audio clips, irregularities, zip archives, task attachments/demos,
+ * student submissions, and AI incident dossier reports.
+ * @param {string} filePath
+ * @returns {{ classId: string, usageField: string } | null}
+ */
+export function getStorageCategoryAndClass(filePath) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  const parts = filePath.split('/');
+  if (parts.length < 3) return null;
+
+  // Handle classes/{classId}/tasks/...
+  if (parts[0] === 'classes') {
+    return { classId: parts[1], usageField: 'storageUsageTasks' };
+  }
+
+  const classId = parts[1];
+  if (parts[0] === 'screenshots') {
+    return { classId, usageField: 'storageUsageScreenShots' };
+  } else if (parts[0] === 'videos') {
+    return { classId, usageField: 'storageUsageVideos' };
+  } else if (parts[0] === 'recordings' || parts[0] === 'subtitles') {
+    return { classId, usageField: 'storageUsageRecordings' };
+  } else if (parts[0] === 'audio') {
+    return { classId, usageField: 'storageUsageAudio' };
+  } else if (parts[0] === 'irregularities') {
+    return { classId, usageField: 'storageUsageIrregularities' };
+  } else if (parts[0] === 'zips') {
+    return { classId, usageField: 'storageUsageZips' };
+  } else if (parts[0] === 'tasks' || parts[0] === 'submissions') {
+    return { classId, usageField: 'storageUsageTasks' };
+  } else if (parts[0] === 'reports') {
+    return { classId, usageField: 'storageUsageReports' };
+  }
+
+  return null;
+}
+
 // Function to update storage usage when a file is uploaded
 export const updateStorageUsageOnUpload = onObjectFinalized({
   region: FUNCTION_REGION,
@@ -16,32 +56,13 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
   const filePath = event.data.name;
   const size = event.data.size;
 
-  let usageField = null;
-  if (filePath.startsWith('screenshots/')) {
-    usageField = 'storageUsageScreenShots';
-  } else if (filePath.startsWith('videos/')) {
-    usageField = 'storageUsageVideos';
-  } else if (filePath.startsWith('zips/')) {
-    usageField = 'storageUsageZips';
-  } else if (filePath.startsWith('audio/')) {
-    usageField = 'storageUsageAudio';
-  } else if (filePath.startsWith('recordings/')) {
-    usageField = 'storageUsageRecordings';
-  } else if (filePath.startsWith('irregularities/')) {
-    usageField = 'storageUsageIrregularities';
-  }
-
-  if (!usageField) {
-    console.log(`Ignoring file: ${filePath} as it is not in a tracked folder.`);
+  const target = getStorageCategoryAndClass(filePath);
+  if (!target) {
+    console.log(`Ignoring file: ${filePath} as it is not in a tracked folder or invalid structure.`);
     return;
   }
 
-  const parts = filePath.split('/');
-  if (parts.length < 3) {
-    console.log(`Invalid path structure for quota tracking: ${filePath}`);
-    return;
-  }
-  const classId = parts[1];
+  const { classId, usageField } = target;
   const fileSize = parseInt(size, 10);
 
   if (isNaN(fileSize) || fileSize === 0) {
@@ -144,32 +165,13 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
   const filePath = event.data.name;
   const size = event.data.size;
 
-  let usageField = null;
-  if (filePath.startsWith('screenshots/')) {
-    usageField = 'storageUsageScreenShots';
-  } else if (filePath.startsWith('videos/')) {
-    usageField = 'storageUsageVideos';
-  } else if (filePath.startsWith('zips/')) {
-    usageField = 'storageUsageZips';
-  } else if (filePath.startsWith('audio/')) {
-    usageField = 'storageUsageAudio';
-  } else if (filePath.startsWith('recordings/')) {
-    usageField = 'storageUsageRecordings';
-  } else if (filePath.startsWith('irregularities/')) {
-    usageField = 'storageUsageIrregularities';
-  }
-
-  if (!usageField) {
-    console.log(`Ignoring file: ${filePath} as it is not in a tracked folder.`);
+  const target = getStorageCategoryAndClass(filePath);
+  if (!target) {
+    console.log(`Ignoring file: ${filePath} as it is not in a tracked folder or invalid structure.`);
     return;
   }
 
-  const parts = filePath.split('/');
-  if (parts.length < 3) {
-    console.log(`Invalid path structure for quota tracking: ${filePath}`);
-    return;
-  }
-  const classId = parts[1];
+  const { classId, usageField } = target;
   const fileSize = parseInt(size, 10);
 
   if (isNaN(fileSize) || fileSize === 0) {
@@ -183,17 +185,52 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
   const storageRef = classRef.collection('metadata').doc('storage');
 
   try {
-    const updatePayload = {
-      storageUsage: FieldValue.increment(-fileSize),
-      [usageField]: FieldValue.increment(-fileSize)
-    };
-    await storageRef.update(updatePayload);
+    let decField = fileSize;
+    let decTotal = fileSize;
+
     try {
-      await classRef.set({ storageUsage: FieldValue.increment(-fileSize) }, { merge: true });
-    } catch (e) {
-      console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+      const docSnap = await storageRef.get();
+      if (docSnap && (docSnap.exists === true || (typeof docSnap.exists === 'function' && docSnap.exists()))) {
+        const currentData = (typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data) || {};
+        const hasField = usageField in currentData;
+        const currentFieldVal = Number(currentData[usageField]) || 0;
+        const currentTotalVal = Number(currentData.storageUsage) || 0;
+
+        // Self-heal negative balance if already <= 0
+        if (hasField && currentFieldVal <= 0 && currentTotalVal <= 0) {
+          console.log(`Class ${classId} already has 0 or negative storage for ${usageField}. Skipping decrement to prevent negative drift.`);
+          if (currentFieldVal < 0 || currentTotalVal < 0) {
+            await storageRef.update({
+              [usageField]: Math.max(0, currentFieldVal),
+              storageUsage: Math.max(0, currentTotalVal)
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        // Never decrement below 0 if field exists
+        if (hasField) decField = Math.min(fileSize, Math.max(0, currentFieldVal));
+        if ('storageUsage' in currentData) decTotal = Math.min(fileSize, Math.max(0, currentTotalVal));
+      }
+    } catch (getErr) {
+      console.warn(`Could not read storage doc before decrement for class ${classId}:`, getErr);
     }
-    console.log(`Successfully decreased storage usage for class ${classId}.`);
+
+    if (decField > 0 || decTotal > 0) {
+      const updatePayload = {};
+      if (decField > 0) updatePayload[usageField] = FieldValue.increment(-decField);
+      if (decTotal > 0) updatePayload.storageUsage = FieldValue.increment(-decTotal);
+
+      await storageRef.update(updatePayload);
+      if (decTotal > 0) {
+        try {
+          await classRef.set({ storageUsage: FieldValue.increment(-decTotal) }, { merge: true });
+        } catch (e) {
+          console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+        }
+      }
+      console.log(`Successfully decreased storage usage for class ${classId} (decField: ${decField}, decTotal: ${decTotal}).`);
+    }
   } catch (error) {
     console.error(`Failed to decrease storage usage for class ${classId}:`, error);
   }
@@ -264,7 +301,12 @@ export async function recalculateStorageUsageInternal(classId) {
     { prefix: `zips/${classId}/`, field: 'storageUsageZips' },
     { prefix: `audio/${classId}/`, field: 'storageUsageAudio' },
     { prefix: `recordings/${classId}/`, field: 'storageUsageRecordings' },
+    { prefix: `subtitles/${classId}/`, field: 'storageUsageRecordings' },
     { prefix: `irregularities/${classId}/`, field: 'storageUsageIrregularities' },
+    { prefix: `classes/${classId}/tasks/`, field: 'storageUsageTasks' },
+    { prefix: `tasks/${classId}/`, field: 'storageUsageTasks' },
+    { prefix: `submissions/${classId}/`, field: 'storageUsageTasks' },
+    { prefix: `reports/${classId}/`, field: 'storageUsageReports' },
   ];
 
   const results = {
@@ -274,6 +316,8 @@ export async function recalculateStorageUsageInternal(classId) {
     storageUsageAudio: 0,
     storageUsageRecordings: 0,
     storageUsageIrregularities: 0,
+    storageUsageTasks: 0,
+    storageUsageReports: 0,
     storageUsage: 0,
   };
 
@@ -288,7 +332,7 @@ export async function recalculateStorageUsageInternal(classId) {
           catTotal += sz;
         }
       }
-      results[cat.field] = catTotal;
+      results[cat.field] = (results[cat.field] || 0) + catTotal;
       results.storageUsage += catTotal;
     } catch (err) {
       console.warn(`Error scanning prefix ${cat.prefix}:`, err);

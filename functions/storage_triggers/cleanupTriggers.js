@@ -125,11 +125,13 @@ export const onLectureRecordingDeleted = onDocumentDeleted({
   }
 
   const prefix = `recordings/${classId}/${sessionId}/`;
+  const subtitlesPrefix = `subtitles/${classId}/${sessionId}/`;
   try {
-    logger.info(`Deleting physical Storage assets for lecture recording under: ${prefix}`);
+    logger.info(`Deleting physical Storage assets for lecture recording under: ${prefix} and ${subtitlesPrefix}`);
     const bucket = storage.bucket();
     await bucket.deleteFiles({ prefix, force: true });
-    logger.info(`Successfully purged Storage assets for lecture recording prefix: ${prefix}`);
+    await bucket.deleteFiles({ prefix: subtitlesPrefix, force: true }).catch(() => {});
+    logger.info(`Successfully purged Storage assets for lecture recording`);
   } catch (error) {
     logger.error(`Error deleting storage files for lecture recording prefix ${prefix}:`, error);
   }
@@ -138,7 +140,7 @@ export const onLectureRecordingDeleted = onDocumentDeleted({
 /**
  * Triggered whenever an entire class document is deleted in Firestore.
  * Performs a comprehensive cascade delete:
- * 1. Purges all physical Cloud Storage files under screenshots/, videos/, zips/, audio/, and recordings/.
+ * 1. Purges all physical Cloud Storage files under screenshots/, videos/, zips/, audio/, recordings/, subtitles/, irregularities/, classes/, tasks/, submissions/, and reports/.
  * 2. Purges all Firestore documents matching classId (screenshots, audio, videoJobs, zipJobs, irregularities, progress, etc.).
  * 3. Deletes subcollections (metadata/storage, lectureRecordings, screenBroadcast, liveSubtitles).
  * 4. Unlinks the class from teacherProfiles and studentProfiles.
@@ -160,6 +162,12 @@ export const onClassDocDeleted = onDocumentDeleted({
     `zips/${classId}/`,
     `audio/${classId}/`,
     `recordings/${classId}/`,
+    `subtitles/${classId}/`,
+    `irregularities/${classId}/`,
+    `classes/${classId}/`,
+    `tasks/${classId}/`,
+    `submissions/${classId}/`,
+    `reports/${classId}/`,
     `taskDemos/${classId}/`
   ];
 

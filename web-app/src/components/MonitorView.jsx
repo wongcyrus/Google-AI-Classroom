@@ -436,6 +436,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [storageUsageZips, setStorageUsageZips] = useState(0);
   const [storageUsageRecordings, setStorageUsageRecordings] = useState(0);
   const [storageUsageIrregularities, setStorageUsageIrregularities] = useState(0);
+  const [storageUsageTasks, setStorageUsageTasks] = useState(0);
+  const [storageUsageReports, setStorageUsageReports] = useState(0);
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
   const [enableAudioCapture, setEnableAudioCapture] = useState(false);
@@ -828,6 +830,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         setStorageUsageZips(data.storageUsageZips || 0);
         setStorageUsageRecordings(data.storageUsageRecordings || 0);
         setStorageUsageIrregularities(data.storageUsageIrregularities || 0);
+        setStorageUsageTasks(data.storageUsageTasks || 0);
+        setStorageUsageReports(data.storageUsageReports || 0);
       }
     });
 
@@ -2006,6 +2010,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         storageUsageAudio={storageUsageAudio}
         storageUsageRecordings={storageUsageRecordings}
         storageUsageIrregularities={storageUsageIrregularities}
+        storageUsageTasks={storageUsageTasks}
+        storageUsageReports={storageUsageReports}
         aiQuota={aiQuota}
         aiUsedQuota={aiUsedQuota}
         selectedAiModel={selectedAiModel}

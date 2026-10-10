@@ -22,6 +22,7 @@ const ControlsPanel = ({
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, setIsAllImagesAnalysisRunning,
     samplingRate = 5, setSamplingRate,
     storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips, storageUsageAudio, storageUsageRecordings, storageUsageIrregularities,
+    storageUsageTasks, storageUsageReports,
     aiQuota, aiUsedQuota,
     selectedAiModel = 'gemini-3.5-flash-lite', handleAiModelChange,
     enableAudioCapture = false, handleAudioCaptureToggle,
@@ -466,7 +467,18 @@ const ControlsPanel = ({
       setShowGazeModal(false);
     };
 
-    const storagePercentage = Number(storageQuota) > 0 ? Math.min(100, Math.max(0, (Number(storageUsage) / Number(storageQuota)) * 100)) : 0;
+    const usageShots = Math.max(0, Number(storageUsageScreenShots) || 0);
+    const usageVids = Math.max(0, Number(storageUsageVideos) || 0);
+    const usageZip = Math.max(0, Number(storageUsageZips) || 0);
+    const usageAud = Math.max(0, Number(storageUsageAudio) || 0);
+    const usageRecs = Math.max(0, Number(storageUsageRecordings) || 0);
+    const usageIrreg = Math.max(0, Number(storageUsageIrregularities) || 0);
+    const usageTasks = Math.max(0, Number(storageUsageTasks) || 0);
+    const usageReports = Math.max(0, Number(storageUsageReports) || 0);
+
+    const categorySum = usageShots + usageVids + usageZip + usageAud + usageRecs + usageIrreg + usageTasks + usageReports;
+    const effectiveUsage = Math.max(0, Number(storageUsage) || 0, categorySum);
+    const storagePercentage = Number(storageQuota) > 0 ? Math.min(100, Math.max(0, (effectiveUsage / Number(storageQuota)) * 100)) : 0;
     const aiPercentage = Number(aiQuota) > 0 ? Math.min(100, Math.max(0, (Number(aiUsedQuota) / Number(aiQuota)) * 100)) : 0;
 
     return (
@@ -1185,16 +1197,18 @@ const ControlsPanel = ({
                 </div>
                 <p className="storage-text">
                     {storageQuota > 0 
-                      ? `${formatBytes(storageUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(storageUsage)}/mo)` 
-                      : `${formatBytes(storageUsage)} used (~${formatStorageCost(storageUsage)}/mo)`}
+                      ? `${formatBytes(effectiveUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(effectiveUsage)}/mo)` 
+                      : `${formatBytes(effectiveUsage)} used (~${formatStorageCost(effectiveUsage)}/mo)`}
                 </p>
                 <div className="storage-breakdown">
-                    <span>Screenshots: {formatBytes(storageUsageScreenShots)}</span>
-                    <span>Videos: {formatBytes(storageUsageVideos)}</span>
-                    <span>Zips: {formatBytes(storageUsageZips)}</span>
-                    {storageUsageAudio > 0 && <span>Audio: {formatBytes(storageUsageAudio)}</span>}
-                    {storageUsageRecordings > 0 && <span>Recordings: {formatBytes(storageUsageRecordings)}</span>}
-                    {storageUsageIrregularities > 0 && <span>Irregularities: {formatBytes(storageUsageIrregularities)}</span>}
+                    <span>Screenshots: {formatBytes(usageShots)}</span>
+                    <span>Videos: {formatBytes(usageVids)}</span>
+                    <span>Zips: {formatBytes(usageZip)}</span>
+                    {usageAud > 0 && <span>Audio: {formatBytes(usageAud)}</span>}
+                    {usageRecs > 0 && <span>Recordings: {formatBytes(usageRecs)}</span>}
+                    {usageIrreg > 0 && <span>Irregularities: {formatBytes(usageIrreg)}</span>}
+                    {usageTasks > 0 && <span>Tasks: {formatBytes(usageTasks)}</span>}
+                    {usageReports > 0 && <span>Reports: {formatBytes(usageReports)}</span>}
                 </div>
             </div>
 

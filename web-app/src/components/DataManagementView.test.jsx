@@ -443,5 +443,44 @@ describe('DataManagementView Component', () => {
     expect(widthVal).toBeLessThan(5); // Not 100%!
     expect(widthVal).toBeGreaterThan(0.5);
   });
+
+  it('handles negative corrupted storageUsage gracefully by using category sum so videos are never displayed as 0', () => {
+    // Simulated corrupted state: storageUsageScreenShots is negative, total storageUsage is negative
+    // but 300 MB videos exist.
+    const threeHundredMB = 300 * 1024 * 1024;
+    mockOnSnapshot.mockImplementation((ref, callback) => {
+      if (typeof callback === 'function') {
+        callback({
+          exists: () => true,
+          data: () => ({
+            storageUsage: -500000000,
+            storageUsageScreenShots: -1400000000,
+            storageUsageAudio: 0,
+            storageUsageVideos: threeHundredMB,
+            storageUsageRecordings: 0,
+            storageUsageZips: 0,
+            storageUsageIrregularities: 0,
+          }),
+        });
+      }
+      return vi.fn();
+    });
+
+    render(
+      <DataManagementView
+        classId="CLASS_CORRUPTED_NEGATIVE"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    const progressBar = screen.getByRole('progressbar');
+    expect(progressBar).not.toHaveAttribute('aria-valuenow', '0.0');
+    // Total Allocated must NOT be 0 Bytes!
+    expect(screen.getByText(/Total Allocated:/i).parentElement).not.toHaveTextContent('0 Bytes / 5 GB');
+    expect(screen.getByText(/Total Allocated:/i).parentElement).toHaveTextContent('300 MB / 5 GB');
+  });
 });
 
