@@ -631,7 +631,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       />
 
       <div className="view-header">
-        <h2>Video Library</h2>
+        <h2>Student Recordings</h2>
       </div>
 
       {/* Google Drive Status & Target Folder Settings Bar */}

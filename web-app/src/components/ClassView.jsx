@@ -501,7 +501,7 @@ const ClassView = ({ user }) => {
             className={`tab-button ${subTab === 'library' ? 'active' : ''}`}
             onClick={() => setSub('library')}
           >
-            <span>📁</span> Video Library
+            <span>👥</span> Student Recordings
           </button>
           <button
             className={`tab-button ${subTab === 'review' ? 'active' : ''}`}

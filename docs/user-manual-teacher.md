@@ -18,7 +18,7 @@ Welcome to the **Google AI Classroom** Instructor Guide. This manual details eve
 7. [Screen Broadcasting to Students](#7-screen-broadcasting-to-students)
 8. [Individual Student Inspection, Intercom & Interventions](#8-individual-student-inspection-intercom--interventions)
 9. [Interactive "Bingo" Active Presence Verification](#9-interactive-bingo-active-presence-verification)
-10. [Session Review, Video Library & Synchronized Scrubbing](#10-session-review-video-library--synchronized-scrubbing)
+10. [Session Review, Student Recordings & Synchronized Scrubbing](#10-session-review-student-recordings--synchronized-scrubbing)
 11. [Practical Hands-On Tasks & Google Drive Archival](#11-practical-hands-on-tasks--google-drive-archival)
 12. [AI Video Analysis & Task Prompt Synthesis Studio](#12-ai-video-analysis--task-prompt-synthesis-studio)
 13. [Attendance Matrix, Bitmasks & Working Time Estimation](#13-attendance-matrix-bitmasks--working-time-estimation)
@@ -732,7 +732,7 @@ In computer labs lacking webcams where students may share login credentials, tea
 
 ---
 
-## 10. Session Review, Video Library & Synchronized Scrubbing
+## 10. Session Review, Student Recordings & Synchronized Scrubbing
 
 Navigate to the **`🎥 Videos`** tab to inspect completed screencasts.
 
@@ -773,9 +773,9 @@ Teachers can review their own screen/microphone lecture recordings, play them wi
    - **📋 1-Click Clipboard Copy:** Instant buttons to copy the generated YouTube Title and YouTube Description (complete with timestamped chapter markers like `00:00 - Introduction`, `14:20 - Code Walkthrough`).
    - **🔄 Subtitle Regeneration:** If Gemini AI processing needs to be re-run, click **`Generate Subtitles`** to trigger fresh multi-language closed captions without re-uploading the video.
 
-### Student Video Library & Bulk Downloads (`VideoLibrary.jsx`)
-1. Select the **Video Library** subtab.
-2. Review the table of compiled MP4 recordings with date, duration, and file size.
+### Student Recordings & Bulk Downloads (`VideoLibrary.jsx`)
+1. Select the **Student Recordings** subtab.
+2. Review the table of compiled MP4 recordings (screen & webcam pairs) with date, duration, and file size.
 3. Select checkboxes for specific recordings or select all.
 4. Click **`📦 Request Selected as ZIP`** (or **`📦 Request All as ZIP`**). Cloud Functions will assemble a single ZIP package in the background. A download notification will appear in your **Mailbox** upon completion.
 5. Click **`📥 Export Video Manifest (Excel)`** to export recording URLs, durations, and timestamps mapped to student display names and emails (`Class_{classId}_Video_Manifest_{timestamp}.xlsx`).

@@ -4,6 +4,26 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.8 UI Refactor: "Video Library" Renamed to "Student Recordings"
+
+**Date**: October 10, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Ready for Deployment  
+**Primary Files**:
+- Video Navigation & Headers: [`web-app/src/components/ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx), [`web-app/src/components/VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx)
+- Unit Tests: [`web-app/src/components/VideoLibrary.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.test.jsx), [`web-app/src/components/ClassView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.test.jsx)
+- Documentation: [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/recent-changes.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/recent-changes.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Clear Semantic Separation in Video Hub**:
+   - The generic title **"Video Library"** was ambiguous alongside **"Teacher Lecture Recordings"**.
+   - Because student recordings capture both screen and webcam video streams across sessions, the tab and view have been refactored to **`👥 Student Recordings`**.
+   - This creates a clean, symmetric pair in the Video hub:
+     - `🎥 Teacher Lecture Recordings`: Broadcast lecture videos, AI transcripts, and chapter packages.
+     - `👥 Student Recordings`: Screen and webcam time-lapse video pairs, bulk ZIP export, Google Drive backups, and AI lab analysis.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.7 Retroactive 1-Click Sweep & Purge for Completed Videos in Existing Classes
 
 **Date**: October 9, 2026  

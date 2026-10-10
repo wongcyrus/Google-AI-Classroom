@@ -139,7 +139,7 @@ describe('VideoLibrary Full Component Suite', () => {
       />
     );
 
-    expect(screen.getByText(/Video Library/i)).toBeInTheDocument();
+    expect(screen.getByText(/Student Recordings/i)).toBeInTheDocument();
     expect(screen.getByText('student1@example.com')).toBeInTheDocument();
     expect(screen.getByText('student2@example.com')).toBeInTheDocument();
 
