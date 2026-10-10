@@ -550,5 +550,42 @@ describe('IndividualStudentView Component', () => {
       triggerType: 'teacher_manual_single',
     });
   });
+
+  it('renders audio download button when audio snippet url is resolved', async () => {
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        onClose={vi.fn()}
+      />
+    );
+
+    // Trigger mock snapshot callback with audio chunk
+    act(() => {
+      if (mockOnSnapshotCallback) {
+        mockOnSnapshotCallback({
+          docs: [
+            {
+              id: 'aud_clip_1',
+              data: () => ({
+                audioUrl: 'https://storage.mock/voice_snippet.webm',
+                duration: 15,
+                timestamp: { toDate: () => new Date('2026-10-10T09:00:00Z') },
+                transcript: 'Speaking about Kubernetes services',
+              }),
+            },
+          ],
+        });
+      }
+    });
+
+    await waitFor(() => {
+      const downloadBtn = screen.getByTitle(/Download current audio clip/i);
+      expect(downloadBtn).toBeInTheDocument();
+      expect(downloadBtn).toHaveAttribute('href', 'https://storage.mock/voice_snippet.webm');
+    });
+  });
 });
 

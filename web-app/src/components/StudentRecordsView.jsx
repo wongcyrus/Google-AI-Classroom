@@ -205,6 +205,10 @@ const StudentRecordsView = ({ user }) => {
   const [playingAudioId, setPlayingAudioId] = useState(null);
   const [audioUrlMap, setAudioUrlMap] = useState({});
   const [audioLoadingId, setAudioLoadingId] = useState(null);
+  const [isMergingAudio, setIsMergingAudio] = useState(false);
+  const [mergedAudioResult, setMergedAudioResult] = useState(null);
+  const [isPlayingContinuousAudio, setIsPlayingContinuousAudio] = useState(false);
+  const [downloadingAudioId, setDownloadingAudioId] = useState(null);
 
   // Teacher lecture recordings state
   const [teacherRecordings, setTeacherRecordings] = useState([]);
@@ -1038,6 +1042,98 @@ const StudentRecordsView = ({ user }) => {
       alert('Unable to load audio playback snippet.');
     } finally {
       setAudioLoadingId(null);
+    }
+  };
+
+  // Individual audio clip download handler
+  const handleDownloadAudioClip = async (audioItem) => {
+    if (isExamRecord(audioItem, activeClassObj)) {
+      alert('Audio download is restricted for exam sessions to safeguard assessment materials.');
+      return;
+    }
+
+    setDownloadingAudioId(audioItem.id);
+    try {
+      let resolvedUrl = audioUrlMap[audioItem.id] || audioItem.audioUrl;
+      if (!resolvedUrl && audioItem.audioPath) {
+        const fileRef = ref(storage, audioItem.audioPath);
+        resolvedUrl = await getDownloadURL(fileRef);
+        setAudioUrlMap((prev) => ({ ...prev, [audioItem.id]: resolvedUrl }));
+      }
+      if (!resolvedUrl) {
+        throw new Error('No audio file found for download.');
+      }
+
+      const a = document.createElement('a');
+      a.href = resolvedUrl;
+      a.download = `speech_${audioItem.id || 'clip'}.webm`;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading audio snippet:', err);
+      alert(`Could not download audio clip: ${err.message}`);
+    } finally {
+      setDownloadingAudioId(null);
+    }
+  };
+
+  // Continuous auto-playlist handler
+  const handleToggleContinuousAudio = async () => {
+    if (isPlayingContinuousAudio) {
+      setIsPlayingContinuousAudio(false);
+      setPlayingAudioId(null);
+      return;
+    }
+    if (visibleAudio.length === 0) return;
+    setIsPlayingContinuousAudio(true);
+    const firstItem = visibleAudio[0];
+    await handleTogglePlayAudio(firstItem);
+  };
+
+  // Handle auto-advancing to next clip when current clip ends
+  const handleAudioClipEnded = async (endedItem) => {
+    if (isPlayingContinuousAudio) {
+      const currentIndex = visibleAudio.findIndex((a) => a.id === endedItem.id);
+      if (currentIndex >= 0 && currentIndex < visibleAudio.length - 1) {
+        const nextItem = visibleAudio[currentIndex + 1];
+        await handleTogglePlayAudio(nextItem);
+        return;
+      }
+      setIsPlayingContinuousAudio(false);
+    }
+    setPlayingAudioId(null);
+  };
+
+  // 1-Click Backend FFmpeg Session Audio Merger
+  const handleMergeStudentSessionAudio = async () => {
+    if (!selectedClassId || !user?.uid) return;
+    setIsMergingAudio(true);
+    try {
+      const mergeFn = httpsCallable(functions, 'mergeStudentSessionAudio');
+      const lessonTime = activeLesson?.startTime || (visibleAudio[0]?.timestamp ? (visibleAudio[0].timestamp.toDate ? visibleAudio[0].timestamp.toDate().toISOString() : new Date(visibleAudio[0].timestamp).toISOString()) : new Date().toISOString());
+      const dateStr = lessonTime.split('T')[0];
+      const result = await mergeFn({
+        classId: selectedClassId,
+        studentUid: user.uid,
+        dateStr: dateStr,
+        lessonId: activeLesson?.lessonId || selectedLessonId || null,
+      });
+
+      if (result?.data?.status === 'success') {
+        setMergedAudioResult(result.data);
+      } else if (result?.data?.status === 'empty') {
+        alert('No audio clips available to merge for this session.');
+      } else {
+        alert(result?.data?.message || 'Could not combine session audio.');
+      }
+    } catch (err) {
+      console.error('Error combining student session audio:', err);
+      alert(`Failed to combine audio session: ${err.message}`);
+    } finally {
+      setIsMergingAudio(false);
     }
   };
 
@@ -2511,6 +2607,96 @@ const StudentRecordsView = ({ user }) => {
             </div>
           )}
 
+          {/* Audio Session Actions Toolbar */}
+          {visibleAudio.length > 0 && (
+            <div className="audio-session-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="scope-toggle-btn"
+                  onClick={handleToggleContinuousAudio}
+                  style={{
+                    backgroundColor: isPlayingContinuousAudio ? '#ef4444' : '#2563eb',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                  }}
+                  title={isPlayingContinuousAudio ? 'Stop continuous playlist' : 'Play all speech snippets sequentially'}
+                >
+                  {isPlayingContinuousAudio ? '⏹ Stop Playlist' : '▶️ Play All Clips Sequentially'}
+                </button>
+
+                <button
+                  type="button"
+                  className="scope-toggle-btn"
+                  onClick={handleMergeStudentSessionAudio}
+                  disabled={isMergingAudio}
+                  style={{
+                    backgroundColor: isMergingAudio ? '#94a3b8' : '#059669',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                  }}
+                  title="Concatenate all speech snippets into a single chronological .m4a audio track using backend FFmpeg"
+                >
+                  {isMergingAudio ? '⏳ Merging Audio with FFmpeg...' : '🎛️ Combine Full Lesson Audio (.m4a)'}
+                </button>
+              </div>
+
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                Total Clips: <strong>{visibleAudio.length}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* Merged Session Audio Result Card */}
+          {mergedAudioResult && mergedAudioResult.audioUrl && (
+            <div
+              className="merged-audio-card"
+              style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🎧</span>
+                  <div>
+                    <strong style={{ color: '#166534', fontSize: '0.95rem' }}>Full Lesson Audio Combined</strong>
+                    <div style={{ fontSize: '0.8rem', color: '#15803d' }}>
+                      Merged {mergedAudioResult.clipCount || visibleAudio.length} clips ({formatDuration(mergedAudioResult.durationSeconds || 0)})
+                    </div>
+                  </div>
+                </div>
+                <a
+                  href={mergedAudioResult.audioUrl}
+                  download={`combined_audio_${selectedClassId}_${user?.uid || 'student'}.m4a`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="action-btn-sm action-btn-primary"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                >
+                  📥 Download Full Lesson Audio (.m4a)
+                </a>
+              </div>
+              <audio
+                controls
+                src={mergedAudioResult.audioUrl}
+                style={{ width: '100%', height: '36px' }}
+              />
+            </div>
+          )}
+
           {visibleAudio.length === 0 ? (
             <div className="empty-state-box">
               <div className="empty-state-icon">🎙️</div>
@@ -2538,7 +2724,7 @@ const StudentRecordsView = ({ user }) => {
                     <th>Timestamp</th>
                     <th>Language</th>
                     <th>Detected Speech Transcript</th>
-                    <th>Audio Clip</th>
+                    <th>Audio Clip & Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2557,27 +2743,39 @@ const StudentRecordsView = ({ user }) => {
                       </td>
                       <td>
                         {(a.audioPath || a.audioUrl) ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <button
-                              type="button"
-                              className="action-btn-small"
-                              onClick={() => handleTogglePlayAudio(a)}
-                              disabled={audioLoadingId === a.id}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
-                            >
-                              {audioLoadingId === a.id
-                                ? '⏳ Loading...'
-                                : playingAudioId === a.id
-                                ? '⏹ Stop'
-                                : '▶ Play Clip'}
-                            </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="action-btn-small"
+                                onClick={() => handleTogglePlayAudio(a)}
+                                disabled={audioLoadingId === a.id}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
+                              >
+                                {audioLoadingId === a.id
+                                  ? '⏳ Loading...'
+                                  : playingAudioId === a.id
+                                  ? '⏹ Stop'
+                                  : '▶ Play Clip'}
+                              </button>
+                              <button
+                                type="button"
+                                className="action-btn-small action-btn-secondary"
+                                onClick={() => handleDownloadAudioClip(a)}
+                                disabled={downloadingAudioId === a.id}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
+                                title="Download audio snippet (.webm)"
+                              >
+                                {downloadingAudioId === a.id ? '⏳ Downloading...' : '📥 Download'}
+                              </button>
+                            </div>
                             {playingAudioId === a.id && audioUrlMap[a.id] && (
                               <audio
                                 controls
                                 autoPlay
                                 src={audioUrlMap[a.id]}
-                                style={{ height: '30px', width: '180px', marginTop: '4px' }}
-                                onEnded={() => setPlayingAudioId(null)}
+                                style={{ height: '30px', width: '200px', marginTop: '4px' }}
+                                onEnded={() => handleAudioClipEnded(a)}
                               />
                             )}
                           </div>

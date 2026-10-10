@@ -743,6 +743,20 @@ const IndividualStudentView = ({
                 </span>
               )}
 
+              {currentAudioUrl && (
+                <a
+                  href={currentAudioUrl}
+                  download={`student-voice-${studentUid}-${currentAudio?.id || 'clip'}.webm`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-transcript-modal compact"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  title="Download current audio clip (.webm)"
+                >
+                  📥 Download
+                </a>
+              )}
+
               {(currentAudio?.transcript || currentAudio?.transcriptSegments?.length > 0) && (
                 <button
                   type="button"

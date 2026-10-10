@@ -7,3 +7,4 @@ export * from './cleanupStuckJobs.js';
 export * from './getStudentVideoPlaybackUrl.js';
 export * from './mergeLectureRecordings.js';
 export * from './onLectureVideoFinalized.js';
+export * from './mergeStudentSessionAudio.js';

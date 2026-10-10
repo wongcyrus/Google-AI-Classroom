@@ -1697,6 +1697,225 @@ describe('StudentRecordsView Component', () => {
       });
     });
 
+    it('downloads individual audio clip snippet', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return {
+            exists: () => true,
+            id: 'CLASS_A',
+            data: () => ({ name: 'Cloud Computing 101' }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'audio_dl_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  language: 'en',
+                  transcript: 'Explaining microservice architecture',
+                  audioPath: 'audio/CLASS_A/clip_dl1.webm',
+                  timestamp: '2026-09-12T10:20:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      mockGetDownloadURL.mockResolvedValue('https://storage.mock/clip_dl1.webm');
+
+      const clickSpy = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, 'createElement').mockImplementation((tagName) => {
+        const el = origCreateElement(tagName);
+        if (tagName === 'a') {
+          el.click = clickSpy;
+        }
+        return el;
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTab);
+
+      const dlBtn = await screen.findByTitle(/Download audio snippet/i);
+      fireEvent.click(dlBtn);
+
+      await waitFor(() => {
+        expect(mockGetDownloadURL).toHaveBeenCalled();
+        expect(clickSpy).toHaveBeenCalled();
+      });
+
+      document.createElement.mockRestore();
+    });
+
+    it('plays all audio clips sequentially in playlist mode and auto-advances', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return {
+            exists: () => true,
+            id: 'CLASS_A',
+            data: () => ({ name: 'Cloud Computing 101' }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'audio_seq_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  transcript: 'First clip',
+                  audioPath: 'audio/CLASS_A/seq1.webm',
+                  timestamp: '2026-09-12T10:20:00Z',
+                }),
+              },
+              {
+                id: 'audio_seq_2',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  transcript: 'Second clip',
+                  audioPath: 'audio/CLASS_A/seq2.webm',
+                  timestamp: '2026-09-12T10:25:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      mockGetDownloadURL.mockResolvedValue('https://storage.mock/audio.webm');
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTab);
+
+      const playAllBtn = await screen.findByRole('button', { name: /▶️ Play All Clips Sequentially/i });
+      fireEvent.click(playAllBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /⏹ Stop Playlist/i })).toBeInTheDocument();
+      });
+
+      // Stop playlist
+      fireEvent.click(screen.getByRole('button', { name: /⏹ Stop Playlist/i }));
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /▶️ Play All Clips Sequentially/i })).toBeInTheDocument();
+      });
+    });
+
+    it('combines full lesson audio via mergeStudentSessionAudio callable and displays player card', async () => {
+      mockGetDoc.mockImplementation(async (docRef) => {
+        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
+        }
+        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+          return {
+            exists: () => true,
+            id: 'CLASS_A',
+            data: () => ({ name: 'Cloud Computing 101' }),
+          };
+        }
+        return { exists: () => false };
+      });
+
+      mockGetDocs.mockImplementation(async (queryOrCol) => {
+        const args = queryOrCol?.args || [];
+        const colPath = queryOrCol?.path || (args[0]?.path);
+        if (colPath && colPath.includes('audio')) {
+          return {
+            docs: [
+              {
+                id: 'audio_merge_1',
+                data: () => ({
+                  classId: 'CLASS_A',
+                  studentUid: 'student-test-123',
+                  transcript: 'Session snippet',
+                  audioPath: 'audio/CLASS_A/m1.webm',
+                  timestamp: '2026-09-12T10:20:00Z',
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      const mockMergeCallable = vi.fn().mockResolvedValue({
+        data: {
+          status: 'success',
+          audioUrl: 'https://storage.mock/combined_session.m4a',
+          audioPath: 'audio/CLASS_A/combined.m4a',
+          durationSeconds: 120,
+          clipCount: 1,
+        },
+      });
+      mockHttpsCallable.mockImplementation((funcs, name) => {
+        if (name === 'mergeStudentSessionAudio') {
+          return mockMergeCallable;
+        }
+        return vi.fn().mockResolvedValue({ data: {} });
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
+      });
+
+      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
+      fireEvent.click(audioTab);
+
+      const combineBtn = await screen.findByRole('button', { name: /🎛️ Combine Full Lesson Audio/i });
+      fireEvent.click(combineBtn);
+
+      await waitFor(() => {
+        expect(mockMergeCallable).toHaveBeenCalledWith(
+          expect.objectContaining({
+            classId: 'CLASS_A',
+            studentUid: 'student-test-123',
+          })
+        );
+        expect(screen.getByText(/Full Lesson Audio Combined/i)).toBeInTheDocument();
+        expect(screen.getByText(/Download Full Lesson Audio \(\.m4a\)/i)).toBeInTheDocument();
+      });
+    });
+
     it('blocks audio playback if the recording took place during an exam session', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
         if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {

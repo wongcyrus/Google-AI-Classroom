@@ -4,6 +4,34 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.0.9 Student Voice Recording Playback, Sequential Playlist & 1-Click Backend Lesson Audio Concatenation (.m4a)
+
+**Date**: October 10, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Frontend, Functions, Smoke, Security), Deployed to Dev & Prod  
+**Primary Files**:
+- Cloud Functions: [`functions/media_processing/mergeStudentSessionAudio.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/mergeStudentSessionAudio.js), [`functions/media_processing/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/index.mjs)
+- UI Components: [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx), [`web-app/src/components/IndividualStudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/IndividualStudentView.jsx)
+- Test Suites: [`web-app/src/components/StudentRecordsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.test.jsx), [`web-app/src/components/IndividualStudentView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/IndividualStudentView.test.jsx), [`functions/media_processing/mergeStudentSessionAudio.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/mergeStudentSessionAudio.test.js)
+- Documentation: [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/recent-changes.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/recent-changes.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Dual Playback & Download Capabilities**:
+   - **Direct UI Playback & Snippet Downloads**: Added `📥 Download` buttons to individual audio speech segments in both `StudentRecordsView.jsx` (Audio Transcripts tab) and `IndividualStudentView.jsx` (Teacher Live Inspection Drawer), allowing teachers and students to save standalone `.webm` audio files directly.
+   - **Continuous Sequential Playlist**: Added `▶️ Play All Clips Sequentially` in `StudentRecordsView.jsx` that automatically advances through speech segments chronologically from beginning to end without manual clicking.
+
+2. **1-Click Backend FFmpeg Session Audio Merger (`mergeStudentSessionAudio`)**:
+   - Implemented a secure callable Cloud Function (`mergeStudentSessionAudio`) in `functions/media_processing/` that retrieves all speech audio chunks for a given student session, downloads them to temporary scratch space, creates an FFmpeg concat file, and encodes a continuous `.m4a` (AAC, 128 kbps) file.
+   - Stores the combined audio file in `audio/{classId}/{dateStr}/{studentUid}/combined_audio_{timestamp}.m4a` and creates a metadata document under `classes/{classId}/combinedAudios/`.
+   - Returns `{ status: 'success', audioUrl, audioPath, durationSeconds, clipCount }` to the frontend, instantly rendering a dedicated session player card with a direct `📥 Download Full Lesson Audio (.m4a)` download link.
+
+3. **Audio Deletion & Storage Lifecycle Safeguard**:
+   - VAD (Voice Activity Detection) in `useAudioRecorder.js` discards silent intervals on the client before upload, saving bandwidth and storage.
+   - Deleted audio document triggers in `cleanupTriggers.js` automatically purge underlying Cloud Storage blobs upon Firestore document deletion.
+   - Proctoring violations and anti-cheating audio logs in `/irregularities` are strictly protected and exempted from deletion.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.0.8 UI Refactor: "Video Library" Renamed to "Student Recordings"
 
 **Date**: October 10, 2026  

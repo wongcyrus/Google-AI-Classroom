@@ -526,10 +526,11 @@ Send instant standardized visual toasts to the student's viewport:
 ### Isolated Anti-Decoy Bingo Check
 Click **`🎯 Call Bingo`** inside the student modal to trigger a surprise presence check targeting *only this student*. The system captures an unannounced screen snapshot (`student_screen`) to confirm the student is not running an automated video looper.
 
-### Audio Clip Inspection & Diarization
-- **HTML5 Player:** Listen to the student's latest 30-second audio clip.
-- **`📋 Clips Drawer`**: Expand to see the playlist of all recorded audio segments for this student during the lesson.
+### Audio Clip Inspection, Playback & Downloads
+- **HTML5 Player & Downloads:** Listen to the student's latest 30-second audio clip directly or click **`📥 Download`** to save the standalone `.webm` audio recording.
+- **`📋 Clips Drawer`**: Expand to see the chronological playlist of all recorded audio segments for this student during the lesson.
 - **`📜 View Transcript & Diarization`**: Opens the full diarization modal showing multi-speaker turn-taking, risk level, and Gemini cheat-detection rationale.
+- **Continuous Auto-Play & Lesson Audio Merge (`StudentRecordsView.jsx`):** In the student record center under the **Audio Transcripts** tab, teachers and students can click **`▶️ Play All Clips Sequentially`** for hands-free listening, or click **`🎛️ Combine Full Lesson Audio (.m4a)`** to let the backend FFmpeg engine concatenate all speech chunks into a unified `.m4a` audio file for direct in-browser playback and high-quality download.
 
 ### 📡 Real-Time Broadcasting, Live Peek & Intercom Signaling Flow
 
