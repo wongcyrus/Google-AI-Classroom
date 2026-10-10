@@ -21,7 +21,7 @@ const ControlsPanel = ({
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, setIsAllImagesAnalysisRunning,
     samplingRate = 5, setSamplingRate,
-    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips, storageUsageAudio,
+    storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips, storageUsageAudio, storageUsageRecordings, storageUsageIrregularities,
     aiQuota, aiUsedQuota,
     selectedAiModel = 'gemini-3.5-flash-lite', handleAiModelChange,
     enableAudioCapture = false, handleAudioCaptureToggle,
@@ -466,8 +466,8 @@ const ControlsPanel = ({
       setShowGazeModal(false);
     };
 
-    const storagePercentage = storageQuota > 0 ? Math.min((storageUsage / storageQuota) * 100, 100) : 0;
-    const aiPercentage = aiQuota > 0 ? Math.min((aiUsedQuota / aiQuota) * 100, 100) : 0;
+    const storagePercentage = Number(storageQuota) > 0 ? Math.min(100, Math.max(0, (Number(storageUsage) / Number(storageQuota)) * 100)) : 0;
+    const aiPercentage = Number(aiQuota) > 0 ? Math.min(100, Math.max(0, (Number(aiUsedQuota) / Number(aiQuota)) * 100)) : 0;
 
     return (
     <div className="monitor-controls-sidebar">
@@ -1193,6 +1193,8 @@ const ControlsPanel = ({
                     <span>Videos: {formatBytes(storageUsageVideos)}</span>
                     <span>Zips: {formatBytes(storageUsageZips)}</span>
                     {storageUsageAudio > 0 && <span>Audio: {formatBytes(storageUsageAudio)}</span>}
+                    {storageUsageRecordings > 0 && <span>Recordings: {formatBytes(storageUsageRecordings)}</span>}
+                    {storageUsageIrregularities > 0 && <span>Irregularities: {formatBytes(storageUsageIrregularities)}</span>}
                 </div>
             </div>
 

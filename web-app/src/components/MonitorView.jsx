@@ -433,7 +433,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [storageUsageScreenShots, setStorageUsageScreenShots] = useState(0);
   const [storageUsageVideos, setStorageUsageVideos] = useState(0);
   const [storageUsageAudio, setStorageUsageAudio] = useState(0);
-  const storageUsageZips = 0;
+  const [storageUsageZips, setStorageUsageZips] = useState(0);
+  const [storageUsageRecordings, setStorageUsageRecordings] = useState(0);
+  const [storageUsageIrregularities, setStorageUsageIrregularities] = useState(0);
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
   const [enableAudioCapture, setEnableAudioCapture] = useState(false);
@@ -823,6 +825,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         setStorageUsageScreenShots(data.storageUsageScreenShots || 0);
         setStorageUsageVideos(data.storageUsageVideos || 0);
         setStorageUsageAudio(data.storageUsageAudio || 0);
+        setStorageUsageZips(data.storageUsageZips || 0);
+        setStorageUsageRecordings(data.storageUsageRecordings || 0);
+        setStorageUsageIrregularities(data.storageUsageIrregularities || 0);
       }
     });
 
@@ -1999,6 +2004,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         storageUsageVideos={storageUsageVideos}
         storageUsageZips={storageUsageZips}
         storageUsageAudio={storageUsageAudio}
+        storageUsageRecordings={storageUsageRecordings}
+        storageUsageIrregularities={storageUsageIrregularities}
         aiQuota={aiQuota}
         aiUsedQuota={aiUsedQuota}
         selectedAiModel={selectedAiModel}

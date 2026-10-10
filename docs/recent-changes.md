@@ -4,6 +4,38 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.1.2 Storage Quota UI Bug Fix, Quota-Proportional Progress Segments & Storage Size Logic Tracing
+
+**Date**: October 10, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests, Traced End-to-End  
+**Primary Files**:
+- Frontend Data Management: [`web-app/src/components/DataManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/DataManagementView.jsx)
+- Frontend Formatters: [`web-app/src/utils/formatters.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/formatters.js)
+- Monitor Controls Panel: [`web-app/src/components/monitor/ControlsPanel.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/ControlsPanel.jsx)
+- Teacher Overview: [`web-app/src/components/TeacherView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherView.jsx)
+- Storage Quota Backend: [`functions/storage_triggers/storageQuota.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/storageQuota.js)
+- Test Suites: [`web-app/src/components/DataManagementView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/DataManagementView.test.jsx), [`functions/storage_triggers/storageQuota.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/storageQuota.test.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Root Cause 1: Full 100% Usage Bar for Single File / 0 Usage**:
+   - In `DataManagementView.jsx`, individual segment widths in the stacked progress bar were previously calculated as `(categoryUsage / totalUsage) * 100` instead of `(categoryUsage / classQuotaBytes) * 100`.
+   - When only screenshots existed (e.g. 50 KB of images in a 5 GB class), `pShots` was `100%`, which expanded the segment to fill the entire progress bar (100% full blue bar) even though only 0.001% of the quota was used.
+   - Fixed by calculating each category segment's width relative to `effectiveQuota` (`Math.min(100, Math.max(0, (categoryUsage / effectiveQuota) * 100))`), ensuring segments stack properly up to `quotaPercent` and the remainder represents available quota space.
+
+2. **Root Cause 2: `NaN%` and `NaN undefined` when Images Were Deleted**:
+   - `DataManagementView.jsx` defined a duplicate local `formatBytes` implementation that called `Math.log(bytes)`. When `bytes < 0` (from transient negative decrement or baseline differences), `Math.log` returned `NaN`, producing `sizes[NaN] -> undefined` and rendering `"NaN undefined"`.
+   - Furthermore, when images were deleted and `totalUsage` became 0, `0 / 0` produced `NaN` in breakdown percentages.
+   - Fixed by removing duplicate formatters, importing defensive `formatBytes` from `formatters.js` (which guards against `<= 0`, `NaN`, `null`, `undefined`), clamping usage fields to `Math.max(0, ...)`, and providing safe fallbacks.
+
+3. **Multi-Category Telemetry in Monitor View & Controls Panel**:
+   - Updated `MonitorView.jsx` and `ControlsPanel.jsx` to track and display all 6 storage categories (`screenshots`, `videos`, `zips`, `audio`, `recordings`, `irregularities`).
+
+4. **Class Document `storageUsage` Synchronization**:
+   - Updated `functions/storage_triggers/storageQuota.js` (`updateStorageUsageOnUpload`, `updateStorageUsageOnDelete`, `recalculateStorageUsageInternal`) to mirror `storageUsage` directly onto the parent `classes/{classId}` document, ensuring `TeacherView.jsx` class cards display real-time storage metrics without extra subcollection reads.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.1.1 Scheduled Task Refactor: Renaming to handlePostLessonMediaConsolidation with Backward Compatibility Alias
 
 **Date**: October 10, 2026  

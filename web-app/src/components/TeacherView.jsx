@@ -412,13 +412,13 @@ const TeacherView = ({ user }) => {
       {filteredClasses.length > 0 ? (
         <div className="class-card-list">
           {filteredClasses.map(c => {
-            const usage = c.storageUsage || 0;
-            const quota = c.storageQuota || (5 * 1024 * 1024 * 1024);
-            const storagePercent = quota > 0 ? Math.min(100, (usage / quota) * 100) : 0;
+            const usage = Math.max(0, Number(c.storageUsage) || 0);
+            const quota = Number(c.storageQuota) > 0 ? Number(c.storageQuota) : (5 * 1024 * 1024 * 1024);
+            const storagePercent = Math.min(100, Math.max(0, (usage / quota) * 100));
 
-            const aiUsed = c.aiUsedQuota || 0;
-            const aiQuota = c.aiQuota || 10;
-            const aiPercent = aiQuota > 0 ? Math.min(100, (aiUsed / aiQuota) * 100) : 0;
+            const aiUsed = Math.max(0, Number(c.aiUsedQuota) || 0);
+            const aiQuota = Number(c.aiQuota) > 0 ? Number(c.aiQuota) : 10;
+            const aiPercent = Math.min(100, Math.max(0, (aiUsed / aiQuota) * 100));
 
             const studentCount = c.students ? Object.keys(c.students).length : (c.studentEmails?.length || 0);
             const scheduleStatus = c._scheduleStatus || getClassScheduleStatus(c, currentTime);

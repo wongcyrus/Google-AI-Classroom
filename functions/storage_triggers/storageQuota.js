@@ -60,6 +60,11 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
       [usageField]: FieldValue.increment(fileSize)
     };
     await storageRef.update(updatePayload);
+    try {
+      await classRef.set({ storageUsage: FieldValue.increment(fileSize) }, { merge: true });
+    } catch (e) {
+      console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+    }
     console.log(`Successfully updated storage usage for class ${classId}.`);
 
     const classDoc = await classRef.get();
@@ -84,6 +89,11 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
           [usageField]: FieldValue.increment(-fileSize)
         };
         await storageRef.update(revertPayload);
+        try {
+          await classRef.set({ storageUsage: FieldValue.increment(-fileSize) }, { merge: true });
+        } catch (e) {
+          console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+        }
         console.log(`Reverted storage usage increment for ${classId}.`);
       }
     }
@@ -107,6 +117,11 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
             [usageField]: fileSize
           };
           await storageRef.set(initialPayload);
+          try {
+            await classRef.set({ storageUsage: fileSize }, { merge: true });
+          } catch (e) {
+            console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+          }
           console.log(`Initialized storageUsage for class ${classId}.`);
         }
       } else {
@@ -164,7 +179,8 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
 
   console.log(`Decreasing storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
-  const storageRef = db.collection('classes').doc(classId).collection('metadata').doc('storage');
+  const classRef = db.collection('classes').doc(classId);
+  const storageRef = classRef.collection('metadata').doc('storage');
 
   try {
     const updatePayload = {
@@ -172,6 +188,11 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
       [usageField]: FieldValue.increment(-fileSize)
     };
     await storageRef.update(updatePayload);
+    try {
+      await classRef.set({ storageUsage: FieldValue.increment(-fileSize) }, { merge: true });
+    } catch (e) {
+      console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+    }
     console.log(`Successfully decreased storage usage for class ${classId}.`);
   } catch (error) {
     console.error(`Failed to decrease storage usage for class ${classId}:`, error);
@@ -275,10 +296,20 @@ export async function recalculateStorageUsageInternal(classId) {
   }
 
   const storageRef = db.collection('classes').doc(classId).collection('metadata').doc('storage');
+  const classRef = db.collection('classes').doc(classId);
+
   await storageRef.set({
     ...results,
     lastAuditedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+
+  try {
+    await classRef.set({
+      storageUsage: results.storageUsage,
+    }, { merge: true });
+  } catch (e) {
+    console.warn(`Could not sync storageUsage to class ${classId}:`, e);
+  }
 
   console.log(`Audited and synchronized storage usage for class ${classId}:`, results);
   return results;

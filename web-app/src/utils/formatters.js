@@ -1,5 +1,6 @@
 export const formatBytes = (bytes, decimals = 2) => {
-    if (!bytes || bytes <= 0) return '0 Bytes';
+    const num = Number(bytes);
+    if (!bytes || isNaN(num) || num <= 0) return '0 Bytes';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];

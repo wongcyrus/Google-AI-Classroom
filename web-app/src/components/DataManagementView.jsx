@@ -7,15 +7,7 @@ import './SharedViews.css';
 import { httpsCallable } from 'firebase/functions';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import useCloudPricing from '../hooks/useCloudPricing';
-import { formatStorageCost } from '../utils/formatters';
-
-const formatBytes = (bytes = 0) => {
-  if (bytes === 0 || isNaN(bytes)) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-};
+import { formatBytes, formatStorageCost } from '../utils/formatters';
 
 const toLocalISOString = (date) => {
   if (!date) return '';
@@ -248,22 +240,25 @@ const DataManagementView = ({
     }
   };
 
-  // Compute breakdown percentages
-  const totalUsage = storageData?.storageUsage || 0;
-  const usageShots = storageData?.storageUsageScreenShots || 0;
-  const usageAudio = storageData?.storageUsageAudio || 0;
-  const usageVideos = storageData?.storageUsageVideos || 0;
-  const usageRecordings = storageData?.storageUsageRecordings || 0;
-  const usageZips = storageData?.storageUsageZips || 0;
-  const usageIrregularities = storageData?.storageUsageIrregularities || 0;
+  // Compute breakdown percentages safely
+  const totalUsage = Math.max(0, Number(storageData?.storageUsage) || 0);
+  const usageShots = Math.max(0, Number(storageData?.storageUsageScreenShots) || 0);
+  const usageAudio = Math.max(0, Number(storageData?.storageUsageAudio) || 0);
+  const usageVideos = Math.max(0, Number(storageData?.storageUsageVideos) || 0);
+  const usageRecordings = Math.max(0, Number(storageData?.storageUsageRecordings) || 0);
+  const usageZips = Math.max(0, Number(storageData?.storageUsageZips) || 0);
+  const usageIrregularities = Math.max(0, Number(storageData?.storageUsageIrregularities) || 0);
 
-  const quotaPercent = Math.min(100, (totalUsage / (classQuotaBytes || 1)) * 100).toFixed(1);
-  const pShots = totalUsage > 0 ? ((usageShots / totalUsage) * 100).toFixed(1) : 0;
-  const pAudio = totalUsage > 0 ? ((usageAudio / totalUsage) * 100).toFixed(1) : 0;
-  const pVideos = totalUsage > 0 ? ((usageVideos / totalUsage) * 100).toFixed(1) : 0;
-  const pRecordings = totalUsage > 0 ? ((usageRecordings / totalUsage) * 100).toFixed(1) : 0;
-  const pZips = totalUsage > 0 ? ((usageZips / totalUsage) * 100).toFixed(1) : 0;
-  const pIrregularities = totalUsage > 0 ? ((usageIrregularities / totalUsage) * 100).toFixed(1) : 0;
+  const effectiveQuota = Number(classQuotaBytes) > 0 ? Number(classQuotaBytes) : (5 * 1024 * 1024 * 1024);
+  const quotaPercent = Math.min(100, Math.max(0, (totalUsage / effectiveQuota) * 100)).toFixed(1);
+
+  // Each segment's width is its proportion OF THE TOTAL CLASS QUOTA (so stacked segments fill up to quotaPercent% of the full bar)
+  const pShots = Math.min(100, Math.max(0, (usageShots / effectiveQuota) * 100));
+  const pAudio = Math.min(100, Math.max(0, (usageAudio / effectiveQuota) * 100));
+  const pVideos = Math.min(100, Math.max(0, (usageVideos / effectiveQuota) * 100));
+  const pRecordings = Math.min(100, Math.max(0, (usageRecordings / effectiveQuota) * 100));
+  const pZips = Math.min(100, Math.max(0, (usageZips / effectiveQuota) * 100));
+  const pIrregularities = Math.min(100, Math.max(0, (usageIrregularities / effectiveQuota) * 100));
 
   return (
     <div className="view-container">

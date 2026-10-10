@@ -3,28 +3,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import DataManagementView from './DataManagementView';
 
-const mockDeleteDoc = vi.fn().mockResolvedValue();
-const mockGetDoc = vi.fn().mockResolvedValue({
-  exists: () => true,
-  data: () => ({ zipPath: 'zips/archive1.zip' }),
-});
-const mockDeleteObject = vi.fn().mockResolvedValue();
-const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage.mock/archive1.zip');
-const mockDeleteScreenshotsByDateRange = vi.fn().mockResolvedValue({
-  data: { message: 'Deletion completed successfully' },
-});
-
-vi.mock('../firebase-config', () => ({
-  db: {},
-  storage: {},
-  functions: {},
-}));
-
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
-  deleteDoc: (...args) => mockDeleteDoc(...args),
-  getDoc: (...args) => mockGetDoc(...args),
-  onSnapshot: vi.fn((ref, callback) => {
+const {
+  mockDeleteDoc,
+  mockGetDoc,
+  mockDeleteObject,
+  mockGetDownloadURL,
+  mockDeleteScreenshotsByDateRange,
+  mockOnSnapshot,
+} = vi.hoisted(() => {
+  const mockDeleteDoc = vi.fn().mockResolvedValue();
+  const mockGetDoc = vi.fn().mockResolvedValue({
+    exists: () => true,
+    data: () => ({ zipPath: 'zips/archive1.zip' }),
+  });
+  const mockDeleteObject = vi.fn().mockResolvedValue();
+  const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage.mock/archive1.zip');
+  const mockDeleteScreenshotsByDateRange = vi.fn().mockResolvedValue({
+    data: { message: 'Deletion completed successfully' },
+  });
+  const mockOnSnapshot = vi.fn((ref, callback) => {
     if (typeof callback === 'function') {
       callback({
         exists: () => true,
@@ -39,7 +36,29 @@ vi.mock('firebase/firestore', () => ({
       });
     }
     return vi.fn();
-  }),
+  });
+
+  return {
+    mockDeleteDoc,
+    mockGetDoc,
+    mockDeleteObject,
+    mockGetDownloadURL,
+    mockDeleteScreenshotsByDateRange,
+    mockOnSnapshot,
+  };
+});
+
+vi.mock('../firebase-config', () => ({
+  db: {},
+  storage: {},
+  functions: {},
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
+  deleteDoc: (...args) => mockDeleteDoc(...args),
+  getDoc: (...args) => mockGetDoc(...args),
+  onSnapshot: (...args) => mockOnSnapshot(...args),
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -345,6 +364,84 @@ describe('DataManagementView Component', () => {
     expect(bingoSwitch).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(bingoSwitch);
     expect(bingoSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('handles zero storage usage cleanly without displaying full bar or NaN', () => {
+    mockOnSnapshot.mockImplementation((ref, callback) => {
+      if (typeof callback === 'function') {
+        callback({
+          exists: () => true,
+          data: () => ({
+            storageUsage: 0,
+            storageUsageScreenShots: 0,
+            storageUsageAudio: 0,
+            storageUsageVideos: 0,
+            storageUsageRecordings: 0,
+            storageUsageZips: 0,
+            storageUsageIrregularities: 0,
+          }),
+        });
+      }
+      return vi.fn();
+    });
+
+    render(
+      <DataManagementView
+        classId="CLASS_ZERO"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    const progressBar = screen.getByRole('progressbar');
+    expect(progressBar).toHaveAttribute('aria-valuenow', '0.0');
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Total Allocated:/i).parentElement).toHaveTextContent('0 Bytes / 5 GB (0.0%)');
+  });
+
+  it('renders accurate proportional segment width when only screenshots exist without taking full 100% bar', () => {
+    // 50 MB screenshots out of 5 GB quota = 1.0% width
+    const fiftyMB = 50 * 1024 * 1024;
+    mockOnSnapshot.mockImplementation((ref, callback) => {
+      if (typeof callback === 'function') {
+        callback({
+          exists: () => true,
+          data: () => ({
+            storageUsage: fiftyMB,
+            storageUsageScreenShots: fiftyMB,
+            storageUsageAudio: 0,
+            storageUsageVideos: 0,
+            storageUsageRecordings: 0,
+            storageUsageZips: 0,
+            storageUsageIrregularities: 0,
+          }),
+        });
+      }
+      return vi.fn();
+    });
+
+    const { container } = render(
+      <DataManagementView
+        classId="CLASS_SHOTS_ONLY"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    const progressBar = screen.getByRole('progressbar');
+    expect(progressBar).toHaveAttribute('aria-valuenow', '1.0');
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument();
+
+    const shotsSegment = container.querySelector('.storage-segment.screenshots');
+    expect(shotsSegment).toBeTruthy();
+    // 50 MB / 5 GB * 100% = ~0.976%
+    const widthVal = parseFloat(shotsSegment.style.width);
+    expect(widthVal).toBeLessThan(5); // Not 100%!
+    expect(widthVal).toBeGreaterThan(0.5);
   });
 });
 
