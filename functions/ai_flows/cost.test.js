@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { calculateCost, estimateCost, MODEL_PRICING } from './cost.js';
 
 describe('calculateCost', () => {
@@ -103,6 +103,37 @@ describe('dynamic pricing cache and getModelPricing', () => {
     expect(getModelPricing('custom-model')).toEqual({ input: 1.0, output: 5.0 });
     // Falls back to default when model not found in cache or baseline
     expect(getModelPricing('non-existent')).toEqual(MODEL_PRICING['gemini-3.5-flash-lite']);
+  });
+
+  it('correctly resolves rates for live, 3.7, and composite model pipelines', async () => {
+    const { getModelPricing } = await import('./cost.js');
+    expect(getModelPricing('gemini-3.1-flash-live-preview')).toEqual({ input: 0.60, output: 2.50 });
+    expect(getModelPricing('gemini-3.7-flash')).toEqual({ input: 0.75, output: 3.75 });
+    expect(getModelPricing('gemini-3.7-pro')).toEqual({ input: 3.00, output: 15.00 });
+
+    // Composite model test: (0.50 + 0.30)/2 = 0.40 input, (2.50 + 2.50)/2 = 2.50 output
+    const compositeRate = getModelPricing('gemini-3.5-transcribe-preview + gemini-3.5-flash-lite');
+    expect(compositeRate.input).toBeCloseTo(0.40, 2);
+    expect(compositeRate.output).toBeCloseTo(2.50, 2);
+  });
+
+  it('syncs dynamic pricing from Firestore system_config/pricing', async () => {
+    const { syncPricingFromFirestore, getModelPricing } = await import('./cost.js');
+    const mockDb = {
+      collection: vi.fn().mockReturnValue({
+        doc: vi.fn().mockReturnValue({
+          get: vi.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+              'synced-model': { input: 0.88, output: 4.22 },
+            }),
+          }),
+        }),
+      }),
+    };
+    const res = await syncPricingFromFirestore(mockDb);
+    expect(res).toBeDefined();
+    expect(getModelPricing('synced-model')).toEqual({ input: 0.88, output: 4.22 });
   });
 });
 

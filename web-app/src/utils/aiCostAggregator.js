@@ -18,7 +18,12 @@ export function aggregateAiCost(jobs = [], options = {}) {
     model,
     startDate,
     endDate,
-    classQuota = 10
+    classQuota = 10,
+    storageData = null,
+    storageQuotaBytes = 5 * 1024 * 1024 * 1024,
+    storageRatePerGibMonth = 0.023,
+    storageRegion = 'asia-east2',
+    storageDescription = 'Standard Storage Hong Kong',
   } = options;
 
   const startTimestamp = startDate ? new Date(startDate).getTime() : 0;
@@ -96,11 +101,16 @@ export function aggregateAiCost(jobs = [], options = {}) {
 
     // If historical/legacy job has recorded cost but omitted token usage in Firestore
     if (cost > 0 && inputTokens === 0 && outputTokens === 0) {
-      const modelPricing = (job.modelUsed?.includes('flash-lite'))
-        ? { input: 0.30, output: 2.50 }
-        : (job.modelUsed?.includes('3.6-flash'))
-        ? { input: 0.50, output: 3.00 }
-        : { input: 0.75, output: 3.75 };
+      let modelPricing = { input: 0.30, output: 2.50 };
+      if (job.modelUsed?.includes('3.8-flash') || job.modelUsed?.includes('3.7-flash')) {
+        modelPricing = { input: 0.75, output: 3.75 };
+      } else if (job.modelUsed?.includes('3.7-pro')) {
+        modelPricing = { input: 3.00, output: 15.00 };
+      } else if (job.modelUsed?.includes('transcribe-live') || job.modelUsed?.includes('live')) {
+        modelPricing = { input: 0.60, output: 2.50 };
+      } else if (job.modelUsed?.includes('transcribe')) {
+        modelPricing = { input: 0.50, output: 2.50 };
+      }
       // Typical STT & translation distribution is ~75% input, ~25% output spend
       const estInputSpend = cost * 0.75;
       const estOutputSpend = cost * 0.25;
@@ -211,6 +221,62 @@ export function aggregateAiCost(jobs = [], options = {}) {
 
   const timeline = Object.values(timelineMap).sort((a, b) => a.date.localeCompare(b.date));
 
+  // Compute Storage Summary if storageData is available
+  let storageSummary = null;
+  if (storageData && typeof storageData === 'object') {
+    const usageShots = Math.max(0, Number(storageData.storageUsageScreenShots) || 0);
+    const usageAudio = Math.max(0, Number(storageData.storageUsageAudio) || 0);
+    const usageVideos = Math.max(0, Number(storageData.storageUsageVideos) || 0);
+    const usageRecordings = Math.max(0, Number(storageData.storageUsageRecordings) || 0);
+    const usageZips = Math.max(0, Number(storageData.storageUsageZips) || 0);
+    const usageIrregularities = Math.max(0, Number(storageData.storageUsageIrregularities) || 0);
+    const usageTasks = Math.max(0, Number(storageData.storageUsageTasks) || 0);
+    const usageReports = Math.max(0, Number(storageData.storageUsageReports) || 0);
+
+    const categorySum = usageShots + usageAudio + usageVideos + usageRecordings + usageZips + usageIrregularities + usageTasks + usageReports;
+    const totalStorageBytes = Math.max(0, Number(storageData.storageUsage) || 0, categorySum);
+
+    const gibBytes = 1024 * 1024 * 1024;
+    const totalStorageCostMonthly = Number(((totalStorageBytes / gibBytes) * storageRatePerGibMonth).toFixed(6));
+    const storageQuotaCostMonthly = Number(((storageQuotaBytes / gibBytes) * storageRatePerGibMonth).toFixed(6));
+    const storageQuotaPercentage = storageQuotaBytes > 0
+      ? Number(Math.min(100, Math.max(0, (totalStorageBytes / storageQuotaBytes) * 100)).toFixed(1))
+      : 0;
+
+    const categories = [
+      { key: 'screenshots', label: '📸 Routine Screenshots', bytes: usageShots },
+      { key: 'audio', label: '🎙️ Classroom Audio Clips', bytes: usageAudio },
+      { key: 'videos', label: '🎥 Student Screencast Videos', bytes: usageVideos },
+      { key: 'recordings', label: '🎬 Lecture Recordings & Subtitles', bytes: usageRecordings },
+      { key: 'zips', label: '📦 Export Archives (ZIP)', bytes: usageZips },
+      { key: 'irregularities', label: '⚠️ Invigilation Flagged Clips', bytes: usageIrregularities },
+      { key: 'tasks', label: '📝 Lab Tasks & Submissions', bytes: usageTasks },
+      { key: 'reports', label: '📑 Incident Dossier Reports', bytes: usageReports },
+    ];
+
+    const byStorageCategory = categories.map(cat => {
+      const costMonthly = Number(((cat.bytes / gibBytes) * storageRatePerGibMonth).toFixed(6));
+      const percentage = totalStorageBytes > 0 ? (cat.bytes / totalStorageBytes) * 100 : 0;
+      return {
+        ...cat,
+        costMonthly,
+        percentage: Number(percentage.toFixed(1)),
+      };
+    }).sort((a, b) => b.bytes - a.bytes);
+
+    storageSummary = {
+      totalStorageBytes,
+      totalStorageCostMonthly,
+      storageQuotaBytes,
+      storageQuotaCostMonthly,
+      storageQuotaPercentage,
+      storageRatePerGibMonth,
+      storageRegion,
+      storageDescription,
+      byStorageCategory,
+    };
+  }
+
   return {
     totalCost: Number(totalCost.toFixed(6)),
     totalTokens,
@@ -229,5 +295,7 @@ export function aggregateAiCost(jobs = [], options = {}) {
     byStudent,
     timeline,
     filteredJobs,
+    storageSummary,
+    combinedTotalMonthlyCost: storageSummary ? Number((totalCost + storageSummary.totalStorageCostMonthly).toFixed(6)) : totalCost,
   };
 }

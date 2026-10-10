@@ -74,4 +74,34 @@ describe('useCloudPricing Hook', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.storageRatePerGibMonth).toBe(DEFAULT_STORAGE_RATE_PER_GIB_MONTH);
   });
+
+  it('provides getModelRate helper for single, composite, and fallback models', () => {
+    let snapshotCallback;
+    onSnapshot.mockImplementation((docRef, cb) => {
+      snapshotCallback = cb;
+      return () => {};
+    });
+
+    const { result } = renderHook(() => useCloudPricing());
+
+    act(() => {
+      snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          'gemini-3.8-flash': { input: 0.80, output: 4.00 },
+        }),
+      });
+    });
+
+    // Fetches live synced rate
+    expect(result.current.getModelRate('gemini-3.8-flash')).toEqual({ input: 0.80, output: 4.00 });
+
+    // Fetches default baseline rate for un-synced model
+    expect(result.current.getModelRate('gemini-3.1-flash-live-preview')).toEqual({ input: 0.60, output: 2.50 });
+
+    // Handles composite two-stage pipeline rate
+    const compositeRate = result.current.getModelRate('gemini-3.5-transcribe-preview + gemini-3.5-flash-lite');
+    expect(compositeRate.input).toBeCloseTo(0.40, 2);
+    expect(compositeRate.output).toBeCloseTo(2.50, 2);
+  });
 });

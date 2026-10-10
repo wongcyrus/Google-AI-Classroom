@@ -2,10 +2,16 @@
 export const MODEL_PRICING = {
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-3.8-flash': { input: 0.75, output: 3.75 },
+  'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+  'gemini-3.7-pro': { input: 3.00, output: 15.00 },
   'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },
   'gemini-3.5-transcribe-preview': { input: 0.50, output: 2.50 },
   'gemini-3.5-transcribe-live': { input: 0.60, output: 3.00 },
   'gemini-3.5-transcribe-live-preview': { input: 0.60, output: 3.00 },
+  'gemini-3.1-flash-live-preview': { input: 0.60, output: 2.50 },
+  'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+  'gemini-2.0-flash': { input: 0.10, output: 0.40 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
 };
 
 export const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
@@ -22,11 +28,63 @@ export function setDynamicPricingCache(pricingData) {
   }
 }
 
+/**
+ * Loads dynamic pricing from Firestore system_config/pricing if available.
+ * @param {object} [dbInstance] - Firestore instance.
+ * @returns {Promise<object|null>}
+ */
+export async function syncPricingFromFirestore(dbInstance) {
+  if (!dbInstance) return null;
+  try {
+    const docSnap = await dbInstance.collection('system_config').doc('pricing').get();
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      setDynamicPricingCache(data);
+      return data;
+    }
+  } catch (err) {
+    console.warn('Could not sync dynamic pricing from system_config/pricing:', err?.message || err);
+  }
+  return null;
+}
+
 export function getModelPricing(model = DEFAULT_MODEL) {
   if (dynamicPricingCache && dynamicPricingCache[model]) {
     return dynamicPricingCache[model];
   }
-  return MODEL_PRICING[model] || MODEL_PRICING[DEFAULT_MODEL];
+  if (MODEL_PRICING[model]) {
+    return MODEL_PRICING[model];
+  }
+
+  // Handle composite two-stage pipeline models (e.g. 'gemini-3.5-transcribe-preview + gemini-3.5-flash-lite')
+  if (typeof model === 'string' && model.includes('+')) {
+    const parts = model.split('+').map(p => p.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      let sumInput = 0;
+      let sumOutput = 0;
+      for (const p of parts) {
+        const pRate = getModelPricing(p);
+        sumInput += pRate.input;
+        sumOutput += pRate.output;
+      }
+      return {
+        input: Number((sumInput / parts.length).toFixed(4)),
+        output: Number((sumOutput / parts.length).toFixed(4)),
+      };
+    }
+  }
+
+  // Handle aliases with/without -preview
+  if (typeof model === 'string') {
+    const withoutPreview = model.replace(/-preview$/, '');
+    if (dynamicPricingCache && dynamicPricingCache[withoutPreview]) return dynamicPricingCache[withoutPreview];
+    if (MODEL_PRICING[withoutPreview]) return MODEL_PRICING[withoutPreview];
+    const withPreview = `${model}-preview`;
+    if (dynamicPricingCache && dynamicPricingCache[withPreview]) return dynamicPricingCache[withPreview];
+    if (MODEL_PRICING[withPreview]) return MODEL_PRICING[withPreview];
+  }
+
+  return MODEL_PRICING[DEFAULT_MODEL];
 }
 
 // A rough estimate of characters per token.

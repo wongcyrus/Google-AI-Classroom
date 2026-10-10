@@ -4,6 +4,7 @@ import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
 import { formatBytes, formatAiCost, formatStorageCost } from '../utils/formatters';
+import useCloudPricing from '../hooks/useCloudPricing';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
 import {
   getClassScheduleStatus,
@@ -16,6 +17,7 @@ import {
 } from '../constants/classTemplates';
 
 const TeacherView = ({ user }) => {
+  const { storageRatePerGibMonth } = useCloudPricing();
   const [classes, setClasses] = useState([]);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -276,13 +278,13 @@ const TeacherView = ({ user }) => {
           </div>
         </div>
 
-        <div className="kpi-card" title={`Estimated Monthly Storage Cost: ~${formatStorageCost(stats.totalStorageUsed)}`}>
+        <div className="kpi-card" title={`Estimated Monthly Storage Cost: ~${formatStorageCost(stats.totalStorageUsed, storageRatePerGibMonth)}`}>
           <div className="kpi-icon amber">💾</div>
           <div className="kpi-content">
             <span className="kpi-label">Storage Usage</span>
             <span className="kpi-value">{formatBytes(stats.totalStorageUsed)}</span>
             <span className="kpi-subtext">
-              {stats.totalStorageQuota > 0 ? `of ${formatBytes(stats.totalStorageQuota)} (~${formatStorageCost(stats.totalStorageUsed)}/mo)` : `Total used (~${formatStorageCost(stats.totalStorageUsed)}/mo)`}
+              {stats.totalStorageQuota > 0 ? `of ${formatBytes(stats.totalStorageQuota)} (~${formatStorageCost(stats.totalStorageUsed, storageRatePerGibMonth)}/mo)` : `Total used (~${formatStorageCost(stats.totalStorageUsed, storageRatePerGibMonth)}/mo)`}
             </span>
           </div>
         </div>
@@ -533,7 +535,7 @@ const TeacherView = ({ user }) => {
                   <div>
                     <div className="meter-header">
                       <span>Storage Quota</span>
-                      <span>{formatBytes(usage)} / {formatBytes(quota)} <small style={{ color: '#64748b' }}>(~{formatStorageCost(usage)}/mo)</small></span>
+                      <span>{formatBytes(usage)} / {formatBytes(quota)} <small style={{ color: '#64748b' }}>(~{formatStorageCost(usage, storageRatePerGibMonth)}/mo)</small></span>
                     </div>
                     <div className="meter-track">
                       <div className="meter-fill storage" style={{ width: `${storagePercent}%` }} />

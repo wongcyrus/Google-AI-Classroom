@@ -205,4 +205,38 @@ describe('aiCostAggregator utility', () => {
     expect(summary.quotaPercentage).toBe(0);
     expect(summary.timeline).toEqual([]);
   });
+
+  it('calculates storageSummary and combined monthly expenditure when storageData is provided', () => {
+    const mockJobs = [
+      {
+        id: 'job_ai',
+        cost: 1.50,
+        usage: { inputTokens: 10000, outputTokens: 2000 },
+        modelUsed: 'gemini-3.8-flash',
+        status: 'completed',
+      },
+    ];
+
+    const mockStorage = {
+      storageUsage: 1073741824, // 1 GiB
+      storageUsageScreenShots: 200 * 1024 * 1024,
+      storageUsageVideos: 500 * 1024 * 1024,
+      storageUsageRecordings: 1073741824 - (700 * 1024 * 1024),
+    };
+
+    const summary = aggregateAiCost(mockJobs, {
+      storageData: mockStorage,
+      storageQuotaBytes: 5 * 1024 * 1024 * 1024, // 5 GiB
+      storageRatePerGibMonth: 0.023,
+      storageRegion: 'asia-east2',
+    });
+
+    expect(summary.storageSummary).toBeDefined();
+    expect(summary.storageSummary.totalStorageBytes).toBe(1073741824);
+    expect(summary.storageSummary.totalStorageCostMonthly).toBeCloseTo(0.023, 4);
+    expect(summary.storageSummary.storageQuotaCostMonthly).toBeCloseTo(0.115, 4);
+    expect(summary.storageSummary.storageQuotaPercentage).toBeCloseTo(20.0, 1);
+    expect(summary.storageSummary.byStorageCategory).toHaveLength(8);
+    expect(summary.combinedTotalMonthlyCost).toBeCloseTo(1.50 + 0.023, 4);
+  });
 });

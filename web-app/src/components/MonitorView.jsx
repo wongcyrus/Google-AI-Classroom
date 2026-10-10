@@ -20,6 +20,7 @@ import IndividualStudentView from './IndividualStudentView';
 
 import { usePrompts } from '../hooks/usePrompts';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
+import { useCloudPricing } from '../hooks/useCloudPricing';
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
@@ -49,6 +50,7 @@ const parseAutoRollConfig = (value) => {
 const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange, activeLiveClass = null, onSwitchClass = null }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts('Per Image');
   const audioPrompts = useAudioPrompts(user);
+  const { storageRatePerGibMonth } = useCloudPricing();
   const { isAnalyzing, analysisResults, runPerImageAnalysis, runAllImagesAnalysis } = useAnalysis(classId);
   const [showAnalysisResultsModal, setShowAnalysisResultsModal] = useState(false);
   const [showBingoModal, setShowBingoModal] = useState(false);
@@ -2054,6 +2056,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         handleRunAnalysis={handleRunAnalysis}
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
+        storageRatePerGibMonth={storageRatePerGibMonth}
         onOpenBingoModal={() => setShowBingoModal(true)}
         onOpenLectureQrModal={() => setShowLectureQrModal(true)}
       />}

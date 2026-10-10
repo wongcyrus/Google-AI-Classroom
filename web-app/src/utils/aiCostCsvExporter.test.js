@@ -160,5 +160,40 @@ describe('aiCostCsvExporter utility', () => {
     const res = await exportAiCostToExcel(mockSummary, { className: 'Cloud Lab', classId: 'c1' });
     expect(res).toBeDefined();
   });
+
+  it('includes Cloud Storage section and asset telemetry in CSV when storageSummary is present', () => {
+    const mockSummaryWithStorage = {
+      totalJobs: 1,
+      totalCost: 0.05,
+      classQuota: 10,
+      quotaPercentage: 0.5,
+      totalTokens: 1000,
+      totalInputTokens: 800,
+      totalOutputTokens: 200,
+      byModel: [],
+      byJobType: [],
+      byStudent: [],
+      filteredJobs: [],
+      combinedTotalMonthlyCost: 0.073,
+      storageSummary: {
+        totalStorageBytes: 1073741824, // 1 GB
+        storageQuotaBytes: 5368709120, // 5 GB
+        storageRatePerGibMonth: 0.023,
+        storageRegion: 'asia-east2',
+        storageDescription: 'Standard Storage Hong Kong',
+        byStorageCategory: [
+          { key: 'recordings', label: '🎬 Lecture Recordings & Subtitles', bytes: 600 * 1024 * 1024, costMonthly: 0.0135, percentage: 58.6 },
+          { key: 'videos', label: '🎥 Student Screencast Videos', bytes: 400 * 1024 * 1024, costMonthly: 0.009, percentage: 39.1 },
+        ],
+      },
+    };
+
+    const csv = generateAiCostCsv(mockSummaryWithStorage, { className: 'ITP3901', classId: 'itp3901-ab' });
+    expect(csv).toContain('--- CLOUD STORAGE BREAKDOWN BY ASSET TYPE ---');
+    expect(csv).toContain('"Est. Monthly Storage Cost","$0.023"');
+    expect(csv).toContain('"Total Storage Used","1 GB"');
+    expect(csv).toContain('"Combined Cloud Spend (AI + Storage/mo)","$0.07"');
+    expect(csv).toContain('"🎬 Lecture Recordings & Subtitles",629145600,"600 MB","$0.013","58.6%"');
+  });
 });
 

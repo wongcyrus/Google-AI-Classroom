@@ -239,6 +239,8 @@ const ClassView = ({ user }) => {
               classId={classId}
               className={classInfo?.name || classId}
               classQuota={classInfo?.aiQuota || 10}
+              storageQuotaBytes={classInfo?.storageQuota}
+              storageData={classInfo}
               students={Object.entries(classInfo?.students || {}).map(([uid, email]) => ({ uid, email }))}
             />
           );

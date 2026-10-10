@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase-config';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { formatAiCost } from '../utils/formatters';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { formatAiCost, formatBytes, formatStorageCost } from '../utils/formatters';
 import { aggregateAiCost } from '../utils/aiCostAggregator';
 import { generateAiCostCsv, downloadCsvFile, exportAiCostToExcel } from '../utils/aiCostCsvExporter';
+import useCloudPricing from '../hooks/useCloudPricing';
 import './AiCostReportView.css';
 
-const JOB_TYPE_LABELS = {
+export const JOB_TYPE_LABELS = {
   analyzeImage: '🖼️ Single Screenshot Analysis',
   analyzeAllImages: '🪟 Multi-Student Grid Analysis',
   analyzeSingleVideo: '🎥 Screencast Video Inspection',
@@ -18,34 +19,74 @@ const JOB_TYPE_LABELS = {
   generateLabTaskPrompt: '📝 AI Lab Task Prompt Generation',
   processLectureSubtitles: '🎬 Full Lecture Subtitles & Chapters',
   translateTeacherSpeech: '🗣️ Live Teacher Speech Translation',
+  evaluateTaskSubmission: '📋 Lab Task Automated Evaluation',
+  extractTaskDemoSteps: '🎬 Task Demo Video Step Extraction',
+  batchVideoAnalysis: '🎞️ Batch Video Analysis Job',
   other: '⚙️ General AI Processing',
 };
 
-const MODEL_COLORS = {
+export const getJobTypeLabel = (jobType) => {
+  if (!jobType) return '⚙️ General AI Processing';
+  if (JOB_TYPE_LABELS[jobType]) return JOB_TYPE_LABELS[jobType];
+  const readable = jobType
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+  return `⚙️ ${readable}`;
+};
+
+export const MODEL_COLORS = {
   'gemini-3.5-flash-lite': '#0ea5e9',
   'gemini-3.8-flash': '#a855f7',
+  'gemini-3.7-flash': '#8b5cf6',
+  'gemini-3.7-pro': '#ec4899',
   'gemini-3.5-transcribe': '#10b981',
+  'gemini-3.5-transcribe-preview': '#059669',
   'gemini-3.5-transcribe-live': '#f59e0b',
+  'gemini-3.5-transcribe-live-preview': '#d97706',
   'gemini-3.1-flash-live-preview': '#ef4444',
+  'gemini-2.5-flash': '#3b82f6',
+  'gemini-2.0-flash': '#06b6d4',
+  'gemini-1.5-flash': '#64748b',
+};
+
+export const getModelColor = (modelName) => {
+  if (!modelName) return '#0ea5e9';
+  if (MODEL_COLORS[modelName]) return MODEL_COLORS[modelName];
+  if (modelName.includes('+')) return '#6366f1';
+  return '#64748b';
 };
 
 const AiCostReportView = ({
   classId = 'N/A',
   className = 'All Classes',
   classQuota = 10,
+  storageQuotaBytes: propStorageQuotaBytes,
+  storageData: propStorageData,
   aiJobs: propAiJobs,
   students = [],
   onClose,
 }) => {
   const [fetchedJobs, setFetchedJobs] = useState([]);
+  const [fetchedClassData, setFetchedClassData] = useState(null);
   const [loading, setLoading] = useState(!propAiJobs);
   const [selectedStudent, setSelectedStudent] = useState('all');
   const [selectedJobType, setSelectedJobType] = useState('all');
   const [selectedModel, setSelectedModel] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'ai' | 'storage'
 
-  // Firestore listener if propAiJobs is not supplied
+  // Live Cloud Billing pricing hook
+  const {
+    storageRatePerGibMonth,
+    storageRegion,
+    storageDescription,
+    lastSyncedAt,
+  } = useCloudPricing();
+
+  // Firestore listener for aiJobs if propAiJobs is not supplied
   useEffect(() => {
     if (propAiJobs !== undefined) {
       setFetchedJobs(propAiJobs);
@@ -74,7 +115,54 @@ const AiCostReportView = ({
     return () => unsubscribe();
   }, [classId, propAiJobs]);
 
+  // Firestore listener for class storage metadata if propStorageData is not supplied
+  useEffect(() => {
+    if (propStorageData !== undefined || !classId || classId === 'N/A') {
+      return;
+    }
+
+    const classRef = doc(db, 'classes', classId);
+    const unsubscribe = onSnapshot(classRef, (snap) => {
+      if (snap.exists && snap.exists()) {
+        setFetchedClassData(snap.data());
+      }
+    }, (err) => {
+      console.warn('Error fetching class storage metadata:', err);
+    });
+
+    return () => unsubscribe();
+  }, [classId, propStorageData]);
+
   const activeJobs = propAiJobs !== undefined ? propAiJobs : fetchedJobs;
+  const activeStorageData = propStorageData !== undefined ? propStorageData : fetchedClassData;
+  const effectiveStorageQuotaBytes = propStorageQuotaBytes || Number(activeStorageData?.storageQuota) || (5 * 1024 * 1024 * 1024);
+
+  // Compute dynamic models present in active jobs + common supported models
+  const availableModels = useMemo(() => {
+    const modelSet = new Set([
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-3.7-pro',
+      'gemini-3.5-transcribe',
+      'gemini-3.5-transcribe-preview',
+      'gemini-3.5-transcribe-live',
+      'gemini-3.1-flash-live-preview',
+    ]);
+    activeJobs.forEach((j) => {
+      if (j?.modelUsed) modelSet.add(j.modelUsed);
+    });
+    return Array.from(modelSet).sort();
+  }, [activeJobs]);
+
+  // Compute dynamic job types present in active jobs + standard registry
+  const availableJobTypes = useMemo(() => {
+    const typeSet = new Set(Object.keys(JOB_TYPE_LABELS));
+    activeJobs.forEach((j) => {
+      if (j?.jobType) typeSet.add(j.jobType);
+    });
+    return Array.from(typeSet);
+  }, [activeJobs]);
 
   // Compute aggregated summary using pure utility
   const summary = useMemo(() => {
@@ -85,15 +173,42 @@ const AiCostReportView = ({
       startDate: startDate ? `${startDate}T00:00:00.000Z` : undefined,
       endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
       classQuota,
+      storageData: activeStorageData,
+      storageQuotaBytes: effectiveStorageQuotaBytes,
+      storageRatePerGibMonth,
+      storageRegion,
+      storageDescription,
     });
-  }, [activeJobs, selectedStudent, selectedJobType, selectedModel, startDate, endDate, classQuota]);
+  }, [
+    activeJobs,
+    selectedStudent,
+    selectedJobType,
+    selectedModel,
+    startDate,
+    endDate,
+    classQuota,
+    activeStorageData,
+    effectiveStorageQuotaBytes,
+    storageRatePerGibMonth,
+    storageRegion,
+    storageDescription
+  ]);
 
-  const handleExportCsv = () => {
+  const handleExportExcel = () => {
     exportAiCostToExcel(summary, {
       className,
       classId,
       generatedAt: new Date().toISOString(),
     });
+  };
+
+  const handleExportCsv = () => {
+    const csvContent = generateAiCostCsv(summary, {
+      className,
+      classId,
+      generatedAt: new Date().toISOString(),
+    });
+    downloadCsvFile(csvContent, `cost_report_${classId}_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   const resetFilters = () => {
@@ -104,38 +219,80 @@ const AiCostReportView = ({
     setEndDate('');
   };
 
+  const hasActiveFilters = selectedStudent !== 'all' || selectedJobType !== 'all' || selectedModel !== 'all' || startDate || endDate;
+
   return (
     <div className="ai-cost-report-view">
       {/* Header */}
       <div className="ai-cost-header">
         <div className="ai-cost-header-title">
           <h2>📊 AI Cost Breakdown & Audit</h2>
-          <p>Real-time token accounting and expenditure analytics for <strong>{className}</strong></p>
+          <p>
+            Real-time token accounting, Gemini models, and Cloud Storage run-rate for <strong>{className}</strong>
+          </p>
+          <div className="pricing-badge-row">
+            <span
+              className="pricing-badge"
+              title={`Live storage rate from Cloud Billing Catalog API (${storageDescription || 'Standard Storage'})`}
+            >
+              🏷️ Storage: ${storageRatePerGibMonth}/GiB-mo ({storageRegion})
+            </span>
+            {lastSyncedAt && (
+              <span className="pricing-badge-sync">
+                Synced: {new Date(lastSyncedAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="ai-cost-actions">
           <button
             className="btn-export-csv"
-            onClick={handleExportCsv}
-            disabled={summary.totalJobs === 0}
+            onClick={handleExportExcel}
+            disabled={summary.totalJobs === 0 && !summary.storageSummary}
+            title="Download full audit report as Microsoft Excel workbook"
           >
             📥 Export Excel Report
+          </button>
+          <button
+            className="btn-export-secondary"
+            onClick={handleExportCsv}
+            disabled={summary.totalJobs === 0 && !summary.storageSummary}
+            title="Download RFC 4180 CSV export"
+          >
+            📄 Export CSV
           </button>
           {onClose && (
             <button
               onClick={onClose}
-              style={{
-                background: '#f1f5f9',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '0.5rem 0.85rem',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
+              className="btn-close-report"
             >
               ✕ Close
             </button>
           )}
         </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="cost-report-tabs">
+        <button
+          className={`cost-tab ${activeTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setActiveTab('overview')}
+        >
+          🌐 Cloud Overview
+        </button>
+        <button
+          className={`cost-tab ${activeTab === 'ai' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ai')}
+        >
+          🤖 AI Model & Token Audit ({summary.totalJobs})
+        </button>
+        <button
+          className={`cost-tab ${activeTab === 'storage' ? 'active' : ''}`}
+          onClick={() => setActiveTab('storage')}
+        >
+          💾 Cloud Storage Breakdown ({formatBytes(summary.storageSummary?.totalStorageBytes || 0)})
+        </button>
       </div>
 
       {/* Filter Toolbar */}
@@ -163,9 +320,9 @@ const AiCostReportView = ({
             value={selectedJobType}
             onChange={(e) => setSelectedJobType(e.target.value)}
           >
-            <option value="all">All Job Types</option>
-            {Object.entries(JOB_TYPE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
+            <option value="all">All Job Types ({availableJobTypes.length})</option>
+            {availableJobTypes.map((key) => (
+              <option key={key} value={key}>{getJobTypeLabel(key)}</option>
             ))}
           </select>
         </div>
@@ -177,11 +334,10 @@ const AiCostReportView = ({
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
           >
-            <option value="all">All Models</option>
-            <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
-            <option value="gemini-3.8-flash">gemini-3.8-flash</option>
-            <option value="gemini-3.5-transcribe">gemini-3.5-transcribe</option>
-            <option value="gemini-3.5-transcribe-live">gemini-3.5-transcribe-live</option>
+            <option value="all">All Models ({availableModels.length})</option>
+            {availableModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
           </select>
         </div>
 
@@ -205,19 +361,10 @@ const AiCostReportView = ({
           />
         </div>
 
-        {(selectedStudent !== 'all' || selectedJobType !== 'all' || selectedModel !== 'all' || startDate || endDate) && (
+        {hasActiveFilters && (
           <button
             onClick={resetFilters}
-            style={{
-              alignSelf: 'flex-end',
-              background: 'none',
-              border: 'none',
-              color: '#0284c7',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              padding: '0.5rem',
-            }}
+            className="btn-reset-filters"
           >
             Reset Filters
           </button>
@@ -239,6 +386,32 @@ const AiCostReportView = ({
 
         <div className="kpi-card">
           <div className="kpi-card-header">
+            <span>Est. Monthly Storage</span>
+            <span>💾</span>
+          </div>
+          <div className="kpi-value">
+            {formatStorageCost(summary.storageSummary?.totalStorageBytes || 0, storageRatePerGibMonth)}/mo
+          </div>
+          <div className="kpi-subtext">
+            {formatBytes(summary.storageSummary?.totalStorageBytes || 0)} used ({summary.storageSummary?.storageQuotaPercentage || 0}% of {formatBytes(effectiveStorageQuotaBytes)})
+          </div>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <span>Combined Cloud Run-Rate</span>
+            <span>🌐</span>
+          </div>
+          <div className="kpi-value">
+            {formatAiCost(summary.combinedTotalMonthlyCost)}
+          </div>
+          <div className="kpi-subtext">
+            AI Budget Spend + Monthly GCS Run-Rate
+          </div>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-card-header">
             <span>Token Consumption</span>
             <span>🔢</span>
           </div>
@@ -250,7 +423,7 @@ const AiCostReportView = ({
               : summary.totalTokens}
           </div>
           <div className="kpi-subtext">
-            {`Input: ${summary.totalInputTokens.toLocaleString()} | Output: ${summary.totalOutputTokens.toLocaleString()}`}
+            {`In: ${summary.totalInputTokens.toLocaleString()} | Out: ${summary.totalOutputTokens.toLocaleString()}`}
           </div>
         </div>
 
@@ -275,105 +448,152 @@ const AiCostReportView = ({
         </div>
       </div>
 
-      {/* Breakdowns Grid */}
-      <div className="ai-cost-breakdowns">
-        {/* Model Breakdown */}
-        <div className="breakdown-section">
-          <h3>🤖 Spend by Gemini Model</h3>
-          {summary.byModel.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No AI jobs executed for this filter.</p>
-          ) : (
-            summary.byModel.map((item) => (
-              <div key={item.model} className="breakdown-item">
-                <div className="breakdown-item-header">
-                  <span>{item.model}</span>
-                  <span>{formatAiCost(item.cost)} ({item.percentage.toFixed(1)}%)</span>
+      {/* Tab Content: Overview or AI */}
+      {(activeTab === 'overview' || activeTab === 'ai') && (
+        <div className="ai-cost-breakdowns">
+          {/* Model Breakdown */}
+          <div className="breakdown-section">
+            <h3>🤖 Spend by Gemini Model</h3>
+            {summary.byModel.length === 0 ? (
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No AI jobs executed for this filter.</p>
+            ) : (
+              summary.byModel.map((item) => (
+                <div key={item.model} className="breakdown-item">
+                  <div className="breakdown-item-header">
+                    <span>{item.model}</span>
+                    <span>{formatAiCost(item.cost)} ({item.percentage.toFixed(1)}%)</span>
+                  </div>
+                  <div className="breakdown-progress-track">
+                    <div
+                      className="breakdown-progress-fill"
+                      style={{
+                        width: `${Math.max(item.percentage, 2)}%`,
+                        backgroundColor: getModelColor(item.model),
+                      }}
+                    />
+                  </div>
+                  <div className="breakdown-item-sub">
+                    <span>{item.count} jobs</span>
+                    <span>{(item.inputTokens + item.outputTokens).toLocaleString()} tokens</span>
+                  </div>
                 </div>
-                <div className="breakdown-progress-track">
-                  <div
-                    className="breakdown-progress-fill"
-                    style={{
-                      width: `${Math.max(item.percentage, 2)}%`,
-                      backgroundColor: MODEL_COLORS[item.model] || '#6366f1',
-                    }}
-                  />
-                </div>
-                <div className="breakdown-item-sub">
-                  <span>{item.count} jobs</span>
-                  <span>{(item.inputTokens + item.outputTokens).toLocaleString()} tokens</span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            )}
+          </div>
 
-        {/* Job Type Breakdown */}
-        <div className="breakdown-section">
-          <h3>📋 Spend by Job Category</h3>
-          {summary.byJobType.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No AI jobs executed for this filter.</p>
-          ) : (
-            summary.byJobType.map((item) => (
-              <div key={item.jobType} className="breakdown-item">
-                <div className="breakdown-item-header">
-                  <span>{JOB_TYPE_LABELS[item.jobType] || item.jobType}</span>
-                  <span>{formatAiCost(item.cost)} ({item.percentage.toFixed(1)}%)</span>
+          {/* Job Type Breakdown */}
+          <div className="breakdown-section">
+            <h3>📋 Spend by Job Category</h3>
+            {summary.byJobType.length === 0 ? (
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No AI jobs executed for this filter.</p>
+            ) : (
+              summary.byJobType.map((item) => (
+                <div key={item.jobType} className="breakdown-item">
+                  <div className="breakdown-item-header">
+                    <span>{getJobTypeLabel(item.jobType)}</span>
+                    <span>{formatAiCost(item.cost)} ({item.percentage.toFixed(1)}%)</span>
+                  </div>
+                  <div className="breakdown-progress-track">
+                    <div
+                      className="breakdown-progress-fill"
+                      style={{
+                        width: `${Math.max(item.percentage, 2)}%`,
+                        backgroundColor: '#3b82f6',
+                      }}
+                    />
+                  </div>
+                  <div className="breakdown-item-sub">
+                    <span>{item.count} jobs</span>
+                    <span>{(item.inputTokens + item.outputTokens).toLocaleString()} tokens</span>
+                  </div>
                 </div>
-                <div className="breakdown-progress-track">
-                  <div
-                    className="breakdown-progress-fill"
-                    style={{
-                      width: `${Math.max(item.percentage, 2)}%`,
-                      backgroundColor: '#3b82f6',
-                    }}
-                  />
-                </div>
-                <div className="breakdown-item-sub">
-                  <span>{item.count} jobs</span>
-                  <span>{(item.inputTokens + item.outputTokens).toLocaleString()} tokens</span>
-                </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Tab Content: Overview or Storage */}
+      {(activeTab === 'overview' || activeTab === 'storage') && summary.storageSummary && (
+        <div className="storage-cost-section">
+          <div className="breakdown-section">
+            <h3>💾 Cloud Storage Expenditure by Asset Category</h3>
+            <div className="storage-summary-meta">
+              <span><strong>Total Allocated:</strong> {formatBytes(summary.storageSummary.totalStorageBytes)} / {formatBytes(summary.storageSummary.storageQuotaBytes)} ({summary.storageSummary.storageQuotaPercentage}%)</span>
+              <span><strong>Est. Monthly Run-Rate:</strong> ~{formatStorageCost(summary.storageSummary.totalStorageBytes, storageRatePerGibMonth)}/mo</span>
+            </div>
+
+            <div className="storage-category-grid">
+              {(summary.storageSummary.byStorageCategory || []).map((cat) => (
+                <div key={cat.key} className="breakdown-item">
+                  <div className="breakdown-item-header">
+                    <span>{cat.label}</span>
+                    <span>{formatBytes(cat.bytes)} (~{formatStorageCost(cat.bytes, storageRatePerGibMonth)}/mo)</span>
+                  </div>
+                  <div className="breakdown-progress-track">
+                    <div
+                      className="breakdown-progress-fill"
+                      style={{
+                        width: `${Math.max(cat.percentage, 1)}%`,
+                        backgroundColor: cat.key === 'screenshots' ? '#3b82f6' :
+                          cat.key === 'audio' ? '#10b981' :
+                          cat.key === 'videos' ? '#8b5cf6' :
+                          cat.key === 'recordings' ? '#f59e0b' :
+                          cat.key === 'zips' ? '#06b6d4' :
+                          cat.key === 'irregularities' ? '#ef4444' :
+                          cat.key === 'tasks' ? '#6366f1' : '#ec4899',
+                      }}
+                    />
+                  </div>
+                  <div className="breakdown-item-sub">
+                    <span>{cat.percentage}% of storage</span>
+                    <span>Rate: ${storageRatePerGibMonth}/GiB-mo</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Student Usage Table */}
-      <div className="ai-cost-table-section">
-        <h3>🎓 Student AI Consumption Matrix</h3>
-        {summary.byStudent.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No student jobs recorded.</p>
-        ) : (
-          <div className="ai-cost-table-container">
-            <table className="ai-cost-table">
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Jobs</th>
-                  <th>Input Tokens</th>
-                  <th>Output Tokens</th>
-                  <th>Total Tokens</th>
-                  <th>Total Cost</th>
-                  <th>% of Class Spend</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.byStudent.map((st) => (
-                  <tr key={st.studentUid}>
-                    <td><strong>{st.studentEmail}</strong></td>
-                    <td>{st.jobCount}</td>
-                    <td>{st.inputTokens.toLocaleString()}</td>
-                    <td>{st.outputTokens.toLocaleString()}</td>
-                    <td>{st.totalTokens.toLocaleString()}</td>
-                    <td><span style={{ fontWeight: 600, color: '#0f172a' }}>{formatAiCost(st.cost)}</span></td>
-                    <td>{st.percentageOfClass.toFixed(1)}%</td>
+      {(activeTab === 'overview' || activeTab === 'ai') && (
+        <div className="ai-cost-table-section">
+          <h3>🎓 Student AI Consumption Matrix</h3>
+          {summary.byStudent.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>No student jobs recorded.</p>
+          ) : (
+            <div className="ai-cost-table-container">
+              <table className="ai-cost-table">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Jobs</th>
+                    <th>Input Tokens</th>
+                    <th>Output Tokens</th>
+                    <th>Total Tokens</th>
+                    <th>Total Cost</th>
+                    <th>% of Class Spend</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {summary.byStudent.map((st) => (
+                    <tr key={st.studentUid}>
+                      <td><strong>{st.studentEmail}</strong></td>
+                      <td>{st.jobCount}</td>
+                      <td>{st.inputTokens.toLocaleString()}</td>
+                      <td>{st.outputTokens.toLocaleString()}</td>
+                      <td>{st.totalTokens.toLocaleString()}</td>
+                      <td><span style={{ fontWeight: 600, color: '#0f172a' }}>{formatAiCost(st.cost)}</span></td>
+                      <td>{st.percentageOfClass.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

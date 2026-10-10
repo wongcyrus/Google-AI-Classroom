@@ -90,26 +90,48 @@ for ((i=1; i<=$#; i++)); do
         continue
     fi
     arg="${!i}"
-    if [ "$arg" = "hosting" ] || [ "$arg" = "functions" ] || [ "$arg" = "firestore" ] || [ "$arg" = "storage" ]; then
-        TARGETS+=("$arg")
-    elif [ -d "functions/$arg" ] || [ -d "functions/${arg//-/_}" ]; then
-        codebase_name="${arg//_/-}"
-        TARGETS+=("functions:$codebase_name")
-    elif [[ "$arg" =~ ^functions: ]]; then
-        TARGETS+=("$arg")
-    elif [ "$arg" = "--only" ]; then
+    if [ "$arg" = "--only" ]; then
         next_idx=$((i+1))
         next_arg="${!next_idx}"
         if [ -n "$next_arg" ]; then
             IFS=',' read -ra ADDR <<< "$next_arg"
             for t in "${ADDR[@]}"; do
-                TARGETS+=("$t")
+                if [ -d "functions/$t" ] || [ -d "functions/${t//-/_}" ]; then
+                    TARGETS+=("functions:${t//_/-}")
+                else
+                    TARGETS+=("$t")
+                fi
             done
             SKIP_NEXT=true
         fi
-    else
-        OTHER_ARGS+=("$arg")
+        continue
     fi
+
+    # Handle --only=target1,target2
+    if [[ "$arg" =~ ^--only=(.*)$ ]]; then
+        arg="${BASH_REMATCH[1]}"
+    fi
+
+    # If the argument starts with - or -- (e.g. --force, --debug) and wasn't --only, keep in OTHER_ARGS
+    if [[ "$arg" =~ ^- ]]; then
+        OTHER_ARGS+=("$arg")
+        continue
+    fi
+
+    # Split by comma if multiple targets passed
+    IFS=',' read -ra TOKENS <<< "$arg"
+    for tok in "${TOKENS[@]}"; do
+        if [ "$tok" = "hosting" ] || [ "$tok" = "functions" ] || [ "$tok" = "firestore" ] || [ "$tok" = "storage" ]; then
+            TARGETS+=("$tok")
+        elif [ -d "functions/$tok" ] || [ -d "functions/${tok//-/_}" ]; then
+            codebase_name="${tok//_/-}"
+            TARGETS+=("functions:$codebase_name")
+        elif [[ "$tok" =~ ^functions: ]]; then
+            TARGETS+=("$tok")
+        else
+            OTHER_ARGS+=("$tok")
+        fi
+    done
 done
 
 FIREBASE_DEPLOY_ARGS=()

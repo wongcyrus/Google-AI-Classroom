@@ -1,10 +1,10 @@
-import { formatAiCost } from './formatters';
+import { formatAiCost, formatBytes, formatStorageCost } from './formatters';
 import { exportToExcel } from './exportUtils';
 
 /**
- * Converts aggregated AI cost summary and raw filtered jobs into an RFC 4180 compliant CSV string.
+ * Converts aggregated AI and Cloud Storage cost summary into an RFC 4180 compliant CSV string.
  * 
- * @param {object} summary - Aggregated AI Cost summary object from aggregateAiCost.
+ * @param {object} summary - Aggregated cost summary object from aggregateAiCost.
  * @param {object} metadata - Class and report metadata.
  * @returns {string} CSV content string.
  */
@@ -24,9 +24,29 @@ export function generateAiCostCsv(summary, metadata = {}) {
   lines.push(`"Class Name",${escapeCsv(className)},"Class ID",${escapeCsv(classId)}`);
   lines.push(`"Generated At",${escapeCsv(generatedAt)},"Total Jobs Analyzed",${summary.totalJobs || 0}`);
   lines.push(`"Total AI Spend",${escapeCsv(formatAiCost(summary.totalCost))},"Class Quota",${escapeCsv('$' + (summary.classQuota || 10).toFixed(2))},"Quota Utilized",${escapeCsv((summary.quotaPercentage || 0) + '%')}`);
+  if (summary.storageSummary) {
+    lines.push(`"Est. Monthly Storage Cost",${escapeCsv(formatStorageCost(summary.storageSummary.totalStorageBytes, summary.storageSummary.storageRatePerGibMonth))},"Total Storage Used",${escapeCsv(formatBytes(summary.storageSummary.totalStorageBytes))},"Storage Quota",${escapeCsv(formatBytes(summary.storageSummary.storageQuotaBytes))}`);
+    lines.push(`"Combined Cloud Spend (AI + Storage/mo)",${escapeCsv(formatAiCost(summary.combinedTotalMonthlyCost || summary.totalCost))},"Storage Rate",${escapeCsv('$' + summary.storageSummary.storageRatePerGibMonth + '/GiB-mo')},"Region",${escapeCsv(summary.storageSummary.storageRegion)}`);
+  }
   lines.push(`"Total Tokens",${summary.totalTokens || 0},"Input Tokens",${summary.totalInputTokens || 0},"Output Tokens",${summary.totalOutputTokens || 0}`);
   lines.push(`"Job Reliability",${escapeCsv((summary.successRate || 100).toFixed(1) + '% Success')},"Completed",${summary.completedJobs || 0},"Failed",${summary.failedJobs || 0},"Blocked",${summary.blockedJobs || 0}`);
   lines.push('');
+
+  // Storage Section (if available)
+  if (summary.storageSummary && summary.storageSummary.byStorageCategory) {
+    lines.push(`"--- CLOUD STORAGE BREAKDOWN BY ASSET TYPE ---"`);
+    lines.push(`"Asset Category","Allocated Bytes","Formatted Size","Est. Monthly Cost (USD)","Share of Storage"`);
+    summary.storageSummary.byStorageCategory.forEach(c => {
+      lines.push([
+        escapeCsv(c.label || c.key),
+        c.bytes,
+        escapeCsv(formatBytes(c.bytes)),
+        escapeCsv(formatStorageCost(c.bytes, summary.storageSummary.storageRatePerGibMonth)),
+        escapeCsv((c.percentage || 0).toFixed(1) + '%')
+      ].join(','));
+    });
+    lines.push('');
+  }
 
   // Section 1: Breakdown by AI Model
   lines.push(`"--- COST BREAKDOWN BY MODEL ---"`);
@@ -141,15 +161,38 @@ export function downloadCsvFile(csvContent, filename = 'ai_cost_report.csv') {
  */
 export async function exportAiCostToExcel(summary, metadata = {}) {
   const { className = 'N/A', classId = 'N/A', generatedAt = new Date().toISOString() } = metadata;
-  const headers = ['Category', 'Field 1', 'Field 2', 'Field 3', 'Field 4', 'Field 5', 'Field 6', 'Field 7', 'Field 8'];
+  const headers = ['Category', 'Field 1', 'Field 2', 'Field 3', 'Field 4', 'Field 5', 'Field 6', 'Field 7', 'Field 8', 'Field 9', 'Field 10'];
 
   const rows = [];
-  rows.push(['REPORT', 'AI Cost Breakdown & Audit', '', '', '', '', '', '', '']);
-  rows.push(['METADATA', 'Class Name', className, 'Class ID', classId, 'Generated At', generatedAt, 'Total Jobs', summary.totalJobs || 0]);
-  rows.push(['METADATA', 'Total AI Spend', formatAiCost(summary.totalCost), 'Class Quota', '$' + (summary.classQuota || 10).toFixed(2), 'Quota Utilized', (summary.quotaPercentage || 0) + '%', '', '']);
-  rows.push(['', '', '', '', '', '', '', '', '']);
+  rows.push(['REPORT', 'AI & Cloud Storage Cost Breakdown & Audit', '', '', '', '', '', '', '', '']);
+  rows.push(['METADATA', 'Class Name', className, 'Class ID', classId, 'Generated At', generatedAt, 'Total Jobs', summary.totalJobs || 0, '', '']);
+  rows.push(['METADATA', 'Total AI Spend', formatAiCost(summary.totalCost), 'Class Quota', '$' + (summary.classQuota || 10).toFixed(2), 'Quota Utilized', (summary.quotaPercentage || 0) + '%', '', '', '']);
+  if (summary.storageSummary) {
+    rows.push(['METADATA', 'Est. Monthly Storage', formatStorageCost(summary.storageSummary.totalStorageBytes, summary.storageSummary.storageRatePerGibMonth), 'Storage Used', formatBytes(summary.storageSummary.totalStorageBytes), 'Storage Quota', formatBytes(summary.storageSummary.storageQuotaBytes), 'Combined Cloud Spend', formatAiCost(summary.combinedTotalMonthlyCost || summary.totalCost), '']);
+  }
+  rows.push(['', '', '', '', '', '', '', '', '', '']);
 
-  rows.push(['BY MODEL', 'Model', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '']);
+  // Cloud Storage Section (if available)
+  if (summary.storageSummary && summary.storageSummary.byStorageCategory) {
+    rows.push(['BY STORAGE ASSET', 'Asset Category', 'Allocated Bytes', 'Formatted Size', 'Est. Monthly Cost (USD)', 'Share of Class Storage', '', '', '', '']);
+    summary.storageSummary.byStorageCategory.forEach(c => {
+      rows.push([
+        'STORAGE_ROW',
+        c.label || c.key,
+        c.bytes,
+        formatBytes(c.bytes),
+        formatStorageCost(c.bytes, summary.storageSummary.storageRatePerGibMonth),
+        (c.percentage || 0).toFixed(1) + '%',
+        '',
+        '',
+        '',
+        ''
+      ]);
+    });
+    rows.push(['', '', '', '', '', '', '', '', '', '']);
+  }
+
+  rows.push(['BY MODEL', 'Model', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '', '']);
   (summary.byModel || []).forEach(m => {
     rows.push([
       'MODEL_ROW',
@@ -160,12 +203,13 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
       m.inputTokens + m.outputTokens,
       formatAiCost(m.cost),
       (m.percentage || 0).toFixed(1) + '%',
+      '',
       ''
     ]);
   });
-  rows.push(['', '', '', '', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '', '', '', '', '']);
 
-  rows.push(['BY JOB TYPE', 'Job Type', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '']);
+  rows.push(['BY JOB TYPE', 'Job Type', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Total', '', '']);
   (summary.byJobType || []).forEach(j => {
     rows.push([
       'JOB_TYPE_ROW',
@@ -176,12 +220,13 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
       j.inputTokens + j.outputTokens,
       formatAiCost(j.cost),
       (j.percentage || 0).toFixed(1) + '%',
+      '',
       ''
     ]);
   });
-  rows.push(['', '', '', '', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '', '', '', '', '']);
 
-  rows.push(['BY STUDENT', 'Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)', 'Share of Class Spend']);
+  rows.push(['BY STUDENT', 'Student Name', 'Student Email', 'Class / Cohort', 'Programme', 'Student UID', 'Job Count', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Total Cost (USD)']);
   (summary.byStudent || []).forEach(s => {
     const sEmail = s.studentEmail || (s.studentUid?.includes('@') ? s.studentUid : '');
     const sName = s.studentName || s.displayName || sEmail || 'Unknown Student';
@@ -196,13 +241,12 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
       s.inputTokens,
       s.outputTokens,
       s.totalTokens,
-      formatAiCost(s.cost),
-      (s.percentageOfClass || 0).toFixed(1) + '%'
+      formatAiCost(s.cost)
     ]);
   });
-  rows.push(['', '', '', '', '', '', '', '', '']);
+  rows.push(['', '', '', '', '', '', '', '', '', '']);
 
-  rows.push(['AUDIT LOG', 'Timestamp', 'Job ID', 'Student Name', 'Student Email', 'Job Type', 'Model Used', 'Status', 'Input Tokens', 'Output Tokens']);
+  rows.push(['AUDIT LOG', 'Timestamp', 'Job ID', 'Student Name', 'Student Email', 'Job Type', 'Model Used', 'Status', 'Input Tokens', 'Output Tokens', 'Cost (USD)']);
   (summary.filteredJobs || []).forEach(job => {
     const jobTime = job.timestamp?.toDate
       ? job.timestamp.toDate().toISOString()
@@ -223,11 +267,12 @@ export async function exportAiCostToExcel(summary, metadata = {}) {
       job.modelUsed || 'gemini-3.5-flash-lite',
       job.status || 'unknown',
       inputTokens,
-      outputTokens
+      outputTokens,
+      formatAiCost(job.cost)
     ]);
   });
 
-  const filename = `ai_cost_report_${classId}_${new Date().toISOString().split('T')[0]}.xlsx`;
+  const filename = `cost_report_${classId}_${new Date().toISOString().split('T')[0]}.xlsx`;
   return exportToExcel(headers, rows, filename);
 }
 

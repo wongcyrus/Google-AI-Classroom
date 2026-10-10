@@ -23,6 +23,7 @@ const ControlsPanel = ({
     samplingRate = 5, setSamplingRate,
     storageUsage, storageQuota, storageUsageScreenShots, storageUsageVideos, storageUsageZips, storageUsageAudio, storageUsageRecordings, storageUsageIrregularities,
     storageUsageTasks, storageUsageReports,
+    storageRatePerGibMonth = 0.023,
     aiQuota, aiUsedQuota,
     selectedAiModel = 'gemini-3.5-flash-lite', handleAiModelChange,
     enableAudioCapture = false, handleAudioCaptureToggle,
@@ -1197,8 +1198,8 @@ const ControlsPanel = ({
                 </div>
                 <p className="storage-text">
                     {storageQuota > 0 
-                      ? `${formatBytes(effectiveUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(effectiveUsage)}/mo)` 
-                      : `${formatBytes(effectiveUsage)} used (~${formatStorageCost(effectiveUsage)}/mo)`}
+                      ? `${formatBytes(effectiveUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(effectiveUsage, storageRatePerGibMonth)}/mo)` 
+                      : `${formatBytes(effectiveUsage)} used (~${formatStorageCost(effectiveUsage, storageRatePerGibMonth)}/mo)`}
                 </p>
                 <div className="storage-breakdown">
                     <span>Screenshots: {formatBytes(usageShots)}</span>
@@ -1260,6 +1261,18 @@ const ControlsPanel = ({
               <AiCostReportView
                 classId={classId}
                 classQuota={aiQuota}
+                storageQuotaBytes={storageQuota}
+                storageData={{
+                  storageUsage: effectiveUsage,
+                  storageUsageScreenShots: usageShots,
+                  storageUsageVideos: usageVids,
+                  storageUsageZips: usageZip,
+                  storageUsageAudio: usageAud,
+                  storageUsageRecordings: usageRecs,
+                  storageUsageIrregularities: usageIrreg,
+                  storageUsageTasks: usageTasks,
+                  storageUsageReports: usageReports,
+                }}
                 onClose={() => setShowAiCostModal(false)}
               />
             </div>

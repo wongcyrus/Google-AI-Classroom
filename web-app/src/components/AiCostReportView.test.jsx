@@ -8,6 +8,23 @@ vi.mock('../firebase-config', () => ({
   db: {},
 }));
 
+vi.mock('../hooks/useCloudPricing', () => ({
+  default: () => ({
+    storageRatePerGibMonth: 0.023,
+    storageRegion: 'asia-east2',
+    storageDescription: 'Standard Storage Hong Kong',
+    lastSyncedAt: '2026-09-29T12:00:00Z',
+    loading: false,
+  }),
+  useCloudPricing: () => ({
+    storageRatePerGibMonth: 0.023,
+    storageRegion: 'asia-east2',
+    storageDescription: 'Standard Storage Hong Kong',
+    lastSyncedAt: '2026-09-29T12:00:00Z',
+    loading: false,
+  }),
+}));
+
 const mockOnSnapshot = vi.fn((q, onNext, onError) => {
   onNext({
     docs: [
@@ -29,6 +46,7 @@ const mockOnSnapshot = vi.fn((q, onNext, onError) => {
 });
 
 vi.mock('firebase/firestore', () => ({
+  doc: vi.fn(),
   collection: vi.fn(),
   query: vi.fn(),
   where: vi.fn(),
@@ -216,7 +234,33 @@ describe('AiCostReportView Component', () => {
     );
 
     expect(screen.getAllByText(/Gemini Live Subtitle Stream/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/gemini-3.1-flash-live-preview/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/gemini-3.1-flash-live-preview/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders storage section with categories and monthly cost when storageData is supplied', () => {
+    const mockStorage = {
+      storageUsage: 664260000,
+      storageUsageScreenShots: 3050000,
+      storageUsageVideos: 389450000,
+      storageUsageRecordings: 271760000,
+    };
+
+    render(
+      <AiCostReportView
+        classId="itp3901-ab"
+        className="Cloud Security & Architecture"
+        classQuota={10}
+        storageData={mockStorage}
+        storageQuotaBytes={5368709120}
+        aiJobs={mockJobs}
+      />
+    );
+
+    // Verify storage section rendering
+    expect(screen.getByText(/Cloud Storage Expenditure by Asset Category/i)).toBeInTheDocument();
+    expect(screen.getByText(/Student Screencast Videos/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lecture Recordings & Subtitles/i)).toBeInTheDocument();
+    expect(screen.getByText(/Combined Cloud Run-Rate/i)).toBeInTheDocument();
   });
 });
 
