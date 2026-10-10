@@ -93,7 +93,8 @@ graph TD
 
         subgraph "Scheduled Tasks (`scheduled_tasks`)"
             F_handleAutoCapture["handleAutomaticCapture (onSchedule)"]
-            F_handleAutoVideoCombine["handleAutomaticVideoCombination (onSchedule)"]
+            F_handlePostLessonMedia["handlePostLessonMediaConsolidation (onSchedule)"]
+            F_handleAutoBingo["handleAutomaticBingo (onSchedule)"]
             F_syncGeminiPricing["syncGeminiPricing (onSchedule)"]
         end
 

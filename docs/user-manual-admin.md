@@ -259,7 +259,7 @@ To eliminate dependency conflicts and ensure sub-second deployment times, backen
 | **`media_processing`** | Firestore Create/Update, HTTPS Callable, Cloud Scheduler | FFmpeg video compilation (`processVideoJob`), ZIP archive assembler (`processZipJob`), formal exam incident dossier generator (`processReportJob`), student signed video URL dispenser (`getStudentVideoPlaybackUrl`), and stuck job cleanup (`cleanupStuckJobs`). |
 | **`auth_triggers`** | GCIP Blocking Auth, Firestore Write | Domain-based custom claims resolution (`beforeUserCreated`), IP CIDR filtering (`checkipaddress`), and class roster syncing (`onClassUpdate`). |
 | **`storage_triggers`** | Cloud Storage Finalize/Delete, HTTPS Callable | Storage quota aggregation (`updateStorageUsageOnUpload`, `updateStorageUsageOnDelete`), selective retention deletion (`deleteScreenshotsByDateRange`), and asset cleanup (`onClassRetentionUpdated`). |
-| **`scheduled_tasks`** | Cloud Scheduler Pub/Sub | Timetable automated capture initiator (`handleAutomaticCapture`), after-class video compiler (`handleAutomaticVideoCombination`), and Gemini pricing sync (`syncGeminiPricing`). |
+| **`scheduled_tasks`** | Cloud Scheduler Pub/Sub | Timetable automated capture initiator (`handleAutomaticCapture`), post-lesson student screencast & teacher lecture consolidator (`handlePostLessonMediaConsolidation` [alias: `handleAutomaticVideoCombination`]), automated Bingo trigger (`handleAutomaticBingo`), and Gemini pricing sync (`syncGeminiPricing`). |
 | **`property_processing`** | Firestore Write | Asynchronous CSV processor for student custom metadata (`processPropertyUploadJob`). |
 | **`attendance`** | HTTPS Callable | Lesson presence bitmask aggregator and Bingo penalty evaluator (`getAttendanceData`). |
 
@@ -400,9 +400,10 @@ The following Cloud Scheduler cron jobs operate continuously in the background:
 
 | Job Name | Cron Schedule | Function Target | Description |
 | :--- | :--- | :--- | :--- |
-| `firebase-schedule-handleAutomaticCapture` | `*/5 * * * *` | `handleAutomaticCapture` | Inspects class timetables every 5 minutes and marks classes as active when scheduled lesson slots begin. |
-| `firebase-schedule-handleAutomaticVideoCombination` | `*/10 * * * *` | `handleAutomaticVideoCombination` | Scans for concluded lessons and automatically dispatches video compilation jobs for all attending students. |
-| `firebase-schedule-cleanupStuckJobs` | `*/15 * * * *` | `cleanupStuckJobs` | Detects video or ZIP jobs stuck in `processing` state for $>30$ minutes and resets or marks them as failed. |
+| `firebase-schedule-handleAutomaticCapture` | `5,25,35,55 * * * *` | `handleAutomaticCapture` | Inspects class timetables and activates/deactivates class capture slots on schedule. |
+| `firebase-schedule-handlePostLessonMediaConsolidation` | `15,45 * * * *` | `handlePostLessonMediaConsolidation` *(alias: `handleAutomaticVideoCombination`)* | Scans for concluded lessons, auto-dispatches student screencast compilation (`videoJobs`), and merges teacher broadcast lecture recording segments (`lectureMergeJobs`). |
+| `firebase-schedule-handleAutomaticBingo` | `* * * * *` | `handleAutomaticBingo` | Evaluates active classes with auto-Bingo enabled and triggers presence verification at configured intervals. |
+| `firebase-schedule-cleanupStuckJobs` | `*/15 * * * *` | `cleanupStuckJobs` | Detects video, ZIP, or audio jobs stuck in `processing` state for $>30$ minutes and resets or marks them as failed. |
 | `firebase-schedule-syncGeminiPricing` | `0 0 * * *` | `syncGeminiPricing` | Daily update of Gemini Enterprise Agent Platform token pricing models in Firestore. |
 
 ---

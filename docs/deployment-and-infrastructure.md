@@ -311,7 +311,7 @@ To ensure high availability, prevent circular dependencies, and isolate build fa
 | **`functions/media_processing/`** | `processVideoJob`, `processZipJob`, `cleanupStuckJobs` | Video compilation & ZIP extraction pipelines |
 | **`functions/auth_triggers/`** | `beforeusercreated`, `checkipaddress`, `onClassUpdate` | Auth blocking triggers & user class role sync |
 | **`functions/storage_triggers/`** | `updateStorageUsageOnUpload`, `updateStorageUsageOnDelete`, `deleteScreenshotsByDateRange` | Storage quota tracking & cleanup |
-| **`functions/scheduled_tasks/`** | `handleAutomaticCapture`, `handleAutomaticVideoCombination` | Automated interval captures and video merges |
+| **`functions/scheduled_tasks/`** | `handleAutomaticCapture`, `handlePostLessonMediaConsolidation` *(alias: `handleAutomaticVideoCombination`)*, `handleAutomaticBingo`, `syncGeminiPricing` | Automated interval captures, post-lesson media consolidation, periodic Bingo, and pricing sync |
 | **`functions/property_processing/`** | `processPropertyUpload` | Asset property validation |
 | **`functions/attendance/`** | `getAttendanceData` | Attendance reporting endpoint |
 

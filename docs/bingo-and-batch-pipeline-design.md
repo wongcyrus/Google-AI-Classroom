@@ -149,16 +149,16 @@ The system maintains **4 distinct, centralized scheduled functions** with **zero
 
 ```text
 functions/scheduled_tasks/scheduledTasks.js
-├── 1. handleAutomaticCapture        (Cron: '5,25,35,55 * * * *')  [30m Slot Scheduler]
-├── 2. handleAutomaticVideoCombine   (Cron: '15,45 * * * *')       [Post-Class Video Combine]
-├── 3. handleAutomaticBingo          (Cron: '* * * * *')           [Periodic Presence Check]
-└── 4. syncGeminiPricing             (Cron: 'every 24 hours')      [Vertex AI Billing Sync]
+├── 1. handleAutomaticCapture              (Cron: '5,25,35,55 * * * *')  [30m Slot Scheduler]
+├── 2. handlePostLessonMediaConsolidation  (Cron: '15,45 * * * *')       [Post-Class Student & Teacher Media Consolidator (alias: handleAutomaticVideoCombination)]
+├── 3. handleAutomaticBingo                (Cron: '* * * * *')           [Periodic Presence Check]
+└── 4. syncGeminiPricing                   (Cron: 'every 24 hours')      [Vertex AI Billing Sync]
 ```
 
 1. **`handleAutomaticCapture`** (`5,25,35,55 * * * *`):
    - Evaluates active class timetables 5 minutes before scheduled start and 5 minutes after scheduled end.
    - Automatically sets `isCapturing: true` or `isCapturing: false` so students and teachers don't need manual activation.
-2. **`handleAutomaticVideoCombination`** (`15,45 * * * *`):
+2. **`handlePostLessonMediaConsolidation`** (`15,45 * * * *`) *(legacy alias: `handleAutomaticVideoCombination`)*:
    - Offsets by 15 minutes after lesson slots end to allow lingering student uploads to complete.
    - Assembles student screencasts into MP4 videos and triggers teacher lecture video concatenation.
 3. **`handleAutomaticBingo`** (`* * * * *`):

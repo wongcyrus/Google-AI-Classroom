@@ -54,6 +54,7 @@ vi.mock('firebase-functions', () => ({
 
 import {
   handleAutomaticCapture,
+  handlePostLessonMediaConsolidation,
   handleAutomaticVideoCombination,
   handleAutomaticBingo,
   isClassSessionActive,
@@ -112,14 +113,18 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     });
   });
 
-  describe('handleAutomaticVideoCombination trigger execution', () => {
+  describe('handlePostLessonMediaConsolidation (handleAutomaticVideoCombination) trigger execution', () => {
+    it('exports handleAutomaticVideoCombination as a backward-compatible alias', () => {
+      expect(handleAutomaticVideoCombination).toBe(handlePostLessonMediaConsolidation);
+    });
+
     it('gracefully handles empty class snapshots', async () => {
       mockCollection.get.mockResolvedValueOnce({
         empty: true,
         docs: [],
       });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
       expect(mockCollection.add).not.toHaveBeenCalled();
     });
 

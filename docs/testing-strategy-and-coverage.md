@@ -135,7 +135,7 @@ flowchart TD
   * `functions/attendance/attendance.test.js`: Direct testing of `parseDateTime` (null safety, Date passthrough, millisecond timestamps, ISO offsets, and timezone parsing) and the `getAttendanceData` Callable Cloud Function (argument verification, not-found error handling, duration calculation, screenshot chunk querying, attendance adjustment voiding code `2`, and Firestore persistence).
   * `functions/storage_triggers/storageQuota.test.js`: Verifies `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` triggers, storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`), and quota limit overflow evaluations.
   * `functions/storage_triggers/cleanupTriggers.test.js`: Verifies `onScreenshotDocDeleted`, `onAudioDocDeleted`, `onClassDocDeleted` cascading asset purge across Cloud Storage and Firestore collections, and `onClassRetentionUpdated` TTL `expireAt` recalculations.
-  * `functions/scheduled_tasks/scheduledTasks.test.js`: Verifies `handleAutomaticCapture` and `handleAutomaticVideoCombination` scheduler triggers, auto-capture interval start detection (5-min lookahead), exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
+  * `functions/scheduled_tasks/scheduledTasks.test.js`: Verifies `handleAutomaticCapture`, `handlePostLessonMediaConsolidation` (with backward compatibility alias `handleAutomaticVideoCombination`), and `handleAutomaticBingo` scheduler triggers, auto-capture interval start detection (5-min lookahead), exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
 
 ### 3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)
 * **Framework**: Node.js + Firebase Admin SDK.

@@ -483,9 +483,13 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
     -   **Trigger**: Scheduled to run at 5, 25, 35, and 55 minutes past every hour.
     -   **Description**: This function manages the automatic start and stop of the screen capture feature for classes. It queries for all classes that have the `automaticCapture` flag set to `true`. By checking the class schedules against the current time, it determines if a class session is about to begin or has just ended, and updates the `isCapturing` boolean field on the class document accordingly. This allows the frontend to automatically start or stop capturing without manual intervention from the teacher.
 
--   **`handleAutomaticVideoCombination`**:
-    -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour.
-    -   **Description**: This function automates the process of creating video compilation jobs after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any of their scheduled time slots have recently concluded. If so, it creates a new `videoJobs` document for each student enrolled in that class session. This, in turn, triggers the `processVideoJob` function to begin compiling the screenshots into a video. It also creates a notification for the teachers of the class to inform them that the process has started.
+-   **`handlePostLessonMediaConsolidation`** *(alias: `handleAutomaticVideoCombination`)*:
+    -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour (`schedule: '15,45 * * * *'`).
+    -   **Description**: Automates post-lesson media processing and consolidation for both students and teachers after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any scheduled time slots concluded within the past 30 minutes. If so, it:
+        1. Dispatches student screencast compilation jobs (`videoJobs`) for all enrolled students to trigger `processVideoJob`.
+        2. Detects teacher lecture broadcast recording segments and creates `lectureMergeJobs` documents to trigger FFmpeg lecture consolidation.
+        3. Creates notifications for class teachers informing them that post-lesson media consolidation is underway.
+    -   **Backward Compatibility**: The function is exported as `handlePostLessonMediaConsolidation` and also aliased as `handleAutomaticVideoCombination` (`export const handleAutomaticVideoCombination = handlePostLessonMediaConsolidation;`) to prevent breaking existing Cloud Scheduler job configurations or external references.
 
 -   **`syncGeminiPricing`**:
     -   **Trigger**: Scheduled to run once every 24 hours (`schedule: 'every 24 hours'`).

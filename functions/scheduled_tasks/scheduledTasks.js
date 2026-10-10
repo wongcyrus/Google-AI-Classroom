@@ -184,9 +184,9 @@ const videoCombinationOptions = {
   region: FUNCTION_REGION
 };
 
-export const handleAutomaticVideoCombination = onSchedule(videoCombinationOptions, async () => {
+export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOptions, async () => {
   const now = new Date();
-  logger.info(`handleAutomaticVideoCombination triggered at ${now.toISOString()}`);
+  logger.info(`handlePostLessonMediaConsolidation triggered at ${now.toISOString()}`);
 
   const classesRef = db.collection('classes');
   const snapshot = await classesRef.get();
@@ -528,6 +528,9 @@ export const handleAutomaticVideoCombination = onSchedule(videoCombinationOption
 
   await Promise.all(notificationPromises);
 });
+
+// Backward-compatible alias for deployment safety
+export const handleAutomaticVideoCombination = handlePostLessonMediaConsolidation;
 
 export const syncGeminiPricing = onSchedule({
   schedule: 'every 24 hours',
