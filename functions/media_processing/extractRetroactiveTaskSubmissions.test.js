@@ -20,7 +20,11 @@ vi.mock('firebase-admin/storage', () => ({
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
-    collection: vi.fn(),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({
+        get: vi.fn().mockResolvedValue({ exists: false }),
+      })),
+    })),
   }),
   FieldValue: {
     serverTimestamp: () => new Date(),
@@ -294,6 +298,96 @@ describe('extractRetroactiveTaskSubmissions', () => {
         { merge: true }
       );
     });
+
+    it('supports windowType absolute_time with timelapse frame rate, lessonId and sessionDate filters', async () => {
+      const mockBucket = {
+        file: vi.fn(() => ({
+          exists: vi.fn().mockResolvedValue([true]),
+          download: vi.fn().mockResolvedValue(),
+        })),
+        upload: vi.fn().mockResolvedValue(),
+      };
+
+      const candidateJobs = [
+        {
+          id: 'job_timelapse',
+          data: () => ({
+            studentUid: 's1',
+            videoPath: 'videos/c1/job_timelapse.mp4',
+            duration: 3600,
+            isTaskSubmission: false,
+            lessonId: 'lesson_101',
+            startTime: new Date('2026-09-10T09:00:00Z'),
+            endTime: new Date('2026-09-10T11:00:00Z'),
+            captureInterval: 15,
+            targetFrameRate: 1,
+          }),
+        },
+      ];
+
+      const mockDb = {
+        collection: (colName) => {
+          if (colName === 'classes') {
+            return {
+              doc: () => ({
+                get: vi.fn().mockResolvedValue({
+                  exists: true,
+                  data: () => ({
+                    students: [{ uid: 's1', email: 's1@test.com' }],
+                  }),
+                }),
+                collection: () => ({
+                  doc: () => ({
+                    get: vi.fn().mockResolvedValue({
+                      exists: true,
+                      data: () => ({ title: 'Retro Lab' }),
+                    }),
+                    collection: () => ({
+                      doc: () => ({
+                        get: vi.fn().mockResolvedValue({ exists: false }),
+                        set: vi.fn().mockResolvedValue(),
+                        collection: () => ({
+                          doc: () => ({
+                            set: vi.fn().mockResolvedValue(),
+                          }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'videoJobs') {
+            return {
+              where: vi.fn().mockReturnThis(),
+              get: vi.fn().mockResolvedValue({ docs: candidateJobs }),
+              doc: () => ({
+                set: vi.fn().mockResolvedValue(),
+                update: vi.fn().mockResolvedValue(),
+              }),
+            };
+          }
+          return {};
+        },
+      };
+
+      const summary = await executeExtractRetroactiveTaskSubmissions({
+        classId: 'c1',
+        taskId: 'task_abs',
+        windowType: 'absolute_time',
+        startTime: '2026-09-10T09:15:00Z',
+        endTime: '2026-09-10T09:45:00Z',
+        lessonId: 'lesson_101',
+        sessionDate: '2026-09-10',
+        dbInstance: mockDb,
+        bucketInstance: mockBucket,
+      });
+
+      expect(summary.success).toBe(true);
+      expect(summary.totalCandidates).toBe(1);
+      expect(summary.processedCount).toBe(1);
+    });
   });
 
   describe('extractRetroactiveTaskSubmissions onCall authorization', () => {
@@ -302,6 +396,33 @@ describe('extractRetroactiveTaskSubmissions', () => {
       await expect(
         handler({ auth: null, data: { classId: 'c1', taskId: 't1' } })
       ).rejects.toThrow();
+    });
+
+    it('rejects request with missing classId or taskId', async () => {
+      const handler = extractRetroactiveTaskSubmissions.run || extractRetroactiveTaskSubmissions;
+      await expect(
+        handler({ auth: { uid: 'u1' }, data: { classId: '' } })
+      ).rejects.toThrow(/Missing classId or taskId/);
+    });
+
+    it('rejects non-teacher caller when not in teacherProfiles', async () => {
+      const handler = extractRetroactiveTaskSubmissions.run || extractRetroactiveTaskSubmissions;
+      await expect(
+        handler({
+          auth: { uid: 'student_1', token: { role: 'student', email: 'stu@other.com' } },
+          data: { classId: 'c1', taskId: 't1' },
+        })
+      ).rejects.toThrow(/Only teachers can extract/);
+    });
+
+    it('allows authorized teacher caller to invoke execution', async () => {
+      const handler = extractRetroactiveTaskSubmissions.run || extractRetroactiveTaskSubmissions;
+      await expect(
+        handler({
+          auth: { uid: 'teacher_1', token: { role: 'teacher', email: 'teacher@vtc.edu.hk' } },
+          data: { classId: 'non-existent-class', taskId: 't1' },
+        })
+      ).rejects.toThrow(/not found/);
     });
   });
 });

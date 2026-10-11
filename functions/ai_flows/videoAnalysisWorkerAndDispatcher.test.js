@@ -100,7 +100,7 @@ vi.mock('./jobLogger.js', () => ({
   logJob: mockLogJob,
 }));
 
-import { processVideoAnalysisJob } from './processVideoAnalysisJob.js';
+import { processVideoAnalysisJob, resolveVideoDetails } from './processVideoAnalysisJob.js';
 import { analyzeSingleVideoTask } from './analyzeSingleVideoTask.js';
 
 describe('Video Analysis Dispatcher and Worker Full Flows', () => {
@@ -321,6 +321,81 @@ describe('Video Analysis Dispatcher and Worker Full Flows', () => {
       });
 
       expect(mockAnalyzeFlow).toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveVideoDetails edge cases and truncation', () => {
+    it('handles https URLs from external buckets and leading slashes', () => {
+      const extRes = resolveVideoDetails(
+        { videoPath: 'https://storage.googleapis.com/other-bucket/videos/c1/s1.mp4' },
+        'test-bucket.appspot.com'
+      );
+      expect(extRes.relativePath).toBe('videos/c1/s1.mp4');
+
+      const slashRes = resolveVideoDetails(
+        { videoPath: '/videos/c1/s1.mp4' },
+        'test-bucket.appspot.com'
+      );
+      expect(slashRes.relativePath).toBe('videos/c1/s1.mp4');
+
+      const gsOtherRes = resolveVideoDetails(
+        { videoPath: 'gs://other-bucket/videos/c1/s1.mp4' },
+        'test-bucket.appspot.com'
+      );
+      expect(gsOtherRes.relativePath).toBe('videos/c1/s1.mp4');
+    });
+
+    it('processes job with Date object or string timestamps for startTime and endTime', async () => {
+      const mockEvent = {
+        params: { jobId: 'job-dates' },
+        data: {
+          data: () => ({
+            classId: 'CLASS_1',
+            videos: [{ studentUid: 's1', videoPath: 'videos/c1/s1.mp4' }],
+            startTime: { toDate: () => new Date('2026-08-01T09:00:00Z') },
+            endTime: { toDate: () => new Date('2026-08-01T10:00:00Z') },
+          }),
+        },
+      };
+
+      await processVideoAnalysisJob(mockEvent);
+
+      expect(mockEnqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startTimeIso: '2026-08-01T09:00:00.000Z',
+          endTimeIso: '2026-08-01T10:00:00.000Z',
+        }),
+        expect.anything()
+      );
+    });
+
+    it('truncates jobs with more than 100 videos', async () => {
+      const videos = Array.from({ length: 105 }, (_, i) => ({
+        studentUid: `s_${i}`,
+        studentEmail: `s_${i}@test.com`,
+        videoPath: `videos/c1/s_${i}.mp4`,
+      }));
+
+      const mockEvent = {
+        params: { jobId: 'master-job-large' },
+        data: {
+          data: () => ({
+            classId: 'CLASS_1',
+            videos,
+            prompt: 'Inspect',
+          }),
+        },
+      };
+
+      await processVideoAnalysisJob(mockEvent);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          totalVideos: 100,
+          notes: expect.stringContaining('Job truncated to the first 100 unique videos found'),
+        })
+      );
+      expect(mockEnqueue).toHaveBeenCalledTimes(100);
     });
   });
 });

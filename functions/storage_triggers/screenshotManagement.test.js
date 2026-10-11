@@ -349,5 +349,236 @@ describe('purgeClassTelemetryData', () => {
     expect(result.totalPurged).toBe(1);
     expect(mockBatch.delete).toHaveBeenCalled();
   });
+
+  it('preserves attendance snapshot for lessons before purging screenshots', async () => {
+    const mockLessonDoc = {
+      id: 'lesson_1',
+      ref: { set: vi.fn().mockResolvedValue() },
+      data: () => ({
+        startTime: '2026-08-01T09:00:00Z',
+        endTime: '2026-08-01T10:00:00Z',
+        students: {
+          s1: { sharedScreenMinutes: 0 },
+        },
+      }),
+    };
+    const mockScreenshotDoc = {
+      id: 'sc_1',
+      ref: { delete: vi.fn() },
+      data: () => ({
+        studentUid: 's1',
+        imagePath: 'screenshots/CLASS_1/sc_1.jpg',
+        timestamp: new Date('2026-08-01T09:15:00Z'),
+      }),
+    };
+
+    mockDb.collection.mockImplementation((col) => {
+      if (col === 'classes/CLASS_1/lessons') {
+        return {
+          get: vi.fn().mockResolvedValue({
+            docs: [mockLessonDoc],
+            forEach: vi.fn((cb) => [mockLessonDoc].forEach(cb)),
+          }),
+        };
+      }
+      if (col === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({ docs: [mockScreenshotDoc] }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: { screenshots: true, audio: false },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(mockLessonDoc.ref.set).toHaveBeenCalled();
+  });
+
+  it('purges bingo records and activity audit records when targets.bingoRecords is true', async () => {
+    const mockAuditDoc = {
+      id: 'audit_1',
+      ref: { delete: vi.fn() },
+      data: () => ({ timestamp: new Date('2026-08-01T09:30:00Z') }),
+    };
+
+    mockDb.collection.mockImplementation((col) => {
+      if (col.startsWith('classes/CLASS_1/')) {
+        return {
+          where: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({ docs: [mockAuditDoc] }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: { screenshots: false, audio: false, bingoRecords: true },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.activityRecordsCount).toBeGreaterThan(0);
+  });
+
+  it('authorizes teacher via teacherEmails when role is not teacher', async () => {
+    mockDoc.get.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ teacherEmails: ['instructor@school.edu'] }),
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher_sub', token: { email: 'instructor@school.edu' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+      },
+    });
+
+    expect(result.status).toBe('success');
+  });
+
+  it('purges all categories and formats result parts when multiple categories have purged items', async () => {
+    const mockFileDoc = (pathField, pathVal) => ({
+      id: 'doc_' + Math.random(),
+      ref: { delete: vi.fn().mockResolvedValue() },
+      data: () => ({
+        [pathField]: pathVal,
+        timestamp: new Date('2026-08-01T12:00:00Z'),
+        createdAt: new Date('2026-08-01T12:00:00Z'),
+        startedAt: new Date('2026-08-01T12:00:00Z'),
+      }),
+    });
+
+    mockDb.collection.mockImplementation((col) => {
+      let docs = [];
+      if (col === 'screenshots') docs = [mockFileDoc('imagePath', 'screenshots/CLASS_1/s1.jpg')];
+      else if (col === 'audio') docs = [mockFileDoc('audioPath', 'audio/CLASS_1/a1.webm')];
+      else if (col === 'videoJobs') docs = [mockFileDoc('videoPath', 'videos/CLASS_1/v1.mp4')];
+      else if (col.includes('lectureRecordings')) docs = [mockFileDoc('storagePath', 'recordings/CLASS_1/r1')];
+      else if (col.includes('irregularities')) docs = [mockFileDoc('imagePath', 'irregularities/CLASS_1/i1.jpg')];
+      else if (col.includes('bingoRecords') || col.includes('attendanceAdjustments') || col.includes('audio_audits')) {
+        docs = [mockFileDoc('timestamp', new Date('2026-08-01T12:00:00Z'))];
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: {
+          screenshots: true,
+          audio: true,
+          videos: true,
+          lectureRecordings: true,
+          irregularities: true,
+          bingoRecords: true,
+        },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.screenshotsCount).toBe(1);
+    expect(result.audioCount).toBe(1);
+    expect(result.videosCount).toBe(1);
+    expect(result.recordingsCount).toBe(1);
+    expect(result.irregularitiesCount).toBeGreaterThanOrEqual(1);
+    expect(result.activityRecordsCount).toBeGreaterThanOrEqual(1);
+    expect(result.message).toContain('screenshots');
+    expect(result.message).toContain('audio recordings');
+    expect(result.message).toContain('student videos');
+    expect(result.message).toContain('lecture recordings');
+  });
+
+  it('handles in-memory filtering fallback when index queries throw in lectureRecordings and irregularities', async () => {
+    const lectureDoc = {
+      id: 'lec_fallback',
+      ref: { delete: vi.fn().mockResolvedValue() },
+      data: () => ({ startedAt: '2026-08-01T10:00:00Z' }),
+    };
+
+    const irregDoc = {
+      id: 'irreg_fallback',
+      ref: { delete: vi.fn().mockResolvedValue() },
+      data: () => ({ imagePath: 'irregularities/CLASS_1/irr.jpg', timestamp: '2026-08-01T10:00:00Z' }),
+    };
+
+    mockDb.collection.mockImplementation((col) => {
+      if (col.includes('lectureRecordings')) {
+        return {
+          where: vi.fn(() => ({
+            where: vi.fn(() => ({
+              get: vi.fn().mockRejectedValue(new Error('Index missing')),
+            })),
+          })),
+          get: vi.fn().mockResolvedValue({ docs: [lectureDoc] }),
+        };
+      }
+      if (col.includes('irregularities')) {
+        return {
+          where: vi.fn(() => ({
+            where: vi.fn(() => ({
+              get: vi.fn().mockRejectedValue(new Error('Index missing')),
+            })),
+          })),
+          get: vi.fn().mockResolvedValue({ docs: [irregDoc] }),
+        };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ docs: [] }),
+        doc: vi.fn(() => mockDoc),
+      };
+    });
+
+    const result = await purgeClassTelemetryData({
+      auth: { uid: 'teacher1', token: { role: 'teacher' } },
+      data: {
+        classId: 'CLASS_1',
+        startDate: '2026-08-01T00:00:00Z',
+        endDate: '2026-08-01T23:59:59Z',
+        targets: {
+          screenshots: false,
+          audio: false,
+          lectureRecordings: true,
+          irregularities: true,
+        },
+      },
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.recordingsCount).toBe(1);
+    expect(result.irregularitiesCount).toBe(1);
+  });
 });
 

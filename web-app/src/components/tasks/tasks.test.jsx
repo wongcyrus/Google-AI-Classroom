@@ -18,10 +18,24 @@ const mockExtractTaskDemoSteps = vi.fn().mockResolvedValue({
     ],
   },
 });
+const mockExtractRetroactiveSubmissions = vi.fn().mockResolvedValue({
+  data: { processedCount: 2, absentCount: 0 },
+});
+const mockEvaluateTaskSubmission = vi.fn().mockResolvedValue({
+  data: { finalScore: 90 },
+});
 
 vi.mock('firebase/functions', () => ({
   getFunctions: vi.fn(),
-  httpsCallable: vi.fn(() => (...args) => mockExtractTaskDemoSteps(...args)),
+  httpsCallable: vi.fn((fnInstance, name) => (...args) => {
+    if (name === 'extractRetroactiveTaskSubmissions') {
+      return mockExtractRetroactiveSubmissions(...args);
+    }
+    if (name === 'evaluateTaskSubmission') {
+      return mockEvaluateTaskSubmission(...args);
+    }
+    return mockExtractTaskDemoSteps(...args);
+  }),
 }));
 
 // Mock Firebase Firestore
@@ -345,6 +359,160 @@ describe('Tasks Component Suite', () => {
           })
         );
       });
+    });
+
+    it('triggers retroactive extraction when Extract Clips is clicked and confirmed', async () => {
+      let snapshotCallback;
+      mockOnSnapshot.mockImplementationOnce((ref, onNext) => {
+        snapshotCallback = onNext;
+        return vi.fn();
+      });
+
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(
+        <TasksManagementView
+          classId="class_101"
+          classSchedule={mockSchedule}
+          availableVideos={mockVideos}
+          enrolledStudents={mockStudents}
+        />
+      );
+
+      act(() => {
+        snapshotCallback({
+          docs: [{
+            id: 'retro_task_1',
+            data: () => ({
+              id: 'retro_task_1',
+              title: 'Retroactive Lab',
+              scheduleMode: 'retroactive',
+              status: 'published',
+              retroactiveConfig: { sessionDate: '2026-10-10' },
+            }),
+          }],
+        });
+      });
+
+      // Click "Extract Clips" button
+      const extractBtn = screen.getByRole('button', { name: /Extract Clips/i });
+      fireEvent.click(extractBtn);
+
+      await waitFor(() => {
+        expect(mockExtractRetroactiveSubmissions).toHaveBeenCalledWith(
+          expect.objectContaining({
+            classId: 'class_101',
+            taskId: 'retro_task_1',
+            sessionDate: '2026-10-10',
+          })
+        );
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Retroactive Extraction Complete!'));
+      });
+
+      // Test when confirmation is cancelled
+      confirmSpy.mockReturnValueOnce(false);
+      mockExtractRetroactiveSubmissions.mockClear();
+      fireEvent.click(extractBtn);
+      expect(mockExtractRetroactiveSubmissions).not.toHaveBeenCalled();
+
+      // Test when callable throws error
+      confirmSpy.mockReturnValueOnce(true);
+      mockExtractRetroactiveSubmissions.mockRejectedValueOnce(new Error('Backend GPU timeout'));
+      fireEvent.click(extractBtn);
+
+      await waitFor(() => {
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Retroactive extraction failed: Backend GPU timeout'));
+      });
+
+      confirmSpy.mockRestore();
+      alertSpy.mockRestore();
+    });
+
+    it('handles delete task cancel and deleteDoc error gracefully', async () => {
+      let snapshotCallback;
+      mockOnSnapshot.mockImplementationOnce((ref, onNext) => {
+        snapshotCallback = onNext;
+        return vi.fn();
+      });
+
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      render(
+        <TasksManagementView
+          classId="class_101"
+          classSchedule={mockSchedule}
+          availableVideos={mockVideos}
+          enrolledStudents={mockStudents}
+        />
+      );
+
+      act(() => {
+        snapshotCallback({
+          docs: [{
+            id: 'del_task_1',
+            data: () => ({ id: 'del_task_1', title: 'Task to Delete', status: 'published' }),
+          }],
+        });
+      });
+
+      const deleteBtn = screen.getByTitle(/Delete task/i);
+      fireEvent.click(deleteBtn);
+      expect(mockDeleteDoc).not.toHaveBeenCalled();
+
+      // Confirm true, but deleteDoc throws
+      confirmSpy.mockReturnValueOnce(true);
+      mockDeleteDoc.mockRejectedValueOnce(new Error('Permission denied'));
+      fireEvent.click(deleteBtn);
+
+      await waitFor(() => {
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to delete task: Permission denied'));
+      });
+
+      confirmSpy.mockRestore();
+      alertSpy.mockRestore();
+    });
+
+    it('handles toggle task status error and save override error gracefully', async () => {
+      let snapshotCallback;
+      mockOnSnapshot.mockImplementationOnce((ref, onNext) => {
+        snapshotCallback = onNext;
+        return vi.fn();
+      });
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockUpdateDoc.mockRejectedValueOnce(new Error('Network glitch'));
+
+      render(
+        <TasksManagementView
+          classId="class_101"
+          classSchedule={mockSchedule}
+          availableVideos={mockVideos}
+          enrolledStudents={mockStudents}
+        />
+      );
+
+      act(() => {
+        snapshotCallback({
+          docs: [{
+            id: 'toggle_task_1',
+            data: () => ({ id: 'toggle_task_1', title: 'Task to Toggle', status: 'published' }),
+          }],
+        });
+      });
+
+      const toggleBtn = screen.getByTitle(/Close task/i);
+      fireEvent.click(toggleBtn);
+
+      await waitFor(() => {
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Failed to toggle task status'),
+          expect.anything()
+        );
+      });
+
+      consoleErrorSpy.mockRestore();
     });
   });
 
@@ -995,6 +1163,109 @@ describe('Tasks Component Suite', () => {
           })
         );
       });
+
+      // Trigger Single Video Backup
+      fireEvent.click(singleBackupButtons[0]);
+      await waitFor(() => {
+        expect(mockBackupTaskVideosToDrive).toHaveBeenCalled();
+      });
+    });
+
+    it('handles video preview modal open and close', () => {
+      const submissionsWithVideo = [
+        {
+          studentUid: 'alice_uid',
+          email: 'alice@vtc.edu.hk',
+          status: 'evaluated',
+          effectiveScore: 92,
+          attemptsCount: 1,
+          videoUrl: 'https://storage.googleapis.com/test-bucket/alice_video.mp4',
+        },
+      ];
+
+      render(
+        <TaskGradingMatrixView
+          task={mockTask}
+          submissions={submissionsWithVideo}
+          enrolledStudents={['alice@vtc.edu.hk']}
+          studentProfiles={mockProfiles}
+          onBack={vi.fn()}
+        />
+      );
+
+      // Click video preview button
+      const playBtn = screen.getByRole('button', { name: /Watch/i });
+      fireEvent.click(playBtn);
+
+      // Modal appears
+      expect(screen.getByText(/Alice Chan \(alice@vtc\.edu\.hk\) - Attempt Video/i)).toBeInTheDocument();
+
+      // Close modal
+      const closeBtn = screen.getByRole('button', { name: 'Close' });
+      fireEvent.click(closeBtn);
+
+      expect(screen.queryByText(/Alice Chan \(alice@vtc\.edu\.hk\) - Attempt Video/i)).not.toBeInTheDocument();
+    });
+
+    it('opens and closes retroactive slicing modal, changes window mode', async () => {
+      const retroTask = {
+        ...mockTask,
+        scheduleMode: 'retroactive',
+        retroactiveConfig: { sessionDate: '2026-10-10', windowType: 'relative_offset' },
+      };
+
+      render(
+        <TaskGradingMatrixView
+          task={retroTask}
+          submissions={[]}
+          enrolledStudents={mockEnrolled}
+          studentProfiles={mockProfiles}
+          onBack={vi.fn()}
+        />
+      );
+
+      // Click "Retroactive Slicing" in top header
+      const sliceBtn = screen.getByRole('button', { name: /Retroactive Slicing/i });
+      fireEvent.click(sliceBtn);
+
+      expect(screen.getByText(/Retroactive Submissions Slicing & Grading/i)).toBeInTheDocument();
+
+      // Change window extraction mode to clock time window
+      const clockRadio = screen.getByRole('radio', { name: /Clock Time Window/i });
+      fireEvent.click(clockRadio);
+
+      // Close retroactive modal
+      const closeButtons = screen.getAllByRole('button', { name: '✕' });
+      fireEvent.click(closeButtons[0]);
+
+      expect(screen.queryByText(/Retroactive Submissions Slicing & Grading/i)).not.toBeInTheDocument();
+    });
+
+    it('triggers Excel export and calls onBack callback', () => {
+      const mockBack = vi.fn();
+      render(
+        <TaskGradingMatrixView
+          task={mockTask}
+          submissions={mockSubmissions}
+          enrolledStudents={mockEnrolled}
+          studentProfiles={mockProfiles}
+          onBack={mockBack}
+        />
+      );
+
+      // Click Export to Excel (.xlsx)
+      const exportBtn = screen.getByRole('button', { name: /Export to Excel/i });
+      fireEvent.click(exportBtn);
+
+      expect(mockExportTaskGradingToExcel).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'task_grading_full' }),
+        expect.any(Array)
+      );
+
+      // Click Back to Tasks List button
+      const backBtn = screen.getByRole('button', { name: /Back to Tasks List/i });
+      fireEvent.click(backBtn);
+      expect(mockBack).toHaveBeenCalled();
     });
   });
 

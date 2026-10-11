@@ -27,16 +27,20 @@ const mockCollection = vi.fn((name) => ({
   where: vi.fn((...args) => currentWhereChain.where(...args)),
 }));
 
+let defaultRunTransaction = vi.fn(async (cb) => {
+  const transaction = {
+    get: vi.fn().mockResolvedValue({ exists: false }),
+    set: vi.fn(),
+    update: vi.fn(),
+  };
+  return cb(transaction);
+});
+let currentRunTransaction = defaultRunTransaction;
+
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: vi.fn(() => ({
     collection: mockCollection,
-    runTransaction: vi.fn(async (cb) => {
-      const transaction = {
-        get: vi.fn().mockResolvedValue({ exists: false }),
-        set: vi.fn(),
-      };
-      return cb(transaction);
-    }),
+    runTransaction: vi.fn((...args) => currentRunTransaction(...args)),
   })),
   FieldValue: {
     serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
@@ -44,9 +48,13 @@ vi.mock('firebase-admin/firestore', () => ({
   },
 }));
 
+const { mockGetUser } = vi.hoisted(() => ({
+  mockGetUser: vi.fn().mockResolvedValue({ email: 'student@school.edu' }),
+}));
+
 vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(() => ({
-    getUser: vi.fn().mockResolvedValue({ email: 'student@school.edu' }),
+    getUser: mockGetUser,
   })),
 }));
 
@@ -107,6 +115,23 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
         })
       );
       expect(result).toContain('Successfully recorded audio irregularity');
+    });
+
+    it('returns error message if saving audio irregularity throws', async () => {
+      mockAdd.mockRejectedValueOnce(new Error('Write rate limit exceeded'));
+
+      const result = await recordAudioIrregularity({
+        studentUid: 's_err',
+        studentEmail: 's_err@school.edu',
+        title: 'Multiple Voices Detected',
+        message: 'Second speaker identified',
+        audioPath: 'audio/class1/s_err/rec.webm',
+        classId: 'CLASS_1',
+        speakerCount: 2,
+        riskLevel: 'high',
+      });
+
+      expect(result).toContain('Failed to record audio irregularity for student s_err. Error: Write rate limit exceeded');
     });
   });
 
@@ -239,6 +264,67 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
       expect(mockCollection).toHaveBeenCalledWith('teachers');
       expect(result).toContain('Successfully sent message to all 1 teachers');
     });
+
+    it('returns error when class is not found', async () => {
+      mockGet.mockResolvedValueOnce({ exists: false });
+
+      const result = await sendMessageToTeacher({
+        classId: 'CLASS_NON_EXISTENT',
+        message: 'Alert message',
+      });
+
+      expect(result).toContain('Class with ID CLASS_NON_EXISTENT not found.');
+    });
+
+    it('returns error when class has no teachers', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teachers: {} }),
+      });
+
+      const result = await sendMessageToTeacher({
+        classId: 'CLASS_NO_TEACHERS',
+        message: 'Alert message',
+      });
+
+      expect(result).toContain('No teachers found for class CLASS_NO_TEACHERS.');
+    });
+
+    it('includes student email when studentUid is provided and resolved', async () => {
+      mockGetUser.mockResolvedValueOnce({ email: 'stu@school.edu' });
+
+      const result = await sendMessageToTeacher({
+        classId: 'CLASS_1',
+        message: 'Student idle',
+        studentUid: 'stu_123',
+      });
+
+      expect(mockGetUser).toHaveBeenCalledWith('stu_123');
+      expect(result).toContain('Successfully sent message to all 1 teachers');
+    });
+
+    it('falls back to studentUid when adminAuth.getUser fails', async () => {
+      mockGetUser.mockRejectedValueOnce(new Error('User not found'));
+
+      const result = await sendMessageToTeacher({
+        classId: 'CLASS_1',
+        message: 'Student idle',
+        studentUid: 'stu_fallback',
+      });
+
+      expect(result).toContain('Successfully sent message to all 1 teachers');
+    });
+
+    it('returns error when Firestore write throws', async () => {
+      mockGet.mockRejectedValueOnce(new Error('Firestore connection lost'));
+
+      const result = await sendMessageToTeacher({
+        classId: 'CLASS_1',
+        message: 'Student idle',
+      });
+
+      expect(result).toContain('Failed to send message to teachers. Error: Firestore connection lost');
+    });
   });
 
   describe('recordActualWorkingTime', () => {
@@ -333,6 +419,133 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
 
       // Reset mock
       currentWhereChain = mockWhereChain();
+    });
+
+    it('reads class frameRate and clamps working minutes when videoJob lacks captureInterval', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ frameRate: 30 }),
+      });
+
+      // 60-second video without captureInterval: 60 * 30 / 60 = 30 minutes
+      currentWhereChain = {
+        where: vi.fn(() => currentWhereChain),
+        get: vi.fn().mockResolvedValue({
+          empty: false,
+          forEach: (cb) => {
+            cb({
+              data: () => ({
+                studentUid: 's_fr',
+                startTime: new Date('2026-08-30T09:00:00.000Z'),
+                duration: 60,
+                status: 'completed',
+              }),
+            });
+          },
+        }),
+      };
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's_fr',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 50,
+      });
+
+      expect(result).toContain('Successfully recorded 30 working minutes');
+
+      // Reset mock
+      currentWhereChain = mockWhereChain();
+    });
+
+    it('handles videoJobs query errors gracefully during working time cap check', async () => {
+      currentWhereChain = {
+        where: vi.fn(() => {
+          throw new Error('VideoJobs index missing');
+        }),
+      };
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's_err_vj',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 20,
+      });
+
+      expect(result).toContain('Successfully recorded 20 working minutes');
+
+      // Reset mock
+      currentWhereChain = mockWhereChain();
+    });
+
+    it('updates existing lesson doc when lesson already exists in Firestore', async () => {
+      const mockUpdateTx = vi.fn();
+      currentRunTransaction = vi.fn(async (cb) => {
+        const transaction = {
+          get: vi.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ students: {} }),
+          }),
+          set: vi.fn(),
+          update: mockUpdateTx,
+        };
+        return cb(transaction);
+      });
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's_existing',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 25,
+      });
+
+      expect(result).toContain('Successfully recorded 25 working minutes');
+      expect(mockUpdateTx).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          'students.s_existing.workingMinutes': 25,
+        })
+      );
+
+      // Reset mock
+      currentRunTransaction = defaultRunTransaction;
+    });
+
+    it('handles transaction errors gracefully and returns error message', async () => {
+      currentRunTransaction = vi.fn(async () => {
+        throw new Error('Firestore contention error');
+      });
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's_err',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 20,
+      });
+
+      expect(result).toContain('Failed to record actual working time');
+      expect(result).toContain('Firestore contention error');
+
+      // Reset mock
+      currentRunTransaction = defaultRunTransaction;
+    });
+
+    it('handles error when fetching class frameRate and falls back to default 15s', async () => {
+      mockGet.mockRejectedValueOnce(new Error('Network error on class doc'));
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's_fr_err',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 30,
+      });
+
+      expect(result).toContain('Successfully recorded 30 working minutes');
     });
   });
 

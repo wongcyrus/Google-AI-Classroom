@@ -43,6 +43,26 @@ vi.mock('../../utils/browserDetection', () => ({
   getAndroidCameraAppIntentUrl: () => 'intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end',
 }));
 
+const mockDecodeQr = vi.fn();
+vi.mock('../../utils/qrCodeDecoder', () => ({
+  decodeQrFromImageFile: (...args) => mockDecodeQr(...args),
+}));
+
+vi.mock('./CameraQrScannerModal', () => ({
+  default: ({ isOpen, onScan, onClose }) => (
+    isOpen ? (
+      <div data-testid="mock-camera-scanner-modal">
+        <button onClick={() => onScan('https://it114115-2627.web.app/pair-phone?token=scanned-pair')}>Scan Web URL</button>
+        <button onClick={() => onScan('/pair-phone?token=scanned-rel')}>Scan Path URL</button>
+        <button onClick={() => onScan('plain-url-http')}>Scan Plain Http</button>
+        <button onClick={() => onScan('plain-invalid')}>Scan Plain Invalid</button>
+        <button onClick={() => onScan('')}>Scan Empty</button>
+        <button onClick={onClose}>Close Scanner</button>
+      </div>
+    ) : null
+  ),
+}));
+
 import PasskeyPairView from './PasskeyPairView';
 
 describe('PasskeyPairView Component', () => {
@@ -85,6 +105,18 @@ describe('PasskeyPairView Component', () => {
     expect(screen.getAllByText(/Samsung Internet/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: /Open in Google Chrome/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Pair This Phone/i })).not.toBeInTheDocument();
+  });
+
+  it('displays warning if mobile browser lacks WebAuthn support', () => {
+    mockBrowserSupportsWebAuthn.mockReturnValue(false);
+
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=test-pair-token']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/does not support.*biometric passkeys/i)).toBeInTheDocument();
   });
 
   it('renders initial view with pair phone button on supported mobile browser', () => {
@@ -208,6 +240,46 @@ describe('PasskeyPairView Component', () => {
     expect(screen.getAllByText(/Google Password Manager/i).length).toBeGreaterThan(0);
   });
 
+  it('handles user cancellation and allows retrying registration', async () => {
+    mockGetOptions.mockResolvedValueOnce({ data: { challenge: 'test-cancel' } });
+    const cancelErr = new Error('User cancelled');
+    cancelErr.name = 'NotAllowedError';
+    mockStartRegistration.mockRejectedValueOnce(cancelErr);
+
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=token-cancel']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    const pairBtn = screen.getByRole('button', { name: /Pair This Phone/i });
+    await act(async () => {
+      fireEvent.click(pairBtn);
+    });
+
+    expect(screen.getByText(/Biometric.*cancelled/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Pair This Phone/i })).toBeInTheDocument();
+  });
+
+  it('handles server registration verification returning false', async () => {
+    mockGetOptions.mockResolvedValueOnce({ data: { challenge: 'test-fail' } });
+    mockStartRegistration.mockResolvedValueOnce({ id: 'cred-fail' });
+    mockVerify.mockResolvedValueOnce({ data: { verified: false } });
+
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=token-fail']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    const pairBtn = screen.getByRole('button', { name: /Pair This Phone/i });
+    await act(async () => {
+      fireEvent.click(pairBtn);
+    });
+
+    expect(screen.getByText(/Registration could not be verified by server/i)).toBeInTheDocument();
+  });
+
   it('translates iOS NotSupportedError into clear Microsoft Authenticator guidance', async () => {
     mockIsAndroid = false;
     mockIsIOS = true;
@@ -267,5 +339,74 @@ describe('PasskeyPairView Component', () => {
     const clickSpy = vi.spyOn(fileInput, 'click');
     fireEvent.click(cameraBtn);
     expect(clickSpy).toHaveBeenCalled();
+
+    // Trigger live scanner modal
+    fireEvent.click(liveScanBtn);
+    expect(screen.getByTestId('mock-camera-scanner-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Scan Web URL/i }));
+    fireEvent.click(liveScanBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Scan Path URL/i }));
+    fireEvent.click(liveScanBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Scan Plain Http/i }));
+    fireEvent.click(liveScanBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Close Scanner/i }));
+  });
+
+  it('handles native photo input and decode outcomes', async () => {
+    mockGetOptions.mockRejectedValueOnce(new Error('This pairing token has expired or is invalid.'));
+
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=token-photo']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    const pairBtn = screen.getByRole('button', { name: /Pair This Phone/i });
+    await act(async () => {
+      fireEvent.click(pairBtn);
+    });
+
+    const fileInput = screen.getByTestId('native-camera-input');
+
+    // Empty files
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [] } });
+    });
+
+    // Valid decode
+    mockDecodeQr.mockResolvedValueOnce('https://it114115-2627.web.app/pair-phone?token=new-token');
+    const fakeFile = new File(['data'], 'photo.jpg', { type: 'image/jpeg' });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+    });
+
+    // Null decode (no QR detected)
+    mockDecodeQr.mockResolvedValueOnce(null);
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+    });
+    expect(screen.getByText(/Could not detect a QR code in the captured photo/i)).toBeInTheDocument();
+
+    // Decode error
+    mockDecodeQr.mockRejectedValueOnce(new Error('Decode error'));
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [fakeFile] } });
+    });
+    expect(screen.getByText(/Unable to process the photo/i)).toBeInTheDocument();
+  });
+
+  it('handles device brand selection changes', async () => {
+    render(
+      <MemoryRouter initialEntries={['/pair-phone?token=token-brand']}>
+        <PasskeyPairView />
+      </MemoryRouter>
+    );
+
+    const brandSelect = screen.getByLabelText(/Select your smartphone brand:/i);
+    fireEvent.change(brandSelect, { target: { value: 'honor' } });
+    expect(brandSelect.value).toBe('honor');
+
+    fireEvent.change(brandSelect, { target: { value: 'xiaomi' } });
+    expect(brandSelect.value).toBe('xiaomi');
   });
 });

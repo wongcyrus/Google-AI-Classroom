@@ -43,6 +43,32 @@ describe('gemmaLiteRTLoader', () => {
 
     const isCached = await isGemmaModelCached('https://example.com/gemma-2b.bin');
     expect(isCached).toBe(false);
+
+    // Test null URL
+    expect(await isGemmaModelCached(null)).toBe(false);
+
+    // Test cache throws
+    globalThis.caches = {
+      open: vi.fn().mockRejectedValue(new Error('CacheStorage permission denied')),
+    };
+    expect(await isGemmaModelCached('https://example.com/gemma-2b.bin')).toBe(false);
+  });
+
+  it('returns cached arrayBuffer immediately on cache hit in fetchGemmaWithProgress', async () => {
+    const testUrl = 'https://example.com/cached-gemma.bin';
+    const cachedBuffer = new ArrayBuffer(16);
+    globalThis.caches = {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue({
+          arrayBuffer: vi.fn().mockResolvedValue(cachedBuffer),
+        }),
+      }),
+    };
+
+    const progressCalls = [];
+    const result = await fetchGemmaWithProgress(testUrl, (p) => progressCalls.push(p));
+    expect(result).toBe(cachedBuffer);
+    expect(progressCalls).toContain(100);
   });
 
   it('fetches gemma model with streamed progress reporting', async () => {
@@ -78,6 +104,30 @@ describe('gemmaLiteRTLoader', () => {
     expect(progressCalls).toContain(100);
   });
 
+  it('handles response without body stream by reading arrayBuffer directly', async () => {
+    const testUrl = 'https://example.com/no-stream-body.bin';
+    const expectedBuffer = new ArrayBuffer(32);
+
+    globalThis.caches = {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue(null),
+        put: vi.fn().mockRejectedValue(new Error('QuotaExceeded on put')),
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: null,
+      arrayBuffer: vi.fn().mockResolvedValue(expectedBuffer),
+      headers: new Headers(),
+    });
+
+    const progressCalls = [];
+    const buffer = await fetchGemmaWithProgress(testUrl, (p) => progressCalls.push(p));
+    expect(buffer).toBe(expectedBuffer);
+    expect(progressCalls).toContain(100);
+  });
+
   it('handles 404 or network errors gracefully by returning null', async () => {
     globalThis.caches = {
       open: vi.fn().mockResolvedValue({
@@ -97,12 +147,51 @@ describe('gemmaLiteRTLoader', () => {
     });
 
     expect(buffer).toBeNull();
+
+    // Test null URL
+    expect(await fetchGemmaWithProgress(null)).toBeNull();
+
+    // Test fetch throws exception
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('DNS lookup failure'));
+    expect(await fetchGemmaWithProgress('https://offline-dns.com/model.bin')).toBeNull();
   });
 
-  it('detects hardware acceleration for Gemma', async () => {
+  it('catches cache read error in fetchGemmaWithProgress and proceeds with fetch', async () => {
+    globalThis.caches = {
+      open: vi.fn().mockRejectedValue(new Error('Cache error')),
+    };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: null,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: new Headers(),
+    });
+
+    const buffer = await fetchGemmaWithProgress('https://example.com/model.bin');
+    expect(buffer).toBeDefined();
+  });
+
+  it('detects hardware acceleration for Gemma and catches adapter errors', async () => {
     const hw = await checkGemmaHardwareAcceleration();
     expect(hw).toBeDefined();
     expect(['webgpu', 'wasm']).toContain(hw.delegate);
+
+    // Test when navigator.gpu throws
+    const origGpu = navigator.gpu;
+    try {
+      Object.defineProperty(navigator, 'gpu', {
+        value: {
+          requestAdapter: vi.fn().mockRejectedValue(new Error('GPU context lost')),
+        },
+        configurable: true,
+      });
+
+      const fallbackHw = await checkGemmaHardwareAcceleration();
+      expect(fallbackHw.hasWebGPU).toBe(false);
+      expect(fallbackHw.delegate).toBe('wasm');
+    } finally {
+      Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+    }
   });
 
   describe('precheckGemmaViability', () => {
@@ -155,6 +244,27 @@ describe('gemmaLiteRTLoader', () => {
               quota: 50 * 1024 * 1024 * 1024,
               usage: 5 * 1024 * 1024 * 1024, // 45GB free
             }),
+          },
+          configurable: true,
+        });
+
+        const result = await precheckGemmaViability();
+        expect(result.viable).toBe(true);
+        expect(result.hasWebGPU).toBe(true);
+      } finally {
+        Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+        Object.defineProperty(navigator, 'storage', { value: origStorage, configurable: true });
+      }
+    });
+
+    it('handles storage estimate error gracefully and returns viable true', async () => {
+      const origGpu = navigator.gpu;
+      const origStorage = navigator.storage;
+      try {
+        Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+        Object.defineProperty(navigator, 'storage', {
+          value: {
+            estimate: vi.fn().mockRejectedValue(new Error('Storage estimate error')),
           },
           configurable: true,
         });

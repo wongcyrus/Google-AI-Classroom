@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('firebase-admin/storage', () => ({
+  getStorage: () => ({ bucket: vi.fn() }),
+  getDownloadURL: vi.fn().mockResolvedValue('https://fallback.storage.url/video.mp4'),
+}));
+
 import {
   evaluateStudentRecordingsAccess,
   isTimestampInExamPeriods,
   executeGetStudentVideoPlaybackUrl,
+  getStudentVideoPlaybackUrl,
 } from './getStudentVideoPlaybackUrl.js';
 
 describe('getStudentVideoPlaybackUrl Logic', () => {
@@ -186,11 +193,14 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       }),
     });
 
-    const createMockStorage = ({ fileExists = true, signedUrl = 'https://signed-url.example.com/video.mp4' } = {}) => ({
+    const createMockStorage = ({ fileExists = true, signedUrl = 'https://signed-url.example.com/video.mp4', signError = null } = {}) => ({
       bucket: () => ({
         file: (path) => ({
           exists: async () => [fileExists],
-          getSignedUrl: async () => [signedUrl],
+          getSignedUrl: async () => {
+            if (signError) throw signError;
+            return [signedUrl];
+          },
         }),
       }),
     });
@@ -310,6 +320,29 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       expect(result.videoPath).toBe('videos/student-1.mp4');
       expect(result.duration).toBe(300);
       expect(result.size).toBe(15000000);
+    });
+
+    it('falls back to getDownloadURL when getSignedUrl fails', async () => {
+      const db = createMockDb({
+        jobData: {
+          studentUid: 'student-1',
+          classId: 'CLASS-1',
+          videoPath: 'videos/student-1.mp4',
+        },
+      });
+      const storage = createMockStorage({ signError: new Error('signBlob unavailable') });
+      const result = await executeGetStudentVideoPlaybackUrl(
+        { auth: { uid: 'student-1' }, data: { jobId: 'job-1' } },
+        { db, storage }
+      );
+      expect(result.url).toBe('https://fallback.storage.url/video.mp4');
+    });
+
+    it('invokes getStudentVideoPlaybackUrl onCall wrapper', async () => {
+      const handler = getStudentVideoPlaybackUrl.run || getStudentVideoPlaybackUrl;
+      await expect(
+        handler({ auth: null, data: { jobId: 'job-1' } })
+      ).rejects.toThrow(/User must be authenticated/);
     });
   });
 });

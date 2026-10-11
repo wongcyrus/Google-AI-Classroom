@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,070 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,430 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 35 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 75 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 381 Tests across 7 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,588 Tests across 149 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 651 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,673 Tests across 149 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -67,8 +67,14 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (135 Test Files / 1,351 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (149 Test Files / 1,673 Tests).
 * **Covered Modules**:
+  * `web-app/src/utils/examPeriodUtils.test.js`: 6 tests validating 100% lines/stmts/branch/funcs for exam period date boundaries, active exam period detection, and policy lookups (`disabled`, `delayed_release`).
+  * `web-app/src/utils/qrCodeDecoder.test.js`: 12 tests validating 100% lines/stmts/funcs for image-based QR decoding (`decodeQrFromImageFile`), canvas resizing, ImageData pixel conversion, and jsQR integration.
+  * `web-app/src/utils/gemmaLiteRTLoader.test.js` & `web-app/src/utils/webAiLiteRTLoader.test.js`: 20 tests validating LiteRT and Gemma model loading, WebGPU hardware acceleration checks, tokenizer loading, and cache-fallback mechanisms.
+  * `web-app/src/components/passkey/LecturePasskeyVerifyView.test.jsx`, `PasskeyMobileLoginView.test.jsx`, `PasskeyVerifyView.test.jsx`, `PasskeyPairView.test.jsx`, `CameraQrScannerModal.test.jsx`, `PasskeyPairModal.test.jsx`: Exhaustive test suites (>90% lines across passkey views) covering camera QR code scanning, native file upload fallback, device brand guides, password fallback forms, biometric assertion timeouts, and Android intent redirects.
+  * `web-app/src/hooks/useGoogleDrive.test.js`: 18 tests validating Google Drive OAuth token attachment, folder creation, subtitle uploads (`.vtt`/`.srt`), multipart media uploads, and student task video backup pipelines.
+  * `web-app/src/components/tasks/tasks.test.jsx`: 27 tests validating task submission review, status filtering, rubrics evaluation modals, code editor integration, and grading feedback workflows.
   * `web-app/src/utils/videoSubtitleUtils.test.js`: 44 tests covering Chromium WebM duration healing (`1e101` seek settle callback), race-condition-free `<track>` cue attachment, dynamic reading-speed duration guards (`buildWebVTT` / `buildSRT`), and `handleVideoEndedGuard` premature playback termination protection.
   * `web-app/src/hooks/useLectureRecorder.test.js`: 16 tests covering recording lifecycle, `beforeunload` navigation guard, 10-second chunk IndexedDB persistence, post-crash session auto-recovery, and 3-hour auto-stop safety limit (`DEFAULT_MAX_RECORDING_SECONDS`).
   * `web-app/src/utils/classRankingUtils.test.js`: 13 tests covering cohort score calculation and ranking distributions.
@@ -122,19 +128,21 @@ flowchart TD
   * `web-app/src/components/BingoQuestionBankModal.test.jsx`: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing questions, and 1-click addition to class pool; tests Aiken format parser and JSON array batch importer with syntax validation; tests Question Pool tab displaying questions, answers, explanations, and delete actions.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (24 Test Files / 343+ Tests in `functions/ai_flows`, `functions/media_processing` + Other Codebases).
+* **Framework**: `vitest` with Node.js 22 runtime (37 Test Files / 651 Tests across 6 Cloud Function packages: `ai_flows`, `media_processing`, `scheduled_tasks`, `storage_triggers`, `auth_triggers`, `attendance`).
 * **Covered Modules**:
-  * `functions/media_processing/mergeLectureRecordings.test.js`: 9 tests validating serverless stream-copy FFmpeg concatenation, gap calculation (`nextStart - currEnd > 15s`), lost time computation, single surviving clip preservation with `hasMissingSegment: true` and `interruptionRemarks`, and crashed stub status updates.
-  * `functions/media_processing/onLectureVideoFinalized.test.js`: 9 tests validating Matroska EBML seek index healing (`hasCuesIndex`).
-  * `functions/ai_flows/processLectureSubtitles.test.js` & `processLectureSubtitlesHandler.test.js`: 31 tests validating Gemini single-pass whole-audio ingestion, discontinuity prompt injection, multilingual VTT/SRT generation, non-zero cue duration guards, and reconciler recovery.
   * `functions/ai_flows/passkeyFlows.test.js`: Validates all 15 WebAuthn FIDO2 passkey callables, including `handleCreateLectureBingoSession`, `handleGetLecturePasskeyAuthOptions`, `handleVerifyLecturePasskeyAuth`, fallback UID resolution from class enrolled students map and Firebase Auth for teacher roster pre-granting, token challenge caching, device fingerprint hardware lock, counter increments, and response ranking.
-  * `functions/ai_flows/resetStudentPasskey.test.js`: Validates security authorization restricting passkey resets to teachers and whitelisted testing accounts while strictly blocking unauthorized student self-unlinking.
-  * `functions/ai_flows/config.test.js`: Tests `deriveUserRole`, domain matching, regex hierarchies, and allowed email domain descriptions.
-  * `functions/ai_flows/analysisFlows.test.js`: Tests `analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, and `analyzeAudioFlow` with Gemini resilient fallback logic and quota checking.
   * `functions/ai_flows/bingoFlows.test.js`: Validates `triggerBingoCheck` across all 3 FinOps modes (`question_bank`, `teacher_screen`, `student_screen`), payload security (stripping `correctIndex` from student payloads), `submitBingoAnswer` 2-strike state machine (correct $\to$ `passed`, incorrect $\to$ `failed_incorrect`, timeout Strike 1 reading configurable `bingoRetryDelayMinutes` and enqueuing Cloud Task with sanitized task ID, consecutive timeout Strike 2 $\to$ attendance adjustment penalty with dynamic elapsed minute boundaries), `enqueueBingoRetryTask` (regional queue targeting `locations/asia-east2/functions/dispatchBingoRetryTask`, deterministic task ID formatting), `handleDispatchBingoRetry` (pre-flight checks, skipping already cleared students, generating Strike 2 challenge on pending students, and fallback to `classes/{classId}.questionBank`), and `generateQuestionBankAi` with Gemini 3.5 Flash Lite drafting multiple choice questions with structured JSON output schema.
+  * `functions/ai_flows/processLectureSubtitles.test.js` & `processLectureSubtitlesHandler.test.js`: 31 tests validating Gemini single-pass whole-audio ingestion, discontinuity prompt injection, multilingual VTT/SRT generation, non-zero cue duration guards, and reconciler recovery.
+  * `functions/ai_flows/analysisFlows.test.js` & `aiTools.test.js`: Tests `analyzeImageFlow`, `analyzeAllImagesFlow`, `analyzeSingleVideoFlow`, `analyzeFaceFallbackFlow`, and `analyzeAudioFlow` with Gemini resilient fallback logic, prompt library expansions, and quota checking.
+  * `functions/ai_flows/performanceMetrics.test.js`, `quotaTriggers.test.js`, `retryVideoAnalysisJob.test.js`: Tests KPI aggregation, tiered storage quota alerts, and resilient video analysis retry task queuing.
+  * `functions/media_processing/mergeLectureRecordings.test.js`: 9 tests validating serverless stream-copy FFmpeg concatenation, gap calculation (`nextStart - currEnd > 15s`), lost time computation, single surviving clip preservation with `hasMissingSegment: true` and `interruptionRemarks`, and crashed stub status updates.
+  * `functions/media_processing/extractRetroactiveTaskSubmissions.test.js`: Tests frame-by-frame OCR/visual task extraction across completed lecture recordings.
+  * `functions/media_processing/getStudentVideoPlaybackUrl.test.js`: 20 tests validating exam period access restrictions, teacher bypass overrides, and v4 signed Cloud Storage URL generation.
+  * `functions/media_processing/onLectureVideoFinalized.test.js`: 9 tests validating Matroska EBML seek index healing (`hasCuesIndex`).
+  * `functions/scheduled_tasks/scheduledTasks.test.js`: 36 tests verifying `handleAutomaticCapture` (5-min lookahead window), `handlePostLessonMediaConsolidation`, `handleAutomaticBingo` scheduler triggers, exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
+  * `functions/storage_triggers/storageQuota.test.js` & `screenshotManagement.test.js`: 61 tests verifying `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` triggers, storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`), and quota limit overflow evaluations.
+  * `functions/auth_triggers/authTriggers.test.js`: 8 tests validating initial user creation, role assignment based on email domain regex, and default profile attributes.
   * `functions/attendance/attendance.test.js`: Direct testing of `parseDateTime` (null safety, Date passthrough, millisecond timestamps, ISO offsets, and timezone parsing) and the `getAttendanceData` Callable Cloud Function (argument verification, not-found error handling, duration calculation, screenshot chunk querying, attendance adjustment voiding code `2`, and Firestore persistence).
-  * `functions/storage_triggers/storageQuota.test.js`: Verifies `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` triggers, storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`), and quota limit overflow evaluations.
-  * `functions/scheduled_tasks/scheduledTasks.test.js`: Verifies `handleAutomaticCapture`, `handlePostLessonMediaConsolidation`, and `handleAutomaticBingo` scheduler triggers, auto-capture interval start detection (5-min lookahead), exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
 
 ### 3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)
 * **Framework**: Node.js + Firebase Admin SDK.
@@ -163,19 +171,26 @@ flowchart TD
 ## 📊 Code Coverage Benchmarks
 
 ```
-==================================================================================
+===================================================================================================
  % V8 Coverage Report Summary
--------------------|---------|----------|---------|---------|---------------------
-Module             | % Stmts | % Branch | % Funcs | % Lines | Status
--------------------|---------|----------|---------|---------|---------------------
-web-app (utils)    |   92.40 |    81.30 |   96.20 |   93.80 | 🟢 Exceeds Target (>90%)
-web-app (workers)  |   88.61 |    68.49 |   83.33 |   89.53 | 🟢 Exceeds Target (>85%)
-web-app (hooks)    |   79.94 |    62.61 |   83.43 |   81.30 | 🟢 Exceeds 80% Target
-web-app (components|   78.63 |    68.63 |   79.80 |   82.94 | 🟢 Exceeds Target (>80%)
-web-app (all)      |   81.30 |    69.20 |   84.40 |   82.50 | 🟢 Exceeds >= 80% Benchmark
-functions/ai_flows |   87.76 |    72.73 |   94.35 |   87.93 | 🟢 Exceeds >= 85% Benchmark
-functions/media    |   84.50 |    73.80 |   72.72 |   84.28 | 🟢 High Functional
-==================================================================================
+-----------------------------------|---------|----------|---------|---------|----------------------
+Module                             | % Stmts | % Branch | % Funcs | % Lines | Status
+-----------------------------------|---------|----------|---------|---------|----------------------
+functions/scheduled_tasks          |   89.28 |    78.43 |   92.85 |   90.13 | 🟢 Exceeds >= 90% Target
+functions/media_processing         |   90.17 |    78.96 |   91.54 |   90.31 | 🟢 Exceeds >= 90% Target
+functions/attendance               |   91.30 |    86.66 |   85.71 |   91.46 | 🟢 Exceeds >= 90% Target
+functions/auth_triggers            |   94.87 |    86.66 |  100.00 |   95.12 | 🟢 Exceeds >= 90% Target
+functions/storage_triggers         |   91.80 |    77.27 |  100.00 |   92.06 | 🟢 Exceeds >= 90% Target
+functions/ai_flows                 |   89.47 |    79.79 |   94.69 |   90.18 | 🟢 Exceeds >= 90% Target
+-----------------------------------|---------|----------|---------|---------|----------------------
+web-app (constants)                |   96.84 |    83.57 |  100.00 |  100.00 | 🟢 Complete (100%)
+web-app (schemas)                  |  100.00 |    95.23 |  100.00 |  100.00 | 🟢 Complete (100%)
+web-app (utils)                    |   90.48 |    78.40 |   90.71 |   92.72 | 🟢 Exceeds >= 90% Target
+web-app (workers)                  |   88.61 |    68.49 |   83.33 |   89.53 | 🟢 High Functional (~90%)
+web-app (hooks)                    |   83.43 |    67.89 |   84.23 |   85.07 | 🟢 High Functional (>85%)
+web-app (components)               |   77.86 |    68.01 |   76.87 |   79.72 | 🟢 High Functional (~80%)
+web-app (all files)                |   81.62 |    70.58 |   79.17 |   83.53 | 🟢 Solid Baseline (>83%)
+===================================================================================================
 ```
 
 ---

@@ -41,6 +41,30 @@ describe('webAiLiteRTLoader', () => {
 
     const isCached = await isWhisperModelCached();
     expect(isCached).toBe(false);
+
+    // Test cache open throwing error
+    globalThis.caches = {
+      open: vi.fn().mockRejectedValue(new Error('CacheStorage access denied')),
+    };
+    expect(await isWhisperModelCached()).toBe(false);
+  });
+
+  it('returns cached ArrayBuffer immediately on cache hit', async () => {
+    const testUrl = DEFAULT_WHISPER_CONFIG.modelUrl;
+    const cachedBuffer = new ArrayBuffer(16);
+
+    globalThis.caches = {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue({
+          arrayBuffer: vi.fn().mockResolvedValue(cachedBuffer),
+        }),
+      }),
+    };
+
+    const progressCalls = [];
+    const result = await fetchWithProgress(testUrl, (p) => progressCalls.push(p));
+    expect(result).toBe(cachedBuffer);
+    expect(progressCalls).toContain(100);
   });
 
   it('fetches model with progressive streaming when not in cache', async () => {
@@ -75,6 +99,44 @@ describe('webAiLiteRTLoader', () => {
     expect(progressCalls).toContain(100);
   });
 
+  it('handles response without body stream by reading arrayBuffer directly', async () => {
+    const expectedBuffer = new ArrayBuffer(24);
+
+    globalThis.caches = {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue(null),
+        put: vi.fn().mockRejectedValue(new Error('Cache write failed')),
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: null,
+      arrayBuffer: vi.fn().mockResolvedValue(expectedBuffer),
+      headers: new Headers(),
+    });
+
+    const progressCalls = [];
+    const buffer = await fetchWithProgress(DEFAULT_WHISPER_CONFIG.modelUrl, (p) => progressCalls.push(p));
+    expect(buffer).toBe(expectedBuffer);
+    expect(progressCalls).toContain(100);
+  });
+
+  it('catches cache read error in fetchWithProgress and proceeds with fetch', async () => {
+    globalThis.caches = {
+      open: vi.fn().mockRejectedValue(new Error('Cache read error')),
+    };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: null,
+      arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+      headers: new Headers(),
+    });
+
+    const buffer = await fetchWithProgress(DEFAULT_WHISPER_CONFIG.modelUrl);
+    expect(buffer).toBeDefined();
+  });
+
   it('handles 404 or network errors gracefully by returning null', async () => {
     globalThis.caches = {
       open: vi.fn().mockResolvedValue({
@@ -97,9 +159,39 @@ describe('webAiLiteRTLoader', () => {
     expect(progressCalls).toContain(100);
   });
 
-  it('checks hardware acceleration and returns delegate', async () => {
-    const hw = await checkHardwareAcceleration();
-    expect(hw).toBeDefined();
-    expect(['webgpu', 'wasm']).toContain(hw.delegate);
+  it('checks hardware acceleration and returns webgpu delegate when available', async () => {
+    const origGpu = navigator.gpu;
+    try {
+      Object.defineProperty(navigator, 'gpu', {
+        value: {
+          requestAdapter: vi.fn().mockResolvedValue({}),
+        },
+        configurable: true,
+      });
+
+      const hw = await checkHardwareAcceleration();
+      expect(hw.hasWebGPU).toBe(true);
+      expect(hw.delegate).toBe('webgpu');
+    } finally {
+      Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+    }
+  });
+
+  it('catches error in checkHardwareAcceleration and falls back to wasm delegate', async () => {
+    const origGpu = navigator.gpu;
+    try {
+      Object.defineProperty(navigator, 'gpu', {
+        value: {
+          requestAdapter: vi.fn().mockRejectedValue(new Error('Adapter request failed')),
+        },
+        configurable: true,
+      });
+
+      const hw = await checkHardwareAcceleration();
+      expect(hw.hasWebGPU).toBe(false);
+      expect(hw.delegate).toBe('wasm');
+    } finally {
+      Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+    }
   });
 });

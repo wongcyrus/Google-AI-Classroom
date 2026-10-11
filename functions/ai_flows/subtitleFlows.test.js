@@ -190,5 +190,35 @@ describe('subtitleFlows: translateTeacherSpeech', () => {
       'gemini-3.5-flash-lite'
     );
   });
+
+  it('handles historyText provided as a single string and matches alternative language keys in response', async () => {
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        output: {
+          translations: {
+            chinese: '接下来我们运行容器。',
+          },
+        },
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+
+    const result = await translateTeacherSpeech({
+      classId: 'CLASS_DEV_101',
+      teacherUid: 'teacher_1',
+      text: '跟住我哋就 run 佢啦',
+      sourceLang: 'zh-HK',
+      targetLangs: ['zh-Hans'],
+      historyText: 'Previous speech context here.',
+    });
+
+    expect(mockGenerateWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Previous speech context here.'),
+      }),
+      'gemini-3.5-flash-lite'
+    );
+    expect(result.translations['zh-Hans']).toBe('接下来我们运行容器。');
+  });
 });
 

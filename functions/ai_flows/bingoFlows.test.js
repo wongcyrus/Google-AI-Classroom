@@ -1612,6 +1612,239 @@ describe('bingoFlows', () => {
         })
       );
     });
+
+    it('handleProcessBingoJob completes early when no students are enrolled or active', async () => {
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/class_empty') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isCapturing: true,
+              students: {},
+            }),
+          });
+        }
+        if (path === 'classes/class_empty/screenBroadcast/session') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ isBroadcasting: true }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      mockCollectionGet.mockImplementation(() => {
+        return Promise.resolve({ docs: [], forEach: () => {} });
+      });
+
+      const res = await handleProcessBingoJob({
+        jobId: 'job_no_students',
+        classId: 'class_empty',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.totalStudentsTargeted).toBe(0);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'completed',
+          totalStudentsTargeted: 0,
+        })
+      );
+    });
+  });
+
+  describe('Bingo Task Dispatch & Scheduling Edge Cases', () => {
+    describe('handleDispatchBingoRetry', () => {
+      it('skips retry when missing classId or studentUid', async () => {
+        const res1 = await handleDispatchBingoRetry({});
+        expect(res1.skipped).toBe(true);
+        expect(res1.reason).toBe('missing_arguments');
+
+        const res2 = await handleDispatchBingoRetry({ classId: 'c1' });
+        expect(res2.skipped).toBe(true);
+      });
+
+      it('skips retry when class does not exist', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        const res = await handleDispatchBingoRetry({ classId: 'non_existent_c', studentUid: 's1' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('class_not_found');
+      });
+
+      it('skips retry when studentProperties does not exist', async () => {
+        mockDocGet.mockImplementation((path) => {
+          if (path === 'classes/c1') {
+            return Promise.resolve({ exists: true, data: () => ({ isCapturing: true }) });
+          }
+          return Promise.resolve({ exists: false });
+        });
+        const res = await handleDispatchBingoRetry({ classId: 'c1', studentUid: 's_no_props' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('properties_not_found');
+      });
+
+      it('skips retry when priorMissedBingoId does not match', async () => {
+        mockDocGet.mockImplementation((path) => {
+          if (path === 'classes/c1') {
+            return Promise.resolve({ exists: true, data: () => ({ isCapturing: true }) });
+          }
+          if (path === 'classes/c1/studentProperties/s1') {
+            return Promise.resolve({
+              exists: true,
+              data: () => ({ pendingRetryBingo: true, priorMissedBingoId: 'bingo_original' }),
+            });
+          }
+          return Promise.resolve({ exists: false });
+        });
+        const res = await handleDispatchBingoRetry({ classId: 'c1', studentUid: 's1', priorBingoId: 'bingo_mismatched' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('mismatched_prior_id');
+      });
+
+      it('skips retry when student is not enrolled in class', async () => {
+        mockDocGet.mockImplementation((path) => {
+          if (path === 'classes/c1') {
+            return Promise.resolve({
+              exists: true,
+              data: () => ({
+                isCapturing: true,
+                students: { s_other: true },
+              }),
+            });
+          }
+          if (path === 'classes/c1/studentProperties/s1') {
+            return Promise.resolve({
+              exists: true,
+              data: () => ({ pendingRetryBingo: true }),
+            });
+          }
+          if (path === 'classes/c1/screenBroadcast/session') {
+            return Promise.resolve({ exists: true, data: () => ({ isBroadcasting: true }) });
+          }
+          return Promise.resolve({ exists: false });
+        });
+
+        const res = await handleDispatchBingoRetry({ classId: 'c1', studentUid: 's1' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('student_not_enrolled');
+      });
+    });
+
+    describe('handleDispatchScheduledBingo', () => {
+      it('skips when arguments are missing', async () => {
+        const res = await handleDispatchScheduledBingo({ classId: 'c1' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('missing_arguments');
+      });
+
+      it('skips when class is not found', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        const res = await handleDispatchScheduledBingo({ classId: 'c_none', studentUid: 's1' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('class_not_found');
+      });
+
+      it('skips when session is not active', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ isCapturing: false }),
+        });
+        const res = await handleDispatchScheduledBingo({ classId: 'c_inactive', studentUid: 's1' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('class_session_ended');
+      });
+
+      it('skips when student is not enrolled', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ isCapturing: true, students: {} }),
+        });
+        const res = await handleDispatchScheduledBingo({ classId: 'c1', studentUid: 's_not_enrolled' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('student_not_enrolled');
+      });
+    });
+
+    describe('handleProcessBingoJob edge cases', () => {
+      it('skips when classId is missing', async () => {
+        const res = await handleProcessBingoJob({});
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('missing_class_id');
+      });
+
+      it('skips when class does not exist', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        const res = await handleProcessBingoJob({ classId: 'c_none' });
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe('class_not_found');
+      });
+    });
+
+    describe('enqueue task error catching', () => {
+      it('enqueueBingoRetryTask catches queue errors and returns failure', async () => {
+        mockTaskQueueEnqueue.mockRejectedValueOnce(new Error('Queue unavailable'));
+        const res = await enqueueBingoRetryTask({ classId: 'c1', studentUid: 's1', priorBingoId: 'b1', delaySeconds: 30 });
+        expect(res.success).toBe(false);
+        expect(res.error).toBe('Queue unavailable');
+      });
+
+      it('enqueueScheduledBingoTask catches queue errors and returns failure', async () => {
+        mockTaskQueueEnqueue.mockRejectedValueOnce(new Error('Cloud Tasks quota exceeded'));
+        const res = await enqueueScheduledBingoTask({ classId: 'c1', studentUid: 's1', delaySeconds: 10 });
+        expect(res.success).toBe(false);
+        expect(res.error).toBe('Cloud Tasks quota exceeded');
+      });
+    });
+
+    describe('isClassSessionActive edge cases', () => {
+      it('returns false for null or undefined class data', () => {
+        expect(isClassSessionActive(null)).toBe(false);
+        expect(isClassSessionActive(undefined)).toBe(false);
+      });
+
+      it('returns false when current date is outside scheduled startDate/endDate', () => {
+        const classData = {
+          schedule: {
+            timeZone: 'Asia/Hong_Kong',
+            startDate: '2026-09-01',
+            endDate: '2026-09-30',
+            timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '12:00' }],
+          },
+        };
+        const pastDate = new Date('2026-08-15T10:00:00Z');
+        expect(isClassSessionActive(classData, pastDate)).toBe(false);
+      });
+
+      it('handles overnight slots where startTime > endTime', () => {
+        const classData = {
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [{ days: ['Mon'], startTime: '22:00', endTime: '02:00' }],
+          },
+        };
+        // 23:00 UTC on a Monday
+        const activeDate = new Date('2026-10-12T23:00:00Z');
+        expect(isClassSessionActive(classData, activeDate)).toBe(true);
+      });
+
+      it('handles invalid timezone gracefully and returns false', () => {
+        const classData = {
+          schedule: {
+            timeZone: 'Invalid/NonExistent_Zone',
+            timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '12:00' }],
+          },
+        };
+        expect(isClassSessionActive(classData, new Date())).toBe(false);
+      });
+
+      it('returns false for manual session that started more than 3 hours ago', () => {
+        const classData = {
+          isCapturing: true,
+          captureStartedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+        };
+        expect(isClassSessionActive(classData)).toBe(false);
+      });
+    });
   });
 });
 

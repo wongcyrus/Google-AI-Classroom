@@ -17,4 +17,11 @@ describe('config.js helper unit tests in storage_triggers', () => {
     expect(typeof desc).toBe('string');
     expect(desc.length).toBeGreaterThan(0);
   });
+
+  it('validates passkey sharing whitelist', async () => {
+    const { isPasskeySharingWhitelisted } = await import('./config.js');
+    expect(isPasskeySharingWhitelisted(null)).toBe(false);
+    expect(isPasskeySharingWhitelisted('cywong@vtc.edu.hk')).toBe(true);
+    expect(isPasskeySharingWhitelisted('other@random.com')).toBe(false);
+  });
 });

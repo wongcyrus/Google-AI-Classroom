@@ -325,6 +325,157 @@ describe('PasskeyPairModal Component', () => {
       configurable: true,
     });
   });
+
+  it('handles unlinking device when confirmed and handles cancel/error', async () => {
+    mockRequestToken.mockResolvedValueOnce({
+      data: { tokenId: 'token-teacher-unlink' },
+    });
+
+    const mockReset = vi.fn().mockResolvedValue({ data: { success: true } });
+    const { httpsCallable } = await import('firebase/functions');
+    httpsCallable.mockImplementation((functions, name) => {
+      if (name === 'requestPasskeyPairingToken') return mockRequestToken;
+      if (name === 'resetStudentPasskey') return mockReset;
+      return vi.fn();
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'teacher_1', email: 'instructor@vtc.edu.hk' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    act(() => {
+      if (mockSnapshotCb) {
+        mockSnapshotCb({
+          exists: () => true,
+          data: () => ({ deviceModel: 'Google Pixel 8' }),
+        });
+      }
+    });
+
+    const unlinkBtn = screen.getByText(/🔄 Unlink \/ Switch Phone/i);
+
+    // Case 1: Cancel confirmation
+    confirmSpy.mockReturnValueOnce(false);
+    await act(async () => {
+      unlinkBtn.click();
+    });
+    expect(mockReset).not.toHaveBeenCalled();
+
+    // Case 2: Confirm and succeed
+    confirmSpy.mockReturnValueOnce(true);
+    await act(async () => {
+      unlinkBtn.click();
+    });
+    expect(mockReset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentUid: 'teacher_1',
+        studentEmail: 'instructor@vtc.edu.hk',
+      })
+    );
+
+    // Case 3: Error during unlink
+    mockReset.mockRejectedValueOnce(new Error('Firestore reset failed'));
+    act(() => {
+      if (mockSnapshotCb) {
+        mockSnapshotCb({
+          exists: () => true,
+          data: () => ({ deviceModel: 'Google Pixel 8' }),
+        });
+      }
+    });
+    confirmSpy.mockReturnValueOnce(true);
+    const unlinkBtn2 = screen.getByText(/🔄 Unlink \/ Switch Phone/i);
+    await act(async () => {
+      unlinkBtn2.click();
+    });
+    expect(screen.getByText(/Firestore reset failed/i)).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('handles direct registration failure when verified is false', async () => {
+    const originalUA = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      configurable: true,
+    });
+
+    const mockGetOptions = vi.fn().mockResolvedValue({ data: { challenge: 'abc' } });
+    const mockVerify = vi.fn().mockResolvedValue({ data: { verified: false } });
+
+    const { httpsCallable } = await import('firebase/functions');
+    httpsCallable.mockImplementation((functions, name) => {
+      if (name === 'requestPasskeyPairingToken') return mockRequestToken;
+      if (name === 'getPasskeyRegistrationOptions') return mockGetOptions;
+      if (name === 'verifyPasskeyRegistration') return mockVerify;
+      return vi.fn();
+    });
+
+    mockRequestToken.mockResolvedValueOnce({ data: { tokenId: 'token-fail-1' } });
+    mockBrowserSupportsWebAuthn.mockReturnValue(true);
+    mockStartRegistration.mockResolvedValueOnce({ id: 'cred-1' });
+
+    await act(async () => {
+      render(
+        <PasskeyPairModal
+          show={true}
+          onClose={vi.fn()}
+          user={{ uid: 'student_1' }}
+          classId="class_101"
+        />
+      );
+    });
+
+    const registerBtn = screen.getByText(/Touch Face ID \/ Fingerprint to Register/i);
+    await act(async () => {
+      registerBtn.click();
+    });
+
+    expect(screen.getByText(/Registration could not be verified by server/i)).toBeInTheDocument();
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUA,
+      configurable: true,
+    });
+  });
+
+  it('handles overlay and close button click', async () => {
+    const handleClose = vi.fn();
+    mockRequestToken.mockResolvedValueOnce({
+      data: { tokenId: 'token-close' },
+    });
+
+    const { container } = render(
+      <PasskeyPairModal
+        show={true}
+        onClose={handleClose}
+        user={{ uid: 'student_1' }}
+        classId="class_101"
+      />
+    );
+
+    const closeBtn = screen.getByLabelText('Close');
+    await act(async () => {
+      closeBtn.click();
+    });
+    expect(handleClose).toHaveBeenCalledTimes(1);
+
+    const overlay = container.querySelector('.passkey-pair-modal-overlay');
+    await act(async () => {
+      overlay.click();
+    });
+    expect(handleClose).toHaveBeenCalledTimes(2);
+  });
 });
+
 
 

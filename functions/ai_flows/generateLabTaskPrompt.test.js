@@ -141,4 +141,54 @@ describe('generateLabTaskPrompt Cloud Function', () => {
       })
     );
   });
+
+  it('queries aiJobs by masterJobId when aiJobIds array is missing, and strips markdown code fences', async () => {
+    mockCollection.mockImplementation((name) => {
+      if (name === 'videoAnalysisJobs') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ classId: 'CLASS_LEGACY' }), // no aiJobIds
+            }),
+          }),
+        };
+      }
+      if (name === 'aiJobs') {
+        return {
+          where: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              get: vi.fn().mockResolvedValue({
+                forEach: (cb) => {
+                  cb({
+                    data: () => ({
+                      status: 'completed',
+                      result: 'Student finished SQL assignment.',
+                    }),
+                  });
+                },
+              }),
+            }),
+          }),
+          add: vi.fn().mockRejectedValue(new Error('Quota logger error')), // test log failure
+        };
+      }
+    });
+
+    const { generateWithResilience } = await import('./analysisFlows.js');
+    vi.mocked(generateWithResilience).mockResolvedValueOnce({
+      response: {
+        text: '```markdown\n# Generated Lab Prompt\nTasks\n```',
+      },
+      modelUsed: 'gemini-3.5-flash-lite',
+    });
+
+    const result = await generateLabTaskPrompt.run({
+      auth: { uid: 'teacher1' },
+      data: { jobId: 'JOB_LEGACY' },
+    });
+
+    expect(result.generatedPrompt).toBe('# Generated Lab Prompt\nTasks');
+    expect(result.summaryCount).toBe(1);
+  });
 });

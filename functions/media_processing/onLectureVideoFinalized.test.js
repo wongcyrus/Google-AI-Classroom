@@ -2,8 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   hasEbmlIndexHeaders,
   handleLectureVideoFinalized,
+  ensureFfmpegPath,
+  probeVideoDuration,
+  runFfmpegStreamCopy,
 } from './onLectureVideoFinalized.js';
 import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
 
 describe('onLectureVideoFinalized Unit Tests', () => {
   beforeEach(() => {
@@ -211,6 +215,49 @@ describe('onLectureVideoFinalized Unit Tests', () => {
         hasCuesIndex: true,
         durationSeconds: 2211,
       });
+    });
+
+    it('catches and rethrows errors while cleaning up temp files', async () => {
+      const mockBucket = {
+        file: vi.fn().mockReturnValue({
+          exists: vi.fn().mockRejectedValue(new Error('GCS connection reset')),
+        }),
+      };
+      const mockStorage = {
+        bucket: vi.fn().mockReturnValue(mockBucket),
+      };
+
+      await expect(
+        handleLectureVideoFinalized(
+          { data: { name: 'recordings/c1/s1/lecture.webm' } },
+          { storage: mockStorage }
+        )
+      ).rejects.toThrow('GCS connection reset');
+    });
+  });
+
+  describe('helper functions', () => {
+    it('sets ffmpeg path idempotent', () => {
+      expect(() => ensureFfmpegPath()).not.toThrow();
+      expect(() => ensureFfmpegPath()).not.toThrow();
+    });
+
+    it('probes duration from metadata or streams', async () => {
+      const ffprobeSpy = vi.spyOn(ffmpeg, 'ffprobe').mockImplementation((file, cb) => {
+        if (file === 'number.mp4') return cb(null, { format: { duration: 12.5 } });
+        if (file === 'string.mp4') return cb(null, { format: { duration: '34.5' } });
+        if (file === 'stream.mp4') return cb(null, { streams: [{ codec_type: 'video', duration: '56.7' }] });
+        if (file === 'error.mp4') return cb(new Error('probe error'));
+        return cb(null, {});
+      });
+
+      expect(await probeVideoDuration('number.mp4')).toBe(12.5);
+      expect(await probeVideoDuration('string.mp4')).toBe(34.5);
+      expect(await probeVideoDuration('stream.mp4')).toBe(56.7);
+      expect(await probeVideoDuration('error.mp4')).toBe(0);
+      expect(await probeVideoDuration('none.mp4')).toBe(0);
+
+      ffprobeSpy.mockRestore();
     });
   });
 });

@@ -31,6 +31,7 @@ const {
   const mockCollectionGet = vi.fn();
   const mockCollectionRef = vi.fn(() => ({
     get: mockCollectionGet,
+    doc: mockDocRef,
   }));
   const mockSave = vi.fn().mockResolvedValue();
   const mockDownload = vi.fn().mockResolvedValue();
@@ -105,6 +106,10 @@ vi.mock('firebase-functions/v2/https', () => ({
   },
 }));
 
+vi.mock('firebase-functions/v2/firestore', () => ({
+  onDocumentCreated: (opts, handler) => handler || opts,
+}));
+
 vi.mock('./analysisFlows.js', () => ({
   generateWithResilience: mockGenerateWithResilience,
 }));
@@ -117,7 +122,11 @@ vi.mock('./cost.js', () => ({
   calculateCost: vi.fn(() => 0.042),
 }));
 
-import { processLectureSubtitles, handleReconcileLectureRecordings } from './processLectureSubtitles.js';
+import {
+  processLectureSubtitles,
+  processLectureSubtitleJob,
+  handleReconcileLectureRecordings,
+} from './processLectureSubtitles.js';
 
 describe('processLectureSubtitles Callable Cloud Function Handler', () => {
   beforeEach(() => {
@@ -549,7 +558,106 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
       })
     );
   });
+
+  it('skips subtitle processing when isLectureSubtitlesEnabled is false on class document', async () => {
+    // 1. Session doc
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Lecture 1',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+      }),
+    });
+
+    // 2. Class doc with subtitles disabled
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        isLectureSubtitlesEnabled: false,
+      }),
+    });
+
+    const result = await processLectureSubtitles({
+      data: {
+        classId: 'c1',
+        sessionId: 's1',
+      },
+    });
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe('subtitles_disabled_by_class_policy');
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'ready',
+        subtitlesDisabled: true,
+      })
+    );
+  });
+
+  it('fetches sttPromptId and translationPromptId from prompts collection', async () => {
+    // 1. Session doc
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Prompt IDs Test',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+        normalizedAudioStoragePath: 'recordings/c1/s1/lecture_audio_normalized.mp3',
+      }),
+    });
+
+    // 2. Class doc
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ isLectureSubtitlesEnabled: true }),
+    });
+
+    // 3. sttPrompt doc
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ name: 'Custom Technical STT', promptText: 'Transcribe technical terms verbatim.' }),
+    });
+
+    // 4. translationPrompt doc
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ name: 'Cantonese Colloquial', promptText: 'Translate into idiomatic Cantonese.' }),
+    });
+
+    mockExists.mockResolvedValue([true]);
+    mockGetMetadata.mockResolvedValue([{ size: 5000, metadata: {} }]);
+
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        usage: { promptTokens: 100, completionTokens: 50 },
+        text: JSON.stringify({
+          chapters: [{ timeSeconds: 0, title: 'Introduction' }],
+          segments: [{ start: 0, end: 5, original: 'Technical hello', translations: { en: 'Technical hello' } }],
+        }),
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const result = await processLectureSubtitles({
+      data: {
+        classId: 'c1',
+        sessionId: 's1',
+        sttPromptId: 'stt_p1',
+        translationPromptId: 'trans_p1',
+        targetLanguages: ['en'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subtitlesPromptName: 'Custom Technical STT',
+        sttPromptName: 'Custom Technical STT',
+        translationPromptName: 'Cantonese Colloquial',
+      })
+    );
+  });
 });
+
 
 describe('handleReconcileLectureRecordings Function Handler', () => {
   beforeEach(() => {
@@ -613,6 +721,173 @@ describe('handleReconcileLectureRecordings Function Handler', () => {
         fileSize: 52428800,
       })
     );
+  });
+
+  it('handleReconcileLectureRecordings generates download tokens for video and audio when missing', async () => {
+    const mockUpdate = vi.fn().mockResolvedValue();
+
+    mockCollectionGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'rec_no_tokens',
+          data: () => ({
+            status: 'recording',
+            storagePath: 'recordings/c1/rec_no_tokens/lecture.webm',
+            audioStoragePath: 'recordings/c1/rec_no_tokens/lecture_audio.webm',
+          }),
+          ref: {
+            update: mockUpdate,
+          },
+        },
+      ],
+    });
+
+    mockExists.mockResolvedValue([true]);
+    mockGetMetadata.mockResolvedValue([
+      {
+        size: 10000,
+        contentType: 'video/webm',
+        metadata: {
+          hasCuesIndex: 'true',
+          // no firebaseStorageDownloadTokens
+        },
+      },
+    ]);
+
+    const result = await handleReconcileLectureRecordings({ classId: 'c1', triggerSubtitles: false });
+
+    expect(result.success).toBe(true);
+    expect(mockSetMetadata).toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        videoUrl: expect.stringContaining('alt=media&token='),
+        audioUrl: expect.stringContaining('alt=media&token='),
+      })
+    );
+  });
+
+  it('handleReconcileLectureRecordings rejects missing classId', async () => {
+    await expect(handleReconcileLectureRecordings({})).rejects.toMatchObject({
+      code: 'invalid-argument',
+    });
+  });
+
+  it('handleReconcileLectureRecordings marks stale recording as interrupted if no media found after 2+ hours', async () => {
+    const mockUpdate = vi.fn().mockResolvedValue();
+    const twoHoursAndHalfAgo = Date.now() - (2.5 * 3600 * 1000);
+
+    mockCollectionGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'rec_stale_1',
+          data: () => ({
+            status: 'recording',
+            startedAt: { toMillis: () => twoHoursAndHalfAgo },
+          }),
+          ref: {
+            update: mockUpdate,
+          },
+        },
+      ],
+    });
+
+    mockExists.mockResolvedValue([false]);
+
+    const result = await handleReconcileLectureRecordings({ classId: 'c1' });
+
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'interrupted',
+        interruptedReason: expect.stringContaining('No media files found in Cloud Storage'),
+      })
+    );
+  });
+
+  describe('processLectureSubtitleJob Firestore Trigger', () => {
+    it('ignores job if snapshot is null or status is not pending', async () => {
+      await processLectureSubtitleJob({ data: null, params: { jobId: 'j1' } });
+
+      const notPendingSnap = {
+        data: () => ({ status: 'processing' }),
+        ref: { update: vi.fn() },
+      };
+      await processLectureSubtitleJob({ data: notPendingSnap, params: { jobId: 'j2' } });
+
+      expect(notPendingSnap.ref.update).not.toHaveBeenCalled();
+    });
+
+    it('processes pending job and marks status completed', async () => {
+      const mockJobUpdate = vi.fn().mockResolvedValue();
+      const mockJobRef = { update: mockJobUpdate };
+
+      const jobSnap = {
+        ref: mockJobRef,
+        data: () => ({
+          status: 'pending',
+          classId: 'c1',
+          sessionId: 's1',
+          storagePath: 'recordings/c1/s1/audio.webm',
+        }),
+      };
+
+      // Mock session doc
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          title: 'AI Lecture',
+          subtitlesDisabled: false,
+        }),
+      });
+
+      // Mock audio file
+      mockExists.mockResolvedValue([true]);
+      mockGetMetadata.mockResolvedValue([{ size: 5000, metadata: {} }]);
+      mockGenerateWithResilience.mockResolvedValue({
+        response: {
+          usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
+          text: JSON.stringify({
+            chapters: [{ timeSeconds: 0, title: 'Intro' }],
+            segments: [{ start: 0, end: 2, original: 'Hello', translations: { en: 'Hello' } }],
+          }),
+        },
+        modelUsed: 'gemini-3.8-flash',
+      });
+
+      await processLectureSubtitleJob({ data: jobSnap, params: { jobId: 'j_proc' } });
+
+      expect(mockJobUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'processing' })
+      );
+      expect(mockJobUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed' })
+      );
+    });
+
+    it('handles job execution failure and marks status failed', async () => {
+      const mockJobUpdate = vi.fn().mockResolvedValue();
+      const mockJobRef = { update: mockJobUpdate };
+
+      const jobSnap = {
+        ref: mockJobRef,
+        data: () => ({
+          status: 'pending',
+          classId: 'c1',
+          sessionId: 's_err',
+        }),
+      };
+
+      // Session not found causes error
+      mockDocGet.mockResolvedValueOnce({
+        exists: false,
+      });
+
+      await processLectureSubtitleJob({ data: jobSnap, params: { jobId: 'j_err' } });
+
+      expect(mockJobUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed' })
+      );
+    });
   });
 });
 

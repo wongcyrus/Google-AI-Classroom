@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeMergeStudentSessionAudio } from './mergeStudentSessionAudio.js';
+import {
+  executeMergeStudentSessionAudio,
+  mergeStudentSessionAudio,
+} from './mergeStudentSessionAudio.js';
 
 describe('mergeStudentSessionAudio Cloud Function', () => {
   beforeEach(() => {
@@ -178,5 +181,57 @@ describe('mergeStudentSessionAudio Cloud Function', () => {
         { db: mockDb, storage: mockStorage }
       )
     ).rejects.toThrow(/FAILED_PRECONDITION/);
+  });
+
+  it('throws not-found when class document does not exist', async () => {
+    const mockDb = createMockDb({ classExists: false });
+    const mockStorage = createMockStorage();
+
+    await expect(
+      executeMergeStudentSessionAudio(
+        {
+          classId: 'MISSING_CLASS',
+          studentUid: 's1',
+          auth: { uid: 'teacher-1', token: { email: 'teacher@school.edu', role: 'teacher' } },
+        },
+        { db: mockDb, storage: mockStorage }
+      )
+    ).rejects.toThrow(/Class "MISSING_CLASS" does not exist/);
+  });
+
+  it('returns no_clips status when speech records exist in db but storage files do not exist', async () => {
+    const audioDocs = [
+      { id: 'a1', storagePath: 'audio/missing1.webm', timestamp: '2026-08-01T09:10:00Z' },
+    ];
+    const mockDb = createMockDb({ audioDocs });
+    const mockStorage = {
+      bucket: vi.fn(() => ({
+        file: vi.fn(() => ({
+          exists: vi.fn().mockResolvedValue([false]),
+        })),
+      })),
+    };
+
+    const res = await executeMergeStudentSessionAudio(
+      {
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@school.edu', role: 'teacher' } },
+      },
+      { db: mockDb, storage: mockStorage }
+    );
+
+    expect(res.status).toBe('no_clips');
+    expect(res.clipCount).toBe(0);
+  });
+
+  it('calls mergeStudentSessionAudio onCall wrapper', async () => {
+    const handler = mergeStudentSessionAudio.run || mergeStudentSessionAudio;
+    await expect(
+      handler({
+        data: { classId: 'CLASS_1', studentUid: 's1' },
+        auth: null,
+      })
+    ).rejects.toThrow(/User must be authenticated/);
   });
 });

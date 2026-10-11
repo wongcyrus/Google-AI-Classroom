@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
-import { executeMergeLectureRecordings } from './mergeLectureRecordings.js';
+import ffmpeg from 'fluent-ffmpeg';
+import {
+  executeMergeLectureRecordings,
+  mergeLectureRecordings,
+  processLectureMergeJob,
+  ensureFfmpegPath,
+  hasAudioStream,
+  probeDurationSeconds,
+} from './mergeLectureRecordings.js';
 
 describe('mergeLectureRecordings Cloud Function', () => {
   const createMockDb = ({
@@ -59,6 +67,9 @@ describe('mergeLectureRecordings Cloud Function', () => {
         name: 'test-bucket',
         file: vi.fn(() => ({
           download: vi.fn().mockResolvedValue({}),
+          delete: vi.fn().mockResolvedValue({}),
+          exists: vi.fn().mockResolvedValue([true]),
+          getMetadata: vi.fn().mockResolvedValue([{ size: 50000 }]),
         })),
         upload: vi.fn().mockResolvedValue({}),
       })),
@@ -120,6 +131,7 @@ describe('mergeLectureRecordings Cloud Function', () => {
       {
         id: 'rec_1',
         storagePath: 'recordings/CLASS-1/rec_1/lecture.webm',
+        audioStoragePath: 'recordings/CLASS-1/rec_1/audio.webm',
         startedAt: { toMillis: () => 1789957711308 },
         durationSeconds: 66,
       },
@@ -447,6 +459,169 @@ describe('mergeLectureRecordings Cloud Function', () => {
     expect(deleteSpy).not.toHaveBeenCalled();
   });
 
+  it('aborts segment deletion if integrity check fails when merged file is suspiciously small', async () => {
+    const recordings = [
+      {
+        id: 'rec_chk_1',
+        storagePath: 'recordings/CLASS-1/rec_chk_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711308 },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_chk_2',
+        storagePath: 'recordings/CLASS-1/rec_chk_2/lecture.webm',
+        startedAt: { toMillis: () => 1789957830040 },
+        durationSeconds: 60,
+      },
+    ];
+
+    const deleteSpy = vi.fn().mockResolvedValue({});
+    const storage = {
+      bucket: vi.fn(() => ({
+        name: 'test-bucket',
+        upload: vi.fn().mockResolvedValue({}),
+        file: vi.fn((path) => ({
+          download: vi.fn().mockResolvedValue({}),
+          exists: vi.fn().mockResolvedValue([true]),
+          getMetadata: vi.fn().mockResolvedValue(path && path.includes('combined') ? [{ size: 500 }] : [{ size: 50000 }]),
+          delete: deleteSpy,
+        })),
+      })),
+    };
+
+    const db = createMockDb({ recordings });
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    await expect(
+      executeMergeLectureRecordings(
+        {
+          classId: 'CLASS-1',
+          recordingIds: ['rec_chk_1', 'rec_chk_2'],
+          auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+        },
+        { db, storage, durationProber, ffmpegRunner }
+      )
+    ).rejects.toThrow(/suspiciously small/);
+
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('correctly tags combined recording as exam when session overlaps with class examPeriods', async () => {
+    const recordings = [
+      {
+        id: 'rec_exam_1',
+        storagePath: 'recordings/CLASS-1/rec_exam_1/lecture.webm',
+        startedAt: { toMillis: () => new Date('2026-11-10T09:00:00Z').getTime() },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_exam_2',
+        storagePath: 'recordings/CLASS-1/rec_exam_2/lecture.webm',
+        startedAt: { toMillis: () => new Date('2026-11-10T09:01:00Z').getTime() },
+        durationSeconds: 60,
+      },
+    ];
+
+    let combinedSavedData = null;
+    const baseDb = createMockDb({
+      recordings,
+      classData: {
+        teachers: { 'teacher-1': 'teacher@vtc.edu.hk' },
+        schedule: { timeZone: 'UTC' },
+        examPeriods: [
+          { startDate: '2026-11-10T08:00:00Z', endDate: '2026-11-10T12:00:00Z' },
+        ],
+      },
+    });
+
+    const db = {
+      ...baseDb,
+      collection: vi.fn((name) => {
+        const col = baseDb.collection(name);
+        return {
+          ...col,
+          doc: vi.fn((docId) => {
+            const docObj = col.doc(docId);
+            return {
+              ...docObj,
+              set: (data) => {
+                if (name.includes('lectureRecordings')) {
+                  combinedSavedData = data;
+                }
+                return docObj.set(data);
+              },
+            };
+          }),
+        };
+      }),
+    };
+
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_exam_1', 'rec_exam_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+    expect(combinedSavedData).toBeDefined();
+    expect(combinedSavedData.isExam).toBe(true);
+  });
+
+  it('logs warning when writing lectureSubtitleJobs throws an error', async () => {
+    const recordings = [
+      {
+        id: 'rec_sub_1',
+        storagePath: 'recordings/CLASS-1/rec_sub_1/lecture.webm',
+        startedAt: { toMillis: () => 1789957711308 },
+        durationSeconds: 60,
+      },
+      {
+        id: 'rec_sub_2',
+        storagePath: 'recordings/CLASS-1/rec_sub_2/lecture.webm',
+        startedAt: { toMillis: () => 1789957830040 },
+        durationSeconds: 60,
+      },
+    ];
+
+    const baseDb = createMockDb({ recordings });
+    const db = {
+      ...baseDb,
+      collection: vi.fn((name) => {
+        if (name === 'lectureSubtitleJobs') {
+          return {
+            doc: vi.fn(() => ({
+              set: vi.fn().mockRejectedValue(new Error('Subtitle job write error')),
+            })),
+          };
+        }
+        return baseDb.collection(name);
+      }),
+    };
+
+    const storage = createMockStorage();
+    const durationProber = vi.fn().mockResolvedValue(120);
+    const ffmpegRunner = vi.fn().mockResolvedValue();
+
+    const result = await executeMergeLectureRecordings(
+      {
+        classId: 'CLASS-1',
+        recordingIds: ['rec_sub_1', 'rec_sub_2'],
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      },
+      { db, storage, durationProber, ffmpegRunner }
+    );
+
+    expect(result.success).toBe(true);
+  });
+
   it('falls back to re-encoding concat when fast stream-copy encounters error', async () => {
     const recordings = [
       {
@@ -660,6 +835,144 @@ describe('mergeLectureRecordings Cloud Function', () => {
         }),
       })
     );
+  });
+
+  describe('mergeLectureRecordings onCall and processLectureMergeJob triggers', () => {
+    it('calls mergeLectureRecordings onCall wrapper', async () => {
+      const handler = mergeLectureRecordings.run || mergeLectureRecordings;
+      await expect(
+        handler({
+          data: { classId: 'non-existent' },
+          auth: { uid: 'teacher-1', token: { role: 'teacher', email: 'teacher@vtc.edu.hk' } },
+        })
+      ).rejects.toThrow();
+    });
+
+    it('processes lectureMergeJob when status is not pending or snapshot is empty', async () => {
+      const handler = processLectureMergeJob.run || processLectureMergeJob;
+      // Empty snapshot
+      await expect(handler({ data: null, params: { jobId: 'j1' } })).resolves.toBeUndefined();
+
+      // Not pending
+      const mockSnapNonPending = {
+        data: () => ({ status: 'processing' }),
+        ref: { update: vi.fn() },
+      };
+      await expect(handler({ data: mockSnapNonPending, params: { jobId: 'j1' } })).resolves.toBeUndefined();
+      expect(mockSnapNonPending.ref.update).not.toHaveBeenCalled();
+    });
+
+    it('updates job status to failed when merge execution fails', async () => {
+      const handler = processLectureMergeJob.run || processLectureMergeJob;
+      const updateMock = vi.fn().mockResolvedValue();
+      const mockSnap = {
+        data: () => ({
+          status: 'pending',
+          classId: 'invalid-class',
+          recordingIds: ['rec1', 'rec2'],
+        }),
+        ref: { update: updateMock },
+      };
+
+      await handler({ data: mockSnap, params: { jobId: 'job_fail_1' } });
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'processing' })
+      );
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed' })
+      );
+    });
+
+    it('returns insufficient_clips when no valid clips exist', async () => {
+      const db = createMockDb({
+        recordings: [
+          { id: 'rec_invalid', status: 'recording', startedAt: null },
+        ],
+      });
+      const result = await executeMergeLectureRecordings({
+        classId: 'CLASS-1',
+        sessionGroupId: 'grp_1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      }, { db });
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe('insufficient_clips');
+    });
+
+    it('returns single_valid_clip when only 1 valid clip and no crashes occurred', async () => {
+      const db = createMockDb({
+        recordings: [
+          { id: 'rec_single', status: 'ready', storagePath: 'recordings/c1/s1/lecture.webm', videoUrl: 'https://v', startedAt: { toMillis: () => 1000 } },
+        ],
+      });
+      const result = await executeMergeLectureRecordings({
+        classId: 'CLASS-1',
+        sessionGroupId: 'grp_1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      }, { db });
+      expect(result.success).toBe(false);
+      expect(result.reason).toBe('single_valid_clip');
+    });
+
+    it('preserves surviving clip when 1 valid clip and 1 crashed clip exist', async () => {
+      const db = createMockDb({
+        recordings: [
+          { id: 'rec_survivor', status: 'ready', storagePath: 'recordings/c1/s1/lecture.webm', videoUrl: 'https://v', startedAt: { toMillis: () => 2000 }, durationSeconds: 60 },
+          { id: 'rec_crashed', status: 'recording', startedAt: { toMillis: () => 1000 } },
+        ],
+      });
+      const result = await executeMergeLectureRecordings({
+        classId: 'CLASS-1',
+        sessionGroupId: 'grp_1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      }, { db });
+      expect(result.success).toBe(true);
+      expect(result.combinedSessionId).toBe('rec_survivor');
+      expect(result.hasMissingSegment).toBe(true);
+    });
+
+    it('returns already_merged when all clips were already merged into the same session', async () => {
+      const db = createMockDb({
+        recordings: [
+          { id: 'rec_m1', status: 'ready', storagePath: 'recordings/c1/s1/lecture.webm', videoUrl: 'https://v', startedAt: { toMillis: () => 1000 }, mergedIntoSessionId: 'sess_prev' },
+          { id: 'rec_m2', status: 'ready', storagePath: 'recordings/c1/s2/lecture.webm', videoUrl: 'https://v', startedAt: { toMillis: () => 2000 }, mergedIntoSessionId: 'sess_prev' },
+        ],
+      });
+      const result = await executeMergeLectureRecordings({
+        classId: 'CLASS-1',
+        sessionGroupId: 'grp_1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+      }, { db });
+      expect(result.success).toBe(true);
+      expect(result.alreadyMerged).toBe(true);
+      expect(result.combinedSessionId).toBe('sess_prev');
+    });
+  });
+
+  describe('helper functions', () => {
+    it('sets ffmpeg path idempotent', () => {
+      expect(() => ensureFfmpegPath()).not.toThrow();
+      expect(() => ensureFfmpegPath()).not.toThrow();
+    });
+
+    it('probes duration using ffmpeg ffprobe mock', async () => {
+      const probeSpy = vi.spyOn(ffmpeg, 'ffprobe').mockImplementation((file, cb) => {
+        if (file === 'valid.webm') return cb(null, { format: { duration: 120 } });
+        if (file === 'string.webm') return cb(null, { format: { duration: '90.5' } });
+        if (file === 'stream.webm') return cb(null, { streams: [{ codec_type: 'video', duration: 45 }] });
+        return cb(new Error('probe failure'));
+      });
+
+      expect(await probeDurationSeconds('valid.webm')).toBe(120);
+      expect(await probeDurationSeconds('string.webm')).toBe(90.5);
+      expect(await probeDurationSeconds('stream.webm')).toBe(45);
+      expect(await probeDurationSeconds('invalid.webm')).toBe(0);
+
+      probeSpy.mockRestore();
+    });
+
+    it('detects audio stream using spawnSync result', () => {
+      expect(hasAudioStream('/non/existent/file.webm')).toBe(false);
+    });
   });
 });
 

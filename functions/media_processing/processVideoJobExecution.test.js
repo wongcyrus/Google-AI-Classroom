@@ -334,6 +334,65 @@ describe('processVideoJob Cloud Function Execution', () => {
       })
     );
     expect(mockBatchDelete).not.toHaveBeenCalled();
+    setFfmpegShouldFail(false);
+  });
+
+  it('handles failure before ffmpeg and records non-ffmpeg error message', async () => {
+    const mockSnap = {
+      data: () => ({
+        jobId: 'j-dl-fail',
+        status: 'pending',
+        classId: 'c1',
+        studentUid: 's1',
+        startTime: new Date('2026-09-19T09:00:00Z'),
+        endTime: new Date('2026-09-19T10:00:00Z'),
+      }),
+      ref: { update: mockJobUpdate },
+    };
+
+    mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn(() => ({
+            get: vi.fn().mockResolvedValue({
+              data: () => ({ schedule: { timeZone: 'UTC' } }),
+            }),
+          })),
+        };
+      }
+      if (name === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            docs: [
+              {
+                data: () => ({
+                  imagePath: 'screenshots/c1/s1/img1.jpg',
+                  timestamp: { toDate: () => new Date('2026-09-19T09:15:00Z') },
+                }),
+              },
+            ],
+          }),
+        };
+      }
+      return { doc: vi.fn() };
+    });
+
+    mockBucketFile.mockImplementationOnce(() => ({
+      download: vi.fn().mockRejectedValue(new Error('Storage download network timeout')),
+    }));
+
+    await processVideoJob({ data: mockSnap });
+
+    expect(mockJobUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        error: 'Storage download network timeout',
+        ffmpegError: expect.stringContaining('No specific ffmpeg stderr was captured'),
+      })
+    );
   });
 
   it('purges unflagged routine screenshots when purgeScreenshotsAfterVideoCombine is enabled, while preserving flagged/irregularity evidence', async () => {
@@ -429,6 +488,8 @@ describe('processVideoJob Cloud Function Execution', () => {
         jobId: 'j-keep-test',
         status: 'pending',
         classId: 'c1',
+        taskId: 'task-1',
+        attemptNumber: 1,
         studentUid: 's1',
         studentEmail: 's1@test.com',
         isTaskSubmission: true,
@@ -446,6 +507,8 @@ describe('processVideoJob Cloud Function Execution', () => {
       }),
     };
 
+    const attemptSetMock = vi.fn().mockResolvedValue();
+
     mockCollection.mockImplementation((name) => {
       if (name === 'classes') {
         return {
@@ -455,6 +518,19 @@ describe('processVideoJob Cloud Function Execution', () => {
                 schedule: { timeZone: 'Asia/Hong_Kong' },
               }),
             }),
+            collection: vi.fn(() => ({
+              doc: vi.fn(() => ({
+                collection: vi.fn(() => ({
+                  doc: vi.fn(() => ({
+                    collection: vi.fn(() => ({
+                      doc: vi.fn(() => ({
+                        set: attemptSetMock,
+                      })),
+                    })),
+                  })),
+                })),
+              })),
+            })),
           }),
         };
       }

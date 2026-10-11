@@ -72,7 +72,12 @@ vi.mock('./jobLogger.js', () => ({
   logJob: vi.fn().mockResolvedValue(true),
 }));
 
-import { handleEvaluateTaskSubmission, enqueueTaskEvaluation, evaluateTaskSubmissionTask } from './evaluateTaskSubmission.js';
+import {
+  handleEvaluateTaskSubmission,
+  enqueueTaskEvaluation,
+  evaluateTaskSubmissionTask,
+  evaluateTaskSubmission,
+} from './evaluateTaskSubmission.js';
 
 describe('evaluateTaskSubmission', () => {
   beforeEach(() => {
@@ -413,6 +418,24 @@ describe('evaluateTaskSubmission', () => {
 
     expect(res.success).toBe(true);
     expect(res.effectiveScore).toBe(88);
+  });
+
+  it('evaluateTaskSubmission callable handles sync=false (enqueue) and unauthenticated rejection', async () => {
+    const callableFn = evaluateTaskSubmission.run || evaluateTaskSubmission;
+    await expect(callableFn({ auth: null, data: {} })).rejects.toThrow(/authenticated/);
+
+    const res = await callableFn({
+      auth: { uid: 'teacher1' },
+      data: {
+        classId: 'c1',
+        taskId: 't1',
+        studentUid: 's1',
+        sync: false,
+      },
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.queued).toBe(true);
   });
 });
 

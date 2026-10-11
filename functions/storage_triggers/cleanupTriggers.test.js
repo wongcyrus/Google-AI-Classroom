@@ -343,5 +343,221 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
       expect(mockBatch.delete).toHaveBeenCalledWith(videoExpired.ref);
       expect(mockBatch.commit).toHaveBeenCalled();
     });
+
+    it('returns early if before or after event data is missing', async () => {
+      await onClassRetentionUpdated({
+        data: null,
+        params: { classId: 'CLASS_MISSING' },
+      });
+      await onClassRetentionUpdated({
+        data: { before: null, after: null },
+        params: { classId: 'CLASS_MISSING' },
+      });
+      expect(mockDb.collection).not.toHaveBeenCalled();
+    });
+
+    it('handles audio documents with string timestamps and videoJobs with startTime', async () => {
+      const now = Date.now();
+      const shotDoc = {
+        ref: { id: 'shot_1' },
+        data: () => ({ timestamp: { toDate: () => new Date(now - 1000) } }),
+      };
+      const stringTsAudio = {
+        ref: { id: 'aud_str' },
+        data: () => ({ timestamp: new Date(now - 1000).toISOString() }),
+      };
+      const startTimeVideo = {
+        ref: { id: 'vid_start' },
+        data: () => ({ startTime: { toDate: () => new Date(now - 1000) } }),
+      };
+
+      // 1. screenshots
+      // 2. audio
+      // 3. videoJobs
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [shotDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [stringTsAudio],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [startTimeVideo],
+        });
+
+      await onClassRetentionUpdated({
+        data: {
+          before: { data: () => ({ retentionDays: 30, videoRetentionDays: 60 }) },
+          after: { data: () => ({ retentionDays: 10, videoRetentionDays: 20 }) },
+        },
+        params: { classId: 'CLASS_RET_MIX' },
+      });
+
+      expect(mockBatch.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('Edge cases and error handling across triggers', () => {
+    it('handles file deletion errors gracefully in onScreenshotDocDeleted', async () => {
+      mockBucket.file.mockReturnValueOnce({
+        delete: vi.fn().mockRejectedValueOnce(new Error('Storage permission error')),
+      });
+
+      await expect(
+        onScreenshotDocDeleted({
+          data: { data: () => ({ imagePath: 'screenshots/CLASS_1/err.jpg' }) },
+          params: { screenshotId: 'shot_err' },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('handles missing paths and deletion errors in onAudioDocDeleted', async () => {
+      await onAudioDocDeleted({
+        data: null,
+        params: { audioId: 'aud_null' },
+      });
+      await onAudioDocDeleted({
+        data: { data: () => ({}) },
+        params: { audioId: 'aud_empty' },
+      });
+
+      mockBucket.file.mockReturnValueOnce({
+        delete: vi.fn().mockRejectedValueOnce(new Error('Audio delete error')),
+      });
+
+      await expect(
+        onAudioDocDeleted({
+          data: { data: () => ({ audioPath: 'audio/CLASS_1/err.webm' }) },
+          params: { audioId: 'aud_err' },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('handles missing params and deletion errors in onLectureRecordingDeleted', async () => {
+      await onLectureRecordingDeleted({
+        params: { classId: null, sessionId: null },
+      });
+
+      mockBucket.deleteFiles.mockRejectedValueOnce(new Error('GCS error'));
+
+      await expect(
+        onLectureRecordingDeleted({
+          params: { classId: 'CLASS_1', sessionId: 'sess_err' },
+          data: { data: () => ({}) },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('handles null data, missing paths, fallback resultVideoPath, and errors in onVideoJobDocDeleted', async () => {
+      await onVideoJobDocDeleted({ data: null, params: { jobId: 'j1' } });
+      await onVideoJobDocDeleted({ data: { data: () => ({}) }, params: { jobId: 'j2' } });
+
+      // Fallback to resultVideoPath
+      await onVideoJobDocDeleted({
+        data: { data: () => ({ resultVideoPath: 'videos/CLASS_1/res.mp4' }) },
+        params: { jobId: 'j3' },
+      });
+      expect(mockBucket.file).toHaveBeenCalledWith('videos/CLASS_1/res.mp4');
+
+      // Error handling
+      mockBucket.file.mockReturnValueOnce({
+        delete: vi.fn().mockRejectedValueOnce(new Error('GCS video err')),
+      });
+      await expect(
+        onVideoJobDocDeleted({
+          data: { data: () => ({ videoPath: 'videos/CLASS_1/err.mp4' }) },
+          params: { jobId: 'j4' },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('handles null data, missing paths, fallback destinationPath, and errors in onZipJobDocDeleted', async () => {
+      await onZipJobDocDeleted({ data: null, params: { jobId: 'z1' } });
+      await onZipJobDocDeleted({ data: { data: () => ({}) }, params: { jobId: 'z2' } });
+
+      // Fallback to destinationPath
+      await onZipJobDocDeleted({
+        data: { data: () => ({ destinationPath: 'zips/CLASS_1/archive.zip' }) },
+        params: { jobId: 'z3' },
+      });
+      expect(mockBucket.file).toHaveBeenCalledWith('zips/CLASS_1/archive.zip');
+
+      // Error handling
+      mockBucket.file.mockReturnValueOnce({
+        delete: vi.fn().mockRejectedValueOnce(new Error('GCS zip err')),
+      });
+      await expect(
+        onZipJobDocDeleted({
+          data: { data: () => ({ zipPath: 'zips/CLASS_1/err.zip' }) },
+          params: { jobId: 'z4' },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('cleans up subcollections (tasks, submissions, bingo, status, ephemeral) on class deletion', async () => {
+      const mockTaskDoc = {
+        ref: {
+          delete: vi.fn().mockResolvedValue(true),
+          collection: vi.fn(() => ({
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ ref: { delete: vi.fn() } }],
+            }),
+          })),
+        },
+      };
+
+      const mockSubDoc = { ref: { delete: vi.fn() } };
+
+      mockDb.collection.mockImplementation((col) => {
+        if (col.includes('tasks')) {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [mockTaskDoc],
+            }),
+          };
+        }
+        if (col.includes('lectureRecordings') || col.includes('bingoSessions') || col.includes('status')) {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [mockSubDoc],
+            }),
+          };
+        }
+        if (col.includes('Profiles')) {
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs: [mockSubDoc],
+            }),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            size: 1,
+            docs: [mockSubDoc],
+          }),
+        };
+      });
+
+      await onClassDocDeleted({ params: { classId: 'CLASS_SUBCOLS' } });
+
+      expect(mockBatch.delete).toHaveBeenCalled();
+      expect(mockBatch.commit).toHaveBeenCalled();
+    });
   });
 });

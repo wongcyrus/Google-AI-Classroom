@@ -679,4 +679,177 @@ describe('useGoogleDrive Hook', () => {
     });
     expect(res.aborted).toBe(true);
   });
+
+  it('handles clearFeedback, unlink error, and link error', async () => {
+    const { result } = renderHook(() => useGoogleDrive());
+
+    // 1. clearFeedback
+    act(() => {
+      result.current.clearFeedback();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.successMessage).toBeNull();
+
+    // 2. unlinkRecording validation and failure
+    let unlinked = await result.current.unlinkRecording({ classId: '', recordingId: '' });
+    expect(unlinked).toBe(false);
+
+    mockUpdateDoc.mockRejectedValueOnce(new Error('Unlink failed'));
+    await act(async () => {
+      unlinked = await result.current.unlinkRecording({ classId: 'c1', recordingId: 'r1' });
+    });
+    expect(unlinked).toBe(false);
+    expect(result.current.error).toContain('Unlink failed');
+
+    // 3. linkManualDrive failure
+    mockUpdateDoc.mockRejectedValueOnce(new Error('Link failed'));
+    let linked;
+    await act(async () => {
+      linked = await result.current.linkManualDrive({
+        classId: 'c1',
+        recordingId: 'r1',
+        driveUrlOrId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+      });
+    });
+    expect(linked).toBe(false);
+    expect(result.current.error).toContain('Link failed');
+  });
+
+  it('handles uploadSubtitlesOnly with validation, existing driveFileId, and uploads', async () => {
+    const { result } = renderHook(() => useGoogleDrive());
+
+    // 1. Disconnected
+    let subRes;
+    await act(async () => {
+      subRes = await result.current.uploadSubtitlesOnly({
+        recording: { id: 'rec_1' },
+        classId: 'c1',
+      });
+    });
+    expect(subRes).toBeNull();
+    expect(result.current.error).toContain('Please connect your Google Drive first');
+
+    // Connect
+    vi.mocked(gdriveService.requestGoogleDriveToken).mockResolvedValue({
+      access_token: 'valid_token_subs',
+      expires_in: 3600,
+    });
+    vi.mocked(gdriveService.fetchGoogleUserInfo).mockResolvedValue({
+      email: 'teacher@gmail.com',
+      name: 'Teacher',
+    });
+    await act(async () => {
+      await result.current.connect('test-client-id');
+    });
+
+    // 2. Missing vtt and srt
+    await act(async () => {
+      subRes = await result.current.uploadSubtitlesOnly({
+        recording: { id: 'rec_1' },
+        classId: 'c1',
+      });
+    });
+    expect(subRes).toBeNull();
+    expect(result.current.error).toContain('Recording does not have caption files available to upload');
+
+    // 3. Successful upload with existing driveFileId and srtUrls / vttUrls
+    global.fetch = vi.fn().mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('googleapis.com/drive/v3/files/existing_file_id')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            name: 'Lecture_Video.mp4',
+            parents: ['folder_parent_123'],
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve('WEBVTT\n\n00:00.000 --> 00:05.000\nHello world'),
+      });
+    });
+
+    vi.mocked(gdriveService.uploadTextFileToGoogleDrive).mockResolvedValue({
+      fileId: 'sub_text_file_99',
+      webViewLink: 'https://drive.google.com/file/d/sub_text_file_99/view',
+    });
+
+    const recordingWithCaptions = {
+      id: 'rec_captions',
+      title: 'Math Lesson 1',
+      driveFileId: 'existing_file_id',
+      vttUrls: {
+        en: 'https://storage/sub_en.vtt',
+        zh: 'https://storage/sub_zh.vtt',
+      },
+      srtUrls: {
+        en: 'https://storage/sub_en.srt',
+      },
+    };
+
+    await act(async () => {
+      subRes = await result.current.uploadSubtitlesOnly({
+        recording: recordingWithCaptions,
+        classId: 'c1',
+      });
+    });
+
+    expect(subRes).not.toBeNull();
+    expect(subRes.driveSubtitleFiles.en).toBeDefined();
+    expect(subRes.driveSrtFiles.en).toBeDefined();
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/c1/lectureRecordings/rec_captions' }),
+      expect.objectContaining({
+        driveSubtitleFiles: expect.any(Object),
+        driveSrtFiles: expect.any(Object),
+      })
+    );
+  });
+
+  it('handles task video backup error and videoJob update', async () => {
+    const { result } = renderHook(() => useGoogleDrive());
+
+    vi.mocked(gdriveService.requestGoogleDriveToken).mockResolvedValue({
+      access_token: 'valid_token',
+      expires_in: 3600,
+    });
+    vi.mocked(gdriveService.fetchGoogleUserInfo).mockResolvedValue({
+      email: 'teacher@gmail.com',
+      name: 'Teacher',
+    });
+    await act(async () => {
+      await result.current.connect('test-client-id');
+    });
+
+    // Task submission with matchedJobId, attemptNumber, and upload failure
+    vi.mocked(gdriveService.uploadVideoToGoogleDrive).mockRejectedValueOnce(new Error('Google Drive quota exceeded'));
+
+    const submissions = [
+      {
+        id: 'sub_fail',
+        studentEmail: 'student_fail@school.edu',
+        compiledVideoPath: 'tasks/task_1/submissions/sub_fail.webm',
+        matchedJobId: 'job_123',
+        attemptNumber: 2,
+      },
+      {
+        id: 'sub_no_video',
+        studentEmail: 'novideo@school.edu',
+      },
+    ];
+
+    let res;
+    await act(async () => {
+      res = await result.current.backupTaskVideosToDrive({
+        classId: 'test_class',
+        task: { id: 'task_1', title: 'Task 1' },
+        submissions,
+      });
+    });
+
+    expect(res.failed.length).toBe(2);
+    expect(res.successful.length).toBe(0);
+    expect(result.current.error).toContain('2 failed');
+  });
 });
+

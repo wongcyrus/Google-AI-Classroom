@@ -3,13 +3,17 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CameraQrScannerModal from './CameraQrScannerModal';
 
+const mockDecodeQrFromElement = vi.fn().mockResolvedValue(null);
+const mockDecodeQrFromImageFile = vi.fn().mockResolvedValue('https://example.com/decoded-qr');
+
 vi.mock('../../utils/qrCodeDecoder', () => ({
-  decodeQrFromElement: vi.fn().mockResolvedValue(null),
-  decodeQrFromImageFile: vi.fn().mockResolvedValue('https://example.com/decoded-qr'),
+  decodeQrFromElement: (...args) => mockDecodeQrFromElement(...args),
+  decodeQrFromImageFile: (...args) => mockDecodeQrFromImageFile(...args),
 }));
 
 describe('CameraQrScannerModal Component', () => {
   let mockStopTrack;
+  let mockApplyConstraints;
   let mockStream;
   let mockGetUserMedia;
 
@@ -17,9 +21,16 @@ describe('CameraQrScannerModal Component', () => {
     vi.clearAllMocks();
 
     mockStopTrack = vi.fn();
+    mockApplyConstraints = vi.fn().mockResolvedValue(undefined);
     mockStream = {
       getTracks: vi.fn(() => [{ stop: mockStopTrack, getVideoTracks: () => [] }]),
-      getVideoTracks: vi.fn(() => [{ stop: mockStopTrack, getCapabilities: () => ({ torch: true }), applyConstraints: vi.fn() }]),
+      getVideoTracks: vi.fn(() => [
+        {
+          stop: mockStopTrack,
+          getCapabilities: () => ({ torch: true }),
+          applyConstraints: mockApplyConstraints,
+        },
+      ]),
     };
 
     mockGetUserMedia = vi.fn().mockResolvedValue(mockStream);
@@ -83,8 +94,12 @@ describe('CameraQrScannerModal Component', () => {
 
     const cancelBtn = screen.getByRole('button', { name: /Cancel/i });
     fireEvent.click(cancelBtn);
-
     expect(handleClose).toHaveBeenCalledTimes(1);
+
+    // Also close icon button
+    const closeIconBtn = screen.getByLabelText(/Close scanner/i);
+    fireEvent.click(closeIconBtn);
+    expect(handleClose).toHaveBeenCalledTimes(2);
   });
 
   it('displays permission denied error and photo capture button if camera is blocked', async () => {
@@ -108,6 +123,40 @@ describe('CameraQrScannerModal Component', () => {
     expect(photoButtons.length).toBeGreaterThan(0);
   });
 
+  it('displays NotFoundError when no camera is available', async () => {
+    const notFoundErr = new Error('Device not found');
+    notFoundErr.name = 'NotFoundError';
+    mockGetUserMedia.mockRejectedValueOnce(notFoundErr);
+
+    render(
+      <CameraQrScannerModal
+        isOpen={true}
+        onScan={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/No camera found on this device/i)).toBeInTheDocument();
+    });
+  });
+
+  it('displays generic error when camera initialization fails', async () => {
+    mockGetUserMedia.mockRejectedValueOnce(new Error('Hardware sensor locked'));
+
+    render(
+      <CameraQrScannerModal
+        isOpen={true}
+        onScan={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Hardware sensor locked/i)).toBeInTheDocument();
+    });
+  });
+
   it('renders file input with capture="environment" for native camera app fallback', async () => {
     render(
       <CameraQrScannerModal
@@ -126,6 +175,8 @@ describe('CameraQrScannerModal Component', () => {
 
   it('calls onScan when photo is selected via camera capture input', async () => {
     const handleScan = vi.fn();
+    mockDecodeQrFromImageFile.mockResolvedValueOnce('https://example.com/decoded-qr');
+
     render(
       <CameraQrScannerModal
         isOpen={true}
@@ -143,6 +194,72 @@ describe('CameraQrScannerModal Component', () => {
 
     await waitFor(() => {
       expect(handleScan).toHaveBeenCalledWith('https://example.com/decoded-qr');
+    });
+  });
+
+  it('handles null QR detection or decode failure from file input', async () => {
+    render(
+      <CameraQrScannerModal
+        isOpen={true}
+        onScan={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const fileInput = screen.getByTestId('camera-file-input');
+    const dummyFile = new File(['dummy'], 'photo.jpg', { type: 'image/jpeg' });
+
+    // Empty files
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [] } });
+    });
+
+    // Null returned
+    mockDecodeQrFromImageFile.mockResolvedValueOnce(null);
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [dummyFile] } });
+    });
+    expect(screen.getByText(/Could not detect a QR code in the captured photo/i)).toBeInTheDocument();
+
+    // Exception thrown
+    mockDecodeQrFromImageFile.mockRejectedValueOnce(new Error('Corrupt photo'));
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [dummyFile] } });
+    });
+    expect(screen.getByText(/Unable to process the photo/i)).toBeInTheDocument();
+  });
+
+  it('toggles torch flashlight on and off', async () => {
+    render(
+      <CameraQrScannerModal
+        isOpen={true}
+        onScan={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Flashlight On/i })).toBeInTheDocument();
+    });
+
+    const torchBtn = screen.getByRole('button', { name: /Flashlight On/i });
+    await act(async () => {
+      fireEvent.click(torchBtn);
+    });
+
+    expect(mockApplyConstraints).toHaveBeenCalledWith({ advanced: [{ torch: true }] });
+    expect(screen.getByRole('button', { name: /Flashlight Off/i })).toBeInTheDocument();
+
+    // Toggle off
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Flashlight Off/i }));
+    });
+    expect(mockApplyConstraints).toHaveBeenCalledWith({ advanced: [{ torch: false }] });
+
+    // Error in toggle
+    mockApplyConstraints.mockRejectedValueOnce(new Error('Torch hardware error'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Flashlight On/i }));
     });
   });
 

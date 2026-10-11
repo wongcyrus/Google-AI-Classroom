@@ -615,6 +615,49 @@ describe('WebAuthn Passkey Flows Backend', () => {
       );
     });
 
+    it('handleClaimInPersonAttendance throws when missing arguments', async () => {
+      await expect(handleClaimInPersonAttendance({})).rejects.toThrow('Missing classId, bingoId, or studentUid.');
+    });
+
+    it('handleClaimInPersonAttendance throws when bingo record not found', async () => {
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleClaimInPersonAttendance({ classId: 'c1', bingoId: 'b_none', studentUid: 's1' })
+      ).rejects.toThrow('Bingo record not found.');
+    });
+
+    it('handleClaimInPersonAttendance throws when studentUid does not match record', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ studentUid: 'other_student', result: 'pending' }),
+      });
+      await expect(
+        handleClaimInPersonAttendance({ classId: 'c1', bingoId: 'b1', studentUid: 's1' })
+      ).rejects.toThrow('Cannot claim in-person verification for another student.');
+    });
+
+    it('handleClaimInPersonAttendance returns early if record already passed', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ studentUid: 's1', result: 'passed' }),
+      });
+      const res = await handleClaimInPersonAttendance({ classId: 'c1', bingoId: 'b1', studentUid: 's1' });
+      expect(res.success).toBe(true);
+      expect(res.message).toBe('Already passed.');
+    });
+
+    it('handleClaimInPersonAttendance catches student property update errors', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ studentUid: 's1', result: 'pending' }),
+      });
+      mockDocUpdate.mockImplementationOnce(() => Promise.resolve()); // bingoRef update
+      mockDocUpdate.mockImplementationOnce(() => Promise.reject(new Error('Property write failed'))); // studentProperties update
+
+      const res = await handleClaimInPersonAttendance({ classId: 'c1', bingoId: 'b1', studentUid: 's1' });
+      expect(res.success).toBe(true);
+    });
+
     it('handleVerifyInPersonAttendanceOverride allows teacher to manually approve attendance', async () => {
       mockDocGet.mockResolvedValueOnce({
         exists: true,
@@ -642,9 +685,40 @@ describe('WebAuthn Passkey Flows Backend', () => {
         })
       );
     });
+
+    it('handleVerifyInPersonAttendanceOverride throws when missing arguments', async () => {
+      await expect(handleVerifyInPersonAttendanceOverride({})).rejects.toThrow('Missing classId, bingoId, or studentUid.');
+    });
+
+    it('handleVerifyInPersonAttendanceOverride throws when bingo record not found', async () => {
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleVerifyInPersonAttendanceOverride({ classId: 'c1', bingoId: 'b_none', studentUid: 's1' })
+      ).rejects.toThrow('Bingo record not found.');
+    });
+
+    it('handleVerifyInPersonAttendanceOverride catches student properties update errors', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ studentUid: 'student_1', result: 'pending' }),
+      });
+      mockDocUpdate.mockImplementationOnce(() => Promise.resolve()); // bingoRef
+      mockDocUpdate.mockImplementationOnce(() => Promise.reject(new Error('Subcollection fail'))); // studentProps
+
+      const res = await handleVerifyInPersonAttendanceOverride({
+        classId: 'class_1',
+        bingoId: 'bingo_123',
+        studentUid: 'student_1',
+      });
+      expect(res.success).toBe(true);
+    });
   });
 
   describe('handleGetStudentPasskeyStatus', () => {
+    it('throws error when studentUid is missing', async () => {
+      await expect(handleGetStudentPasskeyStatus({})).rejects.toThrow('Missing studentUid.');
+    });
+
     it('returns isPaired true when student passkey exists', async () => {
       mockDocGet.mockResolvedValueOnce({
         exists: true,
@@ -1130,6 +1204,79 @@ describe('WebAuthn Passkey Flows Backend', () => {
         })
       ).rejects.toThrow('Device Mismatch: This passkey was registered on a different physical smartphone.');
     });
+
+    it('throws error when login session is not found', async () => {
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleVerifyDesktopLoginPasskey({ sessionId: 's_none', authenticationResponse: { id: 'c1' } })
+      ).rejects.toThrow('Login session not found.');
+    });
+
+    it('throws error when login session is not pending', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'authorized' }),
+      });
+      await expect(
+        handleVerifyDesktopLoginPasskey({ sessionId: 's_done', authenticationResponse: { id: 'c1' } })
+      ).rejects.toThrow('Login session is already authorized.');
+    });
+
+    it('throws error when login session has expired', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() - 5000 }),
+      });
+      await expect(
+        handleVerifyDesktopLoginPasskey({ sessionId: 's_exp', authenticationResponse: { id: 'c1' } })
+      ).rejects.toThrow('Login session expired.');
+    });
+
+    it('throws error when login session lacks challenge', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() + 60000, challenge: null }),
+      });
+      await expect(
+        handleVerifyDesktopLoginPasskey({ sessionId: 's_no_chal', authenticationResponse: { id: 'c1' } })
+      ).rejects.toThrow('Missing challenge in login session.');
+    });
+
+    it('throws error when authentication response lacks credential id', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() + 60000, challenge: 'chal' }),
+      });
+      await expect(
+        handleVerifyDesktopLoginPasskey({ sessionId: 's1', authenticationResponse: {} })
+      ).rejects.toThrow('Missing credential ID in authentication response.');
+    });
+
+    it('throws error when WebAuthn verification fails or is unverified', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ status: 'pending', expiresAtMillis: Date.now() + 60000, challenge: 'chal' }),
+      });
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{
+          id: 's1',
+          data: () => ({
+            credentialID: 'cred_fail',
+            credentialPublicKey: Buffer.from('pk').toString('base64'),
+          }),
+        }],
+      });
+
+      verifyAuthenticationResponse.mockResolvedValueOnce({ verified: false });
+
+      await expect(
+        handleVerifyDesktopLoginPasskey({
+          sessionId: 's1',
+          authenticationResponse: { id: 'cred_fail' },
+        })
+      ).rejects.toThrow('Passkey biometric verification failed.');
+    });
   });
 
   describe('handleRequestTeacherPasskeyBypass', () => {
@@ -1542,6 +1689,37 @@ describe('WebAuthn Passkey Flows Backend', () => {
           })
         ).rejects.toThrow('Expired or invalid QR code.');
       });
+
+      it('throws error when arguments are missing', async () => {
+        await expect(handleGetLecturePasskeyAuthOptions({})).rejects.toThrow('Missing classId, bingoId, or rotating token.');
+      });
+
+      it('throws error when lecture challenge is not found', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        await expect(
+          handleGetLecturePasskeyAuthOptions({ classId: 'c1', bingoId: 'b_none', token: 'tok_123456789012' })
+        ).rejects.toThrow('Lecture attendance challenge not found.');
+      });
+
+      it('throws error when attendance check has completed or cancelled', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'completed' }),
+        });
+        await expect(
+          handleGetLecturePasskeyAuthOptions({ classId: 'c1', bingoId: 'b1', token: 'tok_123456789012' })
+        ).rejects.toThrow('This attendance check has ended.');
+      });
+
+      it('throws error when lecture attendance challenge deadline is exceeded', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'active', expiresAtMillis: Date.now() - 20000 }),
+        });
+        await expect(
+          handleGetLecturePasskeyAuthOptions({ classId: 'c1', bingoId: 'b1', token: 'tok_123456789012' })
+        ).rejects.toThrow('This lecture attendance challenge has expired.');
+      });
     });
 
     describe('handleVerifyLecturePasskeyAuth', () => {
@@ -1622,6 +1800,222 @@ describe('WebAuthn Passkey Flows Backend', () => {
             questionSource: 'lecture_passkey_qr',
           })
         );
+      });
+
+      it('throws error when parameters are missing', async () => {
+        await expect(handleVerifyLecturePasskeyAuth({})).rejects.toThrow('Missing verification parameters.');
+      });
+
+      it('throws error when lecture attendance record is not found', async () => {
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b_none',
+            challengeId: 'ch1',
+            assertionResponse: { id: 'cred1' },
+          })
+        ).rejects.toThrow('Lecture attendance record not found.');
+      });
+
+      it('throws error when lecture attendance challenge is cancelled', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'cancelled' }),
+        });
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch1',
+            assertionResponse: { id: 'cred1' },
+          })
+        ).rejects.toThrow('This attendance challenge was cancelled by the instructor.');
+      });
+
+      it('throws error when challenge doc is missing', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'active', sessionSecret: 'sec' }),
+        });
+        mockDocGet.mockResolvedValueOnce({ exists: false });
+
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch_none',
+            assertionResponse: { id: 'cred1' },
+          })
+        ).rejects.toThrow('Challenge expired or not found. Please scan the QR code again.');
+      });
+
+      it('throws error when challenge has expired', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'active', sessionSecret: 'sec' }),
+        });
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ expiresAtMillis: Date.now() - 5000 }),
+        });
+
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch1',
+            assertionResponse: { id: 'cred1' },
+          })
+        ).rejects.toThrow('Verification challenge expired.');
+      });
+
+      it('throws error when token is invalid or expired', async () => {
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'active', sessionSecret: 'sec' }),
+        });
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ expiresAtMillis: Date.now() + 60000, token: 'invalid_token' }),
+        });
+
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch1',
+            token: 'invalid_token_123',
+            assertionResponse: { id: 'cred1' },
+          })
+        ).rejects.toThrow('The scanned QR token has expired.');
+      });
+
+      it('throws error when passkey is not paired with any student', async () => {
+        const secret = 'secret_abc';
+        const now = Date.now();
+        const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+        const token = computeLectureQrToken(secret, interval);
+
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            status: 'active',
+            sessionSecret: secret,
+            expiresAtMillis: now + 60000,
+          }),
+        });
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            expiresAtMillis: now + 60000,
+            token,
+            challenge: 'chal',
+          }),
+        });
+        mockCollectionGet.mockResolvedValueOnce({ empty: true, docs: [] });
+
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch1',
+            token,
+            assertionResponse: { id: 'unregistered_cred' },
+          })
+        ).rejects.toThrow('This phone passkey is not paired with any student account in the system.');
+      });
+
+      it('throws error when device fingerprint mismatches registered device', async () => {
+        const secret = 'secret_abc';
+        const now = Date.now();
+        const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+        const token = computeLectureQrToken(secret, interval);
+
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ status: 'active', sessionSecret: secret, expiresAtMillis: now + 60000 }),
+        });
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ expiresAtMillis: now + 60000, token, challenge: 'chal' }),
+        });
+        mockCollectionGet.mockResolvedValueOnce({
+          empty: false,
+          docs: [{
+            id: 'stu_1',
+            data: () => ({
+              studentUid: 'stu_1',
+              credentialID: 'cred_registered',
+              deviceFingerprint: 'dev_original',
+            }),
+          }],
+        });
+
+        await expect(
+          handleVerifyLecturePasskeyAuth({
+            classId: 'c1',
+            bingoId: 'b1',
+            challengeId: 'ch1',
+            token,
+            assertionResponse: { id: 'cred_registered' },
+            deviceFingerprint: 'dev_impostor',
+          })
+        ).rejects.toThrow('Device Mismatch: Attendance must be verified using your registered phone.');
+      });
+
+      it('returns alreadyVerified true when student has already checked in', async () => {
+        const secret = 'secret_abc';
+        const now = Date.now();
+        const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+        const token = computeLectureQrToken(secret, interval);
+
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            id: 'b1',
+            status: 'active',
+            sessionSecret: secret,
+            expiresAtMillis: now + 60000,
+            responses: {
+              stu_1: { responseTimeSec: 2.5, pointsAwarded: 10 },
+            },
+          }),
+        });
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ expiresAtMillis: now + 60000, token, challenge: 'chal' }),
+        });
+        mockCollectionGet.mockResolvedValueOnce({
+          empty: false,
+          docs: [{
+            id: 'stu_1',
+            ref: { update: vi.fn().mockResolvedValue(true) },
+            data: () => ({
+              studentUid: 'stu_1',
+              studentEmail: 'stu_1@school.edu',
+              credentialID: 'cred1',
+              credentialPublicKey: Buffer.from('pk').toString('base64'),
+            }),
+          }],
+        });
+
+        verifyAuthenticationResponse.mockResolvedValueOnce({
+          verified: true,
+          authenticationInfo: { newCounter: 1 },
+        });
+
+        const res = await handleVerifyLecturePasskeyAuth({
+          classId: 'c1',
+          bingoId: 'b1',
+          challengeId: 'ch1',
+          token,
+          assertionResponse: { id: 'cred1' },
+        });
+
+        expect(res.verified).toBe(true);
+        expect(res.alreadyVerified).toBe(true);
+        expect(res.studentUid).toBe('stu_1');
       });
     });
   });
@@ -1708,6 +2102,178 @@ describe('WebAuthn Passkey Flows Backend', () => {
         }),
         { merge: true }
       );
+    });
+
+    it('resolves studentUid via getUserByEmail when studentUid is not provided', async () => {
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'lookup@stu.vtc.edu.hk',
+        exempt: true,
+      });
+      expect(res.success).toBe(true);
+      expect(res.studentUid).toBeDefined();
+    });
+
+    it('catches error if getUserByEmail throws and proceeds without studentUid', async () => {
+      mockGetUserByEmail.mockRejectedValueOnce(new Error('Auth user not found'));
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'notfound@stu.vtc.edu.hk',
+        exempt: true,
+      });
+      expect(res.success).toBe(true);
+      expect(res.studentUid).toBeNull();
+    });
+
+    it('catches error if studentProperties update throws and proceeds', async () => {
+      mockDocSet.mockImplementationOnce(() => Promise.resolve()); // loginPolicyRef
+      mockCollectionAdd.mockImplementationOnce(() => Promise.resolve({ id: 'log1' })); // audit log
+      mockDocSet.mockImplementationOnce(() => Promise.reject(new Error('Permission denied on properties')));
+
+      const res = await handleToggleStudentPasskeyExemption({
+        studentEmail: 'student@stu.vtc.edu.hk',
+        studentUid: 'student_123',
+        classId: 'class_it101',
+        exempt: true,
+      });
+      expect(res.success).toBe(true);
+    });
+  });
+
+  describe('Additional Lecture Passkey Edge Cases', () => {
+    it('computeLectureQrToken returns empty string if sessionSecret is empty', () => {
+      expect(computeLectureQrToken('', 10)).toBe('');
+      expect(computeLectureQrToken(null, 10)).toBe('');
+    });
+
+    it('handleCreateLectureBingoSession throws error if classId is missing', async () => {
+      await expect(handleCreateLectureBingoSession({})).rejects.toThrow('Missing classId.');
+    });
+
+    it('handleVerifyLecturePasskeyAuth handles WebAuthn verification error', async () => {
+      const secret = 'secret_abc';
+      const now = Date.now();
+      const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+      const token = computeLectureQrToken(secret, interval);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ id: 'b1', status: 'active', sessionSecret: secret, expiresAtMillis: now + 60000 }),
+      });
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ expiresAtMillis: now + 60000, token, challenge: 'chal' }),
+      });
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{
+          id: 'stu_1',
+          data: () => ({
+            studentUid: 'stu_1',
+            studentEmail: 'stu_1@school.edu',
+            credentialID: 'cred1',
+            credentialPublicKey: Buffer.from('pk').toString('base64'),
+          }),
+        }],
+      });
+
+      verifyAuthenticationResponse.mockRejectedValueOnce(new Error('Crypto verification failed'));
+
+      await expect(
+        handleVerifyLecturePasskeyAuth({
+          classId: 'c1',
+          bingoId: 'b1',
+          challengeId: 'ch1',
+          token,
+          assertionResponse: { id: 'cred1' },
+        })
+      ).rejects.toThrow('Biometric verification failed: Crypto verification failed');
+    });
+
+    it('handleVerifyLecturePasskeyAuth throws if WebAuthn verified is false', async () => {
+      const secret = 'secret_abc';
+      const now = Date.now();
+      const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+      const token = computeLectureQrToken(secret, interval);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ id: 'b1', status: 'active', sessionSecret: secret, expiresAtMillis: now + 60000 }),
+      });
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ expiresAtMillis: now + 60000, token, challenge: 'chal' }),
+      });
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{
+          id: 'stu_1',
+          data: () => ({
+            studentUid: 'stu_1',
+            studentEmail: 'stu_1@school.edu',
+            credentialID: 'cred1',
+            credentialPublicKey: Buffer.from('pk').toString('base64'),
+          }),
+        }],
+      });
+
+      verifyAuthenticationResponse.mockResolvedValueOnce({ verified: false });
+
+      await expect(
+        handleVerifyLecturePasskeyAuth({
+          classId: 'c1',
+          bingoId: 'b1',
+          challengeId: 'ch1',
+          token,
+          assertionResponse: { id: 'cred1' },
+        })
+      ).rejects.toThrow('Passkey biometric assertion was not valid.');
+    });
+
+    it('handleVerifyLecturePasskeyAuth catches activeBingo property update error cleanly', async () => {
+      const secret = 'secret_abc';
+      const now = Date.now();
+      const interval = Math.floor(now / LECTURE_QR_ROTATION_INTERVAL_MS);
+      const token = computeLectureQrToken(secret, interval);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ id: 'b1', status: 'active', sessionSecret: secret, expiresAtMillis: now + 60000 }),
+      });
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ expiresAtMillis: now + 60000, token, challenge: 'chal' }),
+      });
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [{
+          id: 'stu_1',
+          ref: { update: vi.fn().mockResolvedValue(true) },
+          data: () => ({
+            studentUid: 'stu_1',
+            studentEmail: 'stu_1@school.edu',
+            credentialID: 'cred1',
+            credentialPublicKey: Buffer.from('pk').toString('base64'),
+          }),
+        }],
+      });
+
+      verifyAuthenticationResponse.mockResolvedValueOnce({
+        verified: true,
+        authenticationInfo: { newCounter: 1 },
+      });
+
+      mockDocSet.mockImplementationOnce(() => Promise.resolve()); // individual doc
+      mockDocSet.mockImplementationOnce(() => Promise.reject(new Error('Subcollection failure'))); // studentProperties
+
+      const res = await handleVerifyLecturePasskeyAuth({
+        classId: 'c1',
+        bingoId: 'b1',
+        challengeId: 'ch1',
+        token,
+        assertionResponse: { id: 'cred1' },
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.studentUid).toBe('stu_1');
     });
   });
 });

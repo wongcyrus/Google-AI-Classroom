@@ -58,6 +58,8 @@ import {
   handleAutomaticBingo,
   isClassSessionActive,
   syncGeminiPricing,
+  parsePeriodDateMs,
+  getLocalTimeAndDay,
 } from './scheduledTasks.js';
 
 describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_tasks/scheduledTasks.js)', () => {
@@ -1041,6 +1043,311 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       // Outside scheduled slot, inactive
       const afterSlot = new Date('2026-09-14T10:15:00Z');
       expect(isClassSessionActive(classDataNoCapture, afterSlot)).toBe(false);
+    });
+  });
+
+  describe('parsePeriodDateMs and getLocalTimeAndDay helpers', () => {
+    it('handles various input formats in parsePeriodDateMs', () => {
+      expect(isNaN(parsePeriodDateMs(null))).toBe(true);
+      expect(isNaN(parsePeriodDateMs(undefined))).toBe(true);
+      expect(isNaN(parsePeriodDateMs({}))).toBe(true);
+      expect(isNaN(parsePeriodDateMs(false))).toBe(true);
+
+      const toMillisObj = { toMillis: () => 1726000000000 };
+      expect(parsePeriodDateMs(toMillisObj)).toBe(1726000000000);
+
+      const d = new Date('2026-09-10T12:00:00Z');
+      expect(parsePeriodDateMs(d)).toBe(d.getTime());
+
+      expect(parsePeriodDateMs(1726000000000)).toBe(1726000000000);
+
+      const isoZ = '2026-09-10T12:00:00Z';
+      expect(parsePeriodDateMs(isoZ)).toBe(new Date(isoZ).getTime());
+
+      const isoOffset = '2026-09-10T20:00:00+08:00';
+      expect(parsePeriodDateMs(isoOffset)).toBe(new Date(isoOffset).getTime());
+
+      const localStr = '2026-09-10 12:00:00';
+      const parsedLocal = parsePeriodDateMs(localStr, 'Asia/Hong_Kong');
+      expect(typeof parsedLocal).toBe('number');
+      expect(!isNaN(parsedLocal)).toBe(true);
+    });
+
+    it('extracts local time and day parts with getLocalTimeAndDay', () => {
+      const d = new Date('2026-09-10T12:30:00Z');
+      const res = getLocalTimeAndDay(d, 'UTC');
+      expect(res.localTime).toBe('12:30');
+      expect(res.localDay).toBe('Thu');
+      expect(res.localDate).toBe('2026-09-10');
+    });
+  });
+
+  describe('handlePostLessonMediaConsolidation extended scenarios', () => {
+    it('creates subtitle job for single clip with processing_subtitles status', async () => {
+      const fixedNow = new Date('2026-09-10T10:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [
+            { days: ['Thu'], startTime: '09:00', endTime: '10:30' },
+          ],
+          timeZone: 'UTC',
+        },
+        automaticCombine: true,
+      };
+
+      const mockSingleClip = {
+        id: 'lecture_single_1',
+        title: 'Single Lecture Part',
+        status: 'processing_subtitles',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+        audioStoragePath: 'recordings/c1/s1/audio.webm',
+        startedAt: new Date(fixedNow.getTime() - (15 * 60 * 1000)).toISOString(),
+      };
+
+      const mockDocSet = vi.fn().mockResolvedValue(true);
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_single_sub', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({ exists: false }),
+                  set: mockDocSet,
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName.includes('lectureRecordings')) {
+          const docs = [{ id: 'lecture_single_1', data: () => mockSingleClip }];
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs,
+              forEach: (cb) => docs.forEach(cb),
+            }),
+          };
+        }
+        if (collName.includes('lectureSubtitleJobs')) {
+          return {
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: false }),
+              set: mockDocSet,
+            })),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({
+            id: 'job_id_1',
+            get: vi.fn().mockResolvedValue({ exists: false }),
+            set: mockDocSet,
+          })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      await handlePostLessonMediaConsolidation();
+      expect(mockDocSet).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('freezes attendance snapshot from screenshots when hasFullAttendance is false', async () => {
+      const fixedNow = new Date('2026-09-10T10:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        students: {
+          s1: 'alice@vtc.edu.hk',
+          s2: 'bob@vtc.edu.hk',
+        },
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [
+            { days: ['Thu'], startTime: '09:00', endTime: '10:30' },
+          ],
+          timeZone: 'UTC',
+        },
+        automaticCombine: true,
+      };
+
+      const mockScreenshots = [
+        {
+          id: 'shot_1',
+          data: () => ({
+            studentUid: 's1',
+            timestamp: new Date('2026-09-10T09:15:00Z'),
+          }),
+        },
+        {
+          id: 'shot_2',
+          data: () => ({
+            studentUid: 's1',
+            timestamp: { toDate: () => new Date('2026-09-10T09:30:00Z') },
+          }),
+        },
+      ];
+
+      const mockSetAttendance = vi.fn().mockResolvedValue(true);
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_att_test', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({
+                    exists: true,
+                    data: () => ({ students: {} }),
+                  }),
+                  set: mockSetAttendance,
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName.includes('screenshots')) {
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs: mockScreenshots,
+              forEach: function(cb) { this.docs.forEach(cb); },
+            }),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({
+            id: 'job_id_2',
+            get: vi.fn().mockResolvedValue({ exists: false }),
+            set: mockSetAttendance,
+          })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      await handlePostLessonMediaConsolidation();
+      expect(mockSetAttendance).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('creates activeSlot-named mergeJob when consolidateLessonVideo is false and clips >= 2', async () => {
+      const fixedNow = new Date('2026-09-10T10:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [
+            { days: ['Thu'], startTime: '09:00', endTime: '10:30' },
+          ],
+          timeZone: 'UTC',
+        },
+        consolidateLessonVideo: false,
+      };
+
+      const clip1 = {
+        id: 'c1',
+        title: 'Clip 1',
+        status: 'ready',
+        storagePath: 'rec/c1.webm',
+        startedAt: new Date(fixedNow.getTime() - 20 * 60 * 1000).toISOString(),
+      };
+      const clip2 = {
+        id: 'c2',
+        title: 'Clip 2',
+        status: 'ready',
+        storagePath: 'rec/c2.webm',
+        startedAt: new Date(fixedNow.getTime() - 10 * 60 * 1000).toISOString(),
+      };
+
+      const mockSetMerge = vi.fn().mockResolvedValue(true);
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_no_consolidate', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({ exists: false }),
+                  set: vi.fn().mockResolvedValue(true),
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName.includes('lectureRecordings')) {
+          const docs = [
+            { id: 'c1', data: () => clip1 },
+            { id: 'c2', data: () => clip2 },
+          ];
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs,
+              forEach: (cb) => docs.forEach(cb),
+            }),
+          };
+        }
+        if (collName.includes('lectureMergeJobs')) {
+          return {
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: false }),
+              set: mockSetMerge,
+            })),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({
+            id: 'job_id_3',
+            get: vi.fn().mockResolvedValue({ exists: false }),
+            set: vi.fn().mockResolvedValue(true),
+          })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      await handlePostLessonMediaConsolidation();
+      expect(mockSetMerge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'merge_class_no_consolidate_0900_1030_2026-09-10',
+          classId: 'class_no_consolidate',
+          recordingIds: ['c1', 'c2'],
+        })
+      );
+      vi.useRealTimers();
     });
   });
 });
