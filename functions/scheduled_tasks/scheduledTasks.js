@@ -293,6 +293,75 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
             });
             jobCreationPromises.push(jobPromise);
           }
+
+          // 1b. Automatically freeze attendance snapshot into lessons/{lessonId} immediately post-lesson
+          const attendanceSnapshotPromise = (async () => {
+            try {
+              const crypto = await import('crypto');
+              const lessonStartTimeISO = lessonStartDateTimeInZone.toISOString();
+              const lessonEndTimeISO = lessonEndDateTimeInZone.toISOString();
+              const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+              const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+              const lessonSnap = await lessonRef.get().catch(() => null);
+              const existingData = lessonSnap?.exists ? (lessonSnap.data() || {}) : {};
+              const existingStudents = existingData.students || {};
+
+              const durationMinutes = Math.max(1, Math.round((lessonEndDateTimeInZone - lessonStartDateTimeInZone) / 60000));
+              const hasFullAttendance = Object.values(existingStudents).some(s => (s.sharedScreenMinutes || 0) > 0);
+
+              if (!hasFullAttendance) {
+                const shotsSnap = await db.collection('screenshots')
+                  .where('classId', '==', classId)
+                  .where('timestamp', '>=', lessonStartDateTimeInZone)
+                  .where('timestamp', '<=', lessonEndDateTimeInZone)
+                  .get().catch(() => null);
+
+                const studentMinutesMap = {};
+                if (shotsSnap && typeof shotsSnap.forEach === 'function') {
+                  shotsSnap.forEach(sDoc => {
+                    const sData = sDoc.data ? sDoc.data() : null;
+                    if (!sData) return;
+                    const sUid = sData.studentUid || sData.userId || sData.uid;
+                    if (!sUid) return;
+                    if (!studentMinutesMap[sUid]) {
+                      studentMinutesMap[sUid] = Array(durationMinutes).fill(0);
+                    }
+                    const rawTs = sData.timestamp;
+                    const ts = rawTs?.toDate ? rawTs.toDate() : new Date(rawTs);
+                    if (!ts || isNaN(ts.getTime())) return;
+                    const minIdx = Math.floor((ts.getTime() - lessonStartDateTimeInZone.getTime()) / 60000);
+                    if (minIdx >= 0 && minIdx < durationMinutes) {
+                      studentMinutesMap[sUid][minIdx] = 1;
+                    }
+                  });
+                }
+
+                const studentsPayload = { ...existingStudents };
+                for (const sUid of studentUids) {
+                  const bitmask = studentMinutesMap[sUid] || Array(durationMinutes).fill(0);
+                  const sharedMins = bitmask.reduce((acc, v) => acc + (v === 1 ? 1 : 0), 0);
+                  studentsPayload[sUid] = {
+                    ...(existingStudents[sUid] || {}),
+                    sharedScreenMinutes: sharedMins,
+                    attendance: bitmask,
+                    deductedMinutes: existingStudents[sUid]?.deductedMinutes || 0,
+                  };
+                }
+
+                await lessonRef.set({
+                  startTime: lessonStartDateTimeInZone,
+                  endTime: lessonEndDateTimeInZone,
+                  students: studentsPayload,
+                }, { merge: true });
+
+                logger.info(`[handlePostLessonMediaConsolidation] Automatically saved attendance snapshot for class ${classId}, lesson ${lessonId}`);
+              }
+            } catch (attErr) {
+              logger.warn(`[handlePostLessonMediaConsolidation] Error freezing attendance for class ${classId}:`, attErr);
+            }
+          })();
+          jobCreationPromises.push(attendanceSnapshotPromise);
         }
       }
     }

@@ -211,13 +211,15 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
             setLessonData({ ...lessonDocData, students: studentsWithDetails });
 
             const initialAttendance = studentsWithDetails.map(student => {
-              const totalMinutes = student.sharedScreenMinutes;
+              const totalMinutes = student.sharedScreenMinutes ?? student.workingMinutes;
               if (totalMinutes === undefined) return null;
               return {
                 email: student.email,
                 totalMinutes: totalMinutes,
                 percentage: lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%',
-                attendance: student.attendance || Array(lessonDurationInMinutes).fill(0),
+                attendance: student.attendance || (totalMinutes > 0
+                  ? Array(lessonDurationInMinutes).fill(0).map((_, idx) => (idx < totalMinutes ? 1 : 0))
+                  : Array(lessonDurationInMinutes).fill(0)),
               };
             }).filter(Boolean);
 

@@ -195,6 +195,70 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(bob).toBeDefined();
       expect(bob.totalMinutes).toBe(1);
     });
+
+    it('reconstructs attendance from completed videoJobs and preserves existing AI working time when screenshots are purged', async () => {
+      // 1. Mock class doc
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            uid1: 'alice@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query returning 0 screenshots (purged)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 3. Mock existing lesson doc get() returning AI working minutes
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            uid1: {
+              workingMinutes: 30,
+              summary: 'Active student working on lab.',
+            },
+          },
+        }),
+      });
+
+      // 4. Mock videoJobs query returning completed screencast
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'uid1',
+              studentEmail: 'alice@vtc.edu.hk',
+              startTime: new Date('2026-08-29T09:00:00Z'),
+              status: 'completed',
+            }),
+          });
+        },
+      });
+
+      // 5. Mock attendanceAdjustments query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-08-29T09:00:00Z',
+          endTime: '2026-08-29T09:30:00Z',
+        },
+      });
+
+      expect(res.attendanceData).toHaveLength(1);
+      const student = res.attendanceData[0];
+      expect(student.totalMinutes).toBe(30);
+      expect(student.percentage).toBe('100.00%');
+      expect(student.attendance.filter(v => v === 1)).toHaveLength(30);
+    });
   });
 
   describe('Attendance bitmask arithmetic', () => {

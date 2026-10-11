@@ -64,6 +64,24 @@ describe('attendanceUtils Module', () => {
     expect(bob.percentage).toBe('100.00%');
   });
 
+  it('reconstructs attendance and resolves effective minutes when attendanceData has 0 minutes but lesson has workingMinutes', () => {
+    // Simulates when raw screenshots were deleted and attendance server returned 0 mins
+    const attData = [
+      { email: 'student1@school.edu', totalMinutes: 0, percentage: '0.00%', attendance: [0, 0, 0] },
+    ];
+    const lessonStudents = [
+      { uid: 's1', email: 'student1@school.edu', workingMinutes: 120, summary: 'Diligent lab work' },
+    ];
+
+    const merged = mergeAttendanceData(attData, lessonStudents, 120);
+    expect(merged.length).toBe(1);
+    const s1 = merged[0];
+    expect(s1.totalMinutes).toBe(120);
+    expect(s1.percentage).toBe('100.00%');
+    expect(s1.workingMinutes).toBe(120);
+    expect(s1.attendance.filter(v => v === 1)).toHaveLength(120);
+  });
+
   it('returns empty array when both inputs are empty', () => {
     expect(mergeAttendanceData([], [], 60)).toEqual([]);
   });

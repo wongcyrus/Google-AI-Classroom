@@ -199,6 +199,65 @@ export const purgeClassTelemetryData = onCall({
     // 1. Process Screenshots
     if (targets.screenshots !== false) {
       const screenshotDocs = await getDocsInRange('screenshots', classId, start, end, 'timestamp');
+
+      // Safeguard: Before deleting screenshot documents, ensure any lessons in this window have attendance saved
+      try {
+        const lessonsSnap = await db.collection(`classes/${classId}/lessons`).get();
+        if (lessonsSnap && typeof lessonsSnap.forEach === 'function') {
+          for (const lDoc of lessonsSnap.docs) {
+            const lData = lDoc.data() || {};
+            const lStart = lData.startTime?.toDate ? lData.startTime.toDate() : (lData.startTime ? new Date(lData.startTime) : null);
+            const lEnd = lData.endTime?.toDate ? lData.endTime.toDate() : (lData.endTime ? new Date(lData.endTime) : null);
+            if (!lStart || !lEnd || isNaN(lStart.getTime()) || isNaN(lEnd.getTime())) continue;
+
+            // If lesson overlaps with the purge range
+            if (lStart <= end && lEnd >= start) {
+              const students = lData.students || {};
+              const hasAttendance = Object.values(students).some((s) => (s.sharedScreenMinutes || 0) > 0);
+              if (!hasAttendance && screenshotDocs.length > 0) {
+                const durationMins = Math.max(1, Math.round((lEnd - lStart) / 60000));
+                const updatedStudents = { ...students };
+                let changed = false;
+
+                screenshotDocs.forEach((sDoc) => {
+                  const sData = sDoc.data ? sDoc.data() : null;
+                  if (!sData) return;
+                  const sUid = sData.studentUid || sData.userId || sData.uid;
+                  if (!sUid) return;
+                  const rawTs = sData.timestamp;
+                  const ts = rawTs?.toDate ? rawTs.toDate() : (rawTs ? new Date(rawTs) : null);
+                  if (!ts || isNaN(ts.getTime())) return;
+                  if (ts >= lStart && ts <= lEnd) {
+                    if (!updatedStudents[sUid]) {
+                      updatedStudents[sUid] = { sharedScreenMinutes: 0, attendance: Array(durationMins).fill(0) };
+                    } else if (!Array.isArray(updatedStudents[sUid].attendance)) {
+                      updatedStudents[sUid].attendance = Array(durationMins).fill(0);
+                    }
+                    const mIdx = Math.floor((ts.getTime() - lStart.getTime()) / 60000);
+                    if (mIdx >= 0 && mIdx < durationMins) {
+                      updatedStudents[sUid].attendance[mIdx] = 1;
+                    }
+                    changed = true;
+                  }
+                });
+
+                if (changed) {
+                  for (const [uid, sObj] of Object.entries(updatedStudents)) {
+                    if (Array.isArray(sObj.attendance)) {
+                      sObj.sharedScreenMinutes = sObj.attendance.reduce((sum, v) => sum + (v === 1 ? 1 : 0), 0);
+                    }
+                  }
+                  await lDoc.ref.set({ students: updatedStudents }, { merge: true });
+                  console.log(`[purgeClassTelemetryData] Preserved attendance snapshot for lesson ${lDoc.id} before purging screenshots.`);
+                }
+              }
+            }
+          }
+        }
+      } catch (safeErr) {
+        console.warn('[purgeClassTelemetryData] Pre-purge attendance preservation warning:', safeErr);
+      }
+
       totalScreenshots = await purgeDocList(screenshotDocs, bucket, [
         (d) => d.imagePath || d.storagePath,
       ]);

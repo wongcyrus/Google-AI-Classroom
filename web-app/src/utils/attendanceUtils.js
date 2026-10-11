@@ -97,14 +97,36 @@ export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [],
     const attStudent = attendanceData.find((s) => s.email === email);
     const lessonStudent = lessonStudents.find((s) => s.email === email);
 
+    // Multi-source attendance resolution:
+    // If attStudent has 0 minutes (e.g. screenshots purged), fall back to lessonStudent's recorded sharedScreenMinutes or workingMinutes
+    const recordedMins = lessonStudent?.sharedScreenMinutes ?? lessonStudent?.workingMinutes;
+    const effectiveMins = (attStudent?.totalMinutes != null && attStudent.totalMinutes > 0)
+      ? attStudent.totalMinutes
+      : (recordedMins != null && recordedMins > 0 ? recordedMins : (attStudent?.totalMinutes ?? 0));
+
+    let effectiveAttendance = (attStudent?.attendance && attStudent.attendance.includes(1))
+      ? attStudent.attendance
+      : (lessonStudent?.attendance && lessonStudent.attendance.includes(1))
+        ? lessonStudent.attendance
+        : null;
+
+    if (!effectiveAttendance && effectiveMins > 0 && durationMinutes > 0) {
+      // Reconstruct attendance bitmask up to effectiveMins
+      effectiveAttendance = Array(durationMinutes).fill(0).map((_, idx) => (idx < effectiveMins ? 1 : 0));
+    } else if (!effectiveAttendance) {
+      effectiveAttendance = attStudent?.attendance || lessonStudent?.attendance || Array(durationMinutes).fill(0);
+    }
+
+    const pct = durationMinutes > 0
+      ? `${((effectiveMins / durationMinutes) * 100).toFixed(2)}%`
+      : '0.00%';
+
     return {
       email,
-      uid: lessonStudent?.uid || null,
-      totalMinutes: attStudent?.totalMinutes ?? lessonStudent?.sharedScreenMinutes ?? 0,
-      percentage: attStudent?.percentage ?? (durationMinutes > 0 && lessonStudent?.sharedScreenMinutes != null
-        ? `${((lessonStudent.sharedScreenMinutes / durationMinutes) * 100).toFixed(2)}%`
-        : '0.00%'),
-      attendance: attStudent?.attendance || lessonStudent?.attendance || Array(durationMinutes).fill(0),
+      uid: lessonStudent?.uid || attStudent?.uid || null,
+      totalMinutes: effectiveMins,
+      percentage: pct,
+      attendance: effectiveAttendance,
       workingMinutes: lessonStudent?.workingMinutes,
       summary: lessonStudent?.summary,
       feedback: lessonStudent?.feedback,

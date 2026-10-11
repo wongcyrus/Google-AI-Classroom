@@ -66,6 +66,12 @@ export const getAttendanceData = onCall({
     return { attendanceData: [] };
   }
 
+  const crypto = await import('crypto');
+  const lessonStartTimeISO = lessonStartTime.toISOString();
+  const lessonEndTimeISO = lessonEndTime.toISOString();
+  const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
+  const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
   // Attendance maps indexed by student email and uid for robust matching
   const emailToStudentMap = new Map();
   const uidToStudentMap = new Map();
@@ -98,8 +104,9 @@ export const getAttendanceData = onCall({
   const chunkSnapshots = await Promise.all(chunkPromises);
 
   chunkSnapshots.forEach(snap => {
+    if (!snap || typeof snap.forEach !== 'function') return;
     snap.forEach(doc => {
-      const screenshot = doc.data();
+      const screenshot = doc.data ? doc.data() : null;
       if (!screenshot) return;
 
       const rawEmail = screenshot.email || screenshot.studentEmail || '';
@@ -119,6 +126,74 @@ export const getAttendanceData = onCall({
       }
     });
   });
+
+  // Multi-source attendance reconciliation:
+  // If raw screenshots returned 0 minutes for any student (e.g. screenshots were purged after class),
+  // trace presence from previously persisted attendance, AI working time, or completed video compilation
+  let existingLessonData = null;
+  const studentsWithZeroMinutes = studentList.filter(s => {
+    const entry = uidToStudentMap.get(s.uid) || emailToStudentMap.get(s.email);
+    if (!entry) return true;
+    return entry.attendance.reduce((sum, val) => sum + (val === 1 ? 1 : 0), 0) === 0;
+  });
+
+  if (studentsWithZeroMinutes.length > 0) {
+    // 1. Fetch existing lesson doc if available
+    try {
+      const existingSnap = await lessonRef.get();
+      if (existingSnap && existingSnap.exists) {
+        existingLessonData = existingSnap.data() || null;
+      }
+    } catch (err) {
+      console.warn('[getAttendanceData] Could not read existing lesson doc:', err);
+    }
+
+    // 2. Fetch completed student video jobs for this lesson timeframe
+    const completedVideoStudents = new Set();
+    try {
+      const videoJobsSnap = await db.collection('videoJobs')
+        .where('classId', '==', classId)
+        .where('status', '==', 'completed')
+        .get();
+
+      if (videoJobsSnap && typeof videoJobsSnap.forEach === 'function') {
+        videoJobsSnap.forEach(doc => {
+          const vData = doc.data ? doc.data() : null;
+          if (!vData) return;
+          const vStart = vData.startTime?.toDate ? vData.startTime.toDate() : (vData.startTime ? new Date(vData.startTime) : null);
+          if (!vStart || isNaN(vStart.getTime())) return;
+          if (Math.abs(vStart.getTime() - lessonStartTime.getTime()) <= 30 * 60 * 1000) {
+            if (vData.studentUid) completedVideoStudents.add(vData.studentUid);
+            if (vData.studentEmail) completedVideoStudents.add(vData.studentEmail.replace(/\s/g, '').toLowerCase());
+          }
+        });
+      }
+    } catch (vErr) {
+      console.warn('[getAttendanceData] Error checking videoJobs for attendance tracing:', vErr);
+    }
+
+    studentsWithZeroMinutes.forEach(s => {
+      const entry = uidToStudentMap.get(s.uid) || emailToStudentMap.get(s.email);
+      if (!entry) return;
+
+      const existingStudent = existingLessonData?.students?.[s.uid];
+      const hasCompletedVideo = completedVideoStudents.has(s.uid) || (s.email && completedVideoStudents.has(s.email));
+
+      if (existingStudent?.sharedScreenMinutes > 0 && Array.isArray(existingStudent.attendance) && existingStudent.attendance.length === lessonDurationInMinutes) {
+        for (let i = 0; i < lessonDurationInMinutes; i++) {
+          entry.attendance[i] = existingStudent.attendance[i];
+        }
+      } else if (hasCompletedVideo || (existingStudent?.workingMinutes > 0) || (existingStudent?.sharedScreenMinutes > 0)) {
+        const minsToFill = Math.min(
+          existingStudent?.sharedScreenMinutes || existingStudent?.workingMinutes || lessonDurationInMinutes,
+          lessonDurationInMinutes
+        );
+        for (let i = 0; i < minsToFill; i++) {
+          entry.attendance[i] = 1;
+        }
+      }
+    });
+  }
 
   // Apply Bingo attendance adjustments (deduct unverified AFK minutes)
   try {
@@ -170,18 +245,19 @@ export const getAttendanceData = onCall({
     };
   });
 
-  const crypto = await import('crypto');
-  const lessonStartTimeISO = lessonStartTime.toISOString();
-  const lessonEndTimeISO = lessonEndTime.toISOString();
-  const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
-  const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
-
   try {
     const studentsPayload = {};
     attendanceData.forEach(data => {
       const student = studentList.find(s => s.email === data.email);
       if (student) {
+        const existingStudent = existingLessonData?.students?.[student.uid] || {};
+        // Safeguard: Never overwrite existing positive attendance with 0
+        if (data.totalMinutes === 0 && (existingStudent.sharedScreenMinutes > 0 || existingStudent.workingMinutes > 0)) {
+          return;
+        }
+
         studentsPayload[student.uid] = {
+          ...existingStudent,
           sharedScreenMinutes: data.totalMinutes,
           deductedMinutes: data.deductedMinutes,
           attendance: data.attendance
@@ -189,11 +265,13 @@ export const getAttendanceData = onCall({
       }
     });
 
-    await lessonRef.set({
-      startTime: lessonStartTime,
-      endTime: lessonEndTime,
-      students: studentsPayload
-    }, { merge: true });
+    if (Object.keys(studentsPayload).length > 0) {
+      await lessonRef.set({
+        startTime: lessonStartTime,
+        endTime: lessonEndTime,
+        students: studentsPayload
+      }, { merge: true });
+    }
   } catch (error) {
     console.error('Error persisting attendance data:', error);
   }

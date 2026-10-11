@@ -468,10 +468,16 @@ const StudentRecordsView = ({ user }) => {
             const startStr = data.startTime?.toDate ? data.startTime.toDate().toISOString() : data.startTime;
             const endStr = data.endTime?.toDate ? data.endTime.toDate().toISOString() : data.endTime;
             const duration = data.duration || computeLessonDuration(startStr, endStr) || (studentEntry?.attendance?.length || 0) || 60;
-            const sharedMins = studentEntry?.sharedScreenMinutes || 0;
             const workingMins = studentEntry?.workingMinutes || 0;
-            const attendanceArr = Array.isArray(studentEntry?.attendance) ? studentEntry.attendance : [];
-            const attendedMins = attendanceArr.filter((v) => v === 1).length;
+            const sharedMins = studentEntry?.sharedScreenMinutes ?? (workingMins > 0 ? workingMins : 0);
+            let attendanceArr = Array.isArray(studentEntry?.attendance) ? studentEntry.attendance : [];
+            let attendedMins = attendanceArr.filter((v) => v === 1).length;
+            if (attendedMins === 0 && (sharedMins > 0 || workingMins > 0)) {
+              attendedMins = sharedMins || workingMins;
+              if (attendanceArr.length === 0 && duration > 0) {
+                attendanceArr = Array(duration).fill(0).map((_, i) => (i < attendedMins ? 1 : 0));
+              }
+            }
 
             const attPercentage = duration > 0 ? ((attendedMins / duration) * 100).toFixed(2) : '0.00';
             const sharePercentage = duration > 0 ? ((sharedMins / duration) * 100).toFixed(2) : '0.00';
@@ -567,7 +573,20 @@ const StudentRecordsView = ({ user }) => {
 
           const existingList = Array.from(classLessonsMap.values());
           const matched = existingList.some((l) => isRecordInLesson(vid, l));
-          if (!matched) {
+          if (matched) {
+            const matchedLesson = existingList.find((l) => isRecordInLesson(vid, l));
+            if (matchedLesson && (matchedLesson.attendedMinutes === 0 || !matchedLesson.attendedMinutes) && (matchedLesson.sharedScreenMinutes === 0 || !matchedLesson.sharedScreenMinutes)) {
+              const dur = vid.duration ? Math.max(Math.round(vid.duration / 60), 1) : matchedLesson.duration || 60;
+              matchedLesson.attendedMinutes = dur;
+              matchedLesson.sharedScreenMinutes = dur;
+              matchedLesson.attPercentage = matchedLesson.duration > 0 ? ((dur / matchedLesson.duration) * 100).toFixed(2) : '100.00';
+              matchedLesson.sharePercentage = matchedLesson.attPercentage;
+              matchedLesson.percentage = matchedLesson.attPercentage;
+              if (!matchedLesson.attendance || matchedLesson.attendance.length === 0) {
+                matchedLesson.attendance = Array(matchedLesson.duration || dur).fill(1);
+              }
+            }
+          } else {
             const dur = vid.duration ? Math.max(Math.round(vid.duration / 60), 1) : 60;
             const sDate = new Date(vidTime);
             const eDate = new Date(vidTime + dur * 60 * 1000);
