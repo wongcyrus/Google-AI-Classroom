@@ -200,6 +200,7 @@ const StudentRecordsView = ({ user }) => {
   const [showPlayer, setShowPlayer] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
+  const [playingVideoRecord, setPlayingVideoRecord] = useState(null);
 
   // Audio player state
   const [playingAudioId, setPlayingAudioId] = useState(null);
@@ -308,6 +309,7 @@ const StudentRecordsView = ({ user }) => {
                 teacherRecordingsPolicy: data.teacherRecordingsPolicy || (data.allowShareTeacherRecordings ? 'selective' : 'private'),
                 allowShareTeacherRecordings: Boolean(data.allowShareTeacherRecordings),
                 isCapturing: Boolean(data.isCapturing),
+                frameRate: data.frameRate ? Number(data.frameRate) : 15,
               });
             }
           });
@@ -444,6 +446,7 @@ const StudentRecordsView = ({ user }) => {
                   teacherRecordingsPolicy: cData.teacherRecordingsPolicy || (cData.allowShareTeacherRecordings ? 'selective' : 'private'),
                   allowShareTeacherRecordings: Boolean(cData.allowShareTeacherRecordings),
                   isCapturing: Boolean(cData.isCapturing),
+                  frameRate: cData.frameRate ? Number(cData.frameRate) : 15,
                 });
               }
             });
@@ -479,9 +482,9 @@ const StudentRecordsView = ({ user }) => {
               }
             }
 
-            const attPercentage = duration > 0 ? ((attendedMins / duration) * 100).toFixed(2) : '0.00';
-            const sharePercentage = duration > 0 ? ((sharedMins / duration) * 100).toFixed(2) : '0.00';
-            const aiPercentage = duration > 0 ? ((workingMins / duration) * 100).toFixed(2) : '0.00';
+            const attPercentage = duration > 0 ? Math.min(100, Math.max(0, (attendedMins / duration) * 100)).toFixed(2) : '0.00';
+            const sharePercentage = duration > 0 ? Math.min(100, Math.max(0, (sharedMins / duration) * 100)).toFixed(2) : '0.00';
+            const aiPercentage = duration > 0 ? Math.min(100, Math.max(0, (workingMins / duration) * 100)).toFixed(2) : '0.00';
 
             classLessonsMap.set(lDoc.id, {
               lessonId: lDoc.id,
@@ -573,10 +576,14 @@ const StudentRecordsView = ({ user }) => {
 
           const existingList = Array.from(classLessonsMap.values());
           const matched = existingList.some((l) => isRecordInLesson(vid, l));
+          const captureInterval = typeof vid.captureInterval === 'number'
+            ? vid.captureInterval
+            : (classObj?.frameRate || 15);
+
           if (matched) {
             const matchedLesson = existingList.find((l) => isRecordInLesson(vid, l));
             if (matchedLesson && (matchedLesson.attendedMinutes === 0 || !matchedLesson.attendedMinutes) && (matchedLesson.sharedScreenMinutes === 0 || !matchedLesson.sharedScreenMinutes)) {
-              const dur = vid.duration ? Math.max(Math.round(vid.duration / 60), 1) : matchedLesson.duration || 60;
+              const dur = vid.duration ? Math.min(matchedLesson.duration || 60, Math.max(Math.round((vid.duration * captureInterval) / 60), 1)) : matchedLesson.duration || 60;
               matchedLesson.attendedMinutes = dur;
               matchedLesson.sharedScreenMinutes = dur;
               matchedLesson.attPercentage = matchedLesson.duration > 0 ? ((dur / matchedLesson.duration) * 100).toFixed(2) : '100.00';
@@ -587,7 +594,7 @@ const StudentRecordsView = ({ user }) => {
               }
             }
           } else {
-            const dur = vid.duration ? Math.max(Math.round(vid.duration / 60), 1) : 60;
+            const dur = vid.duration ? Math.max(Math.round((vid.duration * captureInterval) / 60), 1) : 60;
             const sDate = new Date(vidTime);
             const eDate = new Date(vidTime + dur * 60 * 1000);
             let discId = vid.lessonId;
@@ -904,9 +911,9 @@ const StudentRecordsView = ({ user }) => {
     const totalSharedMins = classLessons.reduce((sum, l) => sum + (l.sharedScreenMinutes || 0), 0);
     const totalAiMins = classLessons.reduce((sum, l) => sum + (l.workingMinutes || 0), 0);
 
-    const attRate = totalDuration > 0 ? ((totalAttendedMins / totalDuration) * 100).toFixed(2) : '0.00';
-    const shareRate = totalDuration > 0 ? ((totalSharedMins / totalDuration) * 100).toFixed(2) : '0.00';
-    const aiRate = totalDuration > 0 ? ((totalAiMins / totalDuration) * 100).toFixed(2) : '0.00';
+    const attRate = totalDuration > 0 ? Math.min(100, Math.max(0, (totalAttendedMins / totalDuration) * 100)).toFixed(2) : '0.00';
+    const shareRate = totalDuration > 0 ? Math.min(100, Math.max(0, (totalSharedMins / totalDuration) * 100)).toFixed(2) : '0.00';
+    const aiRate = totalDuration > 0 ? Math.min(100, Math.max(0, (totalAiMins / totalDuration) * 100)).toFixed(2) : '0.00';
 
     return {
       totalDuration,
@@ -930,6 +937,7 @@ const StudentRecordsView = ({ user }) => {
     }
 
     setPlayerLoading(true);
+    setPlayingVideoRecord(video);
     setShowPlayer(true);
     try {
       try {
@@ -967,6 +975,7 @@ const StudentRecordsView = ({ user }) => {
       console.error('Error fetching video URL:', err);
       alert(`Could not load video for playback: ${err.message}`);
       setShowPlayer(false);
+      setPlayingVideoRecord(null);
     } finally {
       setPlayerLoading(false);
     }
@@ -1214,6 +1223,7 @@ const StudentRecordsView = ({ user }) => {
       startTime: attemptWithEnd.startedAt,
       endTime: attemptWithEnd.finishedAt,
       status: 'pending',
+      captureInterval: activeClassObj?.sessionFrameRate || activeClassObj?.frameRate || 15,
       isTaskSubmission: true,
       taskId,
       attemptNumber: attemptWithEnd.attemptNumber,
@@ -1646,7 +1656,24 @@ const StudentRecordsView = ({ user }) => {
                         <td>
                           <span className="pill-badge pill-neutral">{video.classId || 'N/A'}</span>
                         </td>
-                        <td>{formatDuration(video.duration)}</td>
+                        <td>
+                          {formatDuration(video.duration)}
+                          {typeof video.duration === 'number' && video.duration > 0 && (() => {
+                            const vidInterval = typeof video.captureInterval === 'number'
+                              ? video.captureInterval
+                              : (enrolledClasses.find(c => c.id === video.classId)?.frameRate || 15);
+                            const estMins = Math.max(1, Math.round((video.duration * vidInterval) / 60));
+                            return (
+                              <span
+                                className="timelapse-hint"
+                                style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}
+                                title={`Time-lapse screencast compiled at 1 frame per second. 1 second of video represents ~${vidInterval}s of student screen activity.`}
+                              >
+                                ~{estMins}m active
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td>{formatBytes(video.size)}</td>
                         <td>
                           {access.isLocked ? (
@@ -2358,11 +2385,11 @@ const StudentRecordsView = ({ user }) => {
                               padding: '2px 8px',
                               borderRadius: '999px',
                               textTransform: 'uppercase',
-                              background: t.scheduleMode === 'homework' ? '#f3e8ff' : '#eff6ff',
-                              color: t.scheduleMode === 'homework' ? '#7e22ce' : '#1d4ed8',
+                              background: t.scheduleMode === 'homework' ? '#f3e8ff' : (t.scheduleMode === 'retroactive' ? '#fef3c7' : '#eff6ff'),
+                              color: t.scheduleMode === 'homework' ? '#7e22ce' : (t.scheduleMode === 'retroactive' ? '#b45309' : '#1d4ed8'),
                             }}
                           >
-                            {t.scheduleMode === 'homework' ? '🏠 Homework' : '🏫 In-Class'}
+                            {t.scheduleMode === 'homework' ? '🏠 Homework' : (t.scheduleMode === 'retroactive' ? '⏪ Post-Class' : '🏫 In-Class')}
                           </span>
                           <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
                             {t.maxScore || 100} pts
@@ -2818,9 +2845,11 @@ const StudentRecordsView = ({ user }) => {
           onClose={() => {
             setShowPlayer(false);
             setPlayerVideoUrl('');
+            setPlayingVideoRecord(null);
           }}
           videoUrl={playerVideoUrl}
           loading={playerLoading}
+          video={playingVideoRecord}
         />
       )}
 

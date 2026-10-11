@@ -427,7 +427,13 @@ export const PROMPT_REGISTRY = {
     description: 'Processes combined multi-stream recording after class to evaluate student engagement, burnout, and task progress.',
     recommendedModel: 'gemini-3.8-flash',
     supportedPlaceholders: [
-      { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier', required: false },
+      { tag: '{{captureInterval}}', label: 'Capture Interval', desc: 'Screenshot time-lapse interval in seconds (e.g. 15s or 30s)', required: false },
+      { tag: '{{frameRate}}', label: 'Frame Rate', desc: 'Screenshot capture interval in seconds per frame', required: false },
+      { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier (e.g. itp4124-l)', required: false },
+      { tag: '{{studentEmail}}', label: 'Student Email', desc: 'Student email address', required: false },
+      { tag: '{{studentUid}}', label: 'Student UID', desc: 'Student user ID identifier', required: false },
+      { tag: '{{startTime}}', label: 'Start Time', desc: 'Lesson session start time (ISO format)', required: false },
+      { tag: '{{endTime}}', label: 'End Time', desc: 'Lesson session end time (ISO format)', required: false },
       { tag: '{{studentRecords}}', label: 'Student Records', desc: 'Summary of session student interactions', required: false },
     ],
     outputSchema: {
@@ -645,3 +651,37 @@ export function validatePrompt(promptText, applyTo) {
     errors,
   };
 }
+
+/**
+ * Interpolates dynamic runtime placeholders in prompt templates.
+ * Supports standard placeholders across video, image, audio, and translation flows:
+ * {{captureInterval}}, {{frameRate}}, {{intervalMinutes}}, {{classId}}, {{studentEmail}},
+ * {{studentUid}}, {{studentName}}, {{startTime}}, {{endTime}}, {{courseContext}},
+ * {{targetLanguage}}, and {{studentRecords}}.
+ */
+export function interpolatePromptPlaceholders(promptTemplate, context = {}) {
+  if (!promptTemplate || typeof promptTemplate !== 'string') return '';
+
+  const captureInterval = typeof context.captureInterval === 'number' && context.captureInterval > 0
+    ? context.captureInterval
+    : (typeof context.frameRate === 'number' && context.frameRate > 0 ? context.frameRate : 15);
+
+  const intervalMinutes = (captureInterval / 60).toFixed(2).replace(/\.?0+$/, '');
+
+  return promptTemplate
+    .replace(/\{\{\s*captureInterval\s*\}\}/g, String(captureInterval))
+    .replace(/\{\{\s*frameRate\s*\}\}/g, String(captureInterval))
+    .replace(/\{\{\s*intervalMinutes\s*\}\}/g, String(intervalMinutes))
+    .replace(/\{\{\s*classId\s*\}\}/g, String(context.classId || ''))
+    .replace(/\{\{\s*studentEmail\s*\}\}/g, String(context.studentEmail || ''))
+    .replace(/\{\{\s*studentUid\s*\}\}/g, String(context.studentUid || ''))
+    .replace(/\{\{\s*studentName\s*\}\}/g, String(context.studentName || context.studentEmail || ''))
+    .replace(/\{\{\s*startTime\s*\}\}/g, String(context.startTime || ''))
+    .replace(/\{\{\s*endTime\s*\}\}/g, String(context.endTime || ''))
+    .replace(/\{\{\s*courseContext\s*\}\}/g, String(context.courseContext || ''))
+    .replace(/\{\{\s*targetLanguage\s*\}\}/g, String(context.targetLanguage || ''))
+    .replace(/\{\{\s*studentRecords\s*\}\}/g, String(
+      context.studentRecords || (context.studentEmail ? `Student: ${context.studentEmail} (${context.studentUid || 'N/A'})` : '')
+    ));
+}
+

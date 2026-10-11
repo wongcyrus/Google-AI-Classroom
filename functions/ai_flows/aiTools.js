@@ -349,7 +349,53 @@ export const recordActualWorkingTime = ai.defineTool(
       // Guardrail: working minutes cannot be negative and cannot exceed total lesson duration
       const durationMinutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
       const normalizedMinutes = Math.max(0, Math.round(workingMinutes));
-      const cappedWorkingMinutes = durationMinutes > 0 ? Math.min(normalizedMinutes, durationMinutes) : normalizedMinutes;
+      let cappedWorkingMinutes = durationMinutes > 0 ? Math.min(normalizedMinutes, durationMinutes) : normalizedMinutes;
+
+      // Guardrail: clamp working minutes against physical screencast video duration if available
+      try {
+        let classCaptureInterval = 15;
+        try {
+          const classDoc = await db.collection('classes').doc(classId).get();
+          if (classDoc && typeof classDoc.data === 'function') {
+            const cData = classDoc.data();
+            if (cData?.frameRate) {
+              classCaptureInterval = Number(cData.frameRate);
+            }
+          }
+        } catch (cErr) {
+          console.warn('[recordActualWorkingTime] Error fetching class frameRate:', cErr.message);
+        }
+
+        const vCol = db.collection('videoJobs');
+        if (typeof vCol.where === 'function') {
+          const videoJobsSnap = await vCol
+            .where('classId', '==', classId)
+            .where('studentUid', '==', studentUid)
+            .where('status', '==', 'completed')
+            .get();
+
+          if (videoJobsSnap && typeof videoJobsSnap.forEach === 'function') {
+            videoJobsSnap.forEach(vDoc => {
+              const vData = vDoc.data ? vDoc.data() : null;
+              if (!vData) return;
+              const vStart = vData.startTime?.toDate ? vData.startTime.toDate() : (vData.startTime ? new Date(vData.startTime) : null);
+              if (vStart && Math.abs(vStart.getTime() - startDate.getTime()) <= 30 * 60 * 1000) {
+                if (typeof vData.duration === 'number' && vData.duration > 0) {
+                  // Screencast is compiled at 1 fps from periodic screenshots.
+                  // 1 frame of video = captureInterval seconds of real-world activity.
+                  const captureInterval = typeof vData.captureInterval === 'number'
+                    ? vData.captureInterval
+                    : classCaptureInterval;
+                  const maxVideoMinutes = Math.min(durationMinutes, Math.max(1, Math.round((vData.duration * captureInterval) / 60)));
+                  cappedWorkingMinutes = Math.min(cappedWorkingMinutes, maxVideoMinutes);
+                }
+              }
+            });
+          }
+        }
+      } catch (vErr) {
+        console.warn('[recordActualWorkingTime] Error checking videoJobs for duration cap:', vErr);
+      }
 
       await db.runTransaction(async (transaction) => {
         const lessonDoc = await transaction.get(lessonRef);

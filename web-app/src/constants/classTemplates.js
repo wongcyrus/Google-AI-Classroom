@@ -26,7 +26,7 @@ export const CLASS_TEMPLATES = {
       classType: 'lecture',
       automaticCapture: false,
       captureMode: 'single',
-      automaticCombine: false,
+      automaticCombine: true,
       requireFullScreenOnly: false,
       aiMonitoringMode: 'off',
       enableClientAi: false,

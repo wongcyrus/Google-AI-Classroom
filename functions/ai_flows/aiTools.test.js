@@ -11,9 +11,20 @@ const mockDoc = vi.fn((id) => ({
   collection: mockCollection,
 }));
 
+const mockWhereChain = () => {
+  const chain = {
+    where: vi.fn(() => chain),
+    get: vi.fn().mockResolvedValue({ empty: true, forEach: () => {} }),
+  };
+  return chain;
+};
+
+let currentWhereChain = mockWhereChain();
+
 const mockCollection = vi.fn((name) => ({
   doc: mockDoc,
   add: mockAdd,
+  where: vi.fn((...args) => currentWhereChain.where(...args)),
 }));
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -255,6 +266,73 @@ describe('AI Invigilation Tools (aiTools.js)', () => {
       });
 
       expect(result).toContain('Successfully recorded 60 working minutes');
+    });
+
+    it('clamps working duration to physical videoJobs duration if student screencast was short', async () => {
+      // Mock videoJobs returning a 1-second video (1 frame = 1 minute)
+      currentWhereChain = {
+        where: vi.fn(() => currentWhereChain),
+        get: vi.fn().mockResolvedValue({
+          empty: false,
+          forEach: (cb) => {
+            cb({
+              data: () => ({
+                studentUid: 's1',
+                startTime: new Date('2026-08-30T09:00:00.000Z'),
+                duration: 1, // 1 second
+                status: 'completed',
+              }),
+            });
+          },
+        }),
+      };
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's1',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 50, // AI hallucinated 50 minutes
+      });
+
+      expect(result).toContain('Successfully recorded 1 working minutes');
+
+      // Reset mock
+      currentWhereChain = mockWhereChain();
+    });
+
+    it('dynamically scales clamped working time using captureInterval on videoJob', async () => {
+      // 60-second video with captureInterval = 10s: 60 * 10 / 60 = 10 minutes
+      currentWhereChain = {
+        where: vi.fn(() => currentWhereChain),
+        get: vi.fn().mockResolvedValue({
+          empty: false,
+          forEach: (cb) => {
+            cb({
+              data: () => ({
+                studentUid: 's2',
+                startTime: new Date('2026-08-30T09:00:00.000Z'),
+                duration: 60,
+                captureInterval: 10,
+                status: 'completed',
+              }),
+            });
+          },
+        }),
+      };
+
+      const result = await recordActualWorkingTime({
+        studentUid: 's2',
+        classId: 'CLASS_1',
+        startTime: '2026-08-30T09:00:00.000Z',
+        endTime: '2026-08-30T10:00:00.000Z',
+        workingMinutes: 45,
+      });
+
+      expect(result).toContain('Successfully recorded 10 working minutes');
+
+      // Reset mock
+      currentWhereChain = mockWhereChain();
     });
   });
 

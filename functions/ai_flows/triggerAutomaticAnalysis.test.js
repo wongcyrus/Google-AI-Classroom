@@ -167,6 +167,51 @@ describe('triggerAutomaticAnalysis Cloud Function', () => {
     expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('not configured for automatic analysis'));
   });
 
+  it('triggers when automaticCombine is undefined (default-on) and prompt is present', async () => {
+    const event = {
+      params: { jobId: 'videoJob_123' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'it3101-ab',
+            startTime: timestampObj,
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    mockDocGet
+      .mockImplementationOnce(() => Promise.resolve({
+        exists: true,
+        data: () => ({
+          // automaticCombine omitted -> defaults to true!
+          students: { 'student_1': true, 'student_2': true },
+          afterClassVideoPrompt: { promptText: 'Check focus' },
+          aiModel: 'gemini-3.5-flash-lite',
+        }),
+      }))
+      .mockImplementationOnce(() => Promise.resolve({
+        exists: false,
+      }));
+
+    mockCollectionGet.mockImplementationOnce(() => Promise.resolve({
+      size: 2,
+    }));
+
+    await triggerAutomaticAnalysis(event);
+
+    expect(mockDocSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'auto-analysis-it3101-ab-2026-09-24T07:00:00.000Z',
+        classId: 'it3101-ab',
+        status: 'pending',
+      })
+    );
+  });
+
   it('skips when afterClassVideoPrompt is missing', async () => {
     const event = {
       params: { jobId: 'videoJob_123' },

@@ -104,6 +104,7 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
             studentEmail: video.studentEmail, 
             videoPath: relativePath,
             path: relativePath,
+            captureInterval: video.captureInterval,
           });
         }
       });
@@ -132,7 +133,14 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
 
     const classRef = db.collection('classes').doc(jobData.classId);
     const classDoc = await classRef.get();
-    const classData = classDoc.exists ? classDoc.data() : {};
+    const classData = (classDoc && typeof classDoc.data === 'function' && classDoc.exists) ? classDoc.data() : {};
+    const configuredCaptureInterval = classData.sessionFrameRate || classData.frameRate || 15;
+    videosToAnalyze.forEach(v => {
+      if (!v.captureInterval) {
+        v.captureInterval = configuredCaptureInterval;
+      }
+    });
+
     const modelToUse = jobData.model || classData.aiModel || 'gemini-3.5-flash-lite';
     const timezone = classData.schedule?.timeZone || 'UTC';
     const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';

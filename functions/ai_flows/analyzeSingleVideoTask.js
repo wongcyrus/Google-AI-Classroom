@@ -8,6 +8,7 @@ import { resolveVideoDetails } from './processVideoAnalysisJob.js';
 import { estimateCost } from './cost.js';
 import { checkQuota } from './quotaManagement.js';
 import { logJob } from './jobLogger.js';
+import { interpolatePromptPlaceholders } from './promptInterpolation.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -111,7 +112,21 @@ export const analyzeSingleVideoTask = onTaskDispatched(
       return;
     }
 
-    const promptTemplate = `The following video is from a student.\nEmail: ${video.studentEmail}\nStudent UID: ${video.studentUid}\nClass ID: ${classId}\nThe video was recorded between ${startDate} and ${endDate}.\nPlease analyze the video based on the user's prompt: "${prompt}"\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
+    const captureInterval = typeof video.captureInterval === 'number' && video.captureInterval > 0
+      ? video.captureInterval
+      : 15;
+
+    const resolvedUserPrompt = interpolatePromptPlaceholders(prompt, {
+      captureInterval,
+      frameRate: captureInterval,
+      classId,
+      studentEmail: video.studentEmail,
+      studentUid: video.studentUid,
+      startTime: startDate,
+      endTime: endDate,
+    });
+
+    const promptTemplate = `The following video is from a student.\nEmail: ${video.studentEmail}\nStudent UID: ${video.studentUid}\nClass ID: ${classId}\nThe video was recorded between ${startDate} and ${endDate}.\nPlease analyze the video based on the user's prompt: "${resolvedUserPrompt}"\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
     try {
       const crypto = await import('crypto');
@@ -194,6 +209,7 @@ export const analyzeSingleVideoTask = onTaskDispatched(
         startTime: startTimeIso,
         endTime: endTimeIso,
         model: modelToUse,
+        frameRate: typeof video.captureInterval === 'number' ? video.captureInterval : undefined,
       });
 
       const isSuccess = Boolean(result && result.jobId && (!result.result || !result.result.startsWith('Error:')));

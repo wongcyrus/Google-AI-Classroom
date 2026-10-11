@@ -10,6 +10,7 @@ import {
   getPlaceholderTextForSelector,
   getDropdownPlaceholderForSelector,
   validatePrompt,
+  interpolatePromptPlaceholders,
   DEFAULT_LECTURE_STT_PROMPT,
   DEFAULT_LECTURE_TRANSLATION_PROMPT,
   DEFAULT_LECTURE_STT_PROMPT_TEXT,
@@ -192,6 +193,40 @@ describe('promptRegistry Constants & Helper Utilities', () => {
       expect(DEFAULT_LECTURE_TRANSLATION_PROMPT.promptText).toBe(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT);
       expect(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT).toContain('Lecture Subtitle & Terminology Translator');
       expect(DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT).toContain('{{targetLanguage}}');
+    });
+  });
+
+  describe('Video Category Dynamic Placeholders & Interpolation', () => {
+    it('supports dynamic capture interval and student metadata placeholders in after_class_video', () => {
+      const videoPlaceholders = getPlaceholdersForPrompt(['Per Video']);
+      const tags = videoPlaceholders.map((p) => p.tag);
+      expect(tags).toContain('{{captureInterval}}');
+      expect(tags).toContain('{{frameRate}}');
+      expect(tags).toContain('{{classId}}');
+      expect(tags).toContain('{{studentEmail}}');
+      expect(tags).toContain('{{studentUid}}');
+      expect(tags).toContain('{{startTime}}');
+      expect(tags).toContain('{{endTime}}');
+      expect(tags).toContain('{{studentRecords}}');
+
+      // None of them are mandatory so teachers are never blocked
+      expect(videoPlaceholders.every((p) => p.required === false)).toBe(true);
+    });
+
+    it('interpolates video placeholders with runtime values', () => {
+      const template = 'Class {{classId}}: Analyzing {{studentEmail}} ({{studentUid}}) recorded at {{captureInterval}}s interval ({{frameRate}}s / {{intervalMinutes}}m) from {{startTime}} to {{endTime}}.';
+      const context = {
+        classId: 'itp4124-l',
+        studentEmail: 'student@school.edu',
+        studentUid: 'u_123',
+        captureInterval: 30,
+        frameRate: 30,
+        startTime: '2026-10-11T09:00:00Z',
+        endTime: '2026-10-11T12:00:00Z',
+      };
+
+      const interpolated = interpolatePromptPlaceholders(template, context);
+      expect(interpolated).toBe('Class itp4124-l: Analyzing student@school.edu (u_123) recorded at 30s interval (30s / 0.5m) from 2026-10-11T09:00:00Z to 2026-10-11T12:00:00Z.');
     });
   });
 });

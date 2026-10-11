@@ -59,7 +59,7 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   const classData = classDoc.data();
   const { students, afterClassVideoPrompt } = classData;
 
-  if (!classData.automaticCombine || !afterClassVideoPrompt || !afterClassVideoPrompt.promptText) {
+  if (classData.automaticCombine === false || !afterClassVideoPrompt || !afterClassVideoPrompt.promptText) {
     logger.info(`Class ${classId} is not configured for automatic analysis.`);
     return;
   }

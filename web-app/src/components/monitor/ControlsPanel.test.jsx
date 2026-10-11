@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import ControlsPanel from './ControlsPanel';
 
@@ -164,17 +164,24 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(handleAudioCaptureToggle).toHaveBeenCalledWith(false);
 
     const selects = screen.getAllByRole('combobox');
-    expect(selects.length).toBeGreaterThanOrEqual(2);
+    expect(selects.length).toBeGreaterThanOrEqual(1);
 
-    // Frame rate select
-    const frameRateSelect = screen.getByLabelText('Webcam capture interval');
-    fireEvent.change(frameRateSelect, { target: { value: '5' } });
-    expect(handleFrameRateChange).toHaveBeenCalled();
+    // Frame rate display (read-only class setting badge)
+    const intervalBadge = screen.getByLabelText('Class capture interval');
+    expect(intervalBadge).toBeInTheDocument();
+    expect(within(intervalBadge).getByText(/Class Setting/i)).toBeInTheDocument();
 
     // Max image size select
     const maxImageSizeSelect = screen.getByLabelText('Webcam max image size');
     fireEvent.change(maxImageSizeSelect, { target: { value: String(500 * 1024) } });
     expect(handleMaxImageSizeChange).toHaveBeenCalled();
+  });
+
+  it('displays read-only class setting interval badge and links to Class Settings', () => {
+    render(<ControlsPanel {...defaultProps} frameRate={15} isCapturing={true} />);
+    expect(screen.getByLabelText('Class capture interval')).toBeInTheDocument();
+    expect(screen.getByText(/15s \/ frame/i)).toBeInTheDocument();
+    expect(screen.getByText(/Configured in Class Settings/i)).toBeInTheDocument();
   });
 
   it('renders quota and usage indicators correctly', () => {
@@ -381,11 +388,7 @@ describe('ControlsPanel Full Component Suite', () => {
       expect(handleAudioCaptureToggle).toHaveBeenCalledWith(true);
     }
 
-    const intervalSelect = comboboxes.find(cb => cb.querySelector('option[value="5"]'));
-    if (intervalSelect) {
-      fireEvent.change(intervalSelect, { target: { value: '5' } });
-      expect(handleFrameRateChange).toHaveBeenCalled();
-    }
+    expect(screen.getByLabelText('Class capture interval')).toBeInTheDocument();
 
     const maxSizeSelect = comboboxes.find(cb => cb.querySelector('option[value="262144"]'));
     if (maxSizeSelect) {

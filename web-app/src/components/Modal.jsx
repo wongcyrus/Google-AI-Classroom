@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false, children }) => {
+const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false, children, contentStyle = {}, className = '' }) => {
     if (!show) return null;
     return (
         <div 
@@ -21,6 +21,7 @@ const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false,
             onClick={onClose}
         >
             <div 
+                className={className}
                 style={{ 
                     backgroundColor: 'var(--color-surface, #ffffff)', 
                     padding: '1.75rem', 
@@ -34,7 +35,8 @@ const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false,
                     height: '75vh', 
                     maxHeight: '90vh', 
                     display: 'flex', 
-                    flexDirection: 'column'
+                    flexDirection: 'column',
+                    ...contentStyle
                 }} 
                 onClick={e => e.stopPropagation()}
             >

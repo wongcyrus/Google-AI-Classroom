@@ -122,6 +122,7 @@ const PromptManagement = () => {
     let defaultApply = [];
     if (tab === 'translations') defaultApply = ['Live Subtitles & Translation'];
     else if (tab === 'rubrics') defaultApply = ['Lab Rubric Milestones'];
+    else if (tab === 'videos') defaultApply = ['Per Video'];
     setApplyTo(defaultApply);
     setAccessLevel('private');
     setSharedWithUids([]);

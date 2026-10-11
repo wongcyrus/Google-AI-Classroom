@@ -661,16 +661,31 @@ const ControlsPanel = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginBottom: '3px' }}>
-                      ⏱️ Interval
+                      ⏱️ Capture Interval
                     </label>
-                    <select 
-                      aria-label="Webcam capture interval"
-                      value={frameRate} 
-                      onChange={handleFrameRateChange}
-                      style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    <div 
+                      aria-label="Class capture interval"
+                      title="Capture interval is configured at the class level in Class Settings to guarantee uniform video time-lapses and consistent AI metrics."
+                      style={{ 
+                        width: '100%', 
+                        padding: '6px 8px', 
+                        borderRadius: '6px', 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '0.82rem', 
+                        background: '#f1f5f9',
+                        color: '#334155',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
                     >
-                      {frameRateOptions.map(rate => <option key={rate} value={rate}>{rate}s</option>)}
-                    </select>
+                      <span>⏱️ {frameRate || 15}s / frame</span>
+                      <span style={{ fontSize: '0.65rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '4px' }}>Class Setting</span>
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>
+                      ⚙️ Configured in Class Settings
+                    </div>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginBottom: '3px' }}>
