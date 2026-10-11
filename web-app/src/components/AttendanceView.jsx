@@ -158,7 +158,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   const filename = `attendance-${classId}-${formatFilenameDate(effectiveStart)}-${formatFilenameDate(effectiveEnd)}.xlsx`;
 
   const handleFetchAttendance = async () => {
-    if (!classId || !effectiveStart || !effectiveEnd) return;
+    if (!classId || !effectiveStart || !effectiveEnd || lessonDurationInMinutes <= 0) return;
 
     setLoadingAttendance(true);
     const getAttendanceData = httpsCallable(functions, 'getAttendanceData');
@@ -168,89 +168,107 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         setAttendanceData(result.data.attendanceData);
       }
     } catch (error) {
-      console.error("Error fetching attendance data: ", error);
-      setAttendanceData([]);
+      console.error("Error calculating live attendance: ", error);
     } finally {
       setLoadingAttendance(false);
     }
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchLessonData = async () => {
       if (!classId || !effectiveStart || !effectiveEnd) return;
       setLoadingLessonData(true);
+      setLoadingAttendance(true);
       setAttendanceData([]); // Clear previous data
       try {
         const lessonId = await getLessonId(effectiveStart, effectiveEnd, timezone);
         const lessonRef = doc(db, 'classes', classId, 'lessons', lessonId);
         const lessonSnap = await getDoc(lessonRef);
 
-        let hasCalculatedAttendance = false;
+        const classRef = doc(db, 'classes', classId);
+        const classSnap = await getDoc(classRef);
+        const classData = classSnap?.exists?.() ? classSnap.data() : {};
+        const studentsMap = classData.students || {};
+        const profilesMap = classData.studentProfiles || {};
 
-        if (lessonSnap.exists()) {
-          const classRef = doc(db, 'classes', classId);
-          const classSnap = await getDoc(classRef);
-          if (classSnap.exists()) {
-            const classData = classSnap.data();
-            const studentsMap = classData.students || {};
-            const profilesMap = classData.studentProfiles || {};
-            setStudentProfiles(profilesMap);
-            const lessonDocData = lessonSnap.data();
-            const studentsWithDetails = Object.entries(lessonDocData.students || {}).map(([uid, data]) => {
-              const email = studentsMap[uid] || 'Unknown';
-              const prof = getStudentProfile(email, profilesMap);
-              return {
-                uid,
-                email,
-                displayName: getStudentDisplayName(email, profilesMap),
-                studentClass: prof.studentClass,
-                programme: prof.programme,
-                ...data,
-              };
-            });
-            setLessonData({ ...lessonDocData, students: studentsWithDetails });
+        if (cancelled) return;
+        setStudentProfiles(profilesMap);
 
-            const initialAttendance = studentsWithDetails.map(student => {
-              const totalMinutes = student.sharedScreenMinutes ?? student.workingMinutes;
-              if (totalMinutes === undefined) return null;
-              return {
-                email: student.email,
-                totalMinutes: totalMinutes,
-                percentage: lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%',
-                attendance: student.attendance || (totalMinutes > 0
-                  ? Array(lessonDurationInMinutes).fill(0).map((_, idx) => (idx < totalMinutes ? 1 : 0))
-                  : Array(lessonDurationInMinutes).fill(0)),
-              };
-            }).filter(Boolean);
+        if (lessonSnap?.exists?.()) {
+          const lessonDocData = lessonSnap.data();
+          const studentsWithDetails = Object.entries(lessonDocData.students || {}).map(([uid, data]) => {
+            const email = studentsMap[uid] || 'Unknown';
+            const prof = getStudentProfile(email, profilesMap);
+            return {
+              uid,
+              email,
+              displayName: getStudentDisplayName(email, profilesMap),
+              studentClass: prof.studentClass,
+              programme: prof.programme,
+              ...data,
+            };
+          });
+          setLessonData({ ...lessonDocData, students: studentsWithDetails });
 
-            if (initialAttendance.length > 0) {
-              setAttendanceData(initialAttendance);
-              hasCalculatedAttendance = true;
-            }
-          } else {
-            setLessonData(lessonSnap.data());
+          const initialAttendance = studentsWithDetails.map(student => {
+            const totalMinutes = student.sharedScreenMinutes ?? student.workingMinutes;
+            if (totalMinutes === undefined) return null;
+            return {
+              email: student.email,
+              totalMinutes: totalMinutes,
+              percentage: lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%',
+              attendance: student.attendance || (totalMinutes > 0
+                ? Array(lessonDurationInMinutes).fill(0).map((_, idx) => (idx < totalMinutes ? 1 : 0))
+                : Array(lessonDurationInMinutes).fill(0)),
+            };
+          }).filter(Boolean);
+
+          if (initialAttendance.length > 0) {
+            setAttendanceData(initialAttendance);
           }
         } else {
-          setLessonData(null);
+          // Pre-populate with enrolled students so roster is immediately visible
+          const enrolledStudents = Object.entries(studentsMap).map(([uid, email]) => {
+            const prof = getStudentProfile(email, profilesMap);
+            return {
+              uid,
+              email,
+              displayName: getStudentDisplayName(email, profilesMap),
+              studentClass: prof.studentClass,
+              programme: prof.programme,
+              totalMinutes: 0,
+              workingMinutes: 0,
+              attendance: Array(lessonDurationInMinutes > 0 ? lessonDurationInMinutes : 0).fill(0),
+            };
+          });
+          setLessonData({ students: enrolledStudents });
         }
 
-        // Auto-fetch attendance calculation if not yet recorded in the lesson doc
-        if (!hasCalculatedAttendance && lessonDurationInMinutes > 0) {
+        // Automatic attendance calculation whenever lesson or time range is changed
+        if (lessonDurationInMinutes > 0) {
           const getAttendance = httpsCallable(functions, 'getAttendanceData');
           const result = await getAttendance({ classId, startTime: effectiveStart, endTime: effectiveEnd });
-          if (result?.data?.attendanceData) {
+          if (!cancelled && result?.data?.attendanceData) {
             setAttendanceData(result.data.attendanceData);
           }
         }
       } catch (error) {
-        console.error("Error fetching lesson data:", error);
-        setLessonData(null);
+        console.error("Error fetching lesson data and calculating attendance:", error);
       } finally {
-        setLoadingLessonData(false);
+        if (!cancelled) {
+          setLoadingLessonData(false);
+          setLoadingAttendance(false);
+        }
       }
     };
 
     fetchLessonData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedLesson, classId, effectiveStart, effectiveEnd, lessonDurationInMinutes, timezone]);
 
   const handleExportToExcel = async () => {
@@ -314,6 +332,8 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
             className="attendance-btn attendance-btn-primary"
             onClick={handleFetchAttendance}
             disabled={loadingAttendance}
+            aria-label="Calculate Live Attendance"
+            aria-busy={loadingAttendance}
           >
             {loadingAttendance ? 'Calculating...' : 'Calculate Live Attendance'}
           </button>
@@ -572,7 +592,9 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
               )}
             </div>
           </>
-        ) : !(loadingAttendance || loadingLessonData) && <p className="attendance-empty-notice">Click the button to calculate live attendance. No data available.</p>}
+        ) : !(loadingAttendance || loadingLessonData) && (
+          <p className="attendance-empty-notice">No attendance or activity recorded for this lesson time slot.</p>
+        )}
       </div>
 
       <Modal show={!!selectedStudent} onClose={() => setSelectedStudent(null)} title={`AI Analysis for ${getStudentDisplayName(selectedStudent?.email, studentProfiles)}`}>

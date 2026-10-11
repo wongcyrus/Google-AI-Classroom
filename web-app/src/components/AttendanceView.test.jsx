@@ -5,9 +5,7 @@ import AttendanceView from './AttendanceView';
 
 const mockCallable = vi.fn().mockResolvedValue({
   data: {
-    attendanceData: [
-      { email: 'student1@school.edu', totalMinutes: 45, percentage: '75.00%', attendance: [1, 1, 0] },
-    ],
+    attendanceData: [],
   },
 });
 
@@ -335,4 +333,39 @@ describe('AttendanceView Component Suite', () => {
     expect(toggledRows[1]).toHaveTextContent('alice@school.edu');
     expect(toggledRows[2]).toHaveTextContent('bob@school.edu');
   });
+
+  it('automatically recalculates live attendance when selectedLesson changes', async () => {
+    mockGetDoc.mockResolvedValue({
+      exists: () => false,
+    });
+
+    const { rerender } = render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00"
+        endTime="2026-08-30T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockCallable).toHaveBeenCalled();
+    });
+
+    mockCallable.mockClear();
+
+    rerender(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-09-06T10:00:00.000Z"
+        startTime="2026-09-06T10:00:00"
+        endTime="2026-09-06T11:00:00"
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockCallable).toHaveBeenCalled();
+    });
+  });
 });
+
