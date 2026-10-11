@@ -136,8 +136,12 @@ const TasksManagementView = ({
     setIsEditorOpen(true);
   };
 
+  const [isExtractingRetro, setIsExtractingRetro] = useState(false);
+
   const handleSaveTask = async (taskPayload) => {
     if (!classId) return;
+
+    let targetTaskId = editingTask?.id;
 
     if (editingTask && editingTask.id) {
       const taskDocRef = doc(db, 'classes', classId, 'tasks', editingTask.id);
@@ -148,12 +152,55 @@ const TasksManagementView = ({
     } else {
       const tasksRef = collection(db, 'classes', classId, 'tasks');
       const newTaskDocRef = doc(tasksRef);
+      targetTaskId = newTaskDocRef.id;
       await setDoc(newTaskDocRef, {
         ...taskPayload,
         status: 'published',
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+    }
+
+    if (taskPayload.scheduleMode === 'retroactive' && taskPayload.autoExtractOnSave && targetTaskId) {
+      try {
+        setIsExtractingRetro(true);
+        const extractFn = httpsCallable(functions, 'extractRetroactiveTaskSubmissions');
+        const res = await extractFn({
+          classId,
+          taskId: targetTaskId,
+          ...(taskPayload.retroactiveConfig || {}),
+        });
+        const d = res.data || {};
+        alert(`Retroactive Task Extraction Complete!\nProcessed: ${d.processedCount || 0} student(s)\nAbsent: ${d.absentCount || 0} student(s)\nAI rubric grading has been queued.`);
+      } catch (extractErr) {
+        console.error('Auto retroactive extraction failed:', extractErr);
+        alert('Task saved, but retroactive extraction encountered an error: ' + (extractErr.message || extractErr));
+      } finally {
+        setIsExtractingRetro(false);
+      }
+    }
+  };
+
+  const handleTriggerRetroactiveExtraction = async (task) => {
+    if (!classId || !task) return;
+    const confirmMsg = `Extract and grade submissions for "${task.title}" from existing student class videos?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setIsExtractingRetro(true);
+      const extractFn = httpsCallable(functions, 'extractRetroactiveTaskSubmissions');
+      const res = await extractFn({
+        classId,
+        taskId: task.id,
+        ...(task.retroactiveConfig || {}),
+      });
+      const data = res.data || {};
+      alert(`Retroactive Extraction Complete!\nProcessed: ${data.processedCount || 0} student(s)\nAbsent: ${data.absentCount || 0} student(s)\nAI rubric grading has been queued.`);
+    } catch (err) {
+      console.error('Retroactive extraction failed:', err);
+      alert('Retroactive extraction failed: ' + (err.message || err));
+    } finally {
+      setIsExtractingRetro(false);
     }
   };
 
@@ -303,6 +350,8 @@ const TasksManagementView = ({
                           ? 'bg-purple-100 text-purple-700'
                           : task.scheduleMode === 'in_class'
                           ? 'bg-blue-100 text-blue-700'
+                          : task.scheduleMode === 'retroactive'
+                          ? 'bg-amber-100 text-amber-700'
                           : 'bg-emerald-100 text-emerald-700'
                       }`}
                     >
@@ -310,6 +359,8 @@ const TasksManagementView = ({
                         ? '🏠 Homework'
                         : task.scheduleMode === 'in_class'
                         ? '🏫 In-Class'
+                        : task.scheduleMode === 'retroactive'
+                        ? '⏪ Post-Class'
                         : '🔄 Flexible'}
                     </span>
 
@@ -359,13 +410,27 @@ const TasksManagementView = ({
                 </div>
 
                 <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => setSelectedTaskForGrading(task)}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1"
-                  >
-                    <span>📊</span>
-                    <span>Grading Matrix</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setSelectedTaskForGrading(task)}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1"
+                    >
+                      <span>📊</span>
+                      <span>Grading Matrix</span>
+                    </button>
+
+                    {task.scheduleMode === 'retroactive' && (
+                      <button
+                        onClick={() => handleTriggerRetroactiveExtraction(task)}
+                        disabled={isExtractingRetro}
+                        className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1 disabled:opacity-50"
+                        title="Extract or re-extract submissions from student class videos"
+                      >
+                        <span>✂️</span>
+                        <span>{isExtractingRetro ? 'Extracting...' : 'Extract Clips'}</span>
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-1">
                     <button

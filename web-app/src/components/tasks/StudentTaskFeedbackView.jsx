@@ -63,7 +63,7 @@ const StudentTaskFeedbackView = ({
             <span>📋</span> {task.title}
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            Attempt #{submission.attemptsCount || 1} • Evaluated by Gemini 3.8 Flash
+            Attempt #{submission.attemptsCount || 1} • {task.scheduleMode === 'retroactive' ? '⏪ Extracted from Class Video • ' : ''}Evaluated by Gemini 3.8 Flash
           </p>
         </div>
 

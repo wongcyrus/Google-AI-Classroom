@@ -8,3 +8,4 @@ export * from './getStudentVideoPlaybackUrl.js';
 export * from './mergeLectureRecordings.js';
 export * from './onLectureVideoFinalized.js';
 export * from './mergeStudentSessionAudio.js';
+export * from './extractRetroactiveTaskSubmissions.js';

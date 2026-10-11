@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
-import { db } from '../../firebase-config';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../firebase-config';
 import StudentBadge from '../common/StudentBadge';
 import { exportTaskGradingToExcel } from '../../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../../utils/studentDisplayUtils';
@@ -59,6 +60,64 @@ const TaskGradingMatrixView = ({
   const [previewVideoUrl, setPreviewVideoUrl] = useState(null);
   const [previewVideoTitle, setPreviewVideoTitle] = useState('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  // Retroactive extraction modal state
+  const [showRetroactiveModal, setShowRetroactiveModal] = useState(false);
+  const [retroTargetStudentUid, setRetroTargetStudentUid] = useState(null);
+  const [isExtractingRetro, setIsExtractingRetro] = useState(false);
+  const [retroExtractionResult, setRetroExtractionResult] = useState(null);
+  const [retroConfig, setRetroConfig] = useState({
+    sessionDate: task?.retroactiveConfig?.sessionDate || new Date().toISOString().slice(0, 10),
+    windowType: task?.retroactiveConfig?.windowType || 'relative_offset',
+    startMinute: task?.retroactiveConfig?.startMinute ?? 0,
+    durationMinutes: task?.retroactiveConfig?.durationMinutes ?? 30,
+    startTime: task?.retroactiveConfig?.startTime
+      ? (task.retroactiveConfig.startTime.toDate ? task.retroactiveConfig.startTime.toDate().toISOString().slice(0, 16) : new Date(task.retroactiveConfig.startTime).toISOString().slice(0, 16))
+      : '',
+    endTime: task?.retroactiveConfig?.endTime
+      ? (task.retroactiveConfig.endTime.toDate ? task.retroactiveConfig.endTime.toDate().toISOString().slice(0, 16) : new Date(task.retroactiveConfig.endTime).toISOString().slice(0, 16))
+      : '',
+  });
+
+  const handleOpenRetroactiveModal = (studentUid = null) => {
+    setRetroTargetStudentUid(studentUid);
+    setRetroExtractionResult(null);
+    setShowRetroactiveModal(true);
+  };
+
+  const handleExecuteRetroactiveExtraction = async () => {
+    if (!classId || !task?.id) return;
+    setIsExtractingRetro(true);
+    setRetroExtractionResult(null);
+    try {
+      const extractFn = httpsCallable(functions, 'extractRetroactiveTaskSubmissions');
+      const res = await extractFn({
+        classId,
+        taskId: task.id,
+        windowType: retroConfig.windowType,
+        startOffsetSeconds: (Number(retroConfig.startMinute) || 0) * 60,
+        endOffsetSeconds: ((Number(retroConfig.startMinute) || 0) + (Number(retroConfig.durationMinutes) || 30)) * 60,
+        startTime: retroConfig.startTime ? new Date(retroConfig.startTime).toISOString() : null,
+        endTime: retroConfig.endTime ? new Date(retroConfig.endTime).toISOString() : null,
+        sessionDate: retroConfig.sessionDate || null,
+        studentUids: retroTargetStudentUid ? [retroTargetStudentUid] : null,
+      });
+      const data = res.data || {};
+      setRetroExtractionResult({
+        success: true,
+        message: `Extraction complete! Processed ${data.processedCount || 0} student(s), ${data.absentCount || 0} absent. AI grading queued.`,
+        data,
+      });
+    } catch (err) {
+      console.error('Retroactive extraction failed:', err);
+      setRetroExtractionResult({
+        success: false,
+        message: err.message || 'Failed to extract submissions from class videos.',
+      });
+    } finally {
+      setIsExtractingRetro(false);
+    }
+  };
 
   // Subscribe to completed videoJobs for this task
   useEffect(() => {
@@ -148,6 +207,7 @@ const TaskGradingMatrixView = ({
         (statusFilter === 'evaluated' && s.status === 'evaluated') ||
         (statusFilter === 'in_progress' && (
           s.status === 'in_progress' ||
+          s.status === 'awaiting_class_video' ||
           s.status === 'compiling' ||
           s.status === 'compiling_complete' ||
           s.status === 'evaluating' ||
@@ -425,6 +485,14 @@ const TaskGradingMatrixView = ({
 
         <div className="flex items-center gap-3 flex-wrap">
           <button
+            onClick={() => handleOpenRetroactiveModal(null)}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all"
+            title="Slice and evaluate submissions from student class videos"
+          >
+            <span>✂️</span>
+            <span>Retroactive Slicing</span>
+          </button>
+          <button
             onClick={handleBackupAllTaskVideos}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all"
             title={`Backup task videos to Google Drive folder: ${baseFolderName || 'Classroom Archives'} / ${className || classId} / Tasks / ${task.title || 'Task'}`}
@@ -579,10 +647,10 @@ const TaskGradingMatrixView = ({
                             </span>
                           );
                         }
-                        if (sub.status === 'compiling') {
+                        if (sub.status === 'compiling' || sub.status === 'awaiting_class_video') {
                           return (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 animate-pulse">
-                              <span>⚙️</span> Compiling Video...
+                              <span>⚙️</span> {sub.status === 'awaiting_class_video' ? 'Awaiting Class Video...' : 'Compiling Video...'}
                             </span>
                           );
                         }
@@ -670,7 +738,27 @@ const TaskGradingMatrixView = ({
                             ☁️ Backup
                           </button>
                         ) : (
-                          <span className="text-[11px] text-gray-400">No video</span>
+                          <div className="inline-flex items-center gap-1">
+                            <span className="text-[11px] text-gray-400">No video</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRetroactiveModal(sub.studentUid)}
+                              className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-bold"
+                              title="Slice clip from this student's class video"
+                            >
+                              ✂️ Slice
+                            </button>
+                          </div>
+                        )}
+                        {sub.hasVideo && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRetroactiveModal(sub.studentUid)}
+                            className="px-1.5 py-0.5 text-gray-400 hover:text-amber-700 text-[11px] rounded"
+                            title="Re-slice attempt from class video"
+                          >
+                            ✂️
+                          </button>
                         )}
                       </div>
                     </td>
@@ -739,10 +827,10 @@ const TaskGradingMatrixView = ({
                             <span className="animate-spin">⏳</span>
                             <span className="text-[11px]">Grading...</span>
                           </span>
-                        ) : sub.status === 'compiling' ? (
+                        ) : (sub.status === 'compiling' || sub.status === 'awaiting_class_video') ? (
                           <span className="text-xs text-purple-500 font-semibold flex items-center gap-1">
                             <span className="animate-spin">⚙️</span>
-                            <span className="text-[11px]">Compiling...</span>
+                            <span className="text-[11px]">{sub.status === 'awaiting_class_video' ? 'Awaiting Video...' : 'Compiling...'}</span>
                           </span>
                         ) : sub.status === 'compiling_complete' ? (
                           <button
@@ -981,6 +1069,178 @@ const TaskGradingMatrixView = ({
                 className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg text-xs font-semibold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Retroactive Extraction Modal */}
+      {showRetroactiveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 overflow-hidden shadow-2xl flex flex-col space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                  <span>✂️</span> Retroactive Submissions Slicing & Grading
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {retroTargetStudentUid
+                    ? `Slicing for student: ${retroTargetStudentUid}`
+                    : 'Extracting clips for all students enrolled in this session'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRetroactiveModal(false)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold px-2"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+              <span className="font-bold block">💡 Stream-Copy Slicing Architecture</span>
+              <p>
+                Clips are sliced directly from existing completed class screencasts in seconds. Once sliced, Gemini 3.8 Flash automated rubric grading will run automatically for all processed submissions.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Class Session Date
+                </label>
+                <input
+                  type="date"
+                  value={retroConfig.sessionDate}
+                  onChange={(e) => setRetroConfig(prev => ({ ...prev, sessionDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Window Extraction Mode
+                </label>
+                <div className="flex items-center gap-4 text-xs">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="retro-modal-window-type"
+                      value="relative_offset"
+                      checked={retroConfig.windowType === 'relative_offset'}
+                      onChange={() => setRetroConfig(prev => ({ ...prev, windowType: 'relative_offset' }))}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Relative Lesson Offset (Minutes)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="retro-modal-window-type"
+                      value="absolute_time"
+                      checked={retroConfig.windowType === 'absolute_time'}
+                      onChange={() => setRetroConfig(prev => ({ ...prev, windowType: 'absolute_time' }))}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Clock Time Window</span>
+                  </label>
+                </div>
+              </div>
+
+              {retroConfig.windowType === 'relative_offset' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Start Minute into Class
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="300"
+                      value={retroConfig.startMinute}
+                      onChange={(e) => setRetroConfig(prev => ({ ...prev, startMinute: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                      placeholder="e.g. 20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Duration (Minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="300"
+                      value={retroConfig.durationMinutes}
+                      onChange={(e) => setRetroConfig(prev => ({ ...prev, durationMinutes: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                      placeholder="e.g. 30"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Start Time
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={retroConfig.startTime}
+                      onChange={(e) => setRetroConfig(prev => ({ ...prev, startTime: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      End Time
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={retroConfig.endTime}
+                      onChange={(e) => setRetroConfig(prev => ({ ...prev, endTime: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Status / Results feedback */}
+              {isExtractingRetro && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-xs text-blue-800 font-semibold">
+                  <span className="animate-spin text-sm">⏳</span>
+                  <span>Slicing student class videos and triggering AI evaluation... Please wait.</span>
+                </div>
+              )}
+
+              {retroExtractionResult && (
+                <div className={`p-3 rounded-xl border text-xs font-semibold ${
+                  retroExtractionResult.success
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
+                  {retroExtractionResult.success ? '✅ ' : '❌ '}
+                  {retroExtractionResult.message}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowRetroactiveModal(false)}
+                className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold transition-colors"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRetroactiveExtraction}
+                disabled={isExtractingRetro}
+                className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
+              >
+                <span>{isExtractingRetro ? '⏳' : '✂️'}</span>
+                <span>{isExtractingRetro ? 'Slicing...' : 'Start Slicing & AI Grading'}</span>
               </button>
             </div>
           </div>

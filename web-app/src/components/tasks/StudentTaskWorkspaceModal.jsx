@@ -276,7 +276,17 @@ const StudentTaskWorkspaceModal = ({
                 <span>Back to Dashboard</span>
               </button>
 
-              {eligibility.allowed ? (
+              {task.scheduleMode === 'retroactive' ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1 text-right max-w-md">
+                  <div className="font-bold flex items-center justify-end gap-1.5">
+                    <span>⏪</span>
+                    <span>Post-Class Practical Challenge</span>
+                  </div>
+                  <p>
+                    This assignment is automatically extracted from your in-class screen recording. Your instructor processes submissions and grades them using AI evaluation without requiring a manual attempt.
+                  </p>
+                </div>
+              ) : eligibility.allowed ? (
                 <button
                   onClick={handleStartTask}
                   className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-base rounded-xl shadow-lg flex items-center gap-2 transform active:scale-95 transition-all"
@@ -398,7 +408,7 @@ const StudentTaskWorkspaceModal = ({
               Submitting Task Attempt...
             </h3>
             <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              Uploading final buffers, compiling time-lapse video, and preparing for Gemini 3.8 Flash grading.
+              Sealing attempt buffers and registering for automated class video combination and grading.
             </p>
           </div>
         )}
@@ -411,7 +421,7 @@ const StudentTaskWorkspaceModal = ({
               Attempt Submitted Successfully!
             </h3>
             <p className="text-sm text-gray-600 max-w-md mx-auto">
-              Your screen recording for <strong>{task.title}</strong> has been sealed. Gemini will evaluate each milestone against the rubric.
+              Your screen recording for <strong>{task.title}</strong> has been sealed. Your submission clip will be compiled and evaluated by Gemini once the class video combines.
             </p>
             <div className="pt-4">
               <button

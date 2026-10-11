@@ -23,10 +23,20 @@ const TaskEditorModal = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [maxScore, setMaxScore] = useState(100);
-  const [scheduleMode, setScheduleMode] = useState('homework'); // 'homework' | 'in_class' | 'flexible'
+  const [scheduleMode, setScheduleMode] = useState('homework'); // 'homework' | 'in_class' | 'flexible' | 'retroactive'
   const [lessonId, setLessonId] = useState('');
   const [availableFrom, setAvailableFrom] = useState('');
   const [deadline, setDeadline] = useState('');
+
+  // Retroactive extraction states
+  const [retroactiveSessionDate, setRetroactiveSessionDate] = useState('');
+  const [retroactiveLessonId, setRetroactiveLessonId] = useState('');
+  const [retroactiveWindowType, setRetroactiveWindowType] = useState('relative_offset'); // 'relative_offset' | 'absolute_time'
+  const [retroactiveStartMinute, setRetroactiveStartMinute] = useState(0);
+  const [retroactiveDurationMinutes, setRetroactiveDurationMinutes] = useState(30);
+  const [retroactiveStartTime, setRetroactiveStartTime] = useState('');
+  const [retroactiveEndTime, setRetroactiveEndTime] = useState('');
+  const [autoExtractOnSave, setAutoExtractOnSave] = useState(true);
 
   // Tab 2: Reference Demo Video & AI Extraction
   const [videoSourceMode, setVideoSourceMode] = useState('youtube'); // 'youtube' | 'upload' | 'library'
@@ -116,6 +126,28 @@ const TaskEditorModal = ({
       setGracePeriodMinutes(t.gracePeriodMinutes ?? 15);
       setRequiredChannel(p.requiredChannel || 'screen_only');
       setFeedbackReleasePolicy(f.policy || 'immediate');
+
+      if (initialTask.retroactiveConfig) {
+        const rc = initialTask.retroactiveConfig;
+        setRetroactiveSessionDate(rc.sessionDate || '');
+        setRetroactiveLessonId(rc.lessonId || '');
+        setRetroactiveWindowType(rc.windowType || 'relative_offset');
+        setRetroactiveStartMinute(rc.startMinute ?? 0);
+        setRetroactiveDurationMinutes(rc.durationMinutes ?? 30);
+        setRetroactiveStartTime(toIsoDateString(rc.startTime));
+        setRetroactiveEndTime(toIsoDateString(rc.endTime));
+        setAutoExtractOnSave(false);
+      } else {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        setRetroactiveSessionDate(todayStr);
+        setRetroactiveLessonId('');
+        setRetroactiveWindowType('relative_offset');
+        setRetroactiveStartMinute(0);
+        setRetroactiveDurationMinutes(30);
+        setRetroactiveStartTime('');
+        setRetroactiveEndTime('');
+        setAutoExtractOnSave(true);
+      }
     } else {
       // Default dates: available now, deadline in 7 days
       const now = new Date();
@@ -129,6 +161,16 @@ const TaskEditorModal = ({
       setUploadProgress(0);
       setUploadError(null);
       setVideoSourceMode('youtube');
+
+      const todayStr = now.toISOString().slice(0, 10);
+      setRetroactiveSessionDate(todayStr);
+      setRetroactiveLessonId('');
+      setRetroactiveWindowType('relative_offset');
+      setRetroactiveStartMinute(0);
+      setRetroactiveDurationMinutes(30);
+      setRetroactiveStartTime('');
+      setRetroactiveEndTime('');
+      setAutoExtractOnSave(true);
     }
   }, [initialTask, isOpen]);
 
@@ -321,7 +363,19 @@ const TaskEditorModal = ({
         description: description.trim(),
         maxScore: Number(maxScore) || 100,
         scheduleMode,
-        lessonId: scheduleMode === 'in_class' ? lessonId : null,
+        lessonId: scheduleMode === 'in_class' ? lessonId : (scheduleMode === 'retroactive' ? retroactiveLessonId : null),
+        retroactiveConfig: scheduleMode === 'retroactive' ? {
+          sessionDate: retroactiveSessionDate || null,
+          lessonId: retroactiveLessonId || null,
+          windowType: retroactiveWindowType,
+          startMinute: Number(retroactiveStartMinute) || 0,
+          durationMinutes: Number(retroactiveDurationMinutes) || 30,
+          startOffsetSeconds: (Number(retroactiveStartMinute) || 0) * 60,
+          endOffsetSeconds: ((Number(retroactiveStartMinute) || 0) + (Number(retroactiveDurationMinutes) || 30)) * 60,
+          startTime: retroactiveStartTime ? new Date(retroactiveStartTime) : null,
+          endTime: retroactiveEndTime ? new Date(retroactiveEndTime) : null,
+        } : null,
+        autoExtractOnSave: scheduleMode === 'retroactive' ? Boolean(autoExtractOnSave) : false,
         demoVideoPath: trimmedDemoPath,
         youtubeVideoId: derivedYtId,
         youtubeUrl: derivedYtId
@@ -500,6 +554,7 @@ const TaskEditorModal = ({
                       <option value="homework">🏠 Homework (Out of Schedule / 24/7)</option>
                       <option value="in_class">🏫 In-Class (Tied to Scheduled Lesson)</option>
                       <option value="flexible">🔄 Flexible (In-Class with Home Extension)</option>
+                      <option value="retroactive">⏪ Post-Class / Retroactive (Extract from Completed Class Videos)</option>
                     </select>
                   </div>
 
@@ -537,6 +592,152 @@ const TaskEditorModal = ({
                         </option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {scheduleMode === 'retroactive' && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-4">
+                    <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+                      <span>⏪</span>
+                      <span>Post-Class Retroactive Video Extraction Settings</span>
+                    </div>
+                    <p className="text-xs text-amber-800">
+                      Submissions will be automatically sliced from existing student class videos using ultrafast stream-copying and evaluated by Gemini 3.8 Flash AI rubric grading without requiring student interaction.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-800 mb-1">
+                          Class Session Date
+                        </label>
+                        <input
+                          type="date"
+                          value={retroactiveSessionDate}
+                          onChange={(e) => setRetroactiveSessionDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      {classSchedule && classSchedule.length > 0 && (
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-800 mb-1">
+                            Link to Timetable Lesson (Optional)
+                          </label>
+                          <select
+                            value={retroactiveLessonId}
+                            onChange={(e) => setRetroactiveLessonId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value="">-- Match All Sessions on Date --</option>
+                            {classSchedule.map((lesson) => (
+                              <option key={lesson.id} value={lesson.id}>
+                                {lesson.title || `Lesson on ${lesson.date || lesson.day}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-800 mb-1">
+                        Extraction Window Mode
+                      </label>
+                      <div className="flex items-center gap-4 text-xs">
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="retro-window-type"
+                            value="relative_offset"
+                            checked={retroactiveWindowType === 'relative_offset'}
+                            onChange={() => setRetroactiveWindowType('relative_offset')}
+                            className="text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>Relative Lesson Offset (Minutes into class)</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="retro-window-type"
+                            value="absolute_time"
+                            checked={retroactiveWindowType === 'absolute_time'}
+                            onChange={() => setRetroactiveWindowType('absolute_time')}
+                            className="text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>Clock Time Window</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {retroactiveWindowType === 'relative_offset' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-800 mb-1">
+                            Start Minute into Class Video
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="300"
+                            value={retroactiveStartMinute}
+                            onChange={(e) => setRetroactiveStartMinute(Number(e.target.value))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                            placeholder="e.g. 20 (Minute 20)"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-800 mb-1">
+                            Task Duration (Minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="300"
+                            value={retroactiveDurationMinutes}
+                            onChange={(e) => setRetroactiveDurationMinutes(Number(e.target.value))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                            placeholder="e.g. 30 (30 minutes)"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-800 mb-1">
+                            Task Start Time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={retroactiveStartTime}
+                            onChange={(e) => setRetroactiveStartTime(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-800 mb-1">
+                            Task End Time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={retroactiveEndTime}
+                            onChange={(e) => setRetroactiveEndTime(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-amber-200">
+                      <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-amber-900">
+                        <input
+                          type="checkbox"
+                          checked={autoExtractOnSave}
+                          onChange={(e) => setAutoExtractOnSave(e.target.checked)}
+                          className="rounded text-amber-600 focus:ring-amber-500"
+                        />
+                        <span>⚡ Automatically slice student video clips and queue AI grading immediately upon saving</span>
+                      </label>
+                    </div>
                   </div>
                 )}
 

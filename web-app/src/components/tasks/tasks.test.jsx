@@ -172,6 +172,12 @@ describe('Tasks Component Suite', () => {
           scheduleMode: 'flexible',
           status: 'published',
         },
+        {
+          id: 'task_retro_4',
+          title: 'Retroactive Database Lab',
+          scheduleMode: 'retroactive',
+          status: 'published',
+        },
       ];
 
       render(
@@ -196,6 +202,9 @@ describe('Tasks Component Suite', () => {
       expect(screen.getByText('🏫 In-Class')).toBeInTheDocument();
       expect(screen.getByText('Flexible Git Challenge')).toBeInTheDocument();
       expect(screen.getByText('🔄 Flexible')).toBeInTheDocument();
+      expect(screen.getByText('Retroactive Database Lab')).toBeInTheDocument();
+      expect(screen.getByText('⏪ Post-Class')).toBeInTheDocument();
+      expect(screen.getByText('Extract Clips')).toBeInTheDocument();
 
       // Test Status Toggle (lock/unlock)
       const toggleButtons = screen.getAllByTitle(/Close task|Activate task/i);
@@ -369,6 +378,64 @@ describe('Tasks Component Suite', () => {
       const lessonSelect = screen.getByLabelText(/Linked Timetable Lesson/i);
       fireEvent.change(lessonSelect, { target: { value: 'lesson_101' } });
       expect(lessonSelect.value).toBe('lesson_101');
+    });
+
+    it('handles retroactive scheduleMode and extraction configuration', async () => {
+      const mockSave = vi.fn();
+      render(
+        <TaskEditorModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onSave={mockSave}
+          classId="class_1"
+          classSchedule={mockSchedule}
+          availableVideos={mockVideos}
+          initialTask={{
+            rubricSteps: [{ stepNumber: 1, title: 'Step 1', points: 100 }],
+          }}
+        />
+      );
+
+      // Fill in title
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\., Dockerizing/i), {
+        target: { value: 'Post-Class Retro Task' },
+      });
+
+      // Switch scheduleMode to retroactive
+      const modeSelect = screen.getByLabelText(/Scheduling Mode/i);
+      fireEvent.change(modeSelect, { target: { value: 'retroactive' } });
+
+      expect(screen.getByText(/Post-Class Retroactive Video Extraction Settings/i)).toBeInTheDocument();
+      expect(screen.getByText(/Start Minute into Class Video/i)).toBeInTheDocument();
+
+      // Change start minute to 15 and duration to 25
+      const startMinInput = screen.getByPlaceholderText(/e\.g\. 20/i);
+      fireEvent.change(startMinInput, { target: { value: '15' } });
+
+      const durInput = screen.getByPlaceholderText(/e\.g\. 30/i);
+      fireEvent.change(durInput, { target: { value: '25' } });
+
+      // Switch to constraints tab to submit
+      const constraintsTab = screen.getByRole('button', { name: /4\. Constraints & Policies/i });
+      fireEvent.click(constraintsTab);
+
+      // Save task
+      const saveBtn = screen.getByRole('button', { name: /Update Task|Publish Task/i });
+      fireEvent.click(saveBtn);
+
+      expect(mockSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Post-Class Retro Task',
+          scheduleMode: 'retroactive',
+          retroactiveConfig: expect.objectContaining({
+            startMinute: 15,
+            durationMinutes: 25,
+            startOffsetSeconds: 900,
+            endOffsetSeconds: 2400,
+            windowType: 'relative_offset',
+          }),
+        })
+      );
     });
 
     it('handles Tab 2: Gemini demo video rubric extraction with success and error', async () => {
@@ -1117,6 +1184,26 @@ describe('Tasks Component Suite', () => {
       // Should be directly in active session
       expect(screen.getByRole('button', { name: /Finish & Submit/i })).toBeInTheDocument();
       expect(screen.queryByText(/Pre-Flight Checklist/i)).not.toBeInTheDocument();
+    });
+
+    it('displays retroactive notice instead of start challenge button for retroactive tasks', () => {
+      const retroactiveTask = {
+        ...mockTask,
+        scheduleMode: 'retroactive',
+      };
+
+      render(
+        <StudentTaskWorkspaceModal
+          isOpen={true}
+          onClose={vi.fn()}
+          task={retroactiveTask}
+          submission={null}
+        />
+      );
+
+      expect(screen.getByText(/Post-Class Practical Challenge/i)).toBeInTheDocument();
+      expect(screen.getByText(/automatically extracted from your in-class screen recording/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Start Task Challenge/i })).not.toBeInTheDocument();
     });
   });
 });
