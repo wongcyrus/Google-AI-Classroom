@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { doc, onSnapshot, deleteDoc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db, storage } from '../firebase-config';
-import { ref, deleteObject } from 'firebase/storage';
+import { doc, onSnapshot, deleteDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db, storage, functions } from '../firebase-config';
+import { ref, deleteObject, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
-import PlaybackView from './PlaybackView';
+import VideoPlayerModal from './VideoPlayerModal';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
@@ -14,15 +15,15 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
 
-  const [sessionData, setSessionData] = useState(null);
   const [notification, setNotification] = useState(null);
-  const [lastBatchJobInfo, setLastBatchJobInfo] = useState(null);
   const [statusFilter, setStatusFilter] = useState([]);
   const [selectedJobs, setSelectedJobs] = useState(new Set());
   const [errorModalJob, setErrorModalJob] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-
+  const [selectedVideoJob, setSelectedVideoJob] = useState(null);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoPlaybackUrl, setVideoPlaybackUrl] = useState('');
+  const [videoLoading, setVideoLoading] = useState(false);
 
   const { data: videoJobsFromHook } = usePaginatedQuery('videoJobs', {
     classId,
@@ -52,14 +53,14 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
 
   useEffect(() => {
     if (!classId) {
-      console.log('PlaybackView: No classId provided.');
+      console.log('SessionReviewView: No classId provided.');
       return;
     }
-    console.log(`PlaybackView: Setting up student listener for classId: ${classId}`);
+    console.log(`SessionReviewView: Setting up student listener for classId: ${classId}`);
 
     const classRef = doc(db, 'classes', classId);
     const unsubscribe = onSnapshot(classRef, (classSnap) => {
-      console.log('PlaybackView: Class snapshot received.');
+      console.log('SessionReviewView: Class snapshot received.');
       if (classSnap.exists()) {
         const classData = classSnap.data();
         const studentsMap = classData.students || {}; // This is the map {uid: email}
@@ -81,16 +82,16 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
         setStudents(studentList);
 
       } else {
-        console.log(`PlaybackView: Class document with id ${classId} does not exist!`);
+        console.log(`SessionReviewView: Class document with id ${classId} does not exist!`);
         setStudents([]);
       }
     }, (error) => {
-      console.error(`PlaybackView: Error listening to class document ${classId}:`, error);
+      console.error(`SessionReviewView: Error listening to class document ${classId}:`, error);
       setStudents([]);
     });
 
     return () => {
-      console.log(`PlaybackView: Unsubscribing from student listener for classId: ${classId}`);
+      console.log(`SessionReviewView: Unsubscribing from student listener for classId: ${classId}`);
       unsubscribe();
     };
   }, [classId]);
@@ -171,66 +172,6 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
     }
   };
 
-  const handleCombineAllToVideo = async () => {
-    if (students.length === 0) {
-        alert('No students in this class.');
-        return;
-    }
-
-    setLoading(true);
-
-    setNotification({ type: 'info', message: `Checking for existing jobs and initiating video creation for ${students.length} students...` });
-    setLastBatchJobInfo(null);
-
-    try {
-        const createdJobs = [];
-        const skippedJobs = [];
-
-        for (const student of students) {
-            const q = query(
-                collection(db, 'videoJobs'),
-                where('classId', '==', classId),
-                where('studentUid', '==', student.uid),
-                where('startTime', '==', new Date(startTime)),
-                where('endTime', '==', new Date(endTime)),
-                where('status', 'in', ['pending', 'processing', 'completed'])
-            );
-            const existingJobs = await getDocs(q);
-            if (!existingJobs.empty) {
-                console.log(`Job already exists for ${student.email} in this time range.`);
-                skippedJobs.push(student.email);
-                continue;
-            }
-
-            const jobCollectionRef = collection(db, 'videoJobs');
-            const newDocRef = doc(jobCollectionRef);
-            const jobId = newDocRef.id;
-
-            await setDoc(newDocRef, {
-                jobId: jobId,
-                classId: classId,
-                studentUid: student.uid,
-                studentEmail: student.email,
-                startTime: new Date(startTime),
-                endTime: new Date(endTime),
-                status: 'pending',
-                createdAt: serverTimestamp(),
-            });
-            createdJobs.push(student.email);
-        }
-
-        setLastBatchJobInfo({ created: createdJobs, skipped: skippedJobs });
-        setNotification({ type: 'success', message: `Batch job summary: ${createdJobs.length} new jobs created, ${skippedJobs.length} jobs already existed.` });
-
-    } catch (error) {
-        console.error('Error creating video jobs for all students:', error);
-        setNotification({ type: 'error', message: `Error: ${error.message}` });
-    } finally {
-        setLoading(false);
-    }
-  };
-
-
   const handleExportVideoJobsExcel = async () => {
     if (!filteredVideoJobs || filteredVideoJobs.length === 0) {
       alert("No video jobs to export.");
@@ -276,6 +217,55 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
     await exportToExcel(headers, rows, filename);
   };
 
+  const handlePlayVideo = async (job) => {
+    if (!job) return;
+    setSelectedVideoJob(job);
+    setShowVideoModal(true);
+    setVideoLoading(true);
+    setVideoPlaybackUrl('');
+
+    try {
+      let url = job.videoUrl || '';
+      if (!url) {
+        try {
+          const getStudentVideoPlaybackUrl = httpsCallable(functions, 'getStudentVideoPlaybackUrl');
+          const res = await getStudentVideoPlaybackUrl({ jobId: job.id || job.jobId });
+          if (res?.data?.url) {
+            url = res.data.url;
+          }
+        } catch (callErr) {
+          console.warn('Callable function getStudentVideoPlaybackUrl failed, trying storage fallback:', callErr);
+        }
+      }
+
+      if (!url && job.videoPath) {
+        const videoRef = ref(storage, job.videoPath);
+        url = await getDownloadURL(videoRef);
+      }
+
+      if (url) {
+        setVideoPlaybackUrl(url);
+      } else {
+        setNotification({ type: 'error', message: 'Video file could not be accessed or is still compiling.' });
+      }
+    } catch (err) {
+      console.error('Error resolving video playback URL:', err);
+      setNotification({ type: 'error', message: `Failed to load video: ${err.message}` });
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  const selectedStudentCompletedJob = useMemo(() => {
+    if (!selectedStudent || !filteredVideoJobs) return null;
+    const studentInfo = students.find(s => s.uid === selectedStudent);
+    const studentEmail = studentInfo?.email;
+    return filteredVideoJobs.find(job => 
+      (job.studentUid === selectedStudent || (studentEmail && (job.studentEmail === studentEmail || job.email === studentEmail))) &&
+      job.status === 'completed'
+    ) || null;
+  }, [selectedStudent, filteredVideoJobs, students]);
+
   const handleStartPlayback = () => {
     if (!selectedStudent) {
       alert('Please select a student.');
@@ -283,22 +273,29 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
     }
     const studentInfo = students.find(s => s.uid === selectedStudent);
     if (!studentInfo) {
-        alert('Could not find student details.');
-        return;
+      alert('Could not find student details.');
+      return;
     }
-    console.log(`Loading session for ${studentInfo.email}`);
-    setSessionData({ studentUid: selectedStudent, studentEmail: studentInfo.email, start: startTime, end: endTime });
+    const targetEmail = studentInfo.email;
+    const completedJob = filteredVideoJobs.find(job => 
+      (job.studentUid === selectedStudent || (targetEmail && (job.studentEmail === targetEmail || job.email === targetEmail))) &&
+      job.status === 'completed'
+    );
+    if (completedJob) {
+      handlePlayVideo(completedJob);
+    } else {
+      setNotification({
+        type: 'info',
+        message: `No completed compiled video found for ${targetEmail || selectedStudent} in this time range.`
+      });
+    }
   };
-
-  if (sessionData) {
-    return <PlaybackView sessionData={sessionData} onBack={() => setSessionData(null)} classId={classId} startTime={startTime} endTime={endTime} />;
-  }
 
   return (
     <div className="view-container playback-selection">
       <div className="view-header">
-        <h2>Session Playback</h2>
-        <p>Select a student and a time range to begin.</p>
+        <h2>Session Review &amp; Video Playback</h2>
+        <p>Select a student to stream their compiled lesson video recording or monitor compilation jobs.</p>
       </div>
       <div className="actions-container" style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
         <label htmlFor="student-select">Student: </label>
@@ -325,7 +322,19 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                 </option>
             ))}
         </select>
-        <button onClick={handleStartPlayback} disabled={!selectedStudent}>Load Student</button>
+        <button
+          onClick={handleStartPlayback}
+          disabled={!selectedStudent}
+          aria-label="Play Student Video"
+          style={{
+            backgroundColor: selectedStudentCompletedJob ? '#2563eb' : undefined,
+            color: selectedStudentCompletedJob ? '#ffffff' : undefined,
+            fontWeight: 600
+          }}
+          title={selectedStudentCompletedJob ? "Play the student's compiled MP4 video" : "Load and play student video"}
+        >
+          ▶️ Play Student Video
+        </button>
 
         <span style={{ borderLeft: '1px solid #ccc', height: '24px' }}></span>
 
@@ -343,7 +352,6 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
 
         <span style={{ borderLeft: '1px solid #ccc', height: '24px' }}></span>
 
-        <button onClick={handleCombineAllToVideo} disabled={loading}>Combine All Students' Videos</button>
         <button onClick={handleDeleteSelectedJobs} disabled={selectedJobs.size === 0}>
           Delete Selected ({selectedJobs.size})
         </button>
@@ -358,54 +366,6 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
           }}>
             &times;
           </button>
-        </div>
-      )}
-      {lastBatchJobInfo && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
-            justifyContent: 'center', alignItems: 'center', zIndex: 1000
-          }}
-          onClick={() => setLastBatchJobInfo(null)}
-        >
-          <div
-            style={{
-              backgroundColor: 'white', padding: '20px', borderRadius: '8px',
-              width: '600px', maxHeight: '90vh', overflowY: 'auto', position: 'relative'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button onClick={() => {
-                console.log('Closing modal');
-                setLastBatchJobInfo(null);
-              }} style={{
-              position: 'absolute', top: '15px', right: '15px', background: 'none',
-              border: 'none', cursor: 'pointer', zIndex: 1001, padding: 0, lineHeight: 0
-            }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18 6L6 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M6 6L18 18" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            <h4>Last Batch Job Summary</h4>
-            {lastBatchJobInfo.created.length > 0 && (
-                <div>
-                    <p>New jobs created for ({lastBatchJobInfo.created.length}):</p>
-                    <ul style={{ columns: 2, listStyle: 'none', padding: 0 }}>
-                        {lastBatchJobInfo.created.map(student => <li key={student}>{student}</li>)}
-                    </ul>
-                </div>
-            )}
-            {lastBatchJobInfo.skipped.length > 0 && (
-                <div style={{ marginTop: '20px' }}>
-                    <p>Jobs already existed for ({lastBatchJobInfo.skipped.length}) - Skipped:</p>
-                    <ul style={{ columns: 2, listStyle: 'none', padding: 0 }}>
-                        {lastBatchJobInfo.skipped.map(student => <li key={student}>{student}</li>)}
-                    </ul>
-                </div>
-            )}
-          </div>
         </div>
       )}
       <div className="jobs-table">
@@ -437,6 +397,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                       <th>End Time</th>
                       <th>Created At</th>
                       <th>Status</th>
+                      <th>Action</th>
                   </tr>
               </thead>
               <tbody>
@@ -451,9 +412,9 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                           </td>
                           <td>{job.id}</td>
                           <td>{job.studentEmail || 'All Students'}</td>
-                          <td>{job.startTime?.toDate().toLocaleString() || 'N/A'}</td>
-                          <td>{job.endTime?.toDate().toLocaleString() || 'N/A'}</td>
-                          <td>{job.createdAt?.toDate().toLocaleString()}</td>
+                          <td>{job.startTime?.toDate ? job.startTime.toDate().toLocaleString() : (job.startTime?.toLocaleString ? job.startTime.toLocaleString() : 'N/A')}</td>
+                          <td>{job.endTime?.toDate ? job.endTime.toDate().toLocaleString() : (job.endTime?.toLocaleString ? job.endTime.toLocaleString() : 'N/A')}</td>
+                          <td>{job.createdAt?.toDate ? job.createdAt.toDate().toLocaleString() : (job.createdAt?.toLocaleString ? job.createdAt.toLocaleString() : '')}</td>
                           <td>
                             {job.status === 'failed' ? (
                               <a 
@@ -468,6 +429,29 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                               </a>
                             ) : (
                               job.status
+                            )}
+                          </td>
+                          <td>
+                            {job.status === 'completed' && (
+                              <button
+                                onClick={() => handlePlayVideo(job)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '4px',
+                                  backgroundColor: '#2563eb',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                  fontSize: '0.8rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title="Play student video recording"
+                              >
+                                ▶️ Play Video
+                              </button>
                             )}
                           </td>
                       </tr>
@@ -513,6 +497,13 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
             </div>
         </div>
       )}
+      <VideoPlayerModal
+        show={showVideoModal}
+        onClose={() => setShowVideoModal(false)}
+        videoUrl={videoPlaybackUrl}
+        loading={videoLoading}
+        video={selectedVideoJob}
+      />
     </div>
   );
 };

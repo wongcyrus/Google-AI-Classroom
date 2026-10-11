@@ -6,13 +6,20 @@ import SessionReviewView from './SessionReviewView';
 vi.mock('../firebase-config', () => ({
   db: {},
   storage: {},
+  functions: {},
 }));
 
-
 const mockDeleteObject = vi.fn().mockResolvedValue({});
+const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage.local/video.mp4');
 vi.mock('firebase/storage', () => ({
   ref: vi.fn(),
   deleteObject: (...args) => mockDeleteObject(...args),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+}));
+
+const mockGetStudentVideoPlaybackUrl = vi.fn().mockResolvedValue({ data: { url: 'https://storage.local/callable-video.mp4' } });
+vi.mock('firebase/functions', () => ({
+  httpsCallable: vi.fn(() => mockGetStudentVideoPlaybackUrl),
 }));
 
 const mockDeleteDoc = vi.fn().mockResolvedValue({});
@@ -72,13 +79,13 @@ vi.mock('../hooks/useCollectionQuery', () => ({
   default: () => ({ data: mockJobs }),
 }));
 
-vi.mock('./PlaybackView', () => ({
-  default: ({ onBack }) => (
-    <div data-testid="playback-view">
-      Playback View Content
-      <button onClick={onBack}>Back</button>
+vi.mock('./VideoPlayerModal', () => ({
+  default: ({ show, onClose, videoUrl }) => show ? (
+    <div data-testid="video-player-modal">
+      <span>Modal Video URL: {videoUrl}</span>
+      <button onClick={onClose}>Close Video Modal</button>
     </div>
-  ),
+  ) : null,
 }));
 
 describe('SessionReviewView Full Suite', () => {
@@ -97,7 +104,7 @@ describe('SessionReviewView Full Suite', () => {
       />
     );
 
-    expect(screen.getByText('Session Playback')).toBeInTheDocument();
+    expect(screen.getByText(/Session Review & Video Playback/i)).toBeInTheDocument();
     expect(screen.getAllByText('alice@school.edu').length).toBeGreaterThan(0);
     expect(screen.getAllByText('bob@school.edu').length).toBeGreaterThan(0);
   });
@@ -115,26 +122,7 @@ describe('SessionReviewView Full Suite', () => {
     fireEvent.click(completedCheckbox);
   });
 
-  it('initiates batch video compilation for all students', async () => {
-    render(
-      <SessionReviewView
-        classId="CLASS_101"
-        startTime="2026-08-30T00:00:00Z"
-        endTime="2026-08-30T23:59:59Z"
-      />
-    );
-
-    const batchCombineBtn = screen.getByRole('button', { name: /Combine All Students' Videos/i });
-    await act(async () => {
-      fireEvent.click(batchCombineBtn);
-    });
-
-    await waitFor(() => {
-      expect(mockSetDoc).toHaveBeenCalled();
-    });
-  });
-
-  it('switches to PlaybackView when student is selected and playback started', async () => {
+  it('plays student video in VideoPlayerModal when student is selected and playback started', async () => {
     render(
       <SessionReviewView
         classId="CLASS_101"
@@ -146,14 +134,16 @@ describe('SessionReviewView Full Suite', () => {
     const select = screen.getByRole('combobox');
     fireEvent.change(select, { target: { value: 's1' } });
 
-    const playBtn = screen.getByRole('button', { name: /Load Student/i });
-    fireEvent.click(playBtn);
+    const playBtn = screen.getByRole('button', { name: /Play Student Video/i });
+    await act(async () => {
+      fireEvent.click(playBtn);
+    });
 
-    expect(screen.getByTestId('playback-view')).toBeInTheDocument();
+    expect(screen.getByTestId('video-player-modal')).toBeInTheDocument();
 
-    const backBtn = screen.getByRole('button', { name: /Back/i });
-    fireEvent.click(backBtn);
-    expect(screen.getByText('Session Playback')).toBeInTheDocument();
+    const closeBtn = screen.getByRole('button', { name: /Close Video Modal/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId('video-player-modal')).not.toBeInTheDocument();
   });
 
   it('handles selecting and deleting video compilation jobs', async () => {
@@ -238,8 +228,8 @@ describe('SessionReviewView Full Suite', () => {
     fireEvent.change(searchInput, { target: { value: 'alice' } });
     expect(searchInput.value).toBe('alice');
 
-    // Load Student button is disabled when no student is selected
-    const playBtn = screen.getByRole('button', { name: /Load Student/i });
+    // Play Student Video button is disabled when no student is selected
+    const playBtn = screen.getByRole('button', { name: /Play Student Video/i });
     expect(playBtn).toBeDisabled();
   });
 
@@ -273,43 +263,7 @@ describe('SessionReviewView Full Suite', () => {
     }
   });
 
-  it('runs batch video creation, shows batch summary modal, and dismisses notification', async () => {
-    // Return empty for first student (creates job), existing job for second student (skipped)
-    mockGetDocs
-      .mockResolvedValueOnce({ empty: true, docs: [] })
-      .mockResolvedValueOnce({ empty: false, docs: [{ id: 'existing_vj' }] });
-
-    render(
-      <SessionReviewView
-        classId="CLASS_101"
-        startTime="2026-08-30T00:00:00Z"
-        endTime="2026-08-30T23:59:59Z"
-      />
-    );
-
-    const combineAllBtn = screen.getByRole('button', { name: /Combine All Students' Videos/i });
-    await act(async () => {
-      fireEvent.click(combineAllBtn);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Last Batch Job Summary/i)).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/New jobs created for/i)).toBeInTheDocument();
-    expect(screen.getByText(/Jobs already existed for/i)).toBeInTheDocument();
-
-    // Close batch summary modal
-    const closeSvgBtn = screen.getByText(/Last Batch Job Summary/i).parentElement.querySelector('button');
-    fireEvent.click(closeSvgBtn);
-    expect(screen.queryByText(/Last Batch Job Summary/i)).not.toBeInTheDocument();
-
-    // Dismiss notification
-    const dismissNotifBtn = screen.getByText('×');
-    fireEvent.click(dismissNotifBtn);
-  });
-
-  it('handles playback alerts when no student is selected, and switches to PlaybackView when valid', () => {
+  it('disables load button when no student is selected, and plays video in modal when selected', async () => {
     render(
       <SessionReviewView
         classId="class-1"
@@ -318,7 +272,7 @@ describe('SessionReviewView Full Suite', () => {
       />
     );
 
-    const loadStudentBtn = screen.getByRole('button', { name: /Load Student/i });
+    const loadStudentBtn = screen.getByRole('button', { name: /Play Student Video/i });
     expect(loadStudentBtn).toBeDisabled();
 
     // Select valid student
@@ -326,14 +280,16 @@ describe('SessionReviewView Full Suite', () => {
     fireEvent.change(studentSelect, { target: { value: 's1' } });
     expect(loadStudentBtn).not.toBeDisabled();
 
-    // Click -> mounts PlaybackView
-    fireEvent.click(loadStudentBtn);
-    expect(screen.getByTestId('playback-view')).toBeInTheDocument();
+    // Click -> opens VideoPlayerModal
+    await act(async () => {
+      fireEvent.click(loadStudentBtn);
+    });
+    expect(screen.getByTestId('video-player-modal')).toBeInTheDocument();
 
-    // Click back to review
-    const backBtn = screen.getByRole('button', { name: 'Back' });
-    fireEvent.click(backBtn);
-    expect(screen.queryByTestId('playback-view')).not.toBeInTheDocument();
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: /Close Video Modal/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId('video-player-modal')).not.toBeInTheDocument();
   });
 
   it('allows selecting and unselecting individual jobs via row checkboxes', () => {
@@ -359,5 +315,58 @@ describe('SessionReviewView Full Suite', () => {
     fireEvent.click(firstJobCheckbox);
     expect(firstJobCheckbox.checked).toBe(false);
   });
+
+  it('plays compiled video via table action button and opens VideoPlayerModal', async () => {
+    render(
+      <SessionReviewView
+        classId="class-1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+      />
+    );
+
+    const playVideoBtn = screen.getByRole('button', { name: /▶️ Play Video/i });
+    expect(playVideoBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(playVideoBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('video-player-modal')).toBeInTheDocument();
+      expect(screen.getByText(/Modal Video URL:/i)).toBeInTheDocument();
+    });
+
+    // Close the video modal
+    const closeBtn = screen.getByRole('button', { name: /Close Video Modal/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId('video-player-modal')).not.toBeInTheDocument();
+  });
+
+  it('renders Play Student Video button when selected student has completed video job', async () => {
+    render(
+      <SessionReviewView
+        classId="class-1"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+      />
+    );
+
+    // Select student s1 (alice@school.edu has completed job vj_1)
+    const studentSelect = screen.getByLabelText(/Student:/i);
+    fireEvent.change(studentSelect, { target: { value: 's1' } });
+
+    const playStudentVideoBtn = screen.getByRole('button', { name: /Play Student Video/i });
+    expect(playStudentVideoBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(playStudentVideoBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('video-player-modal')).toBeInTheDocument();
+    });
+  });
 });
+
 

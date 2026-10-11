@@ -52,6 +52,275 @@ export const isExamTimeRange = (startTime, endTime, examPeriods = [], timeZone =
   });
 };
 
+/**
+ * Resolves the capture interval directly without empirical delta fallback.
+ * Since legacy capture images were purged, all new screenshots strictly contain
+ * the authoritative captureInterval metadata tagged from the active session.
+ *
+ * 1. Explicit jobData.captureInterval (if specified on the videoJob)
+ * 2. Tagged captureInterval metadata on individual screenshots
+ * 3. Configured class capture interval (sessionFrameRate or frameRate)
+ */
+export function determineActualCaptureInterval(screenshots, jobCaptureInterval = null, configuredInterval = 15) {
+  if (typeof jobCaptureInterval === 'number' && jobCaptureInterval > 0) {
+    return jobCaptureInterval;
+  }
+
+  if (screenshots && screenshots.length > 0) {
+    const taggedIntervals = screenshots
+      .map(s => typeof s.captureInterval === 'number' && s.captureInterval > 0 ? s.captureInterval : null)
+      .filter(Boolean);
+    if (taggedIntervals.length > 0) {
+      taggedIntervals.sort((a, b) => a - b);
+      return taggedIntervals[Math.floor(taggedIntervals.length / 2)];
+    }
+  }
+
+  return configuredInterval;
+}
+
+/**
+ * Approach 2: Slices pending in-class practical task attempt clips directly from
+ * the newly compiled class video using ultrafast stream-copying (-c copy),
+ * eliminating redundant screenshot downloads and completely avoiding race conditions
+ * with post-video screenshot deletion.
+ */
+export async function slicePendingTaskSubmissions({
+  classId,
+  studentUid,
+  studentEmail,
+  classStartTime,
+  classEndTime,
+  captureInterval = 15,
+  outputVideoPath,
+  screenshots = [],
+  db,
+  bucket,
+  retry,
+}) {
+  if (!classId || !studentUid || !outputVideoPath || (typeof fs.existsSync === 'function' && !fs.existsSync(outputVideoPath))) {
+    return [];
+  }
+
+  if (!ffmpegPathSet) {
+    ffmpeg.setFfmpegPath(ffmpeg_static);
+    ffmpegPathSet = true;
+  }
+
+  const taskJobsSnap = await db.collection('videoJobs')
+    .where('classId', '==', classId)
+    .where('studentUid', '==', studentUid)
+    .where('isTaskSubmission', '==', true)
+    .get();
+
+  const pendingDocs = taskJobsSnap.docs.filter((d) => {
+    const s = d.data().status;
+    return s === 'awaiting_class_video' || s === 'pending';
+  });
+
+  if (pendingDocs.length === 0) {
+    return [];
+  }
+
+  console.log(`[slicePendingTaskSubmissions] Found ${pendingDocs.length} pending task submission(s) for student ${studentUid} to slice from class video.`);
+
+  const toMs = (ts) => {
+    if (!ts) return NaN;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+    if (ts instanceof Date) return ts.getTime();
+    return new Date(ts).getTime();
+  };
+
+  const classStartMs = toMs(classStartTime);
+  const processedTaskIds = [];
+
+  for (const taskJobDoc of pendingDocs) {
+    const taskJob = taskJobDoc.data();
+    const taskId = taskJob.taskId;
+    const attemptNumber = taskJob.attemptNumber || 1;
+    const taskStartMs = toMs(taskJob.startTime);
+    const taskEndMs = toMs(taskJob.endTime);
+
+    if (!taskId || isNaN(taskStartMs) || isNaN(taskEndMs)) {
+      continue;
+    }
+
+    // Identify start frame index and duration
+    let firstIndex = screenshots.findIndex((s) => {
+      if (s.activeTaskId && s.activeTaskId === taskId) {
+        return true;
+      }
+      const sMs = toMs(s.timestamp);
+      return !isNaN(sMs) && sMs >= taskStartMs;
+    });
+
+    let lastIndex = -1;
+    for (let i = screenshots.length - 1; i >= 0; i--) {
+      const s = screenshots[i];
+      if (s.activeTaskId && s.activeTaskId === taskId) {
+        lastIndex = i;
+        break;
+      }
+      const sMs = toMs(s.timestamp);
+      if (!isNaN(sMs) && sMs <= taskEndMs) {
+        lastIndex = i;
+        break;
+      }
+    }
+
+    let startSec = 0;
+    let durSec = 1;
+
+    if (firstIndex !== -1 && lastIndex >= firstIndex) {
+      startSec = firstIndex;
+      durSec = Math.max(1, lastIndex - firstIndex + 1);
+    } else {
+      if (!isNaN(classStartMs) && taskStartMs >= classStartMs) {
+        startSec = Math.max(0, Math.floor((taskStartMs - classStartMs) / 1000 / captureInterval));
+      }
+      durSec = Math.max(1, Math.ceil((taskEndMs - taskStartMs) / 1000 / captureInterval));
+    }
+
+    console.log(`[slicePendingTaskSubmissions] Slicing task ${taskId} (att #${attemptNumber}) at startSec=${startSec}, durSec=${durSec}`);
+
+    const taskClipPath = path.join(os.tmpdir(), `${taskJobDoc.id}_clip.mp4`);
+
+    try {
+      await new Promise((resolve, reject) => {
+        ffmpeg(outputVideoPath)
+          .setStartTime(startSec)
+          .setDuration(durSec)
+          .outputOptions([
+            '-c', 'copy',
+            '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart'
+          ])
+          .output(taskClipPath)
+          .on('end', resolve)
+          .on('error', (err) => {
+            console.warn(`[slicePendingTaskSubmissions] Stream copy slice failed, attempting ultrafast re-encode fallback:`, err);
+            ffmpeg(outputVideoPath)
+              .setStartTime(startSec)
+              .setDuration(durSec)
+              .outputOptions([
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-preset', 'ultrafast',
+                '-crf', '28',
+                '-movflags', '+faststart'
+              ])
+              .output(taskClipPath)
+              .on('end', resolve)
+              .on('error', reject)
+              .run();
+          })
+          .run();
+      });
+
+      let clipDuration = durSec;
+      let clipSize = 0;
+      try {
+        const probe = await new Promise((res, rej) => {
+          ffmpeg.ffprobe(taskClipPath, (err, meta) => {
+            if (err) rej(err);
+            else res(meta);
+          });
+        });
+        clipDuration = probe?.format?.duration || durSec;
+        clipSize = probe?.format?.size || (fs.existsSync(taskClipPath) ? fs.statSync(taskClipPath).size : 0);
+      } catch {
+        try {
+          if (fs.existsSync(taskClipPath)) clipSize = fs.statSync(taskClipPath).size;
+        } catch {}
+      }
+
+      const destinationPath = `classes/${classId}/tasks/${taskId}/submissions/${studentUid}/attempt_${attemptNumber}.mp4`;
+
+      await retry(() => bucket.upload(taskClipPath, {
+        destination: destinationPath,
+        metadata: {
+          contentType: 'video/mp4',
+          metadata: {
+            classId,
+            studentUid,
+            studentEmail: studentEmail || taskJob.studentEmail || '',
+            startTime: taskJob.startTime,
+            endTime: taskJob.endTime,
+            duration: String(clipDuration),
+            size: String(clipSize),
+            captureInterval: String(captureInterval),
+            isTaskSubmission: 'true',
+            taskId,
+            attemptNumber: String(attemptNumber),
+            slicedFromClassVideo: 'true'
+          }
+        }
+      }), 3, 2000, 'Failed to upload sliced task clip');
+
+      console.log(`[slicePendingTaskSubmissions] Successfully uploaded task clip to ${destinationPath}`);
+
+      // Update attempt document
+      try {
+        const attemptRef = db.collection('classes').doc(classId)
+          .collection('tasks').doc(taskId)
+          .collection('submissions').doc(studentUid)
+          .collection('attempts').doc(String(attemptNumber));
+
+        await attemptRef.set({
+          status: 'compiling_complete',
+          compiledVideoPath: destinationPath,
+          videoJobId: taskJobDoc.id,
+          duration: clipDuration,
+          size: clipSize,
+          compiledAt: new Date()
+        }, { merge: true });
+
+        const subRef = db.collection('classes').doc(classId)
+          .collection('tasks').doc(taskId)
+          .collection('submissions').doc(studentUid);
+
+        await subRef.set({
+          status: 'compiling_complete',
+          compiledVideoPath: destinationPath,
+          latestAttempt: {
+            status: 'compiling_complete',
+            compiledVideoPath: destinationPath,
+            attemptNumber,
+            finishedAt: taskJob.endTime || new Date(),
+          },
+          updatedAt: new Date()
+        }, { merge: true });
+      } catch (attErr) {
+        console.warn(`[slicePendingTaskSubmissions] Failed to update task attempt Firestore doc:`, attErr);
+      }
+
+      // Mark the task videoJobs document as completed so triggerAutomaticAnalysis triggers automated AI evaluation
+      await taskJobDoc.ref.update({
+        status: 'completed',
+        finishedAt: new Date(),
+        videoPath: destinationPath,
+        duration: clipDuration,
+        size: clipSize,
+        captureInterval,
+        slicedFromClassVideo: true,
+      });
+
+      processedTaskIds.push(taskJobDoc.id);
+    } catch (err) {
+      console.error(`[slicePendingTaskSubmissions] Failed to slice and process task ${taskId}:`, err);
+    } finally {
+      try {
+        if (fs.existsSync(taskClipPath)) {
+          fs.unlinkSync(taskClipPath);
+        }
+      } catch {}
+    }
+  }
+
+  return processedTaskIds;
+}
+
 export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}', region: FUNCTION_REGION, cpu: 2, memory: '8GiB', timeoutSeconds: 540, concurrency: 1, maxInstances: 50 }, async (event) => {
   if (!ffmpegPathSet) {
     ffmpeg.setFfmpegPath(ffmpeg_static);
@@ -222,6 +491,9 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     const duration = videoStats.format.duration;
     const size = videoStats.format.size;
 
+    const configuredInterval = classData?.sessionFrameRate ? Number(classData.sessionFrameRate) : (classData?.frameRate ? Number(classData.frameRate) : 15);
+    const captureInterval = determineActualCaptureInterval(screenshots, jobData.captureInterval, configuredInterval);
+
     const isExamSession = Boolean(
       jobData.isExam ||
       isExamTimeRange(startTime, endTime, classData?.examPeriods, timezone)
@@ -247,6 +519,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
           endTime,
           duration,
           size,
+          captureInterval: String(captureInterval),
           isExam: isExamSession ? 'true' : 'false',
           isTaskSubmission: isTaskSubmission ? 'true' : 'false',
           taskId: taskId || '',
@@ -255,7 +528,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       }
     }), 3, 2000, 'Failed to upload video after multiple retries.');
 
-    console.log(`Video uploaded to ${destinationPath} (isExam: ${isExamSession}, isTaskSubmission: ${isTaskSubmission})`);
+    console.log(`Video uploaded to ${destinationPath} (isExam: ${isExamSession}, isTaskSubmission: ${isTaskSubmission}, captureInterval: ${captureInterval}s)`);
 
     await jobRef.update({
       status: 'completed',
@@ -263,6 +536,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       videoPath: destinationPath,
       duration,
       size,
+      captureInterval,
       isExam: isExamSession,
       isTaskSubmission,
       taskId,
@@ -287,16 +561,36 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       } catch (attErr) {
         console.warn(`[processVideoJob] Failed to update task attempt document:`, attErr);
       }
+    } else {
+      // Approach 2: Slicing pending in-class task submission clips directly from the newly compiled class video
+      try {
+        await slicePendingTaskSubmissions({
+          classId,
+          studentUid,
+          studentEmail,
+          classStartTime: startTime,
+          classEndTime: endTime,
+          captureInterval,
+          outputVideoPath,
+          screenshots,
+          db,
+          bucket,
+          retry,
+        });
+      } catch (sliceErr) {
+        console.error(`[processVideoJob] Error slicing task submissions from class video:`, sliceErr);
+      }
     }
 
     // Clean up local files
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.unlinkSync(outputVideoPath);
 
-    // Optional post-processing: Auto-delete routine screenshots once combined into video
-    if (classData?.purgeScreenshotsAfterVideoCombine === true) {
+    // Auto-delete routine screenshots once combined into video (preserving flagged/irregularity evidence)
+    // Only class-level video jobs should trigger routine screenshot purge, never standalone task jobs
+    if (!isTaskSubmission) {
       try {
-        console.log(`[processVideoJob] Class ${classId} has purgeScreenshotsAfterVideoCombine enabled. Checking unflagged routine screenshots...`);
+        console.log(`[processVideoJob] Purging routine unflagged screenshots for student ${studentUid} in class ${classId}...`);
         const docsToPurge = querySnapshot.docs.filter((docSnap) => {
           const sData = docSnap.data() || {};
           const isFlagged = sData.isFlagged === true ||

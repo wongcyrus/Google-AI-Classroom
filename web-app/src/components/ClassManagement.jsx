@@ -86,6 +86,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [storageLimit, setStorageLimit] = useState('5'); // In GB
   const [retentionDays, setRetentionDays] = useState('30'); // In Days (Screenshots)
   const [videoRetentionDays, setVideoRetentionDays] = useState('90'); // In Days (Videos)
+  const [frameRate, setFrameRate] = useState('15'); // In Seconds per frame
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Hong_Kong');
@@ -180,8 +181,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [purgeScreenshotsAfterVideoCombine, setPurgeScreenshotsAfterVideoCombine] = useState(true);
   const [lectureAiModel, setLectureAiModel] = useState('gemini-3.8-flash');
   const [isLectureSubtitlesEnabled, setIsLectureSubtitlesEnabled] = useState(true);
-  const [isSweepingScreenshots, setIsSweepingScreenshots] = useState(false);
-  const [sweepResultMessage, setSweepResultMessage] = useState('');
   const [lectureRecordingPrompt, setLectureRecordingPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
   const [lectureSttPrompt, setLectureSttPrompt] = useState(DEFAULT_LECTURE_STT_PROMPT);
   const [lectureTranslationPrompt, setLectureTranslationPrompt] = useState(DEFAULT_LECTURE_TRANSLATION_PROMPT);
@@ -446,6 +445,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setTagInput('');
           setRetentionDays((classData.retentionDays || 30).toString());
           setVideoRetentionDays((classData.videoRetentionDays || 90).toString());
+          setFrameRate((classData.frameRate || 15).toString());
           if (classData.storageQuota) {
             setStorageLimit((classData.storageQuota / (1024 * 1024 * 1024)).toString());
           } else {
@@ -500,7 +500,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             setIpRestrictions('');
           }
           setAutomaticCapture(classData.automaticCapture || false);
-          setAutomaticCombine(classData.automaticCombine || false);
+          setAutomaticCombine(classData.automaticCombine !== false);
           setCaptureMode(classData.captureMode || 'dual');
           setAiModel(classData.aiModel || 'gemini-3.5-flash-lite');
           setRequireFullScreenOnly(classData.requireFullScreenOnly !== false);
@@ -564,7 +564,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setTeacherRecordingsPolicy(tPolicy);
           setAllowShareTeacherRecordings(tPolicy !== 'private');
           setConsolidateLessonVideo(classData.consolidateLessonVideo !== false);
-          setPurgeScreenshotsAfterVideoCombine(Boolean(classData.purgeScreenshotsAfterVideoCombine));
+          setPurgeScreenshotsAfterVideoCombine(classData.purgeScreenshotsAfterVideoCombine !== false);
           setLectureAiModel(classData.lectureAiModel || 'gemini-3.8-flash');
           setIsLectureSubtitlesEnabled(classData.isLectureSubtitlesEnabled !== false);
           const loadedSttPrompt = classData.lectureSttPrompt || classData.lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
@@ -1104,6 +1104,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       storageQuota: storageQuotaBytes,
       retentionDays: retentionDaysNum,
       videoRetentionDays: videoRetentionDaysNum,
+      frameRate: parseInt(frameRate, 10) || 15,
       schedule: activeSchedule,
       scheduleHistory: historyToSave,
       studentEmails: studentEmailList,
@@ -1159,7 +1160,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
       allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
       consolidateLessonVideo: consolidateLessonVideo !== false,
-      purgeScreenshotsAfterVideoCombine: Boolean(purgeScreenshotsAfterVideoCombine),
+      purgeScreenshotsAfterVideoCombine: purgeScreenshotsAfterVideoCombine !== false,
       lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
       isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
       lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
@@ -1421,6 +1422,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           storageQuota: storageQuotaBytes,
           retentionDays: retentionDaysNum,
           videoRetentionDays: videoRetentionDaysNum,
+          frameRate: parseInt(frameRate, 10) || 15,
           schedule: newSchedule,
           scheduleHistory: [],
           storageUsage: 0,
@@ -1471,7 +1473,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
           allowShareTeacherRecordings: teacherRecordingsPolicy ? teacherRecordingsPolicy !== 'private' : Boolean(allowShareTeacherRecordings),
           consolidateLessonVideo: consolidateLessonVideo !== false,
-          purgeScreenshotsAfterVideoCombine: Boolean(purgeScreenshotsAfterVideoCombine),
+          purgeScreenshotsAfterVideoCombine: purgeScreenshotsAfterVideoCombine !== false,
           lectureAiModel: lectureAiModel || 'gemini-3.8-flash',
           isLectureSubtitlesEnabled: isLectureSubtitlesEnabled !== false,
           lectureSttPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
@@ -1546,26 +1548,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         console.error('Error deleting class:', err);
         alert('Error deleting class: ' + err.message);
       }
-    }
-  };
-
-  const handleSweepCombinedScreenshots = async () => {
-    const targetId = embeddedClassId || selectedClass;
-    if (!targetId) return;
-    const confirmMsg = `Sweep and purge raw screenshots for completed videos in class "${targetId}"?\n\nThis will permanently delete routine interval screenshots that have already been compiled into MP4 videos to free up storage space. All anti-cheating alerts, proctoring violations, and incident evidence will be preserved.`;
-    if (!window.confirm(confirmMsg)) return;
-
-    setIsSweepingScreenshots(true);
-    setSweepResultMessage('');
-    try {
-      const sweepCallable = httpsCallable(functions, 'purgeCombinedScreenshotsForClass');
-      const res = await sweepCallable({ classId: targetId });
-      setSweepResultMessage(res.data?.message || 'Successfully swept combined screenshots.');
-    } catch (err) {
-      console.error('[ClassManagement] Sweep combined screenshots error:', err);
-      alert(`Failed to sweep combined screenshots: ${err.message || 'Unknown error'}`);
-    } finally {
-      setIsSweepingScreenshots(false);
     }
   };
 
@@ -2123,22 +2105,23 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           </div>
 
           <div className="form-group">
-            <label>Screenshot Retention (Days)</label>
-            <select value={retentionDays} onChange={(e) => setRetentionDays(e.target.value)}>
-              <option value="7">7 Days (Short Workshop)</option>
-              <option value="14">14 Days (Standard)</option>
-              <option value="30">30 Days (1 Month)</option>
-              <option value="60">60 Days (2 Months)</option>
-              <option value="90">90 Days (1 Semester)</option>
-              <option value="180">180 Days (Half Year)</option>
-              <option value="365">365 Days (1 Year)</option>
+            <label>Screenshot Interval (Cadence)</label>
+            <select aria-label="Class screenshot interval" value={frameRate} onChange={(e) => setFrameRate(e.target.value)}>
+              <option value="5">5s (High Frequency - Interactive Labs)</option>
+              <option value="10">10s (Standard Lab)</option>
+              <option value="15">15s (Recommended Default)</option>
+              <option value="30">30s (Low Bandwidth Lecture)</option>
+              <option value="60">60s (Minimal Interval)</option>
             </select>
-            <p className="input-hint">Raw screen capture frames older than this are recycled.</p>
+            <p className="input-hint">Fixed time-lapse frame rate for student monitoring and combined video compilation throughout all class lessons.</p>
           </div>
 
           <div className="form-group">
-            <label>Video Retention (Days)</label>
-            <select value={videoRetentionDays} onChange={(e) => setVideoRetentionDays(e.target.value)}>
+            <label>Lesson Video &amp; Recording Retention (Days)</label>
+            <select value={videoRetentionDays} onChange={(e) => {
+              setVideoRetentionDays(e.target.value);
+              setRetentionDays(e.target.value);
+            }}>
               <option value="14">14 Days (2 Weeks)</option>
               <option value="30">30 Days (1 Month)</option>
               <option value="60">60 Days (2 Months)</option>
@@ -2147,44 +2130,21 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               <option value="365">365 Days (1 Year)</option>
               <option value="730">730 Days (2 Years)</option>
             </select>
-            <p className="input-hint">Compiled lesson playback videos (.mp4) retention period.</p>
+            <p className="input-hint">Retention period for compiled lesson playback videos (.mp4), teacher recordings, and incident evidence.</p>
           </div>
         </div>
 
-        <div className="form-group" style={{ marginTop: '1rem', padding: '0.85rem 1rem', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '8px', border: '1px solid var(--color-border, #e2e8f0)' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', margin: 0, fontWeight: 600 }}>
-            <input
-              type="checkbox"
-              id="purge-screenshots-after-video-combine"
-              checked={purgeScreenshotsAfterVideoCombine}
-              onChange={(e) => setPurgeScreenshotsAfterVideoCombine(e.target.checked)}
-              style={{ width: '1.15rem', height: '1.15rem', cursor: 'pointer' }}
-            />
-            <span>📸 Auto-Delete Raw Screenshots Once Combined into Video</span>
-          </label>
-          <p className="input-hint" style={{ margin: '0.35rem 0 0 1.75rem', fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>
-            Reclaims ~80%+ storage space by automatically purging routine raw interval screenshots once their session MP4 video has been successfully compiled and verified. Irregularities, anti-cheating flags, and proctoring evidence are always preserved.
+        <div className="form-group" style={{ marginTop: '1rem', padding: '0.85rem 1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+            <span>📸</span>
+            <span>Auto-Purge Routine Screenshots</span>
+            <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '9999px', fontWeight: 700 }}>
+              Always Enabled
+            </span>
+          </div>
+          <p className="input-hint" style={{ marginTop: '4px', marginBottom: 0, fontSize: '0.82rem', color: '#64748b' }}>
+            Reclaims ~85%+ storage space by automatically purging routine raw interval screenshots once their session MP4 video has been successfully compiled and verified. Irregularities, anti-cheating flags, and proctoring evidence are permanently preserved.
           </p>
-
-          {(selectedClass || embeddedClassId) && (
-            <div style={{ marginTop: '0.75rem', marginLeft: '1.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                id="btn-sweep-combined-screenshots"
-                style={{ fontSize: '0.82rem', padding: '0.35rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                onClick={handleSweepCombinedScreenshots}
-                disabled={isSweepingScreenshots}
-              >
-                {isSweepingScreenshots ? '⏳ Sweeping Videos...' : '🧹 Sweep & Purge Existing Combined Screenshots'}
-              </button>
-              {sweepResultMessage && (
-                <span className="sweep-result-message" style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
-                  {sweepResultMessage}
-                </span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -3219,18 +3179,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           <p className="input-hint">Starts capturing student screens 5 minutes before lesson starts and ends 5 minutes after.</p>
         </div>
 
-        <div className="form-group">
-          <label className="checkbox-toggle-label">
-            <input
-              type="checkbox"
-              checked={automaticCombine}
-              onChange={(e) => setAutomaticCombine(e.target.checked)}
-            />
-            <span>Automatic Video Compilation (Student Screens)</span>
-          </label>
-          <p className="input-hint">
-            Generates an invigilation video recording for each student when the class concludes.
-            (Teacher lecture recordings are always automatically combined across all classes without needing any settings.)
+        <div className="form-group" style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+            <span>🎞️</span>
+            <span>Automatic Video Compilation</span>
+            <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '9999px', fontWeight: 700 }}>
+              Always Enabled
+            </span>
+          </div>
+          <p className="input-hint" style={{ marginTop: '4px', marginBottom: 0 }}>
+            Student invigilation videos and teacher lecture recordings are automatically compiled into finalized MP4 videos at the conclusion of each scheduled lesson. In-class practical task clips are extracted and graded automatically without requiring any manual settings.
           </p>
         </div>
 

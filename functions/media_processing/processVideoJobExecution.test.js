@@ -121,6 +121,8 @@ vi.mock('firebase-functions/v2/firestore', () => ({
 vi.mock('fs', () => {
   const renameMock = vi.fn().mockResolvedValue();
   const fsMock = {
+    existsSync: vi.fn(() => true),
+    statSync: vi.fn(() => ({ size: 1024 })),
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
     unlinkSync: vi.fn(),
@@ -249,7 +251,12 @@ describe('processVideoJob Cloud Function Execution', () => {
           }),
         };
       }
-      return { doc: vi.fn() };
+      return {
+        doc: vi.fn().mockReturnValue({ set: vi.fn().mockResolvedValue() }),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
+      };
     });
 
     await processVideoJob({ data: mockSnap });
@@ -392,7 +399,12 @@ describe('processVideoJob Cloud Function Execution', () => {
           }),
         };
       }
-      return { doc: vi.fn() };
+      return {
+        doc: vi.fn().mockReturnValue({ set: vi.fn().mockResolvedValue() }),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
+      };
     });
 
     await processVideoJob({ data: mockSnap });
@@ -411,7 +423,7 @@ describe('processVideoJob Cloud Function Execution', () => {
     expect(mockBatchCommit).toHaveBeenCalled();
   });
 
-  it('retains all screenshots when purgeScreenshotsAfterVideoCombine is false', async () => {
+  it('retains all screenshots when isTaskSubmission is true', async () => {
     const mockSnap = {
       data: () => ({
         jobId: 'j-keep-test',
@@ -419,6 +431,7 @@ describe('processVideoJob Cloud Function Execution', () => {
         classId: 'c1',
         studentUid: 's1',
         studentEmail: 's1@test.com',
+        isTaskSubmission: true,
         startTime: new Date('2026-09-19T09:00:00Z'),
         endTime: new Date('2026-09-19T10:00:00Z'),
       }),
@@ -440,7 +453,6 @@ describe('processVideoJob Cloud Function Execution', () => {
             get: vi.fn().mockResolvedValue({
               data: () => ({
                 schedule: { timeZone: 'Asia/Hong_Kong' },
-                purgeScreenshotsAfterVideoCombine: false,
               }),
             }),
           }),
@@ -456,7 +468,12 @@ describe('processVideoJob Cloud Function Execution', () => {
           }),
         };
       }
-      return { doc: vi.fn() };
+      return {
+        doc: vi.fn().mockReturnValue({ set: vi.fn().mockResolvedValue() }),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
+      };
     });
 
     await processVideoJob({ data: mockSnap });

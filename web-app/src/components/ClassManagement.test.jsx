@@ -34,21 +34,11 @@ const {
   const mockResetStudentPasskey = vi.fn().mockResolvedValue({ data: { success: true } });
   const mockApproveTeacherPasskeyBypass = vi.fn().mockResolvedValue({ data: { success: true } });
   const mockToggleStudentExemption = vi.fn().mockResolvedValue({ data: { success: true } });
-  const mockPurgeCombinedScreenshotsForClass = vi.fn().mockResolvedValue({
-    data: {
-      status: 'success',
-      jobsEvaluated: 2,
-      purgedCount: 45,
-      preservedCount: 3,
-      message: 'Successfully purged 45 raw routine screenshot(s) across 2 completed video job(s). Preserved 3 flagged evidence screenshot(s).',
-    },
-  });
 
   const defaultHttpsCallableImpl = (_functions, name) => {
     if (name === 'resetStudentPasskey') return mockResetStudentPasskey;
     if (name === 'approveTeacherPasskeyBypass') return mockApproveTeacherPasskeyBypass;
     if (name === 'toggleStudentExemption') return mockToggleStudentExemption;
-    if (name === 'purgeCombinedScreenshotsForClass') return mockPurgeCombinedScreenshotsForClass;
     return mockGetAllSystemStudentEmails;
   };
 
@@ -59,7 +49,6 @@ const {
     mockResetStudentPasskey,
     mockApproveTeacherPasskeyBypass,
     mockToggleStudentExemption,
-    mockPurgeCombinedScreenshotsForClass,
     mockHttpsCallable,
     defaultHttpsCallableImpl,
   };
@@ -316,9 +305,9 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(addScheduleBtn);
 
     const captureCheckbox = screen.getByLabelText(/Automatic Live Capture/i);
-    const combineCheckbox = screen.getByLabelText(/Automatic Video Compilation/i);
     expect(captureCheckbox).toBeChecked();
-    expect(combineCheckbox).toBeChecked();
+    expect(screen.getByText(/Automatic Video Compilation/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Always Enabled/i).length).toBeGreaterThan(0);
 
     const createBtn = screen.getByRole('button', { name: /Create Class/i });
     expect(createBtn).toBeInTheDocument();
@@ -1690,7 +1679,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     expect(capturedUpdateData.allowShareTeacherRecordings).toBe(false);
   });
 
-  it('configures, toggles, and saves purgeScreenshotsAfterVideoCombine in class settings', async () => {
+  it('renders Always Enabled auto-purge badge and saves purgeScreenshotsAfterVideoCombine in class settings', async () => {
     let capturedUpdateData = null;
     mockUpdateDoc.mockImplementation(async (ref, data) => {
       capturedUpdateData = data;
@@ -1702,15 +1691,10 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Auto-Delete Raw Screenshots Once Combined into Video/i)).toBeInTheDocument();
+      expect(screen.getByText(/Auto-Purge Routine Screenshots/i)).toBeInTheDocument();
     });
 
-    const purgeCheckbox = screen.getByLabelText(/Auto-Delete Raw Screenshots Once Combined into Video/i);
-    expect(purgeCheckbox).not.toBeChecked();
-
-    // Toggle on
-    fireEvent.click(purgeCheckbox);
-    expect(purgeCheckbox).toBeChecked();
+    expect(screen.getAllByText(/Always Enabled/i).length).toBeGreaterThan(0);
 
     const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
     await act(async () => {
@@ -2145,62 +2129,34 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     });
   });
 
-  describe('Sweep Existing Combined Screenshots', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      vi.spyOn(window, 'confirm').mockImplementation(() => true);
-    });
-
-    it('does not render sweep button during new class creation mode', async () => {
-      await act(async () => {
-        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+  describe('Frame Rate Settings', () => {
+    it('configures, selects, and saves frameRate in class settings', async () => {
+      let savedData;
+      mockUpdateDoc.mockImplementation((ref, data) => {
+        savedData = data;
+        return Promise.resolve({});
       });
-
-      expect(screen.queryByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i })).not.toBeInTheDocument();
-    });
-
-    it('renders sweep button in edit mode and triggers purgeCombinedScreenshotsForClass callable on click', async () => {
-      await act(async () => {
-        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
-      });
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
-      });
-
-      const sweepBtn = screen.getByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i });
-      expect(sweepBtn).toBeInTheDocument();
-
-      await act(async () => {
-        fireEvent.click(sweepBtn);
-      });
-
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Sweep and purge raw screenshots for completed videos in class "CLASS_101"?'));
-      expect(mockPurgeCombinedScreenshotsForClass).toHaveBeenCalledWith({ classId: 'CLASS_101' });
-
-      await waitFor(() => {
-        expect(screen.getByText(/Successfully purged 45 raw routine screenshot\(s\)/i)).toBeInTheDocument();
-      });
-    });
-
-    it('does not invoke callable if teacher cancels confirmation prompt', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
 
       await act(async () => {
         render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
       });
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i)).toHaveValue('Distributed Systems');
+        expect(screen.getByLabelText(/Class screenshot interval/i)).toHaveValue('15');
       });
 
-      const sweepBtn = screen.getByRole('button', { name: /Sweep & Purge Existing Combined Screenshots/i });
+      const frameRateSelect = screen.getByLabelText(/Class screenshot interval/i);
+      fireEvent.change(frameRateSelect, { target: { value: '30' } });
+
+      const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
       await act(async () => {
-        fireEvent.click(sweepBtn);
+        fireEvent.click(saveBtn);
       });
 
-      expect(window.confirm).toHaveBeenCalled();
-      expect(mockPurgeCombinedScreenshotsForClass).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(savedData).toBeDefined();
+        expect(savedData.frameRate).toBe(30);
+      });
     });
   });
 });
