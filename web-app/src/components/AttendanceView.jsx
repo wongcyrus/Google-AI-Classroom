@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { db, functions } from '../firebase-config';
+import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { ref, getDownloadURL } from 'firebase/storage';
+import { db, functions, storage } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
 import Modal from './Modal.jsx';
 import StudentBadge from './common/StudentBadge';
@@ -14,6 +15,39 @@ import {
 } from '../utils/attendanceUtils';
 import './AttendanceView.css';
 
+export const parseTimeMs = (val) => {
+  if (!val) return NaN;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') return val.toDate().getTime();
+  if (typeof val.seconds === 'number') return val.seconds * 1000;
+  if (typeof val._seconds === 'number') return val._seconds * 1000;
+  if (val instanceof Date) return val.getTime();
+  const parsed = new Date(val).getTime();
+  return isNaN(parsed) ? NaN : parsed;
+};
+
+export const isVideoInLesson = (video, lessonStartMs, lessonEndMs) => {
+  if (isNaN(lessonStartMs)) return false;
+  const effectiveEndMs = isNaN(lessonEndMs) ? lessonStartMs + 60 * 60 * 1000 : lessonEndMs;
+
+  const PRE_BUFFER_MS = 30 * 60 * 1000;
+  const POST_BUFFER_MS = 60 * 60 * 1000;
+  const winStart = lessonStartMs - PRE_BUFFER_MS;
+  const winEnd = effectiveEndMs + POST_BUFFER_MS;
+
+  const vStart = parseTimeMs(video.startTime) || parseTimeMs(video.startedAt) || parseTimeMs(video.createdAt);
+  const vEnd = parseTimeMs(video.endTime) || parseTimeMs(video.endedAt) || parseTimeMs(video.finishedAt) ||
+    (!isNaN(vStart) && video.duration ? vStart + Number(video.duration) * 1000 : vStart);
+
+  if (!isNaN(vStart) && !isNaN(vEnd)) {
+    return Math.max(vStart, winStart) <= Math.min(vEnd, winEnd);
+  }
+  if (!isNaN(vStart)) {
+    return vStart >= winStart && vStart <= winEnd;
+  }
+  return false;
+};
+
 const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, timezone }) => {
   const [attendanceData, setAttendanceData] = useState([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
@@ -21,6 +55,11 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
   const [loadingLessonData, setLoadingLessonData] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentProfiles, setStudentProfiles] = useState({});
+  const [classFrameRate, setClassFrameRate] = useState(15);
+  const [lessonVideos, setLessonVideos] = useState([]);
+  const [modalVideoUrl, setModalVideoUrl] = useState('');
+  const [loadingModalVideo, setLoadingModalVideo] = useState(false);
+  const [modalVideoError, setModalVideoError] = useState(null);
 
   const matchedLesson = useMemo(() => {
     if (selectedLesson && lessons?.length) {
@@ -195,6 +234,9 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
 
         if (cancelled) return;
         setStudentProfiles(profilesMap);
+        if (classData.frameRate) {
+          setClassFrameRate(Number(classData.frameRate));
+        }
 
         if (lessonSnap?.exists?.()) {
           const lessonDocData = lessonSnap.data();
@@ -218,7 +260,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
             return {
               email: student.email,
               totalMinutes: totalMinutes,
-              percentage: lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%',
+              percentage: lessonDurationInMinutes > 0 ? Math.min(100, Math.max(0, (totalMinutes / lessonDurationInMinutes) * 100)).toFixed(2) + '%' : '0.00%',
               attendance: student.attendance || (totalMinutes > 0
                 ? Array(lessonDurationInMinutes).fill(0).map((_, idx) => (idx < totalMinutes ? 1 : 0))
                 : Array(lessonDurationInMinutes).fill(0)),
@@ -254,6 +296,23 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
             setAttendanceData(result.data.attendanceData);
           }
         }
+
+        // Fetch completed videoJobs for this class to link recorded screencasts
+        try {
+          const videoQuery = query(
+            collection(db, 'videoJobs'),
+            where('classId', '==', classId)
+          );
+          const videoSnap = await getDocs(videoQuery);
+          if (!cancelled) {
+            const fetchedVideos = (videoSnap?.docs || [])
+              .map((d) => ({ id: d.id, ...d.data() }))
+              .filter((v) => v.status === 'completed' || v.videoPath);
+            setLessonVideos(fetchedVideos);
+          }
+        } catch (vErr) {
+          console.warn("Could not fetch videoJobs for class:", vErr);
+        }
       } catch (error) {
         console.error("Error fetching lesson data and calculating attendance:", error);
       } finally {
@@ -270,6 +329,80 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
       cancelled = true;
     };
   }, [selectedLesson, classId, effectiveStart, effectiveEnd, lessonDurationInMinutes, timezone]);
+
+  const matchedVideo = useMemo(() => {
+    if (!selectedStudent || !lessonVideos.length) return null;
+    const lStartMs = parseTimeMs(effectiveStart);
+    const lEndMs = parseTimeMs(effectiveEnd);
+
+    const studentVids = lessonVideos.filter((v) => {
+      const isStudent =
+        (v.studentUid && selectedStudent.uid && v.studentUid === selectedStudent.uid) ||
+        (v.studentEmail && selectedStudent.email && v.studentEmail.toLowerCase() === selectedStudent.email.toLowerCase());
+      if (!isStudent) return false;
+      return isVideoInLesson(v, lStartMs, lEndMs);
+    });
+
+    studentVids.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+    return studentVids[0] || null;
+  }, [selectedStudent, lessonVideos, effectiveStart, effectiveEnd]);
+
+  useEffect(() => {
+    if (!selectedStudent || !matchedVideo) {
+      setModalVideoUrl('');
+      setLoadingModalVideo(false);
+      setModalVideoError(null);
+      return;
+    }
+
+    let isCurrent = true;
+    setLoadingModalVideo(true);
+    setModalVideoError(null);
+    setModalVideoUrl('');
+
+    const resolvePlaybackUrl = async () => {
+      try {
+        let url = '';
+        try {
+          const getStudentVideoPlaybackUrl = httpsCallable(functions, 'getStudentVideoPlaybackUrl');
+          const res = await getStudentVideoPlaybackUrl({ jobId: matchedVideo.id || matchedVideo.jobId });
+          if (res?.data?.url) {
+            url = res.data.url;
+          }
+        } catch (callErr) {
+          console.warn('Callable function getStudentVideoPlaybackUrl failed, trying storage fallback:', callErr);
+        }
+
+        if (!url && matchedVideo.videoPath) {
+          const videoRef = ref(storage, matchedVideo.videoPath);
+          url = await getDownloadURL(videoRef);
+        }
+
+        if (isCurrent) {
+          if (url) {
+            setModalVideoUrl(url);
+          } else {
+            setModalVideoError('Recorded video file not accessible or still processing.');
+          }
+        }
+      } catch (err) {
+        if (isCurrent) {
+          console.error('Error resolving student video playback URL:', err);
+          setModalVideoError(err.message || 'Failed to load video recording.');
+        }
+      } finally {
+        if (isCurrent) {
+          setLoadingModalVideo(false);
+        }
+      }
+    };
+
+    resolvePlaybackUrl();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedStudent, matchedVideo]);
 
   const handleExportToExcel = async () => {
     const targetData = filteredAndSortedData.length > 0 ? filteredAndSortedData : combinedData;
@@ -302,7 +435,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         studentData.totalMinutes ?? 'N/A',
         studentData.percentage ?? 'N/A',
         studentData.workingMinutes ?? 'N/A',
-        studentData.workingMinutes && lessonDurationInMinutes > 0 ? ((studentData.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : 'N/A',
+        studentData.workingMinutes && lessonDurationInMinutes > 0 ? `${Math.min(100, Math.max(0, (studentData.workingMinutes / lessonDurationInMinutes) * 100)).toFixed(2)}%` : 'N/A',
         lessonData?.generalSummary || '',
         studentData?.summary || '',
         (Array.isArray(lessonData?.generalFeedback) ? lessonData.generalFeedback : (lessonData?.generalFeedback ? [lessonData.generalFeedback] : [])).join(' | '),
@@ -551,7 +684,7 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                         <td className="cell-stat">{student.percentage ?? 'N/A'}</td>
                         <td className="cell-stat">{student.workingMinutes ?? 'N/A'}</td>
                         <td className="cell-stat">
-                          {student.workingMinutes && lessonDurationInMinutes > 0 ? `${((student.workingMinutes / lessonDurationInMinutes) * 100).toFixed(2)}%` : 'N/A'}
+                          {student.workingMinutes && lessonDurationInMinutes > 0 ? `${Math.min(100, Math.max(0, (student.workingMinutes / lessonDurationInMinutes) * 100)).toFixed(2)}%` : 'N/A'}
                         </td>
                         {student.attendance.map((present, index) => {
                           const isPresent = present === 1;
@@ -597,25 +730,161 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         )}
       </div>
 
-      <Modal show={!!selectedStudent} onClose={() => setSelectedStudent(null)} title={`AI Analysis for ${getStudentDisplayName(selectedStudent?.email, studentProfiles)}`}>
+      <Modal
+        show={!!selectedStudent}
+        onClose={() => setSelectedStudent(null)}
+        title={`AI Analysis for ${getStudentDisplayName(selectedStudent?.email, studentProfiles)}`}
+        contentStyle={{ width: '85vw', maxWidth: '1200px', height: '88vh', maxHeight: '92vh' }}
+        className="attendance-details-modal-box"
+      >
         {selectedStudent && (
-          <div>
-            <h4>General Summary</h4>
-            <p>{lessonData?.generalSummary || 'Not available.'}</p>
-            <h4>Student-Specific Summary</h4>
-            <p>{selectedStudent.summary || 'Not available.'}</p>
-            <hr />
-            <h4>General Feedback</h4>
-            <div>
-              {Array.isArray(lessonData?.generalFeedback)
-                ? (lessonData.generalFeedback.length > 0 ? lessonData.generalFeedback.map((fb, index) => <p key={index}>{fb}</p>) : <p>Not available.</p>)
-                : (lessonData?.generalFeedback ? <p>{lessonData.generalFeedback}</p> : <p>Not available.</p>)}
+          <div className="attendance-student-modal-body">
+            {/* Student Header Card with Quick Stats */}
+            <div className="attendance-modal-student-summary-card">
+              <StudentBadge
+                student={{
+                  email: selectedStudent.email,
+                  ...(studentProfiles[selectedStudent.email?.toLowerCase()] || {}),
+                }}
+                showEmail={true}
+                size="md"
+              />
+              <div className="attendance-modal-stats-group">
+                <div className="attendance-modal-stat-pill">
+                  <span className="attendance-modal-stat-label">Screen Share</span>
+                  <span className="attendance-modal-stat-value">
+                    {selectedStudent.totalMinutes ?? 'N/A'} min ({selectedStudent.percentage ?? 'N/A'})
+                  </span>
+                </div>
+                <div className="attendance-modal-stat-pill">
+                  <span className="attendance-modal-stat-label">AI Estimated</span>
+                  <span className="attendance-modal-stat-value">
+                    {selectedStudent.workingMinutes ?? 'N/A'} min (
+                    {selectedStudent.workingMinutes && lessonDurationInMinutes > 0
+                      ? `${Math.min(100, Math.max(0, (selectedStudent.workingMinutes / lessonDurationInMinutes) * 100)).toFixed(2)}%`
+                      : 'N/A'}
+                    )
+                  </span>
+                </div>
+              </div>
             </div>
-            <h4>Student-Specific Feedback</h4>
-            <div>
-              {Array.isArray(selectedStudent.feedback)
-                ? (selectedStudent.feedback.length > 0 ? selectedStudent.feedback.map((fb, index) => <p key={index}>{fb}</p>) : <p>Not available.</p>)
-                : (selectedStudent.feedback ? <p>{selectedStudent.feedback}</p> : <p>Not available.</p>)}
+
+            <div className="attendance-modal-grid">
+              {/* Left Column: Recorded Video */}
+              <div className="attendance-modal-col-video">
+                <div className="attendance-modal-section">
+                  <h4 className="attendance-modal-section-title">
+                    <span>📹</span> Recorded Screen Activity
+                  </h4>
+
+                  {matchedVideo ? (
+                    <>
+                      {typeof matchedVideo.duration === 'number' && matchedVideo.duration > 0 && (() => {
+                        const captureInterval = typeof matchedVideo.captureInterval === 'number'
+                          ? matchedVideo.captureInterval
+                          : (classFrameRate || 15);
+                        const calculatedMinutes = Math.max(1, Math.round((matchedVideo.duration * captureInterval) / 60));
+                        const effectiveActiveMinutes = lessonDurationInMinutes > 0 ? Math.min(lessonDurationInMinutes, calculatedMinutes) : calculatedMinutes;
+                        return (
+                          <div className="attendance-modal-timelapse-banner">
+                            <span className="timelapse-icon">⏩</span>
+                            <div className="timelapse-text">
+                              <strong>Time-Lapse Screencast:</strong> Encoded at 1 frame/sec (capture interval: ~{captureInterval}s per screenshot).{' '}
+                              Video playback duration: <strong>{matchedVideo.duration}s</strong> ({matchedVideo.duration} frames) represents ~
+                              <strong>{effectiveActiveMinutes} minutes</strong> of active lab screen share.
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {loadingModalVideo ? (
+                        <div className="attendance-modal-video-status">
+                          <div className="attendance-modal-spinner" />
+                          <span>Loading screencast video...</span>
+                        </div>
+                      ) : modalVideoError ? (
+                        <div className="attendance-modal-video-error">
+                          <span>⚠️ {modalVideoError}</span>
+                        </div>
+                      ) : modalVideoUrl ? (
+                        <div className="attendance-modal-player-wrapper">
+                          <div className="attendance-modal-player-container">
+                            <video
+                              controls
+                              playsInline
+                              preload="metadata"
+                              src={modalVideoUrl}
+                              className="attendance-modal-video-player"
+                            >
+                              Your browser does not support the video tag.
+                            </video>
+                          </div>
+                          <div className="attendance-modal-video-actions">
+                            <a
+                              href={modalVideoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="attendance-btn attendance-btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', textDecoration: 'none' }}
+                            >
+                              ↗ Open Video in New Tab
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="attendance-modal-no-video">
+                          <span>⚪</span>
+                          <div>
+                            <strong>Video processing or unavailable</strong>
+                            <p>A video job was registered, but the video file has not finished compiling or could not be reached.</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="attendance-modal-no-video">
+                      <span>⚪</span>
+                      <div>
+                        <strong>No recorded screen video found for this lesson</strong>
+                        <p>No screencast was recorded for this student during this lesson time slot (student may have been absent, offline, or did not share screen).</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: AI Summaries & Feedback */}
+              <div className="attendance-modal-col-info">
+                <div className="attendance-modal-section">
+                  <h4 className="attendance-modal-section-title">
+                    <span>🤖</span> AI Summaries & Feedback
+                  </h4>
+
+                  <div className="attendance-modal-text-block">
+                    <h5>General Summary</h5>
+                    <p>{lessonData?.generalSummary || 'Not available.'}</p>
+
+                    <h5 style={{ marginTop: '0.75rem' }}>Student-Specific Summary</h5>
+                    <p>{selectedStudent.summary || 'Not available.'}</p>
+                  </div>
+
+                  <div className="attendance-modal-feedback-group" style={{ marginTop: '0.75rem' }}>
+                    <h5>Student-Specific Feedback</h5>
+                    <div className="attendance-modal-feedback-block">
+                      {Array.isArray(selectedStudent.feedback)
+                        ? (selectedStudent.feedback.length > 0 ? selectedStudent.feedback.map((fb, index) => <p key={index} className="attendance-modal-feedback-item">{fb}</p>) : <p style={{ color: 'var(--color-text-muted, #64748b)', margin: 0 }}>Not available.</p>)
+                        : (selectedStudent.feedback ? <p className="attendance-modal-feedback-item">{selectedStudent.feedback}</p> : <p style={{ color: 'var(--color-text-muted, #64748b)', margin: 0 }}>Not available.</p>)}
+                    </div>
+
+                    <h5 style={{ marginTop: '0.75rem' }}>General Feedback</h5>
+                    <div className="attendance-modal-feedback-block">
+                      {Array.isArray(lessonData?.generalFeedback)
+                        ? (lessonData.generalFeedback.length > 0 ? lessonData.generalFeedback.map((fb, index) => <p key={index} className="attendance-modal-feedback-item">{fb}</p>) : <p style={{ color: 'var(--color-text-muted, #64748b)', margin: 0 }}>Not available.</p>)
+                        : (lessonData?.generalFeedback ? <p className="attendance-modal-feedback-item">{lessonData.generalFeedback}</p> : <p style={{ color: 'var(--color-text-muted, #64748b)', margin: 0 }}>Not available.</p>)}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

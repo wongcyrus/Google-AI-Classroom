@@ -118,7 +118,7 @@ export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [],
     }
 
     const pct = durationMinutes > 0
-      ? `${((effectiveMins / durationMinutes) * 100).toFixed(2)}%`
+      ? `${Math.min(100, Math.max(0, (effectiveMins / durationMinutes) * 100)).toFixed(2)}%`
       : '0.00%';
 
     return {

@@ -16,6 +16,7 @@ async function reconcileClass(classId) {
   }
 
   const classData = classDoc.data();
+  const classCaptureInterval = classData.frameRate ? Number(classData.frameRate) : 15;
   const studentsMap = classData.students || {};
 
   const lessonsSnap = await db.collection('classes').doc(classId).collection('lessons').get();
@@ -63,12 +64,30 @@ async function reconcileClass(classId) {
         return vStart && Math.abs(vStart.getTime() - lStart.getTime()) <= 30 * 60 * 1000;
       });
 
-      // If attendance was 0 or unpopulated, but student has AI working time or a completed video
-      if ((currentShared === 0 || !hasAttendanceBits) && (workingMins > 0 || matchedVideo)) {
-        const effectiveMins = Math.min(
-          workingMins > 0 ? workingMins : (matchedVideo?.duration ? Math.round(matchedVideo.duration / 60) : durationMinutes),
-          durationMinutes
-        );
+      // Screencasts are 1 fps from periodic screenshots.
+      // 1 frame of video = captureInterval seconds of real-world activity.
+      let videoCap = null;
+      if (matchedVideo && typeof matchedVideo.duration === 'number' && matchedVideo.duration > 0) {
+        const captureInterval = typeof matchedVideo.captureInterval === 'number'
+          ? matchedVideo.captureInterval
+          : classCaptureInterval;
+        videoCap = Math.min(durationMinutes, Math.max(1, Math.round((matchedVideo.duration * captureInterval) / 60)));
+      }
+
+      // Check if attendance needs reconciliation:
+      // 1. Missing attendance (currentShared === 0 || !hasAttendanceBits)
+      // 2. Overstated attendance (videoCap !== null && (currentShared > videoCap || workingMins > videoCap))
+      const isMissing = (currentShared === 0 || !hasAttendanceBits) && (workingMins > 0 || matchedVideo);
+      const isOverstated = videoCap !== null && (currentShared > videoCap || workingMins > videoCap);
+
+      if (isMissing || isOverstated) {
+        const effectiveMins = videoCap !== null
+          ? videoCap
+          : Math.min(workingMins > 0 ? workingMins : durationMinutes, durationMinutes);
+
+        const effectiveWorking = videoCap !== null && workingMins > 0
+          ? Math.min(workingMins, videoCap)
+          : workingMins;
 
         const bitmask = Array(durationMinutes).fill(0).map((_, i) => (i < effectiveMins ? 1 : 0));
 
@@ -77,6 +96,7 @@ async function reconcileClass(classId) {
           sharedScreenMinutes: effectiveMins,
           attendance: bitmask,
           deductedMinutes: studentObj.deductedMinutes || 0,
+          ...(effectiveWorking > 0 ? { workingMinutes: effectiveWorking } : {}),
         };
 
         lessonModified = true;

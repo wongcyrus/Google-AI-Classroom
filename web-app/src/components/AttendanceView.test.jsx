@@ -12,6 +12,7 @@ const mockCallable = vi.fn().mockResolvedValue({
 vi.mock('../firebase-config', () => ({
   db: {},
   functions: {},
+  storage: {},
 }));
 
 vi.mock('firebase/functions', () => ({
@@ -19,9 +20,19 @@ vi.mock('firebase/functions', () => ({
 }));
 
 const mockGetDoc = vi.fn();
+const mockGetDocs = vi.fn().mockResolvedValue({ docs: [] });
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   getDoc: (...args) => mockGetDoc(...args),
+  collection: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  getDocs: (...args) => mockGetDocs(...args),
+}));
+
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn(),
+  getDownloadURL: vi.fn().mockResolvedValue('https://storage.mock/video.mp4'),
 }));
 
 describe('AttendanceView Component Suite', () => {
@@ -365,6 +376,190 @@ describe('AttendanceView Component Suite', () => {
 
     await waitFor(() => {
       expect(mockCallable).toHaveBeenCalled();
+    });
+  });
+
+  it('displays student screencast video player and time-lapse duration in the details modal', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u1: {
+              sharedScreenMinutes: 60,
+              workingMinutes: 60,
+              summary: 'Worked on React project',
+              feedback: 'Consistent progress',
+              attendance: [1, 1],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          frameRate: 30,
+          students: { u1: 'alice@school.edu' },
+        }),
+      });
+
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'job_alice_123',
+          data: () => ({
+            classId: 'CLASS_101',
+            studentUid: 'u1',
+            studentEmail: 'alice@school.edu',
+            startTime: '2026-08-30T10:00:00.000Z',
+            duration: 120,
+            status: 'completed',
+            videoPath: 'videos/CLASS_101/alice_123.mp4',
+          }),
+        },
+      ],
+    });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00.000Z"
+        endTime="2026-08-30T11:00:00.000Z"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
+    });
+
+    const studentRow = screen.getByText('alice@school.edu').closest('tr');
+    fireEvent.click(studentRow);
+
+    // Verify modal opened
+    expect(screen.getByText(/AI Analysis for alice@school.edu/i)).toBeInTheDocument();
+
+    // Verify Time-Lapse Screencast banner and duration
+    await waitFor(() => {
+      expect(screen.getByText(/Time-Lapse Screencast:/i)).toBeInTheDocument();
+      expect(screen.getByText(/120s/i)).toBeInTheDocument();
+      expect(screen.getByText(/60 minutes/i)).toBeInTheDocument();
+    });
+
+    // Verify video element is rendered with storage URL
+    await waitFor(() => {
+      const videoElement = document.querySelector('video');
+      expect(videoElement).toBeInTheDocument();
+      expect(videoElement).toHaveAttribute('src', 'https://storage.mock/video.mp4');
+    });
+
+    // Verify New Tab button
+    expect(screen.getByText(/Open Video in New Tab/i)).toBeInTheDocument();
+  });
+
+  it('displays fallback notice when no screen recording exists for the student', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u2: {
+              sharedScreenMinutes: 0,
+              workingMinutes: 0,
+              attendance: [0, 0],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u2: 'bob@school.edu' },
+        }),
+      });
+
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00.000Z"
+        endTime="2026-08-30T11:00:00.000Z"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    });
+
+    const studentRow = screen.getByText('bob@school.edu').closest('tr');
+    fireEvent.click(studentRow);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No recorded screen video found for this lesson/i)).toBeInTheDocument();
+    });
+  });
+
+  it('accurately scales timelapse minutes according to custom capture interval (15s frame rate)', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u3: {
+              sharedScreenMinutes: 30,
+              workingMinutes: 30,
+              attendance: [1, 1],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          frameRate: 15,
+          students: { u3: 'charlie@school.edu' },
+        }),
+      });
+
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'job_charlie_123',
+          data: () => ({
+            classId: 'CLASS_101',
+            studentUid: 'u3',
+            studentEmail: 'charlie@school.edu',
+            startTime: '2026-08-30T10:00:00.000Z',
+            duration: 120, // 120s video at 15s capture interval = (120 * 15) / 60 = 30 minutes
+            status: 'completed',
+            videoPath: 'videos/CLASS_101/charlie_123.mp4',
+          }),
+        },
+      ],
+    });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00.000Z"
+        endTime="2026-08-30T11:00:00.000Z"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('charlie@school.edu')).toBeInTheDocument();
+    });
+
+    const studentRow = screen.getByText('charlie@school.edu').closest('tr');
+    fireEvent.click(studentRow);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Time-Lapse Screencast:/i)).toBeInTheDocument();
+      expect(screen.getByText(/~15s per screenshot/i)).toBeInTheDocument();
+      expect(screen.getByText(/30 minutes/i)).toBeInTheDocument();
     });
   });
 });

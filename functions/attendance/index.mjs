@@ -45,6 +45,7 @@ export const getAttendanceData = onCall({
   }
 
   const classData = classSnap.data();
+  const classCaptureInterval = classData.frameRate ? Number(classData.frameRate) : 15;
   const studentsMap = classData.students || {};
   const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
     uid: uid,
@@ -149,7 +150,7 @@ export const getAttendanceData = onCall({
     }
 
     // 2. Fetch completed student video jobs for this lesson timeframe
-    const completedVideoStudents = new Set();
+    const videoJobsMap = new Map();
     try {
       const videoJobsSnap = await db.collection('videoJobs')
         .where('classId', '==', classId)
@@ -163,8 +164,8 @@ export const getAttendanceData = onCall({
           const vStart = vData.startTime?.toDate ? vData.startTime.toDate() : (vData.startTime ? new Date(vData.startTime) : null);
           if (!vStart || isNaN(vStart.getTime())) return;
           if (Math.abs(vStart.getTime() - lessonStartTime.getTime()) <= 30 * 60 * 1000) {
-            if (vData.studentUid) completedVideoStudents.add(vData.studentUid);
-            if (vData.studentEmail) completedVideoStudents.add(vData.studentEmail.replace(/\s/g, '').toLowerCase());
+            if (vData.studentUid) videoJobsMap.set(vData.studentUid, vData);
+            if (vData.studentEmail) videoJobsMap.set(vData.studentEmail.replace(/\s/g, '').toLowerCase(), vData);
           }
         });
       }
@@ -177,17 +178,44 @@ export const getAttendanceData = onCall({
       if (!entry) return;
 
       const existingStudent = existingLessonData?.students?.[s.uid];
-      const hasCompletedVideo = completedVideoStudents.has(s.uid) || (s.email && completedVideoStudents.has(s.email));
+      const matchedVideo = videoJobsMap.get(s.uid) || (s.email ? videoJobsMap.get(s.email.replace(/\s/g, '').toLowerCase()) : null);
+
+      // Screencasts are compiled at 1 frame per second from periodic screenshots.
+      // 1 frame of video = captureInterval seconds of real-world activity.
+      // Therefore duration (in seconds) * captureInterval / 60 = estimated real-world attended minutes.
+      let videoCapMinutes = null;
+      if (matchedVideo && typeof matchedVideo.duration === 'number' && matchedVideo.duration > 0) {
+        const captureInterval = typeof matchedVideo.captureInterval === 'number'
+          ? matchedVideo.captureInterval
+          : classCaptureInterval;
+        videoCapMinutes = Math.min(lessonDurationInMinutes, Math.max(1, Math.round((matchedVideo.duration * captureInterval) / 60)));
+      }
 
       if (existingStudent?.sharedScreenMinutes > 0 && Array.isArray(existingStudent.attendance) && existingStudent.attendance.length === lessonDurationInMinutes) {
-        for (let i = 0; i < lessonDurationInMinutes; i++) {
-          entry.attendance[i] = existingStudent.attendance[i];
+        const priorMins = existingStudent.sharedScreenMinutes;
+        const effectiveMins = videoCapMinutes !== null ? Math.min(priorMins, videoCapMinutes) : priorMins;
+
+        if (effectiveMins < priorMins) {
+          for (let i = 0; i < lessonDurationInMinutes; i++) {
+            entry.attendance[i] = i < effectiveMins ? 1 : 0;
+          }
+        } else {
+          for (let i = 0; i < lessonDurationInMinutes; i++) {
+            entry.attendance[i] = existingStudent.attendance[i];
+          }
         }
-      } else if (hasCompletedVideo || (existingStudent?.workingMinutes > 0) || (existingStudent?.sharedScreenMinutes > 0)) {
-        const minsToFill = Math.min(
-          existingStudent?.sharedScreenMinutes || existingStudent?.workingMinutes || lessonDurationInMinutes,
-          lessonDurationInMinutes
-        );
+      } else if (matchedVideo || (existingStudent?.workingMinutes > 0) || (existingStudent?.sharedScreenMinutes > 0)) {
+        let minsToFill = videoCapMinutes !== null
+          ? videoCapMinutes
+          : Math.min(
+              existingStudent?.sharedScreenMinutes || existingStudent?.workingMinutes || lessonDurationInMinutes,
+              lessonDurationInMinutes
+            );
+
+        if (videoCapMinutes !== null && typeof existingStudent?.workingMinutes === 'number' && existingStudent.workingMinutes > 0) {
+          minsToFill = Math.min(existingStudent.workingMinutes, videoCapMinutes);
+        }
+
         for (let i = 0; i < minsToFill; i++) {
           entry.attendance[i] = 1;
         }
@@ -251,16 +279,21 @@ export const getAttendanceData = onCall({
       const student = studentList.find(s => s.email === data.email);
       if (student) {
         const existingStudent = existingLessonData?.students?.[student.uid] || {};
-        // Safeguard: Never overwrite existing positive attendance with 0
+        // Safeguard: Never overwrite existing positive attendance with 0 if no video exists
         if (data.totalMinutes === 0 && (existingStudent.sharedScreenMinutes > 0 || existingStudent.workingMinutes > 0)) {
           return;
         }
+
+        const clampedWorkingMinutes = typeof existingStudent.workingMinutes === 'number'
+          ? Math.min(existingStudent.workingMinutes, data.totalMinutes)
+          : existingStudent.workingMinutes;
 
         studentsPayload[student.uid] = {
           ...existingStudent,
           sharedScreenMinutes: data.totalMinutes,
           deductedMinutes: data.deductedMinutes,
-          attendance: data.attendance
+          attendance: data.attendance,
+          ...(clampedWorkingMinutes !== undefined ? { workingMinutes: clampedWorkingMinutes } : {}),
         };
       }
     });

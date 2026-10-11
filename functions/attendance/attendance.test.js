@@ -319,5 +319,141 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(bitmask[23]).toBe(2);
       expect(bitmask[24]).toBe(1);
     });
+
+    it('caps reconstructed attendance and AI working time to physical video duration based on capture interval', async () => {
+      // 1. Mock class doc
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            shortUid: 'short@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query returning 0 screenshots (purged)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 3. Mock existing lesson doc get() returning hallucinated AI working minutes and shared minutes
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            shortUid: {
+              sharedScreenMinutes: 30,
+              workingMinutes: 30,
+              attendance: Array(30).fill(1),
+            },
+          },
+        }),
+      });
+
+      // 4. Mock videoJobs query returning 1-second video
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'shortUid',
+              studentEmail: 'short@vtc.edu.hk',
+              startTime: new Date('2026-10-08T07:00:00Z'),
+              status: 'completed',
+              duration: 1, // 1 second = 1 frame = 1 min min-clamped
+            }),
+          });
+        },
+      });
+
+      // 5. Mock attendanceAdjustments query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-10-08T07:00:00Z',
+          endTime: '2026-10-08T07:30:00Z',
+        },
+      });
+
+      const shortStudent = res.attendanceData.find((s) => s.email === 'short@vtc.edu.hk');
+      expect(shortStudent).toBeDefined();
+      expect(shortStudent.totalMinutes).toBe(1);
+      expect(shortStudent.percentage).toBe('3.33%');
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          students: expect.objectContaining({
+            shortUid: expect.objectContaining({
+              sharedScreenMinutes: 1,
+              workingMinutes: 1,
+            }),
+          }),
+        }),
+        { merge: true }
+      );
+    });
+
+    it('accurately calculates attendance from video duration using dynamic class frameRate', async () => {
+      // 1. Mock class doc with frameRate = 10s (6 frames per min)
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          frameRate: 10,
+          students: {
+            student10: 's10@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query (purged)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 3. Mock existing lesson doc get() (empty student records)
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {},
+        }),
+      });
+
+      // 4. Mock videoJobs: 60s video at 10s capture interval = (60 * 10) / 60 = 10 minutes
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'student10',
+              studentEmail: 's10@vtc.edu.hk',
+              startTime: new Date('2026-10-08T07:00:00Z'),
+              status: 'completed',
+              duration: 60,
+            }),
+          });
+        },
+      });
+
+      // 5. Mock attendanceAdjustments query
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-10-08T07:00:00Z',
+          endTime: '2026-10-08T07:30:00Z', // 30 min lesson
+        },
+      });
+
+      const student = res.attendanceData.find((s) => s.email === 's10@vtc.edu.hk');
+      expect(student).toBeDefined();
+      expect(student.totalMinutes).toBe(10);
+      expect(student.percentage).toBe('33.33%');
+    });
   });
 });
