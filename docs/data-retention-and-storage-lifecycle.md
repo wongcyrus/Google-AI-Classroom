@@ -211,7 +211,11 @@ Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) a
     - Queries use composite indexes with automatic in-memory fallback to class-level queries if any index is rebuilding, preventing runtime precondition failures.
     - Purges both physical Cloud Storage blobs and Firestore documents in safe 400-item chunks.
     - **Automatic Quota Reconciliation**: Every purge operation concludes with an automated invocation of `recalculateStorageUsageInternal` to sync the storage quota bar immediately.
-    - **Data Integrity Guarantee**: Student attendance records, activity milestone progress, task submissions, and grades are preserved permanently in Firestore unless explicitly opting into Irregularity or Bingo record purges.
+    - **Data Integrity & Pre-Purge Attendance Safeguard**:
+      - Purging raw screenshots to reclaim quota **never deletes student attendance or AI analysis**.
+      - **Pre-Purge Freezing**: In `purgeClassTelemetryData`, before deleting screenshot documents, the system scans for overlapping lessons without finalized attendance, computes their attendance snapshot from raw screenshots, and writes them to `lessons/{lessonId}` before deleting any raw telemetry.
+      - **Post-Lesson Freezing**: In `handlePostLessonMediaConsolidation`, as soon as a scheduled lesson concludes, the attendance snapshot is immediately frozen in `classes/{classId}/lessons/{lessonId}` while screenshots are fresh.
+      - **Multi-Source Recovery**: Even if raw interim screenshots are purged, attendance is reconstructed from completed screencast videos in `videoJobs` and AI `workingMinutes`. Positive attendance is never overwritten with zeroes. Student attendance records, activity milestone progress, task submissions, and grades remain permanently preserved in Firestore.
 - **Autonomous Storage Quota Reconciliation (`recalculateStorageUsage`)**:
   - Teachers can trigger on-demand storage audits from Data Management via **"🔄 Recalculate Storage"**.
   - Directly scans physical GCS blobs across `screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, and `irregularities/{classId}/` to heal any metric drift in `classes/{classId}/metadata/storage`.

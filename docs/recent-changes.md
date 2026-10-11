@@ -4,6 +4,53 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.1.3 Attendance & AI Analysis Persistence, Multi-Source Tracing & Automatic Live Recalculation on Lesson Change
+
+**Date**: October 11, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests, Deployed to Dev & Production  
+**Primary Files**:
+- Cloud Functions Attendance: [`functions/attendance/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs)
+- Scheduled Tasks (Consolidation Freezing): [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js)
+- Storage Triggers (Pre-Purge Safeguard): [`functions/storage_triggers/screenshotManagement.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/screenshotManagement.js)
+- Frontend Attendance View: [`web-app/src/components/AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx)
+- Frontend Attendance Utilities: [`web-app/src/utils/attendanceUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/attendanceUtils.js)
+- Student Records View: [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)
+- Historical Reconciliation Script: [`admin/scripts/reconcile_attendance_records.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/reconcile_attendance_records.mjs)
+- Test Suites: [`web-app/src/components/AttendanceView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.test.jsx), [`functions/attendance/attendance.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/attendance.test.js), [`web-app/src/utils/attendanceUtils.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/attendanceUtils.test.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Problem Statement & Root Cause**:
+   - **Purge Disappearance**: When interim raw screenshots were purged to reclaim storage quota, student records in [`AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx) and [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx) showed 0 minutes and all-red absent indicators.
+   - **Zero Clobbering**: `getAttendanceData` was dynamically querying the `screenshots` collection. When screenshots were absent, it computed 0 minutes and overwrote the lesson document (`classes/{classId}/lessons/{lessonId}`) with `sharedScreenMinutes: 0`.
+   - **UI Masking**: Because `sharedScreenMinutes` became 0, the UI classified students as absent, which concealed the existing AI summaries, feedbacks, and working minutes still present in Firestore.
+   - **Manual Click Bottleneck**: When teachers changed lessons in the dropdown, attendance was not automatically recalculated; teachers had to manually click "Calculate Live Attendance" every time.
+
+2. **Immediate Post-Lesson Attendance Freezing**:
+   - In [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) (`handlePostLessonMediaConsolidation`), upon the conclusion of a scheduled class time window, the attendance snapshot is immediately calculated and frozen directly into `classes/{classId}/lessons/{lessonId}` while screenshots are fresh.
+
+3. **Pre-Purge Attendance Safeguard**:
+   - In [`functions/storage_triggers/screenshotManagement.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/screenshotManagement.js) (`purgeClassTelemetryData`), before deleting any screenshots, the system automatically checks for overlapping lessons that have not yet finalized attendance, calculates their attendance snapshot, and persists it to `lessons/{lessonId}` before deleting raw documents.
+
+4. **Multi-Source Attendance Tracing & Zero-Clobbering Guard**:
+   - In [`functions/attendance/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs) (`getAttendanceData`):
+     - If raw screenshots are purged (0 minutes), the function queries **completed screencasts in `videoJobs`** for that lesson window and existing AI `workingMinutes`.
+     - Reconstructs presence bitmasks up to the confirmed active session minutes.
+     - Strictly enforces that positive attendance records are **never overwritten with zeroes**.
+     - Preserves all existing student AI evaluations (`summary`, `feedback`, `workingMinutes`).
+
+5. **Automatic Live Recalculation on Lesson Change**:
+   - In [`web-app/src/components/AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx):
+     - Changing `selectedLesson` or the time range in the dropdown immediately renders any cached snapshot (no screen flicker) and **automatically triggers live attendance recalculation** in the background via `getAttendanceData`.
+     - Added an asynchronous cancellation guard (`cancelled` flag) to prevent stale responses from overwriting the view during rapid dropdown switching.
+     - Pre-loads enrolled student roster and profiles from `classes/{classId}` so student display names, cohorts (`studentClass`), and programmes are always visible even for upcoming or unfinalized lessons.
+     - The calculation button displays `Calculating...` automatically during computation, and remains clickable for on-demand manual refreshes during live lectures.
+
+6. **Historical Data Reconciliation**:
+   - Executed [`admin/scripts/reconcile_attendance_records.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/reconcile_attendance_records.mjs) across production (`it114115-2627`) and development (`it114115-dev-2026`). Fully restored 71 student attendance records across 3 lessons in `itp3901-ab` and audited all other classroom rosters.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.1.2 Storage Quota UI Bug Fix, Quota-Proportional Progress Segments & Storage Size Logic Tracing
 
 **Date**: October 10, 2026  

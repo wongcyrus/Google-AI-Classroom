@@ -578,7 +578,11 @@ This directory contains the Cloud Function for calculating student attendance.
 
 -   **`getAttendanceData`**:
     -   **Trigger**: `onCall` (callable function).
-    -   **Description**: This function calculates the attendance for a given class and time range. It is called by the `AttendanceView` component to offload heavy computation from the client. It fetches the roster of enrolled students, queries all screenshots within the time range, and constructs a heatmap data structure.
+    -   **Description**: Calculates per-minute student attendance and timeline presence heatmaps for a given class and lesson time range. Called automatically on lesson selection by `AttendanceView`, and on-demand via the manual refresh button. Fetches the enrolled student roster, queries screenshot telemetry in parallel chunks, checks completed screencasts in `videoJobs`, and preserves existing AI analysis evaluations.
+    -   **Multi-Source Tracing & Purge Resilience**:
+        -   If raw interim screenshots have been purged from storage to conserve quota, the function traces presence from **completed screencasts in `videoJobs`** matching the lesson window and recorded AI **`workingMinutes`**.
+        -   Reconstructs the active presence bitmask up to the confirmed duration.
+        -   **Zero-Clobbering Protection**: Strictly guards against zero-overwrites; positive attendance records (`sharedScreenMinutes > 0`) in Firestore are never overwritten with zero. Spreads `...existingStudent` so AI summaries, student feedbacks, and working minutes are preserved intact.
     -   **Bingo Attendance Adjustments & Deduction Math**:
         -   Queries `classes/{classId}/attendanceAdjustments` for any penalty records stamped within the lesson timeframe.
         -   For each adjustment associated with a student, all timeline minute buckets between `startMinute` and `endMinute` are updated with bitmask status code `2` (`voided / unacknowledged presence penalty`).

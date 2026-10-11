@@ -896,9 +896,10 @@ flowchart TD
 
 Navigate to **`📊 Analytics` $\to$ `Attendance`** ([`AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx)).
 
-### Computing Attendance
-1. Click **`Calculate Live Attendance`** to trigger the Cloud Function.
-2. The system computes attendance by combining screen-share duration bitmasks, camera presence logs, and Bingo responses.
+### Automatic Attendance Recalculation
+1. **Automatic on Lesson Change:** When you select any lesson or date range in the top dropdown filter, the system **automatically recalculates live attendance** in the background and populates the table without requiring manual button clicks.
+2. **On-Demand Manual Refresh:** During an active class, you can click **`Calculate Live Attendance`** at any time to force an immediate recalculation of up-to-the-minute presence. While updating, the button indicates `Calculating...`.
+3. **Guaranteed Data Persistence:** Purging raw screenshot images to save storage space **never deletes your attendance or AI analysis**. Attendance is automatically frozen immediately when class finishes (`handlePostLessonMediaConsolidation`), protected by pre-purge safeguards, and traces multi-source evidence from completed screencast videos (`videoJobs`) in Cloud Storage.
 
 ### Understanding the 3 Core Metrics
 - **Attendance Presence %:** Percentage of scheduled lesson time the student was logged in and active.
