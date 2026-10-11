@@ -163,6 +163,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     } catch {}
   }, []);
   const [frameRate, setFrameRate] = useState(15);
+  const [sessionFrameRate, setSessionFrameRate] = useState(null);
+  const [activeCaptureSessionId, setActiveCaptureSessionId] = useState(null);
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [captureMode, setCaptureMode] = useState('dual');
@@ -232,6 +234,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               isBackfilled: true,
               deleted: false,
               ipAddress: item.metadata?.ipAddress || null,
+              captureInterval: item.metadata?.captureInterval || sessionFrameRate || frameRate || 15,
+              sessionId: item.metadata?.sessionId || null,
             });
           },
         });
@@ -1531,6 +1535,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           );
           await Promise.race([uploadPromise, timeoutPromise]);
           const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
+          const actualInterval = sessionFrameRate || frameRate || 15;
 
           for (const cls of classes) {
             try {
@@ -1545,6 +1550,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 expireAt: expireAtDate,
                 deleted: false,
                 ipAddress: ipAddress,
+                captureInterval: actualInterval,
+                sessionId: activeCaptureSessionId || null,
               };
               if (activeTaskSession?.taskId) {
                 docData.activeTaskId = activeTaskSession.taskId;
@@ -1562,7 +1569,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               };
               if (channelName === 'screen') {
                 statusUpdate.latestScreenPath = screenshotRef.fullPath;
-                statusUpdate.latestImagePath = screenshotRef.fullPath; // Backwards compatibility
               } else {
                 statusUpdate.latestWebcamPath = screenshotRef.fullPath;
               }
@@ -1574,6 +1580,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${screenshotRef.fullPath} for classes:`, classes);
         } catch (uploadErr) {
           console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
+          const actualInterval = sessionFrameRate || frameRate || 15;
           for (const cls of classes) {
             await saveToOfflineQueue({
               type: 'screenshot',
@@ -1586,6 +1593,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 channel: channelName,
                 retentionDays: retentionDays || 30,
                 ipAddress: ipAddress || null,
+                captureInterval: actualInterval,
+                sessionId: activeCaptureSessionId || null,
               },
             });
             // Keep status fresh in Firestore even when screenshot upload is buffered offline
@@ -1616,7 +1625,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         isUploadingWebcamRef.current = false;
       }
     }
-  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses]);
+  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses, frameRate, sessionFrameRate, activeCaptureSessionId, activeTaskSession]);
 
   const captureAndUploadAllChannels = useCallback((targetClassesInput) => {
     const classes = targetClassesInput || targetClasses;
@@ -1702,6 +1711,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (docSnap.exists()) {
         const data = docSnap.data();
         setFrameRate(prev => (data.frameRate !== undefined && data.frameRate !== prev ? data.frameRate : (prev || 15)));
+        setSessionFrameRate(data.sessionFrameRate !== undefined ? data.sessionFrameRate : null);
+        setActiveCaptureSessionId(data.activeSessionId || null);
         setImageQuality(prev => (data.imageQuality !== undefined && data.imageQuality !== prev ? data.imageQuality : (prev || 0.5)));
         setMaxImageSize(prev => (data.maxImageSize !== undefined && data.maxImageSize !== prev ? data.maxImageSize : (prev || 0.1 * 1024 * 1024)));
         setCaptureMode(prev => (data.captureMode && data.captureMode !== prev ? data.captureMode : (prev || 'dual')));
@@ -2025,7 +2036,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     let worker = null;
     let fallbackInterval = null;
 
-    const shouldCapture = isSharing && (isCapturing || isExamActive) && activeClass;
+    const isTaskActive = Boolean(activeTaskSession?.taskId);
+    const shouldCapture = isSharing && (isCapturing || isExamActive || isTaskActive) && activeClass;
 
     if (shouldCapture) {
       const intervalMs = Math.max(1, (frameRate || 15)) * 1000;
@@ -2087,7 +2099,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         fallbackInterval = null;
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid]);
+  }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid, activeTaskSession?.taskId]);
 
   const isChrome = isGoogleChrome();
   if (!isChrome && !isPreviewMode) {
@@ -3391,9 +3403,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             setActiveTaskSession(null);
             if (activeClass && user?.uid) {
               const subRef = doc(db, 'classes', activeClass, 'tasks', taskId, 'submissions', user.uid);
-              const finished = { ...finishedAttempt, finishedAt: new Date(), status: 'compiling' };
+              const isClassActive = Boolean(isCapturing || selectedTaskChallenge?.scheduleMode === 'in_class');
+              const initialStatus = isClassActive ? 'awaiting_class_video' : 'compiling';
+
+              const finished = { ...finishedAttempt, finishedAt: new Date(), status: initialStatus };
               await setDoc(subRef, {
-                status: 'compiling',
+                status: initialStatus,
                 latestAttempt: finished,
                 updatedAt: serverTimestamp(),
               }, { merge: true });
@@ -3405,7 +3420,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 studentEmail: user.email?.toLowerCase(),
                 startTime: finished.startedAt,
                 endTime: finished.finishedAt,
-                status: 'pending',
+                status: isClassActive ? 'awaiting_class_video' : 'pending',
+                captureInterval: sessionFrameRate || frameRate || 15,
                 isTaskSubmission: true,
                 taskId,
                 attemptNumber: finished.attemptNumber,

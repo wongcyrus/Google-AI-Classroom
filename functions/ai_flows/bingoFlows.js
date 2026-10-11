@@ -222,36 +222,7 @@ export async function resolveBingoQuestion({
       };
     }
 
-    // Dynamic fallback if bank is empty: check if teacher is broadcasting screen
-    try {
-      const liveFrameDoc = await db.doc(`classes/${classId}/screenBroadcast/liveFrame`).get();
-      if (liveFrameDoc.exists && liveFrameDoc.data()?.frameData) {
-        console.log(`[resolveBingoQuestion] Question bank is empty for class ${classId}. Using live teacher screen.`);
-        return await resolveBingoQuestion({ classId, studentUid, questionSource: 'teacher_screen' });
-      }
-    } catch (e) {
-      console.warn(`[resolveBingoQuestion] Error checking screen broadcast on empty bank:`, e);
-    }
-
-    // Default fallback if bank is empty and no screen is broadcasting
-    const { options: presenceOptions, correctIndex: presenceCorrectIndex } = shuffleOptionsAndCorrectIndex(
-      [
-        'Yes, actively working on lab tasks',
-        'Taking a short reading pause',
-        'Need instructor assistance',
-        'Just reviewing finished steps',
-      ],
-      0
-    );
-    return {
-      question: 'Quick presence check: Are you actively engaged in this lab session?',
-      options: presenceOptions,
-      correctIndex: presenceCorrectIndex,
-      observedEvidence: 'Default active presence prompt',
-      questionSource: 'question_bank',
-      bankQuestionId: 'default_presence',
-      screenshotUrl: null,
-    };
+    throw new Error(`[resolveBingoQuestion] Question bank is empty for class ${classId}. Please configure questions in the question bank or select another source.`);
   }
 
   // Mode 2: Teacher Screen (1 single AI call for whole class broadcast)
@@ -475,7 +446,9 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
                 const storage = getStorage();
                 const [fileBuffer] = await storage.bucket().file(data.imagePath).download();
                 screenshotUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
-              } catch (e) {}
+              } catch (storageErr) {
+                console.warn(`[resolveBingoQuestion] Could not load screenshot from ${data.imagePath}:`, storageErr);
+              }
             }
           }
         }
@@ -1296,7 +1269,8 @@ export function isClassSessionActive(classData, now = new Date()) {
       });
 
       return Boolean(activeSlot);
-    } catch {
+    } catch (scheduleErr) {
+      console.warn('[isClassInActiveTime] Error evaluating class schedule:', scheduleErr);
       return false;
     }
   }

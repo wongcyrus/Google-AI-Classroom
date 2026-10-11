@@ -96,73 +96,51 @@ export const processReportJob = onDocumentCreated(
 
       // 3. Fetch Irregularities (Strictly Scoped to Class & Time Period)
       let irregularities = [];
-      try {
-        const irregSnap = await db
-          .collection(`classes/${classId}/irregularities`)
-          .where('timestamp', '>=', startTimestamp)
-          .where('timestamp', '<=', endTimestamp)
-          .orderBy('timestamp', 'asc')
-          .get();
+      const irregSnap = await db
+        .collection(`classes/${classId}/irregularities`)
+        .where('timestamp', '>=', startTimestamp)
+        .where('timestamp', '<=', endTimestamp)
+        .orderBy('timestamp', 'asc')
+        .get();
 
-        irregSnap.forEach((doc) => {
-          const d = doc.data();
-          if (!targetStudentIds.length || targetStudentIds.includes(d.studentUid || d.userId)) {
-            irregularities.push({ id: doc.id, ...d });
-          }
-        });
-      } catch (err) {
-        console.warn('Could not query ordered irregularities, falling back to unordered:', err);
-        const fallbackSnap = await db.collection(`classes/${classId}/irregularities`).get();
-        fallbackSnap.forEach((doc) => {
-          const d = doc.data();
-          const docTime = d.timestamp?.toDate ? d.timestamp.toDate() : new Date(d.timestamp || 0);
-          if (docTime >= startDate && docTime <= endDate) {
-            if (!targetStudentIds.length || targetStudentIds.includes(d.studentUid || d.userId)) {
-              irregularities.push({ id: doc.id, ...d });
-            }
-          }
-        });
-      }
+      irregSnap.forEach((doc) => {
+        const d = doc.data();
+        if (!targetStudentIds.length || targetStudentIds.includes(d.studentUid || d.userId)) {
+          irregularities.push({ id: doc.id, ...d });
+        }
+      });
 
       // 4. Fetch Audio Transcripts
       let audioTranscripts = [];
       if (includeAudioTranscripts) {
-        try {
-          const audioSnap = await db
-            .collection('audio')
-            .where('classId', '==', classId)
-            .where('timestamp', '>=', startTimestamp)
-            .where('timestamp', '<=', endTimestamp)
-            .get();
+        const audioSnap = await db
+          .collection('audio')
+          .where('classId', '==', classId)
+          .where('timestamp', '>=', startTimestamp)
+          .where('timestamp', '<=', endTimestamp)
+          .get();
 
-          audioSnap.forEach((doc) => {
-            const d = doc.data();
-            if (d.transcript || d.geminiSummary || d.hasVoiceActivity) {
-              audioTranscripts.push({ id: doc.id, ...d });
-            }
-          });
-        } catch (err) {
-          console.warn('Audio query fallback:', err);
-        }
+        audioSnap.forEach((doc) => {
+          const d = doc.data();
+          if (d.transcript || d.geminiSummary || d.hasVoiceActivity) {
+            audioTranscripts.push({ id: doc.id, ...d });
+          }
+        });
       }
 
       // 5. Fetch Screenshot Evidences (if enabled)
       let screenshots = [];
       if (includeScreenshots) {
-        try {
-          const screenSnap = await db
-            .collection('screenshots')
-            .where('classId', '==', classId)
-            .where('timestamp', '>=', startTimestamp)
-            .where('timestamp', '<=', endTimestamp)
-            .get();
+        const screenSnap = await db
+          .collection('screenshots')
+          .where('classId', '==', classId)
+          .where('timestamp', '>=', startTimestamp)
+          .where('timestamp', '<=', endTimestamp)
+          .get();
 
-          screenSnap.forEach((doc) => {
-            screenshots.push({ id: doc.id, ...doc.data() });
-          });
-        } catch (err) {
-          console.warn('Screenshot query error:', err);
-        }
+        screenSnap.forEach((doc) => {
+          screenshots.push({ id: doc.id, ...doc.data() });
+        });
       }
 
       console.log(

@@ -7,6 +7,9 @@ import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, reco
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
+import { interpolatePromptPlaceholders } from './promptInterpolation.js';
+
+export { interpolatePromptPlaceholders };
 
 const db = getFirestore();
 
@@ -100,8 +103,14 @@ export const analyzeImageFlow = ai.defineFlow(
     const activeModel = model || AI_MODEL;
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
+      const resolvedUserPrompt = interpolatePromptPlaceholders(prompt, {
+        classId,
+        studentEmail: email,
+        studentUid,
+        studentName: email,
+      });
       const fullPrompt = [
-        { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. Analyze the screen to identify the current task (e.g., 'Question 5', 'Writing introduction'). Call the 'recordScreenshotAnalysis' tool with the identified task. Also, perform the original analysis based on the user's prompt: ${prompt}` },
+        { text: `This screen belongs to ${email} (image URL: ${url}). The class ID is ${classId}. The student UID is ${studentUid}. Analyze the screen to identify the current task (e.g., 'Question 5', 'Writing introduction'). Call the 'recordScreenshotAnalysis' tool with the identified task. Also, perform the original analysis based on the user's prompt: ${resolvedUserPrompt}` },
         { media: { url } },
       ];
       const media = [{ media: { url } }];
@@ -187,18 +196,48 @@ export const analyzeSingleVideoFlow = ai.defineFlow(
       startTime: z.string({ description: "The start time of the class in ISO 8601 format." }),
       endTime: z.string({ description: "The end time of the class in ISO 8601 format." }),
       model: z.string().optional(),
+      frameRate: z.number().optional(),
     }),
     outputSchema: z.object({
       result: z.string(),
       jobId: z.string(),
     }),
   },
-  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime, model }) => {
+  async ({ videoUrl, prompt, classId, studentUid, studentEmail, masterJobId, startTime, endTime, model, frameRate }) => {
     const activeModel = model || AI_MODEL;
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
 
-    const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nPlease analyze the video based on the user's prompt: "${prompt}"\n\nWhen you need to record information about the lesson, use the provided 'Lesson Start Time' and 'Lesson End Time' for the 'startTime' and 'endTime' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
+    let captureInterval = typeof frameRate === 'number' && frameRate > 0 ? frameRate : null;
+    if (!captureInterval) {
+      try {
+        const classDoc = await db.collection('classes').doc(classId).get();
+        if (classDoc && typeof classDoc.data === 'function') {
+          const cData = classDoc.data();
+          if (cData?.frameRate) {
+            captureInterval = Number(cData.frameRate);
+          }
+        }
+      } catch (cErr) {
+        console.warn(`[analyzeSingleVideoFlow] Could not fetch class frameRate for ${classId}:`, cErr.message);
+      }
+    }
+    if (!captureInterval || isNaN(captureInterval)) {
+      captureInterval = 15;
+    }
+    const intervalMinutes = (captureInterval / 60).toFixed(2).replace(/\.?0+$/, '');
+
+    const resolvedUserPrompt = interpolatePromptPlaceholders(prompt, {
+      captureInterval,
+      frameRate: captureInterval,
+      classId,
+      studentEmail,
+      studentUid,
+      startTime: startDate.toISOString(),
+      endTime: endDate.toISOString(),
+    });
+
+    const promptText = `You are analyzing a video for a student.\nStudent Email: ${studentEmail}\nStudent UID: ${studentUid}\nClass ID: ${classId}\nLesson Start Time: ${startDate.toISOString()}\nLesson End Time: ${endDate.toISOString()}\n\nNote: The video is a condensed time-lapse screencast compiled at 1 frame per second from screenshots captured roughly every ${captureInterval} seconds (1 second of video represents ~${captureInterval} seconds or ~${intervalMinutes} minutes of real student activity). The video duration represents the student's actual active time in class. Do not record working time greater than the actual screen sharing duration captured in this video.\n\nPlease analyze the video based on the user's prompt: "${resolvedUserPrompt}"\n\nWhen you need to record information about the lesson, use the provided 'Lesson Start Time' and 'Lesson End Time' for the 'startTime' and 'endTime' parameters of the tools.\nIf you mention specific moments in the video, please provide timestamps in the format HH:MM:SS.`;
 
     const crypto = await import('crypto');
     const promptHash = crypto.createHash('sha256').update(promptText).digest('hex');
@@ -462,7 +501,7 @@ Respond ONLY with valid JSON in this exact structure:
       const usage = response.usage || {};
       const cost = calculateCost(usage, actualModel);
 
-      let parsed = { faceStatus: 'normal', confidence: 1.0, reason: 'OK' };
+      let parsed;
       try {
         const text = response.text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
         parsed = JSON.parse(text);
@@ -474,6 +513,8 @@ Respond ONLY with valid JSON in this exact structure:
           parsed = { faceStatus: 'no_face', confidence: 0.8, reason: response.text };
         } else if (response.text.toLowerCase().includes('multiple')) {
           parsed = { faceStatus: 'multiple_faces', confidence: 0.8, reason: response.text };
+        } else {
+          parsed = { faceStatus: 'analysis_error', confidence: 0, reason: `Invalid response format from AI: ${response.text}` };
         }
       }
 

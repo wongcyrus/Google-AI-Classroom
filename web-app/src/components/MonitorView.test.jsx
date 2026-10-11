@@ -344,10 +344,22 @@ describe('MonitorView Component Suite', () => {
 
     expect(mockAddDoc).toHaveBeenCalled();
 
-    // Frame rate / interval select
-    const frameRateSelect = screen.getByDisplayValue('15s');
-    fireEvent.change(frameRateSelect, { target: { value: '30' } });
-    expect(frameRateSelect.value).toBe('30');
+    // Frame rate / class interval indicator
+    expect(screen.getByLabelText('Class capture interval')).toBeInTheDocument();
+    expect(screen.getByText(/15s \/ frame/i)).toBeInTheDocument();
+  });
+
+  it('displays class capture interval badge and freezes frameRate during active capture', async () => {
+    render(<MonitorView {...defaultProps} />);
+    // Toggle capture on
+    const captureToggleBtn = screen.getByRole('button', { name: /Start Capture/i });
+    await act(async () => {
+      fireEvent.click(captureToggleBtn);
+    });
+
+    const intervalBadge = screen.getByLabelText('Class capture interval');
+    expect(intervalBadge).toBeInTheDocument();
+    expect(screen.getByText(/Configured in Class Settings/i)).toBeInTheDocument();
   });
 
   it('triggers teacher screen broadcast start and stop', async () => {
@@ -781,24 +793,13 @@ describe('MonitorView Component Suite', () => {
     expect(screen.queryByRole('button', { name: /Show Controls/i })).not.toBeInTheDocument();
   });
 
-  it('handles capture interval change and rollback on failure', async () => {
+  it('displays read-only class capture interval indicator in controls panel', async () => {
     render(<MonitorView {...defaultProps} />);
 
-    const intervalSelect = screen.getByLabelText(/Webcam capture interval/i);
-    await act(async () => {
-      fireEvent.change(intervalSelect, { target: { value: '30' } });
-    });
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ frameRate: 30 })
-    );
-
-    // Test error branch
-    mockUpdateDoc.mockRejectedValueOnce(new Error('Update failed'));
-    await act(async () => {
-      fireEvent.change(intervalSelect, { target: { value: '60' } });
-    });
-    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to update frame rate'));
+    const intervalBadge = screen.getByLabelText(/Class capture interval/i);
+    expect(intervalBadge).toBeInTheDocument();
+    expect(screen.getByText(/15s \/ frame/i)).toBeInTheDocument();
+    expect(screen.getByText(/Configured in Class Settings/i)).toBeInTheDocument();
   });
 
   it('handles max image size change and error alert', async () => {

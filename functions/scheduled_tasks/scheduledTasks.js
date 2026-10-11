@@ -209,8 +209,9 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
     const teacherUids = Object.keys(teachers || {});
 
     // 1. STUDENT SCREEN VIDEO COMBINATION:
-    // Only applies if the class explicitly has automaticCombine === true, and has schedule + students
-    if (classData.automaticCombine === true && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
+    // Automatically enabled across ALL classes with a schedule and students (zero special settings required)
+    // Only skips if explicitly disabled with automaticCombine === false (for backward compatibility)
+    if (classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
       const { timeZone } = schedule;
       const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
       const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
@@ -280,6 +281,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
                     startTime: lessonStartDateTimeInZone,
                     endTime: lessonEndDateTimeInZone,
                     status: 'pending',
+                    captureInterval: classData.sessionFrameRate || classData.frameRate || 15,
                     isExam: isExamSession,
                     createdAt: FieldValue.serverTimestamp(),
                     expireAt: videoExpireAt,
@@ -597,9 +599,6 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
 
   await Promise.all(notificationPromises);
 });
-
-// Backward-compatible alias for deployment safety
-export const handleAutomaticVideoCombination = handlePostLessonMediaConsolidation;
 
 export const syncGeminiPricing = onSchedule({
   schedule: 'every 24 hours',

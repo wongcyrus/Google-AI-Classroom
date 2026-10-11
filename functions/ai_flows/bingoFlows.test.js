@@ -218,7 +218,7 @@ describe('bingoFlows', () => {
       expect(studentPropsCall[0].activeBingo.status).toBe('pending');
     });
 
-    it('falls back to default presence question if question bank is empty', async () => {
+    it('fails fast and throws when question bank is empty', async () => {
       mockDocGet.mockImplementation(() => {
         return Promise.resolve({
           exists: true,
@@ -229,14 +229,13 @@ describe('bingoFlows', () => {
         });
       });
 
-      const res = await generateBingoChallenge({
-        classId: 'class_1',
-        targetStudentUid: 'student_1',
-        questionSource: 'question_bank',
-      });
-
-      expect(res.success).toBe(true);
-      expect(res.question).toContain('presence check');
+      await expect(
+        generateBingoChallenge({
+          classId: 'class_1',
+          targetStudentUid: 'student_1',
+          questionSource: 'question_bank',
+        })
+      ).rejects.toThrow(/Question bank is empty/);
     });
   });
 

@@ -109,21 +109,8 @@ Return ONLY the raw JSON object. Do not wrap in markdown code blocks (\`\`\`json
   try {
     parsed = JSON.parse(rawText.trim());
   } catch (err) {
-    console.warn('[extractTaskDemoSteps] JSON parse failed, falling back to basic extraction:', err);
-    parsed = {
-      title: 'Practical Lab Task',
-      description: 'Reproduce the demonstration shown in the reference video.',
-      suggestedMaxScore: 100,
-      steps: [
-        {
-          stepNumber: 1,
-          title: 'Initial Setup and Execution',
-          description: 'Follow the steps demonstrated in the reference video.',
-          expectedEvidence: 'Screen activity matching teacher demonstration.',
-          points: 100,
-        },
-      ],
-    };
+    console.error('[extractTaskDemoSteps] JSON parse failed on AI model response:', err, 'Raw text:', rawText);
+    throw new Error(`Failed to parse AI rubric response as JSON: ${err.message}. Raw output: ${rawText.slice(0, 200)}`);
   }
 
   const usage = response?.usage || response?.usageMetadata || {};

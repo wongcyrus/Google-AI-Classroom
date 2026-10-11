@@ -77,35 +77,14 @@ export async function executeMergeStudentSessionAudio(
   const endDate = new Date(endMs);
 
   // 3. Query audio clips for this student and class
-  let audioDocs = [];
-  try {
-    const snap = await currentDb.collection('audio')
-      .where('classId', '==', classId)
-      .where('studentUid', '==', studentUid)
-      .where('timestamp', '>=', startDate)
-      .where('timestamp', '<=', endDate)
-      .orderBy('timestamp', 'asc')
-      .get();
-    audioDocs = snap.docs;
-  } catch (err) {
-    // In-memory filter fallback if composite index is building
-    const snap = await currentDb.collection('audio')
-      .where('classId', '==', classId)
-      .where('studentUid', '==', studentUid)
-      .get();
-    audioDocs = snap.docs
-      .filter((d) => {
-        const dData = d.data() || {};
-        const ts = dData.timestamp?.toDate ? dData.timestamp.toDate() : new Date(dData.timestamp);
-        const tMs = ts.getTime();
-        return !isNaN(tMs) && tMs >= startMs && tMs <= endMs;
-      })
-      .sort((a, b) => {
-        const aTs = a.data()?.timestamp?.toDate ? a.data().timestamp.toDate().getTime() : new Date(a.data()?.timestamp).getTime();
-        const bTs = b.data()?.timestamp?.toDate ? b.data().timestamp.toDate().getTime() : new Date(b.data()?.timestamp).getTime();
-        return aTs - bTs;
-      });
-  }
+  const snap = await currentDb.collection('audio')
+    .where('classId', '==', classId)
+    .where('studentUid', '==', studentUid)
+    .where('timestamp', '>=', startDate)
+    .where('timestamp', '<=', endDate)
+    .orderBy('timestamp', 'asc')
+    .get();
+  const audioDocs = snap.docs;
 
   if (audioDocs.length === 0) {
     return {

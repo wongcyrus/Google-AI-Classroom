@@ -335,8 +335,7 @@ export default function BingoResultsView({
     return Boolean(
       statusObj.isSharing ||
       (Array.isArray(statusObj.activeStreams) && statusObj.activeStreams.includes('screen')) ||
-      statusObj.latestScreenPath ||
-      statusObj.latestImagePath
+      statusObj.latestScreenPath
     );
   };
 

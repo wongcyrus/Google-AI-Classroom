@@ -80,7 +80,7 @@ describe('extractTaskDemoSteps', () => {
     expect(res.modelUsed).toBe('gemini-3.8-flash');
   });
 
-  it('handles JSON parsing errors by returning safe fallback structure', async () => {
+  it('fails fast and throws when AI model output cannot be parsed as JSON', async () => {
     mockGenerateWithResilience.mockResolvedValueOnce({
       response: {
         text: 'This is not valid JSON at all!',
@@ -89,14 +89,12 @@ describe('extractTaskDemoSteps', () => {
       modelUsed: 'gemini-3.8-flash',
     });
 
-    const res = await handleExtractTaskDemoSteps({
-      classId: 'c1',
-      demoVideoPath: 'demos/demo.mp4',
-    });
-
-    expect(res.title).toBe('Practical Lab Task');
-    expect(res.steps).toHaveLength(1);
-    expect(res.steps[0].points).toBe(100);
+    await expect(
+      handleExtractTaskDemoSteps({
+        classId: 'c1',
+        demoVideoPath: 'demos/demo.mp4',
+      })
+    ).rejects.toThrow(/Failed to parse AI rubric response as JSON/);
   });
 
   it('strips markdown code fence blocks if returned by the LLM', async () => {

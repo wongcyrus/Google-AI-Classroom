@@ -68,8 +68,6 @@ export function useGoogleDrive() {
 
   const isConnected = Boolean(accessToken && connectedUser);
 
-  // Deprecated no-op retained for backwards compatibility with tests
-  const setCustomClientId = useCallback(() => {}, []);
 
   const connect = useCallback(async (customId) => {
     const targetClientId = (customId || clientId || '').trim();
@@ -959,7 +957,6 @@ export function useGoogleDrive() {
   return {
     clientId,
     isConfigured,
-    setCustomClientId,
     isConnected,
     connectedUser,
     accessToken,

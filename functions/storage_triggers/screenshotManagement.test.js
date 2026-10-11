@@ -74,9 +74,9 @@ vi.mock('firebase-functions/v2/storage', () => ({
   onObjectDeleted: vi.fn((opts, handler) => handler),
 }));
 
-import { purgeClassTelemetryData, deleteScreenshotsByDateRange, purgeCombinedScreenshotsForClass } from './screenshotManagement.js';
+import { purgeClassTelemetryData } from './screenshotManagement.js';
 
-describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
+describe('purgeClassTelemetryData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDoc.collection.mockReturnValue(mockCollection);
@@ -163,58 +163,28 @@ describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
     expect(mockBatch.commit).toHaveBeenCalled();
   });
 
-  it('gracefully falls back to class-scoped in-memory query when index throws FAILED_PRECONDITION', async () => {
-    const mockAudioDocs = [
-      {
-        id: 'a1',
-        data: () => ({ audioPath: 'audio/CLASS_1/a1.webm', timestamp: new Date('2026-08-01T12:00:00Z') }),
-        ref: { delete: vi.fn() },
-      },
-      {
-        id: 'a2_out_of_range',
-        data: () => ({ audioPath: 'audio/CLASS_1/a2.webm', timestamp: new Date('2026-07-01T12:00:00Z') }),
-        ref: { delete: vi.fn() },
-      },
-    ];
-
-    // Primary composite query throws index error
-    const brokenQuery = {
-      where: vi.fn((field) => {
-        if (field === 'timestamp') {
-          return {
-            where: vi.fn().mockReturnThis(),
-            get: vi.fn().mockRejectedValue(new Error('9 FAILED_PRECONDITION: The query requires an index.')),
-          };
-        }
-        return brokenQuery;
-      }),
-      get: vi.fn().mockResolvedValue({ docs: mockAudioDocs }),
-    };
-
+  it('fails fast and throws when Firestore index query throws an error', async () => {
     mockDb.collection.mockImplementation((col) => {
       if (col === 'screenshots') {
         return {
           where: vi.fn().mockReturnThis(),
-          get: vi.fn().mockResolvedValue({ docs: [] }),
+          get: vi.fn().mockRejectedValue(new Error('9 FAILED_PRECONDITION: The query requires an index.')),
         };
       }
-      if (col === 'audio') return brokenQuery;
       return mockCollection;
     });
 
-    const result = await deleteScreenshotsByDateRange({
-      auth: { uid: 'teacher1', token: { role: 'teacher' } },
-      data: {
-        classId: 'CLASS_1',
-        startDate: '2026-08-01T00:00:00Z',
-        endDate: '2026-08-01T23:59:59Z',
-        targets: { screenshots: false, audio: true },
-      },
-    });
-
-    expect(result.status).toBe('success');
-    expect(result.audioCount).toBe(1); // Only in-range doc a1 was purged
-    expect(result.screenshotsCount).toBe(0);
+    await expect(
+      purgeClassTelemetryData({
+        auth: { uid: 'teacher1', token: { role: 'teacher' } },
+        data: {
+          classId: 'CLASS_1',
+          startDate: '2026-08-01T00:00:00Z',
+          endDate: '2026-08-01T23:59:59Z',
+          targets: { screenshots: true, audio: false },
+        },
+      })
+    ).rejects.toThrow('An error occurred while deleting telemetry: 9 FAILED_PRECONDITION: The query requires an index.');
   });
 
   it('supports selective purging of compiled videos and lecture recordings', async () => {
@@ -381,141 +351,3 @@ describe('purgeClassTelemetryData / deleteScreenshotsByDateRange', () => {
   });
 });
 
-describe('purgeCombinedScreenshotsForClass Callable Function', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('rejects unauthenticated requests', async () => {
-    await expect(
-      purgeCombinedScreenshotsForClass({
-        auth: null,
-        data: { classId: 'CLASS_1' },
-      })
-    ).rejects.toThrow('The function must be called while authenticated.');
-  });
-
-  it('rejects requests without classId', async () => {
-    await expect(
-      purgeCombinedScreenshotsForClass({
-        auth: { uid: 'teacher1', token: { role: 'teacher' } },
-        data: {},
-      })
-    ).rejects.toThrow('The function must be called with a valid classId.');
-  });
-
-  it('rejects unauthorized students with permission-denied', async () => {
-    mockDoc.exists = true;
-    mockDoc.data.mockReturnValue({ teacherEmails: ['teacher@school.edu'], teachers: {} });
-
-    await expect(
-      purgeCombinedScreenshotsForClass({
-        auth: { uid: 'student1', token: { role: 'student', email: 'student@school.edu' } },
-        data: { classId: 'CLASS_1' },
-      })
-    ).rejects.toThrow('Only teachers assigned to this class can sweep combined screenshots.');
-  });
-
-  it('returns zero counts when no completed video jobs exist', async () => {
-    mockDb.collection.mockImplementation((col) => {
-      if (col === 'videoJobs') {
-        return {
-          where: vi.fn().mockReturnThis(),
-          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
-        };
-      }
-      return {
-        where: vi.fn().mockReturnThis(),
-        get: vi.fn().mockResolvedValue({ docs: [] }),
-        doc: vi.fn(() => mockDoc),
-      };
-    });
-
-    const result = await purgeCombinedScreenshotsForClass({
-      auth: { uid: 'teacher1', token: { role: 'teacher' } },
-      data: { classId: 'CLASS_1' },
-    });
-
-    expect(result.status).toBe('success');
-    expect(result.jobsEvaluated).toBe(0);
-    expect(result.purgedCount).toBe(0);
-  });
-
-  it('sweeps completed video jobs, deletes unflagged routine screenshots, and preserves flagged evidence', async () => {
-    const mockVideoJobs = [
-      {
-        id: 'job1',
-        data: () => ({
-          studentUid: 's1',
-          startTime: new Date('2026-08-01T09:00:00Z'),
-          endTime: new Date('2026-08-01T11:00:00Z'),
-          status: 'completed',
-        }),
-      },
-    ];
-
-    const routineDoc1 = {
-      id: 'shot1',
-      data: () => ({
-        imagePath: 'screenshots/CLASS_1/s1/shot1.jpg',
-        timestamp: new Date('2026-08-01T09:15:00Z'),
-      }),
-      ref: { id: 'shot1' },
-    };
-
-    const flaggedDocCheating = {
-      id: 'shot2_cheating',
-      data: () => ({
-        imagePath: 'screenshots/CLASS_1/s1/shot2_flagged.jpg',
-        timestamp: new Date('2026-08-01T09:30:00Z'),
-        isFlagged: true,
-        incidentId: 'inc_gaze_123',
-      }),
-      ref: { id: 'shot2_cheating' },
-    };
-
-    const routineDoc2 = {
-      id: 'shot3',
-      data: () => ({
-        imagePath: 'screenshots/CLASS_1/s1/shot3.jpg',
-        timestamp: new Date('2026-08-01T10:00:00Z'),
-      }),
-      ref: { id: 'shot3' },
-    };
-
-    mockDb.collection.mockImplementation((col) => {
-      if (col === 'videoJobs') {
-        return {
-          where: vi.fn().mockReturnThis(),
-          get: vi.fn().mockResolvedValue({ empty: false, size: 1, docs: mockVideoJobs }),
-        };
-      }
-      if (col === 'screenshots') {
-        return {
-          where: vi.fn().mockReturnThis(),
-          get: vi.fn().mockResolvedValue({
-            empty: false,
-            docs: [routineDoc1, flaggedDocCheating, routineDoc2],
-          }),
-        };
-      }
-      return {
-        where: vi.fn().mockReturnThis(),
-        get: vi.fn().mockResolvedValue({ docs: [] }),
-        doc: vi.fn(() => mockDoc),
-      };
-    });
-
-    const result = await purgeCombinedScreenshotsForClass({
-      auth: { uid: 'teacher1', token: { role: 'teacher' } },
-      data: { classId: 'CLASS_1' },
-    });
-
-    expect(result.status).toBe('success');
-    expect(result.jobsEvaluated).toBe(1);
-    expect(result.purgedCount).toBe(2);
-    expect(result.preservedCount).toBe(1);
-    expect(mockBatch.delete).toHaveBeenCalledTimes(2);
-    expect(mockBatch.commit).toHaveBeenCalled();
-  });
-});

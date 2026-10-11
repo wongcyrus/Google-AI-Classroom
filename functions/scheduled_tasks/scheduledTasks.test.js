@@ -55,7 +55,6 @@ vi.mock('firebase-functions', () => ({
 import {
   handleAutomaticCapture,
   handlePostLessonMediaConsolidation,
-  handleAutomaticVideoCombination,
   handleAutomaticBingo,
   isClassSessionActive,
   syncGeminiPricing,
@@ -113,11 +112,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
     });
   });
 
-  describe('handlePostLessonMediaConsolidation (handleAutomaticVideoCombination) trigger execution', () => {
-    it('exports handleAutomaticVideoCombination as a backward-compatible alias', () => {
-      expect(handleAutomaticVideoCombination).toBe(handlePostLessonMediaConsolidation);
-    });
-
+  describe('handlePostLessonMediaConsolidation trigger execution', () => {
     it('gracefully handles empty class snapshots', async () => {
       mockCollection.get.mockResolvedValueOnce({
         empty: true,
@@ -159,7 +154,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           docs: [],
         });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
 
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -196,8 +191,61 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
         docs: [classDocIncomplete],
       });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
       expect(mockDoc.set).not.toHaveBeenCalled();
+    });
+
+    it('creates videoJobs by default even when automaticCombine is undefined, and skips when automaticCombine is explicitly false', async () => {
+      const fixedTime = new Date('2026-09-14T10:15:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      const classDocDefault = {
+        id: 'class_default_video',
+        data: () => ({
+          // automaticCombine omitted -> should default to true!
+          students: { 'student-uid-1': 'student1@stu.vtc.edu.hk' },
+          teachers: { 'teacher-uid-1': 'teacher1@vtc.edu.hk' },
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '10:00' }],
+          },
+        }),
+      };
+
+      mockCollection.get
+        .mockResolvedValueOnce({ empty: false, size: 1, docs: [classDocDefault] })
+        .mockResolvedValueOnce({ empty: true, docs: [] });
+
+      await handlePostLessonMediaConsolidation();
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'class_default_video',
+          studentUid: 'student-uid-1',
+        })
+      );
+
+      mockDoc.set.mockClear();
+
+      const classDocExplicitFalse = {
+        id: 'class_opt_out',
+        data: () => ({
+          automaticCombine: false,
+          students: { 'student-uid-1': 'student1@stu.vtc.edu.hk' },
+          teachers: { 'teacher-uid-1': 'teacher1@vtc.edu.hk' },
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '10:00' }],
+          },
+        }),
+      };
+
+      mockCollection.get.mockResolvedValueOnce({ empty: false, size: 1, docs: [classDocExplicitFalse] });
+
+      await handlePostLessonMediaConsolidation();
+      expect(mockDoc.set).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
 
     it('creates lectureMergeJobs when 2 or more unmerged lecture clips exist for ended lesson slot', async () => {
@@ -257,7 +305,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           },
         });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
 
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -320,7 +368,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           },
         });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
 
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -392,7 +440,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           },
         });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
 
       // Ensure NO merge job was created during class!
       expect(mockDoc.set).not.toHaveBeenCalled();
@@ -456,7 +504,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
           },
         });
 
-      await handleAutomaticVideoCombination();
+      await handlePostLessonMediaConsolidation();
 
       // Merges previous combined video AND remaining clips into 1 single consolidated video!
       expect(mockDoc.set).toHaveBeenCalledWith(

@@ -151,4 +151,32 @@ describe('mergeStudentSessionAudio Cloud Function', () => {
     expect(res.durationSeconds).toBe(46);
     expect(res.audioUrl).toContain('https://firebasestorage.googleapis.com');
   });
+
+  it('fails fast and throws when Firestore audio query throws an error', async () => {
+    const mockDb = createMockDb({});
+    mockDb.collection = vi.fn((collName) => {
+      if (collName.includes('combinedAudios')) {
+        return { doc: vi.fn(() => ({ set: vi.fn() })) };
+      }
+      return {
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        get: vi.fn().mockRejectedValue(new Error('FAILED_PRECONDITION: The query requires an index')),
+      };
+    });
+    const mockStorage = createMockStorage();
+
+    await expect(
+      executeMergeStudentSessionAudio(
+        {
+          classId: 'CLASS_1',
+          studentUid: 's1',
+          startTime: '2026-08-01T09:00:00Z',
+          endTime: '2026-08-01T11:00:00Z',
+          auth: { uid: 'teacher-1', token: { email: 'teacher@school.edu', role: 'teacher' } },
+        },
+        { db: mockDb, storage: mockStorage }
+      )
+    ).rejects.toThrow(/FAILED_PRECONDITION/);
+  });
 });

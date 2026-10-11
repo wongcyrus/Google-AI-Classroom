@@ -177,7 +177,7 @@ describe('evaluateTaskSubmission', () => {
     );
   });
 
-  it('handles invalid JSON from LLM by generating safe fallback evaluation structure', async () => {
+  it('marks attempt and submission status as evaluation_failed and does not assign fake 0 score when LLM returns invalid JSON', async () => {
     mockTaskGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({
@@ -204,9 +204,22 @@ describe('evaluateTaskSubmission', () => {
       attemptNumber: 1,
     });
 
-    expect(res.success).toBe(true);
-    expect(res.evaluation.finalScore).toBe(0);
+    expect(res.success).toBe(false);
+    expect(res.status).toBe('evaluation_failed');
+    expect(res.evaluation.finalScore).toBeNull();
     expect(res.evaluation.deviationsOrErrors).toContain('Model returned non-JSON output.');
+    expect(mockAttemptSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'evaluation_failed',
+      }),
+      { merge: true }
+    );
+    expect(mockSubmissionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'evaluation_failed',
+      }),
+      { merge: true }
+    );
   });
 
   it('strips markdown code fence blocks and calculates scoring strategy = latest', async () => {

@@ -195,7 +195,7 @@ const DataManagementView = ({
     );
     if (!confirmation) return;
 
-    const deleteFunction = httpsCallable(functions, 'deleteScreenshotsByDateRange');
+    const deleteFunction = httpsCallable(functions, 'purgeClassTelemetryData');
 
     setIsDeleting(true);
     setDeletionStatus(null);

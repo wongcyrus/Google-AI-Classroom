@@ -109,23 +109,20 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
   }
 
   let evaluation;
+  let isEvaluationFailed = false;
   try {
     evaluation = JSON.parse(rawText.trim());
   } catch (err) {
-    console.warn('[evaluateTaskSubmission] JSON parse failed, applying fallback schema:', err);
+    console.error('[evaluateTaskSubmission] JSON parse failed on AI response:', err, 'Raw text:', rawText);
+    isEvaluationFailed = true;
     evaluation = {
-      finalScore: 0,
+      finalScore: null,
       maxScore,
-      completionPercentage: 0,
+      status: 'evaluation_failed',
+      error: `Failed to parse AI evaluation response: ${err.message}`,
+      rawOutput: rawText.slice(0, 500),
       overallSummary: 'Automated evaluation could not parse a structured response. Manual review required.',
-      stepResults: effectiveSteps.map((s, idx) => ({
-        stepNumber: s.stepNumber || idx + 1,
-        title: s.title || `Milestone ${idx + 1}`,
-        status: 'error',
-        timestampInVideo: '00:00',
-        scoreAwarded: 0,
-        feedback: 'Evaluation error during video inspection.',
-      })),
+      stepResults: [],
       strengths: [],
       deviationsOrErrors: ['Model returned non-JSON output.'],
     };
@@ -144,7 +141,7 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
   await attemptRef.set(
     {
       evaluation,
-      status: 'evaluated',
+      status: isEvaluationFailed ? 'evaluation_failed' : 'evaluated',
       finishedAt: new Date(),
     },
     { merge: true }
@@ -154,16 +151,18 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
   const submissionRef = taskRef.collection('submissions').doc(studentUid);
   const attemptsSnap = await taskRef.collection('submissions').doc(studentUid).collection('attempts').get();
   
-  let bestScore = evaluation.finalScore || 0;
-  let latestScore = evaluation.finalScore || 0;
+  let bestScore = typeof evaluation.finalScore === 'number' ? evaluation.finalScore : null;
+  let latestScore = typeof evaluation.finalScore === 'number' ? evaluation.finalScore : null;
   let highestAttempt = attemptNumber;
+  let hasEvaluatedAttempt = !isEvaluationFailed;
 
   attemptsSnap.forEach((doc) => {
     const data = doc.data();
     const attNum = data.attemptNumber || parseInt(doc.id, 10);
     const score = data.evaluation?.finalScore;
-    if (typeof score === 'number') {
-      if (score > bestScore) {
+    if (typeof score === 'number' && data.status === 'evaluated') {
+      hasEvaluatedAttempt = true;
+      if (bestScore === null || score > bestScore) {
         bestScore = score;
         highestAttempt = attNum;
       }
@@ -176,10 +175,10 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
 
   await submissionRef.set(
     {
-      status: 'evaluated',
-      effectiveScore,
-      bestScore,
-      latestScore,
+      status: hasEvaluatedAttempt ? 'evaluated' : 'evaluation_failed',
+      effectiveScore: effectiveScore ?? 0,
+      bestScore: bestScore ?? 0,
+      latestScore: latestScore ?? 0,
       highestAttempt,
       lastEvaluatedAt: new Date(),
       evaluation, // Latest evaluation preview
@@ -195,7 +194,7 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
       classId,
       studentUid,
       jobType: 'evaluateTaskSubmission',
-      status: 'completed',
+      status: isEvaluationFailed ? 'failed' : 'completed',
       promptText,
       mediaPaths: [effectiveVideoPath],
       usage: {
@@ -204,18 +203,21 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
       },
       cost,
       modelUsed: modelUsed || preferredModel,
-      result: `Score: ${evaluation.finalScore}/${maxScore}. Steps completed: ${
-        evaluation.stepResults?.filter((s) => s.status === 'completed').length || 0
-      }/${effectiveSteps.length}`,
+      result: isEvaluationFailed
+        ? 'Evaluation failed to parse AI model output'
+        : `Score: ${evaluation.finalScore}/${maxScore}. Steps completed: ${
+            evaluation.stepResults?.filter((s) => s.status === 'completed').length || 0
+          }/${effectiveSteps.length}`,
     });
   } catch (logErr) {
     console.warn('[evaluateTaskSubmission] Failed to log AI job:', logErr);
   }
 
   return {
-    success: true,
+    success: !isEvaluationFailed,
+    status: isEvaluationFailed ? 'evaluation_failed' : 'evaluated',
     evaluation,
-    effectiveScore,
+    effectiveScore: effectiveScore ?? 0,
     modelUsed,
     cost,
   };

@@ -1194,7 +1194,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       };
 
       const studentTasks = studentStatuses.filter(
-        (s) => s?.id && (s.latestScreenPath || s.latestImagePath || s.latestWebcamPath)
+        (s) => s?.id && (s.latestScreenPath || s.latestWebcamPath)
       );
 
       const resolveStudent = async (status) => {
@@ -1203,7 +1203,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         const isFresh = (currentNow - statusTs) <= staleThresholdMs;
         const isActivelySharing = Boolean(status.isSharing && isFresh);
 
-        const screenPath = status.latestScreenPath || status.latestImagePath;
+        const screenPath = status.latestScreenPath;
         const webcamPath = status.latestWebcamPath;
 
         const [resolvedScreenUrl, resolvedWebcamUrl] = await Promise.all([
@@ -1305,7 +1305,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       const statusTs = getTs(status);
       const isFresh = (currentNow - statusTs) <= staleThresholdMs;
       const isActivelySharing = Boolean(status.isSharing && isFresh);
-      const primaryPath = status.latestScreenPath || status.latestImagePath || status.latestWebcamPath;
+      const primaryPath = status.latestScreenPath || status.latestWebcamPath;
       const studentScreenshot = screenshots[studentUid];
       const primaryUrl = studentScreenshot?.url;
 
@@ -1523,6 +1523,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   };
 
   const handleFrameRateChange = useCallback(async (e) => {
+    if (isCapturing) {
+      alert("Capture interval is locked while class capture is active to maintain consistent time-lapse video metrics and AI engagement tracking. Please stop capture first to change the interval.");
+      return;
+    }
     const newRate = parseInt(e.target.value, 10);
     const oldRate = frameRate;
     setFrameRate(newRate); // Optimistic update
@@ -1536,7 +1540,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         alert("Failed to update frame rate. Please try again.");
       }
     }
-  }, [classId, frameRate]);
+  }, [classId, frameRate, isCapturing]);
 
   const handleMaxImageSizeChange = async (e) => {
     const newSize = parseFloat(e.target.value);
@@ -1557,10 +1561,47 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setIsCapturing(newIsCapturing); // Optimistic update
     try {
       const classRef = doc(db, 'classes', classId);
-      await updateDoc(classRef, {
+      const updateData = {
         isCapturing: newIsCapturing,
         captureStartedAt: newIsCapturing ? serverTimestamp() : null
-      });
+      };
+      if (newIsCapturing) {
+        updateData.sessionFrameRate = frameRate || 15;
+        try {
+          const sessionRef = await addDoc(collection(db, 'classes', classId, 'captureSessions'), {
+            classId,
+            startedAt: serverTimestamp(),
+            stoppedAt: null,
+            status: 'active',
+            frameRate: frameRate || 15,
+            captureMode: captureMode || 'dual',
+            teacherUid: auth.currentUser?.uid || null,
+            teacherEmail: auth.currentUser?.email || null,
+          });
+          updateData.activeSessionId = sessionRef.id;
+        } catch (sessErr) {
+          console.warn('[MonitorView] Note: could not write captureSession start record:', sessErr);
+        }
+      } else {
+        // Teacher stopped capture: close active session records
+        try {
+          const sessionsCol = collection(db, 'classes', classId, 'captureSessions');
+          const qActive = query(sessionsCol, where('status', '==', 'active'), limit(5));
+          const snapActive = await getDocs(qActive);
+          if (snapActive && !snapActive.empty) {
+            for (const docSnap of snapActive.docs) {
+              await updateDoc(docSnap.ref, {
+                stoppedAt: serverTimestamp(),
+                status: 'completed',
+              });
+            }
+          }
+        } catch (closeErr) {
+          console.warn('[MonitorView] Note: could not close active captureSession:', closeErr);
+        }
+        updateData.activeSessionId = null;
+      }
+      await updateDoc(classRef, updateData);
 
       if (!newIsCapturing) {
         setIsPerImageAnalysisRunning(false);
@@ -1578,7 +1619,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       setIsCapturing(!newIsCapturing); // Revert on error
       alert("Failed to update capture status. Please try again.");
     }
-  }, [classId, isCapturing]);
+  }, [classId, isCapturing, frameRate]);
 
   const handleStudentClick = (student) => {
     setSelectedStudent(student);
