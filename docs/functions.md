@@ -483,13 +483,12 @@ This directory contains Cloud Functions that are triggered on a schedule to perf
     -   **Trigger**: Scheduled to run at 5, 25, 35, and 55 minutes past every hour.
     -   **Description**: This function manages the automatic start and stop of the screen capture feature for classes. It queries for all classes that have the `automaticCapture` flag set to `true`. By checking the class schedules against the current time, it determines if a class session is about to begin or has just ended, and updates the `isCapturing` boolean field on the class document accordingly. This allows the frontend to automatically start or stop capturing without manual intervention from the teacher.
 
--   **`handlePostLessonMediaConsolidation`** *(alias: `handleAutomaticVideoCombination`)*:
+-   **`handlePostLessonMediaConsolidation`**:
     -   **Trigger**: Scheduled to run at 15 and 45 minutes past every hour (`schedule: '15,45 * * * *'`).
-    -   **Description**: Automates post-lesson media processing and consolidation for both students and teachers after a class session ends. It queries for classes with the `automaticCombine` flag enabled and checks if any scheduled time slots concluded within the past 30 minutes. If so, it:
+    -   **Description**: Automates post-lesson media processing and consolidation for both students and teachers after a class session ends. Enabled by default across all scheduled classes (`automaticCombine !== false`) with zero configuration required. Checks if any scheduled time slots concluded within the past 30 minutes. If so, it:
         1. Dispatches student screencast compilation jobs (`videoJobs`) for all enrolled students to trigger `processVideoJob`.
         2. Detects teacher lecture broadcast recording segments and creates `lectureMergeJobs` documents to trigger FFmpeg lecture consolidation.
         3. Creates notifications for class teachers informing them that post-lesson media consolidation is underway.
-    -   **Backward Compatibility**: The function is exported as `handlePostLessonMediaConsolidation` and also aliased as `handleAutomaticVideoCombination` (`export const handleAutomaticVideoCombination = handlePostLessonMediaConsolidation;`) to prevent breaking existing Cloud Scheduler job configurations or external references.
 
 -   **`syncGeminiPricing`**:
     -   **Trigger**: Scheduled to run once every 24 hours (`schedule: 'every 24 hours'`).
@@ -553,9 +552,9 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 
 #### Callable Functions
 
--   **`purgeClassTelemetryData`** (aliased as **`deleteScreenshotsByDateRange`**):
+-   **`purgeClassTelemetryData`**:
     -   **Trigger**: `onCall` (callable function, 300s timeout, 512MiB memory).
-    -   **Description**: Provides granular selective purge of telemetry data for authorized teachers and admins. Accepts `classId`, `startDate`, `endDate`, `timezone`, and target selection flags (`screenshots`, `audio`, `videos`, `lectureRecordings`). Features composite index queries with automatic fallback to class-level in-memory filtering if indexes are rebuilding, preventing precondition failures. Batches document deletions in 400-item chunks and awaits Cloud Storage blob removals with `ignoreNotFound: true`.
+    -   **Description**: Provides granular selective purge of telemetry data for authorized teachers and admins. Accepts `classId`, `startDate`, `endDate`, `timezone`, and target selection flags (`screenshots`, `audio`, `videos`, `lectureRecordings`). Executes fail-fast composite index queries to identify range-bounded records, batches document deletions in 400-item chunks, and awaits Cloud Storage blob removals with `ignoreNotFound: true`.
 -   **`recalculateStorageUsage`**:
     -   **Trigger**: `onCall` (callable function, 300s timeout, 512MiB memory).
     -   **Description**: Audits and synchronizes physical Cloud Storage usage for a class. Scans actual blob prefixes across `screenshots/`, `videos/`, `zips/`, `audio/`, and `recordings/` and atomically reconciles byte counts in `classes/{classId}/metadata/storage`, eliminating metric drift.

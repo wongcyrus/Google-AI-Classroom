@@ -532,7 +532,7 @@ Stores information about each class.
         *   *Note: If a class has never had its timetable changed mid-semester, `scheduleHistory` is `[]`. Lessons finishing normally do not add items to `scheduleHistory`.*
     *   `ipRestrictions`: (array) An array of allowed IP addresses.
     *   `automaticCapture`: (boolean) A boolean indicating if automatic screen capture is enabled.
-    *   `automaticCombine`: (boolean) A boolean indicating if automatic video combination is enabled.
+    *   `automaticCombine`: (boolean) Optional. Defaults to `true` (`automaticCombine !== false`). When enabled or omitted, student invigilation videos are automatically compiled at lesson conclusion by `handlePostLessonMediaConsolidation`. Set to `false` only to explicitly disable.
     *   `aiQuota`: (number) The AI processing quota for the class in USD (e.g. `10.00` or `50.00`).
     *   `aiUsedQuota`: (number) Cumulative AI expenditure in USD (updated atomically via `onAiJobCreated` Cloud Functions triggers).
     *   `aiModel`: (string) Gemini model for multimodal analysis (`gemini-3.5-flash-lite`, `gemini-3.8-flash`).

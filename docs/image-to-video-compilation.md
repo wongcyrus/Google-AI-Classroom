@@ -14,8 +14,11 @@ This document details the complete end-to-end architecture, technical optimizati
 2. [1. Source Standardization (Student Client)](#️-1-source-standardization-student-client-studentviewjsx)
 3. [2. Video Processing Function](#️-2-video-processing-function-functionsmedia_processingprocessvideojobjs)
 4. [3. Optimized FFmpeg Encoding Parameters](#-3-optimized-ffmpeg-encoding-parameters)
-5. [4. Exam Period Detection & Storage Security Stamping](#-4-exam-period-detection--storage-security-stamping)
-6. [Performance & Compression Benchmarks](#-performance--compression-benchmarks)
+5. [4. Dynamic Frame Rate & Class Settings Session Freeze](#-4-dynamic-frame-rate--class-settings-session-freeze)
+6. [5. In-Class Practical Task Sub-Clip Slicing](#-5-in-class-practical-task-sub-clip-slicing-slicependingtasksubmissions)
+7. [6. Post-Class Retroactive Task Sub-Clip Extraction](#-6-post-class-retroactive-task-sub-clip-extraction-extractretroactivetasksubmissions)
+8. [7. Exam Period Detection & Storage Security Stamping](#-7-exam-period-detection--storage-security-stamping)
+9. [8. Performance & Compression Benchmarks](#-8-performance--compression-benchmarks)
 
 ---
 
@@ -42,7 +45,7 @@ flowchart TD
     end
 
     Backend --> Out[Output MP4: gs://bucket/videos/classId/jobId.mp4]
-    Out --> UI[VideoLibrary.jsx & PlaybackView.jsx Player]
+    Out --> UI[VideoLibrary.jsx, SessionReviewView.jsx & VideoPlayerModal.jsx]
 ```
 
 ---
@@ -71,6 +74,10 @@ To minimize upload bandwidth, storage quota, and video compilation latency, imag
 * **Metadata Overlay & Dimension Alignment**:
   * A 40px top banner is dynamically stamped using `sharp` containing `Date`, `Time`, `Class`, `Student Email`, and channel tag (e.g. `[SCREEN]` or `[WEBCAM]`).
   * Guarantees even dimensions (`width % 2 === 0`, `height % 2 === 0`) required for H.264 encoders.
+* **Trigger Orchestration**:
+  * **Always-On Scheduled Compilation**: Triggered automatically 15 and 45 minutes past the hour by `handlePostLessonMediaConsolidation` (`functions/scheduled_tasks/scheduledTasks.js`). Enabled across all scheduled classes (`automaticCombine !== false`) with zero configuration required.
+  * **Session Review & Compilation Management**: Instructors can review compiled videos, re-trigger failed compilations, and export video job manifests via [`SessionReviewView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/SessionReviewView.jsx).
+  * **In-Class Practical Task Slicing**: Slices attempt sub-clips immediately after full class compilation via `slicePendingTaskSubmissions`.
 
 ---
 
@@ -80,7 +87,7 @@ The video generation uses `ffmpeg-static` with parameters specifically tuned for
 
 ```javascript
 ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
-  .inputOptions(['-framerate', VIDEO_FRAME_RATE]) // 1 FPS timelapse
+  .inputOptions(['-framerate', String(targetFrameRate)]) // Derived from captureInterval (e.g. 0.1 FPS for 10s intervals)
   .outputOptions([
     '-c:v', 'libx264',        // H.264 Video Codec
     '-pix_fmt', 'yuv420p',    // Broadest browser & player compatibility
@@ -103,7 +110,93 @@ ffmpeg(path.join(tempDir, 'image-%05d.jpg'))
 
 ---
 
-## 🔒 4. Exam Period Detection & Storage Security Stamping
+## ⏱️ 4. Dynamic Frame Rate & Class Settings Session Freeze
+
+### Deriving Accurate Frame Rates
+Rather than forcing all compilations into an arbitrary 1 FPS timelapse, `processVideoJob.js` computes a mathematically accurate frame rate based on the configured capture interval:
+$$\text{targetFrameRate} = \min\left(30, \max\left(0.1, \frac{1}{\text{effectiveCaptureInterval}}\right)\right)$$
+- If a class captures 1 frame every 10 seconds (`captureInterval: 10`), the framerate is set to `0.1 FPS`. Compiling 360 screenshots results in a video of precisely 3,600 seconds (1 real-time hour).
+- If the capture interval is unspecified or `<= 0`, it gracefully defaults to `1 FPS` (`VIDEO_FRAME_RATE`).
+- Accurate duration calculation (`duration = targetFrameRate > 0 ? (screenshots.length / targetFrameRate) : 0`) guarantees that web UI playback bars, seek timestamps, and AI video analysis align exactly with real-world clock time.
+
+### Session Frame Rate Freeze
+To prevent corrupted or variable-framerate videos with jarring playback jumps, capture interval settings are managed exclusively at the class level (`classes/{classId}.captureInterval`). Mid-session client overrides are strictly disallowed:
+- Once a class begins, the capture interval is frozen for that session and written to the class document.
+- When `processVideoJob` triggers, all screenshots in the session adhere to the uniform interval, ensuring clean and deterministic compilation without multi-rate stitching artifacts.
+
+---
+
+## ✂️ 5. In-Class Practical Task Sub-Clip Slicing (`slicePendingTaskSubmissions`)
+
+When students participate in in-class coding challenges or practical tasks, their screencast during the task forms the submission evidence for automated rubric evaluation.
+
+### Ultrafast Stream-Copy Slicing Architecture
+Rather than running an expensive separate compilation job that re-downloads hundreds of raw screenshots and re-renders SVG banners, `processVideoJob.js` slices the task submission directly from the newly compiled class video:
+
+```bash
+# Ultrafast millisecond stream-copy extraction (Zero re-encoding)
+ffmpeg -ss {startSec} -t {durSec} -i class_video.mp4 -c copy -avoid_negative_ts make_zero -movflags +faststart attempt_1.mp4
+```
+
+1. **Sub-Clip Discovery**:
+   - Before deleting the temporary class MP4 (`/tmp/{jobId}.mp4`), `slicePendingTaskSubmissions` queries Firestore for any task attempts by the student with `status: 'awaiting_class_video'` or `'pending'`.
+2. **Timestamp Alignment**:
+   - Matches the task attempt start/finish time window against the sorted screenshot timestamps of the class video to determine the exact millisecond offset (`startSec`) and duration (`durSec`).
+3. **Execution & Fallback**:
+   - Executes stream-copy slicing in ~200ms with zero CPU overhead.
+   - If stream-copy fails due to non-keyframe cuts, an ultrafast fallback (`-preset ultrafast -c:v libx264 -crf 28`) guarantees clip creation.
+4. **Cloud Storage Dispatch & AI Rubric Trigger**:
+   - Uploads the sliced attempt video to `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempt_{attemptNumber}.mp4`.
+   - Updates the attempt doc to `compiling_complete` and marks the task `videoJobs` entry as `completed` with `slicedFromClassVideo: true`.
+   - Automatically triggers Gemini 3.8 Flash AI rubric grading via `triggerAutomaticAnalysis`.
+5. **Storage Lifecycle Safeguard**:
+   - Raw screenshots are only purged *after* all task sub-clips are verified and uploaded.
+   - Prevents the race condition where immediate screenshot deletion destroys task evidence before task compilation.
+
+---
+
+## ✂️ 6. Post-Class Retroactive Task Sub-Clip Extraction (`extractRetroactiveTaskSubmissions`)
+
+When an instructor defines a practical lab task *after* class has finished, the platform extracts student submission attempt clips retroactively from historical class videos via `extractRetroactiveTaskSubmissions`:
+
+### Workflow & Mechanics:
+```mermaid
+flowchart TD
+    Instructor[Instructor in Task Editor: scheduleMode = 'retroactive'] -->|Window: Offset or Clock Time| Extractor[Callable Function: extractRetroactiveTaskSubmissions]
+    Extractor --> Query[Query completed videoJobs for sessionDate / classId]
+    Extractor --> Enrollees[Query class enrolledStudents]
+    
+    Query --> Loop{For each student videoJob}
+    Loop --> Download[Download videos/classId/jobId.mp4 to /tmp]
+    Download --> Slicing["FFmpeg -ss {startSec} -t {durSec} -c copy"]
+    Slicing --> Upload[Uploads attempt_N.mp4 to Storage]
+    Upload --> Stamp[Creates attempt doc status: 'compiling_complete']
+    Stamp --> VideoJob["Updates videoJobs: 'pending' -> 'completed'"]
+    VideoJob --> Gemini[Fires triggerAutomaticAnalysis -> Gemini 3.8 Flash Rubric Grading]
+    
+    Enrollees --> AbsentCheck{Student has video?}
+    AbsentCheck -->|No| AbsentDoc["Stamp submission status: 'missing', absent: true"]
+```
+
+### Key Technical Characteristics:
+1. **Zero Raw Image Dependence**:
+   - Because completed class videos exist in Cloud Storage (`videos/{classId}/{jobId}.mp4`), retroactive task extraction operates entirely on the compiled MP4.
+   - It runs completely independently of screenshot retention policies; even if all raw images were deleted immediately via `purgeScreenshotsAfterVideoCombine: true`, extraction operates with 100% fidelity.
+2. **Dual Window Time Modes**:
+   - **Relative Offset (`windowType: 'relative_offset'`)**: Computes `startSec = relativeStartMinute * 60` and `durSec = durationMinutes * 60`.
+   - **Absolute Clock Time (`windowType: 'absolute_time'`)**: Compares task `startTime` and `endTime` against video job `startTime` to compute exact second offsets.
+3. **Ultrafast Stream-Copy with Re-Encode Fallback**:
+   - Executes `ffmpeg -ss <startSec> -t <durSec> -i <source.mp4> -c copy -avoid_negative_ts make_zero <output.mp4>`.
+   - If keyframe boundaries prevent stream-copying, it seamlessly falls back to ultrafast re-encoding (`-preset ultrafast -c:v libx264 -crf 28`).
+4. **Idempotent Storage & Firestore Paths**:
+   - Slices are uploaded to canonical path `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempt_{attemptNumber}.mp4`.
+   - Creates/updates `videoJobs` from `pending` to `completed`, triggering automated Gemini 3.8 Flash analysis.
+5. **Absent Student Accounting**:
+   - Enrolled students with no video recording for the session are automatically marked as `status: 'missing'` with `absent: true`, ensuring accurate grading matrix rosters.
+
+---
+
+## 🔒 7. Exam Period Detection & Storage Security Stamping
 
 To protect confidential examination materials from student extraction, `processVideoJob` evaluates whether the compiled video job intersects with any instructor-scheduled `examPeriods` or if `jobData.isExam` is true:
 
@@ -144,7 +237,7 @@ export const isExamTimeRange = (startTime, endTime, examPeriods = []) => {
 
 ---
 
-## 📈 5. 1 to 1.5-Hour Class Performance & Compression Benchmarks
+## 📈 8. 1 to 1.5-Hour Class Performance & Compression Benchmarks
 
 A common question for real-world deployments is whether compiling **1 to 1.5 hours** of continuous student screenshots into a single lesson timelapse `.mp4` functions reliably without timeouts or out-of-memory (OOM) crashes.
 

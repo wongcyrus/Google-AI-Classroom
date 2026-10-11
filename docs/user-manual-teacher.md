@@ -149,9 +149,8 @@ To streamline course setup, class creation is powered by **Concept Templates**. 
    - **Display Name:** Friendly course title (e.g., *Cloud Architecture Lab*).
    - **Tags:** Adjust or add cohort tags as needed.
    - **Storage Quota:** Select `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
-   - **Retention Periods:** Screenshot retention (`7`–`365` days) and Video retention (`14`–`730` days).
-   - **📸 Auto-Delete Raw Screenshots Once Combined into Video:** (Optional storage optimization) Automatically batch purges routine interval raw screenshots once their session MP4 time-lapse video has been successfully generated and verified. Reclaims ~80%+ storage while strictly preserving all anti-cheating alerts, proctoring violations, and irregularity evidence.
-   - **🧹 Sweep & Purge Existing Combined Screenshots Button:** When editing an existing class in Section 1, click this maintenance button to retroactively sweep all completed video jobs, purge routine raw screenshots within those completed video periods, and immediately reclaim storage quota while safeguarding all irregularities and proctoring evidence.
+   - **Retention Period:** Lesson Video & Recording retention (`14`–`730` days). Controls retention for compiled MP4 lesson videos, teacher recordings, and incident evidence.
+   - **📸 Auto-Purge Routine Screenshots:** Always active by default. Automatically purges routine interval raw screenshots once the session MP4 time-lapse video has been successfully compiled and verified, reclaiming ~85%+ storage while permanently safeguarding all anti-cheating alerts, proctoring violations, and irregularity evidence.
 4. (Optional) Expand **Advanced Configuration** to customize fine-grained parameters.
 5. Click **Create Class** (or **Save Class Settings**).
 
@@ -308,6 +307,13 @@ In **Class Settings (`⚙️ Settings`)**, configure the automated proctoring in
 - **Client-Side Silence Suppression (VAD):** When enabled, client Web Audio nodes mute chunks below the volume threshold, saving over 80% in cloud storage and transcription costs.
 - **Mode 1 (Moving Window Transcription):** Continuously transcribes 20s–45s rolling audio slices using on-device Whisper or `gemini-3.5-transcribe-preview`.
 - **Mode 2 (Session Audio Diarization):** Assembles recorded audio clips into a full session timeline with speaker separation.
+
+### Automatic Video Compilation & Lesson Processing
+- **Always-On Invigilation & Lecture Processing:**
+  - Both student screen recordings and teacher lecture broadcasts are **automatically compiled** into finalized MP4 videos at the conclusion of every scheduled timetable slot (`handlePostLessonMediaConsolidation`) with zero configuration required.
+  - Generates continuous, compressed MP4 videos (`videos/{classId}/{jobId}.mp4`) viewable in the **Video Archive**.
+  - In-class practical task attempt clips are extracted and graded by Gemini 3.8 Flash automatically upon lesson conclusion without requiring manual teacher intervention.
+  - To optimize cloud storage usage, routine raw interval screenshots are purged automatically once the session MP4 video is compiled and verified (`purgeScreenshotsAfterVideoCombine: true`).
 
 ### Universal AI Prompt Studio & Multi-Modal Class Configuration
 All AI models across the entire classroom lifecycle are configurable directly by the teacher. Instructors are never locked into static prompts. Configuration occurs across two complementary surfaces:
@@ -740,12 +746,13 @@ In computer labs lacking webcams where students may share login credentials, tea
 
 Navigate to the **`🎥 Videos`** tab to inspect completed screencasts.
 
-### Synchronized Dual Playback (`SessionReviewView.jsx`)
+### Session Review & Direct MP4 Video Playback (`SessionReviewView.jsx`)
 1. Select the **Session Review** subtab.
 2. Filter by student name or email using the search dropdown.
-3. The player loads both the student's desktop recording and webcam recording.
-4. Dragging the timeline scrubber advances both video streams in synchronized lock-step, allowing you to cross-examine what was on the student's screen with their physical head posture.
-5. Click **`📥 Export Video Jobs (Excel)`** to download all lesson video compilation jobs (`Class_{classId}_Video_Jobs_{timestamp}.xlsx`) enriched with student display names and cohort section badges.
+3. If an MP4 video has completed compilation for that student, click **`▶️ Play Student Video`** in the toolbar to immediately stream the time-lapse screencast in [`VideoPlayerModal`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx).
+4. Alternatively, in the **Video Jobs** table, completed student jobs feature a direct **`▶️ Play Video`** button in the Action column.
+5. **Routine Screenshot Auto-Purge:** Because full-session MP4 videos are generated automatically upon lesson conclusion, routine unflagged screenshot frames are purged by default to reclaim storage. Any anti-cheating incidents, proctoring irregularities, and violation evidence photos remain permanently preserved in Firestore and Storage.
+6. Click **`📥 Export Video Jobs (Excel)`** to download all lesson video compilation jobs (`Class_{classId}_Video_Jobs_{timestamp}.xlsx`) enriched with student display names and cohort section badges.
 
 ### Teacher Lecture Recordings & Multilingual YouTube CC (`LectureRecordingsView.jsx`)
 

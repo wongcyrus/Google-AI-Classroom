@@ -101,7 +101,7 @@ graph TD
         subgraph "Storage Triggers (`storage_triggers`)"
             F_updateStorageUpload["updateStorageUsageOnUpload (onFinalize)"]
             F_updateStorageDelete["updateStorageUsageOnDelete (onDelete)"]
-            F_deleteScreenshots["deleteScreenshotsByDateRange (onCall)"]
+            F_deleteScreenshots["purgeClassTelemetryData (onCall)"]
             F_cleanupDeletedTriggers["onScreenshotDocDeleted / onVideoJobDocDeleted / onAudioDocDeleted / onLectureRecordingDeleted (onDelete)"]
             F_onClassRetentionUpdated["onClassRetentionUpdated / onClassDocDeleted (onWrite)"]
         end

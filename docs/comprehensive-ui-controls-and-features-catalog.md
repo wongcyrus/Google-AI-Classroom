@@ -474,9 +474,9 @@ flowchart TD
 - **Biometric Debounce Gate Slider:** 2 to 10 seconds (suppresses momentary glance false positives).
 - **Bingo Retry Grace Delay Selector:** `1m`, `2m`, `3m`, `5m`, or `10m` delay before retrying unacknowledged presence checks.
 - **Cloud Fallback Cadence:** Sampling cadence (1–10 rounds) for cloud vision verification.
-- **Automated Capture & Video Compilation Toggles:**
-  - `Automatically start live capture during scheduled lesson hours`.
-  - `Automatically compile lesson screencasts into MP4 videos after class`.
+- **Automated Capture & Video Compilation Controls:**
+  - `Automatic Live Capture Toggle`: Automatically starts screen capture 5 minutes before scheduled lessons and stops 5 minutes after.
+  - `Automatic Video Compilation Panel (Always Enabled)`: Informative callout with green `Always Enabled` badge. Student invigilation screencasts and teacher lecture broadcasts are automatically compiled into finalized MP4 videos at the conclusion of each scheduled lesson slot with zero manual toggles required. In-class practical task clips are sliced and evaluated automatically.
 - **AI Prompt Selectors:**
   - After-class video inspection prompt picker.
   - On-device Gemma voice intent prompt picker.
@@ -601,7 +601,7 @@ flowchart TD
 ---
 
 ## 11. Session Review, Video Library & Synchronized Playback
-**Primary Sources:** [`VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx), [`SessionReviewView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/SessionReviewView.jsx), [`PlaybackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PlaybackView.jsx), [`VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx), [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
+**Primary Sources:** [`VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx), [`SessionReviewView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/SessionReviewView.jsx), [`VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx), [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx)
 
 ### Video Library Controls (`VideoLibrary.jsx`)
 - **Video Selection Checkboxes:** Select individual videos or `Select All on Page`.
@@ -619,16 +619,15 @@ flowchart TD
   - `📁 Drive ↗`: Direct external hyperlink button opening the backed-up video in Google Drive.
 - **Pagination Buttons:** `Previous` and `Next` page navigation.
 
-### Synchronized Dual Playback (`SessionReviewView.jsx` & `PlaybackView.jsx`)
+### Session Review & Direct MP4 Playback (`SessionReviewView.jsx`)
 - **Student Filter Search Input & Dropdown:** Filter by student name, nickname, or email.
-- **Synchronized Video Player:** Plays compiled student screen and webcam streams side-by-side with locked time scrubbing.
-- **Scrubber Timeline:** Jump to any minute of the lesson.
+- **`▶️ Play Student Video` Toolbar Button:** Instantly streams the chosen student's compiled time-lapse MP4 recording in [`VideoPlayerModal`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx) without loading raw frame assets or triggering redundant network requests.
 - **`📥 Export Video Jobs (Excel)` Button:** Exports all compilation job records enriched with student names and cohorts into `.xlsx`.
 - **Video Compilation Jobs Management Table:**
   - Status filter pills (`pending`, `processing`, `completed`, `failed`).
   - Bulk select checkboxes & `Delete Selected Jobs` button (deletes Firestore record and Cloud Storage video).
-  - `🔄 Retry Failed Job` button.
-  - `Inspect Error` modal button displaying Cloud Functions FFmpeg stack traces.
+  - **Action Column:** Includes direct `▶️ Play Video` button for completed jobs, opening the modal player with fast signed URL resolution.
+  - `Inspect Error` modal button displaying Cloud Functions FFmpeg stack traces for failed compilations.
 
 ### Teacher Lecture Recordings & YouTube Studio (`LectureRecordingsView.jsx`)
 - **Smart Detection Alert Banner:**

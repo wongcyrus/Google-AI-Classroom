@@ -16,6 +16,8 @@ This document provides a comprehensive technical reference for the real-time dat
 4. [3. Comprehensive Cascading Class Deletion](#️-3-comprehensive-cascading-class-deletion-onclassdocdeleted)
 5. [4. Data Safety & Isolation Model](#️-4-data-safety--isolation-model)
 6. [5. Firestore Native TTL Policy Setup](#️-5-firestore-native-ttl-policy-setup)
+7. [6. Teacher Lecture Recording & Telemetry Deletion Lifecycle](#-6-teacher-lecture-recording--telemetry-deletion-lifecycle)
+8. [7. Immediate Screenshot Purge & Practical Task Video Slicing Safeguards](#-7-immediate-screenshot-purge--practical-task-video-slicing-safeguards)
 
 ---
 
@@ -58,7 +60,7 @@ flowchart TD
 Every generated document is stamped with a deterministic UTC expiration timestamp at creation time:
 * **Screenshots (`StudentView.jsx`)**:
   `expireAt = new Date(Date.now() + retentionDays * 86,400,000 ms)`
-* **Video Jobs (`scheduledTasks.js` / `PlaybackView.jsx`)**:
+* **Video Jobs (`scheduledTasks.js` / `SessionReviewView.jsx`)**:
   `expireAt = new Date(Date.now() + videoRetentionDays * 86,400,000 ms)`
 * **Zip Export Jobs (`VideoLibrary.jsx`)**:
   `expireAt = new Date(Date.now() + 7 * 86,400,000 ms)` (Standard 7-day export window)
@@ -203,12 +205,12 @@ Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) a
   - Teachers can delete any lecture recording directly from the **Lecture Recordings View** via the **"🗑️ Delete Recording"** button.
   - Deleting the `classes/{classId}/lectureRecordings/{sessionId}` Firestore document fires the `onLectureRecordingDeleted` Cloud Storage trigger, which automatically purges all files under `recordings/{classId}/{sessionId}/` from Google Cloud Storage (`force: true`).
   - Quota is decremented immediately in `classes/{classId}/metadata/storage` via `updateStorageUsageOnDelete`.
-- **Granular Selective Telemetry Purge (`purgeClassTelemetryData` / `deleteScreenshotsByDateRange`)**:
+- **Granular Selective Telemetry Purge (`purgeClassTelemetryData`)**:
   - From the **Data Management View**, teachers have granular control to selectively purge telemetry:
     - Target toggles: Screenshots, Audio recordings, Compiled Student Videos, Lecture Recordings, Irregularities & Evidence Photos, and Activity/Bingo Audit Records.
     - Scope presets: Current Lesson, Older than 14 Days, Older than 30 Days, Older than 90 Days, All Time (Entire History), or Custom Range.
     - **Dual Storage & Document Sweeping**: Not only purges Firestore documents, but also actively sweeps physical Cloud Storage prefixes (`screenshots/{classId}/`, `audio/{classId}/`, `videos/{classId}/`, `recordings/{classId}/`, `irregularities/{classId}/`) for files created in range, permanently eliminating orphaned storage files.
-    - Queries use composite indexes with automatic in-memory fallback to class-level queries if any index is rebuilding, preventing runtime precondition failures.
+    - Queries use direct fail-fast composite index queries to identify telemetry within range, surfacing index or precondition errors immediately without unbounded in-memory collection scans.
     - Purges both physical Cloud Storage blobs and Firestore documents in safe 400-item chunks.
     - **Automatic Quota Reconciliation**: Every purge operation concludes with an automated invocation of `recalculateStorageUsageInternal` to sync the storage quota bar immediately.
     - **Data Integrity & Pre-Purge Attendance Safeguard**:
@@ -225,6 +227,84 @@ Teacher lecture recordings (`classes/{classId}/lectureRecordings/{sessionId}`) a
 
 ---
 
+## ✂️ 7. Immediate Screenshot Purge & Practical Task Video Slicing Safeguards
+
+### The Immediate Purge Strategy (`purgeScreenshotsAfterVideoCombine: true`)
+When enabled in Class Settings, the system maximizes storage efficiency by immediately deleting routine raw screenshots (`screenshots/{screenshotId}` and `screenshots/{classId}/*.jpg`) as soon as the lesson screencast MP4 finishes compiling. This saves up to 85% of Cloud Storage quota per student session.
+
+### The Race Condition with In-Class Practical Tasks
+In practical task challenges, students perform hands-on coding or lab exercises during live class while continuous screenshot capturing is active. 
+
+If task videos were compiled independently from raw screenshots alongside class video compilation:
+* **Race Condition A (Class Finishes First)**: Class video compilation concludes and triggers immediate screenshot deletion. When the task compilation job starts, all student screenshots have already been purged, causing the task video job to fail with `0 screenshots found`.
+* **Race Condition B (Task Finishes First)**: If a student finishes a practical task early and task compilation triggers immediate deletion, it would wipe the screenshots mid-lesson, creating a massive missing gap in the student's overall class screencast.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student as Student Client (StudentView.jsx)
+    participant FS as Firestore
+    participant VP as processVideoJob Cloud Function
+    participant GCS as Cloud Storage
+    participant AI as Gemini 3.8 Flash AI Rubric Grading
+
+    Note over Student,FS: 1. Live Class Practical Task Challenge
+    Student->>FS: Completes Task Attempt (status: 'awaiting_class_video')
+    Student->>FS: Class Ends -> videoJobs (type: 'class_screencast')
+
+    Note over VP,GCS: 2. Unified Class Video Compilation
+    VP->>GCS: Compiles class frames into /tmp/{jobId}.mp4
+    VP->>GCS: Uploads class video to videos/{classId}/{jobId}.mp4
+
+    Note over VP,GCS: 3. Stream-Copy Sub-Clip Slicing (Approach 2)
+    VP->>FS: slicePendingTaskSubmissions (queries 'awaiting_class_video' attempts)
+    VP->>VP: Matches attempt timestamp window against frame sequence
+    VP->>VP: ffmpeg -ss {startSec} -t {durSec} -i class.mp4 -c copy attempt.mp4 (Takes ~200ms)
+    VP->>GCS: Uploads attempt clip to classes/{classId}/tasks/{taskId}/submissions/...
+    VP->>FS: Updates attempt & submission status to 'compiling_complete'
+    VP->>FS: Updates task videoJob to 'completed'
+    FS-->>AI: Triggers triggerAutomaticAnalysis for automated rubric grading
+
+    Note over VP,GCS: 4. Post-Slicing Immediate Screenshot Purge
+    VP->>FS: if (!isTaskSubmission && purgeScreenshotsAfterVideoCombine === true)
+    VP->>GCS: Purges raw jpg screenshots safely (Zero Task Data Loss)
+```
+
+### The Architectural Solution: Stream-Copy Sub-Clip Slicing (Approach 2)
+To eliminate this race condition with zero redundant resource overhead, the platform uses **Stream-Copy Sub-Clip Slicing** directly within `processVideoJob.js`:
+
+1. **Class-Aware Task Submission Stamping (`StudentView.jsx`)**:
+   - When a student submits an in-class practical task attempt while class capture is active, the attempt status is marked as `'awaiting_class_video'` and the task video job is queued with `status: 'awaiting_class_video'`.
+   - `StudentView.jsx` guarantees continuous capture liveness via `isTaskActive` (`isSharing && (isCapturing || isExamActive || isTaskActive)`).
+2. **Atomic Slicing in `slicePendingTaskSubmissions`**:
+   - Immediately after the class video is compiled and uploaded, but **before** local `/tmp` files are deleted, `processVideoJob` discovers all pending task attempts for that student.
+   - It calculates the precise start offset (`startSec`) and duration (`durSec`) by matching the task attempt window against the sorted screenshot timestamps.
+   - It slices the sub-clip in milliseconds using `ffmpeg -ss <startSec> -t <durSec> -c copy -avoid_negative_ts make_zero -movflags +faststart`.
+   - If stream-copy fails due to keyframe boundaries, an ultrafast re-encode fallback (`-preset ultrafast -c:v libx264 -crf 28`) is applied automatically.
+3. **Automated AI Grading Dispatch**:
+   - Sliced sub-clips are uploaded directly to `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempt_{attemptNumber}.mp4`.
+   - The task attempt document is updated to `compiling_complete` and the task `videoJobs` document is marked `status: 'completed'` with `slicedFromClassVideo: true`.
+   - This status update triggers `triggerAutomaticAnalysis` in `functions/ai_flows`, dispatching Gemini 3.8 Flash automated rubric grading without manual teacher intervention.
+4. **Execution Order Guarantee**:
+   - Raw screenshots are purged **only after** all task sub-clips are extracted, verified, and uploaded.
+5. **Standalone Task Guard**:
+   - Standalone task video jobs (`isTaskSubmission: true`) are explicitly prevented from executing class-wide screenshot purges:
+     ```javascript
+     if (!isTaskSubmission && classData?.purgeScreenshotsAfterVideoCombine !== false) {
+       await purgeScreenshotsAfterCombine(...);
+     }
+     ```
+6. **Homework / Out-of-Class Support**:
+   - When students complete practical tasks outside of scheduled class hours, `StudentView.jsx` marks the attempt as `'compiling'` and queues the task video job with `status: 'pending'`. The standalone compilation runs independently and will never purge screenshots.
+7. **Post-Class / Retroactive Extraction Independence (`extractRetroactiveTaskSubmissions`)**:
+   - When instructors define practical tasks *after* a class session has concluded (`scheduleMode: 'retroactive'`), raw screenshot documents and image blobs have typically already been deleted by the post-combine purge.
+   - The retroactive extraction engine bypasses raw screenshots entirely and operates downstream on the finalized class MP4 (`videos/{classId}/{jobId}.mp4`).
+   - Because compiled class videos are governed by `videoRetentionDays` (default 90 days), instructors can define and extract tasks days or weeks after the lesson.
+   - Retroactive task extraction is strictly read-only with respect to historical class media; it creates sub-clips under `classes/{classId}/tasks/{taskId}/submissions/...` and never triggers deletion or truncation of the underlying class recordings.
+
+---
+
 [← Back to Documentation Index](../README.md#documentation-index)
+
 
 
