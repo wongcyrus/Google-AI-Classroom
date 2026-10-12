@@ -30,6 +30,8 @@ import { SUBTITLE_LANGUAGES } from '../utils/videoSubtitleUtils';
 import {
   DEFAULT_LECTURE_STT_PROMPT,
   DEFAULT_LECTURE_TRANSLATION_PROMPT,
+  DEFAULT_BINGO_TEACHER_SCREEN_PROMPT,
+  DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
 } from '../constants/promptRegistry';
 import {
   CLASS_TEMPLATES,
@@ -187,6 +189,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [showTranslationPromptModal, setShowTranslationPromptModal] = useState(false);
   const [modalTranslationPrompt, setModalTranslationPrompt] = useState(null);
   const [modalTranslationPromptText, setModalTranslationPromptText] = useState('');
+  const [showLiveSubtitlePromptModal, setShowLiveSubtitlePromptModal] = useState(false);
+  const [modalLiveSubtitlePrompt, setModalLiveSubtitlePrompt] = useState(null);
+  const [modalLiveSubtitlePromptText, setModalLiveSubtitlePromptText] = useState('');
   const [lectureTargetLanguages, setLectureTargetLanguages] = useState(['en', 'zh-Hant', 'zh-Hans']);
 
   // Concept Template State
@@ -223,8 +228,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setGazeSensitivity(settings.gazeSensitivity);
     setFaceDebounceSeconds(settings.faceDebounceSeconds);
 
-    // Audio Monitoring
-    setEnableAudioCapture(settings.enableAudioCapture);
+    // Audio Monitoring (strictly disabled for lecture mode)
+    setEnableAudioCapture(templateId === 'lecture' ? false : Boolean(settings.enableAudioCapture));
 
     // Lecture Studio & Broadcast
     setDefaultLectureRecording(settings.defaultLectureRecording);
@@ -235,10 +240,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     setPurgeScreenshotsAfterVideoCombine(settings.purgeScreenshotsAfterVideoCombine !== undefined ? settings.purgeScreenshotsAfterVideoCombine : true);
     setLectureAiModel(settings.lectureAiModel);
 
-    // Bingo Presence
+    // Bingo Presence & Prompts
     setAutoBingoEnabled(settings.autoBingoEnabled);
     setAutoBingoIntervalMinutes(settings.autoBingoIntervalMinutes);
-    setAutoBingoMode(settings.autoBingoMode);
+    setAutoBingoMode(settings.autoBingoMode || 'question_bank');
+    setBingoPrompt(settings.bingoPrompt !== undefined ? settings.bingoPrompt : null);
+
+    // Live Subtitles Prompt
+    setSubtitlePrompt(settings.subtitlePrompt !== undefined ? settings.subtitlePrompt : null);
 
     // Student Recordings Policy
     setStudentRecordingsPolicy(settings.studentRecordingsPolicy);
@@ -1145,7 +1154,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           : subjectDomain || 'Computer Science & Software Development',
       customSubjectDomain: customSubjectDomain || '',
       sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
-      enableAudioCapture: enableAudioCapture || false,
+      enableAudioCapture: selectedTemplate === 'lecture' ? false : (enableAudioCapture || false),
       audioCaptureMode: audioCaptureMode || 'mandatory',
       audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
       audioSilenceSuppression: audioSilenceSuppression !== false,
@@ -1458,7 +1467,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           subjectDomain: subjectDomain === 'custom' ? (customSubjectDomain.trim() || 'General Studies & Interdisciplinary') : (subjectDomain || 'Computer Science & Software Development'),
           customSubjectDomain: customSubjectDomain || '',
           sessionAudioIntervalMinutes: parseInt(sessionAudioIntervalMinutes, 10) || 0,
-          enableAudioCapture: enableAudioCapture || false,
+          enableAudioCapture: selectedTemplate === 'lecture' ? false : (enableAudioCapture || false),
           audioCaptureMode: audioCaptureMode || 'mandatory',
           audioSegmentDuration: parseInt(audioSegmentDuration, 10) || 30,
           audioSilenceSuppression: audioSilenceSuppression !== false,
@@ -1583,12 +1592,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   };
 
   const handleOpenAudioPromptModal = (type) => {
+    if (type === 'subtitle') {
+      handleOpenLiveSubtitlePromptModal();
+      return;
+    }
     setAudioPromptModalType(type);
     let target = null;
     if (type === 'live_audio') target = liveAudioPrompt;
     else if (type === 'session_audio') target = sessionAudioPrompt;
     else if (type === 'gemma_intent') target = gemmaIntentPrompt;
-    else if (type === 'subtitle') target = subtitlePrompt;
     else if (type === 'lecture_recording') target = lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT;
 
     setModalAudioPrompt(target);
@@ -1605,15 +1617,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       finalPrompt = {
         ...modalAudioPrompt,
         promptText: chosenText,
-        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'subtitle' ? 'Custom Subtitle Prompt' : audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt')),
+        name: isModified && modalAudioPrompt.name ? `${modalAudioPrompt.name} (Customized)` : (modalAudioPrompt.name || (audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt')),
         originalId: promptId,
         id: promptId,
       };
     } else if (modalAudioPromptText.trim()) {
       finalPrompt = {
-        name: audioPromptModalType === 'subtitle' ? 'Custom Subtitle Prompt' : audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt',
+        name: audioPromptModalType === 'lecture_recording' ? 'Custom STT Prompt' : 'Custom Voice Prompt',
         promptText: modalAudioPromptText,
-        category: audioPromptModalType === 'subtitle' ? 'translations' : 'audios',
+        category: 'audios',
       };
     }
 
@@ -1623,8 +1635,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       setSessionAudioPrompt(finalPrompt);
     } else if (audioPromptModalType === 'gemma_intent') {
       setGemmaIntentPrompt(finalPrompt);
-    } else if (audioPromptModalType === 'subtitle') {
-      setSubtitlePrompt(finalPrompt);
     } else if (audioPromptModalType === 'lecture_recording') {
       const promptToSet = finalPrompt || DEFAULT_LECTURE_STT_PROMPT;
       setLectureSttPrompt(promptToSet);
@@ -1664,6 +1674,40 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     setLectureTranslationPrompt(finalPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT);
     setShowTranslationPromptModal(false);
+  };
+
+  const handleOpenLiveSubtitlePromptModal = () => {
+    const target = subtitlePrompt;
+    setModalLiveSubtitlePrompt(target);
+    setModalLiveSubtitlePromptText(target ? (target.promptText || '') : '');
+    setShowLiveSubtitlePromptModal(true);
+  };
+
+  const handleSetLiveSubtitlePrompt = () => {
+    let finalPrompt = null;
+    if (modalLiveSubtitlePrompt) {
+      const chosenText = modalLiveSubtitlePromptText || modalLiveSubtitlePrompt.promptText || '';
+      const isModified = modalLiveSubtitlePrompt.promptText ? (modalLiveSubtitlePrompt.promptText !== chosenText) : false;
+      const promptId = modalLiveSubtitlePrompt.id || modalLiveSubtitlePrompt.originalId || null;
+      finalPrompt = {
+        ...modalLiveSubtitlePrompt,
+        promptText: chosenText,
+        name: isModified && modalLiveSubtitlePrompt.name ? `${modalLiveSubtitlePrompt.name} (Customized)` : (modalLiveSubtitlePrompt.name || 'Custom Subtitle Prompt'),
+        originalId: promptId,
+        id: promptId,
+        category: 'translations',
+      };
+    } else if (modalLiveSubtitlePromptText.trim()) {
+      finalPrompt = {
+        name: 'Custom Subtitle Prompt',
+        promptText: modalLiveSubtitlePromptText,
+        category: 'translations',
+        applyTo: ['Live Subtitles & Translation'],
+      };
+    }
+
+    setSubtitlePrompt(finalPrompt);
+    setShowLiveSubtitlePromptModal(false);
   };
 
   const handleOpenImagePromptModal = (type = 'live_image') => {
@@ -1737,11 +1781,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             ? 'Select Live Audio Invigilation Prompt'
             : audioPromptModalType === 'session_audio'
               ? 'Select Discussion / Session Audio Summary Prompt'
-              : audioPromptModalType === 'subtitle'
-                ? 'Select Live Subtitles & Translation Prompt'
-                : audioPromptModalType === 'lecture_recording'
-                  ? 'Select Lecture Audio Speech-to-Text & Chapters Prompt'
-                  : 'Select On-Device Gemma Voice Intent Prompt'
+              : audioPromptModalType === 'lecture_recording'
+                ? 'Select Lecture Audio Speech-to-Text & Chapters Prompt'
+                : 'Select On-Device Gemma Voice Intent Prompt'
         }
       >
         <AudioPromptSelector
@@ -1758,11 +1800,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               ? 'Live Audio Invigilation'
               : audioPromptModalType === 'session_audio'
                 ? 'Session Audio Summary'
-                : audioPromptModalType === 'subtitle'
-                  ? 'Live Subtitles & Translation'
-                  : audioPromptModalType === 'lecture_recording'
-                    ? 'Lecture STT & Chapters'
-                    : 'On-Device Gemma Voice Intent'
+                : audioPromptModalType === 'lecture_recording'
+                  ? 'Lecture STT & Chapters'
+                  : 'On-Device Gemma Voice Intent'
           }
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
@@ -1773,7 +1813,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               if (audioPromptModalType === 'live_audio') setLiveAudioPrompt(null);
               else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
               else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
-              else if (audioPromptModalType === 'subtitle') setSubtitlePrompt(null);
               else if (audioPromptModalType === 'lecture_recording') {
                 setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
                 setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
@@ -1818,6 +1857,50 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             Reset to Default
           </button>
           <button type="button" onClick={handleSetTranslationPrompt}>
+            Save Prompt Selection
+          </button>
+        </div>
+      </Modal>
+
+      {/* Live Subtitle & Speech Translation Prompt Modal */}
+      <Modal
+        show={showLiveSubtitlePromptModal}
+        onClose={() => setShowLiveSubtitlePromptModal(false)}
+        title="Select Live Subtitles & Translation Prompt"
+      >
+        <TranslationPromptSelector
+          user={user}
+          selectedPrompt={modalLiveSubtitlePrompt}
+          onSelectPrompt={(p) => {
+            setModalLiveSubtitlePrompt(p);
+            setModalLiveSubtitlePromptText(p ? p.promptText : '');
+          }}
+          promptText={modalLiveSubtitlePromptText}
+          onTextChange={setModalLiveSubtitlePromptText}
+          applyToFilter="Live Subtitles & Translation"
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              setSubtitlePrompt(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT);
+              setShowLiveSubtitlePromptModal(false);
+            }}
+          >
+            Reset to Default
+          </button>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              setSubtitlePrompt(null);
+              setShowLiveSubtitlePromptModal(false);
+            }}
+          >
+            Clear Prompt
+          </button>
+          <button type="button" onClick={handleSetLiveSubtitlePrompt}>
             Save Prompt Selection
           </button>
         </div>
@@ -3006,6 +3089,37 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
 
         <div className="form-group">
+          <label htmlFor="auto-bingo-mode-config">📚 Bingo Question Generation Mode</label>
+          <select 
+            id="auto-bingo-mode-config"
+            value={autoBingoMode} 
+            onChange={(e) => {
+              const newMode = e.target.value;
+              setAutoBingoMode(newMode);
+              if (newMode === 'teacher_screen' && !bingoPrompt) {
+                setBingoPrompt(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT);
+              }
+            }}
+          >
+            <option value="question_bank">📚 Question Bank ($0.00 / Zero AI Tokens)</option>
+            <option value="teacher_screen">📺 Teacher Screen (1 AI call for whole lecture)</option>
+            <option value="student_screen">💻 Student Screens (AI anti-decoy check)</option>
+          </select>
+          <p className="input-hint">Controls how active presence questions are generated for automated or on-demand Bingo challenges.</p>
+        </div>
+
+        <ClassPromptField
+          containerStyle={{ marginTop: '10px' }}
+          label="🎯 Bingo Active Presence AI Prompt"
+          scope="live"
+          prompt={bingoPrompt}
+          onOpenModal={() => handleOpenImagePromptModal('bingo')}
+          onReset={() => setBingoPrompt(null)}
+          selectButtonText="Select Bingo Question Prompt"
+          hint="Custom prompt guiding question generation from lesson material, teacher screen, or student screen."
+        />
+
+        <div className="form-group" style={{ marginTop: '12px' }}>
           <label htmlFor="auto-bingo-enabled-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <input 
               id="auto-bingo-enabled-checkbox"
@@ -3019,57 +3133,31 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
 
         {autoBingoEnabled && (
-          <>
-            <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <label htmlFor="auto-bingo-interval-slider">⏱️ Auto-Bingo Periodic Interval</label>
-                <span className="badge" style={{ fontWeight: 600 }}>
-                  {autoBingoIntervalMinutes} {autoBingoIntervalMinutes === 5 ? 'Minutes (Minimum)' : 'Minutes'}
-                </span>
-              </div>
-              <input 
-                id="auto-bingo-interval-slider"
-                type="range"
-                min={5}
-                max={30}
-                step={1}
-                value={autoBingoIntervalMinutes} 
-                onChange={(e) => setAutoBingoIntervalMinutes(parseInt(e.target.value, 10))}
-                style={{ width: '100%', cursor: 'pointer' }}
-                aria-label="Auto-Bingo Periodic Interval"
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
-                <span>5 mins (Min / Default)</span>
-                <span>10 mins</span>
-                <span>20 mins</span>
-                <span>30 mins</span>
-              </div>
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+              <label htmlFor="auto-bingo-interval-slider">⏱️ Auto-Bingo Periodic Interval</label>
+              <span className="badge" style={{ fontWeight: 600 }}>
+                {autoBingoIntervalMinutes} {autoBingoIntervalMinutes === 5 ? 'Minutes (Minimum)' : 'Minutes'}
+              </span>
             </div>
-
-            <div className="form-group">
-              <label htmlFor="auto-bingo-mode-config">📚 Auto-Bingo Question Generation Mode</label>
-              <select 
-                id="auto-bingo-mode-config"
-                value={autoBingoMode} 
-                onChange={(e) => setAutoBingoMode(e.target.value)}
-              >
-                <option value="question_bank">📚 Question Bank ($0.00 / Zero AI Tokens)</option>
-                <option value="teacher_screen">📺 Teacher Screen (1 AI call for whole lecture)</option>
-                <option value="student_screen">💻 Student Screens (AI anti-decoy check)</option>
-              </select>
-            </div>
-
-
-            <ClassPromptField
-              containerStyle={{ marginTop: '10px' }}
-              label="🎯 Bingo Active Presence AI Prompt"
-              prompt={bingoPrompt}
-              onOpenModal={() => handleOpenImagePromptModal('bingo')}
-              onReset={() => setBingoPrompt(null)}
-              selectButtonText="Select Bingo Question Prompt"
-              hint="Custom prompt guiding question generation from lesson material, teacher screen, or student screen."
+            <input 
+              id="auto-bingo-interval-slider"
+              type="range"
+              min={5}
+              max={30}
+              step={1}
+              value={autoBingoIntervalMinutes} 
+              onChange={(e) => setAutoBingoIntervalMinutes(parseInt(e.target.value, 10))}
+              style={{ width: '100%', cursor: 'pointer' }}
+              aria-label="Auto-Bingo Periodic Interval"
             />
-          </>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
+              <span>5 mins (Min / Default)</span>
+              <span>10 mins</span>
+              <span>20 mins</span>
+              <span>30 mins</span>
+            </div>
+          </div>
         )}
 
         {/* Bingo Speed & Ranking Scoring Rules Panel */}
@@ -3194,6 +3282,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
         <ClassPromptField
           label="📸 AI Image &amp; Screen Invigilation Prompt"
+          scope="live"
           prompt={liveImagePrompt}
           onOpenModal={() => handleOpenImagePromptModal('live_image')}
           onReset={() => setLiveImagePrompt(null)}
@@ -3202,7 +3291,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         />
 
         <ClassPromptField
-          label="After-Class Video Analysis Prompt"
+          label="🎬 After-Class Video Analysis Prompt"
+          scope="after_class"
           prompt={afterClassVideoPrompt}
           onOpenModal={handleOpenPromptModal}
           onReset={() => setAfterClassVideoPrompt(null)}
@@ -3211,7 +3301,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         />
 
         <ClassPromptField
-          label="🤖 On-Device Gemma Voice Intent Prompt (LiteRT-LM Gemma 4 E2B)"
+          label="💻 On-Device Gemma Voice Intent Prompt (LiteRT-LM Gemma 4 E2B)"
+          scope="student_client"
           prompt={gemmaIntentPrompt}
           onOpenModal={() => handleOpenAudioPromptModal('gemma_intent')}
           onReset={() => setGemmaIntentPrompt(null)}
@@ -3321,15 +3412,40 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       <div className="settings-section-card">
         <h3>🎙️ 7. Audio & Microphone Monitoring</h3>
         <div className="form-group">
-          <label className="checkbox-toggle-label">
+          <label className="checkbox-toggle-label" style={selectedTemplate === 'lecture' ? { opacity: 0.7, cursor: 'not-allowed' } : {}}>
             <input
               type="checkbox"
-              checked={enableAudioCapture}
-              onChange={(e) => setEnableAudioCapture(e.target.checked)}
+              checked={selectedTemplate === 'lecture' ? false : enableAudioCapture}
+              disabled={selectedTemplate === 'lecture'}
+              onChange={(e) => {
+                if (selectedTemplate !== 'lecture') {
+                  setEnableAudioCapture(e.target.checked);
+                }
+              }}
             />
             <span>Enable Audio Segment Recording for this Class</span>
+            {selectedTemplate === 'lecture' && (
+              <span
+                className="badge badge-secondary"
+                style={{
+                  marginLeft: '8px',
+                  fontSize: '0.75rem',
+                  background: '#e2e8f0',
+                  color: '#475569',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontWeight: 600,
+                }}
+              >
+                Disabled for Lecture Mode
+              </span>
+            )}
           </label>
-          <p className="input-hint">Continuously captures and saves microphone audio chunks from connected students for acoustic invigilation.</p>
+          <p className="input-hint">
+            {selectedTemplate === 'lecture'
+              ? 'Microphone recording and acoustic monitoring of student devices are disabled for Lecture mode (lectures use instructor presentation audio and live subtitles instead).'
+              : 'Continuously captures and saves microphone audio chunks from connected students for acoustic invigilation.'}
+          </p>
         </div>
 
         {enableAudioCapture && (
@@ -3407,7 +3523,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
                   <ClassPromptField
                     containerStyle={{ marginTop: '10px' }}
-                    label="Live Audio Invigilation AI Prompt"
+                    label="⚡ Live Audio Invigilation AI Prompt"
+                    scope="live"
                     prompt={liveAudioPrompt}
                     onOpenModal={() => handleOpenAudioPromptModal('live_audio')}
                     onReset={() => setLiveAudioPrompt(null)}
@@ -3457,7 +3574,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
                   <ClassPromptField
                     containerStyle={{ marginTop: '10px' }}
-                    label="Discussion / Session Audio AI Prompt"
+                    label="🎬 Discussion / Session Audio AI Prompt"
+                    scope="after_class"
                     prompt={sessionAudioPrompt}
                     onOpenModal={() => handleOpenAudioPromptModal('session_audio')}
                     onReset={() => setSessionAudioPrompt(null)}
@@ -3512,11 +3630,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
         <ClassPromptField
           containerStyle={{ marginTop: '1rem' }}
-          label="Live Subtitle &amp; Speech Translation AI Prompt"
+          label="⚡ Live Subtitle &amp; Speech Translation AI Prompt"
+          scope="live"
           prompt={subtitlePrompt}
-          onOpenModal={() => handleOpenAudioPromptModal('subtitle')}
+          onOpenModal={handleOpenLiveSubtitlePromptModal}
           onReset={() => setSubtitlePrompt(null)}
           selectButtonText="Select Subtitle Translation Prompt"
+          hint="Instruct Gemini on live streaming subtitle translation, Cantonese colloquialisms conversion, and discipline-specific terminology."
         />
 
       </div>

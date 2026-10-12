@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { DEFAULT_LECTURE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
+import {
+  DEFAULT_LECTURE_TRANSLATION_PROMPT,
+  DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
+} from '../constants/promptRegistry';
 
 export const useTranslationPrompts = (user, applyToFilter = null) => {
   const [translationPrompts, setTranslationPrompts] = useState([]);
@@ -23,6 +26,10 @@ export const useTranslationPrompts = (user, applyToFilter = null) => {
         if (!unique.some(p => p.id === DEFAULT_LECTURE_TRANSLATION_PROMPT.id || p.name === DEFAULT_LECTURE_TRANSLATION_PROMPT.name)) {
           unique.unshift(DEFAULT_LECTURE_TRANSLATION_PROMPT);
         }
+      } else if (applyToFilter === 'Live Subtitles & Translation') {
+        if (!unique.some(p => p.id === DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.id || p.name === DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.name)) {
+          unique.unshift(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT);
+        }
       }
       let filtered;
       if (applyToFilter === 'Lecture Subtitle Translation' || applyToFilter === 'Lecture Subtitles & Chapters') {
@@ -31,21 +38,31 @@ export const useTranslationPrompts = (user, applyToFilter = null) => {
           !p.name?.toLowerCase().includes('live') &&
           !p.name?.toLowerCase().includes('real-time') &&
           !p.name?.toLowerCase().includes('rolling') &&
+          !p.name?.toLowerCase().includes('gemma') &&
+          !p.name?.toLowerCase().includes('on-device') &&
           (
             p.applyTo?.includes('Lecture Subtitle Translation') ||
             p.applyTo?.includes('Lecture Subtitles & Chapters') ||
             p.name?.toLowerCase().includes('lecture subtitle') ||
-            p.name?.toLowerCase().includes('lecture translation')
+            p.name?.toLowerCase().includes('lecture translation') ||
+            p.name?.toLowerCase().includes('whole-lecture')
           )
         );
       } else if (applyToFilter === 'Live Subtitles & Translation') {
         filtered = unique.filter(p =>
-          p.category === 'translations' && (
-            p.applyTo?.includes('Live Subtitles & Translation') ||
-            (!p.applyTo?.includes('Lecture Subtitles & Chapters') && !p.applyTo?.includes('Lecture Subtitle Translation'))
-          ) &&
+          p.category === 'translations' &&
           !p.applyTo?.includes('Lecture Subtitles & Chapters') &&
-          !p.applyTo?.includes('Lecture Subtitle Translation')
+          !p.applyTo?.includes('Lecture Subtitle Translation') &&
+          !p.name?.toLowerCase().includes('whole-lecture') &&
+          !p.name?.toLowerCase().includes('gemma') &&
+          !p.name?.toLowerCase().includes('on-device') &&
+          (
+            p.applyTo?.includes('Live Subtitles & Translation') ||
+            p.name?.toLowerCase().includes('live subtitle') ||
+            p.name?.toLowerCase().includes('bilingual lecture & technical') ||
+            p.name?.toLowerCase().includes('live speech') ||
+            p.name?.toLowerCase().includes('live translation')
+          )
         );
       } else if (applyToFilter) {
         filtered = unique.filter(p => p.applyTo?.includes(applyToFilter));

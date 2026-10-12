@@ -2159,6 +2159,92 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       });
     });
   });
+
+  describe('Lecture Template & Live Subtitle Prompts', () => {
+    it('presets teacher screen bingo and live subtitle prompts and disables audio capture for lecture template', async () => {
+      mockGetDoc.mockImplementation(() =>
+        Promise.resolve({
+          exists: () => false,
+        })
+      );
+      let createdData;
+      mockSetDoc.mockImplementation((ref, data) => {
+        createdData = data;
+        return Promise.resolve({});
+      });
+
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Select Class Concept Template/i)).toBeInTheDocument();
+      });
+
+      // Click on the Lecture template card
+      const lectureCard = screen.getByRole('button', { name: /Auditorium \/ Classroom Lecture/i });
+      fireEvent.click(lectureCard);
+
+      // Expand advanced configuration accordion
+      const accordionBtn = screen.getByRole('button', { name: /Advanced Configuration & Parameter Overrides/i });
+      fireEvent.click(accordionBtn);
+
+      // Verify Audio & Microphone Monitoring: checkbox is disabled with badge
+      const audioCheckbox = screen.getByLabelText(/Enable Audio Segment Recording for this Class/i);
+      expect(audioCheckbox).toBeDisabled();
+      expect(audioCheckbox).not.toBeChecked();
+      expect(screen.getByText('Disabled for Lecture Mode')).toBeInTheDocument();
+
+      // Verify Bingo Active Presence Prompt is preset with Teacher Screen prompt
+      expect(screen.getByRole('button', { name: /Selected: Bingo Teacher Screen Attention Question Generator/i })).toBeInTheDocument();
+
+      // Verify Live Subtitle & Speech Translation Prompt is preset with Bilingual Lecture prompt
+      expect(screen.getByRole('button', { name: /Selected: Bilingual Lecture & Technical Terminology Subtitle Translator/i })).toBeInTheDocument();
+
+      // Verify scope badges are rendered for all 3 scopes
+      expect(screen.getAllByText('⚡ Live Classroom').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('💻 Student Client').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('🎬 After-Class Processing').length).toBeGreaterThan(0);
+
+      // Fill basic info and submit
+      const classIdInput = screen.getByPlaceholderText(/e\.g\. it114115-2026-s1/i);
+      const classNameInput = screen.getByPlaceholderText(/e\.g\. Cloud Architecture Lab/i);
+      fireEvent.change(classIdInput, { target: { value: 'lecture-101' } });
+      fireEvent.change(classNameInput, { target: { value: 'Lecture Class 101' } });
+
+      const dateInputs = document.querySelectorAll('input[type="date"]');
+      if (dateInputs.length >= 2) {
+        fireEvent.change(dateInputs[0], { target: { value: '2026-09-01' } });
+        fireEvent.change(dateInputs[1], { target: { value: '2026-12-31' } });
+      }
+
+      const selects = screen.getAllByRole('combobox');
+      const startTimeSelect = selects.find(s => s.querySelector('option[value="09:00"]'));
+      if (startTimeSelect) {
+        fireEvent.change(startTimeSelect, { target: { value: '09:00' } });
+      }
+
+      const dayCheckbox = screen.getByLabelText(/^Mon$/i);
+      fireEvent.click(dayCheckbox);
+
+      const addScheduleBtn = screen.getByRole('button', { name: /Add Schedule/i });
+      fireEvent.click(addScheduleBtn);
+
+      const createBtn = screen.getByRole('button', { name: /Create Class/i });
+      await act(async () => {
+        fireEvent.click(createBtn);
+      });
+
+      await waitFor(() => {
+        expect(createdData).toBeDefined();
+        expect(createdData.classType).toBe('lecture');
+        expect(createdData.enableAudioCapture).toBe(false);
+        expect(createdData.autoBingoMode).toBe('teacher_screen');
+        expect(createdData.bingoPrompt.name).toBe('Bingo Teacher Screen Attention Question Generator');
+        expect(createdData.subtitlePrompt.name).toBe('Bilingual Lecture & Technical Terminology Subtitle Translator');
+      });
+    });
+  });
 });
 
 

@@ -15,6 +15,14 @@ import {
   DEFAULT_LECTURE_TRANSLATION_PROMPT,
   DEFAULT_LECTURE_STT_PROMPT_TEXT,
   DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT,
+  DEFAULT_BINGO_TEACHER_SCREEN_PROMPT,
+  DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT,
+  DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
+  DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT,
+  PROMPT_SCOPES,
+  PROMPT_SCOPE_CONFIG,
+  getPromptScope,
+  getPromptScopeConfig,
 } from './promptRegistry';
 
 describe('promptRegistry Constants & Helper Utilities', () => {
@@ -227,6 +235,90 @@ describe('promptRegistry Constants & Helper Utilities', () => {
 
       const interpolated = interpolatePromptPlaceholders(template, context);
       expect(interpolated).toBe('Class itp4124-l: Analyzing student@school.edu (u_123) recorded at 30s interval (30s / 0.5m) from 2026-10-11T09:00:00Z to 2026-10-11T12:00:00Z.');
+    });
+
+    it('interpolates speech, domain, and language placeholders for live subtitle prompts', () => {
+      const template = 'Translate from {{spokenLanguage}} to {{targetLanguage}} in {{courseContext}} ({{subjectDomain}}): "{{speechText}}" (current: {{currentSpeech}}, history: {{historyText}})';
+      const context = {
+        spokenLanguage: 'Cantonese',
+        targetLanguage: 'English',
+        courseContext: 'Cloud Computing',
+        subjectDomain: 'Cloud Computing',
+        speechText: '我哋今日講 DynamoDB',
+        currentSpeech: '我哋今日講 DynamoDB',
+        historyText: 'Hello class',
+      };
+      const interpolated = interpolatePromptPlaceholders(template, context);
+      expect(interpolated).toBe('Translate from Cantonese to English in Cloud Computing (Cloud Computing): "我哋今日講 DynamoDB" (current: 我哋今日講 DynamoDB, history: Hello class)');
+    });
+  });
+
+  describe('Default Teacher Screen Bingo & Live Subtitle Prompts', () => {
+    it('defines valid DEFAULT_BINGO_TEACHER_SCREEN_PROMPT', () => {
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT).toBeDefined();
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.id).toBe('system_bingo_teacher_screen_default');
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.name).toBe('Bingo Teacher Screen Attention Question Generator');
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.category).toBe('images');
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.applyTo).toContain('Classroom Bingo Questions');
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT).toContain('Bingo Teacher Screen Attention Question Generator');
+      expect(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT).toContain('observedEvidence');
+    });
+
+    it('defines valid DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT', () => {
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT).toBeDefined();
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.id).toBe('system_live_subtitle_translation_default');
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.name).toBe('Bilingual Lecture & Technical Terminology Subtitle Translator');
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.category).toBe('translations');
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.applyTo).toContain('Live Subtitles & Translation');
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT).toContain('Bilingual Lecture & Technical Terminology Subtitle Translator');
+      expect(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT).toContain('{{targetLanguage}}');
+    });
+  });
+
+  describe('Prompt Scopes & Execution Boundaries', () => {
+    it('defines 3 distinct execution scopes: student_client, live, and after_class', () => {
+      expect(PROMPT_SCOPES).toEqual({
+        STUDENT_CLIENT: 'student_client',
+        LIVE: 'live',
+        AFTER_CLASS: 'after_class',
+      });
+      expect(PROMPT_SCOPE_CONFIG.student_client.badgeText).toContain('Student Client');
+      expect(PROMPT_SCOPE_CONFIG.live.badgeText).toContain('Live Classroom');
+      expect(PROMPT_SCOPE_CONFIG.after_class.badgeText).toContain('After-Class Processing');
+    });
+
+    it('resolves correct prompt scope by applyTo target', () => {
+      expect(getPromptScope('On-Device Gemma Voice Intent')).toBe('student_client');
+      expect(getPromptScope('Live Subtitles & Translation')).toBe('live');
+      expect(getPromptScope('Classroom Bingo Questions')).toBe('live');
+      expect(getPromptScope('Live Audio Invigilation')).toBe('live');
+      expect(getPromptScope('Per Image')).toBe('live');
+      expect(getPromptScope('Lecture STT & Chapters')).toBe('after_class');
+      expect(getPromptScope('Lecture Subtitle Translation')).toBe('after_class');
+      expect(getPromptScope('Per Video')).toBe('after_class');
+      expect(getPromptScope('Session Audio Summary')).toBe('after_class');
+    });
+
+    it('resolves correct prompt scope for default prompt objects', () => {
+      expect(getPromptScope(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT)).toBe('live');
+      expect(getPromptScope(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT)).toBe('live');
+      expect(getPromptScope(DEFAULT_LECTURE_STT_PROMPT)).toBe('after_class');
+      expect(getPromptScope(DEFAULT_LECTURE_TRANSLATION_PROMPT)).toBe('after_class');
+    });
+
+    it('resolves prompt scope config styling and badges', () => {
+      const liveConfig = getPromptScopeConfig('live');
+      expect(liveConfig.key).toBe('live');
+      expect(liveConfig.badgeText).toBe('⚡ Live Classroom');
+      expect(liveConfig.color).toBeDefined();
+
+      const studentConfig = getPromptScopeConfig('student_client');
+      expect(studentConfig.key).toBe('student_client');
+      expect(studentConfig.badgeText).toBe('💻 Student Client');
+
+      const afterClassConfig = getPromptScopeConfig('after_class');
+      expect(afterClassConfig.key).toBe('after_class');
+      expect(afterClassConfig.badgeText).toBe('🎬 After-Class Processing');
     });
   });
 });

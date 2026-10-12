@@ -26,6 +26,13 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.isLectureSubtitlesEnabled).toBe(true);
       expect(settings.allowShareTeacherRecordings).toBe(true);
       expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
+      expect(settings.enableAudioCapture).toBe(false);
+      expect(settings.autoBingoEnabled).toBe(false);
+      expect(settings.autoBingoMode).toBe('teacher_screen');
+      expect(settings.bingoPrompt).toBeDefined();
+      expect(settings.bingoPrompt.name).toBe('Bingo Teacher Screen Attention Question Generator');
+      expect(settings.subtitlePrompt).toBeDefined();
+      expect(settings.subtitlePrompt.name).toBe('Bilingual Lecture & Technical Terminology Subtitle Translator');
     });
   });
 

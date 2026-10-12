@@ -37,6 +37,48 @@ export const PROMPT_CATEGORIES = [
   },
 ];
 
+export const PROMPT_SCOPES = {
+  STUDENT_CLIENT: 'student_client',
+  LIVE: 'live',
+  AFTER_CLASS: 'after_class',
+};
+
+export const PROMPT_SCOPE_CONFIG = {
+  student_client: {
+    key: 'student_client',
+    label: 'Student Client (On-Device LiteRT)',
+    shortLabel: 'Student Client',
+    badgeText: '💻 Student Client',
+    icon: '💻',
+    color: '#6d28d9',
+    bg: '#f3e8ff',
+    border: '#d8b4fe',
+    description: 'Evaluated locally on student browser/agent (LiteRT Gemma / Whisper) with zero cloud quota consumption.',
+  },
+  live: {
+    key: 'live',
+    label: 'Live Classroom (Real-Time)',
+    shortLabel: 'Live Classroom',
+    badgeText: '⚡ Live Classroom',
+    icon: '⚡',
+    color: '#b45309',
+    bg: '#fef3c7',
+    border: '#fde68a',
+    description: 'Streaming real-time execution during class (streaming vision, acoustic monitoring, live dual-line subtitles, bingo checks).',
+  },
+  after_class: {
+    key: 'after_class',
+    label: 'After-Class Processing (Post-Session)',
+    shortLabel: 'After-Class Processing',
+    badgeText: '🎬 After-Class Processing',
+    icon: '🎬',
+    color: '#1d4ed8',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
+    description: 'Post-session batch processing on merged recording videos, full-lecture verbatim STT, and multilingual chapter CC synthesis.',
+  },
+};
+
 export const DEFAULT_LECTURE_STT_PROMPT_TEXT = `# Lecture Audio Speech-to-Text & Chapters
 
 You are an expert speech-to-text (ASR) transcriber and classroom milestone extractor for higher education academic lectures delivered in Hong Kong.
@@ -113,6 +155,7 @@ export const DEFAULT_LECTURE_STT_PROMPT = {
   id: 'system_lecture_stt_default',
   name: 'Lecture Audio Speech-to-Text & Chapters',
   category: 'audios',
+  scope: 'after_class',
   applyTo: ['Lecture STT & Chapters'],
   promptText: DEFAULT_LECTURE_STT_PROMPT_TEXT,
   isSystem: true,
@@ -125,12 +168,87 @@ export const DEFAULT_LECTURE_TRANSLATION_PROMPT = {
   id: 'system_lecture_translation_default',
   name: 'Lecture Subtitle & Terminology Translator',
   category: 'translations',
+  scope: 'after_class',
   applyTo: ['Lecture Subtitle Translation', 'Lecture Subtitles & Chapters'],
   promptText: DEFAULT_LECTURE_TRANSLATION_PROMPT_TEXT,
   isSystem: true,
   accessLevel: 'public',
   owner: 'system',
   recommendedModel: 'gemini-3.8-flash',
+};
+
+export const DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT = `# Bingo Teacher Screen Attention Question Generator
+
+You are an invigilator verifying student attention during a live lecture or explanation.
+Analyze the instructor's shared screen image.
+
+## Rules & Requirements
+1. Formulate a 4-option multiple-choice question testing if a student was actively watching the instructor's screen explanation.
+2. ONE option MUST be the true detail visibly on the instructor's screen (such as open file, code snippet/keyword, slide title, terminal command, or active tool).
+3. THREE options MUST be plausible but incorrect distractors.
+4. Respond with valid JSON matching the schema:
+\`\`\`json
+{
+  "question": "Which file was the instructor editing?",
+  "options": ["main.py", "test.js", "app.py", "utils.go"],
+  "correctIndex": 0,
+  "observedEvidence": "main.py is open in VS Code with Python code displayed"
+}
+\`\`\``;
+
+export const DEFAULT_BINGO_TEACHER_SCREEN_PROMPT = {
+  id: 'system_bingo_teacher_screen_default',
+  name: 'Bingo Teacher Screen Attention Question Generator',
+  category: 'images',
+  scope: 'live',
+  applyTo: ['Classroom Bingo Questions'],
+  promptText: DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT,
+  isSystem: true,
+  accessLevel: 'public',
+  owner: 'system',
+  recommendedModel: 'gemini-3.5-flash-lite',
+};
+
+export const DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT = `# Bilingual Lecture & Technical Terminology Subtitle Translator
+
+You are an expert real-time classroom lecture translator and subtitle generator. Your role is to provide simultaneous, highly accurate translations of spoken instructor speech for multinational students.
+
+## Input Context
+- Spoken Language: {{spokenLanguage}}
+- Target Subtitle Language: {{targetLanguage}}
+- Academic Discipline / Subject Domain: {{courseContext}}
+
+## Spoken Speech Transcript
+"""
+{{speechText}}
+"""
+
+## Translation Guidelines
+1. **Preserve Academic & Technical Nomenclature**:
+   - Keep variable names, function signatures, software commands, algorithm titles, and standard scientific terms in their standard Latin/English representations (e.g. \`useState\`, \`Docker\`, \`O(n log n)\`, \`REST API\`, \`SQL query\`).
+   - Do not translate proper names of tools, frameworks, programming languages, or standard libraries.
+2. **Handle Colloquial Code-Switching Gracefully**:
+   - Spoken lectures often mix conversational speech with technical loanwords. Translate the conversational framing into natural, grammatically sound target language while preserving the technical payload.
+3. **Pacing & Subtitle Readability**:
+   - Format output as concise, readable phrases suitable for dual-line live subtitle displays.
+   - Avoid run-on sentences; break long instructor tangents into punchy, coherent sentence units.
+4. **Tone**:
+   - Maintain an informative, respectful, and academically precise educational tone.
+
+## Output Format
+Return ONLY the direct translated text. Do NOT include markdown code blocks, labels, timestamps, phonetic guides, or meta commentary.`;
+
+export const DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT = {
+  id: 'system_live_subtitle_translation_default',
+  name: 'Bilingual Lecture & Technical Terminology Subtitle Translator',
+  category: 'translations',
+  scope: 'live',
+  applyTo: ['Live Subtitles & Translation'],
+  promptText: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT,
+  isSystem: true,
+  accessLevel: 'public',
+  owner: 'system',
+  recommendedModel: 'gemini-3.5-flash-lite',
 };
 
 export const PROMPT_REGISTRY = {
@@ -140,6 +258,7 @@ export const PROMPT_REGISTRY = {
   lecture_stt_chapters: {
     typeKey: 'lecture_stt_chapters',
     category: 'audios',
+    scope: 'after_class',
     applyTo: 'Lecture STT & Chapters',
     label: 'Lecture STT & Chapters',
     shortLabel: 'STT & Chapters',
@@ -169,6 +288,7 @@ export const PROMPT_REGISTRY = {
   live_audio_invigilation: {
     typeKey: 'live_audio_invigilation',
     category: 'audios',
+    scope: 'live',
     applyTo: 'Live Audio Invigilation',
     label: 'Live Audio Invigilation',
     shortLabel: 'Audio Invigilation',
@@ -178,6 +298,7 @@ export const PROMPT_REGISTRY = {
     supportedPlaceholders: [
       { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier', required: false },
       { tag: '{{audioChunk}}', label: 'Audio Chunk', desc: 'Rolling audio chunk metadata', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Academic subject domain', required: false },
     ],
     outputSchema: {
       format: 'json_object',
@@ -190,6 +311,7 @@ export const PROMPT_REGISTRY = {
   session_audio_summary: {
     typeKey: 'session_audio_summary',
     category: 'audios',
+    scope: 'after_class',
     applyTo: 'Session Audio Summary',
     label: 'Session Audio Summary',
     shortLabel: 'Discussion Summary',
@@ -198,7 +320,10 @@ export const PROMPT_REGISTRY = {
     recommendedModel: 'gemini-3.8-flash',
     supportedPlaceholders: [
       { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Academic subject domain', required: false },
       { tag: '{{transcript}}', label: 'Transcript', desc: 'Verbatim classroom transcript text', required: false },
+      { tag: '{{title}}', label: 'Session Title', desc: 'Session title or topic', required: false },
+      { tag: '{{topic}}', label: 'Session Topic', desc: 'Lesson topic', required: false },
     ],
     outputSchema: {
       format: 'markdown',
@@ -211,6 +336,7 @@ export const PROMPT_REGISTRY = {
   gemma_voice_intent: {
     typeKey: 'gemma_voice_intent',
     category: 'audios',
+    scope: 'student_client',
     applyTo: 'On-Device Gemma Voice Intent',
     label: 'On-Device Gemma Voice Intent',
     shortLabel: 'Gemma Voice Intent',
@@ -219,6 +345,9 @@ export const PROMPT_REGISTRY = {
     recommendedModel: 'gemma-4-e2b-litert',
     supportedPlaceholders: [
       { tag: '{{studentVoiceCommand}}', label: 'Student Command', desc: 'Transcribed local voice command text', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Academic subject domain context', required: false },
+      { tag: '{{studentUid}}', label: 'Student UID', desc: 'Student user identifier', required: false },
+      { tag: '{{studentName}}', label: 'Student Name', desc: 'Student display name or ID', required: false },
     ],
     outputSchema: {
       format: 'json_object',
@@ -234,6 +363,7 @@ export const PROMPT_REGISTRY = {
   lecture_subtitle_translation: {
     typeKey: 'lecture_subtitle_translation',
     category: 'translations',
+    scope: 'after_class',
     applyTo: 'Lecture Subtitle Translation',
     label: 'Lecture Subtitle Translation',
     shortLabel: 'Subtitle Translation',
@@ -260,21 +390,28 @@ export const PROMPT_REGISTRY = {
   live_subtitles_translation: {
     typeKey: 'live_subtitles_translation',
     category: 'translations',
+    scope: 'live',
     applyTo: 'Live Subtitles & Translation',
     label: 'Live Subtitles & Translation',
     shortLabel: 'Live Subtitles',
     icon: '💬',
     description: 'Real-time streaming speech-to-text translation displayed in live classroom and student interfaces.',
     recommendedModel: 'gemini-3.5-flash-lite',
+    defaultPromptText: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT_TEXT,
+    defaultTemplateFile: 'admin/prompts/translations/Bilingual Lecture & Technical Terminology Subtitle Translator.md',
     supportedPlaceholders: [
-      { tag: '{{subjectDomain}}', label: 'Subject Domain', desc: 'Context / Subject matter discipline', required: false },
+      { tag: '{{spokenLanguage}}', label: 'Spoken Language', desc: 'Spoken instructor speech language (e.g. Cantonese, English)', required: false },
+      { tag: '{{targetLanguage}}', label: 'Target Language', desc: 'Target subtitle language (e.g. Traditional Chinese, English)', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Academic subject domain (e.g. Computer Science)', required: false },
+      { tag: '{{speechText}}', label: 'Spoken Speech Transcript', desc: 'Current phrase or sentence to translate', required: false },
+      { tag: '{{subjectDomain}}', label: 'Subject Domain (Alt)', desc: 'Context / Subject matter discipline', required: false },
       { tag: '{{historyText}}', label: 'Preceding Speech', desc: 'Preceding speech history for conversational context', required: false },
       { tag: '{{currentSpeech}}', label: 'Current Speech', desc: 'Current phrase or sentence to translate', required: false },
     ],
     outputSchema: {
-      format: 'json_object',
-      description: 'JSON object with translation, detectedLanguage, and key technical terms.',
-      snippet: `{\n  "translation": "Translated text for live display",\n  "detectedLanguage": "yue",\n  "keyTerms": ["Docker", "useState"]\n}`,
+      format: 'text',
+      description: 'Direct translated text phrase suitable for dual-line live subtitle displays.',
+      snippet: `Translated text phrase in target language`,
     },
     placeholderText: 'Select a live subtitle translation prompt or enter custom live translation instructions...',
   },
@@ -282,6 +419,7 @@ export const PROMPT_REGISTRY = {
   code_switching_lectures: {
     typeKey: 'code_switching_lectures',
     category: 'translations',
+    scope: 'after_class',
     applyTo: 'Code-Switching Lectures',
     label: 'Cantonese-English Code-Switching',
     shortLabel: 'Code-Switching',
@@ -304,6 +442,7 @@ export const PROMPT_REGISTRY = {
   technical_glossary: {
     typeKey: 'technical_glossary',
     category: 'translations',
+    scope: 'after_class',
     applyTo: 'Technical Discipline Glossary',
     label: 'Technical Discipline Glossary',
     shortLabel: 'Glossary Grounding',
@@ -326,6 +465,7 @@ export const PROMPT_REGISTRY = {
   lecture_subtitles_chapters_legacy: {
     typeKey: 'lecture_subtitles_chapters_legacy',
     category: 'translations',
+    scope: 'after_class',
     applyTo: 'Lecture Subtitles & Chapters',
     label: 'Lecture Subtitles & Chapters (Legacy)',
     shortLabel: 'Legacy Subtitles',
@@ -350,6 +490,7 @@ export const PROMPT_REGISTRY = {
   per_image_invigilation: {
     typeKey: 'per_image_invigilation',
     category: 'images',
+    scope: 'live',
     applyTo: 'Per Image',
     label: 'Per Image',
     shortLabel: 'Per Image',
@@ -359,6 +500,9 @@ export const PROMPT_REGISTRY = {
     supportedPlaceholders: [
       { tag: '{{studentName}}', label: 'Student Name', desc: 'Student display name or ID', required: false },
       { tag: '{{screenCapture}}', label: 'Screen Image', desc: 'Visual desktop stream capture', required: false },
+      { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Subject matter domain', required: false },
+      { tag: '{{studentEmail}}', label: 'Student Email', desc: 'Student email address', required: false },
     ],
     outputSchema: {
       format: 'json_object',
@@ -371,6 +515,7 @@ export const PROMPT_REGISTRY = {
   all_images_invigilation: {
     typeKey: 'all_images_invigilation',
     category: 'images',
+    scope: 'live',
     applyTo: 'All Images',
     label: 'All Images',
     shortLabel: 'All Images Grid',
@@ -380,6 +525,7 @@ export const PROMPT_REGISTRY = {
     supportedPlaceholders: [
       { tag: '{{classId}}', label: 'Class ID', desc: 'Course code identifier', required: false },
       { tag: '{{teacherScreenImage}}', label: 'Teacher Screen', desc: 'Instructor slide or IDE broadcast capture', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Academic subject domain', required: false },
     ],
     outputSchema: {
       format: 'text',
@@ -392,12 +538,15 @@ export const PROMPT_REGISTRY = {
   classroom_bingo_question: {
     typeKey: 'classroom_bingo_question',
     category: 'images',
+    scope: 'live',
     applyTo: 'Classroom Bingo Questions',
     label: 'Classroom Bingo Questions',
     shortLabel: 'Bingo Questions',
     icon: '🎯',
     description: 'Formulates 4-option attendance verification and active presence multiple-choice questions from student screens, teacher slides, or lesson topics.',
     recommendedModel: 'gemini-3.5-flash-lite',
+    defaultPromptText: DEFAULT_BINGO_TEACHER_SCREEN_PROMPT_TEXT,
+    defaultTemplateFile: 'admin/prompts/images/Bingo Teacher Screen Attention Question Generator.md',
     supportedPlaceholders: [
       { tag: '{{topic}}', label: 'Lesson Topic', desc: 'Topic or lesson material for question bank generation', required: false },
       { tag: '{{count}}', label: 'Question Count', desc: 'Number of questions to generate (1-15)', required: false },
@@ -420,6 +569,7 @@ export const PROMPT_REGISTRY = {
   after_class_video: {
     typeKey: 'after_class_video',
     category: 'videos',
+    scope: 'after_class',
     applyTo: 'Per Video',
     label: 'Per Video',
     shortLabel: 'Per Video',
@@ -434,6 +584,7 @@ export const PROMPT_REGISTRY = {
       { tag: '{{studentUid}}', label: 'Student UID', desc: 'Student user ID identifier', required: false },
       { tag: '{{startTime}}', label: 'Start Time', desc: 'Lesson session start time (ISO format)', required: false },
       { tag: '{{endTime}}', label: 'End Time', desc: 'Lesson session end time (ISO format)', required: false },
+      { tag: '{{courseContext}}', label: 'Subject Domain', desc: 'Subject matter domain', required: false },
       { tag: '{{studentRecords}}', label: 'Student Records', desc: 'Summary of session student interactions', required: false },
     ],
     outputSchema: {
@@ -450,6 +601,7 @@ export const PROMPT_REGISTRY = {
   lab_rubric_milestones: {
     typeKey: 'lab_rubric_milestones',
     category: 'rubrics',
+    scope: 'after_class',
     applyTo: 'Lab Rubric Milestones',
     label: 'Lab Rubric Milestones',
     shortLabel: 'Milestone Extractor',
@@ -471,6 +623,7 @@ export const PROMPT_REGISTRY = {
   task_milestones_extraction: {
     typeKey: 'task_milestones_extraction',
     category: 'rubrics',
+    scope: 'after_class',
     applyTo: 'Task Milestones Extraction',
     label: 'Task Milestones Extraction',
     shortLabel: 'Submission Evaluator',
@@ -513,6 +666,51 @@ export function getPromptTypesByCategory(category) {
  */
 export function getAllApplyToOptions(category) {
   return getPromptTypesByCategory(category).map((p) => p.applyTo);
+}
+
+/**
+ * Resolves the execution scope ('student_client' | 'live' | 'after_class') for a prompt or applyTo target.
+ */
+export function getPromptScope(promptOrApplyTo) {
+  if (!promptOrApplyTo) return null;
+  if (typeof promptOrApplyTo === 'object' && promptOrApplyTo.scope) {
+    return promptOrApplyTo.scope;
+  }
+  const applyToList = Array.isArray(promptOrApplyTo)
+    ? promptOrApplyTo
+    : Array.isArray(promptOrApplyTo?.applyTo)
+      ? promptOrApplyTo.applyTo
+      : [promptOrApplyTo?.applyTo || promptOrApplyTo];
+
+  for (const applyTo of applyToList) {
+    if (typeof applyTo === 'string') {
+      const pType = getPromptTypeByApplyTo(applyTo);
+      if (pType?.scope) return pType.scope;
+    }
+  }
+
+  const name = (typeof promptOrApplyTo === 'object' ? (promptOrApplyTo?.name || '') : String(promptOrApplyTo)) || '';
+  const lower = name.toLowerCase();
+  if (lower.includes('gemma') || lower.includes('on-device') || lower.includes('litert') || lower.includes('student command')) {
+    return PROMPT_SCOPES.STUDENT_CLIENT;
+  }
+  if (lower.includes('live subtitle') || lower.includes('bilingual lecture & technical') || lower.includes('bingo') || lower.includes('live audio') || lower.includes('invigilation') || lower.includes('per image') || lower.includes('all images')) {
+    return PROMPT_SCOPES.LIVE;
+  }
+  if (lower.includes('video') || lower.includes('after-class') || lower.includes('recording') || lower.includes('stt') || lower.includes('summary') || lower.includes('rubric') || lower.includes('milestone')) {
+    return PROMPT_SCOPES.AFTER_CLASS;
+  }
+  return PROMPT_SCOPES.LIVE;
+}
+
+/**
+ * Resolves the scope UI configuration (badge text, colors, icons, description).
+ */
+export function getPromptScopeConfig(scopeOrPrompt) {
+  const scopeKey = typeof scopeOrPrompt === 'string' && PROMPT_SCOPE_CONFIG[scopeOrPrompt]
+    ? scopeOrPrompt
+    : (getPromptScope(scopeOrPrompt) || PROMPT_SCOPES.LIVE);
+  return PROMPT_SCOPE_CONFIG[scopeKey] || PROMPT_SCOPE_CONFIG[PROMPT_SCOPES.LIVE];
 }
 
 /**
@@ -680,6 +878,11 @@ export function interpolatePromptPlaceholders(promptTemplate, context = {}) {
     .replace(/\{\{\s*endTime\s*\}\}/g, String(context.endTime || ''))
     .replace(/\{\{\s*courseContext\s*\}\}/g, String(context.courseContext || ''))
     .replace(/\{\{\s*targetLanguage\s*\}\}/g, String(context.targetLanguage || ''))
+    .replace(/\{\{\s*spokenLanguage\s*\}\}/g, String(context.spokenLanguage || ''))
+    .replace(/\{\{\s*speechText\s*\}\}/g, String(context.speechText || ''))
+    .replace(/\{\{\s*subjectDomain\s*\}\}/g, String(context.subjectDomain || context.courseContext || ''))
+    .replace(/\{\{\s*historyText\s*\}\}/g, String(context.historyText || ''))
+    .replace(/\{\{\s*currentSpeech\s*\}\}/g, String(context.currentSpeech || context.speechText || ''))
     .replace(/\{\{\s*studentRecords\s*\}\}/g, String(
       context.studentRecords || (context.studentEmail ? `Student: ${context.studentEmail} (${context.studentUid || 'N/A'})` : '')
     ));

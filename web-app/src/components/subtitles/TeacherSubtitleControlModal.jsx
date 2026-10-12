@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { acquireInputDeviceStream } from '../../utils/mediaDeviceCapture';
-import { useAudioPrompts } from '../../hooks/useAudioPrompts';
+import { useTranslationPrompts } from '../../hooks/useTranslationPrompts';
 import { auth } from '../../firebase-config';
 import './TeacherSubtitleControlModal.css';
 
@@ -45,7 +45,7 @@ export default function TeacherSubtitleControlModal({
   const [micVolume, setMicVolume] = useState(0);
   const [micTestError, setMicTestError] = useState(null);
 
-  const fetchedPrompts = useAudioPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
+  const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts;
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [customPromptDraft, setCustomPromptDraft] = useState(subtitlePrompt?.promptText || '');

@@ -1,9 +1,10 @@
 import { safePromptPreview } from '../../schemas/promptSchema';
+import { getPromptScopeConfig } from '../../constants/promptRegistry';
 
 /**
  * ClassPromptField
  * Standardized prompt selector and preview control for ClassManagement form sections.
- * Replaces repetitive modal triggers, reset buttons, and preview blocks.
+ * Displays execution scope badge (Student Client, Live Classroom, After-Class Processing).
  */
 const ClassPromptField = ({
   label,
@@ -23,9 +24,12 @@ const ClassPromptField = ({
   resetButtonStyle = null,
   testId = null,
   containerStyle = null,
+  scope = null,
 }) => {
   const promptName = prompt?.name || 'Custom Prompt';
   const preview = safePromptPreview(prompt, previewLength);
+  const resolvedScope = scope || (prompt?.scope ? prompt.scope : null) || (prompt?.applyTo ? prompt.applyTo : null);
+  const scopeConfig = resolvedScope ? getPromptScopeConfig(resolvedScope) : (prompt ? getPromptScopeConfig(prompt) : null);
 
   if (cardStyle) {
     return (
@@ -45,11 +49,32 @@ const ClassPromptField = ({
           <label style={{ fontWeight: 600, fontSize: '0.88rem', color: labelColor || '#1e293b', margin: 0 }}>
             {label}
           </label>
-          {prompt && badgeText && (
-            <span style={{ fontSize: '0.75rem', background: badgeBg, color: badgeColor, padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
-              {badgeText}
-            </span>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            {scopeConfig && (
+              <span
+                data-testid="prompt-field-scope-badge"
+                style={{
+                  fontSize: '0.72rem',
+                  background: scopeConfig.bg,
+                  color: scopeConfig.color,
+                  border: `1px solid ${scopeConfig.border}`,
+                  padding: '1px 7px',
+                  borderRadius: '4px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                {scopeConfig.badgeText}
+              </span>
+            )}
+            {prompt && badgeText && (
+              <span style={{ fontSize: '0.75rem', background: badgeBg, color: badgeColor, padding: '1px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                {badgeText}
+              </span>
+            )}
+          </div>
         </div>
         {hint && (
           <p className="input-hint" style={{ marginTop: '4px', marginBottom: '8px' }}>
@@ -92,7 +117,28 @@ const ClassPromptField = ({
 
   return (
     <div className="form-group" data-testid={testId} style={containerStyle}>
-      <label>{label}</label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
+        <label style={{ margin: 0, fontWeight: 600 }}>{label}</label>
+        {scopeConfig && (
+          <span
+            data-testid="prompt-field-scope-badge"
+            style={{
+              fontSize: '0.72rem',
+              background: scopeConfig.bg,
+              color: scopeConfig.color,
+              border: `1px solid ${scopeConfig.border}`,
+              padding: '1px 7px',
+              borderRadius: '4px',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            {scopeConfig.badgeText}
+          </span>
+        )}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <button type="button" className="secondary-btn" onClick={onOpenModal}>
           {prompt ? `Selected: ${promptName}` : selectButtonText}

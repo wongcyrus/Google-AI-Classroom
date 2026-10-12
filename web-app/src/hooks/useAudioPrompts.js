@@ -30,9 +30,59 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
           !p.name?.toLowerCase().includes('real-time') &&
           !p.name?.toLowerCase().includes('live') &&
           !p.name?.toLowerCase().includes('rolling') &&
+          !p.name?.toLowerCase().includes('gemma') &&
+          !p.name?.toLowerCase().includes('intent') &&
           (
             p.applyTo?.includes('Lecture STT & Chapters') ||
             (p.name?.toLowerCase().includes('lecture') && (p.name?.includes('Speech-to-Text') || p.name?.includes('Chapters') || p.name?.includes('STT')))
+          )
+        );
+      } else if (applyToFilter === 'Live Audio Invigilation') {
+        filtered = unique.filter(p =>
+          p.category === 'audios' &&
+          !p.name?.toLowerCase().includes('lecture') &&
+          !p.name?.toLowerCase().includes('summary') &&
+          !p.name?.toLowerCase().includes('minutes') &&
+          !p.name?.toLowerCase().includes('discussion') &&
+          !p.name?.toLowerCase().includes('gemma') &&
+          !p.name?.toLowerCase().includes('intent') &&
+          (
+            p.applyTo?.includes('Live Audio Invigilation') ||
+            p.name?.toLowerCase().includes('invigilation') ||
+            p.name?.toLowerCase().includes('chatter') ||
+            p.name?.toLowerCase().includes('whisper') ||
+            p.name?.toLowerCase().includes('acoustic')
+          )
+        );
+      } else if (applyToFilter === 'Session Audio Summary') {
+        filtered = unique.filter(p =>
+          p.category === 'audios' &&
+          !p.name?.toLowerCase().includes('gemma') &&
+          !p.name?.toLowerCase().includes('intent') &&
+          !p.name?.toLowerCase().includes('invigilation') &&
+          !p.name?.toLowerCase().includes('whisper') &&
+          !p.name?.toLowerCase().includes('chatter') &&
+          (
+            p.applyTo?.includes('Session Audio Summary') ||
+            p.name?.toLowerCase().includes('summary') ||
+            p.name?.toLowerCase().includes('minutes') ||
+            p.name?.toLowerCase().includes('discussion')
+          )
+        );
+      } else if (applyToFilter === 'On-Device Gemma Voice Intent') {
+        filtered = unique.filter(p =>
+          p.category === 'audios' &&
+          !p.name?.toLowerCase().includes('lecture') &&
+          !p.name?.toLowerCase().includes('invigilation') &&
+          !p.name?.toLowerCase().includes('whisper') &&
+          !p.name?.toLowerCase().includes('chatter') &&
+          !p.name?.toLowerCase().includes('summary') &&
+          !p.name?.toLowerCase().includes('minutes') &&
+          (
+            p.applyTo?.includes('On-Device Gemma Voice Intent') ||
+            p.name?.toLowerCase().includes('gemma') ||
+            p.name?.toLowerCase().includes('intent') ||
+            p.name?.toLowerCase().includes('litert')
           )
         );
       } else if (applyToFilter === 'Live Subtitles & Translation') {
@@ -46,11 +96,10 @@ export const useAudioPrompts = (user, applyToFilter = null) => {
         filtered = unique.filter(p =>
           p.applyTo?.includes('Lecture Subtitles & Chapters')
         );
+      } else if (applyToFilter) {
+        filtered = unique.filter(p => p.category === 'audios' && p.applyTo?.includes(applyToFilter));
       } else {
         filtered = unique.filter(p => p.category === 'audios');
-        if (applyToFilter) {
-          filtered = filtered.filter(p => !p.applyTo || p.applyTo.includes(applyToFilter));
-        }
       }
       filtered.sort((a, b) => a.name.localeCompare(b.name));
       setAudioPrompts(filtered);

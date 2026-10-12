@@ -7,6 +7,11 @@
  * 3. Lecture in Lab: Lecture inside computer room (focus mode on, anti-distraction full-screen lock, high attention tracking, 5-min bingo presence)
  */
 
+import {
+  DEFAULT_BINGO_TEACHER_SCREEN_PROMPT,
+  DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
+} from './promptRegistry';
+
 export const CLASS_TEMPLATES = {
   lecture: {
     id: 'lecture',
@@ -43,7 +48,9 @@ export const CLASS_TEMPLATES = {
       lectureAiModel: 'gemini-3.8-flash',
       autoBingoEnabled: false,
       autoBingoIntervalMinutes: 15,
-      autoBingoMode: 'question_bank',
+      autoBingoMode: 'teacher_screen',
+      bingoPrompt: DEFAULT_BINGO_TEACHER_SCREEN_PROMPT,
+      subtitlePrompt: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
       studentRecordingsPolicy: 'always_enabled',
     },
   },
@@ -122,6 +129,7 @@ export const CLASS_TEMPLATES = {
       autoBingoEnabled: true,
       autoBingoIntervalMinutes: 5,
       autoBingoMode: 'question_bank',
+      subtitlePrompt: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
       studentRecordingsPolicy: 'always_enabled',
     },
   },

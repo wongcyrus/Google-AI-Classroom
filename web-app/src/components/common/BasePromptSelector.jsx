@@ -1,5 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { getDropdownPlaceholderForSelector, getPlaceholderTextForSelector } from '../../constants/promptRegistry';
+import {
+  getDropdownPlaceholderForSelector,
+  getPlaceholderTextForSelector,
+  getPromptScopeConfig,
+  getPlaceholdersForPrompt,
+  validatePrompt,
+} from '../../constants/promptRegistry';
 import { safePromptText } from '../../schemas/promptSchema';
 import PromptViewModal from '../PromptViewModal';
 
@@ -85,6 +91,19 @@ const BasePromptSelector = ({
     return matches ? Array.from(new Set(matches)) : [];
   }, [activeText]);
 
+  const activeScopeConfig = useMemo(() => {
+    return getPromptScopeConfig(selectedPrompt || applyToFilter);
+  }, [selectedPrompt, applyToFilter]);
+
+  const expectedPlaceholders = useMemo(() => {
+    return getPlaceholdersForPrompt(applyToFilter || selectedPrompt);
+  }, [applyToFilter, selectedPrompt]);
+
+  const validationResult = useMemo(() => {
+    if (!activeText || !applyToFilter) return null;
+    return validatePrompt(activeText, applyToFilter);
+  }, [activeText, applyToFilter]);
+
   const handleCopy = () => {
     if (!activeText) return;
     try {
@@ -101,8 +120,58 @@ const BasePromptSelector = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Scope Banner: Clearly identifies execution boundary (Student Client vs Live vs After Class) */}
+      <div
+        data-testid="prompt-scope-banner"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '6px 10px',
+          marginBottom: '8px',
+          background: activeScopeConfig.bg,
+          border: `1px solid ${activeScopeConfig.border}`,
+          borderRadius: '6px',
+          fontSize: '0.78rem',
+          flexWrap: 'wrap',
+          gap: '6px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span
+            style={{
+              fontWeight: 700,
+              color: activeScopeConfig.color,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            {activeScopeConfig.badgeText}
+          </span>
+          <span style={{ color: '#475569' }}>
+            — {activeScopeConfig.description}
+          </span>
+        </div>
+        {applyToFilter && (
+          <span
+            style={{
+              fontSize: '0.72rem',
+              background: '#ffffff',
+              color: activeScopeConfig.color,
+              padding: '1px 7px',
+              borderRadius: '4px',
+              border: `1px solid ${activeScopeConfig.border}`,
+              fontWeight: 600,
+            }}
+          >
+            {applyToFilter}
+          </span>
+        )}
+      </div>
+
       {/* Filter Tabs: All, Public, Private, Shared */}
-      <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '8px' }}>
         <label>
           <input
             type="radio"
@@ -179,7 +248,7 @@ const BasePromptSelector = ({
             flexWrap: 'wrap',
             gap: '4px',
             alignItems: 'center',
-            marginBottom: '6px',
+            marginBottom: '4px',
             padding: '4px 8px',
             background: '#f0fdf4',
             borderRadius: '5px',
@@ -202,6 +271,69 @@ const BasePromptSelector = ({
               {tag}
             </code>
           ))}
+        </div>
+      )}
+
+      {/* Expected Supported Placeholders Guide */}
+      {expectedPlaceholders.length > 0 && (
+        <div
+          data-testid="prompt-placeholders-guide"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '4px',
+            alignItems: 'center',
+            marginBottom: '6px',
+            padding: '4px 8px',
+            background: '#f8fafc',
+            borderRadius: '5px',
+            border: '1px solid #e2e8f0',
+            fontSize: '0.72rem',
+          }}
+        >
+          <span style={{ color: '#475569', fontWeight: 600 }}>Supported Variables:</span>
+          {expectedPlaceholders.map((ph) => {
+            const isPresent = detectedPlaceholders.includes(ph.tag);
+            return (
+              <span
+                key={ph.tag}
+                title={`${ph.label}: ${ph.desc} (${ph.required ? 'Required' : 'Optional'})`}
+                style={{
+                  background: isPresent ? '#dcfce7' : '#f1f5f9',
+                  color: isPresent ? '#15803d' : '#64748b',
+                  border: `1px solid ${isPresent ? '#86efac' : '#cbd5e1'}`,
+                  padding: '1px 5px',
+                  borderRadius: '3px',
+                  fontFamily: 'monospace',
+                  fontWeight: ph.required ? 700 : 400,
+                }}
+              >
+                {ph.tag}{ph.required ? ' *' : ''}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Validation Warning */}
+      {validationResult && !validationResult.isValid && (
+        <div
+          data-testid="prompt-validation-warning"
+          style={{
+            padding: '4px 8px',
+            marginBottom: '6px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '4px',
+            color: '#b91c1c',
+            fontSize: '0.73rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <span>⚠️</span>
+          <span>{validationResult.errors.join('; ')}</span>
         </div>
       )}
 

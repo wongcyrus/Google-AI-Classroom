@@ -75,6 +75,16 @@ vi.mock('firebase/firestore', () => ({
               promptText: 'Batch lecture recording audio STT and chapters'
             })
           },
+          {
+            id: 'prompt_7',
+            data: () => ({
+              name: 'On-Device Gemma Voice Assistant',
+              category: 'audios',
+              accessLevel: 'public',
+              applyTo: ['On-Device Gemma Voice Intent'],
+              promptText: 'Local on-device student voice command'
+            })
+          },
         ],
       });
     }, 0);
@@ -99,8 +109,8 @@ describe('useAudioPrompts Hook', () => {
   it('returns all audio prompts when no applyTo filter is provided', async () => {
     const { result } = renderHook(() => useAudioPrompts({ uid: 'teacher_1' }));
     await waitFor(() => {
-      expect(result.current.length).toBe(4);
-      expect(result.current.map(p => p.id).sort()).toEqual(['prompt_1', 'prompt_2', 'prompt_5', 'prompt_6'].sort());
+      expect(result.current.length).toBe(5);
+      expect(result.current.map(p => p.id).sort()).toEqual(['prompt_1', 'prompt_2', 'prompt_5', 'prompt_6', 'prompt_7'].sort());
     });
   });
 
@@ -131,6 +141,28 @@ describe('useAudioPrompts Hook', () => {
       expect(result.current[0].id).toBe('prompt_6');
       expect(result.current[0].name).toBe('Lecture Audio Speech-to-Text & Chapters');
       expect(result.current.some(p => p.id === 'prompt_5')).toBe(false);
+    });
+  });
+
+  it('fetches session audio summary prompts and strictly excludes invigilation and gemma prompts', async () => {
+    const { result } = renderHook(() => useAudioPrompts({ uid: 'teacher_1' }, 'Session Audio Summary'));
+    await waitFor(() => {
+      expect(result.current.length).toBe(1);
+      expect(result.current[0].id).toBe('prompt_2');
+      expect(result.current[0].name).toBe('Session Discussion Summary');
+      expect(result.current.some(p => p.id === 'prompt_1')).toBe(false);
+      expect(result.current.some(p => p.id === 'prompt_7')).toBe(false);
+    });
+  });
+
+  it('fetches on-device gemma voice intent prompts and strictly excludes lecture and invigilation prompts', async () => {
+    const { result } = renderHook(() => useAudioPrompts({ uid: 'teacher_1' }, 'On-Device Gemma Voice Intent'));
+    await waitFor(() => {
+      expect(result.current.length).toBe(1);
+      expect(result.current[0].id).toBe('prompt_7');
+      expect(result.current[0].name).toBe('On-Device Gemma Voice Assistant');
+      expect(result.current.some(p => p.id === 'prompt_1')).toBe(false);
+      expect(result.current.some(p => p.id === 'prompt_6')).toBe(false);
     });
   });
 });

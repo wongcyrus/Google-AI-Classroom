@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
-import { useAudioPrompts } from '../hooks/useAudioPrompts';
+import { useTranslationPrompts } from '../hooks/useTranslationPrompts';
 import { auth } from '../firebase-config';
 import PresentationQrModal from './broadcast/PresentationQrModal';
 import { isDemoClass } from '../utils/classRankingUtils';
@@ -129,7 +129,7 @@ export default function TeacherScreenBroadcastModal({
   const [micTestError, setMicTestError] = useState(null);
 
   // Local fallback for prompts
-  const fetchedPrompts = useAudioPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
+  const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts || [];
   const selectedSubtitlePromptId = useMemo(() => {
     if (!subtitlePrompt) return '';

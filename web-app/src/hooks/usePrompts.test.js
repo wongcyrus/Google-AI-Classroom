@@ -158,7 +158,8 @@ describe('usePrompts Hook', () => {
       });
     });
 
-    expect(result.current.prompts).toHaveLength(1);
-    expect(result.current.prompts[0].name).toBe('Bingo Question Bank Generator');
+    expect(result.current.prompts).toHaveLength(2);
+    expect(result.current.prompts.map((p) => p.name)).toContain('Bingo Question Bank Generator');
+    expect(result.current.prompts.map((p) => p.name)).toContain('Bingo Teacher Screen Attention Question Generator');
   });
 });

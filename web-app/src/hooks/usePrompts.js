@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
+import { DEFAULT_BINGO_TEACHER_SCREEN_PROMPT } from '../constants/promptRegistry';
 
 export const usePrompts = (applyToFilter = null) => {
   const [prompts, setPrompts] = useState([]);
@@ -24,6 +25,11 @@ export const usePrompts = (applyToFilter = null) => {
     const combineAndSetPrompts = () => {
         const all = [...publicPrompts, ...privatePrompts, ...sharedPrompts];
         const unique = Array.from(new Map(all.map(p => [p.id, p])).values());
+        if (applyToFilter === 'Classroom Bingo Questions' || applyToFilter === 'bingo') {
+          if (!unique.some(p => p.id === DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.id || p.name === DEFAULT_BINGO_TEACHER_SCREEN_PROMPT.name)) {
+            unique.unshift(DEFAULT_BINGO_TEACHER_SCREEN_PROMPT);
+          }
+        }
         let imagePrompts;
 
         if (applyToFilter === 'Classroom Bingo Questions' || applyToFilter === 'bingo') {
