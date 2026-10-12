@@ -365,9 +365,6 @@ const MainHeader = ({ onLogout, user, role }) => {
             <NavLink to="/manage-prompts">
               <span>💡 AI Prompts</span>
             </NavLink>
-            <NavLink to="/presentation">
-              <span>📽️ Presentation</span>
-            </NavLink>
           </nav>
         )}
 
@@ -403,15 +400,6 @@ const MainHeader = ({ onLogout, user, role }) => {
                 <span className="profile-menu-email">{user.email}</span>
                 <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
               </div>
-              <div className="profile-menu-divider" />
-              <Link 
-                to="/presentation" 
-                className="profile-menu-item"
-                onClick={() => setShowProfileMenu(false)}
-              >
-                <span className="menu-item-icon">📽️</span>
-                <span>Presentation Deck</span>
-              </Link>
               <div className="profile-menu-divider" />
               <button 
                 type="button"

@@ -158,7 +158,7 @@ describe('App & MainHeader Components', () => {
     expect(await screen.findByTestId('teacher-view')).toBeInTheDocument();
     expect(screen.getByText('Google AI Classroom')).toBeInTheDocument();
     expect(screen.getByText('📊 Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('📽️ Presentation')).toBeInTheDocument();
+    expect(screen.queryByText('📽️ Presentation')).not.toBeInTheDocument();
     expect(screen.queryByText('⚙️ Class Manager')).not.toBeInTheDocument();
     expect(screen.queryByText('📬 Mailbox')).not.toBeInTheDocument();
 
@@ -174,7 +174,7 @@ describe('App & MainHeader Components', () => {
     fireEvent.click(userTrigger);
 
     expect(screen.getByText('👨‍🏫 Teacher')).toBeInTheDocument();
-    expect(screen.getByText('Presentation Deck')).toBeInTheDocument();
+    expect(screen.queryByText('Presentation Deck')).not.toBeInTheDocument();
 
     // Open Passkey Phone Modal from Account Settings Menu
     const passkeyBtn = screen.getByText(/Passkey Phone/i);
