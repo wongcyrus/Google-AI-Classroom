@@ -1847,7 +1847,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
     fireEvent.click(saveSessionAudio[saveSessionAudio.length - 1]);
 
     // 7. Subtitle prompt modal
-    const selectSubtitleBtn = screen.getByRole('button', { name: /Select Subtitle Translation Prompt/i });
+    const selectSubtitleBtn = screen.getByRole('button', { name: /(Select Subtitle Translation Prompt|Bilingual Lecture & Technical Terminology)/i });
     fireEvent.click(selectSubtitleBtn);
     expect(screen.getByText('Select Live Subtitles & Translation Prompt')).toBeInTheDocument();
     const saveSubtitle = screen.getAllByRole('button', { name: /Save Prompt Selection/i });

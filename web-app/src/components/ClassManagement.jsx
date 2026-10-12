@@ -152,7 +152,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
   const [sessionAudioPrompt, setSessionAudioPrompt] = useState(null);
   const [gemmaIntentPrompt, setGemmaIntentPrompt] = useState(null);
-  const [subtitlePrompt, setSubtitlePrompt] = useState(null);
+  const [subtitlePrompt, setSubtitlePrompt] = useState(
+    CLASS_TEMPLATES[DEFAULT_CLASS_TEMPLATE_ID]?.settings?.subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT
+  );
   const [subjectDomain, setSubjectDomain] = useState('Computer Science & Software Development');
   const [customSubjectDomain, setCustomSubjectDomain] = useState('');
   const [sessionAudioIntervalMinutes, setSessionAudioIntervalMinutes] = useState(0); // 0 = Full session
@@ -545,11 +547,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setCloudFallbackRate(classData.cloudFallbackRate || 3);
           setAfterClassVideoPrompt(classData.afterClassVideoPrompt || null);
           setLiveImagePrompt(classData.liveImagePrompt || null);
-          setBingoPrompt(classData.bingoPrompt || null);
           setLiveAudioPrompt(classData.liveAudioPrompt || null);
           setSessionAudioPrompt(classData.sessionAudioPrompt || null);
           setGemmaIntentPrompt(classData.gemmaIntentPrompt || null);
-          setSubtitlePrompt(classData.subtitlePrompt || null);
           setSubjectDomain(classData.subjectDomain || 'Computer Science & Software Development');
           setCustomSubjectDomain(classData.customSubjectDomain || '');
           setSessionAudioIntervalMinutes(classData.sessionAudioIntervalMinutes || 0);
@@ -597,6 +597,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             }
           }
           setSelectedTemplate(template);
+          const tmplSettings = getTemplateSettings(template);
+          setBingoPrompt(classData.bingoPrompt !== undefined && classData.bingoPrompt !== null ? classData.bingoPrompt : (tmplSettings.bingoPrompt || null));
+          setSubtitlePrompt(
+            classData.subtitlePrompt !== undefined && classData.subtitlePrompt !== null
+              ? classData.subtitlePrompt
+              : (template === 'lecture' || template === 'lecture_in_lab' || classData.isLectureSubtitlesEnabled !== false
+                ? DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT
+                : null)
+          );
           setShowAdvancedSettings(true);
         } else {
           if (!embeddedClassId) {
@@ -637,11 +646,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
         setLiveImagePrompt(null);
-        setBingoPrompt(null);
+        const defaultTmplSettings = getTemplateSettings(DEFAULT_CLASS_TEMPLATE_ID);
+        setBingoPrompt(defaultTmplSettings.bingoPrompt || null);
         setLiveAudioPrompt(null);
         setSessionAudioPrompt(null);
         setGemmaIntentPrompt(null);
-        setSubtitlePrompt(null);
+        setSubtitlePrompt(defaultTmplSettings.subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT);
         setSubjectDomain('Computer Science & Software Development');
         setCustomSubjectDomain('');
         setSessionAudioIntervalMinutes(0);

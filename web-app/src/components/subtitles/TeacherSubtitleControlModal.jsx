@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { acquireInputDeviceStream } from '../../utils/mediaDeviceCapture';
 import { useTranslationPrompts } from '../../hooks/useTranslationPrompts';
+import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../../constants/promptRegistry';
 import { auth } from '../../firebase-config';
 import './TeacherSubtitleControlModal.css';
 
@@ -47,11 +48,12 @@ export default function TeacherSubtitleControlModal({
 
   const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts;
+  const effectiveSubtitlePrompt = subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT;
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
-  const [customPromptDraft, setCustomPromptDraft] = useState(subtitlePrompt?.promptText || '');
+  const [customPromptDraft, setCustomPromptDraft] = useState(effectiveSubtitlePrompt.promptText || '');
 
   useEffect(() => {
-    setCustomPromptDraft(subtitlePrompt?.promptText || '');
+    setCustomPromptDraft((subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT).promptText || '');
   }, [subtitlePrompt]);
 
   useEffect(() => {
@@ -458,6 +460,7 @@ export default function TeacherSubtitleControlModal({
                       const val = e.target.value;
                       if (!val) {
                         onSelectSubtitlePrompt?.(null);
+                        setCustomPromptDraft(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.promptText);
                         setIsEditingPrompt(false);
                       } else {
                         const found = promptsList.find((p) => p.id === val || p.originalId === val);
@@ -469,7 +472,9 @@ export default function TeacherSubtitleControlModal({
                     }}
                     className="domain-select"
                   >
-                    <option value="">-- Default Discipline Prompt --</option>
+                    <option value="">
+                      -- Default Discipline Prompt -- ({DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.name})
+                    </option>
                     {promptsList.map((p) => (
                       <option key={p.id || p.originalId} value={p.id || p.originalId}>
                         {p.name}
@@ -497,7 +502,11 @@ export default function TeacherSubtitleControlModal({
                       <button
                         type="button"
                         className="prompt-toggle-btn reset"
-                        onClick={() => onSelectSubtitlePrompt?.(null)}
+                        onClick={() => {
+                          onSelectSubtitlePrompt?.(null);
+                          setCustomPromptDraft(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT.promptText);
+                          setIsEditingPrompt(false);
+                        }}
                       >
                         Reset to Default
                       </button>

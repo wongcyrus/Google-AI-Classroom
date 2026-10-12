@@ -21,6 +21,7 @@ import IndividualStudentView from './IndividualStudentView';
 import { usePrompts } from '../hooks/usePrompts';
 import { useAudioPrompts } from '../hooks/useAudioPrompts';
 import { useCloudPricing } from '../hooks/useCloudPricing';
+import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
@@ -231,7 +232,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     audioStream: synchronizedAudioStream,
     deviceId: selectedMicDeviceId,
     courseContext: classSubjectDomain || `Class ${classId}`,
-    subtitlePrompt: classSubtitlePrompt,
+    subtitlePrompt: classSubtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
   });
 
   // Synchronized Screen & Voice Launch Handler to prevent out-of-sync A/V

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useTranslationPrompts } from '../hooks/useTranslationPrompts';
+import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
 import { auth } from '../firebase-config';
 import PresentationQrModal from './broadcast/PresentationQrModal';
 import { isDemoClass } from '../utils/classRankingUtils';
@@ -131,16 +132,18 @@ export default function TeacherScreenBroadcastModal({
   // Local fallback for prompts
   const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts || [];
+  const effectiveSubtitlePrompt = subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT;
   const selectedSubtitlePromptId = useMemo(() => {
-    if (!subtitlePrompt) return '';
-    if (subtitlePrompt.id && promptsList.some((p) => p.id === subtitlePrompt.id)) return subtitlePrompt.id;
-    if (subtitlePrompt.originalId && promptsList.some((p) => p.id === subtitlePrompt.originalId)) return subtitlePrompt.originalId;
-    const match = promptsList.find((p) => p.name === subtitlePrompt.name);
+    const promptToMatch = subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT;
+    if (!promptToMatch) return '';
+    if (promptToMatch.id && promptsList.some((p) => p.id === promptToMatch.id)) return promptToMatch.id;
+    if (promptToMatch.originalId && promptsList.some((p) => p.id === promptToMatch.originalId)) return promptToMatch.originalId;
+    const match = promptsList.find((p) => p.name === promptToMatch.name);
     if (match) return match.id;
-    return subtitlePrompt.id || subtitlePrompt.originalId || '';
+    return promptToMatch.id || promptToMatch.originalId || '';
   }, [subtitlePrompt, promptsList]);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
-  const [customPromptDraft, setCustomPromptDraft] = useState(subtitlePrompt?.promptText || '');
+  const [customPromptDraft, setCustomPromptDraft] = useState(effectiveSubtitlePrompt.promptText || '');
 
   // Local fallback if setIsSubtitlesEnabled is not provided
   const [localSubtitlesEnabled, setLocalSubtitlesEnabled] = useState(
@@ -173,7 +176,7 @@ export default function TeacherScreenBroadcastModal({
   };
 
   useEffect(() => {
-    setCustomPromptDraft(subtitlePrompt?.promptText || '');
+    setCustomPromptDraft((subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT).promptText || '');
   }, [subtitlePrompt]);
 
   useEffect(() => {
