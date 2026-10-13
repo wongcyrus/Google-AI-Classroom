@@ -82,6 +82,29 @@ describe('attendanceUtils Module', () => {
     expect(s1.attendance.filter(v => v === 1)).toHaveLength(120);
   });
 
+  it('preserves 0 net minutes when 100% of attendance was deducted by Bingo (deductedMinutes > 0)', () => {
+    const attData = [
+      {
+        email: 'afk@school.edu',
+        totalMinutes: 0,
+        rawMinutes: 15,
+        deductedMinutes: 15,
+        percentage: '0.00%',
+        attendance: Array(15).fill(2),
+      },
+    ];
+    const lessonStudents = [
+      { uid: 'uAfk', email: 'afk@school.edu', sharedScreenMinutes: 15, workingMinutes: 15 },
+    ];
+
+    const merged = mergeAttendanceData(attData, lessonStudents, 60);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].totalMinutes).toBe(0);
+    expect(merged[0].rawMinutes).toBe(15);
+    expect(merged[0].deductedMinutes).toBe(15);
+    expect(merged[0].percentage).toBe('0.00%');
+  });
+
   it('returns empty array when both inputs are empty', () => {
     expect(mergeAttendanceData([], [], 60)).toEqual([]);
   });

@@ -481,7 +481,7 @@ const StudentRecordsView = ({ user }) => {
             if (rawMins === 0 && (sharedMins > 0 || workingMins > 0)) {
               rawMins = sharedMins || workingMins;
             }
-            if (attendedMins === 0 && (sharedMins > 0 || workingMins > 0)) {
+            if (attendedMins === 0 && deductedMins === 0 && (sharedMins > 0 || workingMins > 0)) {
               attendedMins = sharedMins || workingMins;
               if (attendanceArr.length === 0 && duration > 0) {
                 attendanceArr = Array(duration).fill(0).map((_, i) => (i < attendedMins ? 1 : 0));
@@ -590,7 +590,12 @@ const StudentRecordsView = ({ user }) => {
 
           if (matched) {
             const matchedLesson = existingList.find((l) => isRecordInLesson(vid, l));
-            if (matchedLesson && (matchedLesson.attendedMinutes === 0 || !matchedLesson.attendedMinutes) && (matchedLesson.sharedScreenMinutes === 0 || !matchedLesson.sharedScreenMinutes)) {
+            if (
+              matchedLesson &&
+              (matchedLesson.attendedMinutes === 0 || !matchedLesson.attendedMinutes) &&
+              (matchedLesson.sharedScreenMinutes === 0 || !matchedLesson.sharedScreenMinutes) &&
+              !(matchedLesson.deductedMinutes > 0)
+            ) {
               const dur = vid.duration ? Math.min(matchedLesson.duration || 60, Math.max(Math.round((vid.duration * captureInterval) / 60), 1)) : matchedLesson.duration || 60;
               matchedLesson.attendedMinutes = dur;
               matchedLesson.sharedScreenMinutes = dur;
@@ -598,7 +603,8 @@ const StudentRecordsView = ({ user }) => {
               matchedLesson.sharePercentage = matchedLesson.attPercentage;
               matchedLesson.percentage = matchedLesson.attPercentage;
               if (!matchedLesson.attendance || matchedLesson.attendance.length === 0) {
-                matchedLesson.attendance = Array(matchedLesson.duration || dur).fill(1);
+                const totalSlots = matchedLesson.duration || dur;
+                matchedLesson.attendance = Array(totalSlots).fill(0).map((_, idx) => (idx < dur ? 1 : 0));
               }
             }
           } else {

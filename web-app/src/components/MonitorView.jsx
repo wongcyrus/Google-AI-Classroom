@@ -1195,15 +1195,26 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
     const resolveAllStatuses = async () => {
       const currentNow = Date.now();
-      const staleThresholdMs = Math.max(frameRate * 3, 30) * 1000;
+      const staleThresholdMs = Math.max(frameRate * 4, 45) * 1000;
 
       const getTs = (obj) => {
-        if (!obj?.timestamp) return 0;
-        if (typeof obj.timestamp.toMillis === 'function') return obj.timestamp.toMillis();
-        if (obj.timestamp.seconds) return obj.timestamp.seconds * 1000;
-        if (obj.timestamp instanceof Date) return obj.timestamp.getTime();
-        if (typeof obj.timestamp === 'number') return obj.timestamp;
-        return 0;
+        if (!obj) return 0;
+        const parseVal = (val) => {
+          if (!val) return 0;
+          if (typeof val.toMillis === 'function') return val.toMillis();
+          if (val.seconds) return val.seconds * 1000;
+          if (val instanceof Date) return val.getTime();
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') {
+            const parsed = new Date(val).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          }
+          return 0;
+        };
+        const ts1 = parseVal(obj.timestamp);
+        const ts2 = parseVal(obj.lastHeartbeat);
+        const ts3 = parseVal(obj.lastAudioHeartbeat);
+        return Math.max(ts1, ts2, ts3);
       };
 
       const studentTasks = studentStatuses.filter(
@@ -1213,7 +1224,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       const resolveStudent = async (status) => {
         const studentUid = status.id;
         const statusTs = getTs(status);
-        const isFresh = (currentNow - statusTs) <= staleThresholdMs;
+        const isFresh = statusTs > 0 && (currentNow - statusTs) <= staleThresholdMs;
         const isActivelySharing = Boolean(status.isSharing && isFresh);
 
         // Optimization: Do not attempt to fetch deleted historical screenshots for offline students

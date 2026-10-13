@@ -98,10 +98,17 @@ export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [],
     const lessonStudent = lessonStudents.find((s) => s.email === email);
 
     // Multi-source attendance resolution:
-    // If attStudent has 0 minutes (e.g. screenshots purged), fall back to lessonStudent's recorded sharedScreenMinutes or workingMinutes
+    // If attStudent has 0 raw & net minutes (e.g. screenshots purged and not yet reconciled), fall back to lessonStudent's recorded sharedScreenMinutes or workingMinutes
     const recordedMins = lessonStudent?.sharedScreenMinutes ?? lessonStudent?.workingMinutes;
-    const effectiveMins = (attStudent?.totalMinutes != null && attStudent.totalMinutes > 0)
-      ? attStudent.totalMinutes
+    const hasLiveAtt = Boolean(
+      attStudent && (
+        (attStudent.totalMinutes != null && attStudent.totalMinutes > 0) ||
+        (attStudent.deductedMinutes != null && attStudent.deductedMinutes > 0) ||
+        (Array.isArray(attStudent.attendance) && attStudent.attendance.some((v) => v > 0))
+      )
+    );
+    const effectiveMins = hasLiveAtt
+      ? (attStudent.totalMinutes ?? 0)
       : (recordedMins != null && recordedMins > 0 ? recordedMins : (attStudent?.totalMinutes ?? 0));
 
     let effectiveAttendance = (attStudent?.attendance && attStudent.attendance.some((v) => v > 0))

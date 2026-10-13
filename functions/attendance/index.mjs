@@ -202,10 +202,11 @@ export const getAttendanceData = onCall({
         videoCapMinutes = Math.min(lessonDurationInMinutes, Math.max(1, Math.round((matchedVideo.duration * captureInterval) / 60)));
       }
 
-      if (existingStudent?.sharedScreenMinutes > 0 && Array.isArray(existingStudent.attendance) && existingStudent.attendance.length > 0) {
+      const hasPriorBitmask = Array.isArray(existingStudent?.attendance) && existingStudent.attendance.some(v => v > 0);
+      if ((existingStudent?.sharedScreenMinutes > 0 || existingStudent?.rawScreenMinutes > 0 || hasPriorBitmask) && Array.isArray(existingStudent?.attendance) && existingStudent.attendance.length > 0) {
         // Direct authentic bitmask from Firestore lesson doc (preserved permanently even if raw images and videos are deleted)
         const priorLen = existingStudent.attendance.length;
-        const priorMins = existingStudent.sharedScreenMinutes;
+        const priorMins = existingStudent.rawScreenMinutes || existingStudent.sharedScreenMinutes || existingStudent.attendance.filter(v => v > 0).length;
         const effectiveMins = videoCapMinutes !== null ? Math.min(priorMins, videoCapMinutes) : priorMins;
 
         if (videoCapMinutes !== null && effectiveMins < priorMins) {
@@ -213,6 +214,8 @@ export const getAttendanceData = onCall({
           for (let i = 0; i < lessonDurationInMinutes; i++) {
             if (i < priorLen && existingStudent.attendance[i] > 0 && count < effectiveMins) {
               entry.attendance[i] = existingStudent.attendance[i];
+              count++;
+            } else if (entry.attendance[i] > 0 && count < effectiveMins) {
               count++;
             } else {
               entry.attendance[i] = 0;
@@ -354,8 +357,8 @@ export const getAttendanceData = onCall({
       const student = studentList.find(s => s.email === data.email);
       if (student) {
         const existingStudent = existingLessonData?.students?.[student.uid] || {};
-        // Safeguard: Never overwrite existing positive attendance with 0 if no video exists
-        if (data.totalMinutes === 0 && (existingStudent.sharedScreenMinutes > 0 || existingStudent.workingMinutes > 0)) {
+        // Safeguard: Never overwrite existing positive attendance with 0 if no raw activity or deductions exist
+        if (data.totalMinutes === 0 && data.rawMinutes === 0 && (existingStudent.sharedScreenMinutes > 0 || existingStudent.workingMinutes > 0)) {
           return;
         }
 
