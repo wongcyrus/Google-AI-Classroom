@@ -998,6 +998,53 @@ describe('bingoFlows', () => {
       expect(q).toBeNull();
     });
 
+    it('ignores stale student_screen screenshots older than 15 minutes and returns null without calling AI', async () => {
+      const twoDaysAgoMs = Date.now() - 2 * 24 * 60 * 60 * 1000;
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/CLASS_STALE_SCREEN/status/stu_stale') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isSharing: false,
+              latestScreenPath: 'screenshots/old.jpg',
+              lastUpdated: twoDaysAgoMs,
+            }),
+          });
+        }
+        if (path === 'classes/CLASS_STALE_SCREEN/livePeeks/stu_stale') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              screenshotUrl: 'https://storage.googleapis.com/bucket/old_peek.jpg',
+              timestamp: twoDaysAgoMs,
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      mockCollectionGet.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            data: () => ({
+              screenshotUrl: 'https://storage.googleapis.com/bucket/old_shot.jpg',
+              timestamp: twoDaysAgoMs,
+            }),
+          },
+        ],
+      });
+
+      const q = await resolveBingoQuestion({
+        classId: 'CLASS_STALE_SCREEN',
+        studentUid: 'stu_stale',
+        questionSource: 'student_screen',
+      });
+
+      expect(q).toBeNull();
+      expect(generateWithResilience).not.toHaveBeenCalled();
+    });
+
     it('generates dynamic question from student screen and logs AI cost', async () => {
       mockDocGet.mockImplementation((path) => {
         if (path === 'classes/CLASS_STUDENT_SCREEN/livePeeks/stu_live') {

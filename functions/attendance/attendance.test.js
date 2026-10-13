@@ -619,6 +619,139 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       // Ensure exact chronological positions are preserved (not left-aligned like a bar chart)
       expect(student.attendance).toEqual([1, 0, 1, 1, 0, 0, 1, 1, 1, 0]);
     });
+
+    it('reconciles frozen lesson bitmask even when 1 flagged screenshot remains after routine screenshot purge', async () => {
+      // 1. Mock class doc
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            sFlagged: 'flagged@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query returning 1 preserved flagged screenshot at minute 5 (unflaggedCount === 0)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'sFlagged',
+              email: 'flagged@vtc.edu.hk',
+              timestamp: new Date('2026-10-08T07:05:00Z'),
+              isFlagged: true,
+            }),
+          });
+        },
+      });
+
+      // 3. Mock existing lesson doc get() with 8 active minutes
+      const savedBitmask = [1, 1, 1, 1, 0, 0, 1, 1, 1, 1];
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            sFlagged: {
+              sharedScreenMinutes: 8,
+              rawScreenMinutes: 8,
+              attendance: savedBitmask,
+            },
+          },
+        }),
+      });
+
+      // 4. Mock videoJobs query (0 docs)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 5. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 6. Mock attendanceAdjustments query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-10-08T07:00:00Z',
+          endTime: '2026-10-08T07:10:00Z',
+        },
+      });
+
+      const student = res.attendanceData.find((s) => s.email === 'flagged@vtc.edu.hk');
+      expect(student).toBeDefined();
+      // Union of savedBitmask (8 mins) + preserved flagged screenshot at minute 5 = 9 mins
+      expect(student.totalMinutes).toBe(9);
+      expect(student.attendance).toEqual([1, 1, 1, 1, 0, 1, 1, 1, 1, 1]);
+    });
+
+    it('only deducts active screen-share minutes (1) in attendanceAdjustments without turning absent minutes (0) into 2', async () => {
+      // 1. Mock class doc
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            uidLate: 'late@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query (10-minute lesson): student only shared at minutes 7, 8, 9 (absent 0..6)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          [7, 8, 9].forEach((m) => {
+            cb({
+              data: () => ({
+                studentUid: 'uidLate',
+                email: 'late@vtc.edu.hk',
+                timestamp: new Date(`2026-10-08T07:0${m}:00Z`),
+              }),
+            });
+          });
+        },
+      });
+
+      // 3. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 4. Mock attendanceAdjustments query covering minutes 2..8
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'uidLate',
+              startTime: new Date('2026-10-08T07:02:00Z'),
+              endTime: new Date('2026-10-08T07:08:00Z'),
+            }),
+          });
+        },
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-10-08T07:00:00Z',
+          endTime: '2026-10-08T07:10:00Z',
+        },
+      });
+
+      const student = res.attendanceData.find((s) => s.email === 'late@vtc.edu.hk');
+      expect(student).toBeDefined();
+      // Minutes 0..6 remain 0 (absent), minutes 7..8 become 2 (deducted), minute 9 remains 1 (active)
+      expect(student.attendance).toEqual([0, 0, 0, 0, 0, 0, 0, 2, 2, 1]);
+      expect(student.deductedMinutes).toBe(2);
+      expect(student.totalMinutes).toBe(1);
+      expect(student.rawMinutes).toBe(3);
+    });
   });
 });
 

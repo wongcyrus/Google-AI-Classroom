@@ -406,11 +406,22 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
     if (!studentUid) return null;
     try {
       let screenshotUrl = null;
+      const STALE_SCREENSHOT_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+
+      const isTimestampStale = (rawTs) => {
+        if (!rawTs) return false;
+        const tsMs = rawTs?.toMillis
+          ? rawTs.toMillis()
+          : (rawTs?.toDate ? rawTs.toDate().getTime() : new Date(rawTs).getTime());
+        return !isNaN(tsMs) && (Date.now() - tsMs > STALE_SCREENSHOT_THRESHOLD_MS);
+      };
 
       // 1. Check live status document first (classes/{classId}/status/{studentUid})
       const statusDoc = await db.doc(`classes/${classId}/status/${studentUid}`).get();
       const statusData = statusDoc.exists ? statusDoc.data() : null;
-      const imagePath = statusData?.latestScreenPath || statusData?.latestImagePath;
+      const statusStale = statusData?.isSharing === false ||
+        isTimestampStale(statusData?.lastUpdated || statusData?.timestamp || statusData?.updatedAt);
+      const imagePath = !statusStale ? (statusData?.latestScreenPath || statusData?.latestImagePath) : null;
 
       if (imagePath) {
         try {
@@ -429,8 +440,9 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
       // 2. Check livePeeks / screenshots collection fallback
       if (!screenshotUrl) {
         const livePeekDoc = await db.doc(`classes/${classId}/livePeeks/${studentUid}`).get();
-        if (livePeekDoc.exists && livePeekDoc.data()?.screenshotUrl) {
-          screenshotUrl = livePeekDoc.data().screenshotUrl;
+        const peekData = livePeekDoc.exists ? livePeekDoc.data() : null;
+        if (peekData?.screenshotUrl && !isTimestampStale(peekData.timestamp || peekData.updatedAt)) {
+          screenshotUrl = peekData.screenshotUrl;
         } else {
           const snap = await db.collection('screenshots')
             .where('classId', '==', classId)
@@ -440,14 +452,16 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
             .get();
           if (!snap.empty && snap.docs?.[0]) {
             const data = snap.docs[0].data();
-            screenshotUrl = data?.screenshotUrl;
-            if (!screenshotUrl && data?.imagePath) {
-              try {
-                const storage = getStorage();
-                const [fileBuffer] = await storage.bucket().file(data.imagePath).download();
-                screenshotUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
-              } catch (storageErr) {
-                console.warn(`[resolveBingoQuestion] Could not load screenshot from ${data.imagePath}:`, storageErr);
+            if (!isTimestampStale(data?.timestamp)) {
+              screenshotUrl = data?.screenshotUrl;
+              if (!screenshotUrl && data?.imagePath) {
+                try {
+                  const storage = getStorage();
+                  const [fileBuffer] = await storage.bucket().file(data.imagePath).download();
+                  screenshotUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
+                } catch (storageErr) {
+                  console.warn(`[resolveBingoQuestion] Could not load screenshot from ${data.imagePath}:`, storageErr);
+                }
               }
             }
           }
@@ -591,9 +605,11 @@ export async function generateBingoChallenge({
     // If 'all', target all students enrolled in the class or active in class status
     const allCandidateUids = new Set(Object.keys(studentsMap));
     const statusSnap = await db.collection(`classes/${classId}/status`).get();
-    statusSnap.forEach(doc => {
-      allCandidateUids.add(doc.id);
-    });
+    if (statusSnap && typeof statusSnap.forEach === 'function') {
+      statusSnap.forEach(doc => {
+        allCandidateUids.add(doc.id);
+      });
+    }
     targetUids = Array.from(allCandidateUids);
   }
 
@@ -638,11 +654,16 @@ export async function generateBingoChallenge({
         // fallback to class question bank so that non-sharing students cannot escape presence verification!
         if (!qData) {
           console.log(`[generateBingoChallenge] Student ${studentUid} screen capture unavailable. Falling back to question bank for this student.`);
-          qData = await resolveBingoQuestion({
-            classId,
-            studentUid,
-            questionSource: 'question_bank',
-          });
+          try {
+            qData = await resolveBingoQuestion({
+              classId,
+              studentUid,
+              questionSource: 'question_bank',
+            });
+          } catch (fallbackErr) {
+            console.warn(`[generateBingoChallenge] Question bank fallback unavailable for student ${studentUid}: ${fallbackErr.message}`);
+            qData = null;
+          }
         }
         studentQuestions[studentUid] = qData;
       }));

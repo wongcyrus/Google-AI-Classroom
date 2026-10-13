@@ -78,7 +78,7 @@ export const getAttendanceData = onCall({
   const uidToStudentMap = new Map();
   studentList.forEach(s => {
     const bitmask = Array(lessonDurationInMinutes).fill(0);
-    const entry = { student: s, attendance: bitmask };
+    const entry = { student: s, attendance: bitmask, unflaggedCount: 0 };
     if (s.email) emailToStudentMap.set(s.email, entry);
     if (s.uid) uidToStudentMap.set(s.uid, entry);
   });
@@ -124,18 +124,29 @@ export const getAttendanceData = onCall({
       const minuteIndex = Math.floor((screenshotTime.getTime() - lessonStartTime.getTime()) / 60000);
       if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
         entry.attendance[minuteIndex] = 1;
+        const isFlagged = Boolean(
+          screenshot.isFlagged ||
+          screenshot.isViolation ||
+          screenshot.incidentId ||
+          screenshot.reviewRequired ||
+          screenshot.suspicious
+        );
+        if (!isFlagged) {
+          entry.unflaggedCount = (entry.unflaggedCount || 0) + 1;
+        }
       }
     });
   });
 
   // Multi-source attendance reconciliation:
-  // If raw screenshots returned 0 minutes for any student (e.g. screenshots were purged after class),
-  // trace presence from previously persisted attendance, AI working time, or completed video compilation
+  // If routine unflagged screenshots returned 0 for any student (e.g. routine screenshots were purged after class,
+  // even if 1-2 flagged irregularity screenshots were preserved), trace presence from previously persisted
+  // attendance, AI working time, or completed video compilation and union with any remaining screenshots.
   let existingLessonData = null;
   const studentsWithZeroMinutes = studentList.filter(s => {
     const entry = uidToStudentMap.get(s.uid) || emailToStudentMap.get(s.email);
     if (!entry) return true;
-    return entry.attendance.reduce((sum, val) => sum + (val === 1 ? 1 : 0), 0) === 0;
+    return (entry.unflaggedCount || 0) === 0;
   });
 
   if (studentsWithZeroMinutes.length > 0) {
@@ -209,7 +220,7 @@ export const getAttendanceData = onCall({
           }
         } else {
           for (let i = 0; i < lessonDurationInMinutes; i++) {
-            if (i < priorLen) {
+            if (i < priorLen && existingStudent.attendance[i] > 0) {
               entry.attendance[i] = existingStudent.attendance[i];
             }
           }
@@ -299,8 +310,9 @@ export const getAttendanceData = onCall({
         const endMinute = Math.min(lessonDurationInMinutes - 1, Math.floor((adjEnd.getTime() - lessonStartTime.getTime()) / 60000));
 
         for (let m = startMinute; m <= endMinute; m++) {
-          // Do not overwrite confirmed active answers (3 = Correct, 4 = Incorrect) with voided status
-          if (entry.attendance[m] !== 3 && entry.attendance[m] !== 4) {
+          // Only deduct minutes where the student was actually sharing their screen (1).
+          // Do not overwrite confirmed active answers (3 = Correct, 4 = Incorrect) or turn absent (0) minutes into deducted (2).
+          if (entry.attendance[m] === 1) {
             // 2 = Voided/Deducted by failed consecutive Bingo checks
             entry.attendance[m] = 2;
           }

@@ -630,27 +630,38 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
           const lessonId = crypto.createHash('sha256').update(`${startISO}-${endISO}`).digest('hex');
           const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
 
+          const existingLessonSnap = typeof lessonRef.get === 'function' ? await lessonRef.get().catch(() => null) : null;
+          const existingStudentData = existingLessonSnap?.exists ? (existingLessonSnap.data()?.students?.[studentUid] || {}) : {};
+          const existingBitmask = Array.isArray(existingStudentData.attendance) ? existingStudentData.attendance : [];
+
           const studentBitmask = Array(durationMins).fill(0);
+          for (let i = 0; i < durationMins; i++) {
+            if (i < existingBitmask.length && existingBitmask[i] > 0) {
+              studentBitmask[i] = existingBitmask[i];
+            }
+          }
+
           querySnapshot.docs.forEach((docSnap) => {
             const sData = docSnap.data() || {};
             const rawTs = sData.timestamp;
             const ts = rawTs?.toDate ? rawTs.toDate() : (rawTs ? new Date(rawTs) : null);
             if (!ts || isNaN(ts.getTime())) return;
             const minIdx = Math.floor((ts.getTime() - startMs) / 60000);
-            if (minIdx >= 0 && minIdx < durationMins) {
+            if (minIdx >= 0 && minIdx < durationMins && studentBitmask[minIdx] === 0) {
               studentBitmask[minIdx] = 1;
             }
           });
 
-          const sharedMins = studentBitmask.reduce((sum, v) => sum + (v === 1 ? 1 : 0), 0);
+          const sharedMins = studentBitmask.reduce((sum, v) => sum + (v === 1 || v === 3 || v === 4 ? 1 : 0), 0);
           await lessonRef.set({
             startTime: new Date(startMs),
             endTime: new Date(endMs),
             students: {
               [studentUid]: {
+                ...existingStudentData,
                 email: studentEmail,
                 sharedScreenMinutes: sharedMins,
-                rawScreenMinutes: sharedMins,
+                rawScreenMinutes: Math.max(sharedMins, existingStudentData.rawScreenMinutes || 0),
                 attendance: studentBitmask,
               },
             },

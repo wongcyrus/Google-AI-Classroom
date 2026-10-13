@@ -48,6 +48,12 @@
 5. **Teacher & Student UI Parity**:
    - Updated [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx) so student personal records display the exact same 3-color Bingo badges, timeline legend, and deduction alert banner.
 
+6. **Attendance & Bingo Edge-Case Hardening**:
+   - **Partial Screenshot Purge Union**: `processVideoJob.js` preserves flagged irregularity screenshots while purging routine unflagged screenshots. Updated [`getAttendanceData`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs) to track `unflaggedCount` (`unflaggedCount === 0`) and union (`|`) `existingStudent.attendance` with any remaining flagged screenshots so preserved evidence frames never overwrite a student's full frozen bitmask.
+   - **Strict Active-Minute Deduction in `attendanceAdjustments`**: Updated [`getAttendanceData`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs) so `attendanceAdjustments` only deducts minutes where the student was actively sharing their screen (`entry.attendance[m] === 1` -> `2`), preventing absent minutes (`0`) from turning into `2` and artificially inflating `deductedMinutes` and `rawMinutes`.
+   - **Monotonic Per-Student Post-Lesson Consolidation**: Removed the `.some(s => s.sharedScreenMinutes > 0)` class-wide short-circuit in [`handlePostLessonMediaConsolidation`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) and updated both `scheduledTasks.js` and `processVideoJob.js` to union per-student bitmasks monotonically.
+   - **15-Minute Screenshot Freshness in `student_screen` Bingo**: Enforced a 15-minute freshness check in [`resolveBingoQuestion`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) (`student_screen` mode) so stale screenshots from previous sessions are never sent to Gemini Vision for absent students.
+
 ---
 
 ## 0.0.0.0.0.0.0.0.0.0.2.1 Video Library Cursor Stack Pagination & Previous Button Restoration
