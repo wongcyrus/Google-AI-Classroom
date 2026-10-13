@@ -19,13 +19,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **00:00 – 06:00** | **Speaker & Opening** | Welcome, Cyrus Wong GDE Bio, The Real-Time Invigilation & Assessment Challenge | Slides 1–2 |
 | **06:00 – 12:00** | **01 \| System Overview** | The Assessment Trilemma, Surveillance Spyware vs. Edge-AI Assistant Paradigm Shift | Slides 3–4 |
 | **12:00 – 18:00** | **02 \| Hybrid Architecture** | 4-Tier Hybrid Cloud, Cloud Functions Gen 2 on Cloud Run, Firestore Optimization, 4-Tier Hybrid Role Resolution & GCIP, Frontend Component & Stream Engine | Slides 5–9 |
-| **18:00 – 26:00** | **03 \| Gemini Agent Platform** | Gemini 3 Suite Routing, Genkit Resilience, Teacher AI Prompt Studio & Optimizers, Structured Schemas | Slides 10–13 |
+| **18:00 – 26:00** | **03 \| Gemini Agent Platform** | Gemini 4 & 3 Suite Routing (`gemini-4-argon`, `3.8-flash`, `3.5-flash-lite`), Genkit Resilience, Teacher AI Prompt Studio & Optimizers, Structured Schemas | Slides 10–13 |
 | **26:00 – 34:00** | **04 \| Edge AI & Privacy** | MediaPipe Mesh, Hardware Loop, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 14–17 |
 | **34:00 – 38:00** | **05 \| Zero-Trust Security** | Zero-Trust Exam Mode, 1-Min Bingo Presence & 2-Strike State Machine | Slides 18–19 |
-| **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Live Subtitles, Subject Domains & Custom Subtitle Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
+| **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Dual-Engine Live Subtitles (Server Gemini vs. Client Gemma 4), Subject Domains & Custom Subtitle Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
 | **48:00 – 52:00** | **07 \| Video AI Pipeline** | Map-Reduce-Map Video Intelligence Pipeline, Dynamic Lab Tasks & Sortable Milestone Matrix | Slide 29 |
 | **52:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 19 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 30–34 |
-| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,450+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
+| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,580+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
 | **59:00 – 60:00** | **10 \| Conclusion & Q&A** | Summary, Enterprise Docs & Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 37 |
 
 ---
@@ -40,7 +40,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > In technical education and software engineering training, our primary objective is to verify real hands-on competency. But with the rapid emergence of generative AI code copilots, instructors face an unprecedented dilemma: take-home assignments and unmonitored exams no longer reflect authentic student capability.
 >
-> Over the past year at HKIIT / VTC Hong Kong, we engineered a completely new approach. Rather than relying on invasive, brittle, and expensive commercial proctoring software, we harmonized Google's **Gemini 3 model constellation**, **Google Genkit**, **Google Cloud Run Functions Gen 2**, and browser-native **LiteRT** and **MediaPipe** edge intelligence. The result is an open-source, privacy-preserving multimodal classroom agent that operates at **sub-$0.02 per student per exam**.
+> Over the past year at HKIIT / VTC Hong Kong, we engineered a completely new approach. Rather than relying on invasive, brittle, and expensive commercial proctoring software, we harmonized Google's **Gemini 4 & 3 model constellation** (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`), **Google Genkit**, **Google Cloud Run Functions Gen 2**, and browser-native **LiteRT** and **MediaPipe** edge intelligence. The result is an open-source, privacy-preserving multimodal classroom agent that operates at **sub-$0.02 per student per exam**.
 >
 > Today, I'll walk you through our production architecture, cloud optimizations, zero-trust security model, and the hard lessons learned deploying this system to live computer labs."
 
@@ -174,17 +174,17 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 18:30 – 20:30 | Slide 10: 03 | Gemini Enterprise Agent Platform: Gemini 3 Constellation & Model Routing
+### 18:30 – 20:30 | Slide 10: 03 | Gemini Enterprise Agent Platform: Gemini 4 & 3 Constellation & Model Routing
 *Visual: `slide_gemini_models_matrix.png`*
 
 > **Cyrus Wong:**  
-> "When building AI-powered production systems, one size does not fit all. We deploy Google's **Gemini 3 model suite**, routing each task to its optimal price-performance tier with pure modern model architecture:
+> "When building AI-powered production systems, one size does not fit all. We deploy Google's **Gemini 4 & 3 model constellation**, routing each task to its optimal price-performance tier with pure modern model architecture:
 >
-> 1. **`gemini-3.8-flash` (Deep Multimodal Reasoning & Full Lectures):** Our flagship model for whole-class lecture Speech Recognition, YouTube chapter generation, and Map-Reduce rubric synthesis. Its 1M+ context window effortlessly ingests 90-minute unbroken audio tracks.
-> 2. **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse):** Our fast workhorse for single-frame inspections, serverless live speech multilingual captioning into 7 languages, and instant resilience fallback.
-> 3. **`gemini-3.1-flash-live-preview` (Live Bidirectional Streaming):** Dedicated model for ultra-low latency WebSocket audio streaming via regional `us-central1`, powering live classroom subtitles with sub-second feedback.
+> 1. **`gemini-4-argon` (Flagship Deep Reasoning & Full Lectures):** Google's newest flagship reasoning model featuring a shared 1M input/output context window and tunable thinking levels (`$2.00 / $10.00` per 1M tokens). Instructors can select `gemini-4-argon` for highest-precision coursework rubric synthesis, complex screen code analysis, and whole-class lecture Speech Recognition & YouTube chapter generation.
+> 2. **`gemini-3.8-flash` (Balanced Multimodal Reasoning & Full Lectures):** Our balanced workhorse (`$0.75 / $3.75` per 1M tokens) for whole-class lecture transcription, YouTube chapter generation, and Map-Reduce rubric synthesis. Its 1M+ context window effortlessly ingests 90-minute unbroken audio tracks.
+> 3. **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse):** Our fast, ultra-economical default model (`$0.30 / $2.50` per 1M tokens) for single-frame screen inspections, serverless live speech multilingual captioning into 7 languages, and instant resilience fallback.
 > 4. **`gemini-3.5-transcribe-preview` (Audio Diarization):** Cloud audio reasoning that separates multi-speaker overlaps and outputs exact millisecond timestamps.
-> 5. **`LiteRT Gemma 4 E2B & Whisper`:** Runs browser-native in student Web Workers via WebGPU/WASM at zero cloud cost."
+> 5. **`LiteRT Gemma 4 E2B & Whisper`:** Runs browser-native in Web Workers via WebGPU/WASM at zero cloud cost."
 
 ---
 
@@ -194,8 +194,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "To orchestrate these models reliably in production, we use **Google Genkit**.
 >
-> In high-concurrency university environments, API rate limits (HTTP 429) or transient cloud spikes (HTTP 503) are inevitable. We built a custom **Resilience Interceptor**:
-> - If `gemini-3.8-flash` encounters a transient error, Genkit applies automatic exponential backoff with randomized jitter.
+> In high-concurrency university environments, API rate limits (HTTP 429) or transient cloud spikes (HTTP 503) are inevitable. We built a custom **Resilience Interceptor** (`generateWithResilience`):
+> - When routing requests to `gemini-4-argon`, our interceptor automatically strips legacy sampling parameters (`temperature`, `topP`, `topK`) in compliance with the Gemini 4 Argon specification.
+> - If `gemini-4-argon` or `gemini-3.8-flash` encounters a transient error, Genkit applies automatic exponential backoff with randomized jitter.
 > - If the primary model remains constrained after 3 attempts, the interceptor transparently falls back to `gemini-3.5-flash-lite`.
 > - The application never crashes, and student evaluations proceed uninterrupted.
 >
@@ -220,7 +221,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > In addition, we equipped every modality with a dedicated **AI Prompt Optimizer (`✨ Optimize` button)**:
 > - Powered by built-in Gemini meta-prompts (e.g. `subtitleOptimizerPrompt`, `visionOptimizerPrompt`), it automatically transforms an instructor's rough notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.
 > - An **In-App FinOps Testing Sandbox** allows teachers to run live test executions against Gemini models, previewing actual output, execution latency in milliseconds, token counts, and estimated dollar costs before deploying to students.
-> - Furthermore, our strict platform rule mandates that **100% of prompts**—from client-side Gemma Web Workers to Gemini Live WebSockets and Cloud Run Genkit flows—are maintained in version-controlled Markdown files in `admin/prompts/` and dynamically resolved with Firestore persistence."
+> - Furthermore, our strict platform rule mandates that **100% of prompts**—from client-side Gemma 4 Web Workers to Cloud Run Genkit flows—are maintained in version-controlled Markdown files in `admin/prompts/` and dynamically resolved with Firestore persistence."
 
 ---
 
@@ -404,20 +405,16 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 *Visual: `slide_live_subtitles_multilingual.png`*
 
 > **Cyrus Wong:**  
-> "In international computing faculties and polytechnics, students possess diverse native languages. We engineered a flexible **3-Tier Multilingual Live Subtitle Engine**:
+> "In international computing faculties and polytechnics, students possess diverse native languages. We engineered a flexible **Dual-Engine Multilingual Live Subtitle Architecture**:
 >
-> - **Tier 1: On-Device Client AI ($0.00 Cloud Cost):**
->   - LiteRT Whisper Web Worker processes the teacher's microphone locally.
->   - Spoken text is instantly captioned via Chrome Built-in AI (`window.LanguageModel` powered by Gemini Nano).
->   - Zero latency, zero cloud egress, 100% privacy-compliant.
-> - **Tier 2: Serverless Batch Multilingual Subtitling (High Precision):**
->   - Edge Whisper Speech Engine streams transcribed sentences to Cloud Run Function `processTeacherSpeechSubtitles`.
->   - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback), delivering high-precision subtitles into **7 languages** (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
+> - **Mode 1: Server Model (High Precision Cloud — Default):**
+>   - Edge Whisper Speech Engine or Web Speech API streams transcribed sentences to Cloud Run Function `translateTeacherSpeech`.
+>   - Powered by **Gemini 3.5 Flash-Lite** (with **Gemini 3.8 Flash** fallback), delivering high-precision subtitles into **7 languages** (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
 >   - Preserves Cantonese-English technical code-switching (e.g. keeping terms like `useState` or `Docker` intact).
-> - **Tier 3: Gemini 3.1 Flash Live (Bidirectional Streaming):**
->   - Uses WebSocket connection directly to regional `us-central1` via Firebase AI Logic.
->   - Buffers updates with a 350ms debounced Firestore synchronization channel.
->   - Students toggle between a docked bottom bar and a draggable floating HUD overlay with live bilingual subtitles."
+> - **Mode 2: Client Model (On-Device Edge AI — $0.00 Cloud Cost):**
+>   - LiteRT Whisper Web Worker processes the teacher's microphone locally at 16kHz, and **LiteRT Gemma 4 E2B WebGPU** (`useLocalGemmaTranslator.js`) translates speech directly inside the browser.
+>   - **Explicit Download & Mobile Memory Guard:** To prevent browser Out-Of-Memory (OOM) crashes on mobile devices (such as iOS Chrome/Safari ~1.5GB tab limits), the ~1.5GB Gemma 4 E2B weights never auto-download on page load—users click an explicit `'⬇️ Load Local AI Model (~1.5 GB)'` button, with automatic cloud fallback on mobile/iOS.
+>   - Students toggle between a docked bottom bar, a YouTube-style player overlay, and a live scrolling transcript sidebar with optional browser TTS audio readout."
 
 ---
 
@@ -460,8 +457,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > 1. **Continuous A/V Hardware-Mixed Recording:**
 >    - Web Audio API mixes the instructor's screen audio and microphone into a continuous `lecture_audio.webm` stream.
 >    - Unlike segmented chunking, the whole-class voice track is preserved without clipping mid-sentence and uploaded to Cloud Storage via resumable chunks.
-> 2. **Whole-Class Voice Processing in Gemini 3.8 Flash:**
->    - The Cloud Function `processLectureSubtitles` sends the whole unbroken audio track into Gemini 3.8 Flash's massive context window.
+> 2. **Whole-Class Voice Processing in Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite:**
+>    - The Cloud Function `processLectureSubtitles` sends the whole unbroken audio track into the instructor's selected Gemini model (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`) with its 1M+ token context window.
 >    - The model produces word-perfect Cantonese-English speech transcription and automatically identifies topical shifts, generating formatted **YouTube Chapters** (e.g., `00:00 - Introduction`, `12:45 - Containerization`).
 > 3. **Dual Caption Standards (Integer Millisecond Precision):**
 >    - Generates WebVTT (`.vtt`, period millisecond delimiter) for the in-app HTML5 video player `<track>`.
@@ -612,9 +609,9 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > "Now let's examine our automated coursework grading pipeline: **Serverless Map-Reduce-Map AI Video Analysis**:
 >
 > - **Phase 1: Map (Parallel Video Discovery):** The master dispatcher initializes progress counters and enqueues individual tasks to **Google Cloud Tasks** (`analyzeSingleVideoTask`) in ~2 seconds. Tasks are throttled to 4 concurrent workers (`maxDispatchesPerSecond: 2`) with dedicated 300s/2GiB containers, eliminating Cloud Function timeout walls and Gemini 429 rate limit spikes.
-> - **Phase 2: Reduce (Coursework Rubric Synthesis):** A cross-student aggregator feeds all student discovery summaries into **Gemini 3.8 Flash**, which synthesizes a unified coursework rubric and objective milestone prompt. An animated UI stepper tracks this multi-stage synthesis in real time.
+> - **Phase 2: Reduce (Coursework Rubric Synthesis):** A cross-student aggregator feeds all student discovery summaries into **Gemini 4 Argon** or **Gemini 3.8 Flash**, which synthesizes a unified coursework rubric and objective milestone prompt. An animated UI stepper tracks this multi-stage synthesis in real time.
 > - **Phase 3: Map (Milestone Evaluation & Matrix):** Mapped AI jobs evaluate each student video against the rubric. Autonomous tool calling logs milestone durations into the **Student Milestone Matrix** (`StudentMilestoneMatrix.jsx`), featuring interactive sortable heatmaps (<20m green, 20-40m amber, >40m red) and 1-click RFC 4180 CSV export.
-> - **Dynamic AI Lab Task Generator & Practical Tasks System:** Beyond passive evaluation, teachers can author hands-on coursework using Gemini 3.8 Flash. With `extractTaskDemoSteps`, the model analyzes the instructor's demonstration screen recording and extracts milestone steps, duration bounds, and structured rubrics. Student practical video submissions are automatically scored via `evaluateTaskSubmission` in Cloud Tasks, updating `TasksManagementView.jsx` and the student workspace modal with granular step feedback."
+> - **Dynamic AI Lab Task Generator & Practical Tasks System:** Beyond passive evaluation, teachers can author hands-on coursework using **Gemini 4 Argon** or **Gemini 3.8 Flash**. With `extractTaskDemoSteps`, the model analyzes the instructor's demonstration screen recording and extracts milestone steps, duration bounds, and structured rubrics. Student practical video submissions are automatically scored via `evaluateTaskSubmission` in Cloud Tasks, updating `TasksManagementView.jsx` and the student workspace modal with granular step feedback."
 
 ---
 
@@ -683,13 +680,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > "To enable any university or school to deploy this entire platform in minutes, we automated cloud provisioning with **Zero UI Clicks**:
 >
 > - **1-Command Provisioning (`./setup-new-project.sh <PROJECT_ID> <BILLING_ACCOUNT_ID>`):**
->   - Executes 100% Terraform Infrastructure as Code (`terraform/`).
->   - Activates 27 Google Cloud APIs, spins up Cloud Firestore Native in `asia-east2`, creates Cloud Storage buckets with custom CORS, deploys Cloud Run Functions Gen 2, and configures GCIP Identity Platform.
->   - Automatically generates `web-app/.env` and `functions/config.js` with zero manual configuration.
+>    - Executes 100% Terraform Infrastructure as Code (`terraform/`).
+>    - Activates 27 Google Cloud APIs, spins up Cloud Firestore Native in `asia-east2`, creates Cloud Storage buckets with custom CORS, deploys Cloud Run Functions Gen 2, and configures GCIP Identity Platform.
+>    - Automatically generates `web-app/.env` and `functions/config.js` with zero manual configuration.
 > - **24/7 Pre-Seeded Development Sandbox (`IT114115-Demo`):**
->   - The setup script pre-seeds a verified lead teacher account (`teacher1@vtc.edu.hk`) and 5 demo students (`student1`..`student5@stu.vtc.edu.hk`).
->   - Includes 1-click clipboard credential copy buttons in the documentation for instant testing without manual registration.
->   - Pre-seeds 13 multimodal system prompt templates across images, videos, audios, and multilingual captioning.
+>    - The setup script pre-seeds a verified lead teacher account (`teacher1@vtc.edu.hk`) and 5 demo students (`student1`..`student5@stu.vtc.edu.hk`).
+>    - Includes 1-click clipboard credential copy buttons in the documentation for instant testing without manual registration.
+>    - Pre-seeds 13 multimodal system prompt templates across images, videos, audios, and multilingual captioning.
 > - **Dual-Environment Workflow:** Seamless switching between development (`it114115-dev-2026`) and production (`it114115-2627`) via `./switch-env.sh [dev|prod]` with build-time environment guardrails."
 
 ---
@@ -701,11 +698,11 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
 > - **1,580+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 1,246 tests across 133 suites achieving **81.66% line coverage** in Vitest.
+>   - **Level 1 (Frontend):** 1,246+ tests across 133 suites achieving **81.66% line coverage** in Vitest.
 >   - **Level 2 (Backend Cloud Functions):** 267+ tests in `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
 >   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
-> - **100% Gemini 3 Family Standardization:** Standardized entirely on the Gemini 3 family in compliance with Google Cloud 2026 platform standards.
+> - **100% Gemini 4 & 3 Family Standardization:** Standardized entirely on the Gemini 4 & 3 family (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) in compliance with Google Cloud 2026 platform standards.
 > - **Automated Dual-Environment CI/CD:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects via `./deploy.sh [dev|prod]`, with pre-bundling validation in `vite.config.js` to prevent credential cross-contamination."
 
 ---
@@ -730,7 +727,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "To conclude, the Google AI Classroom demonstrates that educators and software engineers do not need to choose between academic integrity, student privacy, and institutional cost.
 >
-> By pairing Google Cloud's world-class **Gemini Enterprise Agent Platform (Gemini 3 suite)** with **browser-native edge computing**, we achieved:
+> By pairing Google Cloud's world-class **Gemini Enterprise Agent Platform (Gemini 4 & 3 suite)** with **browser-native edge computing**, we achieved:
 > - Complete privacy-by-design with zero raw biometrics egress.
 > - 99.8% cost reduction at sub-$0.02 per student.
 > - High-density teacher ergonomics that eliminate cognitive overload.
@@ -738,7 +735,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > The entire project is open-source on GitHub, and our live production environment is accessible right now at `https://it114115-2627.web.app`.
 >
-> Thank you so much for your time today. Let's open the floor for questions and discussion on Edge AI, Google Genkit, and Gemini 3 architecture!"
+> Thank you so much for your time today. Let's open the floor for questions and discussion on Edge AI, Google Genkit, and Gemini 4 & 3 architecture!"
 
 ---
 

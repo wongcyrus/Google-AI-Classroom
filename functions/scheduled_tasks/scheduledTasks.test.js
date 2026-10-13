@@ -531,6 +531,7 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       expect(mockDoc.set).toHaveBeenCalledWith(
         expect.objectContaining({
+          'gemini-4-argon': expect.any(Object),
           'gemini-3.5-flash-lite': expect.any(Object),
           'gemini-3.8-flash': expect.any(Object),
           'cloud-storage': expect.objectContaining({

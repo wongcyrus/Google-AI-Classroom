@@ -223,6 +223,7 @@ async function runSmokeTests() {
     console.log(`\n▶ Test 8: Dynamic Gemini Model Pricing Ingestion`);
     const pricingRef = db.collection('system_config').doc('pricing');
     await pricingRef.set({
+      'gemini-4-argon': { input: 2.00, output: 10.00 },
       'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
       'gemini-3.8-flash': { input: 0.75, output: 3.75 },
       'gemini-3.5-transcribe': { input: 0.50, output: 2.50 },

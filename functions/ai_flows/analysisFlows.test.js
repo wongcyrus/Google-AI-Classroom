@@ -162,6 +162,33 @@ describe('generateWithResilience and Flow Tools', () => {
       expect(generateSpy).toHaveBeenCalledTimes(1);
       generateSpy.mockRestore();
     });
+
+    it('strips sampling parameters (temperature, topP, topK) when calling gemini-4-argon', async () => {
+      const { ai } = await import('./ai.js');
+      const { generateWithResilience } = await import('./analysisFlows.js');
+
+      const mockResponse = { text: 'Gemini 4 Argon reasoning output', usage: { promptTokens: 120, completionTokens: 80 } };
+      const generateSpy = vi.spyOn(ai, 'generate').mockResolvedValueOnce(mockResponse);
+
+      const result = await generateWithResilience(
+        {
+          prompt: 'complex reasoning task',
+          config: { temperature: 0, topP: 0.1, topK: 40, maxOutputTokens: 32768 },
+        },
+        'gemini-4-argon'
+      );
+
+      expect(result.response).toEqual(mockResponse);
+      expect(result.modelUsed).toBe('gemini-4-argon');
+      expect(generateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'complex reasoning task',
+          config: { maxOutputTokens: 32768 },
+        })
+      );
+
+      generateSpy.mockRestore();
+    });
   });
 });
 

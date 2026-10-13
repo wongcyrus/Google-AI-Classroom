@@ -5,6 +5,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 export const DEFAULT_STORAGE_RATE_PER_GIB_MONTH = 0.023; // Google Cloud Storage Standard asia-east2 (Hong Kong)
 
 export const DEFAULT_MODEL_PRICING = {
+  'gemini-4-argon': { input: 2.00, output: 10.00 },
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'gemini-3.7-flash': { input: 0.75, output: 3.75 },

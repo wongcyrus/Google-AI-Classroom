@@ -471,6 +471,7 @@ flowchart TD
 - **Gemini Vision Model Dropdown:**
   - `gemini-3.5-flash-lite` (Fastest / Lowest Cost)
   - `gemini-3.8-flash` (Balanced)
+  - `gemini-4-argon` (Flagship Deep Reasoning)
 - **Require Entire Screen Toggle:** Enforces full desktop capture; rejects single tabs.
 - **MediaPipe Monitoring Mode:** `Hybrid (Client MediaPipe + Cloud Fallback)`, `Client Only`, `Cloud Only`, or `Disabled`.
 - **Gaze Sensitivity Presets:** `Relaxed`, `Standard`, `Strict`, or `Custom`.
@@ -614,7 +615,7 @@ flowchart TD
 - **Video Selection Checkboxes:** Select individual videos or `Select All on Page`.
 - **`📦 Request Selected as ZIP` Button:** Submits background archive job for selected recordings.
 - **`📦 Request All as ZIP` Button:** Submits background archive job for all class videos in range.
-- **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.8-flash`), and trigger analysis for selected videos or the whole class.
+- **`🤖 Select Video Prompt` Button:** Opens modal to choose prompt, pick Gemini model (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-4-argon`), and trigger analysis for selected videos or the whole class.
 - **`📥 Export Video Manifest (Excel)` Button:** Exports video metadata (IDs, student display names, emails, cohorts, timestamps, storage paths) to `.xlsx`.
 - **Google Drive Archival Toolbar:**
   - **Base Folder Name Input:** Textbox allowing custom Google Drive archive root directory (defaults to `Classroom Archives`), persisted in `localStorage`.
@@ -686,7 +687,7 @@ flowchart TD
 
 ### Task Prompt Synthesis Studio
 - **`✨ Synthesize Task Prompt` Button:** Launches multi-stage prompt generation wizard.
-- **Synthesis Model Picker:** `Gemini 3.8 Flash` or `Gemini 3.5 Flash-Lite`.
+- **Synthesis Model Picker:** `Gemini 4 Argon`, `Gemini 3.8 Flash`, or `Gemini 3.5 Flash-Lite`.
 - **Prompt Title & Markdown Editor:** Review and fine-tune AI-synthesized rubric criteria.
 - **`Save to Prompt Library` Checkbox:** Automatically adds synthesized prompt to the global prompt library.
 - **Re-Run Scope Selector:** `Analyze only videos in this job` vs `Analyze all class videos`.
@@ -794,7 +795,7 @@ flowchart TD
 ### Filter Toolbar
 - **Student Dropdown:** Filter by individual student (rendered with resolved display name and cohort) or `All Students`.
 - **Job Type Dropdown:** Single Screenshot Analysis, Multi-Student Grid Analysis, Video Screencast Inspection, Cloud Gaze Fallback, Audio Speech Recognition & Diarization.
-- **Model Dropdown:** Filter by specific Gemini model (`gemini-3.5-flash-lite`, `gemini-3.8-flash`).
+- **Model Dropdown:** Filter by specific Gemini model (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
 - **Date Range Pickers:** `From Date` and `To Date`.
 - **`Reset Filters` Button:** Clears all active filters.
 - **`📥 Export Excel Report` Button:** Downloads comprehensive FinOps audit spreadsheet in OpenXML `.xlsx` format with full student profile enrichment across all sheets.

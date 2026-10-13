@@ -737,6 +737,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                   background: '#fff'
                 }}
               >
+                <option value="gemini-4-argon">gemini-4-argon (Flagship Reasoning &amp; 1M Context)</option>
                 <option value="gemini-3.8-flash">gemini-3.8-flash (Standard Multimodal)</option>
                 <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Cost-Optimized)</option>
               </select>

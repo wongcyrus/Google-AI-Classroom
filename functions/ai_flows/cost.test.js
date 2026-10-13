@@ -25,6 +25,15 @@ describe('calculateCost', () => {
     expect(cost).toBeCloseTo(4.50, 4);
   });
 
+  it('should correctly compute exact USD cost for gemini-4-argon', () => {
+    const usage = {
+      promptTokenCount: 1000000, // 1M tokens @ $2.00
+      candidatesTokenCount: 1000000, // 1M tokens @ $10.00
+    };
+    const cost = calculateCost(usage, 'gemini-4-argon');
+    expect(cost).toBeCloseTo(12.00, 4);
+  });
+
   it('should handle small token amounts with high precision', () => {
     const usage = {
       promptTokenCount: 1000,

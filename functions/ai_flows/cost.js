@@ -1,5 +1,6 @@
 // Default baseline pricing lookup table for Gemini models in USD per 1 million tokens (Input / Output)
 export const MODEL_PRICING = {
+  'gemini-4-argon': { input: 2.00, output: 10.00 },
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'gemini-3.7-flash': { input: 0.75, output: 3.75 },

@@ -816,7 +816,7 @@ const ControlsPanel = ({
                 <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>🖥️ SCREEN (Gemini Vision):</span>
                   <span style={{ fontSize: '0.7rem', padding: '1px 6px', background: '#e0f2fe', color: '#0369a1', borderRadius: '4px', fontWeight: 600 }}>
-                    {selectedAiModel === 'gemini-3.5-flash-lite' ? '⚡ 3.5 Flash-Lite' : '⚡ 3.8 Flash'}
+                    {selectedAiModel === 'gemini-4-argon' ? '🧠 4 Argon' : selectedAiModel === 'gemini-3.5-flash-lite' ? '⚡ 3.5 Flash-Lite' : '⚡ 3.8 Flash'}
                   </span>
                 </div>
                 <div style={{ color: '#64748b', fontSize: '0.7rem', display: 'flex', justifyContent: 'space-between' }}>
@@ -1839,6 +1839,7 @@ const ControlsPanel = ({
                       onChange={(e) => setModalSelectedAiModel(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
                     >
+                      <option value="gemini-4-argon">🧠 Gemini 4 Argon ($2.00 / $10.00 per 1M tokens - Flagship Reasoning)</option>
                       <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash ($0.75 / $3.75 per 1M tokens - Recommended)</option>
                       <option value="gemini-3.5-flash-lite">🚀 Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens - Fastest)</option>
                     </select>

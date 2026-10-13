@@ -45,8 +45,16 @@ export async function generateWithResilience(
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        let effectiveGenerateConfig = generateConfig;
+        if (typeof modelName === 'string' && modelName.startsWith('gemini-4') && generateConfig?.config && typeof generateConfig.config === 'object') {
+          const { temperature: _t, topP: _p, top_p: _tp, topK: _k, top_k: _tk, ...restConfig } = generateConfig.config;
+          effectiveGenerateConfig = {
+            ...generateConfig,
+            config: restConfig,
+          };
+        }
         const response = await ai.generate({
-          ...generateConfig,
+          ...effectiveGenerateConfig,
           model: vertexAI.model(modelName),
         });
         return { response, modelUsed: modelName };

@@ -468,7 +468,7 @@ Stores complete audit trails and billing telemetry for all AI processing jobs.
     *   `studentUid`: (string) The UID of the student associated with the job (or `null` for class-wide grid analyses).
     *   `studentEmail`: (string) The student's email, denormalized for search and reporting.
     *   `jobType`: (string) The category of analysis (`analyzeImage`, `analyzeAllImages`, `analyzeSingleVideo`, `cloudFallbackFaceAnalysis`, `analyzeAudio`, `liveSubtitleStream`, `other`).
-    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.5-transcribe`, `gemini-3.5-transcribe-live`, `gemini-3.1-flash-live-preview`).
+    *   `modelUsed`: (string) Exact Gemini model executed (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-transcribe-preview`).
     *   `durationSeconds`: (number, optional) Live streaming session duration in seconds (for `liveSubtitleStream`).
     *   `prompt`: (string) The prompt or instruction text sent to the model.
     *   `status`: (string) Execution status (`pending`, `processing`, `completed`, `failed`, `blocked-by-quota`).
@@ -535,7 +535,7 @@ Stores information about each class.
     *   `automaticCombine`: (boolean) Optional. Defaults to `true` (`automaticCombine !== false`). When enabled or omitted, student invigilation videos are automatically compiled at lesson conclusion by `handlePostLessonMediaConsolidation`. Set to `false` only to explicitly disable.
     *   `aiQuota`: (number) The AI processing quota for the class in USD (e.g. `10.00` or `50.00`).
     *   `aiUsedQuota`: (number) Cumulative AI expenditure in USD (updated atomically via `onAiJobCreated` Cloud Functions triggers).
-    *   `aiModel`: (string) Gemini model for multimodal analysis (`gemini-3.5-flash-lite`, `gemini-3.8-flash`).
+    *   `aiModel`: (string) Gemini model for multimodal analysis (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
     *   `aiMonitoringMode`: (string) Face and gaze invigilation mode (`hybrid`, `cloud_only`, `client_only`, `disabled`).
     *   `enableClientAi`: (boolean) Whether client-side on-device MediaPipe monitoring is active.
     *   `gazeSensitivity`: (string) Sensitivity preset (`relaxed`, `standard`, `strict`, `custom`).
@@ -1145,7 +1145,7 @@ Stores information about video analysis jobs.
         *   `videoPath`: (string) The path to the video in Cloud Storage.
     *   `prompt`: (string) The AI prompt to be used for the analysis.
     *   `status`: (string) The status of the job (`pending`, `processing`, `completed`, `partial_failure`, `failed`).
-    *   `modelUsed`: (string) Gemini model identifier used for analysis (e.g. `gemini-3.5-flash-lite`, `gemini-3.8-flash`).
+    *   `modelUsed`: (string) Gemini model identifier used for analysis (e.g. `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
     *   `totalVideos`: (number) Total number of unique student videos queued for this job execution.
     *   `processedCount`: (number) Monotonically incremented count of finished video tasks.
     *   `successCount`: (number) Count of successfully analyzed videos.

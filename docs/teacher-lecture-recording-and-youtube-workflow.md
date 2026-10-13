@@ -783,7 +783,8 @@ Classrooms can configure their preferred lecture transcription and subtitle AI m
 
 | AI Model | Recommended Scenario | Strengths & Characteristics | FinOps Cost (1-Hr Audio) |
 | :--- | :--- | :--- | :--- |
-| **`gemini-3.8-flash`** *(Recommended Default)* | 30–90 min technical CS lectures code-switching between Cantonese & English | Flagship multimodal model. Superior long-context attention; eliminates repetition loops; state-of-the-art recognition of CS keywords (DynamoDB, Partition Keys, Consistency, AZ). | ~$0.15 – $0.25 |
+| **`gemini-4-argon`** *(Flagship Deep Reasoning)* | Complex multi-discipline lectures requiring maximum reasoning & nuance | Google's newest flagship reasoning model with 1M context window; highest accuracy for subtle cross-lingual technical code-switching and academic chapter synthesis. | ~$0.40 – $0.65 |
+| **`gemini-3.8-flash`** *(Recommended Default)* | 30–90 min technical CS lectures code-switching between Cantonese & English | Balanced multimodal Flash model. Superior long-context attention; eliminates repetition loops; state-of-the-art recognition of CS keywords (DynamoDB, Partition Keys, Consistency, AZ). | ~$0.15 – $0.25 |
 | **`gemini-3.5-flash-lite`** *(Economical)* | Short clips (< 15 mins) & budget-constrained classes | Ultra-low latency, lowest token cost. Note: can experience repetition on 30+ min mixed audio at low temperatures. | ~$0.05 – $0.09 |
 
 ### 11.1 Why `gemini-3.5-transcribe-preview` Was Replaced

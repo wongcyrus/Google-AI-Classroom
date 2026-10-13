@@ -119,7 +119,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
 
 1. **Student Browser Edge:** MediaPipe FaceLandmarker, LiteRT Whisper Speech Engine, LiteRT Gemma 4 E2B Web Workers.
 2. **Realtime Signaling & Data:** Firestore single-stream status channel + Cloud Storage chunks.
-3. **Cloud Intelligence & Serverless:** Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 3.8 & 3.5).
+3. **Cloud Intelligence & Serverless:** Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 4 Argon, 3.8 Flash & 3.5 Flash-Lite).
 4. **Teacher Command Center:** Live compliance matrix, WebRTC live peek, and broadcast nudges.
 
 ---
@@ -169,7 +169,7 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 ![bg right:60% 95%](images/slide_hybrid_role_resolution.png)
 
 - **The Enterprise Security & FinOps Trilemma:**
-  - Teachers trigger high-quota Gemini 3 reasoning; students only stream telemetry.
+  - Teachers trigger high-quota Gemini 4 & 3 reasoning; students only stream telemetry.
   - On shared school domains (`@school.edu`), accidental teacher grant risks budget drain and exam leaks.
 - **4-Tier Deterministic Resolution Hierarchy:**
   1. **Tier 1 (Pre-Enrollment):** Matches `classes.where('teacherEmails', 'array-contains', email)` $\to$ `teacher`.
@@ -202,22 +202,22 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 
 ---
 
-## 03 | Gemini Enterprise Agent Platform: Gemini 3 Constellation & Model Routing
-### Matching Model Capabilities, Latency Profiles, and Cost Parameters (100% Gemini 3)
+## 03 | Gemini Enterprise Agent Platform: Gemini 4 & 3 Constellation
+### Matching Model Capabilities, Latency Profiles, and Cost Parameters (Gemini 4 + 3 + Gemma 4)
 
 ![bg right:60% 95%](images/slide_gemini_models_matrix.png)
 
-- **`gemini-3.8-flash` (Deep Multimodal Reasoning & Full Lectures):**
+- **`gemini-4-argon` (Flagship Frontier Reasoning & 1M Unified Context — $2.00 / $10.00 per 1M):**
+  - Complex coding & lab rubric evaluation, deep lecture synthesis, and long-decode reasoning up to 1M tokens.
+- **`gemini-3.8-flash` (High-Precision Multimodal & Full Lectures — $0.75 / $3.75 per 1M):**
   - High-throughput cross-student rubric synthesis, whole-class lecture subtitles & chapter markers.
-- **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse & Fallback):**
+- **`gemini-3.5-flash-lite` (Ultra-Low Latency Workhorse & Fallback — $0.30 / $2.50 per 1M):**
   - Rapid single-frame inspection, serverless subtitle multilingual captioning, resilient fallback target.
-- **`gemini-3.1-flash-live-preview` (Live Bidirectional Audio Streaming):**
-  - WebSocket streaming via regional endpoint (`us-central1`), debounced 350ms HUD sync.
-- **`gemini-3.5-transcribe-preview` (Long Audio Reasoning & Diarization):**
+- **`gemini-3.5-transcribe-preview` (Long Audio Reasoning & Diarization — $0.50 / $2.50 per 1M):**
   - Native multi-speaker separation, ambient noise suppression, word-level timestamps.
-- **`LiteRT Gemma 4 E2B & Whisper` (On-Device Edge Proctors):**
-  - WebGPU/WASM in browser Web Workers at **$0 cloud cost** and zero cloud egress.
-- <span class="highlight-green">**100% Gemini 3 Standardized:** Pure modern constellation; zero legacy model dependencies.</span>
+- **`LiteRT Gemma 4 E2B & Whisper` (On-Device Edge Proctors & Subtitles — $0.00):**
+  - WebGPU/WASM in browser Web Workers with explicit desktop download guard and zero cloud egress.
+- <span class="highlight-green">**Gemini 4 & 3 Standardized:** Pure modern frontier constellation; zero legacy model dependencies.</span>
 
 ---
 
@@ -228,16 +228,13 @@ const unsubscribe = onSnapshot(statusDocRef, (snapshot) => {
 
 ```javascript
 // functions/ai_flows/analysisFlows.js: Resilience Interceptor
-async function generateWithResilience(prompt, context, retryCount = 0) {
+async function generateWithResilience(generateConfig, preferredModel = 'gemini-3.8-flash') {
   try {
-    return await ai.generate({ model: 'gemini-3.8-flash', prompt });
+    // Automatically strips legacy sampling params when calling gemini-4-argon
+    return await ai.generate({ ...generateConfig, model: vertexAI.model(preferredModel) });
   } catch (err) {
-    if ((err.status === 503 || err.status === 429) && retryCount < 3) {
-      await sleep(Math.pow(2, retryCount) * 1000 + Math.random() * 500);
-      return generateWithResilience(prompt, context, retryCount + 1);
-    }
-    // Dynamic fallback to lightweight model
-    return await ai.generate({ model: 'gemini-3.5-flash-lite', prompt });
+    // Automatic exponential backoff with jitter + fallback to gemini-3.5-flash-lite
+    return await ai.generate({ ...generateConfig, model: vertexAI.model('gemini-3.5-flash-lite') });
   }
 }
 ```
@@ -474,21 +471,17 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## Real-Time Live Subtitles & Multilingual Captions Engine
-### 3-Tier Multi-Engine: Edge Gemini Nano, Serverless Genkit & Live WebSockets
+### Dual-Engine Architecture: Serverless Genkit (Gemini 3.5/3.8) & Edge LiteRT Gemma 4 E2B
 
 ![bg right:60% 95%](images/slide_live_subtitles_multilingual.png)
 
-- **Tier 1: On-Device Client AI ($0.00 Cloud Cost):**
-  - LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time Speech Recognition.
-  - Chrome Built-in AI (`window.LanguageModel` powered by Gemini Nano).
-  - 100% privacy-compliant, zero cloud egress, and zero token billing.
-- **Tier 2: Serverless Batch Multilingual Subtitling (High Precision):**
-  - Local LiteRT Whisper + Cloud Function `processTeacherSpeechSubtitles`.
-  - Powered by **Gemini 3.5 Flash-Lite** (with 3.8 Flash fallback) generating subtitles in **7 languages**.
-  - Preserves Cantonese-English technical code-switching (`useState`, `Docker`).
-- **Tier 3: Gemini 3.1 Flash Live (Bidirectional WebSocket):**
-  - Regional streaming endpoint (`us-central1`) via Firebase AI Logic WebSocket.
-  - 350ms debounced Firestore synchronization buffer.
+- **Mode 1: 🟣 Server Model (Recommended · 100% Cross-Platform Reliable):**
+  - Local LiteRT Whisper (`openai/whisper-tiny`) + Cloud Function `translateTeacherSpeech`.
+  - Powered by **Gemini 3.5 Flash-Lite / 3.8 Flash** generating subtitles in **7 languages** (~$0.01/lecture).
+  - Preserves Cantonese-English technical code-switching (`useState`, `Docker`) with 350ms debounced Firestore sync.
+- **Mode 2: ⚪ Client Model (LiteRT.js + Gemma 4 E2B · $0.00 Cloud Cost):**
+  - Local LiteRT Whisper STT paired with on-device **LiteRT-LM Gemma 4 E2B (~1.9 GB)** in WebGPU/WASM Web Workers.
+  - **Explicit Opt-In Download & Mobile OOM Guard:** Never auto-downloads on mount; features a dedicated **`⬇️ Download & Load Gemma 4 (~1.9 GB)`** button on desktop ($\ge 4\text{ GB}$ RAM) and automatic cloud fallback on iOS/mobile to prevent WebKit Jetsam tab reloads.
   - Responsive docked bottom-bar & floating draggable HUD overlay for students.
 
 ---
@@ -525,7 +518,7 @@ const processFrame = async (now, metadata) => {
 - **Continuous A/V Hardware-Mixed Recording:**
   - Web Audio API mixes screen audio and microphone into continuous `lecture_audio.webm`.
   - Eliminates VAD cutoffs and fragmentation; uploaded via resumable Cloud Storage chunks.
-- **Whole-Class Voice Ingestion in Gemini 3.8 Flash:**
+- **Whole-Class Voice Ingestion in Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite:**
   - Passes entire 60–90 minute audio stream into 1M context window in Cloud Function `processLectureSubtitles`.
   - Automatically structures lecture chapters (`00:00 - Intro`, `14:20 - Kubernetes Architecture`).
 - **Dual Caption Standards (Integer Millisecond Precision):**
@@ -669,13 +662,13 @@ const processFrame = async (now, metadata) => {
   - Concurrency throttled to 4 workers (`maxDispatchesPerSecond: 2`) with dedicated 300s/2GiB containers, eliminating timeout walls and Gemini 429 spikes.
 - **Phase 2: Reduce (Coursework Rubric Synthesis & Atomic Reducer):**
   - Atomic transactions update master progress (`processedCount`, `totalVideos`).
-  - Cross-student aggregator combines findings into Gemini 3.8 Flash, generating a unified coursework rubric.
+  - Cross-student aggregator combines findings into **Gemini 4 Argon / Gemini 3.8 Flash**, generating a unified coursework rubric.
   - UI displays real-time progress counters (`Progress: X / Y`) and an animated multi-stage progress stepper.
 - **Phase 3: Map (Milestone Evaluation & Subjob Inspection):**
   - Evaluates student videos against synthesized rubric; autonomous tool calls log milestones into `StudentMilestoneMatrix.jsx`.
   - Color-coded heatmap duration badges with RFC 4180 CSV export and `JobResultModal` featuring default word wrapping (`Wrap: ON/OFF`).
 - **Dynamic AI Lab Task Generator & Practical Tasks System:**
-  - **`extractTaskDemoSteps`:** Analyzes instructor lab demo video with Gemini 3.8 Flash, extracting milestone steps, durations, and structured grading rubrics.
+  - **`extractTaskDemoSteps`:** Analyzes instructor lab demo video with Gemini 4 Argon / 3.8 Flash, extracting milestone steps, durations, and structured grading rubrics.
   - **`evaluateTaskSubmission`:** Cloud Tasks worker automatically scores student hands-on screen recordings against rubrics with structured step feedback.
   - Integrated with **`TasksManagementView.jsx`**, **`StudentTaskWorkspaceModal.jsx`**, and **`TaskGradingMatrixView.jsx`**.
 
@@ -694,7 +687,7 @@ const processFrame = async (now, metadata) => {
 | **Active Presence** | High-Egress Polling Streams | $0.00 Question Bank / Tasks | **-100% Idle Load** |
 | **Total Cost / Student** | **$15.00 – $25.00** | **<$0.02** | **99.8% Reduction** |
 
-- **Live Google Cloud Billing Catalog API:** Ingests dynamic SKU rates into `system_config/pricing`.
+- **Live Google Cloud Billing Catalog API:** Ingests dynamic SKU rates into `system_config/pricing` across Gemini 4 Argon (`$2.00 / $10.00`), 3.8 Flash (`$0.75 / $3.75`), and 3.5 Flash-Lite (`$0.30 / $2.50`).
 - **Bingo FinOps:** $0.00 local Question Bank mode vs $0.000075/check 1-to-many Teacher Broadcast.
 
 ---
@@ -766,17 +759,17 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## 09 | DevSecOps & Production Reliability Engineering
-### Multi-Tier Automated Testing Pyramid (>1,580 Tests) & 100% Gemini 3 Standard
+### Multi-Tier Automated Testing Pyramid (>2,070 Tests) & Gemini 4 & 3 Frontier Standard
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **1,580+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 1,246 unit tests across 133 suites in Vitest (81.66% line coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 267+ tests in `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
+- **2,070+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 1,400+ unit tests across 140+ suites in Vitest (~90% line coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 600+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios (student self-read, exam shielding & attendance adjustment isolation).
   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
-- **100% Gemini 3 Family Standardization:**
-  - 100% standardized on Gemini 3 architecture in compliance with Google Cloud 2026 platform standards.
+- **Gemini 4 & 3 Frontier Family Standardization:**
+  - Standardized on **Gemini 4 Argon**, **Gemini 3.8 Flash**, **Gemini 3.5 Flash-Lite**, and **Gemma 4 E2B** in compliance with Google Cloud 2026 platform standards.
 - **Automated Dual-Environment CI/CD:**
   - Development (`it114115-dev-2026`) & Production (`it114115-2627`) via `./deploy.sh [dev|prod]`.
 
@@ -807,4 +800,4 @@ const processFrame = async (now, metadata) => {
   - Google Developer Expert in GCP & AI/ML
   - Senior Lecturer, HKIIT / VTC Hong Kong
   - `cywong@vtc.edu.hk`
-- **Questions & Discussion:** Edge AI, Google Genkit & Gemini 3 Architecture
+- **Questions & Discussion:** Edge AI, Google Genkit & Gemini 4 / 3 Architecture

@@ -37,10 +37,8 @@ flowchart TD
     end
 
     subgraph RuntimeConsumers ["4. Multimodal Runtime Inference Engines"]
-        ClassDoc -->|"Snapshot Listener"| EdgeGemma["Edge Web Worker (litertGemma.worker.js)\nLiteRT-LM Gemma 4 E2B Voice Intent Proctor"]
-        ClassDoc -->|"Snapshot Listener"| ChromeAI["Chrome Built-in AI (chromeLanguageModel.js)\nwindow.subtitle engine (Gemini Nano)"]
-        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: processTeacherSpeechSubtitles\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite Server Speech Recognition/multilingual captioning"]
-        ClassDoc -->|"useTeacherLiveSubtitles Hook"| GeminiLive["Gemini Live WebSocket Stream\n(firebase/ai: gemini-3.1-flash-live-preview)"]
+        ClassDoc -->|"Snapshot Listener"| EdgeGemma["Edge Web Worker (litertGemma.worker.js)\nLiteRT-LM Gemma 4 E2B Voice Intent & Client Subtitle Translator"]
+        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: translateTeacherSpeech / processTeacherSpeechSubtitles\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite / 3.8 Flash Server Subtitle Engine"]
         ClassDoc -->|"analyzeFaceFallbackFlow"| CFVision["Cloud Function: analyzeFaceFallbackFlow\n(functions/ai_flows/analysisFlows.js)\nGemini Fallback Face & Gaze Invigilation"]
         ClassDoc -->|"resolveBingoQuestion"| CFBingo["Cloud Function: resolveBingoQuestion\n(functions/ai_flows/bingoFlows.js)\nGemini Attention Verification MCQ"]
         ClassDoc -->|"analyzeAudioChunk & summarizeSessionAudio"| CFAudio["Cloud Functions: analyzeAudioChunk & audioFlows\n(functions/ai_flows/audioFlows.js)\nAcoustic Invigilation & Discussion Summary"]
@@ -48,10 +46,9 @@ flowchart TD
     end
 
     subgraph Distribution ["5. Real-Time Student Delivery & Display"]
-        ChromeAI --> SubChannel["Firestore: classes/{classId}/liveSubtitles/current"]
+        EdgeGemma --> SubChannel["Firestore: classes/{classId}/liveSubtitles/current"]
         CFSubtitles --> SubChannel
-        GeminiLive --> SubChannel
-        SubChannel --> StudentOverlay["Student Viewport (LiveSubtitleOverlay.jsx)\nBilingual Subtitle Display (Original + multilingual captioning)"]
+        SubChannel --> StudentOverlay["Student Viewport (LiveSubtitleOverlay.jsx)\nBilingual Subtitle Display (Original + Multilingual Captioning)"]
     end
 ```
 
@@ -217,7 +214,7 @@ sequenceDiagram
   - `lectureRecordingPrompt`: Custom or library prompt (`{ id, name, promptText }`).
   - `isLectureSubtitlesEnabled`: Boolean toggle to enable/disable automated Gemini Speech Recognition & CC synthesis.
   - `lectureTargetLanguages`: Array of target language codes (`['en', 'zh-Hant', 'zh-Hans']`, etc.).
-  - `lectureAiModel`: Gemini model for full-session Speech Recognition (`gemini-3.8-flash` or `gemini-3.5-flash-lite`).
+  - `lectureAiModel`: Gemini model for full-session Speech Recognition (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`).
 - **Configuration Surfaces**:
   1. [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) Section 8 (*Lecture Recording, Subtitles & AI multilingual captioning*).
   2. [`LectureRecordingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.jsx) via **"Regenerate Subtitles (CC)"** on-demand modal.

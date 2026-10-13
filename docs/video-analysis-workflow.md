@@ -289,12 +289,12 @@ The workflow mirrors the classic distributed computing MapReduce pattern across 
 
 1. **Map Phase 1 (Parallel Video Discovery & Observation)**:
    - **Input**: All student screen recording videos ($V_1, V_2, \dots, V_n$) recorded during a practical lab session.
-   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Gemini Enterprise Agent Platform Multimodal Vision API (`gemini-3.8-flash` or `gemini-3.5-flash-lite`).
+   - **Mapping Operation**: A master analysis job (`videoAnalysisJobs`) fans out parallel child AI jobs (`aiJobs`) to Google Gemini Enterprise Agent Platform Multimodal Vision API (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`).
    - **Output**: Each video is processed independently, extracting qualitative student observations, terminal commands executed, error messages encountered, and milestone attempts into structured text summaries saved in `aiJobs`.
 
 2. **Reduce Phase (Cross-Student Intelligence Aggregation & Prompt Synthesis)**:
    - **Input**: The collection of all completed child `aiJob` summaries from Phase 1.
-   - **Reduction Operation**: The `generateLabTaskPrompt` Cloud Function aggregates all $N$ student summaries into a unified cross-student context payload. Gemini 3.8 Flash acts as the **Reducer**:
+   - **Reduction Operation**: The `generateLabTaskPrompt` Cloud Function aggregates all $N$ student summaries into a unified cross-student context payload. Gemini 4 Argon or Gemini 3.8 Flash acts as the **Reducer**:
      - Analyzes class-wide behavioral patterns, common error roadblocks, and genuine milestones reached.
      - Synthesizes an **Objective Lab Milestone Rubric** and **Performance Evaluation Prompt**.
      - Automatically embeds explicit system directives and task names tailored for the `recordTaskDuration` tool.
@@ -320,10 +320,10 @@ flowchart TD
     end
 
     subgraph MapPhase1 [Phase 1: MAP - Video Exploration & Activity Discovery]
-        M1[Gemini 3.8 Vision Worker A]
-        M2[Gemini 3.8 Vision Worker B]
-        M3[Gemini 3.8 Vision Worker C]
-        Mn[Gemini 3.8 Vision Worker N]
+        M1[Gemini Vision Worker A]
+        M2[Gemini Vision Worker B]
+        M3[Gemini Vision Worker C]
+        Mn[Gemini Vision Worker N]
 
         V1 --> M1
         V2 --> M2
@@ -348,7 +348,7 @@ flowchart TD
         S3 --> Agg
         Sn --> Agg
 
-        GeminiReducer[Gemini 3.8 Flash Prompt Synthesizer]
+        GeminiReducer[Gemini 4 Argon / 3.8 Flash Prompt Synthesizer]
         Agg --> GeminiReducer
 
         RubricPrompt[Synthesized Objective Lab Rubric Prompt<br/>- Task Milestones Defined<br/>- Rubric Scoring Criteria<br/>- recordTaskDuration Directives]
@@ -417,7 +417,7 @@ sequenceDiagram
     actor Teacher
     participant UI as Web App (VideoAnalysisJobs.jsx)
     participant Syn as generateLabTaskPrompt (Callable Cloud Function)
-    participant AI as Gemini Enterprise Agent Platform (Gemini 3.8 Flash)
+    participant AI as Gemini Enterprise Agent Platform (Gemini 4 Argon / 3.8 Flash)
     participant FS as Firestore (aiJobs & performanceMetrics)
     participant Runner as processVideoAnalysisJob (Firestore Trigger)
 
@@ -440,7 +440,7 @@ sequenceDiagram
     UI->>Syn: Invokes generateLabTaskPrompt({ jobId: 'job1' })
     Syn->>FS: Queries all completed child `aiJobs` for `masterJobId == 'job1'`
     Syn->>Syn: Aggregates student observation summaries into unified context
-    Syn->>AI: Synthesizes class observations with Gemini 3.8 Flash
+    Syn->>AI: Synthesizes class observations with Gemini 4 Argon / 3.8 Flash
     AI-->>Syn: Objective Lab Rubric (Milestones, Rubrics, Tool Directives)
     Syn-->>UI: Returns synthesized Markdown prompt
     UI->>Teacher: Opens review modal with editable prompt, model selector & scope
@@ -468,7 +468,7 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | **Primary Goal** | Ground-truth activity discovery from raw screen video | Synthesize objective rubric & milestones across cohort | Evaluate individual competencies against unified rubric |
 | **Target Dataset** | $N$ Student MP4 screen recordings | $N$ Text summaries from completed child `aiJobs` | $N$ Student MP4 screen recordings + Synthesized Rubric |
-| **Gemini Model** | `gemini-3.8-flash` or `gemini-3.5-flash-lite` | `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-3.8-flash` (Deep Multimodal Reasoning) |
+| **Gemini Model** | `gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite` | `gemini-4-argon` or `gemini-3.8-flash` (High-reasoning synthesis) | `gemini-4-argon` or `gemini-3.8-flash` (Deep Multimodal Reasoning) |
 | **Execution Layer** | Cloud Run Function (`processVideoAnalysisJob`) | Callable Cloud Function (`generateLabTaskPrompt`) | Cloud Run Function (`processVideoAnalysisJob`) |
 | **Tool Calling** | Disabled or generic invigilation tools | None (Pure prompt engineering & reasoning) | Enabled: `recordTaskDuration` tool execution |
 | **Firestore Reads** | `videoJobs` collection | `aiJobs` sub-collection | `videoJobs` collection + synthesized prompt |

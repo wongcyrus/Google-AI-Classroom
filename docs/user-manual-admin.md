@@ -53,7 +53,7 @@ The platform operates on a serverless, zero-maintenance Google Cloud and Firebas
 ```
 
 ### Key Infrastructure Components
-- **Gemini Enterprise Agent Platform / Google GenAI SDK:** Real-time multimodal analysis using Gemini 3 Series (`gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-3.5-transcribe-preview`).
+- **Gemini Enterprise Agent Platform / Google GenAI SDK:** Real-time multimodal analysis using the Gemini 4 & 3 Series (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-transcribe-preview`).
 - **Cloud Functions for Firebase (Gen 2):** Eventarc, HTTPS callable, and scheduled triggers distributed across 7 isolated codebases running on Google Cloud Run.
 - **Cloud Tasks:** Serverless HTTP retry queue for Bingo presence retries with zero idle compute cost.
 - **Cloud Storage:** High-capacity object storage with automated lifecycle rules for screenshot and MP4 video retention.
@@ -349,9 +349,10 @@ Every 24 hours, Cloud Scheduler triggers `syncGeminiPricing` to ensure token cal
 
 | Model ID | Input Cost (per 1M Tokens) | Output Cost (per 1M Tokens) | Primary Use Case |
 | :--- | :--- | :--- | :--- |
-| `gemini-3.5-flash-lite` | **$0.075** | **$0.30** | Frame scanning, question generation, gaze fallbacks. |
-| `gemini-3.8-flash` | **$0.15** | **$0.60** | Automated rubric synthesis & video evaluation. |
-| `gemini-3.5-transcribe-preview` | **$0.002** (per audio minute) | — | Multi-speaker diarization and speech Speech Recognition. |
+| `gemini-4-argon` | **$2.00** | **$10.00** | Flagship deep reasoning, complex rubric synthesis, and full lecture transcription. |
+| `gemini-3.8-flash` | **$0.75** | **$3.75** | Balanced rubric synthesis, video evaluation, and lecture chapter generation. |
+| `gemini-3.5-flash-lite` | **$0.30** | **$2.50** | Fast frame scanning, live speech subtitles, question generation, and gaze fallbacks. |
+| `gemini-3.5-transcribe-preview` | **$0.15** | **$0.60** | Multi-speaker diarization and speech recognition. |
 
 ### Quota Enforcement
 - Every class has a configurable budget limit (default: **$10.00**).

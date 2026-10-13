@@ -643,6 +643,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
               onChange={(e) => setSelectedModel(e.target.value)}
               style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--color-border, #cbd5e1)', fontSize: '0.88rem' }}
             >
+              <option value="gemini-4-argon">🧠 Gemini 4 Argon ($2.00 / $10.00 per 1M tokens - Flagship Reasoning)</option>
               <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash ($0.75 / $3.75 per 1M tokens - Recommended)</option>
               <option value="gemini-3.5-flash-lite">🚀 Gemini 3.5 Flash-Lite ($0.30 / $2.50 per 1M tokens)</option>
             </select>

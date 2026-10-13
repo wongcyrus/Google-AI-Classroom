@@ -2934,8 +2934,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         <div className="form-group">
           <label>Preferred Gemini AI Model</label>
           <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}>
-            <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (High Accuracy & Multimodal Reasoning — $0.75 / $3.75 per 1M)</option>
-            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest & Ultra-Low Cost — $0.30 / $2.50 per 1M)</option>
+            <option value="gemini-4-argon">🧠 Gemini 4 Argon (Flagship Reasoning &amp; 1M Context — $2.00 / $10.00 per 1M)</option>
+            <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (High Accuracy &amp; Multimodal Reasoning — $0.75 / $3.75 per 1M)</option>
+            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest &amp; Ultra-Low Cost — $0.30 / $2.50 per 1M)</option>
           </select>
           <p className="input-hint">Default Gemini model used for live invigilation and video analyses for this class.</p>
         </div>
@@ -3907,6 +3908,36 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
                   Ultra-low cost high-throughput multimodal processing with solid speech recognition accuracy.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: lectureAiModel === 'gemini-4-argon' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: lectureAiModel === 'gemini-4-argon' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="lectureAiModel"
+                value="gemini-4-argon"
+                checked={lectureAiModel === 'gemini-4-argon'}
+                onChange={() => setLectureAiModel('gemini-4-argon')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🧠 Gemini 4 Argon (Flagship Reasoning)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Frontier reasoning &amp; 1M unified context window for complex multi-step lectures &amp; deep technical analysis.
                 </div>
               </div>
             </label>

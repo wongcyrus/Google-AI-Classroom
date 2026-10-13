@@ -289,8 +289,9 @@ In **Class Settings (`⚙️ Settings`)**, configure the automated proctoring in
   - `Screen Only`: For coding labs without webcam requirements.
   - `Webcam Only`: For oral presentations or interviews.
 - **Vision Model Selection:**
-  - `gemini-3.5-flash-lite`: Lowest latency and lowest token cost ($0.075/1M tokens); ideal for continuous frame scanning.
-  - `gemini-3.8-flash`: Balanced multi-modal model for nuanced screen and code reading.
+  - `gemini-3.5-flash-lite`: Lowest latency and lowest token cost ($0.30 / $2.50 per 1M tokens); ideal for continuous frame scanning.
+  - `gemini-3.8-flash`: Balanced multi-modal model ($0.75 / $3.75 per 1M tokens) for nuanced screen and code reading.
+  - `gemini-4-argon`: Flagship deep reasoning model ($2.00 / $10.00 per 1M tokens) with tunable thinking for complex coursework and full lectures.
 
 ### Biometric Gaze & Face Tracking
 - **MediaPipe Monitoring Mode:** Choose `Hybrid (Client MediaPipe + Cloud Fallback)`, `Client Only`, `Cloud Only`, or `Disabled`.
@@ -332,7 +333,7 @@ flowchart LR
     end
 
     subgraph Runtime ["Execution Points"]
-        E1["Live Subtitle Engines\n(Client / CF / Gemini Live)"]
+        E1["Live Subtitle Engines\n(Server Gemini / Client Gemma 4)"]
         E2["LiteRT Gemma 4 E2B\n(Edge Web Worker)"]
         E3["Cloud Gemini Vision\n(Fallback Invigilation)"]
         E4["Bingo Presence Engine\n(Question Bank & Challenges)"]
@@ -849,7 +850,7 @@ Navigate to the **Video Analysis Jobs** subtab to run asynchronous rubric evalua
 ### Two-Stage Lab Task Prompt Synthesis
 Rather than writing grading rubrics by hand, let Gemini synthesize rubrics from actual student recordings:
 1. In the Video Analysis Jobs tab, click **`✨ Synthesize Task Prompt`**.
-2. Select your analysis engine: **Gemini 3.8 Flash** or **Gemini 3.5 Flash-Lite**.
+2. Select your analysis engine: **Gemini 4 Argon**, **Gemini 3.8 Flash**, or **Gemini 3.5 Flash-Lite**.
 3. Gemini inspects student video observations across the class cohort and generates:
    - Canonical task milestones (e.g., *Task 1: GitHub MFA Setup*, *Task 2: AWS CloudShell Execution*).
    - Expected technical tools and commands.
@@ -885,7 +886,7 @@ flowchart TD
     end
 
     subgraph Synthesis ["Stage 2A: Gemini Task Rubric Synthesis Studio"]
-        OBS --> G38["Gemini 3.8 Flash Synthesizer"]
+        OBS --> G38["Gemini 4 Argon / 3.8 Flash Synthesizer"]
         G38 --> SYN["Synthesized Output:
         - Canonical Milestones & Sub-tasks
         - Expected Commands & Software
@@ -983,7 +984,7 @@ Navigate to **`📊 Analytics` $\to$ `AI Cost`** ([`AiCostReportView.jsx`](file:
 - **Unit Economics:** Average cost per evaluated job (e.g., *$0.0034 / job*).
 
 ### Spend Distribution Graphs
-- **By Gemini Model:** Visual color bars tracking spend across `gemini-3.5-flash-lite` and `gemini-3.8-flash`.
+- **By Gemini Model:** Visual color bars tracking spend across `gemini-4-argon`, `gemini-3.8-flash`, and `gemini-3.5-flash-lite`.
 - **By Job Category:** Spend breakdown across single screenshots, multi-student grids, video screencasts, and audio transcription.
 
 ### Student AI Consumption Table

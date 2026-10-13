@@ -37,6 +37,7 @@ export const getJobTypeLabel = (jobType) => {
 };
 
 export const MODEL_COLORS = {
+  'gemini-4-argon': '#6366f1',
   'gemini-3.5-flash-lite': '#0ea5e9',
   'gemini-3.8-flash': '#a855f7',
   'gemini-3.7-flash': '#8b5cf6',
@@ -140,6 +141,7 @@ const AiCostReportView = ({
   // Compute dynamic models present in active jobs + common supported models
   const availableModels = useMemo(() => {
     const modelSet = new Set([
+      'gemini-4-argon',
       'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
       'gemini-3.7-flash',

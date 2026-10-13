@@ -97,6 +97,7 @@ describe('useCloudPricing Hook', () => {
     expect(result.current.getModelRate('gemini-3.8-flash')).toEqual({ input: 0.80, output: 4.00 });
 
     // Fetches default baseline rate for un-synced model
+    expect(result.current.getModelRate('gemini-4-argon')).toEqual({ input: 2.00, output: 10.00 });
     expect(result.current.getModelRate('gemini-3.1-flash-live-preview')).toEqual({ input: 0.60, output: 2.50 });
 
     // Handles composite two-stage pipeline rate

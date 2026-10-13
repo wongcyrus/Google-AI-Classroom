@@ -3,7 +3,7 @@
 # Google AI Classroom
 
 [![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com)
-[![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_3_Suite-blue?logo=google)](https://cloud.google.com)
+[![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_4_&_3_Suite-blue?logo=google)](https://cloud.google.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Functions_Gen_2_|_Firestore_|_Storage-FFA611?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![React 18](https://img.shields.io/badge/React_18-Vite_SPA-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Tests](https://img.shields.io/badge/Tests-2070+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
@@ -22,13 +22,13 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 * 📱 **Dynamic QR Biometric Attendance, Shared Lab PC Passkeys, Roster Emergency Pre-Granting & Permanent Hardware Exemption Toggle**: Zero-password mobile WebAuthn passkeys powered by dynamic rotating HMAC-SHA256 encrypted QR codes on projector screens for instant 1-tap phone biometric attendance, passwordless 15s rotating QR sign-in for teachers and students on shared lab PCs, anti-proxy 1-Student = 1-Phone hardware locks with restricted student self-unlinking, timetable-driven auto-resolution on the desktop gate, multi-class real-time bypass unlocks, proactive roster emergency bypass pre-granting (`[ ⚡ Temp Bypass ]`), and permanent hardware passkey exemption with double-confirmation alerts and 1-click revocation toggling (`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]`) for students with incompatible smartphones (Huawei/non-GMS).
 * 👥 **Enrolled Class Roster & Student Custom Properties Management**: Unified central student repository (`studentDirectory`) and real-time enrolled student roster with instant search, passkey status inspection, and student-specific custom properties tool supporting dynamic spreadsheet column deletion sync (`FieldValue.delete()`) and 1-click UI attribute removal.
 * 🎙️ **Acoustic Invigilation & Rolling Diarization**: Dual-mode audio architecture featuring client-side silence suppression (>80% bandwidth saved) paired with cloud-side `gemini-3.5-transcribe-preview` multi-speaker diarization and word-level timestamps.
-* 🎬 **Two-Stage Map-Reduce-Map Lab Rubric Synthesis**: Discovers cohort-wide lab milestones and friction points using Gemini 3.7 Vision, automatically synthesizes structured rubrics with Gemini 3.8 Flash, and executes high-precision batch re-analysis.
+* 🎬 **Two-Stage Map-Reduce-Map Lab Rubric Synthesis**: Discovers cohort-wide lab milestones and friction points using Gemini 4 Argon / Gemini 3.8 Flash / Gemini 3.5 Flash-Lite Vision, automatically synthesizes structured rubrics with Gemini 4 Argon or Gemini 3.8 Flash, and executes high-precision batch re-analysis.
 * 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement, and 1-click Microsoft Word (`.docx`) incident dossier exports complete with embedded side-by-side screen/webcam evidence.
 * 🎯 **"Bingo" Active Presence Verification**: Interactive challenge engine with 3 FinOps cost modes and a cheat-resistant Two-Strike attendance deduction system scheduled through serverless **Google Cloud Tasks**.
 * 🖥️ **Teacher Screen Broadcast & Anonymous Public Presentation Mode**: High-efficiency instructor screen sharing (`720p` @ `3.0s` default) with pure frame streaming avoiding WebRTC mesh CPU limits. Features an **Anonymous Public Presentation Mode** allowing conference and seminar audiences to view live screens and real-time multilingual subtitles on mobile devices by scanning a projected QR code with a 4-digit PIN—all while maintaining complete class privacy.
-* 🌐 **Multimodal Live Subtitles & Multilingual Captions**: Selectable multilingual captioning modes powered by modern `AudioWorkletNode` background resampling with comprehensive Cantonese colloquialism and code-switching multilingual captioning into English and Standard Chinese, subject domain glossaries, and custom prompt library templates.
+* 🌐 **Multimodal Live Subtitles & Multilingual Captions**: Dual-engine captioning modes (**🟣 Server Model** via Cloud Functions `translateTeacherSpeech` / Gemini 3.5 Flash-Lite & 3.8 Flash, and **⚪ Client Model** via on-device LiteRT Whisper + Gemma 4 E2B with explicit opt-in download and mobile OOM protection), powered by `AudioWorkletNode` background resampling with comprehensive Cantonese colloquialism and code-switching multilingual captioning into 7 languages, subject domain glossaries, and custom prompt library templates.
 * 📹 **Automatic Lecture Recording Reconciler & Cloud Storage Sync**: Built-in cloud reconciliation function that scans and links un-finalized recordings with existing Cloud Storage media upon network reconnection or page refresh.
-* 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard.
+* 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard across Gemini 4 Argon (`$2.00 / $10.00`), Gemini 3.8 Flash (`$0.75 / $3.75`), and Gemini 3.5 Flash-Lite (`$0.30 / $2.50`).
 
 ---
 
@@ -37,7 +37,7 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 ```mermaid
 graph LR
     subgraph "Student & Teacher Browsers"
-        Client["Web App (React + Vite)<br/>• MediaPipe Face Mesh (Edge)<br/>• LiteRT Whisper & Gemma (Edge)<br/>• WebRTC 2-Way Intercom"]
+        Client["Web App (React + Vite)<br/>• MediaPipe Face Mesh (Edge)<br/>• LiteRT Whisper & Gemma 4 (Edge)<br/>• WebRTC 2-Way Intercom"]
     end
 
     subgraph "Firebase Serverless Platform"
@@ -52,7 +52,7 @@ graph LR
     end
 
     subgraph "Multimodal AI"
-        GeminiPlatform["Gemini Enterprise Agent Platform<br/>(Gemini 3 Suite)<br/>• Gemini 3.8 Flash<br/>• Gemini 3.5 Flash-Lite<br/>• Transcribe Preview"]
+        GeminiPlatform["Gemini Enterprise Agent Platform<br/>(Gemini 4 & 3 Suite)<br/>• Gemini 4 Argon<br/>• Gemini 3.8 Flash<br/>• Gemini 3.5 Flash-Lite<br/>• Transcribe Preview"]
     end
 
     Client <--> Auth
@@ -79,7 +79,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | Category | Document | Description |
 | :--- | :--- | :--- |
 | **Master Index & Discrepancies** | 🧭 **[Documentation-to-Code Master Index](./docs/documentation-code-index.md)** | Two-way cross-reference linking every markdown paragraph and diagram to source code, with a drift audit registry. |
-| **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: 5-tier crash resilience, WebM duration healing, Gemini 3 migration, multi-location architecture, Bingo 1-min scheduler & FinOps, and Live Subtitles. |
+| **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: Gemini 4 Argon integration, explicit Gemma 4 opt-in download & iOS memory guards, 5-tier crash resilience, WebM duration healing, and Live Subtitles. |
 | **User Manuals & UI Catalogs** | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | Live grid invigilation, WebRTC peek & talkback, Bingo challenges, rubric studio, and incident dossiers. |
 | | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, HUD indicators, and self-service portal. |
 | | 🚀 **[Student Registration & Passkey Onboarding Guide](./docs/student-registration-guide.md)** | Step-by-step account sign-up, iPhone Safari & Android Chrome passkey pairing, daily QR scan login, and troubleshooting. |
@@ -94,12 +94,12 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | | ⏱️ **[Student View Logic & Timetable Engine](./docs/student-view-logic.md)** | Schedule-driven class matching, multi-stream capture, edge Web Workers, and live exam mode. |
 | **AI, Acoustic & Media Processing** | 🧠 **[Teacher AI Prompt & Domain Configuration](./docs/teacher-ai-prompt-configuration-guide.md)** | Universal prompt library, dual-surface configuration, real-time live modal sync, and multi-modal inference trace. |
 | | 🎙️ **[Audio Invigilation & Voice AI Architecture](./docs/audio-invigilation-and-transcription.md)** | Dual-mode acoustic processing: LiteRT edge Whisper/Gemma and rolling window cloud diarization. |
-| | 🌐 **[Live Subtitles & Multilingual Captions](./docs/live-subtitles-and-multilingual-captions.md)** | 3-tier selectable subtitle pipeline (LiteRT + Chrome Nano, Cloud Function Gemini 3.8 Flash, Firebase AI Logic Gemini Live WebSocket) with 350ms debounced Firestore delivery. |
+| | 🌐 **[Live Subtitles & Multilingual Captions](./docs/live-subtitles-and-multilingual-captions.md)** | Dual-engine selectable subtitle pipeline (Server Model via Cloud Function Gemini 3.5 Flash-Lite / 3.8 Flash, Client Model via LiteRT Whisper + Gemma 4 E2B with explicit opt-in download) and 350ms debounced Firestore delivery. |
 | | 🎥 **[Teacher Lecture Recording & YouTube CC](./docs/teacher-lecture-recording-and-youtube-workflow.md)** | Sovereign dual-stream recording (WebM + Opus), 5-tier crash resilience with 10s IndexedDB disk buffering, automated multi-clip merging with fuzzy schedule tolerance (-45m early / +60m overrun), gap calculation, and uninterrupted Gemini multilingual CC & YouTube chapters. |
 | | ☁️ **[Google Drive Hierarchical Backup & Lesson Naming](./docs/google-drive-backup-and-lesson-naming.md)** | Standardized 3-tier lesson naming resolution, least-privilege `drive.file` scope, in-memory folder lookup caching, and practical task student video backup directly from the grading matrix. |
 | | 📦 **[Batch Media Export & ZIP Audit](./docs/batch-media-export-and-zip-audit.md)** | Technical audit of legacy server-side ZIP exports (`processZipJob.js`), in-memory `/tmp` double-storage traps, 540s timeout limits, and Google Drive archival comparison. |
 | | 🎞️ **[Image-to-Video Compilation Pipeline](./docs/image-to-video-compilation.md)** | Discrete screenshot upload, FFmpeg H.264 MP4 encoding, SVG timestamp overlays, and exam tagging. |
-| | 🎬 **[Video Analysis & Map-Reduce Prompt Synthesis](./docs/video-analysis-workflow.md)** | Gemini 3.7 vision discovery, Gemini 3.8 Flash rubric synthesis studio, and milestone matrix generation. |
+| | 🎬 **[Video Analysis & Map-Reduce Prompt Synthesis](./docs/video-analysis-workflow.md)** | Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite vision discovery, rubric synthesis studio, and milestone matrix generation. |
 | | 🔄 **[Data Retention & Media Lifecycle](./docs/data-retention-and-storage-lifecycle.md)** | Native Firestore TTL expiration, GCS event-driven cleanup triggers, and cascading class deletion. |
 | **DevOps, Setup & Testing** | 🚀 **[Complete Setup & Customization Guide](./docs/setup-instructions.md)** | Step-by-step institutional deployment, automated 1-click script, and multi-school customization. |
 | | 👥 **[Demo Accounts & Development Sandbox](./docs/demo-accounts-and-sandbox.md)** | Pre-seeded accounts (`IT114115-Demo`), 24/7 class configuration, and sandbox credentials. |

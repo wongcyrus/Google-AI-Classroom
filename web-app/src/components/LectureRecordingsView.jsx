@@ -879,7 +879,7 @@ export default function LectureRecordingsView({
     setTimeout(() => setCopyFeedback(''), 2500);
   };
 
-  const ALLOWED_REGEN_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+  const ALLOWED_REGEN_MODELS = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
   // Open modal to configure prompt, languages, and model for subtitle generation
   const handleOpenRegenModal = (rec = selectedRecording) => {
@@ -2858,6 +2858,34 @@ VITE_GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleuserconte
                 <div>
                   <div style={{ fontWeight: 600 }}>🚀 Gemini 3.5 Flash-Lite</div>
                   <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Economical &amp; Fast Multimodal Output</div>
+                </div>
+              </label>
+
+              <label
+                onClick={() => setRegenModel('gemini-4-argon')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: regenModel === 'gemini-4-argon' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                  background: regenModel === 'gemini-4-argon' ? '#eff6ff' : '#ffffff',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="regenModel"
+                  value="gemini-4-argon"
+                  checked={regenModel === 'gemini-4-argon'}
+                  onChange={() => setRegenModel('gemini-4-argon')}
+                  style={{ accentColor: '#3b82f6' }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600 }}>🧠 Gemini 4 Argon</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Flagship Reasoning &amp; 1M Context</div>
                 </div>
               </label>
             </div>
