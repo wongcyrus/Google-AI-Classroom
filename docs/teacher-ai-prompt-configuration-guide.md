@@ -96,21 +96,13 @@ sequenceDiagram
 ```
 
 #### Code Execution Paths:
-1. **Server Model Mode ([`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js))**:
-   - `processTeacherSpeechSubtitles` extracts `classData.subtitlePrompt?.promptText` and `classData.subjectDomain`.
-   - If a custom prompt is set, it injects the custom instructions directly into the Gemini prompt while maintaining strict JSON schema output:
-     ```javascript
-     const domainContext = classData.subjectDomain || 'General Studies & Interdisciplinary';
-     const basePrompt = classData.subtitlePrompt?.promptText 
-       ? `${classData.subtitlePrompt.promptText}\n\nAcademic Subject Domain Context: "${domainContext}".`
-       : `You are an expert real-time classroom Lecture Subtitles specializing in: "${domainContext}".`;
-     ```
-2. **Client Model Mode ([`web-app/src/utils/chromeLanguageModel.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/chromeLanguageModel.js) & [`useClientLiteRTWhisper.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useClientLiteRTWhisper.js))**:
-   - Speech Recognition is performed entirely on device by LiteRT Whisper WASM.
-   - multilingual captioning is executed via `window.LanguageModel` (Chrome Built-in AI / Gemini Nano). Domain context and glossaries are prefixed to the prompt context to prevent programming terms from being captioned into literal colloquial words.
-3. **Gemini Live Stream Mode ([`web-app/src/utils/aiLogic.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/aiLogic.js))**:
-   - Uses Firebase AI Logic (`gemini-3.1-flash-live-preview`).
-   - The system instructions configured for the WebSocket session include the teacher's selected domain and subtitle prompt, guaranteeing low-latency (~200ms) token streaming with accurate domain vocabulary.
+1. **Server Model Mode (`engineMode === 'server'` — Recommended Default, [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js))**:
+   - Speech-to-Text (STT) runs locally via on-device LiteRT Whisper (`litertWhisper.worker.js`, single multilingual `openai/whisper-tiny` model supporting `zh-HK`, `zh-CN`, `en-US`, and `ja`) and Web Speech API (`SpeechRecognition`), with `transcribeAudioWithFirebaseAI` fallback.
+   - `translateTeacherSpeech` / `processTeacherSpeechSubtitles` extracts `subtitlePrompt?.promptText` and `courseContext` (`subjectDomain`), injecting custom instructions and rolling lecture history (`historyText`) directly into the Gemini 3.5 Flash-Lite / 3.8 Flash prompt while enforcing strict JSON output keyed by target language code.
+2. **Client Model Mode (`engineMode === 'client'` — On-Device LiteRT.js + Gemma 4 E2B, [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js) & [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js))**:
+   - Speech Recognition is performed on device by LiteRT Whisper WASM (`litertWhisper.worker.js`).
+   - Multilingual translation is executed on device by LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`, ~1.9 GB) via `TRANSLATE_TRANSCRIPT` messages to `litertGemma.worker.js` (`buildGemmaTranslationPrompt` & `parseGemmaTranslationOutput`), interpolating `courseContext` and custom `subtitlePrompt` instructions.
+   - **On-Demand Download & Mobile Memory Guard**: To prevent automatic 1.9 GB downloads from refreshing mobile browser tabs (iOS WebKit Jetsam OOM limit), selecting Client Model does **not** auto-download Gemma 4. Instead, teachers click **`⬇️ Download & Load Gemma 4 (~1.9 GB)`** (or **`⚡ Load Cached Gemma 4 Model`** when cached in `CacheStorage` `webai-litert-gemma-v1`) on desktop WebGPU machines. While unloaded, downloading, or on mobile/iOS devices, `useTeacherLiveSubtitles` seamlessly routes translations to the Server Model fallback (`translateTeacherSpeech`) with zero interruption.
 
 ---
 

@@ -188,7 +188,14 @@ flowchart TD
 
 ### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
 - **Teacher Screen Broadcast Setup:** Launched from the Class Hub header `🎙️🖥️ Broadcast` button or Controls Panel:
-  - **Step 1 (Audio & Subtitles):** Select microphone device, live volume VU meter test, recording checkboxes, and subtitle multilingual captioning settings.
+  - **Step 1 (Audio, Microphone Verification & Live Subtitles Setup):**
+    - **Subtitles Toggle Button (`🟢 Subtitles ON` / `⚪ Subtitles OFF`):** Enables or disables real-time multilingual subtitles (`userToggledSubtitlesRef` preserves manual toggle state across re-renders).
+    - **Microphone Selector & Cross-Platform Live Mic Level Meter:** Dropdown of available audio inputs paired with a 60fps VU progress bar (`Active: XX%` / `Quiet / Speak to test`) combining frequency bins, time-domain RMS, a 0-gain silent destination node for iOS WebKit, and `SpeechRecognition` activity volume pulses.
+    - **Live Speech-to-Text & Translation Preview Box:** Real-time pre-broadcast verification card displaying `🗣️ Speech (STT)` and `🌐 Translation` output as the teacher speaks.
+    - **Translation Model Architecture (2-Card Selector):**
+      - `🟣 Server Model`: On-device LiteRT Whisper STT (`openai/whisper-tiny` multilingual) + Cloud Functions (`translateTeacherSpeech` Gemini 3.5 Flash-Lite).
+      - `⚪ Client Model`: On-device LiteRT Whisper STT + On-Device LiteRT-LM Gemma 4 E2B (`litertGemma.worker.js`) with an explicit **`⬇️ Download & Load Gemma 4 (~1.9 GB)`** / **`⚡ Load Cached Gemma 4 Model`** button and automatic cloud translation fallback.
+    - **Spoken Speech Language & Target Broadcast Languages:** Select spoken language (`zh-HK`, `en-US`, `zh-CN`, `ja`) and target caption languages (`zh-Hant`, `en`, `zh-Hans`, `ja`, `ko`).
   - **Step 2 (Stream & Presentation Presets):**
     - **Broadcast Quality Selector:** Dropdown with `720p (Fast) [Recommended]`, `1080p (Standard)`, and `1440p (High-Res)`.
     - **Broadcast Frame Interval Selector:** Dropdown with `3.0s / 0.3 FPS (Default)`, `1.5s / 0.7 FPS`, `0.8s / 1.2 FPS`, or `0.5s / 2.0 FPS`.

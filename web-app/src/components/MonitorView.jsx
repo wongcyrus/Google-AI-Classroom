@@ -318,14 +318,18 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setSynchronizedAudioStream(synchronizedAudio);
 
     // 4. Atomic concurrent launch of Screen Broadcast, Subtitles, and Recording
-    await startScreenBroadcast(
-      screenStream
-        ? { resolution, interval, isPublic, publicPin, existingStream: screenStream }
-        : { resolution, interval, isPublic, publicPin }
-    );
+    try {
+      await startScreenBroadcast(
+        screenStream
+          ? { resolution, interval, isPublic, publicPin, existingStream: screenStream }
+          : { resolution, interval, isPublic, publicPin }
+      );
+    } catch (screenErr) {
+      console.warn('[MonitorView] Screen broadcast skipped (audio/subtitles only):', screenErr);
+    }
 
-    if (enableSubtitles) {
-      setIsSubtitleBroadcastEnabled(true);
+    if (enableSubtitles !== undefined) {
+      setIsSubtitleBroadcastEnabled(Boolean(enableSubtitles));
     }
 
     if (!activeBroadcastSessionIdRef.current) {
@@ -2750,10 +2754,16 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           }}
           isGemmaAvailable={teacherSubtitles.isGemmaAvailable}
           gemmaProgress={teacherSubtitles.gemmaProgress}
+          isGemmaCached={teacherSubtitles.isGemmaCached}
+          isGemmaInitializing={teacherSubtitles.isGemmaInitializing}
+          gemmaUnavailableReason={teacherSubtitles.gemmaUnavailableReason}
+          onLoadGemmaModel={teacherSubtitles.loadGemmaModel}
           latestTranscript={teacherSubtitles.latestTranscript}
           latestTranslations={teacherSubtitles.latestTranslations}
           status={teacherSubtitles.status}
           error={teacherSubtitles.error}
+          liveMicVolume={teacherSubtitles.micVolume}
+          activeAudioStream={teacherSubtitles.activeAudioStream}
           selectedMicDeviceId={selectedMicDeviceId}
           onSelectMicDeviceId={handleSelectMicDeviceId}
           courseContext={classSubjectDomain}

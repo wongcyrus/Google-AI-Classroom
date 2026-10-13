@@ -22,11 +22,15 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
 registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
 `;
 
-let workletModulePromise = null;
+const workletModuleMap = new WeakMap();
 
 function ensureWorkletModuleLoaded(audioCtx) {
-  if (!workletModulePromise) {
-    workletModulePromise = (async () => {
+  if (!audioCtx || typeof audioCtx !== 'object') {
+    return Promise.reject(new Error('Invalid AudioContext'));
+  }
+  let promise = workletModuleMap.get(audioCtx);
+  if (!promise) {
+    promise = (async () => {
       const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       try {
@@ -35,8 +39,9 @@ function ensureWorkletModuleLoaded(audioCtx) {
         URL.revokeObjectURL(url);
       }
     })();
+    workletModuleMap.set(audioCtx, promise);
   }
-  return workletModulePromise;
+  return promise;
 }
 
 /**
@@ -54,10 +59,37 @@ export function attachAudioProcessor(audioCtx, sourceNode, onPcmChunk) {
   let scriptNode = null;
   let muteNode = null;
 
-  if (typeof audioCtx.createGain === 'function') {
+  if (typeof audioCtx?.createGain === 'function') {
     muteNode = audioCtx.createGain();
     muteNode.gain.value = 0;
   }
+
+  const attachScriptProcessorFallback = () => {
+    if (isClosed || scriptNode || typeof audioCtx?.createScriptProcessor !== 'function') {
+      return false;
+    }
+    try {
+      scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      scriptNode.onaudioprocess = (e) => {
+        if (isClosed) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcm16k = downsamplePcmTo16k(inputData, audioCtx.sampleRate, 16000);
+        onPcmChunk(pcm16k);
+      };
+
+      sourceNode.connect(scriptNode);
+      if (muteNode) {
+        scriptNode.connect(muteNode);
+        muteNode.connect(audioCtx.destination);
+      } else {
+        scriptNode.connect(audioCtx.destination);
+      }
+      return true;
+    } catch (scriptErr) {
+      console.debug('[AudioWorkletHelper] ScriptProcessor fallback error:', scriptErr);
+      return false;
+    }
+  };
 
   // 1. Modern AudioWorklet path (active in Chrome/Edge/Safari/Firefox with audioWorklet support)
   if (
@@ -87,10 +119,13 @@ export function attachAudioProcessor(audioCtx, sourceNode, onPcmChunk) {
           workletNode.connect(audioCtx.destination);
         }
       } catch (workletErr) {
-        console.debug('[AudioWorkletHelper] Worklet instantiate fallback:', workletErr);
+        console.debug('[AudioWorkletHelper] Worklet instantiate fallback to ScriptProcessor:', workletErr);
+        attachScriptProcessorFallback();
       }
     }).catch((workletLoadErr) => {
-      console.debug('[AudioWorkletHelper] Worklet addModule fallback:', workletLoadErr);
+      console.debug('[AudioWorkletHelper] Worklet addModule fallback to ScriptProcessor:', workletLoadErr);
+      workletModuleMap.delete(audioCtx);
+      attachScriptProcessorFallback();
     });
 
     return {
@@ -102,6 +137,11 @@ export function attachAudioProcessor(audioCtx, sourceNode, onPcmChunk) {
             workletNode.disconnect();
             workletNode.port.onmessage = null;
           }
+          if (scriptNode) {
+            sourceNode.disconnect(scriptNode);
+            scriptNode.disconnect();
+            scriptNode.onaudioprocess = null;
+          }
           muteNode?.disconnect();
         } catch {}
       },
@@ -109,23 +149,7 @@ export function attachAudioProcessor(audioCtx, sourceNode, onPcmChunk) {
   }
 
   // 2. Synchronous fallback path for test mocks (Vitest/Jest) and legacy environments
-  if (typeof audioCtx.createScriptProcessor === 'function') {
-    scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
-    scriptNode.onaudioprocess = (e) => {
-      if (isClosed) return;
-      const inputData = e.inputBuffer.getChannelData(0);
-      const pcm16k = downsamplePcmTo16k(inputData, audioCtx.sampleRate, 16000);
-      onPcmChunk(pcm16k);
-    };
-
-    sourceNode.connect(scriptNode);
-    if (muteNode) {
-      scriptNode.connect(muteNode);
-      muteNode.connect(audioCtx.destination);
-    } else {
-      scriptNode.connect(audioCtx.destination);
-    }
-
+  if (attachScriptProcessorFallback()) {
     return {
       disconnect: () => {
         isClosed = true;
@@ -141,3 +165,4 @@ export function attachAudioProcessor(audioCtx, sourceNode, onPcmChunk) {
 
   return { disconnect: () => {} };
 }
+

@@ -103,10 +103,14 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
   );
   const permissionTrack = getInputTrack(permissionStream, kind);
   const actualDeviceId = permissionTrack?.getSettings?.().deviceId;
-  if (actualDeviceId === resolvedDeviceId) {
+  if (
+    actualDeviceId === resolvedDeviceId ||
+    (!actualDeviceId && devicesAfterPermission.length === 1)
+  ) {
     storeDeviceIdentity(
       kind,
-      devicesAfterPermission.find(device => device.deviceId === resolvedDeviceId)
+      devicesAfterPermission.find(device => device.deviceId === resolvedDeviceId) ||
+        devicesAfterPermission[0]
     );
     return permissionStream;
   }
@@ -130,19 +134,33 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
     return permissionStream;
   }
 
-  // Some camera drivers cannot open a second device while the permission stream is active.
+  // Some camera/mobile audio drivers cannot open a second device while the permission stream is active.
   stopStream(permissionStream);
-  const selectedStream = await navigator.mediaDevices.getUserMedia({
-    audio: kind === 'audio'
-      ? { ...trackConstraints, deviceId: { exact: resolvedDeviceId } }
-      : false,
-    video: kind === 'video'
-      ? { ...trackConstraints, deviceId: { exact: resolvedDeviceId } }
-      : false,
-  });
+  let selectedStream;
+  try {
+    selectedStream = await navigator.mediaDevices.getUserMedia({
+      audio: kind === 'audio'
+        ? { ...trackConstraints, deviceId: { exact: resolvedDeviceId } }
+        : false,
+      video: kind === 'video'
+        ? { ...trackConstraints, deviceId: { exact: resolvedDeviceId } }
+        : false,
+    });
+  } catch (exactErr) {
+    console.warn(`[mediaDeviceCapture] Exact ${kind} constraint failed on device; retrying with ideal constraint:`, exactErr);
+    selectedStream = await navigator.mediaDevices.getUserMedia({
+      audio: kind === 'audio'
+        ? { ...trackConstraints, deviceId: { ideal: resolvedDeviceId } }
+        : false,
+      video: kind === 'video'
+        ? { ...trackConstraints, deviceId: { ideal: resolvedDeviceId } }
+        : false,
+    });
+  }
   storeDeviceIdentity(
     kind,
     devicesAfterPermission.find(device => device.deviceId === resolvedDeviceId)
   );
   return selectedStream;
 }
+

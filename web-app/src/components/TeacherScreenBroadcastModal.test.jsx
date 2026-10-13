@@ -955,5 +955,69 @@ describe('TeacherScreenBroadcastModal', () => {
     expect(screen.getByText(/今日我們會講解微服務架構/i)).toBeInTheDocument();
     expect(screen.getByText(/✅ On-Device Gemma 4 Ready/i)).toBeInTheDocument();
   });
+
+  it('allows toggling Subtitles ON and OFF in Step 1 without resetting back to ON', () => {
+    function ControlledModalWrapper() {
+      const [subtitlesOn, setSubtitlesOn] = React.useState(true);
+      return (
+        <TeacherScreenBroadcastModal
+          isOpen={true}
+          onClose={vi.fn()}
+          isBroadcasting={false}
+          isSubtitlesEnabled={subtitlesOn}
+          setIsSubtitlesEnabled={setSubtitlesOn}
+        />
+      );
+    }
+
+    render(<ControlledModalWrapper />);
+
+    const toggleBtn = screen.getByRole('button', { name: /Subtitles ON/i });
+    expect(toggleBtn).toBeInTheDocument();
+
+    // Click to turn OFF — must stay OFF
+    fireEvent.click(toggleBtn);
+    expect(screen.getByRole('button', { name: /Subtitles OFF/i })).toBeInTheDocument();
+
+    // Click again to turn back ON
+    fireEvent.click(screen.getByRole('button', { name: /Subtitles OFF/i }));
+    expect(screen.getByRole('button', { name: /Subtitles ON/i })).toBeInTheDocument();
+  });
+
+  it('renders an explicit Download & Load Gemma 4 button in client mode and invokes loadGemmaModel when clicked', () => {
+    const loadGemmaModel = vi.fn();
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        initialStep={1}
+        teacherSubtitles={{
+          engineMode: 'client',
+          setEngineMode: vi.fn(),
+          speechLanguage: 'zh-HK',
+          setSpeechLanguage: vi.fn(),
+          targetLanguages: ['zh-Hant', 'en'],
+          setTargetLanguages: vi.fn(),
+          isGemmaAvailable: false,
+          gemmaProgress: 0,
+          isGemmaCached: false,
+          isGemmaInitializing: false,
+          gemmaUnavailableReason: '',
+          loadGemmaModel,
+          status: 'listening',
+          latestTranscript: '',
+          latestTranslations: {},
+        }}
+      />
+    );
+
+    const downloadBtn = screen.getByRole('button', {
+      name: /Download & Load Gemma 4/i,
+    });
+    expect(downloadBtn).toBeInTheDocument();
+    fireEvent.click(downloadBtn);
+    expect(loadGemmaModel).toHaveBeenCalledTimes(1);
+  });
 });
 

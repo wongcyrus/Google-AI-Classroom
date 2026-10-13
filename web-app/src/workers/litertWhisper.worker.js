@@ -500,7 +500,7 @@ async function handleMessage(event) {
 }
 
 self.onmessage = (event) => {
-  if (event.data?.type === 'TRANSCRIBE') {
+  if (event.data?.type === 'INIT' || event.data?.type === 'TRANSCRIBE') {
     return enqueueTranscription(() => handleMessage(event));
   }
   return handleMessage(event);

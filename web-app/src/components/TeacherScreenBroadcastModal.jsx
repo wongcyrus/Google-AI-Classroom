@@ -149,6 +149,7 @@ export default function TeacherScreenBroadcastModal({
   const [localSubtitlesEnabled, setLocalSubtitlesEnabled] = useState(
     isSubtitlesEnabled !== undefined ? Boolean(isSubtitlesEnabled) : true
   );
+  const userToggledSubtitlesRef = useRef(false);
   const effectiveSubtitlesEnabled = setIsSubtitlesEnabled ? Boolean(isSubtitlesEnabled) : localSubtitlesEnabled;
 
   useEffect(() => {
@@ -157,21 +158,25 @@ export default function TeacherScreenBroadcastModal({
     }
   }, [isSubtitlesEnabled]);
 
-  // Ensure subtitles default to enabled whenever the studio is opened
+  // Reset userToggledSubtitlesRef when modal closes; default to enabled on fresh open if not manually toggled
   useEffect(() => {
-    if (isOpen && !isBroadcasting) {
-      if (setIsSubtitlesEnabled && !isSubtitlesEnabled) {
-        setIsSubtitlesEnabled(true);
+    if (isOpen) {
+      if (!isBroadcasting && !userToggledSubtitlesRef.current) {
+        if (isSubtitlesEnabled === undefined) {
+          setLocalSubtitlesEnabled(true);
+        }
       }
-      setLocalSubtitlesEnabled(true);
+    } else {
+      userToggledSubtitlesRef.current = false;
     }
-  }, [isOpen, isBroadcasting, setIsSubtitlesEnabled, isSubtitlesEnabled]);
+  }, [isOpen, isBroadcasting, isSubtitlesEnabled]);
 
   const toggleSubtitles = () => {
+    userToggledSubtitlesRef.current = true;
+    const nextEnabled = !effectiveSubtitlesEnabled;
+    setLocalSubtitlesEnabled(nextEnabled);
     if (setIsSubtitlesEnabled) {
-      setIsSubtitlesEnabled(!isSubtitlesEnabled);
-    } else {
-      setLocalSubtitlesEnabled(!localSubtitlesEnabled);
+      setIsSubtitlesEnabled(nextEnabled);
     }
   };
 
@@ -218,9 +223,6 @@ export default function TeacherScreenBroadcastModal({
           }));
         if (isMounted) {
           setAudioDevices(mics);
-          if (mics.length > 0 && !selectedMicDeviceId && onSelectMicDeviceId) {
-            onSelectMicDeviceId(mics[0].deviceId);
-          }
         }
       } catch (err) {
         console.warn('[TeacherScreenBroadcastModal] Error loading audio devices:', err);
@@ -247,6 +249,7 @@ export default function TeacherScreenBroadcastModal({
     let stream = null;
     let audioCtx = null;
     let animId = null;
+    let cleanupResumeListeners = null;
 
     const startMicMeter = async () => {
       try {
@@ -272,8 +275,35 @@ export default function TeacherScreenBroadcastModal({
         if (!AudioCtx) return;
 
         audioCtx = new AudioCtx();
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume().catch(() => {});
+        const tryResumeAudioCtx = () => {
+          if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            try {
+              const resumePromise = audioCtx.resume?.();
+              if (resumePromise && typeof resumePromise.catch === 'function') {
+                resumePromise.catch(() => {});
+              }
+            } catch {}
+          }
+        };
+
+        // Never `await` audioCtx.resume() here: in Chrome/Safari/iOS WebKit, calling resume()
+        // after an async getUserMedia await returns a permanently pending Promise until the next
+        // user gesture, which would deadlock startMicMeter before listeners or analyser attach.
+        tryResumeAudioCtx();
+
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          window.addEventListener('touchstart', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('touchend', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('pointerdown', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('click', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('keydown', tryResumeAudioCtx, { passive: true });
+          cleanupResumeListeners = () => {
+            window.removeEventListener('touchstart', tryResumeAudioCtx);
+            window.removeEventListener('touchend', tryResumeAudioCtx);
+            window.removeEventListener('pointerdown', tryResumeAudioCtx);
+            window.removeEventListener('click', tryResumeAudioCtx);
+            window.removeEventListener('keydown', tryResumeAudioCtx);
+          };
         }
 
         const source = audioCtx.createMediaStreamSource(stream);
@@ -281,7 +311,28 @@ export default function TeacherScreenBroadcastModal({
         analyser.fftSize = 256;
         source.connect(analyser);
 
+        // On iOS Safari / Chrome (WebKit), MediaStreamAudioSourceNode will not pull audio frames
+        // unless connected to audioCtx.destination. Connect via a 0-gain silent node.
+        if (
+          typeof audioCtx.createGain === 'function' &&
+          audioCtx.destination &&
+          typeof analyser.connect === 'function'
+        ) {
+          try {
+            const silentGain = audioCtx.createGain();
+            if (silentGain?.gain) {
+              silentGain.gain.value = 0;
+            }
+            analyser.connect(silentGain);
+            silentGain.connect(audioCtx.destination);
+          } catch {}
+        }
+
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const timeDataArray =
+          typeof analyser.getByteTimeDomainData === 'function'
+            ? new Uint8Array(analyser.fftSize || 256)
+            : null;
 
         const tick = () => {
           if (!isMounted) return;
@@ -291,7 +342,21 @@ export default function TeacherScreenBroadcastModal({
             sum += dataArray[i];
           }
           const avg = sum / dataArray.length;
-          const pct = Math.min(100, Math.round((avg / 128) * 100));
+          const freqPct = Math.min(100, Math.round((avg / 128) * 100));
+
+          let timePct = 0;
+          if (timeDataArray && typeof analyser.getByteTimeDomainData === 'function') {
+            analyser.getByteTimeDomainData(timeDataArray);
+            let sumSq = 0;
+            for (let i = 0; i < timeDataArray.length; i++) {
+              const norm = (timeDataArray[i] - 128) / 128;
+              sumSq += norm * norm;
+            }
+            const rms = Math.sqrt(sumSq / timeDataArray.length);
+            timePct = rms < 0.003 ? 0 : Math.min(100, Math.round(Math.pow(Math.min(1, rms / 0.25), 0.65) * 100));
+          }
+
+          const pct = Math.max(freqPct, timePct);
           setMicVolume(pct);
           animId = requestAnimationFrame(tick);
         };
@@ -309,8 +374,11 @@ export default function TeacherScreenBroadcastModal({
 
     return () => {
       isMounted = false;
+      cleanupResumeListeners?.();
       if (animId) cancelAnimationFrame(animId);
-      if (stream) stream.getTracks?.().forEach((t) => t.stop());
+      if (stream) {
+        stream.getTracks?.().forEach((t) => t.stop());
+      }
       if (audioCtx && audioCtx.state !== 'closed') {
         audioCtx.close().catch(() => {});
       }
@@ -403,6 +471,7 @@ export default function TeacherScreenBroadcastModal({
 
   // Subtitle data helpers
   const st = teacherSubtitles || {};
+  const effectiveMicVolume = Math.max(micVolume, Number(st.micVolume) || 0);
   const currentEngineMode = st.engineMode || 'server';
   const currentSpeechLang = st.speechLanguage || 'zh-HK';
   const currentTargetLangs = st.targetLanguages || ['zh-Hant', 'en'];
@@ -558,14 +627,14 @@ export default function TeacherScreenBroadcastModal({
                   <div className="mic-meter-card" style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
                       <span style={{ fontWeight: 600, color: '#475569' }}>Live Mic Level</span>
-                      <span style={{ color: getMeterColor(micVolume), fontWeight: 700 }}>
-                        {micVolume > 0 ? `Active: ${micVolume}%` : 'Quiet / Speak to test'}
+                      <span style={{ color: getMeterColor(effectiveMicVolume), fontWeight: 700 }}>
+                        {effectiveMicVolume > 0 ? `Active: ${effectiveMicVolume}%` : 'Quiet / Speak to test'}
                       </span>
                     </div>
                     <div
                       className="mic-meter-track"
                       role="progressbar"
-                      aria-valuenow={micVolume}
+                      aria-valuenow={effectiveMicVolume}
                       aria-valuemin={0}
                       aria-valuemax={100}
                       style={{ background: '#e2e8f0', height: '8px', borderRadius: '4px', overflow: 'hidden' }}
@@ -573,9 +642,9 @@ export default function TeacherScreenBroadcastModal({
                       <div
                         className="mic-meter-fill"
                         style={{
-                          width: `${micVolume}%`,
+                          width: `${effectiveMicVolume}%`,
                           height: '100%',
-                          backgroundColor: getMeterColor(micVolume),
+                          backgroundColor: getMeterColor(effectiveMicVolume),
                           transition: 'width 0.05s ease',
                         }}
                       />
@@ -688,13 +757,48 @@ export default function TeacherScreenBroadcastModal({
                       />
                       <strong style={{ fontSize: '0.82rem', color: '#1e293b', display: 'block' }}>⚪ Client Model</strong>
                       <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>LiteRT.js (Whisper STT + Gemma 4 E2B · $0 cloud cost)</span>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: st.isGemmaAvailable ? '#15803d' : '#4338ca' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: st.isGemmaAvailable ? '#15803d' : '#4338ca', display: 'block' }}>
                         {st.isGemmaAvailable
                           ? '✅ On-Device Gemma 4 Ready'
                           : st.gemmaProgress > 0 && st.gemmaProgress < 100
-                          ? `⏳ Downloading Gemma 4 Model (${st.gemmaProgress}%)...`
+                          ? `⏳ Downloading Gemma 4 Model (${st.gemmaProgress}%) · Cloud fallback active`
                           : '⚡ LiteRT.js Active (auto cloud fallback)'}
                       </span>
+                      {currentEngineMode === 'client' &&
+                        !st.isGemmaAvailable &&
+                        !(st.gemmaProgress > 0 && st.gemmaProgress < 100) &&
+                        st.loadGemmaModel && (
+                          <div style={{ marginTop: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                st.loadGemmaModel();
+                              }}
+                              disabled={Boolean(st.isGemmaInitializing)}
+                              style={{
+                                padding: '4px 10px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                borderRadius: '6px',
+                                border: '1px solid #4f46e5',
+                                background: '#4f46e5',
+                                color: '#ffffff',
+                                cursor: st.isGemmaInitializing ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              {st.isGemmaCached
+                                ? '⚡ Load Cached Gemma 4 Model'
+                                : '⬇️ Download & Load Gemma 4 (~1.9 GB)'}
+                            </button>
+                            {st.gemmaUnavailableReason && (
+                              <div style={{ fontSize: '0.68rem', color: '#b45309', marginTop: '4px' }}>
+                                ⚠️ {st.gemmaUnavailableReason}
+                              </div>
+                            )}
+                          </div>
+                        )}
                     </label>
                   </div>
                 </div>

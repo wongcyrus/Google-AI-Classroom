@@ -5,16 +5,16 @@
  * progress reporting, and LiteRT runtime compilation for client-side Whisper STT.
  */
 
-export const LITERT_CACHE_NAME = 'webai-litert-whisper-v1';
+export const LITERT_CACHE_NAME = 'webai-litert-whisper-v2';
 
 export const DEFAULT_WHISPER_CONFIG = {
   modelUrl: '/models/whisper_tiny.tflite',
   fallbackUrls: [
-    'https://huggingface.co/DocWolle/whisper_tflite_models/resolve/main/whisper-tiny.en.tflite',
-    'https://huggingface.co/nyadla-sys/whisper-tiny.en.tflite/resolve/main/whisper-tiny.en.tflite',
+    'https://huggingface.co/DocWolle/whisper_tflite_models/resolve/main/whisper-tiny-transcribe-translate.tflite',
     'https://huggingface.co/litert-community/whisper-tiny/resolve/main/whisper_tiny.tflite',
+    'https://huggingface.co/DocWolle/whisper_tflite_models/resolve/main/whisper-tiny.en.tflite',
   ],
-  modelSizeMB: 39.5,
+  modelSizeMB: 40.2,
   sampleRate: 16000,
   chunkDurationSec: 30,
 };

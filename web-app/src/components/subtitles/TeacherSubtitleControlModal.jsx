@@ -27,6 +27,10 @@ export default function TeacherSubtitleControlModal({
   isNanoAvailable,
   isGemmaAvailable,
   gemmaProgress = 0,
+  isGemmaCached = false,
+  isGemmaInitializing = false,
+  gemmaUnavailableReason = '',
+  onLoadGemmaModel = null,
   latestTranscript,
   latestTranslations = {},
   status,
@@ -41,10 +45,13 @@ export default function TeacherSubtitleControlModal({
   onSelectSubtitlePrompt = null,
   onSelectCourseContext = null,
   availablePrompts = null,
+  liveMicVolume = 0,
+  activeAudioStream = null,
 }) {
   const [audioDevices, setAudioDevices] = useState([]);
   const [micVolume, setMicVolume] = useState(0);
   const [micTestError, setMicTestError] = useState(null);
+  const effectiveMicVolume = Math.max(micVolume, Number(liveMicVolume) || 0);
 
   const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
   const promptsList = availablePrompts || fetchedPrompts;
@@ -84,9 +91,6 @@ export default function TeacherSubtitleControlModal({
           }));
         if (isMounted) {
           setAudioDevices(mics);
-          if (mics.length > 0 && !selectedMicDeviceId && onSelectMicDeviceId) {
-            onSelectMicDeviceId(mics[0].deviceId);
-          }
         }
       } catch (err) {
         console.warn('[TeacherSubtitleControlModal] Error loading audio devices:', err);
@@ -111,6 +115,7 @@ export default function TeacherSubtitleControlModal({
     let stream = null;
     let audioCtx = null;
     let animId = null;
+    let cleanupResumeListeners = null;
 
     const startMicMeter = async () => {
       try {
@@ -136,8 +141,35 @@ export default function TeacherSubtitleControlModal({
         if (!AudioCtx) return;
 
         audioCtx = new AudioCtx();
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume().catch(() => {});
+        const tryResumeAudioCtx = () => {
+          if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            try {
+              const resumePromise = audioCtx.resume?.();
+              if (resumePromise && typeof resumePromise.catch === 'function') {
+                resumePromise.catch(() => {});
+              }
+            } catch {}
+          }
+        };
+
+        // Never `await` audioCtx.resume() here: in Chrome/Safari/iOS WebKit, calling resume()
+        // after an async getUserMedia await returns a permanently pending Promise until the next
+        // user gesture, which would deadlock startMicMeter before listeners or analyser attach.
+        tryResumeAudioCtx();
+
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          window.addEventListener('touchstart', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('touchend', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('pointerdown', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('click', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('keydown', tryResumeAudioCtx, { passive: true });
+          cleanupResumeListeners = () => {
+            window.removeEventListener('touchstart', tryResumeAudioCtx);
+            window.removeEventListener('touchend', tryResumeAudioCtx);
+            window.removeEventListener('pointerdown', tryResumeAudioCtx);
+            window.removeEventListener('click', tryResumeAudioCtx);
+            window.removeEventListener('keydown', tryResumeAudioCtx);
+          };
         }
 
         const source = audioCtx.createMediaStreamSource(stream);
@@ -145,7 +177,28 @@ export default function TeacherSubtitleControlModal({
         analyser.fftSize = 256;
         source.connect(analyser);
 
+        // On iOS Safari / Chrome (WebKit), MediaStreamAudioSourceNode will not pull audio frames
+        // unless connected to audioCtx.destination. Connect via a 0-gain silent node.
+        if (
+          typeof audioCtx.createGain === 'function' &&
+          audioCtx.destination &&
+          typeof analyser.connect === 'function'
+        ) {
+          try {
+            const silentGain = audioCtx.createGain();
+            if (silentGain?.gain) {
+              silentGain.gain.value = 0;
+            }
+            analyser.connect(silentGain);
+            silentGain.connect(audioCtx.destination);
+          } catch {}
+        }
+
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const timeDataArray =
+          typeof analyser.getByteTimeDomainData === 'function'
+            ? new Uint8Array(analyser.fftSize || 256)
+            : null;
 
         const tick = () => {
           if (!isMounted) return;
@@ -155,7 +208,21 @@ export default function TeacherSubtitleControlModal({
             sum += dataArray[i];
           }
           const avg = sum / dataArray.length;
-          const pct = Math.min(100, Math.round((avg / 128) * 100));
+          const freqPct = Math.min(100, Math.round((avg / 128) * 100));
+
+          let timePct = 0;
+          if (timeDataArray && typeof analyser.getByteTimeDomainData === 'function') {
+            analyser.getByteTimeDomainData(timeDataArray);
+            let sumSq = 0;
+            for (let i = 0; i < timeDataArray.length; i++) {
+              const norm = (timeDataArray[i] - 128) / 128;
+              sumSq += norm * norm;
+            }
+            const rms = Math.sqrt(sumSq / timeDataArray.length);
+            timePct = rms < 0.003 ? 0 : Math.min(100, Math.round(Math.pow(Math.min(1, rms / 0.25), 0.65) * 100));
+          }
+
+          const pct = Math.max(freqPct, timePct);
           setMicVolume(pct);
           animId = requestAnimationFrame(tick);
         };
@@ -173,8 +240,11 @@ export default function TeacherSubtitleControlModal({
 
     return () => {
       isMounted = false;
+      cleanupResumeListeners?.();
       if (animId) cancelAnimationFrame(animId);
-      if (stream) stream.getTracks?.().forEach((t) => t.stop());
+      if (stream) {
+        stream.getTracks?.().forEach((t) => t.stop());
+      }
       if (audioCtx && audioCtx.state !== 'closed') {
         audioCtx.close().catch(() => {});
       }
@@ -268,16 +338,16 @@ export default function TeacherSubtitleControlModal({
             <div className="mic-meter-card">
               <div className="mic-meter-header">
                 <span className="mic-meter-label">Live Input Level</span>
-                <span className="mic-meter-badge" style={{ color: getMeterColor(micVolume) }}>
-                  {micVolume > 0 ? `Active: ${micVolume}%` : 'Quiet / Speak to test'}
+                <span className="mic-meter-badge" style={{ color: getMeterColor(effectiveMicVolume) }}>
+                  {effectiveMicVolume > 0 ? `Active: ${effectiveMicVolume}%` : 'Quiet / Speak to test'}
                 </span>
               </div>
-              <div className="mic-meter-track" role="progressbar" aria-valuenow={micVolume} aria-valuemin="0" aria-valuemax="100">
+              <div className="mic-meter-track" role="progressbar" aria-valuenow={effectiveMicVolume} aria-valuemin="0" aria-valuemax="100">
                 <div
                   className="mic-meter-fill"
                   style={{
-                    width: `${micVolume}%`,
-                    backgroundColor: getMeterColor(micVolume),
+                    width: `${effectiveMicVolume}%`,
+                    backgroundColor: getMeterColor(effectiveMicVolume),
                   }}
                 />
               </div>
@@ -335,9 +405,44 @@ export default function TeacherSubtitleControlModal({
                     {isGemmaAvailable
                       ? '✅ On-Device Gemma 4 Ready'
                       : gemmaProgress > 0 && gemmaProgress < 100
-                      ? `⏳ Downloading Gemma 4 Model (${gemmaProgress}%)...`
+                      ? `⏳ Downloading Gemma 4 Model (${gemmaProgress}%) · Cloud fallback active`
                       : '⚡ LiteRT.js Active (automatic cloud fallback)'}
                   </span>
+                  {engineMode === 'client' &&
+                    !isGemmaAvailable &&
+                    !(gemmaProgress > 0 && gemmaProgress < 100) &&
+                    onLoadGemmaModel && (
+                      <div style={{ marginTop: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onLoadGemmaModel();
+                          }}
+                          disabled={Boolean(isGemmaInitializing)}
+                          style={{
+                            padding: '5px 12px',
+                            fontSize: '0.76rem',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: '1px solid #4f46e5',
+                            background: '#4f46e5',
+                            color: '#ffffff',
+                            cursor: isGemmaInitializing ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {isGemmaCached
+                            ? '⚡ Load Cached Gemma 4 Model'
+                            : '⬇️ Download & Load Gemma 4 (~1.9 GB)'}
+                        </button>
+                        {gemmaUnavailableReason && (
+                          <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '4px' }}>
+                            ⚠️ {gemmaUnavailableReason}
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               </label>
             </div>

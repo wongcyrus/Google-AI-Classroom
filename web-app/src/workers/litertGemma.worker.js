@@ -260,6 +260,22 @@ async function initializeGemma(modelUrl) {
   if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
+    const ua = self.navigator?.userAgent || '';
+    const isMobileOrIos =
+      /iPhone|iPad|iPod|Android|CriOS|FxiOS/i.test(ua) ||
+      (self.navigator?.platform === 'MacIntel' && Number(self.navigator?.maxTouchPoints) > 1);
+    if (isMobileOrIos) {
+      throw new Error(
+        'On-device Gemma 4 E2B (~1.9 GB) exceeds mobile browser memory limits; using Cloud fallback.'
+      );
+    }
+
+    if (typeof self.navigator?.deviceMemory === 'number' && self.navigator.deviceMemory < 4) {
+      throw new Error(
+        `Device RAM (${self.navigator.deviceMemory} GB) is below the 4 GB minimum for Gemma 4 E2B; using Cloud fallback.`
+      );
+    }
+
     if (!navigator.gpu) {
       throw new Error('WebGPU is unavailable on this device');
     }

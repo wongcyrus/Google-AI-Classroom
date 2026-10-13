@@ -4,6 +4,51 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.2.3 Teacher Live Subtitles Hardening, Explicit Gemma 4 Download Control, iOS Memory Guards & Cross-Platform Live Mic Level Fix
+
+**Date**: October 14, 2026  
+**Status**: Implemented, Verified with 100% Passing Unit Tests (`litertGemma.worker.test.js`, `useTeacherLiveSubtitles.test.js`, `TeacherScreenBroadcastModal.test.jsx`, `TeacherSubtitleControlModal.test.jsx`), Deployed to Production (`https://it114115-2627.web.app`)  
+**Primary Files**:
+- [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js)
+- [`web-app/src/hooks/useTeacherLiveSubtitles.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.test.js)
+- [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx)
+- [`web-app/src/components/TeacherScreenBroadcastModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.test.jsx)
+- [`web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx)
+- [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx)
+- [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js)
+- [`web-app/src/workers/litertWhisper.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertWhisper.worker.js)
+- [`web-app/src/utils/audioWorkletHelper.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/audioWorkletHelper.js)
+- [`web-app/src/utils/mediaDeviceCapture.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/mediaDeviceCapture.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Explicit On-Demand Gemma 4 Download Button & iOS OOM Page-Refresh Prevention**:
+   - **Root Cause**: The quantized on-device Gemma 4 model (`gemma-4-E2B-it-web.litertlm`) is ~1.915 GB. iOS browsers (`WKWebView` used by both Safari and Chrome on iOS) enforce a per-tab Jetsam memory ceiling (~1.2–1.5 GB). Previously, `useTeacherLiveSubtitles.js` automatically posted `{ type: 'INIT' }` to `litertGemma.worker.js` on mount whenever `engineMode === 'client'` was stored in `localStorage`, causing iOS tabs to hit the Jetsam OOM limit and enter an infinite page-refresh loop.
+   - **Solution**:
+     - Removed automatic `{ type: 'INIT' }` posting on mount or radio switch in [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js). Selecting **⚪ Client Model** now runs on-device Whisper STT with immediate cloud translation fallback (`translateTeacherSpeech`) until the user explicitly clicks the download/load button.
+     - Added an explicit **`⬇️ Download & Load Gemma 4 (~1.9 GB)`** button (which switches to **`⚡ Load Cached Gemma 4 Model`** when already cached in `CacheStorage`) inside the Client Model card in both [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx) and [`TeacherSubtitleControlModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), wired to `loadGemmaModel()`.
+     - Added mobile/iOS and low-RAM (`< 4 GB`) guards in [`litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js) and [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js) (including auto-resetting `localStorage` to `'server'` on mobile/iOS devices) so mobile browsers never attempt to fetch the 1.9 GB binary.
+     - Fixed `gemmaProgress` state when `INIT_COMPLETE` returns `ready: false` so the UI never displays a stuck `⏳ Downloading Gemma 4 Model` message while using Cloud fallback.
+
+2. **Cross-Platform Live Mic Level VU Meter Fix (Desktop & iOS Chrome/Safari)**:
+   - **Root Causes**:
+     1. Calling `await audioCtx.resume()` after `await acquireInputDeviceStream(...)` blocked `startMicMeter()` and `setupAudio()` indefinitely because `AudioContext.resume()` returns a permanently pending Promise when transient user activation has expired, preventing user-interaction listeners, `createMediaStreamSource`, `createAnalyser`, and `requestAnimationFrame(tick)` from ever being reached.
+     2. On iOS WebKit, `MediaStreamAudioSourceNode` does not pull audio frames into an `AnalyserNode` unless connected to `audioCtx.destination`, and `webkitSpeechRecognition` (`SFSpeechRecognizer`) can mute WebAudio tracks while actively transcribing speech.
+     3. `audioWorkletHelper.js` previously shared a single module-level `workletModulePromise` across different `AudioContext` instances instead of tracking loaded modules per `AudioContext`.
+   - **Solution**:
+     - Replaced blocking `await audioCtx.resume()` with non-blocking `tryResumeAudioCtx()` and immediate `touchstart`/`touchend`/`pointerdown`/`click`/`keydown` listeners in [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`TeacherSubtitleControlModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), and [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js).
+     - Connected `analyser` through a 0-gain silent `GainNode` to `audioCtx.destination`, combined frequency-domain and time-domain (`getByteTimeDomainData`) RMS metering, and added a `SpeechRecognition` activity volume pulse (`pulseSpeechRecVolume`) for iOS Chrome.
+     - Updated [`audioWorkletHelper.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/audioWorkletHelper.js) to use a per-`AudioContext` `WeakMap` and automatically fall back to `ScriptProcessorNode` if `AudioWorklet` initialization fails.
+
+3. **Subtitles ON / OFF Button Fix in `TeacherScreenBroadcastModal.jsx`**:
+   - Removed `isSubtitlesEnabled` from the auto-enable `useEffect` in [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx) and tracked manual toggles via `userToggledSubtitlesRef` so clicking **`🟢 Subtitles ON`** cleanly toggles to **`⚪ Subtitles OFF`** without snapping back to ON.
+
+4. **Single Multilingual Whisper Model & Subtitle Pipeline Race-Condition Fixes**:
+   - Configured [`litertWhisper.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertWhisper.worker.js) to use a single multilingual `Xenova/whisper-tiny` model across Cantonese (`zh-HK`), Mandarin (`zh-CN`), English (`en-US`), and Japanese (`ja`) via explicit decoder language token mapping (`normalizeWhisperLanguage`).
+   - Added monotonic sequence numbering (`seqCounterRef` / `latestPublishedSeqRef`), Whisper silence/noise hallucination filtering (`isWhisperNoiseArtifact`), per-language server fallback when on-device Gemma returns partial translations, and VAD buffer deduplication when `SpeechRecognition` finalizes an utterance.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.2.2 3-Color Bingo Presence Heatmap, Raw/Deducted/Net Breakdown & Permanent Pre-Purge Bitmask Preservation Architecture
 
 **Date**: October 13, 2026  

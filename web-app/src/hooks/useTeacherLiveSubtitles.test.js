@@ -990,4 +990,218 @@ describe('useTeacherLiveSubtitles Hook', () => {
     delete window.SpeechRecognition;
     delete window.AudioContext;
   });
+
+  it('prevents out-of-order slower translations from overwriting newer subtitles in Firestore', async () => {
+    let resolveFirst;
+    let resolveSecond;
+
+    mockCallable
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    const { result } = renderHook(() =>
+      useTeacherLiveSubtitles({
+        classId: 'CLASS_TEST_101',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        enabled: true,
+      })
+    );
+
+    mockSetDoc.mockClear();
+
+    let firstPromise;
+    let secondPromise;
+    act(() => {
+      firstPromise = result.current.publishSubtitle('First slow utterance');
+      secondPromise = result.current.publishSubtitle('Second fast utterance');
+    });
+
+    // Second utterance finishes translating FIRST
+    await act(async () => {
+      resolveSecond({
+        data: {
+          translations: { en: 'Second fast translation', 'zh-Hans': '第二句快速翻译' },
+        },
+      });
+      await secondPromise;
+    });
+
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    expect(mockSetDoc).toHaveBeenLastCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_TEST_101/liveSubtitles/current' }),
+      expect.objectContaining({
+        seq: 2,
+        originalText: 'Second fast utterance',
+        translations: { en: 'Second fast translation', 'zh-Hans': '第二句快速翻译' },
+      })
+    );
+
+    // First (stale) utterance finishes translating LATER — must NOT overwrite seq 2 in Firestore
+    await act(async () => {
+      resolveFirst({
+        data: {
+          translations: { en: 'First slow translation', 'zh-Hans': '第一句慢速翻译' },
+        },
+      });
+      await firstPromise;
+    });
+
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    expect(result.current.latestTranslations).toEqual({
+      en: 'Second fast translation',
+      'zh-Hans': '第二句快速翻译',
+    });
+  });
+
+  it('deduplicates identical consecutive final subtitles within the deduplication window', async () => {
+    mockCallable.mockResolvedValue({
+      data: {
+        translations: { en: 'Deduplicated sentence' },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useTeacherLiveSubtitles({
+        classId: 'CLASS_TEST_101',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        enabled: true,
+      })
+    );
+
+    mockSetDoc.mockClear();
+
+    await act(async () => {
+      await result.current.publishSubtitle('今日講 Docker container');
+      await result.current.publishSubtitle('今日講 Docker container');
+    });
+
+    expect(mockCallable).toHaveBeenCalledTimes(1);
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters Whisper noise artifacts (e.g. [BLANK_AUDIO]) and falls back to Firebase AI transcription', async () => {
+    vi.useFakeTimers();
+
+    const mockTrack = { stop: vi.fn() };
+    const mockAudioStream = {
+      getAudioTracks: vi.fn().mockReturnValue([mockTrack]),
+      getTracks: vi.fn().mockReturnValue([mockTrack]),
+    };
+
+    class MockAudioContext {
+      constructor() {
+        this.state = 'running';
+        this.createMediaStreamSource = vi.fn().mockReturnValue({ connect: vi.fn() });
+        this.destination = {};
+        this.close = vi.fn().mockResolvedValue();
+      }
+    }
+    window.AudioContext = MockAudioContext;
+
+    mockTranscribeAI.mockResolvedValueOnce('今日我哋學習 React useEffect');
+    mockCallable.mockResolvedValueOnce({
+      data: {
+        translations: { en: 'Today we learn React useEffect' },
+      },
+    });
+
+    renderHook(() =>
+      useTeacherLiveSubtitles({
+        classId: 'CLASS_TEST_101',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        enabled: true,
+        audioStream: mockAudioStream,
+      })
+    );
+
+    const loudPcm = new Float32Array(9000).fill(0.1);
+    act(() => {
+      processorCallback(loudPcm);
+    });
+
+    const quietPcm = new Float32Array(1000).fill(0.001);
+    act(() => {
+      processorCallback(quietPcm);
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(750);
+    });
+
+    const transcribeMsg = whisperWorkerInstance.postMessage.mock.calls.find(
+      (c) => c[0].type === 'TRANSCRIBE'
+    )[0];
+
+    // Simulate Whisper returning a silence/noise hallucination token
+    await act(async () => {
+      whisperWorkerInstance.onmessage({
+        data: {
+          type: 'TRANSCRIBE_COMPLETE',
+          id: transcribeMsg.id,
+          payload: {
+            transcript: '[BLANK_AUDIO]',
+            language: 'none',
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(mockTranscribeAI).toHaveBeenCalled();
+    expect(mockCallable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '今日我哋學習 React useEffect',
+      })
+    );
+
+    vi.useRealTimers();
+    delete window.AudioContext;
+  });
+
+  it('does not auto-download Gemma 4 on client mode switch and only posts INIT when loadGemmaModel is invoked', () => {
+    const { result } = renderHook(() =>
+      useTeacherLiveSubtitles({
+        classId: 'CLASS_TEST_101',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        enabled: true,
+      })
+    );
+
+    act(() => {
+      result.current.setEngineMode('client');
+    });
+
+    expect(gemmaWorkerInstance).toBeDefined();
+    // Must NOT auto-post INIT when switching to client mode
+    const autoInitCalls = gemmaWorkerInstance.postMessage.mock.calls.filter(
+      (c) => c[0]?.type === 'INIT'
+    );
+    expect(autoInitCalls).toHaveLength(0);
+
+    // Only when user explicitly clicks Download & Load (invoking loadGemmaModel) should INIT be sent
+    act(() => {
+      result.current.loadGemmaModel();
+    });
+
+    const explicitInitCalls = gemmaWorkerInstance.postMessage.mock.calls.filter(
+      (c) => c[0]?.type === 'INIT'
+    );
+    expect(explicitInitCalls).toHaveLength(1);
+    expect(result.current.isGemmaInitializing).toBe(true);
+  });
 });
+
