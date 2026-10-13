@@ -662,7 +662,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         urlCacheRef.current.set(path, url);
         return url;
       } catch (error) {
-        if (error?.code !== 'storage/object-not-found') {
+        if (error?.code === 'storage/object-not-found') {
+          // Cache null for purged/missing historical files so we don't spam 404 network requests
+          urlCacheRef.current.set(path, null);
+        } else {
           console.debug(`[MonitorView] Could not resolve storage URL for ${path}:`, error?.message || error);
         }
         return null;
@@ -1212,6 +1215,21 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         const statusTs = getTs(status);
         const isFresh = (currentNow - statusTs) <= staleThresholdMs;
         const isActivelySharing = Boolean(status.isSharing && isFresh);
+
+        // Optimization: Do not attempt to fetch deleted historical screenshots for offline students
+        if (!isActivelySharing && !reviewTime) {
+          return {
+            studentUid,
+            entry: {
+              screen: null,
+              webcam: null,
+              url: null,
+              timestamp: status.timestamp,
+              imagePath: null,
+              isLive: false,
+            },
+          };
+        }
 
         const screenPath = status.latestScreenPath;
         const webcamPath = status.latestWebcamPath;
