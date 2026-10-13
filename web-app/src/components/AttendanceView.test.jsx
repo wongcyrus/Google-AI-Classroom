@@ -176,7 +176,7 @@ describe('AttendanceView Component Suite', () => {
               sharedScreenMinutes: 40,
               workingMinutes: 35,
               summary: 'Engaged',
-              attendance: [1, 2, 0], // Min 1 present, Min 2 deducted by Bingo, Min 3 absent
+              attendance: [1, 2, 3, 4, 0], // Min 1 present, Min 2 Timeout, Min 3 Correct, Min 4 Incorrect, Min 5 absent
             },
           },
         }),
@@ -201,8 +201,12 @@ describe('AttendanceView Component Suite', () => {
       expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Deducted \(Failed Bingo Checks\)/i)).toBeInTheDocument();
-    expect(screen.getByTitle('Min 2: Deducted (Failed consecutive Bingo checks)')).toBeInTheDocument();
+    expect(screen.getAllByText(/Bingo Correct/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Bingo Incorrect/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Bingo Timeout/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTitle('Min 2: ⏱️ Bingo Timeout (Missed / AFK)')).toBeInTheDocument();
+    expect(screen.getByTitle('Min 3: 🎯 Bingo Correct (Passed Challenge)')).toBeInTheDocument();
+    expect(screen.getByTitle('Min 4: ⚠️ Bingo Incorrect (Wrong Answer)')).toBeInTheDocument();
   });
 
   it('supports client-side search filtering by student name or email', async () => {
@@ -329,8 +333,8 @@ describe('AttendanceView Component Suite', () => {
       expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
     });
 
-    // Click Screen Share Minutes header
-    const screenMinutesTh = screen.getByTitle(/Click to sort by screen share minutes/i);
+    // Click Net Screen Share Minutes header
+    const screenMinutesTh = screen.getByTitle(/Click to sort by net verified screen share minutes/i);
     fireEvent.click(screenMinutesTh);
 
     const rows = screen.getAllByRole('row');
@@ -562,5 +566,103 @@ describe('AttendanceView Component Suite', () => {
       expect(screen.getByText(/30 minutes/i)).toBeInTheDocument();
     });
   });
+
+  it('renders Raw Share (min), Deducted (min), and Net Share (min) table headers and values', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u4: {
+              sharedScreenMinutes: 45,
+              rawScreenMinutes: 50,
+              deductedMinutes: 5,
+              workingMinutes: 40,
+              attendance: [1, 1, 2, 3, 4],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u4: 'bingo_student@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00.000Z"
+        endTime="2026-08-30T11:00:00.000Z"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('bingo_student@school.edu')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Raw Share')).toBeInTheDocument();
+    expect(screen.getByText('Deducted')).toBeInTheDocument();
+    expect(screen.getAllByText('Net Share').length).toBeGreaterThanOrEqual(1);
+
+    const studentRow = screen.getByText('bingo_student@school.edu').closest('tr');
+    expect(studentRow).toHaveTextContent('50');
+    expect(studentRow).toHaveTextContent('-5');
+    expect(studentRow).toHaveTextContent('45');
+  });
+
+  it('renders 3-color Bingo filter pills and legend in AttendanceView', async () => {
+    mockGetDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: {
+            u5: {
+              sharedScreenMinutes: 30,
+              rawScreenMinutes: 30,
+              deductedMinutes: 0,
+              workingMinutes: 20,
+              attendance: [3, 4],
+              bingoCount: 2,
+              bingoPassedCount: 1,
+              bingoFailedCount: 1,
+              bingoTimeoutCount: 0,
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          students: { u5: 'legend_student@school.edu' },
+        }),
+      });
+
+    render(
+      <AttendanceView
+        classId="CLASS_101"
+        selectedLesson="2026-08-30T10:00:00.000Z"
+        startTime="2026-08-30T10:00:00.000Z"
+        endTime="2026-08-30T11:00:00.000Z"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('legend_student@school.edu')).toBeInTheDocument();
+    });
+
+    // Check legend items
+    expect(screen.getByText(/🎯 Bingo Correct/i)).toBeInTheDocument();
+    expect(screen.getByText(/⚠️ Bingo Incorrect/i)).toBeInTheDocument();
+    expect(screen.getByText(/⏱️ Bingo Timeout/i)).toBeInTheDocument();
+
+    // Check filter pills
+    expect(screen.getByRole('button', { name: /Bingo Correct/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Bingo Incorrect/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Bingo Timeout/i })).toBeInTheDocument();
+  });
 });
+
 

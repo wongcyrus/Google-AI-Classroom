@@ -315,12 +315,19 @@ The backend and frontend collaboratively enforce the fair two-strike presence po
        - Emits a high-severity incident to `irregularities` for instructor auditing and clears `activeBingo`.
 
 ### 4. Transparent Attendance Deduction UI Reflection
-Students are provided with complete transparency regarding any attendance deductions in their portal (`StudentRecordsView.jsx`):
+Students are provided with complete transparency regarding their attendance and Bingo participation in their portal (`StudentRecordsView.jsx`):
 1. **Deductions Warning Banner**: When viewing a lesson where `deductedMinutes > 0`, an amber/red warning card displays:
    - Total minutes deducted from their attendance calculation.
    - Explicit reason: `"Failed consecutive presence checks (Bingo strike 1 & 2 timed out)"`.
    - Precise lesson timestamp intervals voided.
-2. **Timeline Heatmap Cells**: In the minute-by-minute timeline grid, minutes deducted due to missed presence checks are clearly rendered with diagonal orange stripes (`#F39C12`) and marked with a target icon (`🎯`), clearly distinguishing unacknowledged periods from offline periods (`#FADBD8`) or verified presence (`#2ECC71`).
+2. **Timeline Heatmap Cells & 3-Color Bingo Status Mapping**:
+   - **Screen Share Verified** (`#2ECC71` Light Green `✓`): Confirmed active desktop sharing.
+   - **Bingo Correct** (`#10b981` Emerald Green `🎯✓`): Answered verification challenge correctly; verifies engagement.
+   - **Bingo Incorrect** (`#f59e0b` Amber Yellow `🎯✗`): Answered verification challenge in person (incorrect answer still counts as physical presence without deduction).
+   - **Deducted / Timeout** (`#f97316` Bright Orange with diagonal stripes `🎯⏳`): Unacknowledged presence checks voided.
+   - **Absent / Inactive** (`#fadbd8` Light Pink `✗`): Offline or no screen share.
+3. **Core Ratios & Metrics**:
+   - Displays **1. Attendance Presence Ratio**, **2. Screen Sharing Ratio**, and **3. AI Working Minutes Ratio**, alongside **Raw Share (min)**, **Deducted (min)**, and **Net Share (min)** metrics.
 
 ### 5. Multi-Class Bingo Challenge Ingestion & Class Badge Routing
 To support students enrolled in multiple classes where an instructor in an off-schedule or inactive class issues an attention or presence check:

@@ -472,9 +472,15 @@ const StudentRecordsView = ({ user }) => {
             const endStr = data.endTime?.toDate ? data.endTime.toDate().toISOString() : data.endTime;
             const duration = data.duration || computeLessonDuration(startStr, endStr) || (studentEntry?.attendance?.length || 0) || 60;
             const workingMins = studentEntry?.workingMinutes || 0;
-            const sharedMins = studentEntry?.sharedScreenMinutes ?? (workingMins > 0 ? workingMins : 0);
             let attendanceArr = Array.isArray(studentEntry?.attendance) ? studentEntry.attendance : [];
-            let attendedMins = attendanceArr.filter((v) => v === 1).length;
+            let attendedMins = attendanceArr.filter((v) => v === 1 || v === 3 || v === 4).length;
+            let deductedMins = studentEntry?.deductedMinutes ?? attendanceArr.filter((v) => v === 2).length;
+            let rawMins = studentEntry?.rawScreenMinutes ?? (studentEntry?.sharedScreenMinutes != null ? studentEntry.sharedScreenMinutes : (attendedMins + deductedMins));
+            let sharedMins = studentEntry?.sharedScreenMinutes ?? attendedMins;
+
+            if (rawMins === 0 && (sharedMins > 0 || workingMins > 0)) {
+              rawMins = sharedMins || workingMins;
+            }
             if (attendedMins === 0 && (sharedMins > 0 || workingMins > 0)) {
               attendedMins = sharedMins || workingMins;
               if (attendanceArr.length === 0 && duration > 0) {
@@ -493,6 +499,8 @@ const StudentRecordsView = ({ user }) => {
               endTime: endStr,
               duration,
               attendedMinutes: attendedMins,
+              rawMinutes: rawMins,
+              deductedMinutes: deductedMins,
               sharedScreenMinutes: sharedMins,
               workingMinutes: workingMins,
               attPercentage,
@@ -2055,17 +2063,25 @@ const StudentRecordsView = ({ user }) => {
               <div className="attendance-timeline-section">
                 <div className="attendance-timeline-section-header">
                   <h4>⏱️ Minute-by-Minute Attendance Timeline ({activeLesson.duration} Minutes)</h4>
-                  <div className="timeline-legend">
-                    <div className="legend-item">
-                      <span className="legend-swatch legend-swatch-active"></span>
+                  <div className="timeline-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                    <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="legend-swatch legend-swatch-active" style={{ background: '#2ecc71', width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' }}></span>
                       <span>Present (Active)</span>
                     </div>
-                    <div className="legend-item">
-                      <span className="legend-swatch" style={{ background: '#f97316' }}></span>
-                      <span>Deducted (Bingo)</span>
+                    <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="legend-swatch" style={{ background: '#10b981', width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' }}></span>
+                      <span>Bingo Correct (🎯✓)</span>
                     </div>
-                    <div className="legend-item">
-                      <span className="legend-swatch legend-swatch-inactive"></span>
+                    <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="legend-swatch" style={{ background: '#f59e0b', width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' }}></span>
+                      <span>Bingo Incorrect (🎯✗)</span>
+                    </div>
+                    <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="legend-swatch" style={{ background: '#f97316', width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' }}></span>
+                      <span>Deducted / Timeout (🎯⏳)</span>
+                    </div>
+                    <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="legend-swatch legend-swatch-inactive" style={{ background: '#fadbd8', width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' }}></span>
                       <span>Inactive / Absent</span>
                     </div>
                   </div>
@@ -2109,17 +2125,33 @@ const StudentRecordsView = ({ user }) => {
                       </thead>
                       <tbody>
                         <tr>
-                          {activeLesson.attendance.map((present, idx) => {
-                            const isPresent = present === 1;
-                            const isVoided = present === 2;
-                            const bg = isPresent ? '#2ecc71' : isVoided ? '#f97316' : '#fadbd8';
-                            const fg = isPresent ? '#065f46' : isVoided ? '#ffffff' : '#991b1b';
-                            const title = isPresent
-                              ? `Minute ${idx + 1}: Present (Verified)`
-                              : isVoided
-                              ? `Minute ${idx + 1}: Deducted (Failed consecutive Bingo checks)`
-                              : `Minute ${idx + 1}: Absent (No screen share)`;
-                            const symbol = isPresent ? '✓' : isVoided ? '🎯' : '✗';
+                          {activeLesson.attendance.map((val, idx) => {
+                            let bg = '#fadbd8';
+                            let fg = '#991b1b';
+                            let title = `Minute ${idx + 1}: Absent (No screen share)`;
+                            let symbol = '✗';
+
+                            if (val === 1) {
+                              bg = '#2ecc71';
+                              fg = '#065f46';
+                              title = `Minute ${idx + 1}: Screen Share Verified`;
+                              symbol = '✓';
+                            } else if (val === 3) {
+                              bg = '#10b981';
+                              fg = '#ffffff';
+                              title = `Minute ${idx + 1}: Bingo Challenge Passed (Correct)`;
+                              symbol = '🎯✓';
+                            } else if (val === 4) {
+                              bg = '#f59e0b';
+                              fg = '#1f2937';
+                              title = `Minute ${idx + 1}: Bingo Challenge Answered (Incorrect - In Person)`;
+                              symbol = '🎯✗';
+                            } else if (val === 2) {
+                              bg = '#f97316';
+                              fg = '#ffffff';
+                              title = `Minute ${idx + 1}: Deducted (Bingo Timeout / AFK)`;
+                              symbol = '🎯⏳';
+                            }
 
                             return (
                               <td
@@ -2128,7 +2160,7 @@ const StudentRecordsView = ({ user }) => {
                                 style={{
                                   backgroundColor: bg,
                                   color: fg,
-                                  backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
+                                  backgroundImage: val === 2 ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
                                 }}
                                 title={title}
                               >
@@ -2286,16 +2318,33 @@ const StudentRecordsView = ({ user }) => {
                           {l.attendance && l.attendance.length > 0 ? (
                             <div className="timeline-bar-wrapper">
                               <div className="timeline-bar" title="Green: Active, Pink: Inactive">
-                                {l.attendance.map((val, idx) => (
-                                  <div
-                                    key={idx}
-                                    style={{
-                                      flex: 1,
-                                      backgroundColor: val === 1 ? '#2ecc71' : val === 2 ? '#f97316' : '#fadbd8',
-                                    }}
-                                    title={val === 1 ? 'Present' : val === 2 ? 'Deducted (Bingo)' : 'Absent'}
-                                  />
-                                ))}
+                                {l.attendance.map((val, idx) => {
+                                  let bg = '#fadbd8';
+                                  let title = 'Absent';
+                                  if (val === 1) {
+                                    bg = '#2ecc71';
+                                    title = 'Screen Share Verified';
+                                  } else if (val === 3) {
+                                    bg = '#10b981';
+                                    title = 'Bingo Correct (🎯✓)';
+                                  } else if (val === 4) {
+                                    bg = '#f59e0b';
+                                    title = 'Bingo Incorrect (🎯✗)';
+                                  } else if (val === 2) {
+                                    bg = '#f97316';
+                                    title = 'Deducted / Timeout (🎯⏳)';
+                                  }
+                                  return (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        flex: 1,
+                                        backgroundColor: bg,
+                                      }}
+                                      title={title}
+                                    />
+                                  );
+                                })}
                               </div>
                             </div>
                           ) : (

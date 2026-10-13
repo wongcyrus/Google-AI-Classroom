@@ -12,7 +12,6 @@ import DateRangeFilter from './DateRangeFilter';
 import MonitorView from './MonitorView';
 import IrregularitiesView from './IrregularitiesView';
 import ProgressView from './ProgressView';
-import SessionReviewView from './SessionReviewView';
 import MessagesView from './MessagesView';
 import VideoLibrary from './VideoLibrary';
 import VideoAnalysisJobs from './VideoAnalysisJobs';
@@ -224,7 +223,6 @@ const ClassView = ({ user }) => {
         switch (subTab) {
           case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
-          case 'review': return <SessionReviewView {...props} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
           default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
         }
@@ -504,12 +502,6 @@ const ClassView = ({ user }) => {
             onClick={() => setSub('library')}
           >
             <span>👥</span> Student Recordings
-          </button>
-          <button
-            className={`tab-button ${subTab === 'review' ? 'active' : ''}`}
-            onClick={() => setSub('review')}
-          >
-            <span>⏱️</span> Timeline Session Review
           </button>
           <button
             className={`tab-button ${subTab === 'jobs' ? 'active' : ''}`}

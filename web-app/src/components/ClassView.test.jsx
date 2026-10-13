@@ -96,7 +96,7 @@ describe('ClassView Component Full Suite', () => {
     expect(screen.getByTestId('monitor-view')).toBeInTheDocument();
   });
 
-  it('switches between all video subtabs (library, review, jobs)', () => {
+  it('switches between all video subtabs (recordings, library, jobs)', () => {
     const { unmount } = render(
       <MemoryRouter initialEntries={['/class/CLASS-101?tab=video&sub=library']}>
         <Routes>
@@ -108,13 +108,13 @@ describe('ClassView Component Full Suite', () => {
     unmount();
 
     const { unmount: unmount2 } = render(
-      <MemoryRouter initialEntries={['/class/CLASS-101?tab=video&sub=review']}>
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=video&sub=recordings']}>
         <Routes>
           <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
         </Routes>
       </MemoryRouter>
     );
-    expect(screen.getByTestId('session-review-view')).toBeInTheDocument();
+    expect(screen.getByTestId('lecture-recordings-view')).toBeInTheDocument();
     unmount2();
 
     const { unmount: unmount3 } = render(
@@ -273,9 +273,9 @@ describe('ClassView Component Full Suite', () => {
     const videoTab = screen.getByRole('button', { name: /Recordings & Sessions/i });
     fireEvent.click(videoTab);
 
-    // Click Review sub-tab
-    const reviewSubTab = screen.getByRole('button', { name: /Timeline Session Review/i });
-    fireEvent.click(reviewSubTab);
+    // Click Student Recordings sub-tab
+    const librarySubTab = screen.getByRole('button', { name: /Student Recordings/i });
+    fireEvent.click(librarySubTab);
 
     // Click Jobs sub-tab
     const jobsSubTab = screen.getByRole('button', { name: /AI Video Analysis Jobs/i });

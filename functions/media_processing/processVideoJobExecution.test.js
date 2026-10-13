@@ -435,6 +435,8 @@ describe('processVideoJob Cloud Function Execution', () => {
       }),
     };
 
+    const mockLessonSet = vi.fn().mockResolvedValue();
+
     mockCollection.mockImplementation((name) => {
       if (name === 'classes') {
         return {
@@ -443,6 +445,11 @@ describe('processVideoJob Cloud Function Execution', () => {
               data: () => ({
                 schedule: { timeZone: 'Asia/Hong_Kong' },
                 purgeScreenshotsAfterVideoCombine: true,
+              }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                set: mockLessonSet,
               }),
             }),
           }),
@@ -472,6 +479,19 @@ describe('processVideoJob Cloud Function Execution', () => {
       expect.objectContaining({
         status: 'completed',
       })
+    );
+
+    // Verify bitmask was frozen into Firestore lessons collection
+    expect(mockLessonSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        students: expect.objectContaining({
+          s1: expect.objectContaining({
+            sharedScreenMinutes: expect.any(Number),
+            attendance: expect.any(Array),
+          }),
+        }),
+      }),
+      { merge: true }
     );
 
     // Only unflagged routine docs (routineDoc1, routineDoc2) should be deleted

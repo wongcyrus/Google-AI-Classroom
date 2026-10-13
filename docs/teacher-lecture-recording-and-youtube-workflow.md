@@ -816,7 +816,27 @@ The pipeline applies a two-layer guard:
      end = Math.min(nextStart > start ? nextStart : start + minDisplayDur, start + minDisplayDur);
    }
    ```
-This ensures 100% of generated subtitle cues remain visible and accurately synchronized in the video player.
+---
+
+## 12. Network Instability & Offline Resilience (Decoupled Streaming & IndexedDB Buffer)
+
+### 12.1 Strict Decoupling of Live Broadcast from Background Recording Uploads
+In live classroom environments, local Wi-Fi or campus networks may experience temporary latency spikes, packet loss, or brief disconnections.
+
+To guarantee uninterrupted classroom instruction:
+1. **Live Broadcast Isolation**: Real-time teacher screen transmission and student viewing are completely decoupled from background clip uploads. An upload failure or timeout in Cloud Storage **never** drops the live broadcast session.
+2. **Caller Stream Ownership**: When screen sharing is initiated from the Monitor View, the shared media stream belongs to the caller. Subordinate hooks (`useTeacherScreenBroadcast`) never terminate hardware tracks unless created internally.
+3. **Safe Multi-Subscriber Track Event Listeners**: Media stream listeners use `videoTrack.addEventListener('ended', ..., { once: true })` with fallback chaining to prevent handler clobbering.
+
+### 12.2 IndexedDB Local-First Persistence & Resilient Retries
+Every 1-minute lecture segment follows a local-first offline pipeline:
+1. **Local IndexedDB Persistence**: The raw recorded WebM blob and pure audio blob are immediately saved to browser IndexedDB storage (`persistPendingSegment`) before any network upload begins.
+2. **Non-Blocking Background Upload**: `drainUploadQueue` processes segments asynchronously without locking the UI or frame capture intervals.
+3. **Exponential Backoff**: If an upload fails due to network drop or storage timeout, the segment remains safely in IndexedDB and retries with exponential backoff (`2s -> 3s -> 4.5s ... max 30s`).
+4. **Instant Auto-Drain on Reconnection**: A `window.addEventListener('online', ...)` listener automatically triggers queue drainage the moment internet connectivity is restored.
+5. **Atomic Cleanup Only on Confirmation**: A segment is deleted from IndexedDB (`clearPendingSegment`) only after Firebase Cloud Storage completes receiving the file and the Firestore session document is marked `ready`.
+6. **Mount Recovery**: If the teacher closes or refreshes the browser while offline, any pending segments in IndexedDB are automatically detected and drained on the next session mount.
+
 
 
 

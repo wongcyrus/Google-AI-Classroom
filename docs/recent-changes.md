@@ -4,6 +4,110 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.2.2 3-Color Bingo Presence Heatmap, Raw/Deducted/Net Breakdown & Permanent Pre-Purge Bitmask Preservation Architecture
+
+**Date**: October 13, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (Backend Vitest, Web-App Vitest, Media Processing Vitest), Deployed to Production (`https://it114115-2627.web.app`)  
+**Primary Files**:
+- [`functions/attendance/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs)
+- [`functions/attendance/attendance.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/attendance.test.js)
+- [`functions/media_processing/processVideoJob.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJob.js)
+- [`functions/media_processing/processVideoJobExecution.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJobExecution.test.js)
+- [`web-app/src/components/AttendanceView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.jsx)
+- [`web-app/src/components/AttendanceView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AttendanceView.test.jsx)
+- [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)
+- [`web-app/src/components/StudentRecordsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.test.jsx)
+- [`web-app/src/utils/attendanceUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/attendanceUtils.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Problem Statement & Root Cause**:
+   - **Heatmap Timeline Bar Chart Distortion**: Historical fallback logic previously used `i < effectiveMins` to fill attendance slots from index 0 when raw screenshots were deleted. This caused active presence minutes to be left-aligned like a bar chart instead of preserving their true chronological timestamp positions.
+   - **Bingo Status Ambiguity**: The attendance matrix only supported binary active/inactive and a single deduction status without distinguishing whether a student answered Bingo correctly, answered incorrectly (which still confirms in-person physical presence), or timed out (AFK penalty).
+   - **Media Purge Lifecycle Vulnerability**: Individual `.jpg` screenshot files are deleted after post-class video compilation to save storage. If attendance had not been viewed prior to image deletion, raw minute positions were lost unless previously captured. Furthermore, if compiled videos were also deleted later during long-term storage cleanups, attendance could not rely on video files.
+
+2. **Permanent Pre-Purge Bitmask Preservation Architecture**:
+   - In [`functions/media_processing/processVideoJob.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJob.js), right before routine screenshots are purged, the system extracts the exact chronological minute bitmask (`[0, 1, 1, 0, 1, ...]`) from frame timestamps and atomically saves it into Firestore `classes/{classId}/lessons/{lessonId}` under `students[uid].attendance`, `sharedScreenMinutes`, and `rawScreenMinutes`.
+   - Firestore document size is ~300 bytes per student and is permanent.
+   - Even if both raw screenshots **and** compiled MP4 videos are deleted later from Google Cloud Storage, [`getAttendanceData`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs) directly retrieves the frozen bitmask and renders the authentic chronological timeline without degradation.
+
+3. **3-Color Bingo Presence Heatmap Matrix**:
+   - Overlaid Bingo challenge events from `classes/{classId}/bingoRecords` onto their exact minute index in the attendance timeline:
+     - `3` (Bingo Correct - Emerald Green `#10b981`, `🎯✓`): Student answered correctly; verifies active focus and participation.
+     - `4` (Bingo Incorrect - Amber Yellow `#f59e0b`, `🎯✗`): Student answered incorrectly in person; verifies physical presence without penalty.
+     - `2` (Bingo Timeout - Bright Orange `#f97316`, `🎯⏳`): Student failed to respond across checkpoints; applies attendance penalty deduction.
+     - `1` (Screen Share Verified - Light Green `#2ECC71`, `✓`): Regular active screen sharing.
+     - `0` (Absent / Inactive - Light Pink `#FADBD8`, `✗`): No screen share or activity.
+
+4. **Multi-Column Telemetry & Excel Export**:
+   - Added distinct columns in the Attendance Table: **Raw Share (min)**, **Deducted (min)** (with `-X` styling), **Net Share (min)**, **Net Share %**, **AI Work (min)**, and **AI Work %**.
+   - Added sorting by `rawMinutes`, `deductedMinutes`, `screenMinutes`, and `screenPercentage`.
+   - Added filter pills for `🎯 Bingo Correct`, `⚠️ Bingo Incorrect`, and `⏱️ Bingo Timeout`.
+   - Updated Excel export with separate raw, deducted, and net minute columns.
+
+5. **Teacher & Student UI Parity**:
+   - Updated [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx) so student personal records display the exact same 3-color Bingo badges, timeline legend, and deduction alert banner.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.2.1 Video Library Cursor Stack Pagination & Previous Button Restoration
+
+**Date**: October 12, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests, Deployed to Production (`https://it114115-2627.web.app`)  
+**Primary Files**:
+- [`web-app/src/components/VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx)
+- [`web-app/src/hooks/useCollectionQuery.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useCollectionQuery.js)
+- [`web-app/src/components/VideoLibrary.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.test.jsx)
+- [`web-app/src/hooks/useCollectionQuery.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useCollectionQuery.test.js)
+
+### Technical Analysis & Implementation Details:
+1. **Root Cause**:
+   - In [`VideoLibrary.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoLibrary.jsx), the Previous page button had a hardcoded `<button disabled>Previous</button>` without an `onClick` handler or pagination state binding.
+   - `page` and `fetchPrevPage` were not destructured from `usePaginatedQuery`.
+2. **Cursor Stack Pagination (`useCollectionQuery.js`)**:
+   - Implemented a cursor stack ref (`pageCursorsRef = useRef([null])`) tracking the boundary document snapshot for each page index.
+   - Moving forward pushes `lastVisible` into the stack.
+   - Moving backward retrieves the snapshot cursor for the previous page and queries using `startAfter(prevCursor)`, with page 1 falling back to initial `limit(pageSize)`.
+3. **UI Integration**:
+   - Connected `onClick={fetchPrevPage}` and `disabled={page <= 1 || loading}` to the Previous button.
+   - Added current page indicator `<span className="pagination-page-indicator">Page {page}</span>`.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.2.0 Decoupling Live Screen Broadcast from Background Clip Uploads & Eliminating React Lifecycle Broadcast Drops
+
+**Date**: October 12, 2026  
+**Status**: Implemented, Verified with 100% Passing Tests (1,685 Web App Tests across 149 Suites), Deployed to Production (`https://it114115-2627.web.app`)  
+**Primary Files**:
+- [`web-app/src/hooks/useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js)
+- [`web-app/src/hooks/useTeacherScreenBroadcastStudent.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcastStudent.js)
+- [`web-app/src/hooks/useWebRTCPeekTeacher.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useWebRTCPeekTeacher.js)
+- [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js)
+- [`web-app/src/hooks/useLectureRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useLectureRecorder.js)
+- [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx)
+
+### Technical Analysis & Implementation Details:
+
+1. **Root Cause Analysis (Cascade Breakdown)**:
+   - **React Effect Lifecycle Bug**: In `useTeacherScreenBroadcast.js`, `useEffect(() => { return () => { stopBroadcast(); }; }, [stopBroadcast]);` had `stopBroadcast` in its dependency array. When network instability occurred, Firebase Auth fired `onIdTokenChanged`, causing `MonitorView` to re-render. Because `stopBroadcast` depended on user state, React re-created the function and ran the previous render's cleanup, calling `stopBroadcast()` during live class.
+   - **Shared Stream Destruction**: `stopBroadcast()` stopped all underlying media tracks (`stream.getTracks().forEach(t => t.stop())`) even when the stream was passed in by the caller (`options.existingStream`).
+   - **Track Event Clobbering**: Both `MonitorView` and `useLectureRecorder` assigned `videoTrack.onended = ...`, clobbering each other and triggering `handleStopSynchronizedBroadcast()` when tracks stopped.
+   - **Coupled Storage Upload Errors**: In `useLectureRecorder`, `drainUploadQueue` threw on Cloud Storage network errors, causing `stopRecording` to fail and setting `recordingState = 'error'`.
+   - **Firestore Frame Capture Lock**: `setDoc(liveFrameDocRef, ...)` had no timeout race, locking `isCapturingFrameRef = true` during upload congestion.
+   - **Student Broadcast Drops**: In `useTeacherScreenBroadcastStudent.js`, `leaveBroadcast` in unmount cleanup deps array caused student viewer disconnects on auth refresh.
+   - **WebRTC Peek Terminations**: In `useWebRTCPeekTeacher.js`, `cleanup` in unmount cleanup deps array terminated live teacher peeks on re-render.
+   - **Live Subtitle Restarts & Active Status Race Conditions**: In `useTeacherLiveSubtitles.js`, inline `targetLanguages` and `publishSubtitle` dependency arrays caused speech recognition to constantly abort/restart, while status cleanup wrote `{ active: false }` to Firestore on re-render.
+
+2. **Architectural Decoupling & Fixes**:
+   - **Ref-Based Lifecycle Cleanup**: Replaced dependency-bound cleanups with refs (`stopBroadcastRef`, `leaveBroadcastRef`, `cleanupRef`, `publishSubtitleRef`) and strict unmount effects (`[]`). Cleanup only runs on genuine unmount and never on re-render, token change, or auth refresh.
+   - **Stream Ownership Preservation**: Added `isLocallyCreatedStreamRef`. `stopBroadcast()` only stops media tracks if created internally by the hook; caller-supplied shared streams remain active.
+   - **Multi-Subscriber Event Handlers**: Replaced `.onended` property assignment with `videoTrack.addEventListener('ended', ..., { once: true })` with chaining fallbacks.
+   - **IndexedDB-Protected Offline Retries**: In `useLectureRecorder`, 1-minute clips are persisted to IndexedDB before upload. Storage and network upload errors are safely absorbed without throwing, maintaining exponential backoff retries (`2s -> 3s -> 4.5s ... max 30s`) and instant auto-drain on `window.addEventListener('online', ...)`. Fatal Firestore errors fail fast.
+   - **Live Frame Publish Timeout**: Added a 2500ms timeout race to `setDoc(liveFrameDocRef, ...)` to prevent frame capture lockup during network degradation.
+   - **Separated Subtitle Session Deactivation**: Split Firestore subtitle session cleanup so that `{ active: false }` is written only on true unmount or explicit disablement. Normalized `targetLanguages` dependencies to prevent Web Speech recognition and Whisper processing restarts.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.1.9 Complete Elimination of Fallbacks, Hacky Workarounds, and Masked Errors (Fail-Fast Architecture)
 
 **Date**: October 11, 2026  

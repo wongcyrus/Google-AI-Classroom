@@ -23,7 +23,7 @@ const TeacherView = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
-  const [scheduleFilter, setScheduleFilter] = useState('today'); // 'today' (default) | 'live' | 'all'
+  const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' (default) | 'today' | 'live'
   const [sortOption, setSortOption] = useState('smart'); // 'smart' | 'name'
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
@@ -53,44 +53,54 @@ const TeacherView = ({ user }) => {
 
     const userProfileRef = doc(db, "teacherProfiles", user.uid);
     const unsubscribeProfile = onSnapshot(userProfileRef, async (profileSnap) => {
+      let classIds = [];
       if (profileSnap.exists()) {
         const profileData = profileSnap.data();
-        const classIds = profileData.classes || [];
+        classIds = profileData.classes || [];
+      }
 
-        if (classIds.length === 0) {
-          setClasses([]);
-          setLoading(false);
-          return;
+      if (classIds.length === 0) {
+        setClasses([]);
+        setLoading(false);
+        return;
+      }
+
+      const classPromises = classIds.map(async id => {
+        try {
+          const snap = await getDoc(doc(db, "classes", id));
+          return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        } catch (e) {
+          console.warn(`[TeacherView] Failed to load class ${id}:`, e);
+          return null;
         }
+      });
+      const classSnaps = await Promise.all(classPromises);
+      const classesData = classSnaps.filter(Boolean);
+      classesData.sort((a, b) => a.id.localeCompare(b.id));
 
-        const classPromises = classIds.map(id => getDoc(doc(db, "classes", id)));
-        const classSnaps = await Promise.all(classPromises);
-
-        const classesData = classSnaps.map(snap => ({ id: snap.id, ...snap.data() }));
-        classesData.sort((a, b) => a.id.localeCompare(b.id));
-
-        const updatedClasses = await Promise.all(classesData.map(async c => {
+      const updatedClasses = await Promise.all(classesData.map(async c => {
+        try {
           const storageRef = doc(db, "classes", c.id, "metadata", "storage");
           const aiMetaRef = doc(db, "classes", c.id, "metadata", "ai");
           const [storageSnap, aiMetaSnap] = await Promise.all([
-            getDoc(storageRef),
-            getDoc(aiMetaRef)
+            getDoc(storageRef).catch(() => null),
+            getDoc(aiMetaRef).catch(() => null)
           ]);
 
           let mergedData = { ...c };
-          if (storageSnap.exists()) {
+          if (storageSnap && storageSnap.exists()) {
             mergedData = { ...mergedData, ...storageSnap.data() };
           }
-          if (aiMetaSnap.exists()) {
+          if (aiMetaSnap && aiMetaSnap.exists()) {
             mergedData = { ...mergedData, ...aiMetaSnap.data() };
           }
           return mergedData;
-        }));
+        } catch (e) {
+          return c;
+        }
+      }));
 
-        setClasses(updatedClasses);
-      } else {
-        setClasses([]);
-      }
+      setClasses(updatedClasses);
       setLoading(false);
     });
 

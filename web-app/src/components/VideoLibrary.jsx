@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db } from '../firebase-config';
 import './SharedViews.css';
@@ -48,9 +48,13 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
   const [isZipping, setIsZipping] = useState(false);
   const [isRequestingAnalysis, setIsRequestingAnalysis] = useState(false);
   const [downloadingVideos, setDownloadingVideos] = useState(new Set());
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'completed' | 'processing' | 'failed'
+  const [errorModalJob, setErrorModalJob] = useState(null);
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
 
   const [showPlayer, setShowPlayer] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
+  const [selectedVideoForPlayer, setSelectedVideoForPlayer] = useState(null);
   const [playerLoading, setPlayerLoading] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
@@ -103,13 +107,39 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
     fetchClassProfiles();
   }, [classId]);
 
-  const extraClauses = useMemo(() => [{ field: 'status', op: '==', value: 'completed' }], []);
+  const extraClauses = useMemo(() => {
+    if (statusFilter && statusFilter !== 'all') {
+      return [{ field: 'status', op: '==', value: statusFilter }];
+    }
+    return [];
+  }, [statusFilter]);
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm(`Are you sure you want to delete compilation job ${jobId}?`)) return;
+    try {
+      setIsDeletingJob(true);
+      await deleteDoc(doc(db, 'videoJobs', jobId));
+      setErrorModalJob(null);
+      setSelectedVideos(prev => {
+        const next = new Map(prev);
+        next.delete(jobId);
+        return next;
+      });
+    } catch (err) {
+      console.error('Error deleting video job:', err);
+      alert(`Failed to delete job: ${err.message}`);
+    } finally {
+      setIsDeletingJob(false);
+    }
+  };
 
   const { 
     data: videos, 
     loading, 
+    page,
     isLastPage, 
-    fetchNextPage 
+    fetchNextPage,
+    fetchPrevPage,
   } = usePaginatedQuery('videoJobs', {
     classId,
     startTime,
@@ -396,6 +426,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       alert("This video does not have a storage path.");
       return;
     }
+    setSelectedVideoForPlayer(video);
     setPlayerLoading(true);
     setShowPlayer(true);
     try {
@@ -407,6 +438,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       console.error('Error getting video URL for playback:', error);
       alert(`Failed to get video for playback. ${error.message}`);
       setShowPlayer(false); // Close modal on error
+      setSelectedVideoForPlayer(null);
     } finally {
       setPlayerLoading(false);
     }
@@ -573,7 +605,17 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
 
   return (
     <div className="view-container">
-      <VideoPlayerModal show={showPlayer} onClose={() => setShowPlayer(false)} videoUrl={videoUrl} loading={playerLoading} />
+      <VideoPlayerModal
+        show={showPlayer}
+        onClose={() => {
+          setShowPlayer(false);
+          setSelectedVideoForPlayer(null);
+        }}
+        videoUrl={videoUrl}
+        loading={playerLoading}
+        video={selectedVideoForPlayer}
+        classId={classId}
+      />
       <Modal
           show={showPromptModal}
           onClose={() => {
@@ -756,6 +798,36 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
       </div>
 
       <>
+        {/* Status Filter Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Status:</span>
+          {[
+            { key: 'all', label: 'All Videos & Jobs' },
+            { key: 'completed', label: '🟢 Completed' },
+            { key: 'processing', label: '⏳ Processing / Pending' },
+            { key: 'failed', label: '⚠️ Failed Jobs' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStatusFilter(key)}
+              style={{
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: statusFilter === key ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                backgroundColor: statusFilter === key ? '#eff6ff' : '#ffffff',
+                color: statusFilter === key ? '#1d4ed8' : '#475569',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="other-controls-column" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '20px' }}>
           <button onClick={handleRequestZipForSelected} disabled={selectedVideos.size === 0 || isZipping}>
             {isZipping ? 'Submitting...' : `Request Selected as ZIP ${selectedVideos.size > 0 ? `(${selectedVideos.size})` : ''}`}
@@ -804,6 +876,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
             onDownloadVideo={handleDownload} 
             downloadingVideos={downloadingVideos}
             studentProfiles={studentProfiles}
+            onErrorClick={(job) => setErrorModalJob(job)}
             onSelectAll={(e) => {
               const newSelection = new Map();
               if (e.target.checked) {
@@ -815,8 +888,89 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
         )}
       </>
 
+      {/* Failure Diagnosis & Error Modal */}
+      {errorModalJob && (
+        <Modal
+          show={Boolean(errorModalJob)}
+          onClose={() => setErrorModalJob(null)}
+          title={`⚠️ Video Compilation Failure Details`}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '10px 14px', fontSize: '0.85rem', color: '#991b1b' }}>
+              <div><strong>Job ID:</strong> <code>{errorModalJob.id}</code></div>
+              <div><strong>Student:</strong> {errorModalJob.studentEmail || errorModalJob.studentUid || 'Unknown'}</div>
+              <div><strong>Session:</strong> {errorModalJob.startTime?.toDate ? errorModalJob.startTime.toDate().toLocaleString() : (errorModalJob.startTime || 'N/A')}</div>
+            </div>
+
+            <div>
+              <h4 style={{ margin: '0 0 6px 0', fontSize: '0.88rem', color: '#1e293b' }}>Error Message</h4>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#b91c1c', maxHeight: '150px', overflowY: 'auto' }}>
+                {errorModalJob.error || errorModalJob.errorMessage || 'No specific error message recorded.'}
+              </pre>
+            </div>
+
+            {errorModalJob.ffmpegError && (
+              <div>
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.88rem', color: '#1e293b' }}>FFmpeg Logs / Details</h4>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#334155', maxHeight: '200px', overflowY: 'auto' }}>
+                  {errorModalJob.ffmpegError}
+                </pre>
+              </div>
+            )}
+
+            {errorModalJob.errorStack && (
+              <div>
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.88rem', color: '#1e293b' }}>Stack Trace</h4>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b', maxHeight: '150px', overflowY: 'auto' }}>
+                  {errorModalJob.errorStack}
+                </pre>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={() => handleDeleteJob(errorModalJob.id)}
+                disabled={isDeletingJob}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: isDeletingJob ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                }}
+              >
+                {isDeletingJob ? 'Deleting...' : '🗑️ Delete Failed Job'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setErrorModalJob(null)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="pagination-controls">
-        <button disabled>Previous</button> {/* Previous not implemented in hook yet */}
+        <button onClick={fetchPrevPage} disabled={page <= 1 || loading}>
+          Previous
+        </button>
+        <span className="pagination-page-indicator">Page {page}</span>
         <button onClick={fetchNextPage} disabled={isLastPage || loading}>
           Next
         </button>

@@ -104,9 +104,9 @@ export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [],
       ? attStudent.totalMinutes
       : (recordedMins != null && recordedMins > 0 ? recordedMins : (attStudent?.totalMinutes ?? 0));
 
-    let effectiveAttendance = (attStudent?.attendance && attStudent.attendance.includes(1))
+    let effectiveAttendance = (attStudent?.attendance && attStudent.attendance.some((v) => v > 0))
       ? attStudent.attendance
-      : (lessonStudent?.attendance && lessonStudent.attendance.includes(1))
+      : (lessonStudent?.attendance && lessonStudent.attendance.some((v) => v > 0))
         ? lessonStudent.attendance
         : null;
 
@@ -121,10 +121,23 @@ export const mergeAttendanceData = (attendanceData = [], rawLessonStudents = [],
       ? `${Math.min(100, Math.max(0, (effectiveMins / durationMinutes) * 100)).toFixed(2)}%`
       : '0.00%';
 
+    const deductedMins = attStudent?.deductedMinutes ?? lessonStudent?.deductedMinutes ?? (
+      Array.isArray(effectiveAttendance) ? effectiveAttendance.reduce((sum, v) => sum + (v === 2 ? 1 : 0), 0) : 0
+    );
+    const rawMins = attStudent?.rawMinutes ?? lessonStudent?.rawScreenMinutes ?? (effectiveMins + deductedMins);
+
     return {
       email,
       uid: lessonStudent?.uid || attStudent?.uid || null,
       totalMinutes: effectiveMins,
+      rawMinutes: rawMins,
+      deductedMinutes: deductedMins,
+      bingoCorrectMinutes: attStudent?.bingoCorrectMinutes ?? lessonStudent?.bingoCorrectMinutes ?? (
+        Array.isArray(effectiveAttendance) ? effectiveAttendance.reduce((sum, v) => sum + (v === 3 ? 1 : 0), 0) : 0
+      ),
+      bingoIncorrectMinutes: attStudent?.bingoIncorrectMinutes ?? lessonStudent?.bingoIncorrectMinutes ?? (
+        Array.isArray(effectiveAttendance) ? effectiveAttendance.reduce((sum, v) => sum + (v === 4 ? 1 : 0), 0) : 0
+      ),
       percentage: pct,
       attendance: effectiveAttendance,
       workingMinutes: lessonStudent?.workingMinutes,

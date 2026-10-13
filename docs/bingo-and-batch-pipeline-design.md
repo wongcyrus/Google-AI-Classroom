@@ -115,6 +115,36 @@ The `handleAutomaticBingo` Cloud Function is configured with `schedule: '* * * *
 
 ---
 
+### 2.5 3-Color Bingo Presence Heatmap & Lifelong Bitmask Persistence
+
+The Attendance module integrates Bingo records directly into the minute-by-minute timeline matrix:
+
+```mermaid
+flowchart TD
+    A["Raw Screenshots (Cloud Storage)"] -->|"processVideoJob"| B["Compile MP4 Timelapse"]
+    B --> C["Atomic Pre-Purge Bitmask Freeze (lessons/{lessonId})"]
+    C --> D["Purge Routine .jpg Images (Save Storage)"]
+    C --> E["Firestore Permanent Record (~300 bytes)"]
+    E --> F["getAttendanceData Engine"]
+    G["bingoRecords (Firestore)"] --> F
+    F --> H["3-Color Attendance Heatmap Matrix"]
+    H --> H1["#10b981 Emerald Green: Bingo Correct (🎯✓)"]
+    H --> H2["#f59e0b Amber Yellow: Bingo Incorrect (🎯✗) - Physical Presence Verified"]
+    H --> H3["#f97316 Bright Orange: Bingo Timeout (🎯⏳) - AFK Deduction"]
+    H --> H4["#2ecc71 Light Green: Screen Share Verified (✓)"]
+    H --> H5["#fadbd8 Light Pink: Absent / Inactive (✗)"]
+```
+
+1. **3 Distinct Bingo Status Colors**:
+   - **Correct (`#10b981`)**: Student answered correctly; verifies active focus and knowledge retention.
+   - **Incorrect (`#f59e0b`)**: Student answered incorrectly in person; counts as active physical presence without penalty.
+   - **Timeout / AFK (`#f97316`)**: Student failed to acknowledge challenge across consecutive checkpoints; triggers attendance penalty deduction.
+2. **Permanent Bitmask Retention**:
+   - `processVideoJob.js` freezes the authentic per-minute attendance bitmask directly into `classes/{classId}/lessons/{lessonId}` immediately before deleting routine screenshot images.
+   - Attendance heatmaps and table metrics remain fully functional and authentic even if both raw images and compiled MP4 videos are deleted later.
+
+---
+
 ## 3. Unified Media Processing & AI Batch Architecture
 
 All backend media processing, audio/video concatenation, and AI batch operations follow the **Unified 7-Point Architectural Pattern**:

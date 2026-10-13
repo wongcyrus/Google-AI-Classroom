@@ -386,6 +386,13 @@ export function useTeacherLiveSubtitles({
     }
   }, [classId, translateTranscript, speechLanguage, engineMode, teacherUid, teacherEmail]);
 
+  const publishSubtitleRef = useRef(publishSubtitle);
+  useEffect(() => {
+    publishSubtitleRef.current = publishSubtitle;
+  });
+
+  const targetLanguagesKey = Array.isArray(targetLanguages) ? targetLanguages.join(',') : '';
+
   // Audio Stream Processing (LiteRT Whisper VAD buffering & Web Speech recognition)
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
@@ -488,7 +495,7 @@ export function useTeacherLiveSubtitles({
             }
           }
           if (isMounted && text) {
-            publishSubtitle(text);
+            publishSubtitleRef.current?.(text);
           }
         }).catch(async (err) => {
           console.debug('[useTeacherLiveSubtitles] Whisper transcription error:', err);
@@ -502,7 +509,7 @@ export function useTeacherLiveSubtitles({
                 { courseContext, customPrompt: customPromptText }
               );
               if (isMounted && aiTranscript && aiTranscript.trim()) {
-                publishSubtitle(aiTranscript.trim());
+                publishSubtitleRef.current?.(aiTranscript.trim());
               }
             } catch (aiErr) {
               console.debug('[useTeacherLiveSubtitles] Firebase AI Logic transcription fallback on rejection notice:', aiErr);
@@ -622,7 +629,7 @@ export function useTeacherLiveSubtitles({
                   setLatestTranscript(speechText);
                 }
                 if (final && final.trim() && isMounted) {
-                  publishSubtitle(final.trim());
+                  publishSubtitleRef.current?.(final.trim());
                 }
               };
 
@@ -682,7 +689,7 @@ export function useTeacherLiveSubtitles({
         localStream.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [enabled, audioStream, deviceId, speechLanguage, engineMode, targetLanguages, publishSubtitle, classId, teacherUid]);
+  }, [enabled, audioStream, deviceId, speechLanguage, engineMode, classId, teacherUid, teacherEmail]);
 
   // Manage subtitle active session status in Firestore
   useEffect(() => {
@@ -709,11 +716,17 @@ export function useTeacherLiveSubtitles({
     } else {
       setDoc(subDocRef, { active: false }, { merge: true }).catch(() => {});
     }
+  }, [enabled, classId, speechLanguage, targetLanguagesKey, engineMode, teacherUid, teacherEmail]);
 
+  // Clean up subtitle active status strictly on final unmount
+  useEffect(() => {
     return () => {
-      setDoc(subDocRef, { active: false }, { merge: true }).catch(() => {});
+      if (classId) {
+        const subDocRef = doc(db, 'classes', classId, 'liveSubtitles', 'current');
+        setDoc(subDocRef, { active: false }, { merge: true }).catch(() => {});
+      }
     };
-  }, [enabled, classId, speechLanguage, targetLanguages, engineMode, teacherUid, teacherEmail]);
+  }, [classId]);
 
   return {
     engineMode,

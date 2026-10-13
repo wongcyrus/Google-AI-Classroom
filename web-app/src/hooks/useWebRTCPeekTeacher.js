@@ -248,11 +248,16 @@ export default function useWebRTCPeekTeacher({ classId, studentUid, teacherUid }
     await cleanup();
   }, [cleanup]);
 
+  const cleanupRef = useRef(null);
+  useEffect(() => {
+    cleanupRef.current = cleanup;
+  });
+
   useEffect(() => {
     return () => {
-      cleanup();
+      cleanupRef.current?.();
     };
-  }, [cleanup]);
+  }, []);
 
   return {
     isPeeking,

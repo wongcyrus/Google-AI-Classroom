@@ -69,11 +69,14 @@ const mockVideos = [
 ];
 
 const mockFetchNextPage = vi.fn();
+const mockFetchPrevPage = vi.fn();
 let mockUsePaginatedQueryReturn = {
   data: mockVideos,
   loading: false,
+  page: 1,
   isLastPage: false,
   fetchNextPage: mockFetchNextPage,
+  fetchPrevPage: mockFetchPrevPage,
 };
 
 vi.mock('../hooks/useCollectionQuery', () => ({
@@ -123,8 +126,10 @@ describe('VideoLibrary Full Component Suite', () => {
     mockUsePaginatedQueryReturn = {
       data: mockVideos,
       loading: false,
+      page: 1,
       isLastPage: false,
       fetchNextPage: mockFetchNextPage,
+      fetchPrevPage: mockFetchPrevPage,
     };
   });
 
@@ -573,6 +578,62 @@ describe('VideoLibrary Full Component Suite', () => {
       await waitFor(() => {
         expect(mockBackupStudentVideosToDrive).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Pagination Controls', () => {
+    it('renders Previous button disabled when on page 1', () => {
+      mockUsePaginatedQueryReturn.page = 1;
+      mockUsePaginatedQueryReturn.isLastPage = false;
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+        />
+      );
+
+      const prevBtn = screen.getByRole('button', { name: /Previous/i });
+      const nextBtn = screen.getByRole('button', { name: /Next/i });
+
+      expect(prevBtn).toBeDisabled();
+      expect(nextBtn).toBeEnabled();
+      expect(screen.getByText('Page 1')).toBeInTheDocument();
+    });
+
+    it('enables Previous button when on page 2 and triggers fetchPrevPage on click', () => {
+      mockUsePaginatedQueryReturn.page = 2;
+      mockUsePaginatedQueryReturn.isLastPage = false;
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+        />
+      );
+
+      const prevBtn = screen.getByRole('button', { name: /Previous/i });
+      expect(prevBtn).toBeEnabled();
+      expect(screen.getByText('Page 2')).toBeInTheDocument();
+
+      fireEvent.click(prevBtn);
+      expect(mockFetchPrevPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('triggers fetchNextPage when Next button is clicked', () => {
+      mockUsePaginatedQueryReturn.page = 1;
+      mockUsePaginatedQueryReturn.isLastPage = false;
+
+      render(
+        <VideoLibrary
+          user={{ uid: 'teacher_1' }}
+          classId="CLASS_1"
+        />
+      );
+
+      const nextBtn = screen.getByRole('button', { name: /Next/i });
+      fireEvent.click(nextBtn);
+      expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
     });
   });
 });

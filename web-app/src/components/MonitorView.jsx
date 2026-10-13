@@ -354,11 +354,18 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     // Auto cleanup when user clicks "Stop sharing" on browser chrome bar
     const videoTrack = screenStream?.getVideoTracks?.()?.[0];
     if (videoTrack) {
-      const origEnded = videoTrack.onended;
-      videoTrack.onended = () => {
-        if (typeof origEnded === 'function') origEnded();
+      const handleEnded = () => {
         handleStopSynchronizedBroadcast();
       };
+      if (typeof videoTrack.addEventListener === 'function') {
+        videoTrack.addEventListener('ended', handleEnded, { once: true });
+      } else {
+        const origEnded = videoTrack.onended;
+        videoTrack.onended = () => {
+          if (typeof origEnded === 'function') origEnded();
+          handleEnded();
+        };
+      }
     }
 
     return screenStream;
@@ -655,7 +662,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         urlCacheRef.current.set(path, url);
         return url;
       } catch (error) {
-        console.error(`Error getting download URL for ${path}:`, error);
+        if (error?.code !== 'storage/object-not-found') {
+          console.debug(`[MonitorView] Could not resolve storage URL for ${path}:`, error?.message || error);
+        }
         return null;
       } finally {
         inFlightUrlPromisesRef.current.delete(path);

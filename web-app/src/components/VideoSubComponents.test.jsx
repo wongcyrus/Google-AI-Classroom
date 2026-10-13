@@ -97,6 +97,23 @@ describe('Video & AI Analysis Sub-components', () => {
       fireEvent.click(closeBtn);
       expect(onClose).toHaveBeenCalled();
     });
+
+    it('renders student audio player when audioUrl is present', () => {
+      render(
+        <VideoPlayerModal
+          show={true}
+          onClose={vi.fn()}
+          videoUrl="https://video.mp4"
+          audioUrl="https://audio.m4a"
+          video={{ audioDuration: 180, audioClipCount: 12, studentUid: 'student_123' }}
+        />
+      );
+
+      expect(screen.getByText(/Student Session Audio Track/i)).toBeInTheDocument();
+      expect(screen.getByText(/🎧 Audio Available/i)).toBeInTheDocument();
+      expect(screen.getByTestId('student-session-audio-player')).toHaveAttribute('src', 'https://audio.m4a');
+      expect(screen.getByRole('link', { name: /Download Audio/i })).toHaveAttribute('href', 'https://audio.m4a');
+    });
   });
 
   describe('VideoPromptSelector Component', () => {

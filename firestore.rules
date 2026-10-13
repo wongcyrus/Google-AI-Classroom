@@ -160,10 +160,15 @@ service cloud.firestore {
         allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
       }
 
+      match /combinedAudios/{audioId} {
+        allow read: if request.auth != null;
+        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+      }
+
       match /audio/{audioId} {
-        allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid);
+        allow read: if request.auth != null;
         allow create: if request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId);
-        allow update, delete: if isTeacher();
+        allow update, delete: if isTeacherInClass(classId) || isTeacher();
       }
 
       match /irregularities/{irregularityId} {
@@ -223,11 +228,11 @@ service cloud.firestore {
     }
 
     match /audio/{audioId} {
-        allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
+        allow read: if request.auth != null;
         allow create: if request.auth.uid == request.resource.data.studentUid && 
                          isStudentInClass(request.resource.data.classId);
         allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
-        allow delete: if isTeacher();
+        allow delete: if isTeacher() || ('classId' in resource.data && isTeacherInClass(resource.data.classId));
     }
 
     match /prompts/{promptId} {

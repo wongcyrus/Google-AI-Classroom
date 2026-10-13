@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import VideoTable, { formatDate } from './VideoTable';
+import VideoTable, { formatDate, formatSessionTime } from './VideoTable';
 
 describe('VideoTable Component', () => {
   const mockVideos = [
@@ -28,6 +28,23 @@ describe('VideoTable Component', () => {
       videoPath: null,
     },
   ];
+
+  it('correctly formats session times and date ranges via formatSessionTime', () => {
+    const resNull = formatSessionTime(null, null, null);
+    expect(resNull).toBeTruthy();
+
+    const { container } = render(
+      <div>
+        {formatSessionTime(
+          { toDate: () => new Date('2026-09-18T10:00:00Z') },
+          new Date('2026-09-18T11:00:00Z'),
+          '2026-09-18T11:05:00Z'
+        )}
+      </div>
+    );
+    expect(container.textContent).toMatch(/Sep 18, 2026/);
+    expect(container.textContent).toMatch(/Compiled:/);
+  });
 
   it('correctly formats various date representations via formatDate', () => {
     expect(formatDate(null)).toBe('N/A');
@@ -142,5 +159,42 @@ describe('VideoTable Component', () => {
     expect(driveLink).toHaveAttribute('title', 'Stored in: Classroom Archives/IT114115/Week1/Students/student1@stu.vtc.edu.hk');
 
     expect(screen.getByText('Not backed up')).toBeInTheDocument();
+  });
+
+  it('renders failed and processing job statuses and handles onErrorClick', () => {
+    const onErrorClick = vi.fn();
+    const statusVideos = [
+      {
+        id: 'vid_failed',
+        studentEmail: 'failed@stu.vtc.edu.hk',
+        status: 'failed',
+        error: 'FFmpeg segmentation fault',
+        ffmpegError: 'Error in stream',
+      },
+      {
+        id: 'vid_proc',
+        studentEmail: 'processing@stu.vtc.edu.hk',
+        status: 'processing',
+      },
+    ];
+
+    render(
+      <VideoTable
+        videos={statusVideos}
+        selectedVideos={new Map()}
+        onSelectVideo={vi.fn()}
+        onPlayVideo={vi.fn()}
+        onDownloadVideo={vi.fn()}
+        onSelectAll={vi.fn()}
+        onErrorClick={onErrorClick}
+      />
+    );
+
+    const failedBtn = screen.getByRole('button', { name: /⚠️ Failed/i });
+    expect(failedBtn).toBeInTheDocument();
+    fireEvent.click(failedBtn);
+    expect(onErrorClick).toHaveBeenCalledWith(statusVideos[0]);
+
+    expect(screen.getByText(/⏳ Compiling/i)).toBeInTheDocument();
   });
 });

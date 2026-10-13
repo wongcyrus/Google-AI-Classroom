@@ -36,6 +36,10 @@ describe('mergeStudentSessionAudio Cloud Function', () => {
           get: vi.fn().mockResolvedValue({ exists: false }),
         };
       }),
+      batch: vi.fn(() => ({
+        delete: vi.fn(),
+        commit: vi.fn().mockResolvedValue({}),
+      })),
       collection: vi.fn((collName) => {
         if (collName.includes('combinedAudios')) {
           return {
@@ -64,6 +68,7 @@ describe('mergeStudentSessionAudio Cloud Function', () => {
           name: filePath,
           exists: vi.fn().mockResolvedValue([true]),
           download: vi.fn().mockResolvedValue(),
+          delete: vi.fn().mockResolvedValue({}),
         })),
         upload: vi.fn().mockResolvedValue([{}]),
       })),
@@ -153,6 +158,34 @@ describe('mergeStudentSessionAudio Cloud Function', () => {
     expect(res.clipCount).toBe(2);
     expect(res.durationSeconds).toBe(46);
     expect(res.audioUrl).toContain('https://firebasestorage.googleapis.com');
+  });
+
+  it('purges routine unflagged raw audio clips while preserving flagged incident clips', async () => {
+    const mockAudioDocs = [
+      { id: 'a1', audioPath: 'audio/CLASS_1/2026-08-01/s1/clip1.webm', isFlagged: false },
+      { id: 'a2', audioPath: 'audio/CLASS_1/2026-08-01/s1/clip2.webm', isViolation: true },
+    ];
+    const mockDb = createMockDb({ audioDocs: mockAudioDocs });
+    const mockStorage = createMockStorage();
+    const mockFfmpegRunner = vi.fn().mockResolvedValue();
+    const mockDurationProber = vi.fn().mockResolvedValue(30);
+
+    const res = await executeMergeStudentSessionAudio(
+      {
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        auth: { uid: 'teacher-1', token: { email: 'teacher@school.edu', role: 'teacher' } },
+      },
+      {
+        db: mockDb,
+        storage: mockStorage,
+        ffmpegRunner: mockFfmpegRunner,
+        durationProber: mockDurationProber,
+      }
+    );
+
+    expect(res.status).toBe('success');
+    expect(mockDb.batch).toHaveBeenCalled();
   });
 
   it('fails fast and throws when Firestore audio query throws an error', async () => {

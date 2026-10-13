@@ -163,7 +163,11 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
             });
           },
         })
-        // 3. Mock attendanceAdjustments query
+        // 3. Mock bingoRecords query
+        .mockResolvedValueOnce({
+          forEach: () => {},
+        })
+        // 4. Mock attendanceAdjustments query
         .mockResolvedValueOnce({
           forEach: (cb) => {
             cb({
@@ -194,6 +198,87 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(alice.deductedMinutes).toBeGreaterThan(0);
       expect(bob).toBeDefined();
       expect(bob.totalMinutes).toBe(1);
+    });
+
+    it('correctly maps 3 Bingo statuses: Correct (3), Incorrect (4), and Timeout (2)', async () => {
+      // 1. Mock class document
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            u1: 'student1@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query (30 mins = 1 chunk, empty)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 3. Mock lesson doc (none)
+      mockDoc.get.mockResolvedValueOnce({ exists: false });
+
+      // 4. Mock videoJobs (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 5. Mock bingoRecords query (3 challenges: 1 passed, 1 failed_incorrect, 1 missed_timeout)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => {
+          cb({
+            data: () => ({
+              studentUid: 'u1',
+              studentEmail: 'student1@vtc.edu.hk',
+              issuedAtMillis: new Date('2026-08-29T09:05:00Z').getTime(), // Min 5
+              result: 'passed',
+            }),
+          });
+          cb({
+            data: () => ({
+              studentUid: 'u1',
+              studentEmail: 'student1@vtc.edu.hk',
+              issuedAtMillis: new Date('2026-08-29T09:12:00Z').getTime(), // Min 12
+              result: 'failed_incorrect',
+            }),
+          });
+          cb({
+            data: () => ({
+              studentUid: 'u1',
+              studentEmail: 'student1@vtc.edu.hk',
+              issuedAtMillis: new Date('2026-08-29T09:20:00Z').getTime(), // Min 20
+              result: 'missed_timeout',
+            }),
+          });
+        },
+      });
+
+      // 6. Mock attendanceAdjustments query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      mockDoc.set.mockResolvedValueOnce({});
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-08-29T09:00:00Z',
+          endTime: '2026-08-29T09:30:00Z',
+        },
+      });
+
+      expect(res.attendanceData).toHaveLength(1);
+      const student = res.attendanceData[0];
+      expect(student.attendance[5]).toBe(3); // Bingo Correct
+      expect(student.attendance[12]).toBe(4); // Bingo Incorrect
+      expect(student.attendance[20]).toBe(2); // Bingo Timeout
+      expect(student.bingoCorrectMinutes).toBe(1);
+      expect(student.bingoIncorrectMinutes).toBe(1);
+      expect(student.bingoTimeoutMinutes).toBe(1);
+      expect(student.totalMinutes).toBe(2); // 3 (Correct) + 4 (Incorrect) count as active presence
     });
 
     it('reconstructs attendance from completed videoJobs and preserves existing AI working time when screenshots are purged', async () => {
@@ -240,7 +325,12 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
         },
       });
 
-      // 5. Mock attendanceAdjustments query (none)
+      // 5. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 6. Mock attendanceAdjustments query (none)
       mockCollection.get.mockResolvedValueOnce({
         forEach: () => {},
       });
@@ -366,7 +456,12 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
         },
       });
 
-      // 5. Mock attendanceAdjustments query (none)
+      // 5. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 6. Mock attendanceAdjustments query (none)
       mockCollection.get.mockResolvedValueOnce({
         forEach: () => {},
       });
@@ -437,7 +532,12 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
         },
       });
 
-      // 5. Mock attendanceAdjustments query
+      // 5. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 6. Mock attendanceAdjustments query
       mockCollection.get.mockResolvedValueOnce({
         forEach: () => {},
       });
@@ -455,5 +555,70 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(student.totalMinutes).toBe(10);
       expect(student.percentage).toBe('33.33%');
     });
+
+    it('reconstructs authentic chronological bitmask from Firestore lesson doc even when both screenshots and video jobs are deleted', async () => {
+      // 1. Mock class doc
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            sPermanent: 'perm@vtc.edu.hk',
+          },
+          schedule: { timeZone: 'UTC' },
+        }),
+      });
+
+      // 2. Mock screenshots query (purged - 0 docs)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 3. Mock existing lesson doc get() with authentic non-contiguous bitmask
+      const savedBitmask = [1, 0, 1, 1, 0, 0, 1, 1, 1, 0]; // 10 minutes total
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            sPermanent: {
+              sharedScreenMinutes: 6,
+              rawScreenMinutes: 6,
+              attendance: savedBitmask,
+            },
+          },
+        }),
+      });
+
+      // 4. Mock videoJobs query (video was also deleted - 0 docs)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 5. Mock bingoRecords query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      // 6. Mock attendanceAdjustments query (none)
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: () => {},
+      });
+
+      const res = await getAttendanceData({
+        data: {
+          classId: 'c1',
+          startTime: '2026-10-08T07:00:00Z',
+          endTime: '2026-10-08T07:10:00Z', // 10 min lesson
+        },
+      });
+
+      const student = res.attendanceData.find((s) => s.email === 'perm@vtc.edu.hk');
+      expect(student).toBeDefined();
+      expect(student.totalMinutes).toBe(6);
+      expect(student.rawMinutes).toBe(6);
+      expect(student.deductedMinutes).toBe(0);
+      // Ensure exact chronological positions are preserved (not left-aligned like a bar chart)
+      expect(student.attendance).toEqual([1, 0, 1, 1, 0, 0, 1, 1, 1, 0]);
+    });
   });
 });
+

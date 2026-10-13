@@ -6,6 +6,7 @@ import { httpsCallable } from 'firebase/functions';
 
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoPlayerModal from './VideoPlayerModal';
+import { formatSessionTime } from './VideoTable';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
 
@@ -393,9 +394,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                       <th><input type="checkbox" onChange={handleSelectAll} /></th>
                       <th>Job ID</th>
                       <th>Student</th>
-                      <th>Start Time</th>
-                      <th>End Time</th>
-                      <th>Created At</th>
+                      <th>Session Time</th>
                       <th>Status</th>
                       <th>Action</th>
                   </tr>
@@ -412,9 +411,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                           </td>
                           <td>{job.id}</td>
                           <td>{job.studentEmail || 'All Students'}</td>
-                          <td>{job.startTime?.toDate ? job.startTime.toDate().toLocaleString() : (job.startTime?.toLocaleString ? job.startTime.toLocaleString() : 'N/A')}</td>
-                          <td>{job.endTime?.toDate ? job.endTime.toDate().toLocaleString() : (job.endTime?.toLocaleString ? job.endTime.toLocaleString() : 'N/A')}</td>
-                          <td>{job.createdAt?.toDate ? job.createdAt.toDate().toLocaleString() : (job.createdAt?.toLocaleString ? job.createdAt.toLocaleString() : '')}</td>
+                          <td>{formatSessionTime(job.startTime, job.endTime, job.createdAt)}</td>
                           <td>
                             {job.status === 'failed' ? (
                               <a 

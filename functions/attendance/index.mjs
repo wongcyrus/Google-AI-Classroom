@@ -191,17 +191,27 @@ export const getAttendanceData = onCall({
         videoCapMinutes = Math.min(lessonDurationInMinutes, Math.max(1, Math.round((matchedVideo.duration * captureInterval) / 60)));
       }
 
-      if (existingStudent?.sharedScreenMinutes > 0 && Array.isArray(existingStudent.attendance) && existingStudent.attendance.length === lessonDurationInMinutes) {
+      if (existingStudent?.sharedScreenMinutes > 0 && Array.isArray(existingStudent.attendance) && existingStudent.attendance.length > 0) {
+        // Direct authentic bitmask from Firestore lesson doc (preserved permanently even if raw images and videos are deleted)
+        const priorLen = existingStudent.attendance.length;
         const priorMins = existingStudent.sharedScreenMinutes;
         const effectiveMins = videoCapMinutes !== null ? Math.min(priorMins, videoCapMinutes) : priorMins;
 
-        if (effectiveMins < priorMins) {
+        if (videoCapMinutes !== null && effectiveMins < priorMins) {
+          let count = 0;
           for (let i = 0; i < lessonDurationInMinutes; i++) {
-            entry.attendance[i] = i < effectiveMins ? 1 : 0;
+            if (i < priorLen && existingStudent.attendance[i] > 0 && count < effectiveMins) {
+              entry.attendance[i] = existingStudent.attendance[i];
+              count++;
+            } else {
+              entry.attendance[i] = 0;
+            }
           }
         } else {
           for (let i = 0; i < lessonDurationInMinutes; i++) {
-            entry.attendance[i] = existingStudent.attendance[i];
+            if (i < priorLen) {
+              entry.attendance[i] = existingStudent.attendance[i];
+            }
           }
         }
       } else if (matchedVideo || (existingStudent?.workingMinutes > 0) || (existingStudent?.sharedScreenMinutes > 0)) {
@@ -221,6 +231,47 @@ export const getAttendanceData = onCall({
         }
       }
     });
+  }
+
+  // Query Bingo challenge records to overlay distinct presence & accuracy statuses:
+  // 3 = Bingo Correct (Emerald Green), 4 = Bingo Incorrect (Amber Yellow), 2 = Bingo Timeout (Bright Orange)
+  try {
+    const bingoRecordsSnap = await db.collection(`classes/${classId}/bingoRecords`).get();
+    if (bingoRecordsSnap && typeof bingoRecordsSnap.forEach === 'function') {
+      bingoRecordsSnap.forEach(doc => {
+        const bData = doc.data ? doc.data() : null;
+        if (!bData) return;
+
+        const bEmail = (bData.studentEmail || '').replace(/\s/g, '').toLowerCase();
+        const bUid = bData.studentUid;
+        const entry = (bUid && uidToStudentMap.get(bUid)) || (bEmail && emailToStudentMap.get(bEmail));
+        if (!entry) return;
+
+        let issuedMillis = bData.issuedAtMillis;
+        if (!issuedMillis && bData.issuedAt) {
+          issuedMillis = bData.issuedAt?.toDate ? bData.issuedAt.toDate().getTime() : new Date(bData.issuedAt).getTime();
+        }
+        if (!issuedMillis && bData.createdAt) {
+          issuedMillis = bData.createdAt?.toDate ? bData.createdAt.toDate().getTime() : new Date(bData.createdAt).getTime();
+        }
+        if (!issuedMillis || isNaN(issuedMillis)) return;
+
+        if (issuedMillis >= lessonStartTime.getTime() && issuedMillis <= lessonEndTime.getTime()) {
+          const minuteIndex = Math.floor((issuedMillis - lessonStartTime.getTime()) / 60000);
+          if (minuteIndex >= 0 && minuteIndex < lessonDurationInMinutes) {
+            if (bData.result === 'passed') {
+              entry.attendance[minuteIndex] = 3; // Bingo Correct (Passed)
+            } else if (bData.result === 'failed_incorrect') {
+              entry.attendance[minuteIndex] = 4; // Bingo Incorrect (Wrong Answer)
+            } else if (bData.result === 'missed_timeout' || bData.status === 'timeout' || bData.status === 'expired') {
+              entry.attendance[minuteIndex] = 2; // Bingo Timeout (Missed / Unanswered)
+            }
+          }
+        }
+      });
+    }
+  } catch (bingoErr) {
+    console.warn('[getAttendanceData] Error querying bingoRecords for attendance overlay:', bingoErr);
   }
 
   // Apply Bingo attendance adjustments (deduct unverified AFK minutes)
@@ -248,8 +299,11 @@ export const getAttendanceData = onCall({
         const endMinute = Math.min(lessonDurationInMinutes - 1, Math.floor((adjEnd.getTime() - lessonStartTime.getTime()) / 60000));
 
         for (let m = startMinute; m <= endMinute; m++) {
-          // 2 = Voided/Deducted by failed consecutive Bingo checks
-          entry.attendance[m] = 2;
+          // Do not overwrite confirmed active answers (3 = Correct, 4 = Incorrect) with voided status
+          if (entry.attendance[m] !== 3 && entry.attendance[m] !== 4) {
+            // 2 = Voided/Deducted by failed consecutive Bingo checks
+            entry.attendance[m] = 2;
+          }
         }
       }
     });
@@ -260,14 +314,23 @@ export const getAttendanceData = onCall({
   const attendanceData = studentList.map(student => {
     const entry = uidToStudentMap.get(student.uid) || emailToStudentMap.get(student.email);
     const attendance = entry ? entry.attendance : Array(lessonDurationInMinutes).fill(0);
-    const totalMinutes = attendance.reduce((sum, val) => sum + (val === 1 ? 1 : 0), 0);
+    // Active presence includes screen share (1), correct bingo (3), and incorrect bingo (4)
+    const netMinutes = attendance.reduce((sum, val) => sum + (val === 1 || val === 3 || val === 4 ? 1 : 0), 0);
     const deductedMinutes = attendance.reduce((sum, val) => sum + (val === 2 ? 1 : 0), 0);
-    const percentage = lessonDurationInMinutes > 0 ? ((totalMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%';
+    const rawMinutes = netMinutes + deductedMinutes;
+    const bingoCorrectMinutes = attendance.reduce((sum, val) => sum + (val === 3 ? 1 : 0), 0);
+    const bingoIncorrectMinutes = attendance.reduce((sum, val) => sum + (val === 4 ? 1 : 0), 0);
+    const bingoTimeoutMinutes = attendance.reduce((sum, val) => sum + (val === 2 ? 1 : 0), 0);
+    const percentage = lessonDurationInMinutes > 0 ? ((netMinutes / lessonDurationInMinutes) * 100).toFixed(2) + '%' : '0.00%';
 
     return {
       email: student.email,
-      totalMinutes,
+      totalMinutes: netMinutes,
+      rawMinutes,
       deductedMinutes,
+      bingoCorrectMinutes,
+      bingoIncorrectMinutes,
+      bingoTimeoutMinutes,
       percentage,
       attendance,
     };
@@ -291,7 +354,11 @@ export const getAttendanceData = onCall({
         studentsPayload[student.uid] = {
           ...existingStudent,
           sharedScreenMinutes: data.totalMinutes,
+          rawScreenMinutes: data.rawMinutes,
           deductedMinutes: data.deductedMinutes,
+          bingoCorrectMinutes: data.bingoCorrectMinutes,
+          bingoIncorrectMinutes: data.bingoIncorrectMinutes,
+          bingoTimeoutMinutes: data.bingoTimeoutMinutes,
           attendance: data.attendance,
           ...(clampedWorkingMinutes !== undefined ? { workingMinutes: clampedWorkingMinutes } : {}),
         };

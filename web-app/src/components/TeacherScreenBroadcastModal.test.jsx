@@ -920,5 +920,40 @@ describe('TeacherScreenBroadcastModal', () => {
       );
     });
   });
+
+  it('renders Step 1 live STT preview ticker and Gemma client model status badges', () => {
+    const mockTeacherSubtitles = {
+      engineMode: 'client',
+      speechLanguage: 'zh-HK',
+      setSpeechLanguage: vi.fn(),
+      setEngineMode: vi.fn(),
+      targetLanguages: ['zh-Hant', 'en'],
+      setTargetLanguages: vi.fn(),
+      status: 'listening',
+      latestTranscript: '今日我哋會講下微服務架構',
+      latestTranslations: {
+        'zh-Hant': '今日我們會講解微服務架構',
+        'en': 'Today we will discuss microservices architecture',
+      },
+      isGemmaAvailable: true,
+      gemmaProgress: 100,
+    };
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={false}
+        initialStep={1}
+        teacherSubtitles={mockTeacherSubtitles}
+      />
+    );
+
+    expect(screen.getByText(/Live Speech-to-Text Preview/i)).toBeInTheDocument();
+    expect(screen.getByText('🟢 Listening')).toBeInTheDocument();
+    expect(screen.getByText('今日我哋會講下微服務架構')).toBeInTheDocument();
+    expect(screen.getByText(/今日我們會講解微服務架構/i)).toBeInTheDocument();
+    expect(screen.getByText(/✅ On-Device Gemma 4 Ready/i)).toBeInTheDocument();
+  });
 });
 

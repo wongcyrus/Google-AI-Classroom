@@ -90,16 +90,24 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     let presentCount = 0;
     let absentCount = 0;
     let deductedCount = 0;
+    let bingoCorrectCount = 0;
+    let bingoIncorrectCount = 0;
     for (const s of combinedData) {
       if ((s.totalMinutes ?? 0) > 0) presentCount++;
       else absentCount++;
-      if (Array.isArray(s.attendance) && s.attendance.includes(2)) deductedCount++;
+      if (Array.isArray(s.attendance)) {
+        if (s.attendance.includes(2)) deductedCount++;
+        if (s.attendance.includes(3)) bingoCorrectCount++;
+        if (s.attendance.includes(4)) bingoIncorrectCount++;
+      }
     }
     return {
       all: combinedData.length,
       present: presentCount,
       absent: absentCount,
       deducted: deductedCount,
+      bingoCorrect: bingoCorrectCount,
+      bingoIncorrect: bingoIncorrectCount,
     };
   }, [combinedData]);
 
@@ -128,6 +136,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
       list = list.filter((s) => (s.totalMinutes ?? 0) === 0);
     } else if (statusFilter === 'deducted') {
       list = list.filter((s) => Array.isArray(s.attendance) && s.attendance.includes(2));
+    } else if (statusFilter === 'bingo_correct') {
+      list = list.filter((s) => Array.isArray(s.attendance) && s.attendance.includes(3));
+    } else if (statusFilter === 'bingo_incorrect') {
+      list = list.filter((s) => Array.isArray(s.attendance) && s.attendance.includes(4));
     }
 
     // 3. Sorting
@@ -147,7 +159,15 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
       }
 
       let diff = 0;
-      if (sortBy === 'screenMinutes') {
+      if (sortBy === 'rawMinutes') {
+        const rawA = a.rawMinutes ?? ((a.totalMinutes ?? 0) + (a.deductedMinutes ?? 0));
+        const rawB = b.rawMinutes ?? ((b.totalMinutes ?? 0) + (b.deductedMinutes ?? 0));
+        diff = rawA - rawB;
+      } else if (sortBy === 'deductedMinutes') {
+        const dedA = a.deductedMinutes ?? 0;
+        const dedB = b.deductedMinutes ?? 0;
+        diff = dedA - dedB;
+      } else if (sortBy === 'screenMinutes') {
         const minA = a.totalMinutes ?? -1;
         const minB = b.totalMinutes ?? -1;
         diff = minA - minB;
@@ -413,8 +433,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
       "Student Email",
       "Class / Cohort",
       "Programme",
-      "Screen Share Minutes",
-      "Screen Share Percentage",
+      "Raw Screen Share Minutes",
+      "Bingo Deducted Minutes",
+      "Net Verified Minutes",
+      "Net Verified Percentage",
       "AI Estimated Working Minutes",
       "AI Estimated Percentage",
       "General Summary",
@@ -427,11 +449,14 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
     const rows = targetData.map(studentData => {
       const prof = getStudentProfile(studentData.email, studentProfiles);
       const displayName = getStudentDisplayName(studentData.email, studentProfiles);
+      const rawMins = studentData.rawMinutes ?? ((studentData.totalMinutes ?? 0) + (studentData.deductedMinutes ?? 0));
       const row = [
         displayName,
         studentData.email,
         prof.studentClass || '',
         prof.programme || '',
+        rawMins,
+        studentData.deductedMinutes ?? 0,
         studentData.totalMinutes ?? 'N/A',
         studentData.percentage ?? 'N/A',
         studentData.workingMinutes ?? 'N/A',
@@ -526,11 +551,19 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                   </button>
                   <button
                     type="button"
-                    className={`attendance-filter-pill ${statusFilter === 'absent' ? 'active' : ''}`}
-                    onClick={() => setStatusFilter('absent')}
+                    className={`attendance-filter-pill ${statusFilter === 'bingo_correct' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('bingo_correct')}
                   >
-                    <span className="attendance-legend-color" style={{ background: '#FADBD8' }}></span>
-                    Absent ({statusCounts.absent})
+                    <span className="attendance-legend-color" style={{ background: '#10b981' }}></span>
+                    Bingo Correct ({statusCounts.bingoCorrect})
+                  </button>
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'bingo_incorrect' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('bingo_incorrect')}
+                  >
+                    <span className="attendance-legend-color" style={{ background: '#f59e0b' }}></span>
+                    Bingo Incorrect ({statusCounts.bingoIncorrect})
                   </button>
                   <button
                     type="button"
@@ -538,7 +571,15 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                     onClick={() => setStatusFilter('deducted')}
                   >
                     <span className="attendance-legend-color" style={{ background: '#f97316' }}></span>
-                    Deducted ({statusCounts.deducted})
+                    Bingo Timeout ({statusCounts.deducted})
+                  </button>
+                  <button
+                    type="button"
+                    className={`attendance-filter-pill ${statusFilter === 'absent' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('absent')}
+                  >
+                    <span className="attendance-legend-color" style={{ background: '#FADBD8' }}></span>
+                    Absent ({statusCounts.absent})
                   </button>
                 </div>
               </div>
@@ -554,8 +595,10 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                   >
                     <option value="name">Student Name</option>
                     <option value="email">Email</option>
-                    <option value="screenMinutes">Screen Share Minutes</option>
-                    <option value="screenPercentage">Screen Share %</option>
+                    <option value="rawMinutes">Raw Share Minutes</option>
+                    <option value="deductedMinutes">Bingo Deducted Minutes</option>
+                    <option value="screenMinutes">Net Share Minutes</option>
+                    <option value="screenPercentage">Net Share %</option>
                     <option value="workingMinutes">AI Working Minutes</option>
                     <option value="workingPercentage">AI Working %</option>
                   </select>
@@ -585,15 +628,23 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                 <span style={{ fontWeight: 600 }}>Legend:</span>
                 <span className="attendance-legend-item">
                   <span className="attendance-legend-color" style={{ background: '#2ECC71' }}></span>
-                  Present (Verified)
+                  Present (Screen Share)
+                </span>
+                <span className="attendance-legend-item">
+                  <span className="attendance-legend-color" style={{ background: '#10b981' }}></span>
+                  🎯 Bingo Correct
+                </span>
+                <span className="attendance-legend-item">
+                  <span className="attendance-legend-color" style={{ background: '#f59e0b' }}></span>
+                  ⚠️ Bingo Incorrect
                 </span>
                 <span className="attendance-legend-item">
                   <span className="attendance-legend-color" style={{ background: '#f97316' }}></span>
-                  Deducted (Failed Bingo Checks)
+                  ⏱️ Bingo Timeout
                 </span>
                 <span className="attendance-legend-item">
                   <span className="attendance-legend-color" style={{ background: '#FADBD8' }}></span>
-                  Absent (No Screen Share)
+                  Absent (No Share)
                 </span>
                 <a
                   href={`/class/${classId}?tab=analytics&sub=bingo`}
@@ -619,25 +670,47 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                         Student {renderSortIndicator('name')}
                       </th>
                       <th
+                        className={`sortable-header col-stat ${sortBy === 'rawMinutes' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('rawMinutes')}
+                        title="Click to sort by raw physical screen share minutes before Bingo deductions"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('rawMinutes'); }}
+                      >
+                        <span className="th-compact-title">Raw Share</span>
+                        <span className="th-compact-unit">(min) {renderSortIndicator('rawMinutes')}</span>
+                      </th>
+                      <th
+                        className={`sortable-header col-stat ${sortBy === 'deductedMinutes' ? 'is-sorted' : ''}`}
+                        onClick={() => handleSortClick('deductedMinutes')}
+                        title="Click to sort by minutes deducted from failed/missed Bingo checks"
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('deductedMinutes'); }}
+                      >
+                        <span className="th-compact-title">Deducted</span>
+                        <span className="th-compact-unit">(min) {renderSortIndicator('deductedMinutes')}</span>
+                      </th>
+                      <th
                         className={`sortable-header col-stat ${sortBy === 'screenMinutes' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('screenMinutes')}
-                        title="Click to sort by screen share minutes"
+                        title="Click to sort by net verified screen share minutes (after Bingo deductions)"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenMinutes'); }}
                       >
-                        <span className="th-compact-title">Share</span>
+                        <span className="th-compact-title">Net Share</span>
                         <span className="th-compact-unit">(min) {renderSortIndicator('screenMinutes')}</span>
                       </th>
                       <th
                         className={`sortable-header col-stat ${sortBy === 'screenPercentage' ? 'is-sorted' : ''}`}
                         onClick={() => handleSortClick('screenPercentage')}
-                        title="Click to sort by screen share percentage"
+                        title="Click to sort by net verified percentage"
                         tabIndex={0}
                         role="button"
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSortClick('screenPercentage'); }}
                       >
-                        <span className="th-compact-title">Share</span>
+                        <span className="th-compact-title">Net Share</span>
                         <span className="th-compact-unit">% {renderSortIndicator('screenPercentage')}</span>
                       </th>
                       <th
@@ -668,51 +741,73 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAndSortedData.map(student => (
-                      <tr key={student.email} onClick={() => setSelectedStudent(student)}>
-                        <td className="col-student">
-                          <StudentBadge
-                            student={{
-                              email: student.email,
-                              ...(studentProfiles[student.email?.toLowerCase()] || {})
-                            }}
-                            showEmail={true}
-                            size="sm"
-                          />
-                        </td>
-                        <td className="cell-stat">{student.totalMinutes ?? 'N/A'}</td>
-                        <td className="cell-stat">{student.percentage ?? 'N/A'}</td>
-                        <td className="cell-stat">{student.workingMinutes ?? 'N/A'}</td>
-                        <td className="cell-stat">
-                          {student.workingMinutes && lessonDurationInMinutes > 0 ? `${Math.min(100, Math.max(0, (student.workingMinutes / lessonDurationInMinutes) * 100)).toFixed(2)}%` : 'N/A'}
-                        </td>
-                        {student.attendance.map((present, index) => {
-                          const isPresent = present === 1;
-                          const isVoided = present === 2;
-                          const bg = isPresent ? '#2ECC71' : isVoided ? '#f97316' : '#FADBD8';
-                          const titleText = isPresent
-                            ? `Min ${index + 1}: Present (Verified)`
-                            : isVoided
-                            ? `Min ${index + 1}: Deducted (Failed consecutive Bingo checks)`
-                            : `Min ${index + 1}: Absent (No screen share)`;
-
-                          return (
-                            <td
-                              key={index}
-                              title={titleText}
-                              style={{
-                                backgroundColor: bg,
-                                backgroundImage: isVoided ? 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)' : undefined,
-                                width: '25px',
-                                height: '25px',
-                                minWidth: '25px',
-                                padding: 0,
+                    {filteredAndSortedData.map(student => {
+                      const rawMins = student.rawMinutes ?? ((student.totalMinutes ?? 0) + (student.deductedMinutes ?? 0));
+                      const deductedMins = student.deductedMinutes ?? 0;
+                      return (
+                        <tr key={student.email} onClick={() => setSelectedStudent(student)}>
+                          <td className="col-student">
+                            <StudentBadge
+                              student={{
+                                email: student.email,
+                                ...(studentProfiles[student.email?.toLowerCase()] || {})
                               }}
-                            ></td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                              showEmail={true}
+                              size="sm"
+                            />
+                          </td>
+                          <td className="cell-stat">{rawMins ?? 'N/A'}</td>
+                          <td className="cell-stat">
+                            {deductedMins > 0 ? (
+                              <span style={{ color: '#ea580c', fontWeight: 600 }}>-{deductedMins}</span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>0</span>
+                            )}
+                          </td>
+                          <td className="cell-stat font-semibold" style={{ fontWeight: 600 }}>{student.totalMinutes ?? 'N/A'}</td>
+                          <td className="cell-stat">{student.percentage ?? 'N/A'}</td>
+                          <td className="cell-stat">{student.workingMinutes ?? 'N/A'}</td>
+                          <td className="cell-stat">
+                            {student.workingMinutes && lessonDurationInMinutes > 0 ? `${Math.min(100, Math.max(0, (student.workingMinutes / lessonDurationInMinutes) * 100)).toFixed(2)}%` : 'N/A'}
+                          </td>
+                          {student.attendance.map((val, index) => {
+                            let bg = '#FADBD8';
+                            let titleText = `Min ${index + 1}: Absent (No screen share)`;
+                            let pattern = undefined;
+
+                            if (val === 1) {
+                              bg = '#2ECC71';
+                              titleText = `Min ${index + 1}: Present (Screen Share Verified)`;
+                            } else if (val === 2) {
+                              bg = '#f97316';
+                              pattern = 'repeating-linear-gradient(45deg, #f97316, #f97316 4px, #ea580c 4px, #ea580c 8px)';
+                              titleText = `Min ${index + 1}: ⏱️ Bingo Timeout (Missed / AFK)`;
+                            } else if (val === 3) {
+                              bg = '#10b981';
+                              titleText = `Min ${index + 1}: 🎯 Bingo Correct (Passed Challenge)`;
+                            } else if (val === 4) {
+                              bg = '#f59e0b';
+                              titleText = `Min ${index + 1}: ⚠️ Bingo Incorrect (Wrong Answer)`;
+                            }
+
+                            return (
+                              <td
+                                key={index}
+                                title={titleText}
+                                style={{
+                                  backgroundColor: bg,
+                                  backgroundImage: pattern,
+                                  width: '25px',
+                                  height: '25px',
+                                  minWidth: '25px',
+                                  padding: 0,
+                                }}
+                              ></td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               ) : (
@@ -751,7 +846,21 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
               />
               <div className="attendance-modal-stats-group">
                 <div className="attendance-modal-stat-pill">
-                  <span className="attendance-modal-stat-label">Screen Share</span>
+                  <span className="attendance-modal-stat-label">Raw Share</span>
+                  <span className="attendance-modal-stat-value">
+                    {selectedStudent.rawMinutes ?? ((selectedStudent.totalMinutes ?? 0) + (selectedStudent.deductedMinutes ?? 0))} min
+                  </span>
+                </div>
+                {(selectedStudent.deductedMinutes ?? 0) > 0 && (
+                  <div className="attendance-modal-stat-pill" style={{ borderColor: '#f97316' }}>
+                    <span className="attendance-modal-stat-label" style={{ color: '#ea580c' }}>Bingo Deducted</span>
+                    <span className="attendance-modal-stat-value" style={{ color: '#ea580c' }}>
+                      -{selectedStudent.deductedMinutes} min
+                    </span>
+                  </div>
+                )}
+                <div className="attendance-modal-stat-pill">
+                  <span className="attendance-modal-stat-label">Net Verified</span>
                   <span className="attendance-modal-stat-value">
                     {selectedStudent.totalMinutes ?? 'N/A'} min ({selectedStudent.percentage ?? 'N/A'})
                   </span>

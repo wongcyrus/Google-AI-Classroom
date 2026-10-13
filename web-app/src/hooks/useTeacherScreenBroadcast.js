@@ -110,6 +110,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const frameStatsRef = useRef({ emittedFrames: 0, lastEmittedTime: 0, lastFrameSize: 0 });
   const isCapturingFrameRef = useRef(false);
   const captureAndPublishFrameRef = useRef(null);
+  const isLocallyCreatedStreamRef = useRef(false);
+  const stopBroadcastRef = useRef(null);
 
   // Update resolution dynamically (persisted to localStorage, Firestore session, and triggers immediate frame)
   const setBroadcastResolution = useCallback(async (newRes) => {
@@ -190,15 +192,17 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       unsubscribeViewersCollectionRef.current = null;
     }
 
-    // 5. Stop all screen media tracks
+    // 5. Stop all screen media tracks only if locally created by this hook (preserve caller's shared stream)
     if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (err) {
-          console.warn('[Teacher Screen Broadcast] Error stopping track:', err);
-        }
-      });
+      if (isLocallyCreatedStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch (err) {
+            console.warn('[Teacher Screen Broadcast] Error stopping track:', err);
+          }
+        });
+      }
       screenStreamRef.current = null;
     }
 
@@ -278,6 +282,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
       // Check if caller supplied a pre-acquired synchronized screen stream
       let stream = options.existingStream;
+      let isLocallyCreatedStream = false;
       if (!stream || !stream.active || stream.getVideoTracks().length === 0) {
         // Request display media at pristine native screen resolution
         // Avoid setting strict max constraints so Chromium desktop compositor does not downsample
@@ -290,14 +295,25 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         };
 
         stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        isLocallyCreatedStream = true;
       }
+      isLocallyCreatedStreamRef.current = isLocallyCreatedStream;
 
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.contentHint = 'detail';
-        videoTrack.onended = () => {
+        const handleTrackEnded = () => {
           stopBroadcast();
         };
+        if (typeof videoTrack.addEventListener === 'function') {
+          videoTrack.addEventListener('ended', handleTrackEnded, { once: true });
+        } else {
+          const origEnded = videoTrack.onended;
+          videoTrack.onended = () => {
+            if (typeof origEnded === 'function') origEnded();
+            handleTrackEnded();
+          };
+        }
       }
 
       screenStreamRef.current = stream;
@@ -490,7 +506,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
             const seq = frameSeqRef.current;
 
             const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-            await setDoc(liveFrameDocRef, {
+            const publishPromise = setDoc(liveFrameDocRef, {
               frameData: jpegDataUrl,
               frameSeq: seq,
               width: targetWidth,
@@ -498,6 +514,10 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
               resolution: currentRes,
               timestamp: serverTimestamp(),
             });
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Live frame publish timeout')), 2500)
+            );
+            await Promise.race([publishPromise, timeoutPromise]);
 
             const stats = {
               emittedFrames: seq,
@@ -603,12 +623,16 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     }
   }, [classId, teacherUid, teacherEmail, stopBroadcast]);
 
-  // Clean up on unmount
+  useEffect(() => {
+    stopBroadcastRef.current = stopBroadcast;
+  });
+
+  // Clean up on unmount strictly (empty deps to avoid stopping broadcast on re-render / auth refresh)
   useEffect(() => {
     return () => {
-      stopBroadcast();
+      stopBroadcastRef.current?.();
     };
-  }, [stopBroadcast]);
+  }, []);
 
   return {
     isBroadcasting,

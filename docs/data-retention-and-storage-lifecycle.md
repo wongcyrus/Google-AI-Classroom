@@ -301,6 +301,10 @@ To eliminate this race condition with zero redundant resource overhead, the plat
    - The retroactive extraction engine bypasses raw screenshots entirely and operates downstream on the finalized class MP4 (`videos/{classId}/{jobId}.mp4`).
    - Because compiled class videos are governed by `videoRetentionDays` (default 90 days), instructors can define and extract tasks days or weeks after the lesson.
    - Retroactive task extraction is strictly read-only with respect to historical class media; it creates sub-clips under `classes/{classId}/tasks/{taskId}/submissions/...` and never triggers deletion or truncation of the underlying class recordings.
+8. **Pre-Purge Attendance Bitmask Freeze & Lifelong Media Decoupling**:
+   - Before routine `.jpg` screenshot files are deleted, `processVideoJob.js` extracts the exact chronological minute bitmask (`[0, 1, 1, 0, 1, ...]`) from frame timestamps and freezes it in Firestore `classes/{classId}/lessons/{lessonId}` under `students[studentUid].attendance`, `sharedScreenMinutes`, and `rawScreenMinutes`.
+   - Firestore document size is ~300 bytes per student and is permanent.
+   - If historical MP4 videos are deleted later during long-term storage cleanups, `getAttendanceData` retrieves the frozen bitmask directly from Firestore, ensuring attendance timelines and matrices never suffer data loss or left-alignment bar chart distortion.
 
 ---
 

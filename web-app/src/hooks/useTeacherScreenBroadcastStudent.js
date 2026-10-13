@@ -128,24 +128,27 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
           }
         },
         (frameErr) => {
-          console.error('[Student Screen Broadcast] Frame listener subscription error:', frameErr);
-          setError('Failed to receive classroom live screen frames.');
-          setConnectionState('failed');
+          console.warn('[Student Screen Broadcast] Frame listener subscription notice (reconnecting):', frameErr);
+          setConnectionState('connecting');
         }
       );
     } catch (err) {
       console.error('[Student Screen Broadcast] Error subscribing to frame broadcast:', err);
       setError(err.message || 'Failed to connect to classroom screen broadcast.');
-      setConnectionState('failed');
     }
   }, [classId, studentUid, studentEmail]);
 
-  // Clean up on unmount
+  const leaveBroadcastRef = useRef(null);
+  useEffect(() => {
+    leaveBroadcastRef.current = leaveBroadcast;
+  });
+
+  // Clean up on unmount strictly
   useEffect(() => {
     return () => {
-      leaveBroadcast();
+      leaveBroadcastRef.current?.();
     };
-  }, [leaveBroadcast]);
+  }, []);
 
   return {
     isBroadcastActive,

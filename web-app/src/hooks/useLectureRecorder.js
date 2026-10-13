@@ -319,7 +319,16 @@ export default function useLectureRecorder({
             drainUploadQueue(false);
           }, retryDelay);
         }
-        if (throwOnError) {
+        const isStorageNetworkError =
+          (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+          drainErr?.code?.startsWith('storage/') ||
+          (drainErr?.message && (
+            drainErr.message.includes('storage') ||
+            drainErr.message.includes('network') ||
+            drainErr.message.includes('Network') ||
+            drainErr.message.includes('Failed to fetch')
+          ));
+        if (throwOnError && !isStorageNetworkError) {
           throw drainErr;
         }
       } finally {
@@ -444,15 +453,6 @@ export default function useLectureRecorder({
           });
         }
       };
-
-      const videoTrack = combinedStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.onended = () => {
-          if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            stopRecordingRef.current?.();
-          }
-        };
-      }
 
       // 2. Prepare next pure audio recorder if available
       let nextAudioRecorder = null;
@@ -707,12 +707,21 @@ export default function useLectureRecorder({
         combinedStreamRef.current = combinedStream;
 
         if (videoTrack) {
-          videoTrack.onended = () => {
+          const handleTrackEnded = () => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
               console.info('[useLectureRecorder] Screen track ended by system; stopping recording.');
               stopRecordingRef.current?.();
             }
           };
+          if (typeof videoTrack.addEventListener === 'function') {
+            videoTrack.addEventListener('ended', handleTrackEnded, { once: true });
+          } else {
+            const origEnded = videoTrack.onended;
+            videoTrack.onended = () => {
+              if (typeof origEnded === 'function') origEnded();
+              handleTrackEnded();
+            };
+          }
         }
 
         // 4. Generate unique UUID Session ID & resolve Session Group
@@ -1031,15 +1040,22 @@ export default function useLectureRecorder({
         setPendingSegmentsCount(uploadQueueRef.current.length);
       }
 
-      // Drain upload queue with throwOnError enabled for caller catchability
-      await drainUploadQueue(true);
+      // Drain upload queue safely; segments remain protected in IndexedDB even if offline or network unstable
+      try {
+        await drainUploadQueue(true);
+      } catch (drainErr) {
+        console.warn('[useLectureRecorder] Notice: segments buffered safely in IndexedDB due to network:', drainErr);
+        throw drainErr;
+      }
 
-      // Wait briefly if remaining items are processing
+      // If online and items remain, give them a brief window to upload (up to 5s), without blocking indefinitely
       const isOnline = typeof navigator === 'undefined' || navigator.onLine;
-      if (isOnline) {
+      if (isOnline && uploadQueueRef.current.length > 0) {
         const startTime = Date.now();
-        while (uploadQueueRef.current.length > 0 && Date.now() - startTime < 30000) {
-          await drainUploadQueue(true);
+        while (uploadQueueRef.current.length > 0 && Date.now() - startTime < 5000) {
+          try {
+            await drainUploadQueue(false);
+          } catch {}
           if (uploadQueueRef.current.length > 0) {
             await new Promise((r) => setTimeout(r, 200));
           }

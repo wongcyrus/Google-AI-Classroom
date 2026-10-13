@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('./firebase.js', () => ({}));
 vi.mock('./config.js', () => ({
   FUNCTION_REGION: 'us-central1',
+  CORS_ORIGINS: true,
   VIDEO_FRAME_RATE: 15
 }));
 

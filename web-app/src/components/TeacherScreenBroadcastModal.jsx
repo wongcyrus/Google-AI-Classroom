@@ -586,6 +586,56 @@ export default function TeacherScreenBroadcastModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Live Speech-to-Text & Subtitle Preview Ticker */}
+                  <div
+                    className="live-stt-preview-card"
+                    style={{
+                      marginTop: '10px',
+                      background: '#f8fafc',
+                      padding: '12px 14px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #cbd5e1',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>👀</span>
+                        <span>Live Speech-to-Text Preview</span>
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          background: st.status === 'listening' ? '#dcfce7' : st.status === 'translating' ? '#fef3c7' : '#f1f5f9',
+                          color: st.status === 'listening' ? '#15803d' : st.status === 'translating' ? '#b45309' : '#64748b',
+                        }}
+                      >
+                        {st.status === 'listening' ? '🟢 Listening' : st.status === 'translating' ? '🔄 Translating' : '⚪ Ready'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.82rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                        <strong style={{ color: '#4f46e5', minWidth: '100px' }}>🗣️ Speech (STT):</strong>
+                        <span style={{ color: st.latestTranscript ? '#0f172a' : '#94a3b8', fontStyle: st.latestTranscript ? 'normal' : 'italic', fontWeight: st.latestTranscript ? 600 : 400 }}>
+                          {st.latestTranscript || '(Speak into your microphone to verify live transcription...)'}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                        <strong style={{ color: '#059669', minWidth: '100px' }}>🌐 Translation:</strong>
+                        <span style={{ color: (st.latestTranslations?.['zh-Hant'] || st.latestTranslations?.['en'] || Object.values(st.latestTranslations || {})[0]) ? '#047857' : '#94a3b8', fontStyle: (st.latestTranslations?.['zh-Hant'] || st.latestTranslations?.['en'] || Object.values(st.latestTranslations || {})[0]) ? 'normal' : 'italic', fontWeight: 500 }}>
+                          {st.latestTranslations?.['zh-Hant'] ||
+                           st.latestTranslations?.['en'] ||
+                           Object.values(st.latestTranslations || {})[0] ||
+                           (st.latestTranscript ? '(Translating...)' : '(Waiting for speech...)')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Translation Engine Architecture */}
@@ -594,7 +644,7 @@ export default function TeacherScreenBroadcastModal({
                     <span className="label-icon">🤖</span>
                     <span>Translation Model Architecture</span>
                   </label>
-                  <div className="engine-card-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <div className="engine-card-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <label
                       className={`engine-card ${currentEngineMode === 'server' ? 'selected' : ''}`}
                       style={{
@@ -614,7 +664,8 @@ export default function TeacherScreenBroadcastModal({
                         style={{ display: 'none' }}
                       />
                       <strong style={{ fontSize: '0.82rem', color: '#1e293b', display: 'block' }}>🟣 Server Model</strong>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Cloud Functions (Gemini 3.5 Flash-Lite) · 100% Reliable</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Cloud Functions (Gemini 3.5 Flash-Lite) · 100% Reliable</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#4338ca' }}>⚡ ~$0.01 per lecture</span>
                     </label>
 
                     <label
@@ -636,7 +687,14 @@ export default function TeacherScreenBroadcastModal({
                         style={{ display: 'none' }}
                       />
                       <strong style={{ fontSize: '0.82rem', color: '#1e293b', display: 'block' }}>⚪ Client Model</strong>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>LiteRT.js (Whisper STT + Gemma 4 E2B · $0 cloud cost)</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>LiteRT.js (Whisper STT + Gemma 4 E2B · $0 cloud cost)</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: st.isGemmaAvailable ? '#15803d' : '#4338ca' }}>
+                        {st.isGemmaAvailable
+                          ? '✅ On-Device Gemma 4 Ready'
+                          : st.gemmaProgress > 0 && st.gemmaProgress < 100
+                          ? `⏳ Downloading Gemma 4 Model (${st.gemmaProgress}%)...`
+                          : '⚡ LiteRT.js Active (auto cloud fallback)'}
+                      </span>
                     </label>
                   </div>
                 </div>

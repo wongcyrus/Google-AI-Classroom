@@ -11,6 +11,7 @@ import ffmpeg_static from 'ffmpeg-static';
 import { formatInTimeZone } from 'date-fns-tz';
 import sharp from 'sharp';
 import { parsePeriodDateMs } from './examPeriodUtils.js';
+import { executeMergeStudentSessionAudio } from './mergeStudentSessionAudio.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -543,6 +544,33 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       attemptNumber
     });
 
+    // Auto-combine student microphone voice clips into a unified session audio track
+    if (!isTaskSubmission) {
+      try {
+        console.log(`[processVideoJob] Automatically merging student session audio for ${studentUid} in class ${classId}...`);
+        const audioMergeResult = await executeMergeStudentSessionAudio({
+          classId,
+          studentUid,
+          startTime,
+          endTime,
+        }, { db, storage });
+
+        if (audioMergeResult?.status === 'success') {
+          console.log(`[processVideoJob] Successfully auto-merged ${audioMergeResult.clipCount} audio clip(s) for student ${studentUid}`);
+          await jobRef.update({
+            hasAudio: true,
+            audioUrl: audioMergeResult.audioUrl || null,
+            audioPath: audioMergeResult.audioPath || null,
+            audioDuration: audioMergeResult.durationSeconds || null,
+            audioClipCount: audioMergeResult.clipCount || null,
+            transcript: audioMergeResult.transcript || null,
+          });
+        }
+      } catch (audioMergeErr) {
+        console.warn(`[processVideoJob] Auto audio merge note for ${studentUid}:`, audioMergeErr.message);
+      }
+    }
+
     if (isTaskSubmission && taskId) {
       try {
         const attemptRef = db.collection('classes').doc(classId)
@@ -590,6 +618,49 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     // Only class-level video jobs should trigger routine screenshot purge, never standalone task jobs
     if (!isTaskSubmission) {
       try {
+        // 1. Freeze authentic timestamp attendance bitmask directly into lessons/{lessonId} before deleting raw screenshots
+        try {
+          const crypto = await import('crypto');
+          const startMs = startTime instanceof Date ? startTime.getTime() : (startTime?.toDate ? startTime.toDate().getTime() : new Date(startTime).getTime());
+          const endMs = endTime instanceof Date ? endTime.getTime() : (endTime?.toDate ? endTime.toDate().getTime() : new Date(endTime).getTime());
+          const durationMins = Math.max(1, Math.round((endMs - startMs) / 60000));
+
+          const startISO = new Date(startMs).toISOString();
+          const endISO = new Date(endMs).toISOString();
+          const lessonId = crypto.createHash('sha256').update(`${startISO}-${endISO}`).digest('hex');
+          const lessonRef = db.collection('classes').doc(classId).collection('lessons').doc(lessonId);
+
+          const studentBitmask = Array(durationMins).fill(0);
+          querySnapshot.docs.forEach((docSnap) => {
+            const sData = docSnap.data() || {};
+            const rawTs = sData.timestamp;
+            const ts = rawTs?.toDate ? rawTs.toDate() : (rawTs ? new Date(rawTs) : null);
+            if (!ts || isNaN(ts.getTime())) return;
+            const minIdx = Math.floor((ts.getTime() - startMs) / 60000);
+            if (minIdx >= 0 && minIdx < durationMins) {
+              studentBitmask[minIdx] = 1;
+            }
+          });
+
+          const sharedMins = studentBitmask.reduce((sum, v) => sum + (v === 1 ? 1 : 0), 0);
+          await lessonRef.set({
+            startTime: new Date(startMs),
+            endTime: new Date(endMs),
+            students: {
+              [studentUid]: {
+                email: studentEmail,
+                sharedScreenMinutes: sharedMins,
+                rawScreenMinutes: sharedMins,
+                attendance: studentBitmask,
+              },
+            },
+          }, { merge: true });
+
+          console.log(`[processVideoJob] Successfully saved attendance bitmask (${sharedMins} active minutes) for student ${studentUid} in lesson ${lessonId} before screenshot cleanup.`);
+        } catch (freezeErr) {
+          console.warn(`[processVideoJob] Could not freeze attendance bitmask before cleanup:`, freezeErr);
+        }
+
         console.log(`[processVideoJob] Purging routine unflagged screenshots for student ${studentUid} in class ${classId}...`);
         const docsToPurge = querySnapshot.docs.filter((docSnap) => {
           const sData = docSnap.data() || {};

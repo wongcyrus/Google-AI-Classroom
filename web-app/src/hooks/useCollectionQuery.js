@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../firebase-config';
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 
@@ -21,6 +21,7 @@ const usePaginatedQuery = (collectionPath, {
   const [lastVisible, setLastVisible] = useState(null);
   const [isLastPage, setIsLastPage] = useState(false);
   const [page, setPage] = useState(1);
+  const pageCursorsRef = useRef([null]);
 
   const buildQuery = useCallback(() => {
     if (!collectionPath) return null;
@@ -54,8 +55,8 @@ const usePaginatedQuery = (collectionPath, {
       const fetchedData = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       setData(fetchedData);
-      setFirstVisible(documentSnapshots.docs[0]);
-      setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
+      setFirstVisible(documentSnapshots.docs[0] || null);
+      setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1] || null);
       
       if (documentSnapshots.docs.length < pageSize) {
         setIsLastPage(true);
@@ -76,24 +77,32 @@ const usePaginatedQuery = (collectionPath, {
 
   const fetchFirstPage = useCallback(() => {
     const q = buildQuery();
+    pageCursorsRef.current = [null];
     setPage(1);
     fetchPage(query(q, limit(pageSize)));
   }, [buildQuery, fetchPage, pageSize]);
 
   const fetchNextPage = () => {
-    if (lastVisible) {
+    if (lastVisible && !isLastPage) {
       const q = buildQuery();
-      setPage(p => p + 1);
+      const nextPage = page + 1;
+      pageCursorsRef.current[nextPage - 1] = lastVisible;
+      setPage(nextPage);
       fetchPage(query(q, startAfter(lastVisible), limit(pageSize)));
     }
   };
 
   const fetchPrevPage = () => {
-    if (firstVisible && page > 1) {
-      // Note: Firestore does not have a simple way to paginate backwards with `desc` order.
-      // A full implementation requires reversing order, using endBefore, and then reversing the results array.
-      // For now, we will re-fetch the first page as a simpler alternative.
-      fetchFirstPage(); 
+    if (page > 1) {
+      const q = buildQuery();
+      const prevPage = page - 1;
+      const prevCursor = pageCursorsRef.current[prevPage - 1];
+      setPage(prevPage);
+      if (prevCursor) {
+        fetchPage(query(q, startAfter(prevCursor), limit(pageSize)));
+      } else {
+        fetchPage(query(q, limit(pageSize)));
+      }
     }
   };
 
