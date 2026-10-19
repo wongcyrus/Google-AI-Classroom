@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { renderTextWithLinks } from '../../utils/linkify';
 
 const INITIAL_VISIBLE_COUNT = 3;
 const PAGE_SIZE = 4;
@@ -48,7 +49,7 @@ const MessagesWidget = ({ recentMessages = [] }) => {
           {totalMessages > 0 ? (
             displayedMessages.map(item => (
               <div key={item.id} className="message-item">
-                <p className="message-text">{item.message}</p>
+                <p className="message-text">{renderTextWithLinks(item.message)}</p>
                 <span className="message-time">{formatTimestamp(item.timestamp)}</span>
               </div>
             ))

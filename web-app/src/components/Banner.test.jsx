@@ -19,4 +19,18 @@ describe('Banner Component', () => {
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('renders URLs in banner messages as clickable links with target="_blank"', () => {
+    render(
+      <Banner
+        message="📢 Open https://it114115-2627.web.app/quiz now!"
+        onClose={vi.fn()}
+      />
+    );
+
+    const link = screen.getByRole('link', { name: 'https://it114115-2627.web.app/quiz' });
+    expect(link).toHaveAttribute('href', 'https://it114115-2627.web.app/quiz');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

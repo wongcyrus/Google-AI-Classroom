@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { renderTextWithLinks } from '../utils/linkify';
 
 const bannerStyle = {
   position: 'fixed',
@@ -17,6 +17,13 @@ const bannerStyle = {
   alignItems: 'center'
 };
 
+const bannerLinkStyle = {
+  color: '#ffffff',
+  textDecoration: 'underline',
+  fontWeight: 600,
+  wordBreak: 'break-all'
+};
+
 const closeButtonStyle = {
   marginLeft: '20px',
   backgroundColor: 'transparent',
@@ -31,7 +38,7 @@ const Banner = ({ message, onClose }) => {
 
   return (
     <div style={bannerStyle}>
-      {message}
+      <span>{renderTextWithLinks(message, { style: bannerLinkStyle })}</span>
       <button onClick={onClose} style={closeButtonStyle}>&times;</button>
     </div>
   );

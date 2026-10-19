@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { renderTextWithLinks } from '../../utils/linkify';
 
 const INITIAL_VISIBLE_COUNT = 3;
 const PAGE_SIZE = 4;
@@ -53,7 +54,7 @@ const AlertsWidget = ({ recentIrregularities = [], ipAddress = '' }) => {
               return (
                 <div key={item.id} className={`alert-item ${item.severity ? `severity-${item.severity}` : ''}`}>
                   <div className="alert-item-header">
-                    <p className="alert-title">{title}</p>
+                    <p className="alert-title">{renderTextWithLinks(title)}</p>
                     {item.severity && (
                       <span className={`severity-tag ${item.severity}`}>
                         {item.severity}
@@ -61,7 +62,7 @@ const AlertsWidget = ({ recentIrregularities = [], ipAddress = '' }) => {
                     )}
                   </div>
                   {description && (
-                    <p className="alert-desc">{description}</p>
+                    <p className="alert-desc">{renderTextWithLinks(description)}</p>
                   )}
                   <span className="alert-time">{formatTimestamp(item.timestamp)}</span>
                 </div>

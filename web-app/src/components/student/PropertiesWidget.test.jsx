@@ -124,6 +124,27 @@ describe('PropertiesWidget Component and Helpers', () => {
       render(<PropertiesWidget classProperties={{}} myProperties={internalOnly} />);
       expect(screen.queryByText(/My Properties/i)).not.toBeInTheDocument();
     });
+
+    it('renders URLs in Class Properties and My Properties as clickable links with target="_blank"', () => {
+      const classProps = {
+        LabSheet: 'https://docs.google.com/document/d/lab1',
+      };
+      const myProps = {
+        RepoUrl: 'www.github.com/student/project',
+      };
+
+      render(<PropertiesWidget classProperties={classProps} myProperties={myProps} />);
+
+      const classLink = screen.getByRole('link', { name: 'https://docs.google.com/document/d/lab1' });
+      expect(classLink).toHaveAttribute('href', 'https://docs.google.com/document/d/lab1');
+      expect(classLink).toHaveAttribute('target', '_blank');
+      expect(classLink).toHaveAttribute('rel', 'noopener noreferrer');
+
+      const myLink = screen.getByRole('link', { name: 'www.github.com/student/project' });
+      expect(myLink).toHaveAttribute('href', 'https://www.github.com/student/project');
+      expect(myLink).toHaveAttribute('target', '_blank');
+      expect(myLink).toHaveAttribute('rel', 'noopener noreferrer');
+    });
   });
 });
 

@@ -41,4 +41,26 @@ describe('MessagesWidget Component', () => {
 
     expect(screen.queryByText('Time is up, submit work')).not.toBeInTheDocument();
   });
+
+  it('renders URLs in student messages as clickable links with target="_blank"', () => {
+    const mockMessages = [
+      {
+        id: '1',
+        message: 'Please submit your lab at https://example.com/submit or www.google.com.',
+        timestamp: new Date('2026-09-01T10:00:00Z'),
+      },
+    ];
+
+    render(<MessagesWidget recentMessages={mockMessages} />);
+
+    const link1 = screen.getByRole('link', { name: 'https://example.com/submit' });
+    expect(link1).toHaveAttribute('href', 'https://example.com/submit');
+    expect(link1).toHaveAttribute('target', '_blank');
+    expect(link1).toHaveAttribute('rel', 'noopener noreferrer');
+
+    const link2 = screen.getByRole('link', { name: 'www.google.com' });
+    expect(link2).toHaveAttribute('href', 'https://www.google.com');
+    expect(link2).toHaveAttribute('target', '_blank');
+    expect(link2).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

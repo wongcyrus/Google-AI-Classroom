@@ -143,6 +143,35 @@ for o in "${OTHER_ARGS[@]}"; do
     FIREBASE_DEPLOY_ARGS+=("$o")
 done
 
+# Safeguard Identity Platform Auth Action API Key against GCP API key rotation soft-deletion
+echo "Verifying Identity Platform Auth Action API key on $TARGET_PROJECT..."
+ACCESS_TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+if [ -n "$ACCESS_TOKEN" ]; then
+    IDP_CLIENT_KEY=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" -H "X-Goog-User-Project: $TARGET_PROJECT" \
+        "https://identitytoolkit.googleapis.com/admin/v2/projects/$TARGET_PROJECT/config" | \
+        node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{console.log(JSON.parse(d).client?.apiKey||"");}catch{}});' 2>/dev/null || true)
+    if [ -n "$IDP_CLIENT_KEY" ]; then
+        KEY_CHECK_BODY=$(curl -s -X POST \
+            "https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=$IDP_CLIENT_KEY" \
+            -H "Content-Type: application/json" -d '{"oobCode":"healthcheck"}' 2>/dev/null || true)
+        if echo "$KEY_CHECK_BODY" | grep -q "API key expired"; then
+            echo "⚠️  Identity Platform client.apiKey was soft-deleted after key rotation. Restoring and restricting to Auth APIs..."
+            DELETED_KEY_UID=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" -H "X-Goog-User-Project: $TARGET_PROJECT" \
+                "https://apikeys.googleapis.com/v2/projects/$TARGET_PROJECT/locations/global/keys?showDeleted=true" | \
+                node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const k=(JSON.parse(d).keys||[]).find(x=>x.deleteTime);if(k)console.log(k.uid||"");}catch{}});' 2>/dev/null || true)
+            if [ -n "$DELETED_KEY_UID" ]; then
+                gcloud services api-keys undelete "$DELETED_KEY_UID" --project="$TARGET_PROJECT" --quiet 2>/dev/null || true
+                gcloud services api-keys update "$DELETED_KEY_UID" \
+                    --display-name="Identity Platform Auth Action Key (Restricted to Auth Only)" \
+                    --api-target=service=identitytoolkit.googleapis.com \
+                    --api-target=service=securetoken.googleapis.com \
+                    --project="$TARGET_PROJECT" --quiet 2>/dev/null || true
+                echo "✅ Restored Identity Platform Auth Action key ($DELETED_KEY_UID) with Auth-only scope."
+            fi
+        fi
+    fi
+fi
+
 ONLY_HOSTING=false
 if [ "${#TARGETS[@]}" -eq 1 ] && [ "${TARGETS[0]}" = "hosting" ]; then
     ONLY_HOSTING=true

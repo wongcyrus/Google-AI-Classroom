@@ -1,4 +1,5 @@
 import usePaginatedQuery from '../hooks/useCollectionQuery';
+import { renderTextWithLinks } from '../utils/linkify';
 import './SharedViews.css';
 
 const MessagesView = ({ user, classId, startTime, endTime }) => {
@@ -34,7 +35,7 @@ const MessagesView = ({ user, classId, startTime, endTime }) => {
                         messages.map(msg => (
                             <tr key={msg.id}>
                                 <td>{new Date(msg.timestamp?.toDate()).toLocaleString()}</td>
-                                <td>{msg.message}</td>
+                                <td>{renderTextWithLinks(msg.message)}</td>
                             </tr>
                         ))
                     ) : (

@@ -1,4 +1,5 @@
 import React from 'react';
+import { renderTextWithLinks } from '../../utils/linkify';
 
 /**
  * Identifies internal system/operational keys that should not be displayed in student properties.
@@ -117,7 +118,7 @@ const PropertiesWidget = ({ classProperties = {}, myProperties = {} }) => {
           {visibleClassProperties.map(([key, value]) => (
             <div key={key} className="property-item">
               <p className="property-key">{key}</p>
-              <p className="property-value">{formatPropertyValue(key, value)}</p>
+              <p className="property-value">{renderTextWithLinks(formatPropertyValue(key, value))}</p>
             </div>
           ))}
         </div>
@@ -132,7 +133,7 @@ const PropertiesWidget = ({ classProperties = {}, myProperties = {} }) => {
             {visibleMyProperties.map(([key, value]) => (
               <div key={key} className="property-item">
                 <p className="property-key">{key}</p>
-                <p className="property-value">{formatPropertyValue(key, value)}</p>
+                <p className="property-value">{renderTextWithLinks(formatPropertyValue(key, value))}</p>
               </div>
             ))}
           </div>
