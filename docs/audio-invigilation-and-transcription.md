@@ -211,27 +211,31 @@ sequenceDiagram
 
 ## 6. Mode 4: Offline Queue & Cloud Hybrid Fallback
 
-When a student loses internet connectivity during an examination:
+When a student experiences a transient upload timeout (15s) or loses internet connectivity during an examination:
+
+* **Uninterrupted Stream & On-Device Voice AI**: Failed or timed-out Cloud Storage uploads in [`useAudioRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioRecorder.js) preserve `isAudioSharing: true` in Firestore and still invoke `onAudioUploaded` (`isOfflineBuffered: true`, `url: null`) so on-device LiteRT Whisper STT and Gemma 4 E2B intent evaluation continue without interruption. Internal recorder restarts on teacher config changes pass `{ restarting: true }` so `isAudioSharing` never flickers to `false`.
+* **End-to-End Idempotent Audio Backfill**: Both initial uploads and offline retries target the exact same deterministic Storage path (`audio/${classId}/${studentUid}/audio_${timestamp}_stride_${strideIndex}.webm`) and deterministic Firestore document ID (`${classId}_${studentUid}_${timestamp}_${strideIndex}`). If a 15-second client timeout fired while the HTTP upload completed in the background, the retry probes `getDownloadURL` first and skips `uploadBytes`, preventing duplicate Storage objects, quota double-counting, or orphaned transcripts during [`executeMergeStudentSessionAudio`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/mergeStudentSessionAudio.js).
+* **Type-Scoped Concurrency Mutex & Post-Recovery Auto-Drain**: [`flushOfflineQueue`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/offlineBufferManager.js) enforces a per-type in-flight lock (`type: 'audio'` vs `type: 'screenshot'`) and automatically drains queued segments upon `window.online` or immediately after the next successful segment upload when `navigator.onLine` stays `true`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> OnlineMonitoring: Network Connected
-    OnlineMonitoring --> OfflineBuffering: Connection Lost (navigator.onLine == false)
+    OnlineMonitoring --> OfflineBuffering: Upload Timeout (15s) or Connection Lost
     
     state OfflineBuffering {
         [*] --> CaptureAudio: MediaRecorder Chunk
         CaptureAudio --> EdgeWhisperSTT: Local Transcription (LiteRT)
         EdgeWhisperSTT --> LocalGemmaGuard: Local Violation Check (LiteRT)
-        LocalGemmaGuard --> IndexedDBQueue: Store WebM + Meta in IndexedDB
+        LocalGemmaGuard --> IndexedDBQueue: Store WebM + Deterministic ID in IndexedDB
         IndexedDBQueue --> CaptureAudio
     }
 
-    OfflineBuffering --> NetworkReconnected: Connection Restored (window.online event)
+    OfflineBuffering --> NetworkReconnected: Next Successful Upload or window.online
     
     state NetworkReconnected {
-        [*] --> FlushQueue: readIndexedDBChunks()
-        FlushQueue --> UploadStorage: Parallel Batch Upload (Storage)
-        UploadStorage --> TriggerCloudAudits: Execute Cloud Gemini Backfill
+        [*] --> FlushQueue: flushOfflineQueue({ type: 'audio' })
+        FlushQueue --> UploadStorage: Idempotent Upload (Skip if alreadyUploaded/timedOut on GCS)
+        UploadStorage --> TriggerCloudAudits: Write Deterministic Firestore Doc & Merge Transcripts
         TriggerCloudAudits --> [*]
     }
     

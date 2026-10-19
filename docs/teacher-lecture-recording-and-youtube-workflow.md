@@ -829,14 +829,15 @@ To guarantee uninterrupted classroom instruction:
 2. **Caller Stream Ownership**: When screen sharing is initiated from the Monitor View, the shared media stream belongs to the caller. Subordinate hooks (`useTeacherScreenBroadcast`) never terminate hardware tracks unless created internally.
 3. **Safe Multi-Subscriber Track Event Listeners**: Media stream listeners use `videoTrack.addEventListener('ended', ..., { once: true })` with fallback chaining to prevent handler clobbering.
 
-### 12.2 IndexedDB Local-First Persistence & Resilient Retries
-Every 1-minute lecture segment follows a local-first offline pipeline:
+### 12.2 IndexedDB Local-First Persistence & Idempotent Retries
+Every 1-minute lecture segment follows a local-first, idempotent offline pipeline:
 1. **Local IndexedDB Persistence**: The raw recorded WebM blob and pure audio blob are immediately saved to browser IndexedDB storage (`persistPendingSegment`) before any network upload begins.
 2. **Non-Blocking Background Upload**: `drainUploadQueue` processes segments asynchronously without locking the UI or frame capture intervals.
-3. **Exponential Backoff**: If an upload fails due to network drop or storage timeout, the segment remains safely in IndexedDB and retries with exponential backoff (`2s -> 3s -> 4.5s ... max 30s`).
-4. **Instant Auto-Drain on Reconnection**: A `window.addEventListener('online', ...)` listener automatically triggers queue drainage the moment internet connectivity is restored.
-5. **Atomic Cleanup Only on Confirmation**: A segment is deleted from IndexedDB (`clearPendingSegment`) only after Firebase Cloud Storage completes receiving the file and the Firestore session document is marked `ready`.
-6. **Mount Recovery**: If the teacher closes or refreshes the browser while offline, any pending segments in IndexedDB are automatically detected and drained on the next session mount.
+3. **Sub-Step Upload Caching (Idempotent Retries)**: Once the parallel audio blob (`lecture_audio.webm`) or video blob (`lecture.webm`) finishes uploading to Cloud Storage, `drainUploadQueue` caches `uploadedAudioUrl` and `uploadedVideoUrl` on the queued segment item. If a subsequent step (such as the Firestore write) fails and triggers a retry, already-uploaded blobs are never re-uploaded to Cloud Storage.
+4. **Offline Rollover Firestore Fallback (`setDoc` Merge)**: If a 1-minute segment rolled over while the teacher was temporarily offline (so the initial `recording` Firestore document could not be created), `drainUploadQueue` automatically falls back from `updateDoc` to `setDoc(..., { merge: true })` upon encountering `not-found`, preventing retry loops and ensuring zero lost segments.
+5. **Deterministic Merge Job IDs**: Multi-segment lecture combine jobs use a deterministic document ID (`lectureMergeJobs/merge_${classId}_${sessionGroupId}`) and deduplicate `recordedSegmentsRef` by `sessionId` so repeated merge triggers are strictly idempotent.
+6. **Exponential Backoff & Instant Auto-Drain**: If an upload fails due to network drop or storage timeout, the segment remains safely in IndexedDB, retries with exponential backoff (`2s -> 3s -> 4.5s ... max 30s`), and drains immediately on `window.online` or next session mount.
+7. **Atomic Cleanup Only on Confirmation**: A segment is deleted from IndexedDB (`clearPendingSegment`) only after Firebase Cloud Storage completes receiving the file and the Firestore session document is marked `ready`.
 
 
 
